@@ -95,7 +95,10 @@ export function settleSceneSpriteCues(
  * Names have already had the structural full_ prefix and file extension removed by the media owner.
  * Mirrors Engine sprite.service / expression-agent-utils; no private Engine imports. */
 function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: boolean) {
-  const entries = [...new Map((sprite?.expressions ?? []).map((entry) => [entry.expressionId, entry])).values()];
+  const byExpression = new Map<string, SpriteCatalog["expressions"][number]>();
+  for (const entry of sprite?.expressions ?? [])
+    if (entry.view === "front" || !byExpression.has(entry.expressionId)) byExpression.set(entry.expressionId, entry);
+  const entries = [...byExpression.values()];
   const name = (entry: SpriteCatalog["expressions"][number]) => (entry.spriteName ?? entry.name).trim().toLowerCase();
   const prefixes = new Map<string, number>();
   for (const entry of entries) {

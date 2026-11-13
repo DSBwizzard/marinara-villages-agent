@@ -36,7 +36,7 @@ export function createSpriteManager({
   saveSpriteFile,
   writes,
 }: SpriteManagerPorts) {
-  const serialize = writes.serialize;
+  const serialize = <T>(id: string, action: () => Promise<T>) => writes.serialize("resident:" + id, action);
   const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
   async function owner(id: string) {
     const resident = (await readVillageState()).villagers.find((item) => item.characterId === id);
@@ -52,6 +52,7 @@ export function createSpriteManager({
       if (!resident) throw conflict("The resident changed. Reopen Sprite Manager.");
       resident.spriteManager ??= emptySpriteManager();
       change(resident.spriteManager);
+      delete resident.spriteManager.lastSave;
     });
   }
   async function result(id: string) {
@@ -247,24 +248,6 @@ export function createSpriteManager({
     });
   }
 
-  async function reframeArtwork(art: SpriteArtwork, frame: SpriteFrame): Promise<SpriteArtwork> {
-    const image = await readImage(art.source.url);
-    const bytes = decodeVillageImageDataUrl(image, { label: "sprite", maxBase64Length: 16_000_000 }).bytes;
-    if (digest(bytes) !== art.source.sha256) throw conflict("The saved original changed. Import the artwork again.");
-    let processed: ReturnType<typeof renderSpritePixels>;
-    try {
-      processed = renderSpritePixels(await decodeSpriteImage(image), frame);
-    } catch (error) {
-      throw badRequest(error instanceof Error ? error.message : "Check the artwork framing.");
-    }
-    if (processed.clipped) throw badRequest("Artwork exceeds the safe margin. Reduce its size or adjust its position.");
-    return {
-      ...art,
-      frame,
-      warnings: processed.warnings,
-      rendered: await saveImage(art.assetId, "r-" + randomUUID().replaceAll("-", ""), spritePng(processed.image)),
-    };
-  }
   function setSpriteDefault(id: string, raw: unknown) {
     return serialize(id, async () => {
       const resident = await owner(id),
@@ -334,7 +317,6 @@ export function createSpriteManager({
 
   return {
     prepareArtwork,
-    reframeArtwork,
     readImage,
     readSpriteManager,
     importSpriteArtwork,

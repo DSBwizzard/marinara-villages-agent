@@ -1,9 +1,5 @@
-import { downloadSpriteImage } from "../packages/villages/src/client/shared/image-download.js";
 import assert from "node:assert/strict";
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
 import {
   coerceVillageState,
@@ -22,8 +18,8 @@ const images = [
   { view: "front" as const, label: "happy", url: "/front-happy" },
   { view: "side" as const, label: "neutral", url: "/side-neutral" },
 ];
-assert.deepEqual(selectSpriteImage(images, "happy", "left"), { image: images[2], mirrored: true });
-assert.deepEqual(selectSpriteImage(images, "happy", "right"), { image: images[2], mirrored: false });
+assert.deepEqual(selectSpriteImage(images, "happy", "left"), { image: images[1], mirrored: false });
+assert.deepEqual(selectSpriteImage(images, "happy", "right"), { image: images[1], mirrored: false });
 assert.deepEqual(selectSpriteImage(images.slice(0, 2), "happy", "left"), { image: images[1], mirrored: false });
 const customImages = [
   {
@@ -36,7 +32,7 @@ const customImages = [
   { view: "front" as const, label: "running", expressionId: "e-running", url: "/running" },
 ];
 assert.equal(selectSpriteImage(customImages, "", "left")?.image.url, "/delighted");
-assert.equal(selectSpriteImage(customImages, "e-running", "left")?.image.url, "/delighted");
+assert.equal(selectSpriteImage(customImages, "e-running", "left")?.image.url, "/running");
 assert.equal(
   selectSpriteImage(customImages, "pleased", "front")?.image.url,
   "/delighted",
@@ -132,15 +128,6 @@ assert.equal(
   true,
   "the Village document preserves the shared setting through storage round trips",
 );
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const entry = readFileSync(
-  join(root, "packages/villages/src/client/features/residents/villages-sprite-manager.tsx"),
-  "utf8",
-);
-assert.match(entry, /Upload images/);
-assert.match(entry, /Save and use in Scenes/);
-assert.match(entry, /Download saved PNG/);
-assert.doesNotMatch(entry, /generate-sheet|repair-background|Suggest another pose/);
 console.log("Resident expressions, stage selection, gaze and portrait fallback passed.");
 
 // Engine filenames group automatically, independently of reviewed display labels.
@@ -217,32 +204,3 @@ assert.equal(
   coerceVillageState({ ...defaultVillageState(), spriteVariantsEnabled: undefined }).spriteVariantsEnabled,
   true,
 );
-
-const globalHost = globalThis as typeof globalThis & { __MARINARA_HOST__?: unknown };
-const previousHost = globalHost.__MARINARA_HOST__;
-const downloads: unknown[] = [];
-try {
-  globalHost.__MARINARA_HOST__ = {
-    api: {
-      api: {
-        download: async (...args: unknown[]) => {
-          downloads.push(args);
-        },
-      },
-    },
-  };
-  await downloadSpriteImage("/api/sprites/villages-owned/file/saved.png", "happy.png");
-  assert.deepEqual(downloads, [["/sprites/villages-owned/file/saved.png", "happy.png"]]);
-  globalHost.__MARINARA_HOST__ = {
-    api: {
-      api: {
-        download: async () => {
-          throw new Error("Host save failed");
-        },
-      },
-    },
-  };
-  await assert.rejects(downloadSpriteImage("/api/sprites/owned/file/image.png", "image.png"), /Host save failed/);
-} finally {
-  globalHost.__MARINARA_HOST__ = previousHost;
-}

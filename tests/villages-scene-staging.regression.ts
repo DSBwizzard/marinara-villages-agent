@@ -254,8 +254,8 @@ const art = [
 ];
 assert.equal(
   selectSpriteImage(art, "e-thinking", "left")?.image.url,
-  "/side",
-  "attention uses the default in the requested view before an expression in the other view",
+  "/thinking",
+  "A turn preserves the selected expression when its side view is missing",
 );
 assert.equal(selectSpriteImage(art, "", "left")?.mirrored, true);
 assert.equal(selectSpriteImage(art, "unavailable", "front")?.image.url, "/side");

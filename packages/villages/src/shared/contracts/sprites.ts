@@ -31,6 +31,8 @@ export type SpriteManagerState = {
   expressions: SpriteExpression[];
   assignments: SpriteAssignment[];
   defaultExpressionId?: string;
+  useSprites?: boolean;
+  lastSave?: { id: string; digest: string };
   framing: { mode: "full" | "half" };
 };
 export type SpriteLibraryItem = {
@@ -38,6 +40,7 @@ export type SpriteLibraryItem = {
   label?: string;
   url: string;
   folderId?: string | null;
+  version?: string;
   adoptedArtworkId?: string;
 };
 export type SpriteLibraryFolder = { id: string; name: string; category: "expressions" | "full-body" };
@@ -57,11 +60,20 @@ export type SpriteSetupDraft = {
   useSprites: boolean;
   errors: Record<string, string>;
 };
-export type SpriteSetupState = SpriteSetupDraft & {
+export type SpriteAppearance = {
+  revision: number;
+  token: string;
+  manager: SpriteManagerState;
   files: SpriteLibraryItem[];
-  resident: boolean;
-  residentToken: string;
+  folders: SpriteLibraryFolder[];
   libraryError?: string;
-  folders?: SpriteLibraryFolder[];
-  folderSupport?: boolean;
+};
+
+export type SpriteChoice =
+  { artworkId: string; filename?: never } | { filename: string; version?: string; artworkId?: never };
+export type AppearanceExpression = {
+  id: string;
+  name: string;
+  front?: SpriteChoice;
+  side?: SpriteChoice;
 };

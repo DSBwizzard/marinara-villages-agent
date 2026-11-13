@@ -7,7 +7,7 @@ import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
-import { SpriteManager } from "./villages-sprite-manager.js";
+import { Appearance } from "./Appearance.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { useContext } from "react";
 import { DeskLeaveGuard } from "../../shared/DeskWorkspace.js";
@@ -360,15 +360,21 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
           }}
           spriteManager={
             spriteManagerId && person ? (
-              <SpriteManager
-                key={person.characterId}
-                villager={person}
-                request={request}
-                backLabel="← Back to profile"
+              <Appearance
+                key={snapshot?.worldScope + ":" + person.characterId}
+                characterId={person.characterId}
+                name={person.name}
+                portrait={portraits[person.characterId]}
+                resident
+                host={element}
                 onLeaveGuard={(guard) => {
                   spriteLeaveGuard.current = guard;
                 }}
-                onSaved={(next) => setSnapshot(next as VillageSnapshot)}
+                onSave={async () => {
+                  const next = await request<VillageSnapshot>("");
+                  if (navigationLifetime.isCurrent())
+                    setSnapshot((current) => (current?.worldScope === next.worldScope ? next : current));
+                }}
                 onBack={() => {
                   setSpriteManagerId(null);
                   requestAnimationFrame(() => {
@@ -412,7 +418,9 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                     element.querySelector<HTMLElement>(`.${ELEMENT_TAG}-dossier-root`)?.scrollTop ?? 0;
                   setSpriteManagerId(personProfile.actorId);
                 }}
-              >{`Manage sprites · ${person?.sprite?.images.length ?? 0} assigned`}</button>
+              >
+                Appearance
+              </button>
               <button
                 type="button"
                 disabled={busy || !!refreshBusyId}

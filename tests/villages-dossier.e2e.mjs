@@ -1732,7 +1732,7 @@ await withBrowser(browser, async () => {
     const description = profile.getByRole("textbox", { name: "Description", exact: true });
     const initialDescription = village.villagers[0].summary;
     await description.fill("A reserved explorer with an interest in old machinery.");
-    await profile.getByRole("button", { name: /^Manage sprites/ }).click();
+    await profile.getByRole("button", { name: "Appearance", exact: true }).click();
     const spriteDiscard = page.getByRole("dialog", { name: "Confirm", exact: true });
     await expect(spriteDiscard).toContainText("Discard unsaved description?");
     await spriteDiscard.getByRole("button", { name: "Cancel", exact: true }).click();

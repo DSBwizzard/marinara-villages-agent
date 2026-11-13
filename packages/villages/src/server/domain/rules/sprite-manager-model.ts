@@ -125,6 +125,12 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
     artwork,
     expressions,
     assignments,
+    ...(state.useSprites === false ? { useSprites: false } : {}),
+    ...(typeof state.lastSave?.id === "string" &&
+    /^[a-z0-9-]{1,80}$/i.test(state.lastSave.id) &&
+    /^[a-f0-9]{64}$/.test(state.lastSave.digest)
+      ? { lastSave: { id: state.lastSave.id, digest: state.lastSave.digest } }
+      : {}),
     defaultExpressionId: assignments.some((entry) => entry.expressionId === state.defaultExpressionId)
       ? state.defaultExpressionId
       : assignments[0]?.expressionId,
@@ -134,7 +140,7 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
   };
 }
 export function managerResidentSprite(state: SpriteManagerState | null | undefined) {
-  if (!state) return null;
+  if (!state || state.useSprites === false) return null;
   const expressions = state.assignments.flatMap((assignment) => {
     const art = state.artwork.find((item) => item.id === assignment.artworkId);
     const expression = state.expressions.find((item) => item.id === assignment.expressionId);

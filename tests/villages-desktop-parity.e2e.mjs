@@ -188,13 +188,13 @@ await withBrowser(browser, async () => {
       }
       let value = fixtureSnapshot;
       if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
-      else if (path.endsWith("/sprites/manager"))
+      else if (path.endsWith("/sprites/setup/settled"))
         value = {
-          version: 1,
-          artwork: [],
-          expressions: [],
-          assignments: [],
-          framing: { mode: "full", cropPercent: 58 },
+          revision: 0,
+          token: "appearance",
+          folders: [],
+          files: [],
+          manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
         };
       else if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
@@ -337,12 +337,11 @@ await withBrowser(browser, async () => {
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
     await page.getByRole("button", { name: "Character Tools", exact: true }).click();
-    const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
+    const managerButton = page.getByRole("button", { name: "Appearance", exact: true }).first();
     await managerButton.focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("heading", { name: "Mara’s Sprite Manager" })).toBeFocused();
-    await expect(page.getByRole("button", { name: "Upload images", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "← Back to profile" }).click();
+    await expect(page.getByRole("heading", { name: "Mara’s appearance" })).toBeFocused();
+    await page.getByRole("button", { name: "← Profile", exact: true }).click();
     await expect(managerButton).toBeFocused();
     await page
       .getByRole("navigation", { name: "Village navigation", exact: true })
