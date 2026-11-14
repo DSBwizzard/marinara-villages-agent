@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { configureFoundingSuggestions } from "../packages/villages/src/server/features/founding/founding-suggestions.js";
 import { configureFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts.js";
+import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
 import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
@@ -58,6 +59,45 @@ const ports: FoundingSuggestionsPorts = {
 };
 const service = createFoundingSuggestions(ports);
 const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
+{
+  const brief = "Home is a converted freighter named Wayfarer.";
+  const setting = {
+    name: "Wayfarer",
+    startingLocationName: "The Main Deck",
+    description: "A converted freighter with a shared galley.",
+    worldName: "",
+    rules: "",
+  };
+  let completions = 0;
+  let finishReason = "stop";
+  const writer = createFoundingDrafts({
+    villagesConnectionIdFor: async (role: string) => {
+      assert.equal(role, "system");
+      return "test-system";
+    },
+    villagesLanguageModels: () => ({
+      resolveForRequest: async ({ connectionId }: { connectionId: string }) => {
+        assert.equal(connectionId, "test-system");
+        return { fitContext: (messages: unknown[]) => ({ messages }) };
+      },
+    }),
+    completeWithRoom: async (_model: unknown, messages: unknown[], maxTokens: number, options: any) => {
+      assert.deepEqual(messages.slice(1), [{ role: "user", content: brief }]);
+      assert.ok(maxTokens <= 1536);
+      assert.equal(options.reasoningEffort, undefined);
+      completions++;
+      return { content: JSON.stringify(setting), finishReason };
+    },
+  } as any);
+  const draftInput = { ...input, mode: "draft-setting", brief, selectedLorebookIds: ["excluded"] };
+  await assert.rejects(writer.suggestStartingVenues({ ...draftInput, brief: " " }), /Tell Mari/);
+  assert.equal(completions, 0);
+  assert.deepEqual(await writer.suggestStartingVenues(draftInput), { venues: [], setting });
+  assert.equal(completions, 1);
+  finishReason = "length";
+  await assert.rejects(writer.suggestStartingVenues(draftInput), /complete setting/);
+  assert.equal(completions, 2);
+}
 {
   const app = Fastify();
   const releaseSuggestions = configureFoundingSuggestions(createFoundingSuggestions(ports));

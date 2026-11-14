@@ -1,10 +1,14 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { FoundingSetting } from "../../../shared/contracts/founding.js";
 import { foundingHomeMembers, foundingSleepZones } from "./founding-homes.js";
 import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
+  settingBrief?: string;
+  settingDraft?: Partial<FoundingSetting>;
+  settingProblem?: string;
   suggestionRequest?: {
     id: string;
     sourceKey: string;
@@ -15,6 +19,7 @@ export type FoundingWorkspaceState = {
     sourceInputs?: string;
     fullVenue?: boolean;
     draftEntranceImage?: boolean;
+    draftSetting?: boolean;
     failure?: string;
   };
 

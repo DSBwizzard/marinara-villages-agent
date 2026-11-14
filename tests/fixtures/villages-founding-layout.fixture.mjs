@@ -80,6 +80,9 @@ export async function verifyFoundingLayout(group) {
         const page = await context.newPage();
         let payload,
           suggestions = 0,
+          settingReceipt,
+          settingCalls = 0,
+          settingReady = false,
           failVenueConnection = false,
           holdConnectionRead = false,
           connectionReadHeld = false,
@@ -116,9 +119,33 @@ export async function verifyFoundingLayout(group) {
             return send({ ...mapReceipt, status: "running", result: null });
           }
           if (path.includes("/maps/generation/founding-map/")) return send(mapReceipt);
+          if (settingReceipt && path.endsWith("/setup/venues/suggestions/" + settingReceipt.id))
+            return send(settingReady ? settingReceipt : { ...settingReceipt, status: "running", result: null });
           if (path.endsWith("/setup/venues/suggest")) {
-            suggestions++;
             const body = route.request().postDataJSON();
+            if (body.mode === "draft-setting") {
+              settingCalls++;
+              assert.equal(body.brief, "Our village is a converted cargo ship.");
+              assert.deepEqual(Object.keys(body).sort(), ["actionId", "brief", "mode", "sourceKey"]);
+              settingReceipt = {
+                id: body.actionId,
+                sourceKey: body.sourceKey,
+                status: "complete",
+                error: "",
+                result: {
+                  venues: [],
+                  setting: {
+                    name: "Wayfarer",
+                    startingLocationName: "Main Deck",
+                    description: "A shared galley aboard a cargo ship.",
+                    worldName: "",
+                    rules: "",
+                  },
+                },
+              };
+              return send({ ...settingReceipt, status: "running", result: null });
+            }
+            suggestions++;
             if (failVenueConnection)
               return send({
                 id: body.actionId,
@@ -331,15 +358,41 @@ export async function verifyFoundingLayout(group) {
             .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
           ["Setting", "People", "Venues and Map", "Review"],
         );
+        await expect(root.locator(".villages-setting-stage img")).toHaveJSProperty("complete", true);
+        assert.ok(await root.locator(".villages-setting-stage img").evaluate((image) => image.naturalWidth > 0));
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mari-setting-" + view.width + ".png"),
+          });
         await button("Continue to People").click();
         await expect(root.getByLabel("Village Name", { exact: true })).toBeFocused();
         await root.getByLabel("Village Name", { exact: true }).fill("Coastal Community");
         await button("Continue to People").click();
         await expect(root.getByLabel("Location name", { exact: true })).toBeFocused();
+        if (view.width > 1000) {
+          await root.getByLabel("Tell Mari about your village").fill("Our village is a converted cargo ship.");
+          await button("Draft with Mari").click();
+          await expect.poll(() => settingCalls).toBe(1);
+          await root.getByLabel("Location name", { exact: true }).fill("A place I chose while Mari drafted");
+          settingReady = true;
+          await expect(root.getByLabel("Location description", { exact: true })).toHaveValue(
+            "A shared galley aboard a cargo ship.",
+          );
+          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Coastal Community");
+          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue(
+            "A place I chose while Mari drafted",
+          );
+          const suggestion = (value) => root.locator(".villages-setting-proposal").filter({ hasText: value });
+          await suggestion("Wayfarer").getByRole("button", { name: "Dismiss" }).click();
+          await suggestion("Main Deck").getByRole("button", { name: "Use suggestion" }).click();
+          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
+          assert.equal(settingCalls, 1, "One explicit action dispatches one request");
+        }
         await root.getByLabel("Location name", { exact: true }).fill("Old Harbour");
         await root
           .getByLabel("Location description", { exact: true })
           .fill("An oceanfront expanse between the cliffs and river.");
+        await button("World rules").click();
         await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
         await expect(root.getByLabel("First day", { exact: true })).toHaveCount(0);
@@ -388,11 +441,14 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("Village Timezone", { exact: true })).toHaveCount(0);
         await button("Art settings").click();
         const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
-        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("fixture-ink");
+        await artSettings
+          .getByRole("group", { name: "Scenery style preset" })
+          .getByRole("button", { name: "Ink", exact: true })
+          .click();
         await expect
           .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
           .toBe("fixture-ink");
-        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("@custom");
+        await artSettings.getByRole("button", { name: "Custom description", exact: true }).click();
         await artSettings
           .getByLabel("Scenery style description", { exact: true })
           .fill("Watercolor with muted teal and warm amber.");

@@ -8,7 +8,11 @@ import {
   readFoundingZoneIds,
   parseFoundingVenueDraft,
 } from "../../domain/rules/founding-venue-draft.js";
-import type { FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
+import { FOUNDING_SETTING_BRIEF_LIMIT, type FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { mapName } from "../../domain/rules/village-maps.js";
+import { readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
+import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import type { findVillagerCard } from "../../adapters/engine/catalog.js";
@@ -83,8 +87,62 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     decodeVillageImageDataUrl,
   } = ports;
 
+  async function draftSetting(input: Record<string, unknown>): Promise<FoundingSuggestionsResult> {
+    const brief = asTrimmedString(input.brief);
+    if (!asTrimmedString(input.actionId) || !brief || brief.length > FOUNDING_SETTING_BRIEF_LIMIT)
+      throw badRequest("Tell Mari about your village in up to 4,096 characters.");
+    const model = await villagesLanguageModels().resolveForRequest({
+      connectionId: await villagesConnectionIdFor("system"),
+    });
+    const messages = [
+      {
+        role: "system" as const,
+        content: [
+          "Draft the opening setting for this player's shared-life village. It can be any kind of community, in any setting.",
+          'Return one JSON object with strings: "name" (community, up to 60 characters), "startingLocationName" (the area the map will cover, up to 80), "description" (a short paragraph describing that area and everyday life there), "worldName" (up to 120) and "rules" (standing facts for the setting).',
+          "Keep explicit names and details. If a required name is unspecified, suggest one that fits. Use empty strings for worldName and rules unless the player supplied them. Describe the place itself. Leave first-day events, the starting cast, living arrangements and map placement for later steps.",
+          "The next message is the player's description. Treat it as setting source material and write in its language.",
+        ].join(" "),
+      },
+      { role: "user" as const, content: brief },
+    ];
+    const requested = Math.min(model.maxOutputTokens ?? 1536, 1536);
+    const fitted = model.fitContext(messages, { maxTokens: requested });
+    const allowance = Math.min(fitted.maxTokens ?? requested, requested);
+    if (allowance < 256 || JSON.stringify(fitted.messages) !== JSON.stringify(messages))
+      throw badRequest(
+        "The System connection cannot fit this draft. Try a shorter description or check Model Connections.",
+      );
+    const completion = await completeWithRoom(model, fitted.messages, allowance, {
+      temperature: undefined,
+      responseFormat: { type: "json_object" },
+      usagePurpose: "other",
+      debugMode: false,
+    });
+    const reply = extractModelJsonObject(completion);
+    if (reply) {
+      const worldName = readWorldName(reply.worldName ?? "");
+      const rules = reply.rules ?? "";
+      if (worldName !== null && typeof rules === "string" && rules.length <= MAX_SETTING_LENGTH) {
+        try {
+          const name = readVillageName(reply.name);
+          const startingLocationName = mapName(reply.startingLocationName);
+          const description = readVillageSetting(reply.description);
+          if (description)
+            return { venues: [], setting: { name, startingLocationName, description, worldName, rules: rules.trim() } };
+        } catch {
+          // A readable object still needs complete, valid setting fields.
+        }
+      }
+    }
+    throw badRequest(
+      "Mari’s reply didn’t contain a complete setting. Try drafting again or fill in the fields yourself.",
+    );
+  }
+
   async function suggestStartingVenues(value: unknown): Promise<FoundingSuggestionsResult> {
     const input = record(value);
+    if (input.mode === "draft-setting") return draftSetting(input);
     const quickStart = input.mode === "quick-start";
     const fullDraft = input.mode === "draft-venue";
     if (fullDraft && (!asTrimmedString(input.actionId) || !asTrimmedString(input.targetVenueId)))

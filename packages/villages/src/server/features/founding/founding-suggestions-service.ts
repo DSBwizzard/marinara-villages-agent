@@ -22,7 +22,7 @@ type State = { request: FoundingSuggestions | null; retiredIds: string[] };
 const slot: DocumentSlot<State> = {
   kind: "founding-suggestions",
   name: "Requested founding suggestions",
-  description: "One saved Venue suggestion attempt and its result, separate from the founded Village.",
+  description: "One saved Founding draft attempt and its result, separate from the founded Village.",
   label: () => "Requested founding suggestions",
   coerce(value) {
     const raw = asRecord(asRecord(value).request);
@@ -64,7 +64,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
   }
   function actionId(value: unknown): string {
     const id = asTrimmedString(value);
-    if (!/^[a-zA-Z0-9_-]{8,128}$/.test(id)) throw badRequest("A Venue suggestion request ID is required.");
+    if (!/^[a-zA-Z0-9_-]{8,128}$/.test(id)) throw badRequest("A Founding draft request ID is required.");
     return id;
   }
   async function read(): Promise<FoundingSuggestions | null> {
@@ -81,7 +81,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
       }
       state.request.status = "interrupted";
       state.request.error =
-        "The Venue suggestion request stopped before its result was saved. This attempt may have been billed. Generate again only when you choose.";
+        "The Founding draft stopped before its result was saved. This attempt may have been billed. Generate again only when you choose.";
       request = state.request;
     });
     return request;
@@ -98,14 +98,14 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
     if (input.draftEntranceImage && (input.mode !== "draft-venue" || !ports.generateFoundingVenueImage))
       throw badRequest("Entrance artwork requires a complete saved Venue draft.");
     if (!sourceKey || sourceKey.length > 20_000)
-      throw badRequest("The Venue suggestion request inputs are missing or too long.");
+      throw badRequest("The Founding draft request inputs are missing or too long.");
     return serialized(async () => {
       if (!enabled || token !== lifecycle)
         throw badRequest("Venue suggestion generation is restarting. Check status before trying again.");
       const previous = await recover(await read());
       if (previous?.id === id) return previous;
       if (previous?.status === "running")
-        throw badRequest("Another Venue suggestion attempt is still running. Check it before generating again.");
+        throw badRequest("Another Founding draft is still running. Check it before generating again.");
       const request: FoundingSuggestions = {
         id,
         sourceKey,
@@ -122,15 +122,11 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
           if (!enabled || token !== lifecycle)
             throw badRequest("Venue suggestion generation is restarting. Check status before trying again.");
           if (state.retiredIds.includes(id))
-            throw badRequest(
-              "This Venue suggestion request was already used. Its result was replaced by a newer attempt.",
-            );
+            throw badRequest("This Founding draft request ID was already used. A newer draft replaced its result.");
           if (state.request?.id === id)
-            throw badRequest(
-              "This Venue suggestion request was already admitted. Check its status before trying again.",
-            );
+            throw badRequest("This Founding draft was already admitted. Check its status before trying again.");
           if (state.request?.status === "running")
-            throw badRequest("Another Venue suggestion attempt is still running. Check it before generating again.");
+            throw badRequest("Another Founding draft is still running. Check it before generating again.");
           if (state.request) state.retiredIds.push(state.request.id);
           state.request = request;
         });
@@ -228,7 +224,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
       const request = await recover(await read());
       if (request?.id !== id)
         throw notFound(
-          "This Venue suggestion attempt is no longer available. It may not have started, or a newer attempt replaced it. Generate again only when you choose.",
+          "This Founding draft is no longer available. It may not have started, or a newer attempt replaced it. Generate again only when you choose.",
         );
       return request;
     });

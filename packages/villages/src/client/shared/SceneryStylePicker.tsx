@@ -4,9 +4,11 @@ import type { VillageImageStyleCatalog } from "../../shared/helpers/scenery-styl
 export function SceneryStylePicker({
   profileId,
   onChange,
+  asButtons,
 }: {
   profileId: string | null;
   onChange(value: string | null): void;
+  asButtons?: boolean;
 }) {
   const [catalog, setCatalog] = useState<VillageImageStyleCatalog | null>(null);
   const [failed, setFailed] = useState(false);
@@ -29,24 +31,33 @@ export function SceneryStylePicker({
   }, []);
   const missing = !!profileId && !catalog?.profiles.some((row) => row.id === profileId);
   const defaultName = catalog?.profiles.find((row) => row.id === catalog.defaultProfileId)?.name;
+  const choices = [
+    { id: "", name: defaultName ? `Engine default (${defaultName})` : "Engine default" },
+    ...(catalog?.profiles ?? []),
+    ...(missing ? [{ id: profileId!, name: catalog ? "Unavailable saved style" : "Saved Engine style" }] : []),
+    { id: "@custom", name: "Custom description" },
+  ];
+  const selected = profileId === null ? "@custom" : profileId;
+  const choose = (id: string) => onChange(id === "@custom" ? null : id);
   return (
     <>
-      <select
-        aria-label="Scenery style preset"
-        value={profileId === null ? "@custom" : profileId}
-        onChange={(event) => onChange(event.target.value === "@custom" ? null : event.target.value)}
-      >
-        <option value="">Engine default{defaultName ? ` (${defaultName})` : ""}</option>
-        {catalog?.profiles.map((row) => (
-          <option key={row.id} value={row.id}>
-            {row.name}
-          </option>
-        ))}
-        {missing ? (
-          <option value={profileId!}>{catalog ? "Unavailable saved style" : "Saved Engine style"}</option>
-        ) : null}
-        <option value="@custom">Custom description</option>
-      </select>
+      {asButtons ? (
+        <div role="group" aria-label="Scenery style preset" className="villages-founding-tabs">
+          {choices.map(({ id, name }) => (
+            <button type="button" key={id} aria-pressed={id === selected} onClick={() => choose(id)}>
+              {name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <select aria-label="Scenery style preset" value={selected} onChange={(event) => choose(event.target.value)}>
+          {choices.map(({ id, name }) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+        </select>
+      )}
       {failed ? <small>Styles unavailable</small> : null}
     </>
   );

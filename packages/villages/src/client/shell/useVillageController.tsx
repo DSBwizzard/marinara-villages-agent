@@ -71,6 +71,7 @@ import {
 import {
   createFoundingGotoSetupStep,
   createFoundingSuggestSetupVenues,
+  createFoundingDraftSetting,
   useFoundingStartOver,
 } from "../features/founding/setup-controller.js";
 import { useFoundingState } from "../features/founding/useFoundingState.js";
@@ -479,6 +480,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // Roster changes reconcile only the required graph; existing authored Venues survive.
 
   const suggestionSignal = useActivitySignal(visible && screen === "setup");
+  const draftSetupSetting = createFoundingDraftSetting({
+    ...founding,
+    signal: suggestionSignal,
+    persistSetupDraft,
+    setupDraftData,
+  });
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
     ...founding,
     setupWorldName: undefined,
@@ -506,8 +513,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
   useVisibleInterval(
     (signal) => {
-      if (founding.setupWorkspace.suggestionRequest && !founding.setupWorkspace.suggestionRequest.failure)
-        return suggestSetupVenues(undefined, signal);
+      const pending = founding.setupWorkspace.suggestionRequest;
+      if (pending && !pending.failure)
+        return pending.draftSetting ? draftSetupSetting(false, signal) : suggestSetupVenues(undefined, signal);
     },
     founding.setupWorkspace.suggestionRequest && !founding.setupWorkspace.suggestionRequest.failure ? 2000 : null,
     visible && screen === "setup",
@@ -1563,6 +1571,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     standingAt,
     startOver,
     suggestSetupVenues,
+    draftSetupSetting,
     townMapImage,
     updateSetupMapRequest,
     uploadSetupImage,

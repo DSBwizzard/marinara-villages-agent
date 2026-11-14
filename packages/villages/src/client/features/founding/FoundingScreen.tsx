@@ -17,6 +17,8 @@ import {
 } from "../../../shared/helpers/founding-circumstance.js";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide } from "./FoundingGuide.js";
+import { FoundingSettingScene, SettingProposal } from "./FoundingSettingScene.js";
+import type { FoundingSetting } from "../../../shared/contracts/founding.js";
 import {
   FoundingPersonaSelector,
   FoundingVillagerPicker,
@@ -119,14 +121,19 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
     updateSetupMapRequest,
     uploadSetupImage,
   } = controller;
+  const pendingSetting = setupWorkspace.suggestionRequest?.draftSetting && !setupWorkspace.suggestionRequest.failure;
   const rawSetupProblem =
-    currentSetupProblem || (setupStep === 2 ? setupWorkspace.suggestionRequest?.failure : "") || "";
+    currentSetupProblem ||
+    (setupStep === 2 && !setupWorkspace.suggestionRequest?.draftSetting
+      ? setupWorkspace.suggestionRequest?.failure
+      : "") ||
+    "";
   const venueConnectionUnavailable =
     setupStep === 2 && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
   const setupProblem = venueConnectionUnavailable
     ? "The System connection is unavailable. Choose another model or review it in Engine."
     : rawSetupProblem;
-  const [contextView, setContextView] = useState("World rules");
+  const [contextView, setContextView] = useState("");
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
@@ -155,6 +162,7 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
   );
   const reviewIndex = Math.min(reviewPage, Math.max(0, Math.ceil(setupVenues.length / 3) - 1));
   const rootRef = useRef<HTMLDivElement>(null);
+  const settingTitle = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0 });
     setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
@@ -230,6 +238,23 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
       id,
       name: catalog?.find((person) => person.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
     }));
+    const dismissSetting = (key: keyof FoundingSetting) => {
+      setSetupWorkspace((workspace) => {
+        if (!workspace.settingDraft?.[key]) return workspace;
+        return { ...workspace, settingDraft: { ...workspace.settingDraft, [key]: undefined } };
+      });
+    };
+    const proposeSetting = (key: keyof FoundingSetting, value: string, set: (value: string) => void) => (
+      <SettingProposal
+        proposal={setupWorkspace.settingDraft?.[key]}
+        value={value}
+        onUse={(next) => {
+          set(next);
+          dismissSetting(key);
+        }}
+        onDismiss={() => dismissSetting(key)}
+      />
+    );
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);
     const setupIssues = foundingVenueIssues(setupVenues, false);
@@ -360,16 +385,18 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
             ))}
           </ol>
           <h1>Begin your Village</h1>
-          <FoundingGuide>
-            {
-              [
-                "Give your village a name and tell me where it begins.",
-                "Choose who starts here, then set up how they appear in Scenes.",
-                "Open a Venue from the map or the list. Its Zones show where people can sleep and visit.",
-                "Check where everyone lives and sleeps, then set the scene for the first day.",
-              ][setupStep]!
-            }
-          </FoundingGuide>
+          {setupStep > 0 ? (
+            <FoundingGuide playful={setupStep === 1}>
+              {
+                [
+                  "Give your village a name and tell me where it begins.",
+                  "Choose who starts here, then set up how they appear in Scenes.",
+                  "Open a Venue from the map or the list. Its Zones show where people can sleep and visit.",
+                  "Check where everyone lives and sleeps, then set the scene for the first day.",
+                ][setupStep]!
+              }
+            </FoundingGuide>
+          ) : null}
 
           {setupStep === 0 ? (
             <button
@@ -386,6 +413,7 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
           <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
               <SceneryStyleFields
+                asButtons
                 value={controller.sceneryStyle}
                 profileId={controller.sceneryStyleProfileId}
                 onChange={controller.setSceneryStyle}
@@ -491,128 +519,158 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
             </div>
           </div>
           <div hidden={setupStep !== 0} className="villages-place-panels">
-            <div className="villages-founding-setting">
-              <section className="villages-forging-card">
-                <h3>Village</h3>
-                <FoundingField
-                  title="Village Name"
-                  error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
-                >
-                  <input
-                    autoComplete="off"
-                    aria-label="Village Name"
-                    maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
-                    value={setupName}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setSetupName(event.target.value);
-                      clearFieldValidation("place-name");
-                    }}
-                  />
-                </FoundingField>
-                <FoundingField title="World" optional>
-                  <input
-                    autoComplete="off"
-                    aria-label="World"
-                    maxLength={120}
-                    value={setupWorldName}
-                    disabled={busy}
-                    onChange={(event) => setSetupWorldName(event.target.value)}
-                  />
-                </FoundingField>
-              </section>
-              <section className="villages-forging-card">
-                <h3>Starting location</h3>
-                <FoundingField
-                  title="Location name"
-                  error={
-                    validatedFields.includes("location-name") && !setupLocationName.trim()
-                      ? PLACE_ERRORS.locationName
-                      : ""
-                  }
-                >
-                  <input
-                    autoComplete="off"
-                    aria-label="Location name"
-                    maxLength={80}
-                    value={setupLocationName}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setSetupLocationName(event.target.value);
-                      clearFieldValidation("location-name");
-                    }}
-                  />
-                </FoundingField>
-                <FoundingField
-                  title="Location description"
-                  error={validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""}
-                >
-                  <textarea
-                    autoComplete="off"
-                    aria-label="Location description"
-                    maxLength={snapshot?.settings.settingMaxLength ?? 4096}
-                    rows={4}
-                    value={setupSetting}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setSetupSetting(event.target.value);
-                      clearFieldValidation("place-setting");
-                    }}
-                  />
-                </FoundingField>
-                <small>Engine time · {snapshot?.clock?.timeZone || snapshot?.village.timeZone || "UTC"}</small>
-              </section>
-            </div>
-            <section className="villages-forging-card villages-place-options">
-              <div className="villages-founding-tabs" role="group" aria-label="Village context">
-                {["World rules", "Lorebooks", "Connections"].map((view) => (
-                  <button key={view} aria-pressed={contextView === view} onClick={() => setContextView(view)}>
-                    {view}
-                  </button>
-                ))}
-              </div>
-              <div className="villages-founding-context">
-                {contextView === "World rules" ? (
-                  <FoundingField title="World rules" optional>
-                    <textarea
-                      autoComplete="off"
-                      aria-label="World rules"
-                      maxLength={4096}
-                      rows={7}
-                      value={setupContext.rules}
-                      disabled={busy}
-                      onChange={(event) => setSetupContext((context) => ({ ...context, rules: event.target.value }))}
-                    />
-                  </FoundingField>
-                ) : null}
-                {contextView === "Lorebooks" ? (
-                  <>
-                    <VillageLorebookPicker
-                      books={lorebooks}
-                      error={lorebooksError}
-                      selected={setupLorebookDraft}
-                      onChange={setSetupLorebookDraft}
-                      disabled={busy}
-                    />
-                    <LoreTokenBudgetField
-                      value={setupLoreTokenBudgetDraft}
-                      onChange={controller.setSetupLoreTokenBudgetDraft}
-                      min={snapshot?.settings.loreTokenBudgetMin ?? 0}
-                      max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
-                      disabled={busy}
-                    />
-                  </>
-                ) : null}
-                <div hidden={contextView !== "Connections"}>
-                  {validatedFields.includes("connections") &&
-                  [CONNECTION_SETUP_PROBLEMS.required, CONNECTION_SETUP_PROBLEMS.missing].includes(
-                    connectionSetupProblem,
-                  ) ? (
-                    <p role="alert" data-founding-problem tabIndex={-1}>
-                      {connectionSetupProblem}
-                    </p>
+            {setupStep === 0 ? (
+              <FoundingSettingScene
+                controller={controller}
+                onConnections={() => setContextView("Connections")}
+                onEditSetting={() => settingTitle.current?.focus()}
+              />
+            ) : null}
+            <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
+              <h2 tabIndex={-1} ref={settingTitle}>
+                Your setting
+              </h2>
+              <p className="villages-setting-manual">Draft with Mari or fill in the fields below.</p>
+              <FoundingField
+                title="Village name"
+                error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
+              >
+                <input
+                  autoComplete="off"
+                  aria-label="Village Name"
+                  maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
+                  value={setupName}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setSetupName(event.target.value);
+                    dismissSetting("name");
+                    clearFieldValidation("place-name");
+                  }}
+                />
+              </FoundingField>
+              {proposeSetting("name", setupName, setSetupName)}
+              <FoundingField
+                title="Starting location"
+                error={
+                  validatedFields.includes("location-name") && !setupLocationName.trim()
+                    ? PLACE_ERRORS.locationName
+                    : ""
+                }
+              >
+                <input
+                  autoComplete="off"
+                  aria-label="Location name"
+                  maxLength={80}
+                  value={setupLocationName}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setSetupLocationName(event.target.value);
+                    dismissSetting("startingLocationName");
+                    clearFieldValidation("location-name");
+                  }}
+                />
+              </FoundingField>
+              {proposeSetting("startingLocationName", setupLocationName, setSetupLocationName)}
+              <FoundingField
+                title="What’s it like there?"
+                error={validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""}
+              >
+                <textarea
+                  autoComplete="off"
+                  aria-label="Location description"
+                  maxLength={snapshot?.settings.settingMaxLength ?? 4096}
+                  rows={3}
+                  value={setupSetting}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setSetupSetting(event.target.value);
+                    dismissSetting("description");
+                    clearFieldValidation("place-setting");
+                  }}
+                />
+              </FoundingField>
+              {proposeSetting("description", setupSetting, setSetupSetting)}
+              <div className="villages-place-options">
+                <div className="villages-founding-tabs" role="group" aria-label="Village context">
+                  {["World rules", "Lorebooks", "Connections"].map((view) => (
+                    <button
+                      key={view}
+                      type="button"
+                      aria-expanded={contextView === view}
+                      onClick={() => setContextView(contextView === view ? "" : view)}
+                    >
+                      {view}
+                      {view === "World rules" && (setupContext.rules.trim() || setupWorldName.trim()) ? (
+                        <span aria-hidden="true"> · Added</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+                <div className="villages-founding-context" hidden={!contextView}>
+                  {contextView === "World rules" ? (
+                    <>
+                      <FoundingField title="World name" optional>
+                        <input
+                          autoComplete="off"
+                          maxLength={120}
+                          value={setupWorldName}
+                          disabled={busy}
+                          onChange={(event) => {
+                            setSetupWorldName(event.target.value);
+                            dismissSetting("worldName");
+                          }}
+                        />
+                      </FoundingField>
+                      {proposeSetting("worldName", setupWorldName, setSetupWorldName)}
+                      <FoundingField title="World rules" optional>
+                        <textarea
+                          autoComplete="off"
+                          aria-label="World rules"
+                          maxLength={4096}
+                          rows={3}
+                          value={setupContext.rules}
+                          disabled={busy}
+                          onChange={(event) => {
+                            const rules = event.currentTarget.value;
+                            setSetupContext((context) => ({ ...context, rules }));
+                            dismissSetting("rules");
+                          }}
+                        />
+                      </FoundingField>
+                      {proposeSetting("rules", setupContext.rules, (rules) =>
+                        setSetupContext((context) => ({ ...context, rules })),
+                      )}
+                    </>
                   ) : null}
-                  <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
+                  {contextView === "Lorebooks" ? (
+                    <>
+                      <VillageLorebookPicker
+                        books={lorebooks}
+                        error={lorebooksError}
+                        selected={setupLorebookDraft}
+                        onChange={setSetupLorebookDraft}
+                        disabled={busy}
+                      />
+                      <LoreTokenBudgetField
+                        value={setupLoreTokenBudgetDraft}
+                        onChange={controller.setSetupLoreTokenBudgetDraft}
+                        min={snapshot?.settings.loreTokenBudgetMin ?? 0}
+                        max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
+                        disabled={busy}
+                      />
+                    </>
+                  ) : null}
+                  <div hidden={contextView !== "Connections"}>
+                    {validatedFields.includes("connections") &&
+                    [CONNECTION_SETUP_PROBLEMS.required, CONNECTION_SETUP_PROBLEMS.missing].includes(
+                      connectionSetupProblem,
+                    ) ? (
+                      <p role="alert" data-founding-problem tabIndex={-1}>
+                        {connectionSetupProblem}
+                      </p>
+                    ) : null}
+                    <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
+                  </div>
                 </div>
               </div>
             </section>
@@ -627,9 +685,13 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
                 actions={
                   <QuickStartButton
                     busy={busy || setupSuggestionsBusy}
-                    disabled={setupVenueBusy || !!setupMapRequest}
-                    pending={!!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure}
-                    failed={!!setupWorkspace.suggestionRequest?.failure}
+                    disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
+                    pending={
+                      !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
+                    }
+                    failed={
+                      !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
+                    }
                     onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
                   />
                 }

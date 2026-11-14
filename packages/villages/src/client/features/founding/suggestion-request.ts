@@ -10,6 +10,8 @@ export type FoundingSuggestionOptions = {
   venueId?: string;
   fullVenue?: boolean;
   draftEntranceImage?: boolean;
+  draftSetting?: boolean;
+  checkSetting?: boolean;
 };
 type Result = FoundingSuggestionsResult;
 type Receipt = {
@@ -38,6 +40,8 @@ export async function requestFoundingSuggestions(
   signal?.throwIfAborted();
   const { setupWorkspace, setSetupWorkspace, persistSetupDraft, setupDraftData } = ports;
   const existing = setupWorkspace.suggestionRequest?.failure ? undefined : setupWorkspace.suggestionRequest;
+  if (existing && !!existing.draftSetting !== !!options?.draftSetting)
+    throw new Error("Check the pending Founding draft before starting another.");
   const pending = existing ?? {
     id: createVillagesClientId(),
     sourceKey: ports.setupBeginningSourceKey,
@@ -45,7 +49,8 @@ export async function requestFoundingSuggestions(
     ...(options?.separateHomes ? { separateHomes: true, sourceVenues: JSON.stringify(setupDraftData.venues) } : {}),
     venueId: options?.venueId,
     ...(options?.fullVenue ? { fullVenue: true, draftEntranceImage: !!options.draftEntranceImage } : {}),
-    ...((!options?.quickStart && options?.venueId) || options?.separateHomes
+    ...(options?.draftSetting ? { draftSetting: true } : {}),
+    ...((!options?.quickStart && options?.venueId) || options?.separateHomes || options?.draftSetting
       ? { sourceInputs: JSON.stringify(input) }
       : {}),
   };
@@ -87,13 +92,27 @@ export async function requestFoundingSuggestions(
   let terminal = false;
   let admitting = !existing;
   try {
+    const status = () => request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`, { signal });
+    const admit = () =>
+      request<Receipt>("/setup/venues/suggest", {
+        method: "POST",
+        signal,
+        body: JSON.stringify({ ...input, actionId: pending.id, sourceKey: pending.sourceKey }),
+      });
     let receipt = existing
-      ? await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`, { signal })
-      : await request<Receipt>("/setup/venues/suggest", {
-          method: "POST",
-          signal,
-          body: JSON.stringify({ ...input, actionId: pending.id, sourceKey: pending.sourceKey }),
-        });
+      ? await status().catch((error: unknown) => {
+          if (
+            !pending.draftSetting ||
+            !options?.checkSetting ||
+            !(error instanceof VillageApiError) ||
+            error.status !== 404
+          )
+            throw error;
+          // An explicit check can recover a save that preceded dispatch. Reuse the same ID.
+          admitting = true;
+          return admit();
+        })
+      : await admit();
     admitting = false;
     for (let poll = 0; ; poll++) {
       signal?.throwIfAborted();
@@ -107,7 +126,7 @@ export async function requestFoundingSuggestions(
       }
       if (receipt.status === "complete" && receipt.result) {
         terminal = true;
-        clear();
+        if (!pending.draftSetting) clear();
         if (receipt.sourceKey !== ports.setupBeginningSourceKey)
           throw new Error(
             "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
@@ -126,7 +145,7 @@ export async function requestFoundingSuggestions(
       signal?.throwIfAborted();
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
       signal?.throwIfAborted();
-      receipt = await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`, { signal });
+      receipt = await status();
     }
   } catch (error) {
     if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;

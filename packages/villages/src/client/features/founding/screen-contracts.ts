@@ -22,7 +22,7 @@ import type { createFoundingRetrySetupSaving } from "./draft-controller.js";
 
 import type { useFoundingSelectedResidentContexts } from "./controller-hooks.js";
 
-import type { createFoundingSuggestSetupVenues } from "./setup-controller.js";
+import type { createFoundingDraftSetting, createFoundingSuggestSetupVenues } from "./setup-controller.js";
 
 import type { useUpdateSetupMapRequest } from "./actions.js";
 
@@ -142,6 +142,7 @@ export type FoundingScreenController = {
   readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly suggestSetupVenues: ReturnType<typeof createFoundingSuggestSetupVenues>;
+  readonly draftSetupSetting: ReturnType<typeof createFoundingDraftSetting>;
   readonly updateSetupMapRequest: ReturnType<typeof useUpdateSetupMapRequest>;
   readonly uploadSetupImage: ReturnType<typeof createFoundingUploadSetupImage>;
 };

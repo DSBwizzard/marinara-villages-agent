@@ -20,6 +20,70 @@ import {
 import { requestFoundingSuggestions, type FoundingSuggestionOptions } from "./suggestion-request.js";
 import { useCallback } from "react";
 
+export function createFoundingDraftSetting(
+  ports: Pick<
+    FoundingState,
+    | "setupWorkspace"
+    | "setSetupWorkspace"
+    | "setupSuggestionsClaim"
+    | "setSetupSuggestionsBusy"
+    | "setSetupName"
+    | "setSetupLocationName"
+    | "setSetupSetting"
+    | "setSetupWorldName"
+    | "setSetupContext"
+  > & {
+    signal?: AbortSignal;
+    persistSetupDraft: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
+    setupDraftData: import("./draft-model.js").SetupDraftData;
+  },
+) {
+  return async (userInitiated: boolean, signal = ports.signal) => {
+    const { setupWorkspace, setSetupWorkspace, setupSuggestionsClaim, setSetupSuggestionsBusy } = ports;
+    const request = setupWorkspace.suggestionRequest;
+    const pending = request && !request.failure ? request : undefined;
+    if (setupSuggestionsClaim.current || (pending && !pending.draftSetting) || (!pending && !userInitiated)) return;
+    if (!pending && !setupWorkspace.settingBrief?.trim()) return;
+    setupSuggestionsClaim.current = true;
+    setSetupSuggestionsBusy(true);
+    if (userInitiated) setSetupWorkspace((workspace) => ({ ...workspace, settingProblem: undefined }));
+    try {
+      const input = pending
+        ? JSON.parse(pending.sourceInputs ?? "null")
+        : { mode: "draft-setting", brief: setupWorkspace.settingBrief!.trim() };
+      const { setting } = await requestFoundingSuggestions(
+        { ...ports, signal, setupBeginningSourceKey: "founding-setting" },
+        { draftSetting: true, checkSetting: userInitiated },
+        input,
+      );
+      signal?.throwIfAborted();
+      if (!setting) throw new Error("The saved attempt has no setting draft.");
+      // Fields may have been edited while Mari was working, including after a reload.
+      ports.setSetupName((value) => (value.trim() ? value : setting.name));
+      ports.setSetupLocationName((value) => (value.trim() ? value : setting.startingLocationName));
+      ports.setSetupSetting((value) => (value.trim() ? value : setting.description));
+      ports.setSetupWorldName((value) => (value.trim() ? value : setting.worldName));
+      ports.setSetupContext((context) => (context.rules.trim() ? context : { ...context, rules: setting.rules }));
+      setSetupWorkspace((workspace) => ({
+        ...workspace,
+        suggestionRequest: undefined,
+        settingDraft: setting,
+        settingProblem: undefined,
+      }));
+    } catch (cause) {
+      if (!signal?.aborted && !(cause instanceof Error && cause.name === "AbortError")) {
+        const problem = messageFrom(cause, "Mari couldn’t draft the setting. You can fill it in yourself.");
+        setSetupWorkspace((workspace) =>
+          workspace.settingProblem === problem ? workspace : { ...workspace, settingProblem: problem },
+        );
+      }
+    } finally {
+      setupSuggestionsClaim.current = false;
+      setSetupSuggestionsBusy(false);
+    }
+  };
+}
+
 export function createFoundingSuggestSetupVenues(ports: {
   signal?: AbortSignal;
   readonly setupWorkspace: FoundingState["setupWorkspace"];
@@ -57,6 +121,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   return async (options?: FoundingSuggestionOptions, signal = ports.signal) => {
     const request = ports.setupWorkspace.suggestionRequest;
     const pending = request?.failure ? undefined : request;
+    if (pending?.draftSetting) return;
     options = pending
       ? {
           quickStart: pending.quickStart,
