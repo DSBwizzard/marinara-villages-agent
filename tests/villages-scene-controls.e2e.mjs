@@ -367,7 +367,7 @@ await withBrowser(browser, async () => {
         );
       } else {
         await page.getByRole("button", { name: "Venue actions" }).click();
-        await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Conclude", exact: true }).click();
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "Return to map", exact: true }).click();
         await expect(host).not.toHaveAttribute("data-scene-play", "");

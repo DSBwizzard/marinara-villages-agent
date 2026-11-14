@@ -221,7 +221,6 @@ export function RoomPanel({
   sprites,
   onDraft,
   onSend,
-  onConclude,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
@@ -274,7 +273,6 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onSend: () => void;
-  onConclude: () => void;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
@@ -773,18 +771,6 @@ export function RoomPanel({
                   >
                     Move
                   </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={!canSend}
-                    onClick={() => {
-                      setActionsView(null);
-                      actionsRef.current?.querySelector("button")?.focus();
-                      onConclude();
-                    }}
-                  >
-                    Conclude
-                  </button>
                 </>
               ) : null}
               <LoreActivityButton
@@ -869,11 +855,12 @@ export function RoomPanel({
                 role="menuitem"
                 onClick={() => {
                   setActionsView(null);
+                  actionsRef.current?.querySelector("button")?.focus();
                   onEnd();
                 }}
                 disabled={busy}
               >
-                {ended ? "Return to map" : "End Scene now"}
+                {ended ? "Return to map" : "Conclude"}
               </button>
 
               {debugDiscardEnabled && room.status !== "closed" ? (

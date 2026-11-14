@@ -105,7 +105,6 @@ import {
   useDiscardRoomDebug,
   useDismissRoomNotice,
   useGreetRoom,
-  useLeaveRoom,
   useMoveRoom,
   useOpenRoom,
   useReceiveRoomRecordEvents,
@@ -695,16 +694,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const closeRoom = useCloseRoom({
     ...scenes,
     onUnknownSceneExit: sceneRestoration.retry,
-    isFounded: snapshot?.isFounded,
-    loadSnapshot,
-    receiveRoomRecordEvents,
-    room,
-    setRoom,
-    setScreen,
-  });
-
-  const leaveRoom = useLeaveRoom({
-    ...scenes,
     isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -1334,7 +1323,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     homeBuildings,
     keepPlaceImage,
     lastSceneEnding: scenes.lastSceneEnding,
-    leaveRoom,
     leaveVenue,
     loadMemoryLibrary,
     loadSnapshot,
@@ -1401,7 +1389,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomError: scenes.roomError,
     roomGreetingError: scenes.roomGreetingError,
     roomGreetingNotice: scenes.roomGreetingNotice,
-    roomLeaveSubmissionIdRef: scenes.roomLeaveSubmissionIdRef,
     contactRecovery: scenes.contactRecovery,
     setContactRecovery: scenes.setContactRecovery,
     roomMoveOperationIdRef: scenes.roomMoveOperationIdRef,

@@ -346,7 +346,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "End Scene now" }).click();
+    await page.getByRole("menuitem", { name: "Conclude" }).click();
     await expect(composer).toHaveCount(0);
     await expect
       .poll(
