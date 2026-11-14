@@ -334,7 +334,7 @@ await runCase("weekly-agenda/shared-scene", () => {
 });
 
 await runCase("weekly-agenda/opening-offer-echo", () => {
-  const { world, publish, scene } = fixture();
+  const { world, publish } = fixture();
   const keep = {
     id: "unfounded-plan",
     class: "commitment",
