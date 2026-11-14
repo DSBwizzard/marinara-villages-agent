@@ -150,10 +150,10 @@ const agendaStyles = `
 .${P}-weekly-agenda button.${P}-week-block[data-source=seen]{background:transparent}
 .${P}-weekly-agenda button.${P}-week-block:focus-visible{z-index:1}
 .${P}-weekly-agenda p{margin-top:8px}
-@container (max-width:500px){
+@container (max-width:400px){
  .${P}-week-grid{grid-template-columns:36px repeat(7,minmax(0,1fr));grid-template-rows:44px var(--hours)}
  .${P}-week-day{display:contents}
- .${P}-week-axis{grid-area:2/1;margin-top:0}
+ .${P}-week-axis{grid-area:1/1/3/2;align-self:end;margin-top:0;padding-inline:2px;white-space:nowrap}
  .${P}-weekly-agenda button.${P}-week-day-button{grid-row:1;height:44px;font-size:12px;line-height:1.15;white-space:normal}
  .${P}-weekly-agenda button.${P}-week-day-button span{display:block}
  .${P}-week-slots{display:none}
