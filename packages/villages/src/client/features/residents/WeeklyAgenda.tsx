@@ -142,13 +142,13 @@ const agendaStyles = `
 .${P}-day-planner{
  --planner-paper:#282639;--planner-line:#756782;
  --event-fill:#2c514c;--event-edge:#80b7a1;--rest-fill:#40486c;--rest-edge:#9caee7;
- --plan-fill:#665035;--plan-edge:#e7b96a;
+ --plan-fill:#665035;--plan-ink:#ffedc2;--plan-edge:#efbe68;
  font:400 14px/1.35 var(--notebook-hand);
 }
 .${P}-desk-workspace[data-theme=day] .${P}-day-planner{
  --planner-paper:#edf4ee;--planner-line:#a0b6ab;
  --event-fill:#c9e4d9;--event-edge:#347963;--rest-fill:#d9dfef;--rest-edge:#5873a2;
- --plan-fill:#f2d9a5;--plan-edge:#a56819;
+ --plan-fill:#f3d89e;--plan-ink:#4a2c11;--plan-edge:#986018;
 }
 .${P}-planner-dates{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));margin-block-end:8px;border:1px solid var(--planner-line);border-radius:6px;background:var(--planner-paper)}
 .${P}-day-planner .${P}-planner-dates button{min-height:32px;padding:2px 0;border:0;border-radius:0;background:transparent;font:600 12px/1.25 var(--notebook-hand)}
@@ -161,14 +161,14 @@ const agendaStyles = `
 .${P}-planner-period-label{grid-column:1/-1;font-weight:600;padding:2px 4px;border-block-end:1px solid var(--planner-line)}
 .${P}-day-planner button.${P}-planner-block{
  display:grid;grid-column:1/-1;grid-template-columns:subgrid;align-items:baseline;gap:8px;width:100%;min-height:28px;
- border:0;border-block-end:1px solid var(--planner-line);border-inline-start:4px solid var(--event-edge);border-radius:0;
+ border:0;border-block-end:1px solid var(--planner-line);border-inline-start:7px solid var(--event-edge);border-radius:0;
  background:transparent;padding:4px 5px;text-align:start;font:inherit;
 }
 .${P}-day-planner button.${P}-planner-block:last-child{border-block-end:0}
 .${P}-planner-block{--period-fill:var(--event-fill)}
 .${P}-day-planner button.${P}-planner-block[data-resting=true]{--period-fill:var(--rest-fill);border-inline-start-color:var(--rest-edge)}
-.${P}-day-planner button.${P}-planner-block[data-source=agreed]{--period-fill:var(--plan-fill);border-inline-start-color:var(--plan-edge)}
 .${P}-day-planner button.${P}-planner-block:is(:hover,[aria-pressed=true]){background:var(--period-fill)}
+.${P}-day-planner button.${P}-planner-block[data-source=agreed]{color:var(--plan-ink);border-inline-start-color:var(--plan-edge);background:var(--plan-fill)}
 .${P}-planner-time{font-size:12px;font-variant-numeric:tabular-nums}
 .${P}-dossier-overview .${P}-planner-detail{margin:6px 0 0}
 @container village-desk (min-width:701px){

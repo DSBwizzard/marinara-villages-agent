@@ -870,6 +870,16 @@ await withBrowser(browser, async () => {
       const pm = planner.getByRole("group", { name: "PM", exact: true });
       await expect(am.getByRole("button", { name: /Sleeping/ })).toBeVisible();
       await expect(pm.getByRole("button", { name: /Review maps/ })).toBeVisible();
+      const rowStyle = (row) =>
+        row.evaluate((button) => {
+          const style = getComputedStyle(button);
+          return { fill: style.backgroundColor, marker: parseFloat(style.borderInlineStartWidth) };
+        });
+      const ordinary = await rowStyle(am.getByRole("button", { name: /PRIVATE scheduled task/ }));
+      const agreed = await rowStyle(maps);
+      assert.equal(ordinary.fill, "rgba(0, 0, 0, 0)");
+      assert.notEqual(agreed.fill, ordinary.fill, "An unselected agreed plan is highlighted across the row");
+      assert.ok(ordinary.marker >= 6 && agreed.marker >= 6, "Color markers are visible on both kinds of row");
       const [left, right] = await Promise.all([am.boundingBox(), pm.boundingBox()]);
       assert.ok(Math.abs(left.y - right.y) < 1 && left.x + left.width <= right.x, "AM and PM sit side by side");
       const tints = await Promise.all(
