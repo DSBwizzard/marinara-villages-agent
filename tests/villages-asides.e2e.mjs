@@ -32,6 +32,7 @@ await withBrowser(browser, async () => {
       window.sceneViewport = viewport;
     });
     const fixture = structuredClone(snapshot);
+    const cast = residents.map((person, index) => (index === 1 ? { ...person, characterId: "npc:eli" } : person));
     fixture.settings.playerPersonaName = "Riley";
     const main = {
       id: "main",
@@ -55,8 +56,8 @@ await withBrowser(browser, async () => {
       endedAt: "",
       status: "active",
       sceneRevision: 0,
-      activeIds: residents.map((person) => person.characterId),
-      participants: residents.map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
+      activeIds: cast.map((person) => person.characterId),
+      participants: cast.map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
       lines: [
         {
           id: "intro",
@@ -71,7 +72,7 @@ await withBrowser(browser, async () => {
       ],
       submissions: [],
     };
-    const asides = residents.map((person, index) => ({
+    const asides = cast.map((person, index) => ({
       id: `aside-${index}`,
       role: "assistant",
       speakerId: person.characterId,
@@ -134,6 +135,10 @@ await withBrowser(browser, async () => {
     const band = page.locator(`.${tag}-chat-vn-asides`);
     await expect(band).toContainText("Save me the good chair.");
     await expect(band).toContainText("→ Riley");
+    await expect(band.getByText("Whisper", { exact: true })).toHaveCount(1);
+    await expect(band.locator(`[data-register="side"] .${tag}-chat-vn-aside-icon`)).toHaveCount(0);
+    await expect(band.locator(`[data-register="whisper"] .${tag}-silhouette`)).toBeVisible();
+    await expect(page.locator(`[data-character-id="npc:eli"] .${tag}-silhouette`)).toBeVisible();
     await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(4);
     const after = {
       dock: await dock.boundingBox(),

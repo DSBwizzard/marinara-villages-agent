@@ -1186,6 +1186,7 @@ export function RoomPanel({
                   <AvatarFace
                     portrait={portraits[villager.characterId]}
                     name={villager.name}
+                    glyph={villager.characterId.startsWith("npc:") ? "silhouette" : "initial"}
                     className={`${ELEMENT_TAG}-avatar`}
                   />
                 )}
@@ -1201,6 +1202,7 @@ export function RoomPanel({
                 <AvatarFace
                   portrait={portraits[person.characterId]}
                   name={person.name}
+                  glyph={person.characterId.startsWith("npc:") ? "silhouette" : "initial"}
                   className={`${ELEMENT_TAG}-avatar`}
                 />
                 <span style={nameStyle(person.characterId)}>{person.name}</span>
@@ -1292,14 +1294,22 @@ export function RoomPanel({
                 <AvatarFace
                   portrait={aside.speakerId ? portraits[aside.speakerId] : speakerPortrait}
                   name={aside.name ?? step.name}
-                  glyph={step.player ? "person" : "initial"}
+                  glyph={
+                    (aside.speakerId ?? step.speakerId)?.startsWith("npc:")
+                      ? "silhouette"
+                      : step.player
+                        ? "person"
+                        : "initial"
+                  }
                   className={`${ELEMENT_TAG}-chat-vn-aside-face`}
                 />
                 <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
                   <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
-                    <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
-                      {aside.register === "whisper" ? "🤫" : aside.register === "shout" ? "📣" : "💬"}
-                    </span>
+                    {aside.register === "side" ? null : (
+                      <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
+                        {aside.register === "whisper" ? "Whisper" : "Shout"}
+                      </span>
+                    )}
                     <span
                       className={`${ELEMENT_TAG}-chat-vn-aside-name`}
                       style={nameStyle(aside.speakerId ?? step.speakerId)}
@@ -1338,7 +1348,7 @@ export function RoomPanel({
               <AvatarFace
                 portrait={speakerPortrait}
                 name={step?.name ?? playerName}
-                glyph={step?.player ? "person" : "initial"}
+                glyph={step?.player ? "person" : step?.speakerId?.startsWith("npc:") ? "silhouette" : "initial"}
                 className={ELEMENT_TAG + "-chat-vn-portrait"}
               />
             )}

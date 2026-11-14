@@ -110,6 +110,8 @@ For a first visit, try a greeting and a small action, then ask about the residen
 
 Ordinary speech reaches everyone in the same Zone. A whisper reaches its one local recipient. A deliberate shout can carry through a directly connected doorway. Hearing someone in another Zone leaves them where they are. Exchanging an object requires being together. Saved exchanges retain their original witnesses.
 
+An aside appears beside the main Scene paragraph. It follows the same hearing rules as ordinary dialogue, whispers, and shouts. A card marked **Whisper** names its recipient.
+
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
 If you see **HALT**, the proposed turn has not entered the story. Read the notice and revise your draft. Ordinary refusals can still happen within the story. Villages holds unsupported required outcomes with your original input and the generated reply. Recovery offers local replay or an explicit Retry when applicable. Character abilities remain part of their identity, and enacted consequences must fit what Villages can support.
