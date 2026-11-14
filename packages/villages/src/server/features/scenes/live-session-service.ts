@@ -293,10 +293,12 @@ export function createLiveScenes({
     )
       throw conflict("The saved invitation changed. Refresh the Scene.");
     let claimed = false;
+    const wallTime = Date.now();
     const authority = await mutateVillageState((state) => {
       claimed = false;
       if (state.seed !== scene.villageSeed || (scene.continuity && state.setupAt !== scene.continuity.setupAt))
         throw conflict("That Village changed. Its saved Scene is preserved.");
+      expirePlayerVisitsOnReturn(state, wallTime);
       const venue = findLocation(state, scene.placeId);
       const target = venue && resolveVenueZone(venue, requireSceneZoneId(scene));
       if (!venue) throw conflict("That Place is no longer available.");
