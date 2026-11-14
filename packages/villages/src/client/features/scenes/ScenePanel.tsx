@@ -1149,6 +1149,7 @@ export function RoomPanel({
               facing,
               staged?.sideExpression,
               sprite?.named,
+              sprite?.defaultView,
             );
             return (
               <div

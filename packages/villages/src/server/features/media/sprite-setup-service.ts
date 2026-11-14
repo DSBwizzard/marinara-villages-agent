@@ -214,8 +214,14 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           assignments.push({ expressionId, view, engineFilename: filename, ...(version ? { version } : {}) });
         }
       }
-      if (input.defaultExpressionId && !ids.has(input.defaultExpressionId))
-        throw badRequest("Choose an available default.");
+      const defaultExpressionId = ids.get(input.defaultExpressionId);
+      if (input.defaultExpressionId && !defaultExpressionId) throw badRequest("Choose an available default.");
+      const defaultView = input.defaultView;
+      if (
+        defaultView !== undefined &&
+        !assignments.some((slot) => slot.view === defaultView && slot.expressionId === defaultExpressionId)
+      )
+        throw badRequest("Choose an available default facing.");
       if (additions.length > 200) throw badRequest("Choose up to 200 new sprites at a time.");
       if (additions.length) {
         const links = new Map<string, number>();
@@ -238,9 +244,11 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       manager.expressions = expressions;
       manager.assignments = assignments;
       manager.defaultExpressionId =
-        ids.get(input.defaultExpressionId) ??
+        defaultExpressionId ??
         manager.expressions.find((row) => row.name.toLowerCase() === "neutral")?.id ??
         manager.expressions[0]?.id;
+      if (defaultView === "front" || defaultView === "side") manager.defaultView = defaultView;
+      else delete manager.defaultView;
       if (input.useSprites && manager.assignments.length) delete manager.useSprites;
       else manager.useSprites = false;
       manager.lastSave = { id: requestId, digest };
