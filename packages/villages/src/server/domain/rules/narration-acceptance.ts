@@ -839,7 +839,9 @@ export function acceptNarrationContinuity(
     sceneEffects.every(
       (effect) =>
         native.receipts[effect.effectId] &&
-        ["contact", "scene", "movement", "departure", "npc"].includes(native.receipts[effect.effectId].kind),
+        ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(
+          native.receipts[effect.effectId].kind,
+        ),
     ),
     "Scene effect lost its native command",
   );

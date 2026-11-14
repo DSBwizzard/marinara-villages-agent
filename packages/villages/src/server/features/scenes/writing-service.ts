@@ -218,6 +218,9 @@ export function createSceneWriting({
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
+    const npcIntroduction =
+      !context.codeRequestedMemory &&
+      (nativeCommands || cast.some(({ characterId }) => characterId.startsWith("npc:")));
     const agendaDiscussed =
       /\b(?:agenda|schedule|free|available|when|tomorrow|tonight|today|meet|appointment|plan|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|o['’]clock|a\.?m\.?|p\.?m\.?)\b/iu.test(
         input,
@@ -271,10 +274,13 @@ export function createSceneWriting({
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
       metadata: blocksFor([
-        narrationResponse(nativeCommands, positions),
+        narrationResponse(nativeCommands, positions, npcIntroduction),
         nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
         positions ? SCENE_RELATIONSHIP_KEEP : RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
+        npcIntroduction
+          ? 'When a supporting character tells the player their own name aloud, add an optional commands entry {type:"npc.introduce",who:"npc-id",name:"exact spoken name",at:"dialogue-segment-id",source:["dialogue-segment-id"],independent:true}. Use the exact name as spoken. Keep their role label until the player hears them give a name.'
+          : "",
       ]),
       identity: blocksFor([
         ...profiles,

@@ -425,7 +425,7 @@ export function narrationContinuityContext(
             id: npc.id,
             profile: npcProfile(npc),
             presence:
-              "Not present. Private continuity/history is for this person only; an observed npc.admit is required before speech, hearing or Scene participation.",
+              "If their presence is plausible, bring back this same ID with npc.admit and use their own witnessed history. Use private continuity only for this character. Let them recognize the player when they have met and follow up naturally. They can speak or hear only after the player observes their arrival.",
           },
         }),
         evidenceId: "npc-candidate:" + npc.id,
