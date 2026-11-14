@@ -91,6 +91,7 @@ await withBrowser(browser, async () => {
         current.manager.defaultExpressionId = body.defaultExpressionId;
         current.manager.useSprites = body.useSprites;
         current.manager.folders = body.folders;
+        current.manager.excluded = body.excluded;
         current.token = "resident-" + saves.length;
         value = current;
       } else if (path.pathname.endsWith("/debug/runtime")) value = { showUsageMeter: false };
@@ -175,6 +176,8 @@ await withBrowser(browser, async () => {
     await sideFolder.selectOption({ label: "No folder" });
     await expect(front.getByRole("img", { name: "Grin_wide · Front" })).toBeVisible();
     await expect(side.getByRole("img", { name: "Grin_wide · Side" })).toBeVisible();
+    const largePreview = await front.getByRole("img", { name: "Grin_wide · Front" }).boundingBox();
+    assert.ok(largePreview && largePreview.height > 160, "Full-body previews exceed the former thumbnail cap");
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
     assert.deepEqual(saves[1].folders, { front: "", side: "" });
@@ -182,6 +185,30 @@ await withBrowser(browser, async () => {
       saves[1].expressions.map((row) => row.front?.filename ?? row.side?.filename),
       [loose.filename, loose.filename],
     );
+    const removeFront = front.getByRole("button", { name: "Remove Grin_wide from Front" });
+    await removeFront.click();
+    await expect(front.getByRole("heading", { name: "Front · 0" })).toBeVisible();
+    await expect(side.getByRole("img", { name: "Grin_wide · Side" })).toBeVisible();
+    await screen.getByRole("button", { name: "Discard changes" }).click();
+    await expect(removeFront).toBeVisible();
+    await removeFront.click();
+    await screen.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(screen.getByRole("status")).toHaveText("Saved");
+    assert.deepEqual(saves[2].excluded, { front: [loose.filename], side: [] });
+    assert.equal(saves[2].expressions.length, 1);
+    await screen.getByRole("button", { name: "← Profile", exact: true }).click();
+    await entry.click();
+    await screen.getByRole("button", { name: "Refresh folders" }).click();
+    await expect(front.getByRole("heading", { name: "Front · 0" })).toBeVisible();
+    await side.getByRole("button", { name: "Remove Grin_wide from Side" }).click();
+    await expect(screen.getByText("No sprites in the selected sources.")).toBeVisible();
+    await screen.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(screen.getByRole("status")).toHaveText("Saved");
+    assert.deepEqual(saves[3].expressions, []);
+    await screen.getByRole("button", { name: "Sprites", exact: true }).click();
+    await screen.getByRole("button", { name: "Restore removed sprites" }).click();
+    await expect(removeFront).toBeVisible();
+    await expect(side.getByRole("img", { name: "Grin_wide · Side" })).toBeVisible();
     assert.deepEqual(errors, []);
     await page.close();
   }

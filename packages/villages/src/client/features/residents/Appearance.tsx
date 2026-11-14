@@ -4,6 +4,7 @@ import type {
   SpriteAppearance,
   SpriteChoice,
   SpriteFolders,
+  SpriteManagerState,
   SpriteView,
 } from "../../../shared/contracts/sprites.js";
 import { groupSpritesByMood, spriteLabel } from "../../../shared/helpers/sprite-variants.js";
@@ -20,6 +21,7 @@ type Choice = {
   expressions: AppearanceExpression[];
   defaultExpressionId: string;
   folders?: SpriteFolders;
+  excluded?: SpriteManagerState["excluded"];
 };
 type SaveResult = Pick<SpriteAppearance, "revision" | "token" | "manager">;
 const views = ["front", "side"] as const;
@@ -47,6 +49,7 @@ function savedChoice(manager: SpriteAppearance["manager"], enabled: boolean): Ch
     expressions,
     defaultExpressionId: manager.defaultExpressionId ?? "",
     folders: manager.folders,
+    excluded: manager.excluded,
   };
 }
 
@@ -92,6 +95,7 @@ export function Appearance({
   const spriteEdits =
     choice.defaultExpressionId !== baseline.defaultExpressionId ||
     JSON.stringify(choice.folders) !== JSON.stringify(baseline.folders) ||
+    JSON.stringify(choice.excluded) !== JSON.stringify(baseline.excluded) ||
     JSON.stringify(choice.expressions) !== JSON.stringify(baseline.expressions);
   const dirty = spriteEdits || choice.useSprites !== baseline.useSprites;
   const locked = pending || uncertain;
@@ -171,7 +175,38 @@ export function Appearance({
       : (data.files.find((file) => file.filename === source.filename)?.url ?? "");
   }
 
-  function chooseFolders(folders: SpriteFolders, library: SpriteAppearance, changedView?: SpriteView) {
+  function updateSprites(expressions: AppearanceExpression[], folders = choice.folders, excluded = choice.excluded) {
+    const defaultExpressionId =
+      (
+        expressions.find((row) => row.id === choice.defaultExpressionId) ??
+        groupSpritesByMood(expressions).get("neutral")?.[0] ??
+        expressions[0]
+      )?.id ?? "";
+    edit({ useSprites: true, expressions, defaultExpressionId, folders, excluded });
+  }
+
+  function removeSprite(row: AppearanceExpression, view: SpriteView) {
+    function filenameOf(source: SpriteChoice | undefined) {
+      return (
+        source?.filename ?? data?.manager.artwork.find((art) => art.id === source?.artworkId)?.engineSource?.filename
+      );
+    }
+    const filename = filenameOf(row[view]);
+    const excluded = choice.excluded ?? { front: [], side: [] };
+    const remaining = { ...row, [view]: undefined };
+    const expressions = choice.expressions.flatMap((entry) =>
+      entry !== row ? [entry] : remaining.front || remaining.side ? [remaining] : [],
+    );
+    updateSprites(
+      expressions,
+      choice.folders,
+      filename && !expressions.some((entry) => filenameOf(entry[view]) === filename)
+        ? { ...excluded, [view]: [...new Set([...excluded[view], filename])] }
+        : choice.excluded,
+    );
+  }
+
+  function chooseFolders(folders: SpriteFolders, library: SpriteAppearance, changedView?: SpriteView, restore = false) {
     const savedByFile = new Map<string, AppearanceExpression>();
     const filenameByArtwork = new Map(library.manager.artwork.map((art) => [art.id, art.engineSource?.filename]));
     for (const row of [...baseline.expressions, ...choice.expressions]) {
@@ -183,14 +218,19 @@ export function Appearance({
     }
     const expressions = views.flatMap((view) => {
       const folder = folders[view];
+      const excluded = new Set(choice.excluded?.[view]);
       if (changedView && view !== changedView && choice.folders?.[view] === folder) {
         return choice.expressions.filter((row) => row[view]);
       }
-      if (folder && !library.folders.some(({ id }) => id === folder)) {
+      if (!restore && folder && !library.folders.some(({ id }) => id === folder)) {
         return choice.expressions.filter((row) => choice.folders?.[view] === folder && row[view]);
       }
       return library.files
-        .filter((file) => (file.folderId ?? "") === folder)
+        .filter((file) =>
+          restore
+            ? excluded.has(file.filename) && (!choice.folders || (file.folderId ?? "") === folder)
+            : (file.folderId ?? "") === folder && !excluded.has(file.filename),
+        )
         .map((file) => ({
           id: savedByFile.get(view + ":" + file.filename)?.id ?? "new-" + createVillagesClientId(),
           name:
@@ -200,13 +240,13 @@ export function Appearance({
           [view]: { filename: file.filename, version: file.version },
         }));
     });
-    const defaultExpressionId =
-      (
-        expressions.find((row) => row.id === choice.defaultExpressionId) ??
-        groupSpritesByMood(expressions).get("neutral")?.[0] ??
-        expressions[0]
-      )?.id ?? "";
-    edit({ useSprites: true, expressions, defaultExpressionId, folders });
+    if (restore) {
+      const excluded = choice.excluded ?? { front: [], side: [] };
+      updateSprites([...choice.expressions, ...expressions], choice.folders, {
+        front: excluded.front.filter((file) => !expressions.some((row) => row.front?.filename === file)),
+        side: excluded.side.filter((file) => !expressions.some((row) => row.side?.filename === file)),
+      });
+    } else updateSprites(expressions, folders);
   }
 
   const pendingFilenames = new Set(
@@ -329,7 +369,13 @@ export function Appearance({
                 disabled={locked}
                 onClick={() => {
                   const folders = suggestedFolders(data);
-                  if (label === "Sprites" && !choice.expressions.length && !choice.folders && !data.libraryError) {
+                  if (
+                    label === "Sprites" &&
+                    !choice.expressions.length &&
+                    !choice.folders &&
+                    !choice.excluded &&
+                    !data.libraryError
+                  ) {
                     chooseFolders(folders, data);
                   } else edit({ ...choice, useSprites: label === "Sprites" });
                 }}
@@ -377,6 +423,15 @@ export function Appearance({
                 <button type="button" disabled={locked} onClick={() => void refreshFolders()}>
                   Refresh folders
                 </button>
+                {choice.excluded && (choice.excluded.front.length > 0 || choice.excluded.side.length > 0) ? (
+                  <button
+                    type="button"
+                    disabled={locked || Boolean(data.libraryError)}
+                    onClick={() => chooseFolders(choice.folders ?? suggestedFolders(data), data, undefined, true)}
+                  >
+                    Restore removed sprites
+                  </button>
+                ) : null}
                 {typeof openCharacter === "function" ? (
                   <button
                     type="button"
@@ -453,6 +508,15 @@ export function Appearance({
                                     loading="lazy"
                                   />
                                   <figcaption>{row.name}</figcaption>
+                                  <button
+                                    type="button"
+                                    className="appearance-link"
+                                    aria-label={`Remove ${row.name} from ${label}`}
+                                    disabled={locked}
+                                    onClick={() => removeSprite(row, view)}
+                                  >
+                                    Remove
+                                  </button>
                                 </figure>
                               ))}
                             </div>
@@ -499,7 +563,11 @@ export function Appearance({
                 (!dirty && !stale && !uncertain) ||
                 overLimit ||
                 choice.expressions.some((row) => !row.name.trim()) ||
-                (choice.useSprites && !choice.expressions.length)
+                (choice.useSprites &&
+                  !choice.expressions.length &&
+                  !baseline.expressions.length &&
+                  !choice.excluded?.front.length &&
+                  !choice.excluded?.side.length)
               }
               onClick={() => void save()}
             >

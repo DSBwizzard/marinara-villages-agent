@@ -15,6 +15,14 @@ export function readSpriteFolders(value: unknown): SpriteFolders | undefined {
 
 export const isEngineSpriteFilename = (value: unknown): value is string =>
   typeof value === "string" && /^[\p{L}\p{N}._-]+\.(png|jpe?g|webp)$/iu.test(value) && !value.includes("..");
+
+export function readSpriteExclusions(value: unknown): SpriteManagerState["excluded"] {
+  const excluded = value as Partial<NonNullable<SpriteManagerState["excluded"]>> | null | undefined;
+  if (!Array.isArray(excluded?.front) || !Array.isArray(excluded.side)) return undefined;
+  if (!excluded.front.every(isEngineSpriteFilename) || !excluded.side.every(isEngineSpriteFilename)) return undefined;
+  return { front: [...new Set(excluded.front)], side: [...new Set(excluded.side)] };
+}
+
 export const emptySpriteManager = (): SpriteManagerState => ({
   version: 1,
   artwork: [],
@@ -134,6 +142,7 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
     .map((entry) => ({ expressionId: entry.expressionId, view: entry.view, artworkId: entry.artworkId }));
   const framing = state.framing;
   const folders = readSpriteFolders(state.folders);
+  const excluded = readSpriteExclusions(state.excluded);
   return {
     version: 1,
     artwork,
@@ -141,6 +150,7 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
     assignments,
     ...(state.useSprites === false ? { useSprites: false } : {}),
     ...(folders ? { folders } : {}),
+    ...(excluded && (excluded.front.length || excluded.side.length) ? { excluded } : {}),
     ...(typeof state.lastSave?.id === "string" &&
     /^[a-z0-9-]{1,80}$/i.test(state.lastSave.id) &&
     /^[a-f0-9]{64}$/.test(state.lastSave.digest)

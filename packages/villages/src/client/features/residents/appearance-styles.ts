@@ -48,9 +48,9 @@ export const APPEARANCE_STYLES = String.raw`
   border:1px solid var(--appearance-line); border-radius:.45rem; padding:.35rem;
   text-align:center; background:color-mix(in srgb,#566a93 23%,transparent);
 }
-.appearance-thumbnails { display:grid; width:100%; grid-template-columns:repeat(auto-fit,minmax(min(100%,6rem),1fr)); gap:.5rem; }
+.appearance-thumbnails { display:grid; width:100%; grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr)); gap:.5rem; }
 .appearance-thumbnails figure { margin:0; min-width:0; overflow-wrap:anywhere; }
-.appearance-thumbnails img { width:100%; height:clamp(5rem,15cqw,10rem); object-fit:contain; }
+.appearance-thumbnails img { display:block; width:100%; aspect-ratio:2/3; max-height:clamp(13rem,28cqw,23rem); object-fit:contain; }
 .appearance-thumbnails figcaption { font-size:.85rem; }
 .appearance-portrait { display:grid; justify-items:center; }
 .appearance-portrait > .marinara-capability-villages-avatar { width:min(100%,11rem); height:auto; aspect-ratio:1; border-radius:.45rem; }
@@ -66,4 +66,5 @@ export const APPEARANCE_STYLES = String.raw`
   .appearance-layout { grid-template-columns:1fr; }
   .appearance-expressions { max-height:9rem; }
 }
+@container (max-width:21rem) { .appearance-views { grid-template-columns:1fr; } }
 `;

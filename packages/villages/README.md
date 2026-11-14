@@ -202,7 +202,7 @@ The map's artwork changes tint with Village time, leaving markers and controls r
 
 In **Appearance → Sprites**, choose an Engine folder or **No folder** for Front and Side. **No folder** uses the sprites outside folders in the character’s Engine library. Review the thumbnails by expression and save. Use right-facing art in Side so Villages can mirror it to face left. Each facing can have its own number of variants. `happy_01`, `happy_blush` and `happy_pajamas_04` all appear under `happy`.
 
-Upload, rename, move, and edit sprites in the character’s Engine Sprites tab. Use **Refresh folders** to review changes in Villages before saving them. You can import up to 200 images per save. **Portrait** shows the card portrait and keeps the sprite selection for later.
+Use **Remove** below a sprite to exclude it from that facing in Villages. **Save** keeps the exclusion when you refresh the folders. **Restore removed sprites** brings back excluded sprites from the selected sources. Upload, rename, move, and edit sprites in Engine, then use **Refresh folders** to review changes. You can import up to 200 images per save. **Portrait** shows the card portrait and keeps the sprite selection for later.
 
 **Generate signature** makes one image request for the habitual identifying mark a character would leave on a brief note in their usual social or public life. Their adopted narrative card guides the identity they present and the pace, control and legibility of their strokes; neither the display name nor an alias is prescribed. It needs only an image connection. Retries reuse a saved image where available. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
 

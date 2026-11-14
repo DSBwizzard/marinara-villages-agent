@@ -306,6 +306,35 @@ const bothFacings = await service.save(
 );
 assert.equal(bothFacings.manager.assignments.length, 202);
 assert.equal(new Set(bothFacings.manager.assignments.map((row) => row.artworkId)).size, 101);
+const removal = {
+  ...looseSave,
+  token: bothFacings.token,
+  requestId: "remove-from-front",
+  defaultExpressionId: "new-side-only",
+  excluded: { front: ["loose.png"], side: [] },
+  expressions: [{ id: "new-side-only", name: "loose", side: { filename: "loose.png", version } }],
+};
+await assert.rejects(
+  service.save(
+    id,
+    {
+      ...removal,
+      expressions: [...removal.expressions, ...looseSave.expressions],
+    },
+    signal,
+  ),
+  /Remove excluded sprites/,
+);
+const removed = await service.save(id, removal, signal);
+assert.deepEqual(removed.manager.excluded, removal.excluded);
+assert.deepEqual(
+  removed.manager.assignments.map((row) => row.view),
+  ["side"],
+);
+const reloaded = await service.settled(id);
+assert.deepEqual(reloaded.manager.excluded, removal.excluded);
+assert.ok(reloaded.files.some((file) => file.filename === "loose.png"));
+assert.deepEqual(await service.save(id, removal, signal), removed);
 console.log(
   "Appearance preserves legacy drafts, validates Engine folder selections, retries exact saves and fences resident changes.",
 );

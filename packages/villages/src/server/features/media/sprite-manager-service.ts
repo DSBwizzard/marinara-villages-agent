@@ -241,7 +241,11 @@ export function createSpriteManager({
         next.assignments = next.assignments.filter(
           (item) => item.expressionId !== expressionId || item.view !== body.view,
         );
-        next.assignments.push({ expressionId, view: body.view as "front" | "side", artworkId: art.id });
+        const view = body.view as "front" | "side";
+        next.assignments.push({ expressionId, view, artworkId: art.id });
+        if (next.excluded && current.engineSource) {
+          next.excluded[view] = next.excluded[view].filter((file) => file !== current.engineSource?.filename);
+        }
         next.defaultExpressionId ??= expressionId;
       });
       return result(id);

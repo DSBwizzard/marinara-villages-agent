@@ -34,6 +34,7 @@ export type SpriteManagerState = {
   defaultExpressionId?: string;
   useSprites?: boolean;
   folders?: SpriteFolders;
+  excluded?: Record<SpriteView, string[]>;
   lastSave?: { id: string; digest: string };
   framing: { mode: "full" | "half" };
 };

@@ -17,6 +17,7 @@ import {
   coerceSpriteManager,
   emptySpriteManager,
   isEngineSpriteFilename,
+  readSpriteExclusions,
   readSpriteFolders,
 } from "../../domain/rules/sprite-manager-model.js";
 import { spriteLabel } from "../../../shared/helpers/sprite-variants.js";
@@ -174,12 +175,14 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     return ports.writes.serialize(writeKey(id, resident), async () => {
       const requestId = asString(input.requestId);
       const folders = readSpriteFolders(input.folders);
+      const excluded = readSpriteExclusions(input.excluded);
       if (
         !/^[a-z0-9-]{1,80}$/i.test(requestId) ||
         typeof input.useSprites !== "boolean" ||
         !Array.isArray(input.expressions) ||
         typeof input.defaultExpressionId !== "string" ||
-        (input.folders !== undefined && !folders)
+        (input.folders !== undefined && !folders) ||
+        (input.excluded !== undefined && !excluded)
       )
         throw badRequest("Check the appearance choices.");
 
@@ -203,6 +206,8 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       const rows: AppearanceExpression[] = [];
       const filenames = new Map<string, string>();
       const folderFiles = new Set<string>();
+      const excludedFiles = excluded ?? manager.excluded;
+      const blocked = { front: new Set(excludedFiles?.front), side: new Set(excludedFiles?.side) };
       const rowLimit = folders && !folders.front && !folders.side ? 400 : 200;
       if (input.expressions.length > manager.expressions.length + rowLimit)
         throw badRequest("Choose up to 200 new sprites at a time.");
@@ -224,6 +229,9 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           if (row[view] === undefined) continue;
           const choice = asRecord(row[view]);
           const artworkId = asString(choice.artworkId);
+          const file = choice.filename ?? manager.artwork.find((art) => art.id === artworkId)?.engineSource?.filename;
+          if (typeof file === "string" && blocked[view].has(file))
+            throw badRequest("Remove excluded sprites before saving.");
           if (artworkId && choice.filename === undefined && manager.artwork.some((art) => art.id === artworkId)) {
             if (
               folders &&
@@ -332,6 +340,10 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       if (input.useSprites && manager.assignments.length) delete manager.useSprites;
       else manager.useSprites = false;
       if (folders) manager.folders = folders;
+      if (excluded) {
+        if (excluded.front.length || excluded.side.length) manager.excluded = excluded;
+        else delete manager.excluded;
+      }
       manager.lastSave = { id: requestId, digest };
       signal.throwIfAborted();
 
