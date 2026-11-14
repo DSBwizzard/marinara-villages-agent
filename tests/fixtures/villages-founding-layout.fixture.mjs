@@ -81,6 +81,8 @@ export async function verifyFoundingLayout(group) {
         let payload,
           suggestions = 0,
           failVenueConnection = false,
+          holdConnectionRead = false,
+          connectionReadHeld = false,
           generatedImages = 0,
           generationImage,
           mapReceipt;
@@ -216,8 +218,13 @@ export async function verifyFoundingLayout(group) {
             return send({
               persona: { ...personas[0], description: "A patient observer.", identity: "A patient observer." },
             });
-          if (path.endsWith("/connections"))
+          if (path.endsWith("/connections")) {
+            if (holdConnectionRead) {
+              connectionReadHeld = true;
+              return;
+            }
             return send({ systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" });
+          }
           if (path.endsWith("/catalog")) return send({ characters });
           if (path.endsWith("/lorebooks")) return send({ books: [] });
           if (path.endsWith("/image-style-profiles"))
@@ -354,6 +361,33 @@ export async function verifyFoundingLayout(group) {
           "true",
         );
         await expect(systemPicker.getByRole("button", { name: "Use Engine default" })).toHaveCount(0);
+        await page.evaluate(() => {
+          const deadline = AbortSignal.timeout.bind(AbortSignal);
+          AbortSignal.timeout = (ms) => {
+            if (ms !== 15_000) return deadline(ms);
+            const controller = new AbortController();
+            window.expireConnectionRead = () => controller.abort(new DOMException("Timed out", "TimeoutError"));
+            return controller.signal;
+          };
+        });
+        holdConnectionRead = true;
+        await systemPicker.getByRole("button", { name: "Refresh list", exact: true }).click();
+        await expect.poll(() => connectionReadHeld).toBe(true);
+        await expect(systemPicker.getByRole("status")).toHaveText("Checking model connections…");
+        await page.keyboard.press("Escape");
+        await button("Continue to People").click();
+        await expect(root).toHaveAttribute("data-step", "0");
+        await expect(models.getByRole("status")).toBeFocused();
+        await page.evaluate(() => window.expireConnectionRead());
+        const timedOut = models.getByRole("alert");
+        await expect(timedOut).toContainText("Checking model connections timed out.");
+        await expect(system).toBeDisabled();
+        holdConnectionRead = false;
+        await timedOut.getByRole("button", { name: "Retry", exact: true }).click();
+        await expect(system).toBeEnabled();
+        await expect(root.getByText("Checking model connections…", { exact: true })).toHaveCount(0);
+        await expect(system).toContainText("Language model");
+        await system.click();
         await page.keyboard.press("Escape");
         await expect(system).toBeFocused();
         await button("Circumstances").click();

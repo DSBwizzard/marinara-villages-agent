@@ -2,7 +2,7 @@ import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venu
 import { simpleFoundingMap } from "./simple-map.js";
 import { foundingHomeMembers, reconcileFoundingRoster } from "./founding-homes.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ELEMENT_TAG } from "../../shared/constants.js";
+import { CONNECTION_SETUP_PROBLEMS, ELEMENT_TAG } from "../../shared/constants.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
@@ -202,7 +202,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     !!backgroundError ||
     setupProblem === "Choose an available Persona." ||
     setupProblem === "Choose one to three available founding villagers." ||
-    (!!connectionSetupProblem && setupProblem === connectionSetupProblem);
+    Object.values(CONNECTION_SETUP_PROBLEMS).includes(setupProblem);
   useEffect(() => {
     if (focusedValidationAttempt.current === validationAttempt) return;
     focusedValidationAttempt.current = validationAttempt;
@@ -619,7 +619,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </>
                 ) : null}
                 <div hidden={contextView !== "Connections"}>
-                  {connectionSetupProblem && validatedFields.includes("connections") ? (
+                  {validatedFields.includes("connections") &&
+                  [CONNECTION_SETUP_PROBLEMS.required, CONNECTION_SETUP_PROBLEMS.missing].includes(
+                    connectionSetupProblem,
+                  ) ? (
                     <p role="alert" data-founding-problem tabIndex={-1}>
                       {connectionSetupProblem}
                     </p>

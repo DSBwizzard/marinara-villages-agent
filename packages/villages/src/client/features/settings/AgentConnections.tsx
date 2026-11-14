@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { VillageConnectionSettings } from "../../../shared/contracts/village.js";
 import { messageFrom, request, requestHost } from "../../shared/api.js";
-import { ELEMENT_TAG as P, VILLAGES_IMAGE_CONNECTION_DISABLED } from "../../shared/constants.js";
+import {
+  CONNECTION_SETUP_PROBLEMS,
+  ELEMENT_TAG as P,
+  VILLAGES_IMAGE_CONNECTION_DISABLED,
+} from "../../shared/constants.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { connectionOptionsFrom } from "../../shared/presentation.js";
 import { VillageIcon } from "../../shared/VillageIcon.js";
@@ -14,6 +18,8 @@ const jobs = [
 ] as const;
 
 type ConnectionJob = (typeof jobs)[number];
+
+const CONNECTION_READ_TIMEOUT_MS = 15_000;
 
 /**
  * Which connection the village sends which kind of work to.
@@ -55,14 +61,16 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
       return;
     }
     const controller = new AbortController();
+    const timeout = AbortSignal.timeout(CONNECTION_READ_TIMEOUT_MS);
+    const signal = AbortSignal.any([controller.signal, timeout]);
     const current = ++generation.current;
     read.current = controller;
     setRefreshing(true);
     void (async () => {
       try {
         const [chosen, rows] = await Promise.all([
-          request<VillageConnectionSettings>("/connections", { signal: controller.signal }),
-          requestHost<EngineConnectionRow[]>("/api/connections", { signal: controller.signal }),
+          request<VillageConnectionSettings>("/connections", { signal }),
+          requestHost<EngineConnectionRow[]>("/api/connections", { signal }),
         ]);
         if (!alive.current || generation.current !== current) return;
         setSettings(chosen);
@@ -72,9 +80,14 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
       } catch (cause) {
         if (alive.current && generation.current === current && !controller.signal.aborted) {
           setReadFailed(true);
-          setError(messageFrom(cause, "This agent's connections could not be read."));
+          setError(
+            timeout.aborted
+              ? "Checking model connections timed out."
+              : messageFrom(cause, "This agent's connections could not be read."),
+          );
         }
       } finally {
+        controller.abort();
         if (read.current === controller) read.current = null;
         if (alive.current && generation.current === current) setRefreshing(false);
       }
@@ -157,6 +170,7 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
     error,
     readFailed,
     saving: busy,
+    refreshing,
     busy: busy || refreshing || readFailed,
     choose,
     refresh,
@@ -188,14 +202,17 @@ export function AgentConnectionsControls({
   const systemId = settings?.systemConnectionId;
   const gmId = settings?.narrationConnectionId;
   const hasLanguageChoices = [systemId, gmId].every((id) => language.some((option) => option.id === id));
+  let progress = "";
+  if (connections.saving) progress = CONNECTION_SETUP_PROBLEMS.saving;
+  else if (!readFailed && (connections.refreshing || !settings)) progress = CONNECTION_SETUP_PROBLEMS.reading;
 
   useEffect(() => {
-    if (readFailed) onSetupProblem?.("Check connections before continuing.");
-    else if (busy || !settings) onSetupProblem?.("Connections are still loading.");
-    else if (!systemId || !gmId) onSetupProblem?.("Choose both System and GM connections before continuing.");
-    else if (!hasLanguageChoices) onSetupProblem?.("Choose available language connections for System and GM.");
+    if (progress) onSetupProblem?.(progress);
+    else if (readFailed) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.failed);
+    else if (!systemId || !gmId) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.required);
+    else if (!hasLanguageChoices) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.missing);
     else onSetupProblem?.("");
-  }, [busy, gmId, hasLanguageChoices, onSetupProblem, readFailed, settings, systemId]);
+  }, [gmId, hasLanguageChoices, onSetupProblem, progress, readFailed, systemId]);
 
   const pickingImages = job?.key === "imageConnectionId";
   const modelOptions = pickingImages ? images : language;
@@ -208,7 +225,12 @@ export function AgentConnectionsControls({
   if (pickingImages || !onSetupProblem)
     specialChoices.push({ id: "", name: "Use Engine default", detail: "", needsReview: false });
   const problem = error ? (
-    <div className={`${P}-model-problem`} role="alert">
+    <div
+      className={`${P}-model-problem`}
+      role="alert"
+      data-founding-problem={onSetupProblem ? "" : undefined}
+      tabIndex={onSetupProblem ? -1 : undefined}
+    >
       <span>{error}</span>
       {readFailed ? (
         <button type="button" onClick={() => refresh()}>
@@ -217,6 +239,13 @@ export function AgentConnectionsControls({
       ) : null}
     </div>
   ) : null;
+  const feedback = progress ? (
+    <p role="status" data-founding-problem={onSetupProblem ? "" : undefined} tabIndex={onSetupProblem ? -1 : undefined}>
+      {progress}
+    </p>
+  ) : (
+    problem
+  );
 
   return (
     <section
@@ -225,6 +254,7 @@ export function AgentConnectionsControls({
       aria-labelledby={compact ? undefined : titleId}
     >
       {compact ? null : <h2 id={titleId}>Model Connections</h2>}
+      {job ? null : feedback}
       {settings ? (
         <div className={`${P}-model-rows`}>
           {jobs.map((entry) => {
@@ -271,14 +301,12 @@ export function AgentConnectionsControls({
             );
           })}
         </div>
-      ) : error ? null : (
-        <p role="status">Reading connections…</p>
-      )}
+      ) : null}
       {job && settings ? (
         <ModalDialog title={job.label} onClose={() => setJob(null)} className={`${P}-model-picker`}>
           <div className={`${P}-model-picker-body`}>
             <p>{job.purpose}</p>
-            {problem}
+            {feedback}
             {settings[job.key] &&
             settings[job.key] !== VILLAGES_IMAGE_CONNECTION_DISABLED &&
             !currentOption &&
@@ -330,9 +358,7 @@ export function AgentConnectionsControls({
             </button>
           </div>
         </ModalDialog>
-      ) : (
-        problem
-      )}
+      ) : null}
     </section>
   );
 }

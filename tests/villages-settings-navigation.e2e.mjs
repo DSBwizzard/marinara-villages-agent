@@ -575,6 +575,7 @@ async function checkPackage(width) {
   await expect(systemConnection).toBeVisible();
   await expect(systemConnection).toContainText("Talk");
   await expect(systemConnection).toBeDisabled();
+  await expect(models.getByRole("status")).toHaveText("Checking model connections…");
   holdConnectionRead = false;
   await fulfill(heldConnectionRead, { json: connections });
   heldConnectionRead = null;
@@ -583,6 +584,7 @@ async function checkPackage(width) {
   const systemPicker = page.getByRole("dialog", { name: "System", exact: true });
   await systemPicker.getByRole("button", { name: "Use Engine default", exact: true }).click();
   await expect.poll(() => heldConnectionSave !== null).toBe(true);
+  await expect(systemPicker.getByRole("status")).toHaveText("Saving model connection…");
   await systemPicker.getByRole("button", { name: "Close System", exact: true }).click();
   await section("advanced", "Advanced");
   await expect(page.getByRole("button", { name: "Erase Village", exact: true })).toBeDisabled();
