@@ -145,6 +145,9 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Mailbox · Unread mail", exact: true })).toHaveCount(0);
     const originalMarker = { ...state.settings.venues[0].presentation };
     await page.getByRole("button", { name: "Map options", exact: true }).click();
+    const options = page.locator("." + P + "-map-options");
+    await expect(options).toBeInViewport({ ratio: 1 });
+    await expect(options.getByRole("checkbox", { name: "Places layer" })).toBeInViewport({ ratio: 1 });
     await page.getByRole("button", { name: "Move markers", exact: true }).click();
     await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
     const navigationMap = page.locator("." + P + "-home-map-viewport ." + P + "-canvas");

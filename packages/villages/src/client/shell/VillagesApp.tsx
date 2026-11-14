@@ -48,8 +48,8 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   const [mailRecipient, setMailRecipient] = useState("");
   const [phase, setPhase] = useState<"open" | "preparing" | "opening" | "closing">("open");
   const [artworkError, setArtworkError] = useState("");
-  const [mapArrival, setMapArrival] = useState<{ id: string; origin: string } | null>(null);
-  const arriving = controller.screen === "venue" && mapArrival?.id === controller.venueId;
+  const [mapArrival, setMapArrival] = useState<string | null>(null);
+  const arriving = controller.screen === "venue" && mapArrival === controller.venueId;
   const bookVisible =
     controller.screen === "person" || (controller.screen === "menu" && controller.menuPage === "villagers");
   const destination = (screen: Controller["screen"], page = controller.menuPage): DeskDestination | null => {
@@ -423,13 +423,13 @@ function VillagesContent({ element }: { element: HTMLElement }) {
             <VillageScreen
               controller={navigation}
               daylight={daylight}
-              openMapVenue={(place, origin) => {
-                setMapArrival({ id: place.id, origin });
+              openMapVenue={(place) => {
+                setMapArrival(place.id);
                 controller.explorationReturnTab.current = "map";
                 controller.openPlace(place);
                 controller.setVenueSection("about");
               }}
-              arrivalOrigin={arriving ? mapArrival.origin : undefined}
+              arriving={arriving}
               people={
                 <div hidden={!bookVisible} inert={!bookVisible} className={`${ELEMENT_TAG}-people-session`}>
                   <PeoplePages controller={navigation} active={bookVisible && !controller.mailboxOpen} />
@@ -449,8 +449,8 @@ type VillageScreenProps = {
   controller: Controller;
   daylight: boolean;
   people: import("react").ReactNode;
-  openMapVenue: (place: import("../../shared/contracts/village.js").VillageVenue, origin: string) => void;
-  arrivalOrigin?: string;
+  openMapVenue: (place: import("../../shared/contracts/village.js").VillageVenue) => void;
+  arriving: boolean;
 };
 
 function VillageScreen(props: VillageScreenProps) {
@@ -503,22 +503,16 @@ function PeoplePages({ controller, active }: { controller: Controller; active: b
 }
 
 /** One map, one Venue, and the fixed menu pages; never a history of resident/world data. */
-function VillageDestinations({ controller, daylight, people, openMapVenue, arrivalOrigin }: VillageScreenProps) {
+function VillageDestinations({ controller, daylight, people, openMapVenue, arriving }: VillageScreenProps) {
   const { screen, menuPage, room, venueId } = controller;
   const [home, setHome] = useState(false);
   const [venue, setVenue] = useState<string | null>(null);
   const [menus, setMenus] = useState<MenuPage[]>([]);
   const page = menuPage === "index" ? "general" : menuPage;
   if (screen === "home" && !home) setHome(true);
-  if (screen === "venue" && !arrivalOrigin && venueId && venue !== venueId) setVenue(venueId);
+  if (screen === "venue" && !arriving && venueId && venue !== venueId) setVenue(venueId);
   if (screen === "menu" && page !== "villagers" && !menus.includes(page)) setMenus([...menus, page]);
-  const arrival =
-    arrivalOrigin && venueId
-      ? {
-          origin: arrivalOrigin,
-          content: <VenueScreen key={venueId} controller={controller} fromMap />,
-        }
-      : undefined;
+  const arrival = arriving && venueId ? <VenueScreen key={venueId} controller={controller} fromMap /> : undefined;
   return (
     <>
       {home ? (
