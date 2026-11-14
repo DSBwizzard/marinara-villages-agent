@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
@@ -18,8 +18,32 @@ import { wishes } from "./wishes/service.js";
 import { continuityWishes } from "../../domain/rules/continuity-library.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { agendaWeek } from "../../domain/rules/agenda-overview.js";
+import { readKeepsakes } from "../../domain/rules/mailbox-view.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { keepsakeArt } from "./keepsake-art.js";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
+  const scopeQuery = z.object({ scope: z.string().regex(/^[a-f0-9]{64}$/) });
+  engine.get("/keepsakes", async (request, reply) => {
+    try {
+      const { scope } = scopeQuery.parse(request.query);
+      const state = await readVillageState({ memories: true });
+      if (villageWorldScope(state) !== scope) throw badRequest("The Village changed. Open Keepsakes again.");
+      return { keepsakes: readKeepsakes(state) };
+    } catch (error) {
+      return fail(reply, error, "read Keepsakes");
+    }
+  });
+  async function illustration(request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) {
+    try {
+      const { scope } = scopeQuery.parse(request.query);
+      return await keepsakeArt(scope, z.string().min(1).max(160).parse(request.params.id), request.method === "POST");
+    } catch (error) {
+      return fail(reply, error, "open Keepsake illustration");
+    }
+  }
+  engine.get("/keepsakes/:id/illustration", illustration);
+  engine.post("/keepsakes/:id/illustration", illustration);
   engine.get<{ Params: { characterId: string } }>("/villagers/:characterId/wishes", async (request, reply) => {
     try {
       const state = await readVillageState({ memories: true });

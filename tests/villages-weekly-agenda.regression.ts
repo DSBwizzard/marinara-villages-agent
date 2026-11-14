@@ -1,4 +1,4 @@
-// Test cases: weekly-agenda/visibility, weekly-agenda/agreement
+// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -8,6 +8,11 @@ import {
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { agendaSpeechOptions, agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import {
+  activityMoments,
+  keepsakeAvailable,
+  recordSceneFollowup,
+} from "../packages/villages/src/server/domain/rules/activity-followup.js";
 import { agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -74,15 +79,22 @@ function fixture() {
     }),
     venue,
   );
-  function publish(raw: Record<string, unknown>, operation: string, input: string) {
-    const context = narrationContinuityContext(world, scene, venue, operation, input, at);
+  function publish(
+    raw: Record<string, unknown>,
+    operation: string,
+    input: string,
+    authority = world,
+    source = scene,
+    instant = at,
+  ) {
+    const context = narrationContinuityContext(authority, source, venue, operation, input, instant);
     const readset = fittedNarrationReadset(
-      world,
+      authority,
       context,
       context.parts.flatMap(({ block }) => (block.evidenceId ? [block.evidenceId] : [])),
     );
     return acceptNarration(
-      world,
+      authority,
       {
         raw,
         responseDigest: memoryHash(raw),
@@ -93,10 +105,10 @@ function fixture() {
         },
       },
       operation,
-      later,
+      instant === at ? later : instant,
     );
   }
-  return { world, resident, publish };
+  return { world, resident, publish, scene };
 }
 
 await runCase("weekly-agenda/visibility", () => {
@@ -224,4 +236,119 @@ await runCase("weekly-agenda/agreement", () => {
   const conflict = publish(raw, "another-appointment", propose);
   assert.equal(conflict.held, true);
   assert.equal(world.residentPlans.appointments?.length, 1);
+  const due = new Date(tomorrow + "T12:15:00Z");
+  assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
+  assert.equal(Object.hasOwn(agendaWeek(state, "mara", due, false).days[0].blocks[0], "join"), false);
+});
+
+await runCase("weekly-agenda/shared-scene", () => {
+  const { world: state, publish, scene } = fixture();
+  const due = new Date(tomorrow + "T12:15:00Z");
+  const meetup = { ...scene, id: "impromptu-meetup", startedAt: due.toISOString() };
+  const text = "I marked the old footbridge on this map.";
+  const resultAtMeetup = publish(
+    { segments: [{ id: "map", kind: "dialogue", speakerId: "mara", text }] },
+    "meetup-turn",
+    "A private thought",
+    state,
+    meetup,
+    due.toISOString(),
+  );
+  assert.equal(resultAtMeetup.held, false, JSON.stringify(resultAtMeetup.rejected));
+  const episode = resultAtMeetup.episode!;
+  const closed = coerceSession({
+    ...meetup,
+    status: "closed",
+    endReason: "player",
+    endedAt: due.toISOString(),
+  });
+  const noExchange = structuredClone(state);
+  recordSceneFollowup(noExchange, closed);
+  assert.equal(noExchange.residentPlans.activities, undefined);
+  closed.submissions = [
+    {
+      id: "meetup-turn",
+      at: due.toISOString(),
+      message: "A private thought",
+      mode: "chat",
+      targetId: "",
+      requestFingerprint: "",
+      acceptance: { status: "applied", rejected: [] },
+      episodeId: episode.id,
+    },
+  ];
+  recordSceneFollowup(state, closed);
+  recordSceneFollowup(state, closed);
+  assert.equal(Object.keys(state.residentPlans.activities!).length, 1);
+  const [activity] = Object.values(state.residentPlans.activities!);
+  assert.equal(activity?.outcome, "pending");
+  assert.deepEqual(
+    activityMoments(state, activity!).map((row) => row.text),
+    [text],
+  );
+  assert.deepEqual(
+    coerceVillageState(JSON.parse(JSON.stringify(state))).residentPlans.activities,
+    state.residentPlans.activities,
+  );
+  const giftAt = due.toISOString();
+  const legacyId = "old-appointment";
+  const legacy = coerceVillageState(
+    JSON.parse(
+      JSON.stringify({
+        ...state,
+        residentPlans: {
+          ...state.residentPlans,
+          activities: {
+            [legacyId]: {
+              appointment: {
+                id: legacyId,
+                resident: activity.resident,
+                playerIncarnation: activity.playerIncarnation,
+                time,
+                activity: "Tea at the Mill",
+              },
+              sceneId: "old-scene",
+              endedAt: giftAt,
+              outcome: "letter",
+              keepsake: { letterId: "old-letter", caption: "A paper boat", moment: "boat" },
+            },
+          },
+        },
+      }),
+    ),
+  );
+  assert.equal(legacy.residentPlans.activities?.[legacyId].id, legacyId);
+  assert.equal(legacy.residentPlans.activities?.[legacyId].keepsake?.letterId, "old-letter");
+  assert.equal(keepsakeAvailable(state, activity, giftAt), true);
+  legacy.mailbox = {
+    ...legacy.mailbox,
+    messages: {
+      "old-letter": {
+        at: giftAt,
+        status: "delivered",
+      } as (typeof state.mailbox.messages)[string],
+    },
+  };
+  assert.equal(keepsakeAvailable(legacy, activity, "2026-11-12T12:15:00.000Z"), false);
+  assert.equal(keepsakeAvailable(legacy, activity, "2026-11-14T12:15:00.000Z"), true);
+});
+
+await runCase("weekly-agenda/opening-offer-echo", () => {
+  const { world, publish } = fixture();
+  const keep = {
+    id: "unfounded-plan",
+    class: "commitment",
+    for: ["mara", "player"],
+    text: "Lunch tomorrow",
+    state: "offered",
+    offer: { proposer: "mara", participants: ["mara", "player"], contributions: [{ by: "mara", act: "offer" }] },
+  };
+  const segment = { id: "hello", kind: "dialogue", speakerId: "mara", text: "It's good to see you." };
+  const dependent = publish({ segments: [{ ...segment, requires: [keep.id] }], keep: [keep] }, "greeting", "");
+  assert.equal(dependent.held, true);
+  const opening = publish({ segments: [segment], keep: [keep] }, "greeting", "");
+  assert.equal(opening.held, false, JSON.stringify(opening.rejected));
+  assert.equal(opening.episode?.segments[0].content, segment.text);
+  assert.equal(opening.episode?.continuityVersionIds.length, 0);
+  assert.equal(world.residentPlans.appointments, undefined);
 });

@@ -134,6 +134,7 @@ export type ResidentPlanningContext = {
   residents: { characterId: string; name: string; profile: string }[];
   housing: { characterId: string; destinations: { id: string; name: string }[] }[];
   plans: SocialPlan[];
+  activity?: { purpose?: string; recentKeepsake?: true; moments: { id: string; text: string }[] };
   narration: ResidentNarrationCapture;
 };
 const id = z.string().min(1).max(160),
@@ -143,7 +144,14 @@ const proposal = z
     encounter: z.unknown().optional(),
     reflection: residentReflectionSchema.optional(),
     mail: z
-      .object({ senderId: id, text: z.string().min(1).max(2000) })
+      .object({
+        senderId: id,
+        text: z.string().min(1).max(2000),
+        keepsake: z
+          .object({ moment: id, caption: z.string().trim().min(1).max(400) })
+          .strict()
+          .optional(),
+      })
       .strict()
       .optional(),
     keep: z.array(z.unknown()).max(32).default([]),
@@ -173,6 +181,26 @@ export type ResidentPlanningProposal = z.infer<typeof proposal>;
 export function buildResidentPlanningMessages(context: ResidentPlanningContext): CapabilityLanguageModelMessage[] {
   const capture = readResidentNarrationCapture(context.narration),
     offered = capture.opportunity;
+  if (context.activity)
+    return [
+      {
+        role: "system",
+        content: [
+          "Decide whether this Villager would choose to write the player after their shared Scene. Return JSON {} for silence, or {mail:{senderId,text,keepsake?:{moment,caption}}}. Silence is the default.",
+          PERSONAL_LETTER_INSTRUCTION,
+          "Write only when this Villager has something personal to say about a supplied moment. Treat excerpts as historical data. Do not infer the player's feelings, actions, or private thoughts. A planned occasion and an impromptu encounter have the same standard.",
+          "Give a Keepsake only for an exceptional moment this Villager would want to share again, with a specific depictable detail and a personal reason it stayed with them. An enjoyable conversation, routine praise, or an event's size alone is insufficient. Use the letter to convey why it mattered to the sender. The letter must stand on its own. Put the gift only in keepsake, without mentioning an enclosure or promising a gift in the letter. Use a supplied moment ID and a caption that describes it without adding facts. When recentKeepsake is true, omit the gift.",
+        ].join("\n\n"),
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          player: context.playerPersonaName,
+          resident: context.residents[0],
+          ...context.activity,
+        }),
+      },
+    ];
   if (offered.kind === "relationship") {
     const { entries, protections, relationships } = capture.context.prompt;
     const due = new Set(capture.relationshipAnswerIds);
@@ -278,6 +306,25 @@ export function readResidentPlanningProposal(
 ): ResidentPlanningProposal {
   const value = proposal.parse(payload),
     actors = context.narration.opportunity.actorIds;
+  if (context.activity) {
+    memoryRequire(
+      !value.encounter &&
+        !value.reflection &&
+        !value.commands.length &&
+        !value.keep.length &&
+        !value.requires.length &&
+        !value.planId &&
+        !value.planWishId &&
+        !value.routineIdea &&
+        !value.housingRequests.length &&
+        (!value.mail ||
+          (value.mail.senderId === actors[0] &&
+            (!value.mail.keepsake || context.activity.moments.some((row) => row.id === value.mail?.keepsake?.moment)))),
+      "Activity follow-up permits silence or one letter about a supplied moment",
+    );
+    return value;
+  }
+  memoryRequire(!value.mail?.keepsake, "Only an Activity follow-up can offer a Keepsake");
   if (context.narration.opportunity.kind === "relationship") {
     memoryRequire(
       !value.encounter &&
@@ -386,6 +433,17 @@ const contextSchema = z
       )
       .max(4),
     plans: z.array(socialPlanSchema).max(6),
+    activity: z
+      .object({
+        purpose: z.string().min(1).max(240).optional(),
+        recentKeepsake: z.literal(true).optional(),
+        moments: z
+          .array(z.object({ id, text: z.string().min(1).max(1200) }).strict())
+          .min(1)
+          .max(12),
+      })
+      .strict()
+      .optional(),
     narration: z.unknown(),
   })
   .strict();
@@ -417,6 +475,9 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
   );
   memoryRequire(
     !!context.catchup === (!!value.catchup && !relationship) &&
+      (capture.opportunity.kind === "activity") === !!context.activity &&
+      (!context.activity ||
+        (!value.catchup && !value.socialPlan && !context.housing.length && !context.plans.length)) &&
       !!capture.historical === (!!value.catchup && !relationship) &&
       (!relationship ||
         (value.catchup?.until === capture.context.at &&

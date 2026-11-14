@@ -253,7 +253,7 @@ export function createSceneWriting({
         positions ? SCENE_RELATIONSHIP_DIRECTION : RELATIONSHIP_DIRECTION,
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
-          ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech."
+          ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
           : mode === "leave"
             ? "Respond to the whole submitted departure and close when it is complete. Any goodbye from the player comes from their submission."
             : "",

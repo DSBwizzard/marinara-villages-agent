@@ -12,8 +12,10 @@ export type SocialPlan = {
   followThrough?: true;
   wishId?: string;
 };
+export type SceneFollowup = import("../decoding/resident-plans-codec.js").SceneFollowup;
 export type ResidentPlans = {
   selectedDate: string;
   plans: SocialPlan[];
   appointments?: import("zod").infer<typeof import("../decoding/agenda-codec.js").playerAppointments>;
+  activities?: Record<string, SceneFollowup>;
 };

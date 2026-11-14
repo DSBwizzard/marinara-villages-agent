@@ -129,7 +129,10 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
         date = agendaDateKey(day);
       const visible = known.filter((row) => row.time.date === date);
       const effective = resident.agenda ? agendaBlocksFor(resident.agenda, day).filter(scheduled) : [];
-      const times: (Omit<AgendaTime, "date"> & { activity: string; source?: "told" | "seen" | "agreed" })[] =
+      const times: (Omit<AgendaTime, "date"> & {
+        activity: string;
+        source?: "told" | "seen" | "agreed";
+      })[] =
         inspect || shared
           ? effective.map((block) => ({
               ...block,

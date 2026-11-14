@@ -3,6 +3,18 @@
   "routes": [
     {
       "method": "get",
+      "path": "/keepsakes"
+    },
+    {
+      "method": "get",
+      "path": "/keepsakes/:id/illustration"
+    },
+    {
+      "method": "post",
+      "path": "/keepsakes/:id/illustration"
+    },
+    {
+      "method": "get",
       "path": "/villagers/:characterId/wishes"
     },
     {

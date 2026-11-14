@@ -146,6 +146,12 @@ Residents follow routines, and their availability changes through the day. Found
 
 Moving into an occupied home requires your incoming resident and every current housemate to agree to the exact destination and sleeping space. Private rooms retain their individual control; shared rooms use household control. Resident moves take 24 Village hours after approval; your own move applies immediately once the required people agree. Changed membership or room availability holds a scheduled move for renewed review. Cancelling releases its reservation.
 
+### Activities and Keepsakes
+
+Agreed plans appear in the Villager’s **Agenda**. Visit the meeting place at the agreed time and use its usual entrances and access rules. After a shared Scene, planned or spontaneous, a Villager may send a follow-up through the usual background activity allowance. A rare Keepsake recalls a particular moment that mattered to its sender.
+
+Open a letter to reveal any attached Keepsake. **Mailbox → Keepsakes** collects the gifts you’ve opened. **Generate illustration** uses your configured image connection for that gift. The letter and caption are saved independently.
+
 ### Memories
 
 Memories keep meaningful experiences, information, and open matters. Each belongs to the people who learned it. Mentioning a character does not give that character the information.

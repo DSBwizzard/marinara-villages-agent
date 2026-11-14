@@ -383,7 +383,7 @@ export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
 export type ResidentPlanningOpportunity = {
   id: string;
-  kind: "encounter" | "routine" | "world" | "relationship";
+  kind: "encounter" | "routine" | "world" | "relationship" | "activity";
   startsAt: string;
   endsAt: string;
   actorIds: string[];
