@@ -9,7 +9,10 @@ export const APPEARANCE_STYLES = String.raw`
   color: var(--appearance-ink);
   font: 1rem/1.35 var(--menu-font,"village-letter-lora",Georgia,serif);
 }
-.villages-appearance { container-type:inline-size; min-height:0; padding:clamp(.75rem,2vw,1.5rem); overflow:auto; }
+.villages-appearance {
+  display:flex; flex-direction:column; container-type:inline-size; min-height:0;
+  padding:clamp(.75rem,2vw,1.5rem); overflow:auto;
+}
 .villages-forging-card .villages-appearance {
   --appearance-ink:#f0dfbc; --appearance-panel:#393047; --appearance-line:#a39b8460;
   --appearance-pick:#d29399; --appearance-action:#a7b097; --appearance-action-ink:#292938;
@@ -25,6 +28,7 @@ export const APPEARANCE_STYLES = String.raw`
 .villages-appearance :is(button,select):focus-visible { outline:2px solid var(--appearance-pick); outline-offset:2px; }
 .villages-appearance .appearance-link { border:0; padding-inline:.35rem; text-decoration:underline; text-underline-offset:.2em; }
 .appearance-layout { display:grid; grid-template-columns:minmax(10rem,1fr) minmax(0,3fr); gap:.75rem; }
+.appearance-sprite-body { min-height:0; overflow:auto; }
 .appearance-mode { display:flex; max-width:33rem; margin-bottom:.7rem; }
 .villages-appearance .appearance-mode button { flex:1; }
 .villages-appearance .appearance-mode button[aria-pressed=true] { background:var(--menu-selected,#875363); }
@@ -49,7 +53,7 @@ export const APPEARANCE_STYLES = String.raw`
   border:1px solid var(--appearance-line); border-radius:.45rem; padding:.35rem;
   text-align:center; background:color-mix(in srgb,#566a93 23%,transparent);
 }
-.appearance-full-sprite { display:block; width:100%; height:clamp(11rem,30dvh,20rem); object-fit:contain; }
+.appearance-full-sprite { display:block; width:100%; height:clamp(10rem,23dvh,20rem); object-fit:contain; }
 .appearance-gallery { display:flex; gap:.35rem; max-width:100%; overflow-x:auto; padding:.25rem; }
 .villages-appearance .appearance-gallery button { flex:0 0 5rem; min-width:0; padding:.3rem; font-size:.75rem; }
 .appearance-gallery img { display:block; width:100%; height:3.4rem; object-fit:contain; }
@@ -58,7 +62,7 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-portrait { display:grid; justify-items:center; }
 .appearance-portrait > .marinara-capability-villages-avatar { width:min(100%,11rem); height:auto; aspect-ratio:1; border-radius:.45rem; }
 .appearance-expression-fields { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.55rem; margin-bottom:.65rem; }
-.appearance-footer { position:sticky; bottom:0; padding:.35rem .15rem; z-index:1; border-radius:.4rem; background:var(--appearance-panel); }
+.appearance-footer { flex:none; padding:.35rem .15rem; border-radius:.4rem; background:var(--appearance-panel); }
 .appearance-footer > span { margin-inline-end:auto; }
 .villages-appearance button.appearance-primary {
   color:var(--appearance-action-ink); background:var(--appearance-action); padding-inline:1.2rem;

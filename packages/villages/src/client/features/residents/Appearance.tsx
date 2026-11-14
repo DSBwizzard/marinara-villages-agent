@@ -523,64 +523,67 @@ export function Appearance({
                   onAdd={(files) => addSprites(picker, files)}
                 />
               ) : null}
-              {!selectedGroup ? (
-                <p>No sprites added.</p>
-              ) : (
-                <div className="appearance-layout">
-                  <div className="appearance-preview">
-                    <h3>Expressions</h3>
-                    <div className="appearance-expressions" role="group" aria-label="Expressions">
-                      {[...groups].map(([mood, members]) => {
-                        const preferred = members.find((row) => row.id === choice.defaultExpressionId);
-                        const row = preferred ?? members[0]!;
-                        return (
-                          <button
-                            key={mood}
-                            type="button"
-                            aria-pressed={mood === selectedGroup[0]}
-                            onClick={() => select(row.id)}
-                          >
-                            <span className="appearance-expression-image">
-                              <img src={image(row.front ?? row.side) || undefined} alt="" />
-                            </span>
-                            <span>{mood}</span>
-                            {preferred ? <small>Default</small> : null}
-                          </button>
-                        );
-                      })}
+              <div className="appearance-sprite-body">
+                {!selectedGroup ? (
+                  <p>No sprites added.</p>
+                ) : (
+                  <div className="appearance-layout">
+                    <div className="appearance-preview">
+                      <h3>Expressions</h3>
+                      <div className="appearance-expressions" role="group" aria-label="Expressions">
+                        {[...groups].map(([mood, members]) => {
+                          const preferred = members.find((row) => row.id === choice.defaultExpressionId);
+                          const row = preferred ?? members[0]!;
+                          return (
+                            <button
+                              key={mood}
+                              type="button"
+                              aria-pressed={mood === selectedGroup[0]}
+                              onClick={() => select(row.id)}
+                            >
+                              <span className="appearance-expression-image">
+                                <img src={image(row.front ?? row.side) || undefined} alt="" />
+                              </span>
+                              <span>{mood}</span>
+                              {preferred ? <small>Default</small> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="appearance-preview">
+                      <div className="appearance-expression-fields">
+                        <h3>{selectedGroup[0]}</h3>
+                        <button
+                          type="button"
+                          disabled={locked || selectedGroup[1].some((row) => row.id === choice.defaultExpressionId)}
+                          onClick={() =>
+                            edit({
+                              ...choice,
+                              defaultExpressionId: (selectedGroup[1].find((row) => row.front) ?? selectedGroup[1][0]!)
+                                .id,
+                            })
+                          }
+                        >
+                          Set as default
+                        </button>
+                      </div>
+                      <div className="appearance-views">
+                        {views.map((view) => (
+                          <SpriteGallery
+                            key={selectedGroup[0] + ":" + view}
+                            view={view}
+                            rows={selectedGroup[1].filter((row) => row[view])}
+                            locked={locked}
+                            image={image}
+                            onRemove={(row) => removeSprite(row, view)}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="appearance-preview">
-                    <div className="appearance-expression-fields">
-                      <h3>{selectedGroup[0]}</h3>
-                      <button
-                        type="button"
-                        disabled={locked || selectedGroup[1].some((row) => row.id === choice.defaultExpressionId)}
-                        onClick={() =>
-                          edit({
-                            ...choice,
-                            defaultExpressionId: (selectedGroup[1].find((row) => row.front) ?? selectedGroup[1][0]!).id,
-                          })
-                        }
-                      >
-                        Set as default
-                      </button>
-                    </div>
-                    <div className="appearance-views">
-                      {views.map((view) => (
-                        <SpriteGallery
-                          key={selectedGroup[0] + ":" + view}
-                          view={view}
-                          rows={selectedGroup[1].filter((row) => row[view])}
-                          locked={locked}
-                          image={image}
-                          onRemove={(row) => removeSprite(row, view)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </>
           ) : null}
           {!choice.useSprites ? (

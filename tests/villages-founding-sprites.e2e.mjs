@@ -223,6 +223,13 @@ await withBrowser(browser, async () => {
       assert.equal(writes[0].expressions.length, 4);
       assert.equal(writes[0].expressions[0].front.artworkId, "old");
       assert.equal(writes[0].expressions[3].side.filename, "happy-side.png");
+      if (viewport.width > 600) {
+        const removeButton = pane.getByRole("button", { name: "Remove Happy_01 from Front" });
+        await removeButton.scrollIntoViewIfNeeded();
+        const remove = await removeButton.boundingBox();
+        const footer = await pane.locator(".appearance-footer").boundingBox();
+        assert.ok(remove && footer && remove.y + remove.height <= footer.y, "Save should leave Remove visible");
+      }
       await page.screenshot({ path: ".build-tmp/founding-sprites/appearance-" + viewport.width + ".png" });
       await page.close();
     });
