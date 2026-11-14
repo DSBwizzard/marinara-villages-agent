@@ -129,6 +129,7 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
     ? "The System connection is unavailable. Choose another model or review it in Engine."
     : rawSetupProblem;
   const [contextView, setContextView] = useState("");
+  const [settingEditorOpen, setSettingEditorOpen] = useState(false);
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [settingSuggestionsOpen, setSettingSuggestionsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
@@ -160,9 +161,11 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
   const settingTitle = useRef<HTMLHeadingElement>(null);
+  const editSettingButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0 });
     bodyRef.current?.scrollTo({ top: 0 });
+    if (setupStep !== 0) setSettingEditorOpen(false);
     setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
   }, [setupStep, screen]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
@@ -208,6 +211,10 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
     Object.values(CONNECTION_SETUP_PROBLEMS).includes(setupProblem);
   useEffect(() => {
     if (focusedValidationAttempt.current === validationAttempt) return;
+    if (setupStep === 0 && inlineProblem && !settingEditorOpen) {
+      setSettingEditorOpen(true);
+      return;
+    }
     focusedValidationAttempt.current = validationAttempt;
     if (!setupProblem || !inlineProblem) return;
     const frame = requestAnimationFrame(() => {
@@ -223,8 +230,13 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
       target?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [setupProblem, inlineProblem, backgroundError, validationAttempt]);
+  }, [setupProblem, inlineProblem, backgroundError, validationAttempt, setupStep, settingEditorOpen]);
   if (screen === "setup") {
+    const openSettingEditor = (view?: "Connections") => {
+      if (view) setContextView(view);
+      setSettingEditorOpen(true);
+      requestAnimationFrame(() => settingTitle.current?.focus());
+    };
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
       id,
       name: catalog?.find((person) => person.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
@@ -376,6 +388,9 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
       <button
         type="button"
         className="villages-forging-primary villages-founding-next-reply"
+        data-setting-incomplete={
+          (setupStep === 0 && (!setupName.trim() || !setupLocationName.trim() || !setupSetting.trim())) || undefined
+        }
         disabled={
           busy ||
           spriteBusy ||
@@ -608,19 +623,33 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
               </section>
             </div>
           </div>
-          <div hidden={setupStep !== 0} className="villages-place-panels">
+          <div hidden={setupStep !== 0} className="villages-place-panels" data-editing={settingEditorOpen || undefined}>
             {setupStep === 0 ? (
               <FoundingSettingScene
                 controller={controller}
-                onConnections={() => setContextView("Connections")}
-                onEditSetting={() => settingTitle.current?.focus()}
+                onConnections={() => openSettingEditor("Connections")}
+                onEditSetting={() => openSettingEditor()}
+                editSettingButton={editSettingButton}
                 next={nextReply}
               />
             ) : null}
             <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
-              <h2 tabIndex={-1} ref={settingTitle}>
-                Your setting
-              </h2>
+              <div className="villages-setting-heading">
+                <h2 tabIndex={-1} ref={settingTitle}>
+                  Your setting
+                </h2>
+                <button
+                  type="button"
+                  className="villages-setting-done villages-forging-primary"
+                  onClick={() => {
+                    setSettingEditorOpen(false);
+                    bodyRef.current?.scrollTo({ top: 0 });
+                    requestAnimationFrame(() => editSettingButton.current?.focus());
+                  }}
+                >
+                  Done
+                </button>
+              </div>
               <div className="villages-setting-instruction">
                 {suggestionCount > 0 ? (
                   <button
@@ -859,8 +888,8 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
                     <button
                       type="button"
                       onClick={() => {
-                        setContextView("Connections");
                         gotoSetupStep(0);
+                        openSettingEditor("Connections");
                       }}
                     >
                       Check Model Connections

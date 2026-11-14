@@ -78,6 +78,12 @@ export async function verifyFoundingLayout(group) {
         });
         await mockEngineLookups(context);
         const page = await context.newPage();
+        if (view.width === 390 && view.height === 844)
+          await page.addInitScript(() => {
+            const viewport = new EventTarget();
+            Object.assign(viewport, { height: innerHeight, width: innerWidth, offsetTop: 0 });
+            Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+          });
         let payload,
           suggestions = 0,
           settingReceipt,
@@ -384,18 +390,59 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mari-setting-" + view.width + ".png"),
           });
-        await button("Let’s meet the villagers").click();
-        await expect(root.getByLabel("Village Name", { exact: true })).toBeFocused();
+        const phone = view.width <= 727;
+        const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
+        const settingPanel = root.getByRole("region", { name: "Your setting" });
+        const stage = root.locator(".villages-setting-stage");
+        const openSetting = async () => {
+          if (phone) await scene.getByRole("button", { name: "Edit setting", exact: true }).click();
+        };
+        const returnToMari = async () => {
+          if (phone) await settingPanel.getByRole("button", { name: "Done", exact: true }).click();
+        };
+        if (phone) {
+          await expect(settingPanel).toBeHidden();
+          await expect(button("Let’s meet the villagers")).toBeHidden();
+          await expect(button("Draft with Mari")).toBeInViewport({ ratio: 1 });
+          await expect(button("Edit setting")).toBeInViewport({ ratio: 1 });
+          assert.ok((await stage.locator("img").boundingBox()).width >= 165, "Mari has a close mobile framing");
+          if (view.width === 390 && view.height === 844) {
+            const brief = scene.getByRole("textbox");
+            await brief.focus();
+            await page.evaluate(() => {
+              window.visualViewport.height = innerHeight - 300;
+              window.visualViewport.dispatchEvent(new Event("resize"));
+            });
+            await expect(root).toHaveAttribute("data-founding-keyboard", "true");
+            const composer = await brief.boundingBox();
+            assert.ok(composer.y + composer.height < view.height - 300, "Mari’s reply field clears the keyboard");
+            await brief.blur();
+            await page.evaluate(() => {
+              window.visualViewport.height = innerHeight;
+              window.visualViewport.dispatchEvent(new Event("resize"));
+            });
+            await expect(root).not.toHaveAttribute("data-founding-keyboard", "true");
+          }
+          await openSetting();
+          await expect(scene).toBeHidden();
+          await expect(settingPanel.getByRole("heading")).toBeFocused();
+        } else {
+          await button("Let’s meet the villagers").click();
+          await expect(root.getByLabel("Village Name", { exact: true })).toBeFocused();
+        }
         await root.getByLabel("Village Name", { exact: true }).fill("Coastal Community");
-        await button("Let’s meet the villagers").click();
-        await expect(root.getByLabel("Location name", { exact: true })).toBeFocused();
+        if (!phone) {
+          await button("Let’s meet the villagers").click();
+          await expect(root.getByLabel("Location name", { exact: true })).toBeFocused();
+        }
         if (view.width === 1280 || view.width === 390) {
-          const stage = root.locator(".villages-setting-stage");
-          const settingPanel = root.getByRole("region", { name: "Your setting" });
+          await returnToMari();
+          if (phone) await expect(button("Edit setting")).toBeFocused();
           const originalStage = await stage.boundingBox();
           await root.getByLabel("Tell Mari about your village").fill("Our village is a converted cargo ship.");
           await button("Draft with Mari").click();
           await expect.poll(() => settingCalls).toBe(1);
+          await openSetting();
           await root.getByLabel("Location name", { exact: true }).fill("A place I chose while Mari drafted");
           settingReady = true;
           await expect(root.getByLabel("Location description", { exact: true })).toHaveValue(
@@ -411,16 +458,20 @@ export async function verifyFoundingLayout(group) {
           await suggestion("Main Deck").getByRole("button", { name: "Use suggestion" }).click();
           await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
           assert.equal(settingCalls, 1, "One explicit action dispatches one request");
-          await root.getByLabel("Tell Mari about your village").fill("Our village is inside a dumpster.");
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
+          await returnToMari();
+          const draftedStageHeight = (await stage.boundingBox()).height;
+          await root.getByLabel("Tell Mari about your village").fill("Our village is inside a dumpster.");
           await button("Draft again with Mari").click();
           await expect.poll(() => settingCalls).toBe(2);
-          await expect(button("Review Mari’s suggestions")).toContainText("3");
+          await expect(button("Draft again with Mari")).toBeEnabled();
           assert.equal(
             (await stage.boundingBox()).height,
-            originalStage.height,
-            "Another draft keeps Mari’s stage at its original size",
+            phone ? draftedStageHeight : originalStage.height,
+            "Another draft keeps Mari’s stage at the same size",
           );
+          await openSetting();
+          await expect(button("Review Mari’s suggestions")).toContainText("3");
           assert.ok(
             Math.abs((await settingPanel.boundingBox()).height - originalEditorHeight) <= 1,
             "Long alternatives occupy a single review control",
@@ -436,6 +487,10 @@ export async function verifyFoundingLayout(group) {
         await root
           .getByLabel("Location description", { exact: true })
           .fill("An oceanfront expanse between the cliffs and river.");
+        if (phone && process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-setting-editor-" + view.width + ".png"),
+          });
         await button("World rules").click();
         await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
@@ -466,6 +521,7 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(() => connectionReadHeld).toBe(true);
         await expect(systemPicker.getByRole("status")).toHaveText("Checking model connections…");
         await page.keyboard.press("Escape");
+        await returnToMari();
         await button("Let’s meet the villagers").click();
         await expect(root).toHaveAttribute("data-step", "0");
         await expect(models.getByRole("status")).toBeFocused();
@@ -511,6 +567,7 @@ export async function verifyFoundingLayout(group) {
           "Watercolor with muted teal and warm amber.",
         );
         await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
+        await returnToMari();
         await bounds("setting");
         await button("Let’s meet the villagers").click();
         await expect(root).toHaveAttribute("data-step", "1");
@@ -803,6 +860,7 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-step", "0");
         await expect(models).toBeVisible();
         await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Old Harbour");
+        await returnToMari();
         await button("Let’s meet the villagers").click();
         await button("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");

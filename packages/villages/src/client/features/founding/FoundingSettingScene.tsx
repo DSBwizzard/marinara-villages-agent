@@ -1,5 +1,5 @@
 import { FOUNDING_SETTING_BRIEF_LIMIT, type FoundingSetting } from "../../../shared/contracts/founding.js";
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 import { FoundingField } from "./FoundingField.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
@@ -10,11 +10,13 @@ export function FoundingSettingScene({
   controller,
   onConnections,
   onEditSetting,
+  editSettingButton,
   next,
 }: {
   controller: FoundingScreenController;
   onConnections(): void;
   onEditSetting(): void;
+  editSettingButton: Ref<HTMLButtonElement>;
   next: ReactNode;
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
@@ -37,8 +39,8 @@ export function FoundingSettingScene({
           {setupSuggestionsBusy && waitingForMari
             ? "I’m putting those details together. You can keep editing your setting."
             : drafted
-              ? "How does that feel? Tweak your setting, then we’ll meet the people who live there."
-              : "Where do your people call home? Tell me what it’s like there. That’ll help us make places that fit when we get to your map."}
+              ? "How does that feel? Look over the setting before we meet your villagers."
+              : "Where do your people call home? Tell me a little about it so I can draft your setting."}
         </p>
         <form
           onSubmit={(event) => {
@@ -92,11 +94,14 @@ export function FoundingSettingScene({
                 Model Connections
               </button>
             ) : null}
-            {drafted && !setupSuggestionsBusy ? (
-              <button type="button" className="villages-setting-edit-link" onClick={onEditSetting}>
-                Edit setting
-              </button>
-            ) : null}
+            <button
+              type="button"
+              ref={editSettingButton}
+              className="villages-setting-edit-link"
+              onClick={onEditSetting}
+            >
+              Edit setting
+            </button>
             {waitingForMari && !setupSuggestionsBusy ? (
               <button
                 type="button"
