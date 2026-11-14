@@ -51,6 +51,11 @@ export function WeeklyAgenda({
     })
       .then((result) => {
         if (controller.signal.aborted) return;
+        if (!Array.isArray(result?.days) || !result.days.length) {
+          setWeek(null);
+          setError("Could not read the Agenda.");
+          return;
+        }
         setWeek(result);
         setError("");
       })
