@@ -273,14 +273,13 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             const venue = sceneVenues.find((entry) => entry.id === room.placeId);
             return (venue?.zones ?? [])
               .filter((zone) => {
-                if (zone.id === room.zoneId) return true;
+                if (zone.id === room.zoneId) return false;
                 if (zone.closed) return false;
-                return zone.accessView?.decision.allowed ?? false;
+                return zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false;
               })
               .map((zone) => ({
                 id: zone.id,
                 label: sceneZoneLabel(zone) + (zone.accessView?.decision.reason === "invitation" ? " (invited)" : ""),
-                closed: zone.closed,
               }));
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}

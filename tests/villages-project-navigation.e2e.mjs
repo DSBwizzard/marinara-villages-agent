@@ -157,9 +157,11 @@ async function checkMapPlacement(width, activeScene = false) {
     assert(await composer.evaluate((node) => node === window.retainedComposer), "the original Scene stays mounted");
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-    await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator('option[value="work"]')).toHaveText(
-      "Captured workshop",
-    );
+    await expect(
+      page
+        .getByRole("dialog", { name: "Move to Zone" })
+        .getByRole("button", { name: "Captured workshop", exact: true }),
+    ).toBeVisible();
   }
   assert.deepEqual(session, originalSession, "placement and cancellation preserve the Scene's captured state");
   assert.deepEqual(snapshot.sceneVenue, originalVenue);

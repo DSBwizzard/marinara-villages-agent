@@ -218,9 +218,9 @@ await withBrowser(browser, async () => {
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     await expect(
       page
-        .getByRole("combobox", { name: "Move to Zone" })
-        .locator(`option[value="${area === "outside" ? "workroom" : "exterior"}"]`),
-    ).toHaveText(area === "outside" ? "Interior entrance" : "Entrance");
+        .getByRole("dialog", { name: "Move to Zone" })
+        .getByRole("button", { name: area === "outside" ? "Workroom" : "Entrance", exact: true }),
+    ).toBeVisible();
     scene.status = "closed";
     await page.evaluate(() => window.featureController.setRoom({ ...window.featureController.room, status: "closed" }));
     await expect(backdrop).toHaveAttribute("src", old);

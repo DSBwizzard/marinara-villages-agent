@@ -1,8 +1,12 @@
 import { observedZone } from "./zone-observation.js";
 import type { VenueScene } from "../models/scene-model.js";
-import { sceneMoveAccompanying } from "./venue-contact.js";
+import { contactPath, liveSceneMovePermission, sceneMoveAccompanying } from "./venue-contact.js";
+import { sceneZoneOccupants } from "./scene-attendance.js";
+import { findLocation } from "./places.js";
+import { VillagesRequestError } from "./errors.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
+import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import {
   engineSpriteUrl,
@@ -43,7 +47,7 @@ import {
   VILLAGES_GALLERY_FOLDER_NAME,
 } from "./prompt-preset.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
-import { projectVenueAccess, projectZoneAccess } from "./venue-access.js";
+import { evaluateZoneAccess, projectVenueAccess, projectZoneAccess } from "./venue-access.js";
 import { villageVenueLimit } from "./venue-capacity.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
@@ -167,6 +171,7 @@ export function villageSettings(
   residenceAccess: VenueScene | null,
   accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
   now = new Date(),
+  liveSceneWorld?: VillageState,
 ): VillageSettingsView {
   return {
     foundingLore: [
@@ -244,14 +249,70 @@ export function villageSettings(
               ),
             };
       const authoring = !isVillageFounded(village);
+      const liveVenue = liveSceneWorld && findLocation(liveSceneWorld, venue.id);
       const zones = venueZones(venue).map((originalZone) => {
         const visible = observedZone(originalZone, authoring);
+        const scene = residenceAccess?.placeId === venue.id ? residenceAccess : null;
+        const accompanying = scene ? sceneMoveAccompanying(scene, venue, originalZone, village) : undefined;
+        const closed = zoneClosed(village, venue, originalZone);
+        const access = {
+          ...context,
+          ...(scene
+            ? {
+                positions: {
+                  ...context?.positions,
+                  ...Object.fromEntries(
+                    (accompanying ?? [])
+                      .filter((entry) => !scene.departedIds?.includes(entry.characterId))
+                      .map((entry) => [entry.characterId, entry.zoneId]),
+                  ),
+                },
+              }
+            : {}),
+          sceneId: context?.sceneId ?? "next-visit-preview",
+          accepting: true,
+          unavailable: closed,
+          environment: village.narrative,
+        };
+        const accessView = projectZoneAccess(venue, originalZone, "player", access);
+        const movement = scene && { ...scene, accompanying };
+        let reachable = false;
+        if (
+          liveSceneWorld &&
+          liveVenue &&
+          venue.access &&
+          scene?.status === "active" &&
+          movement &&
+          originalZone.id !== scene.zoneId &&
+          accessView.decision.allowed &&
+          !closed &&
+          contactPath(village, venue, movement.zoneId, originalZone.id, "player", movement, context?.at) &&
+          sceneZoneOccupants(movement, venue, originalZone.id).filter(
+            (person) => !person.characterId.startsWith("npc:"),
+          ).length <= MAX_ZONE_VILLAGERS
+        ) {
+          try {
+            liveSceneMovePermission(
+              liveSceneWorld,
+              liveVenue,
+              originalZone.id,
+              scene,
+              accompanying,
+              context?.at,
+              evaluateZoneAccess(venue, originalZone, "player", access).permissionId,
+            );
+            reachable = true;
+          } catch (error) {
+            if (!(error instanceof VillagesRequestError)) throw error;
+          }
+        }
         const present =
           residenceAccess?.placeId === venue.id &&
           residenceAccess?.zoneId === originalZone.id &&
           originalZone.observed?.context === zonePictureContext(village, venue, originalZone, previewAt.toISOString());
         const zone = {
           ...visible,
+          name: reachable ? originalZone.name : visible.name,
           observed: undefined,
           picture: undefined,
           pictureReference: originalZone.picture?.reference,
@@ -289,29 +350,11 @@ export function villageSettings(
             : undefined,
           access: undefined,
           controllerIds: undefined,
-          accessView: projectZoneAccess(venue, originalZone, "player", {
-            ...context,
-            ...(residenceAccess?.placeId === venue.id
-              ? {
-                  positions: {
-                    ...context?.positions,
-                    ...Object.fromEntries(
-                      (sceneMoveAccompanying(residenceAccess, venue, originalZone, village) ?? [])
-                        .filter((entry) => !residenceAccess.departedIds?.includes(entry.characterId))
-                        .map((entry) => [entry.characterId, entry.zoneId]),
-                    ),
-                  },
-                }
-              : {}),
-            sceneId: context?.sceneId ?? "next-visit-preview",
-            accepting: true,
-            unavailable: zoneClosed(village, venue, originalZone),
-            environment: village.narrative,
-          }),
+          accessView: liveSceneWorld ? { ...accessView, reachable } : accessView,
         };
         return {
           ...zone,
-          closed: zoneClosed(village, venue, zone),
+          closed,
         };
       });
       const entrance = zones.find((zone) => zone.kind === "exterior");
