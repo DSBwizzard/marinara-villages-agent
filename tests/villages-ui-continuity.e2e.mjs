@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { emptyAgendaWeek } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const bundle = await build({
   stdin: {
@@ -140,6 +141,7 @@ await withBrowser(browser, async () => {
     );
     await page.route("**/api/villages**", async (route) => {
       const url = new URL(route.request().url());
+      const readsWeek = url.pathname.endsWith("/agendas") && url.searchParams.has("characterId");
       reads.push(url.pathname);
       let json;
       if (url.pathname.endsWith("/follow")) {
@@ -214,12 +216,13 @@ await withBrowser(browser, async () => {
           total: 1,
           next: null,
         };
-      } else if (url.pathname.endsWith("/agendas") || url.pathname.endsWith("/influence"))
+      } else if (readsWeek) json = emptyAgendaWeek(url.searchParams.get("inspect") === "true");
+      else if (url.pathname.endsWith("/agendas") || url.pathname.endsWith("/influence"))
         json = { villagers: [{ characterId: "mara", name: agendaName }] };
       else if (url.pathname.endsWith("/signature")) json = { status: "idle", attempt: 0 };
       else if (url.pathname.endsWith("/rooms/active")) json = { session: { id: "saved-scene", status: "active" } };
       else throw Error("Unexpected read " + url.pathname);
-      const pending = hold?.path === url.pathname ? hold : null;
+      const pending = hold?.path === url.pathname && !readsWeek ? hold : null;
       if (pending) {
         pending.started++;
         await pending.gate.promise;

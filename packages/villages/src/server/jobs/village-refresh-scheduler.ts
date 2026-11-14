@@ -68,6 +68,10 @@ export function villageSchedulerDelayMs(
     const completesAt = Date.parse(residence.completesAt ?? "");
     if (Number.isFinite(completesAt) && completesAt > now.getTime()) deadlines.push(completesAt);
   }
+  for (const project of village?.projects ?? []) {
+    const completesAt = Date.parse(project.lifecycle?.workOrder?.completesAt ?? "");
+    if (project.status === "working" && completesAt > now.getTime()) deadlines.push(completesAt);
+  }
   const next = Math.min(...deadlines);
   const delay = next - now.getTime() + REFRESH_SETTLE_MS;
   if (!Number.isFinite(delay)) return REFRESH_MAX_DELAY_MS;

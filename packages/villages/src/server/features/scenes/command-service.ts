@@ -1,4 +1,5 @@
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
+import { recordSceneFollowup } from "../../domain/rules/activity-followup.js";
 import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
@@ -431,14 +432,9 @@ export function createSceneCommands({
     });
   }
   function enterVenue(placeId: string, requestedZoneId?: string, expectedSceneRevision?: number): Promise<VenueScene> {
-    return withSceneActivation(() => enterVenueInActivation(placeId, requestedZoneId, expectedSceneRevision));
-  }
-  function enterVenueInActivation(
-    placeId: string,
-    requestedZoneId?: string,
-    expectedSceneRevision?: number,
-  ): Promise<VenueScene> {
-    return serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision));
+    return withSceneActivation(() =>
+      serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision)),
+    );
   }
   async function enterVenueOnce(
     placeId: string,
@@ -1036,8 +1032,10 @@ export function createSceneCommands({
       await mutateVillageState(
         (state) => {
           if (closed.openingGatheringId) completeOpeningGathering(state, closed);
-          if (countsAsMeeting && state.seed === closed.villageSeed && closed.endedAt)
+          if (countsAsMeeting && state.seed === closed.villageSeed && closed.endedAt) {
             recordClosedRelationshipScene(state, closed);
+            recordSceneFollowup(state, closed);
+          }
         },
         { memories: true },
       );

@@ -1,4 +1,4 @@
-// Test cases: native-plans/admission, native-plans/relationship-priority, native-plans/attendance, native-plans/epochs, native-plans/stale, native-plans/availability, native-plans/project-priority, native-plans/round-trip, native-plans/continuity, native-plans/planner-publication
+// Test cases: native-plans/admission, native-plans/relationship-priority, native-plans/attendance, native-plans/follow-through, native-plans/epochs, native-plans/stale, native-plans/availability, native-plans/project-priority, native-plans/round-trip, native-plans/continuity, native-plans/planner-publication
 import assert from "node:assert/strict";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
@@ -22,6 +22,7 @@ import { villagePresence } from "../packages/villages/src/server/domain/rules/vi
 import {
   acceptSocialPlan,
   completeSocialPlan,
+  recordSocialAttendance,
   reconcileSocialPlans,
   socialContinuationValid,
   socialPlanCandidates,
@@ -106,6 +107,27 @@ function fixture() {
     cold,
   };
 }
+
+await runCase("native-plans/follow-through", () => {
+  const f = fixture();
+  const plan = { ...f.plan, followThrough: true as const };
+  acceptSocialPlan(f.state, [plan], plan.id, now);
+  f.state.backgroundPace = "off";
+  projectAgendaReservations(f.state);
+  recordSocialAttendance(f.state, f.during, new Set(["a"]));
+  assert.equal(f.state.episodes.records.length, 0, "a resident in a conflicting Scene cannot attend");
+  recordSocialAttendance(f.state, f.during, new Set());
+  recordSocialAttendance(f.state, f.during, new Set());
+  const state = f.cold();
+  assert.equal(state.residentPlans.plans[0]?.status, "completed");
+  assert.equal(state.episodes.records.length, 1);
+  assert.deepEqual(state.episodes.records[0]?.commandReceipts[0]?.witnesses, ["a", "b"]);
+  assert.equal(state.continuity.records.length, 1);
+  assert.deepEqual(
+    Object.values(state.continuity.records[0]!.heads).map(({ holder }) => holder),
+    [continuityActor(state, "a"), continuityActor(state, "b")],
+  );
+});
 
 await runCase("native-plans/admission", () => {
   const f = fixture();
@@ -476,14 +498,27 @@ await runCase("native-plans/planner-publication", async () => {
     await service.reconcile(now);
     assert.equal(queued.length, 1);
     const input = queued[0].input,
-      proposal = { proposal: { planId: f.plan.id }, responseDigest: memoryHash("saved-native-plan") };
+      plan = input.context.plans.find((row: typeof f.plan) => row.kind === "meeting"),
+      proposal = {
+        proposal: {
+          planId: plan.id,
+          encounter: {
+            opportunityId: input.context.narration.opportunity.id,
+            lines: [
+              { speakerId: "a", text: "Shall we meet in the common space after this?" },
+              { speakerId: "b", text: "Yes, I will meet you there." },
+            ],
+          },
+        },
+        responseDigest: memoryHash("saved-native-plan"),
+      };
     loseAcknowledgement = true;
     await assert.rejects(
       repository().mutateAuthority((state) => service.handler.apply!(state, input, proposal), { memories: true }),
       /lost root acknowledgement/,
     );
     const cold = await repository().readAuthority({ memories: true });
-    assert.equal(cold.residentPlans.plans[0].id, f.plan.id);
+    assert.equal(cold.residentPlans.plans[0].id, plan.id);
     assert(cold.processedActionIds.includes(input.context.narration.opportunity.id));
     assert.equal(
       Object.hasOwn(cold, "socialOutbox"),

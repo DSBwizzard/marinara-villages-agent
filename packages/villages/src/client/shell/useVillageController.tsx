@@ -156,6 +156,7 @@ import {
   usePendingWorkPolling,
   useSnapshotReference,
   useVillagePresence,
+  useVillageTransition,
   useVillageSnapshot,
 } from "../shared/data-controller.js";
 import type { MapFrameShape, MapPin, MenuPage } from "../shared/types.js";
@@ -344,8 +345,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useRemovedVenueNavigation({ closeExploration, openPlaceId, snapshot });
 
   const [menuPage, setMenuPage] = useState<MenuPage>("index");
-  const advancedOpen = screen === "menu" && menuPage === "advanced";
-  const connections = useAgentConnections(snapshot?.isFounded === true || advancedOpen, advancedOpen);
+  const generalOpen = screen === "menu" && (menuPage === "index" || menuPage === "general");
+  const connections = useAgentConnections(snapshot?.isFounded === true || generalOpen, generalOpen);
 
   useVenueRequestFocus({ element, focusedRequestId, menuPage, screen });
 
@@ -554,6 +555,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const presenceSession = useRef("");
 
   useVillagePresence({ visible, presenceSession, beginSnapshotRead, snapshot });
+  useVillageTransition(visible && !!snapshot?.isFounded, snapshot?.village, loadSnapshot);
 
   const backgroundPending =
     snapshot?.foundingPreparation?.status === "pending" ||

@@ -7,3 +7,11 @@ export const API_PATH = "/api/villages";
 export const DESKTOP_PHOTO_SCALE = 0.7;
 
 export const VILLAGES_IMAGE_CONNECTION_DISABLED = "__villages_image_disabled__";
+
+export const CONNECTION_SETUP_PROBLEMS = {
+  reading: "Checking model connections…",
+  saving: "Model change pending",
+  failed: "Check connections before continuing.",
+  required: "Choose both System and GM connections before continuing.",
+  missing: "Choose available language connections for System and GM.",
+};

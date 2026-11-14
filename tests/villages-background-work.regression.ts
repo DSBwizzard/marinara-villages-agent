@@ -33,6 +33,8 @@ import {
 import { residentPlanningInput } from "./fixtures/resident-planning.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
+import { villagesLanguageModels } from "../packages/villages/src/server/adapters/models/language-models.js";
+import { readUsageLedger } from "../packages/villages/src/server/adapters/models/usage-ledger.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { completionFailure, WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 
@@ -45,6 +47,8 @@ let claimGate: (() => void) | null = null;
 let claimWrites = 0;
 let holdPendingTiming = false;
 let releasePendingTiming: (() => void) | null = null;
+let holdUsageClaim = false;
+let releaseUsageClaim: (() => void) | null = null;
 let holdRequestCount = false;
 let releaseRequestCount: (() => void) | null = null;
 let holdAutomaticGeneration = false;
@@ -65,12 +69,24 @@ const documents = {
       });
     }
     if (rows.has(input.id)) throw new Error("duplicate document");
+    if (holdUsageClaim && input.id === "villages-ai-usage") {
+      holdUsageClaim = false;
+      await new Promise<void>((resolve) => {
+        releaseUsageClaim = resolve;
+      });
+    }
     const row = { ...structuredClone(input), revision: 1 };
     rows.set(input.id, row);
     return row;
   },
   async update(input: any) {
     if (writesFail) throw new Error("disk unavailable");
+    if (holdUsageClaim && input.id === "villages-ai-usage") {
+      holdUsageClaim = false;
+      await new Promise<void>((resolve) => {
+        releaseUsageClaim = resolve;
+      });
+    }
     if (
       holdRequestCount &&
       input.id.startsWith("villages-background-") &&
@@ -170,7 +186,7 @@ const release = configureVillagesRuntime({
 let stop: () => void;
 let now = 0;
 const effects: string[] = [];
-registerBackgroundHandler("agenda", {
+const agendaHandler: Parameters<typeof registerBackgroundHandler>[1] = {
   async generate(input) {
     if (
       holdAutomaticGeneration &&
@@ -206,7 +222,8 @@ registerBackgroundHandler("agenda", {
   async afterFailure(input) {
     failedEffects.push(input.subject);
   },
-});
+};
+registerBackgroundHandler("agenda", agendaHandler);
 const work = (subject: string, steps: string[], finite = true): BackgroundInput => ({
   kind: "agenda",
   subjectId: subject,
@@ -372,6 +389,32 @@ async function main() {
   ])
     assert.equal(connectionFailureKind(new Error(message), true), "request", message);
   try {
+    await reset();
+    registerBackgroundHandler("agenda", {
+      async generate() {
+        const tracked = await villagesLanguageModels().resolveForRequest({ connectionId: model.connectionId });
+        await completeWithRoom(tracked, [{ role: "user", content: "guarded-live" }], 100, { checkpointId: "guarded" });
+        return {};
+      },
+      valid: () => true,
+      apply() {},
+    });
+    await villageBackgroundPresence("guarded-live", true);
+    const before = (await readUsageLedger(false)).totals.requests;
+    holdUsageClaim = true;
+    await queueBackgroundJob(work("a", ["unused"], false));
+    await until(() => !!releaseUsageClaim);
+    await villageBackgroundPresence("guarded-live", false);
+    releaseUsageClaim!();
+    await settleBackgroundWork();
+    assert.equal(calls.length, 0);
+    assert.equal((await summary("a")).status, "paused");
+    assert.equal((await summary("a")).requests, 0);
+    assert.equal((await readUsageLedger(false)).totals.requests, before);
+    await villageBackgroundPresence("guarded-live", true);
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["guarded-live"]);
+    registerBackgroundHandler("agenda", agendaHandler);
     await reset();
     responsePlans.set("automatic", [
       { content: "", finishReason: "stop" },

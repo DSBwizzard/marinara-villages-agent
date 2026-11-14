@@ -37,21 +37,24 @@ export type VillageBeatRegister = "speech" | "narration";
  * it can be offered for. A connection is an image connection because it was
  * set up as one, not because of its model name.
  */
-type VillageConnectionCategory = "language" | "image_generation" | "video_generation";
+type VillageConnectionCategory = "language" | "image_generation";
 
 export type VillageConnectionOption = {
   id: string;
   name: string;
   category: VillageConnectionCategory;
-  defaultForAgents: boolean;
+  detail: string;
+  needsReview: boolean;
 };
 
 /** One row of the Engine's own connection list, exactly as it arrives — untrusted. */
 export type EngineConnectionRow = {
   id?: unknown;
   name?: unknown;
+  model?: unknown;
   provider?: unknown;
-  defaultForAgents?: unknown;
+  imageService?: unknown;
+  profileImportReviewRequired?: unknown;
 };
 
 /**

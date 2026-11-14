@@ -40,6 +40,7 @@ export interface WorldCoordinationPorts {
   mutateMemoryAuthority: (update: (state: VillageState) => void) => Promise<void>;
   reconcileResidentPlanning?: (now: Date) => Promise<void>;
   reconcileNarrative?: (now: Date) => Promise<void>;
+  settleResidentAttendance?: (now: Date) => Promise<void>;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
@@ -59,6 +60,7 @@ export function createWorldCoordination({
   mutateMemoryAuthority,
   reconcileResidentPlanning,
   reconcileNarrative,
+  settleResidentAttendance,
   readVillageState,
   mutateVillageState,
   buildVillageSnapshot,
@@ -173,6 +175,7 @@ export function createWorldCoordination({
     });
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
+    await settleResidentAttendance?.(now);
     // Founding owns its optional requests; ordinary pulses must not retry them.
     if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
       return buildVillageSnapshot(now);

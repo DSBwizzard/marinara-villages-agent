@@ -167,7 +167,14 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
   }
 
   async function trackUsage<T>(
-    meta: { connectionId?: string; model?: string; purpose?: UsagePurpose; stage?: string; capability?: "decisions" },
+    meta: {
+      connectionId?: string;
+      model?: string;
+      purpose?: UsagePurpose;
+      stage?: string;
+      capability?: "decisions";
+      refusedBeforeDispatch?: () => boolean;
+    },
     work: (onLateResult: (result: T) => Promise<void>) => Promise<T>,
   ): Promise<T> {
     const id = randomUUID(),
@@ -244,7 +251,14 @@ export function createUsageLedger(ports: UsageLedgerPorts) {
       return result;
     } catch (error) {
       if (request)
-        await finish(request, "unknown").catch(() => {
+        await (
+          meta.refusedBeforeDispatch?.()
+            ? write((ledger) => {
+                const index = ledger.requests.findIndex((row) => row.id === request!.id && row.status === "running");
+                if (index >= 0) tally(ledger, ledger.requests.splice(index, 1)[0]!, true, -1);
+              })
+            : finish(request, "unknown")
+        ).catch(() => {
           lastFailure = "Usage accounting is incomplete";
         });
       throw error;

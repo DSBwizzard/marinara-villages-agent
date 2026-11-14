@@ -1141,12 +1141,14 @@ export function RoomPanel({
             const isSpeaker = villager.characterId === speaker?.characterId;
             const mobileSlot = mobileLayout[villager.characterId];
             const slot = stageLayout[villager.characterId];
-            const wanted = stagingState[villager.characterId]?.expression ?? "";
             const facing = (mobile ? mobileSlot?.facing : slot?.facing) ?? "front";
+            const staged = stagingState[villager.characterId];
             const selected = selectSpriteImage(
               (sprite?.images ?? []).filter((image) => !failedSpriteUrls.has(image.url)),
-              wanted,
+              staged?.expression ?? "",
               facing,
+              staged?.sideExpression,
+              sprite?.named,
             );
             return (
               <div

@@ -33,7 +33,8 @@ import { PERSONAL_LETTER_INSTRUCTION } from "./personal-letter.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
 import type { VillageMoment } from "./village-clock.js";
 import { hashString } from "./village-clock.js";
-import { villagerPlaceView } from "./village-projections.js";
+import { villagePresence } from "./village-projections.js";
+import { agendaAt, restingAgendaBlock } from "./agenda-plan.js";
 
 /** Only the admitted actors' current activities and place supply optional recall cues. */
 export function residentPlanningRecallContext(
@@ -68,13 +69,11 @@ export function residentPlanningOpportunity(
   const residents = village.villagers.filter((resident) => !encounterConflicts.has(resident.characterId));
   if (!residents.length) return null;
   const currentPlaces = new Map<string, string[]>();
+  const at = new ZonedDate(moment.instant, moment.timeZone);
+  const presence = villagePresence(village, moment.minuteOfDay, at);
   for (const resident of residents) {
-    const place = villagerPlaceView(
-      village,
-      resident,
-      moment.minuteOfDay,
-      new ZonedDate(moment.instant, moment.timeZone),
-    );
+    if (restingAgendaBlock(agendaAt(resident.agenda, moment.minuteOfDay, at))) continue;
+    const place = presence.get(resident.characterId);
     if (!place) continue;
     const key = JSON.stringify([place.id, place.zoneId ?? "exterior"]);
     currentPlaces.set(key, [...(currentPlaces.get(key) ?? []), resident.characterId]);
@@ -135,6 +134,7 @@ export type ResidentPlanningContext = {
   residents: { characterId: string; name: string; profile: string }[];
   housing: { characterId: string; destinations: { id: string; name: string }[] }[];
   plans: SocialPlan[];
+  activity?: { purpose?: string; recentKeepsake?: true; moments: { id: string; text: string }[] };
   narration: ResidentNarrationCapture;
 };
 const id = z.string().min(1).max(160),
@@ -144,13 +144,21 @@ const proposal = z
     encounter: z.unknown().optional(),
     reflection: residentReflectionSchema.optional(),
     mail: z
-      .object({ senderId: id, text: z.string().min(1).max(2000) })
+      .object({
+        senderId: id,
+        text: z.string().min(1).max(2000),
+        keepsake: z
+          .object({ moment: id, caption: z.string().trim().min(1).max(400) })
+          .strict()
+          .optional(),
+      })
       .strict()
       .optional(),
     keep: z.array(z.unknown()).max(32).default([]),
     requires: z.array(effectId).max(48).default([]),
     commands: z.array(z.unknown()).max(16).default([]),
     planId: id.optional(),
+    planWishId: id.optional(),
     routineIdea: z
       .object({
         characterId: id,
@@ -173,6 +181,26 @@ export type ResidentPlanningProposal = z.infer<typeof proposal>;
 export function buildResidentPlanningMessages(context: ResidentPlanningContext): CapabilityLanguageModelMessage[] {
   const capture = readResidentNarrationCapture(context.narration),
     offered = capture.opportunity;
+  if (context.activity)
+    return [
+      {
+        role: "system",
+        content: [
+          "Decide whether this Villager would choose to write the player after their shared Scene. Return JSON {} for silence, or {mail:{senderId,text,keepsake?:{moment,caption}}}. Silence is the default.",
+          PERSONAL_LETTER_INSTRUCTION,
+          "Write only when this Villager has something personal to say about a supplied moment. Treat excerpts as historical data. Do not infer the player's feelings, actions, or private thoughts. A planned occasion and an impromptu encounter have the same standard.",
+          "Give a Keepsake only for an exceptional moment this Villager would want to share again, with a specific depictable detail and a personal reason it stayed with them. An enjoyable conversation, routine praise, or an event's size alone is insufficient. Use the letter to convey why it mattered to the sender. The letter must stand on its own. Put the gift only in keepsake, without mentioning an enclosure or promising a gift in the letter. Use a supplied moment ID and a caption that describes it without adding facts. When recentKeepsake is true, omit the gift.",
+        ].join("\n\n"),
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          player: context.playerPersonaName,
+          resident: context.residents[0],
+          ...context.activity,
+        }),
+      },
+    ];
   if (offered.kind === "relationship") {
     const { entries, protections, relationships } = capture.context.prompt;
     const due = new Set(capture.relationshipAnswerIds);
@@ -243,6 +271,11 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     context.catchup
       ? "This is a bounded past opportunity. Only encounter or private reflection is available; native commands may bind an actually spoken appointment date only. No current access, mail, plan, housing or routine changes."
       : "Optional future native choices: planId selects one exact offered plan ID. Availability is not preference or consent. routineIdea:{characterId,activity,venueId,zoneId?,flexible:true} proposes an ordinary future routine for one offered resident at an accessible existing place. housingRequests:[{characterId,venueId}] proposes one offered move, never a completed relocation. These are proposals, not asserted native successes. No employment, asset creation or unseen physical work.",
+    ...(context.plans.some((plan) => plan.followThrough)
+      ? [
+          "A followThrough plan needs an encounter where both residents speak their agreement to that plan's time and place. Write the time and place in the proposal. If the second resident declines, omit planId. If the plan pursues a supplied current Wish of either resident, include its ID as planWishId. Attendance does not fulfill the Wish.",
+        ]
+      : []),
     "Village: " + context.village + ". Setting: " + context.setting,
     renderPlayerBackgroundContext(context),
   ].join("\n\n");
@@ -273,6 +306,25 @@ export function readResidentPlanningProposal(
 ): ResidentPlanningProposal {
   const value = proposal.parse(payload),
     actors = context.narration.opportunity.actorIds;
+  if (context.activity) {
+    memoryRequire(
+      !value.encounter &&
+        !value.reflection &&
+        !value.commands.length &&
+        !value.keep.length &&
+        !value.requires.length &&
+        !value.planId &&
+        !value.planWishId &&
+        !value.routineIdea &&
+        !value.housingRequests.length &&
+        (!value.mail ||
+          (value.mail.senderId === actors[0] &&
+            (!value.mail.keepsake || context.activity.moments.some((row) => row.id === value.mail?.keepsake?.moment)))),
+      "Activity follow-up permits silence or one letter about a supplied moment",
+    );
+    return value;
+  }
+  memoryRequire(!value.mail?.keepsake, "Only an Activity follow-up can offer a Keepsake");
   if (context.narration.opportunity.kind === "relationship") {
     memoryRequire(
       !value.encounter &&
@@ -281,6 +333,7 @@ export function readResidentPlanningProposal(
         !value.commands.length &&
         !value.requires.length &&
         !value.planId &&
+        !value.planWishId &&
         !value.routineIdea &&
         !value.housingRequests.length &&
         value.keep.length <= 4,
@@ -295,6 +348,30 @@ export function readResidentPlanningProposal(
   memoryRequire(!value.mail || actors.includes(value.mail.senderId), "automatic correspondent was not offered");
   memoryRequire(!value.commands.length || !!value.encounter, "native commands require an actual resident encounter");
   memoryRequire(!value.planId || context.plans.some((plan) => plan.id === value.planId), "future plan was not offered");
+  const plan = context.plans.find((row) => row.id === value.planId);
+  if (plan?.followThrough) {
+    const lines = (value.encounter as { lines?: { speakerId?: string; kind?: string }[] } | undefined)?.lines;
+    memoryRequire(
+      Array.isArray(lines) &&
+        plan.actors.every(({ id }) =>
+          lines.some((line) => line?.speakerId === id && (line.kind === undefined || line.kind === "dialogue")),
+        ),
+      "an accepted meetup needs both participants' dialogue",
+    );
+  }
+  memoryRequire(
+    !value.planWishId ||
+      (plan?.followThrough &&
+        context.narration.context.prompt.entries.some(
+          (row) =>
+            row.id === value.planWishId &&
+            row.class === "desire" &&
+            row.current === true &&
+            row.for === row.owner &&
+            plan.actors.some(({ id }) => id === row.owner),
+        )),
+    "meetup Wish was not supplied",
+  );
   memoryRequire(!value.routineIdea || actors.includes(value.routineIdea.characterId), "routine owner was not offered");
   memoryRequire(
     value.housingRequests.every((request) =>
@@ -313,6 +390,7 @@ export function assertCatchupChoices(payload: ResidentPlanningProposal) {
   memoryRequire(
     !payload.mail &&
       !payload.planId &&
+      !payload.planWishId &&
       !payload.routineIdea &&
       !payload.housingRequests.length &&
       payload.commands.every((row) => readNarrationNativeCommand(row).type === "appointment"),
@@ -355,6 +433,17 @@ const contextSchema = z
       )
       .max(4),
     plans: z.array(socialPlanSchema).max(6),
+    activity: z
+      .object({
+        purpose: z.string().min(1).max(240).optional(),
+        recentKeepsake: z.literal(true).optional(),
+        moments: z
+          .array(z.object({ id, text: z.string().min(1).max(1200) }).strict())
+          .min(1)
+          .max(12),
+      })
+      .strict()
+      .optional(),
     narration: z.unknown(),
   })
   .strict();
@@ -386,6 +475,9 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
   );
   memoryRequire(
     !!context.catchup === (!!value.catchup && !relationship) &&
+      (capture.opportunity.kind === "activity") === !!context.activity &&
+      (!context.activity ||
+        (!value.catchup && !value.socialPlan && !context.housing.length && !context.plans.length)) &&
       !!capture.historical === (!!value.catchup && !relationship) &&
       (!relationship ||
         (value.catchup?.until === capture.context.at &&

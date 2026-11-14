@@ -6,6 +6,13 @@ import {
   type StagingLine,
   type StagingState,
 } from "../../../shared/helpers/scene-staging.js";
+import {
+  groupNumberedSpritePairs,
+  matchingSpriteLabels,
+  spriteLabelKey,
+  spriteLook,
+  spriteMood,
+} from "../../../shared/helpers/sprite-variants.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import type { VillageResidentSprite } from "../models/world.js";
@@ -14,6 +21,7 @@ import { memoryHash } from "./memory-integrity.js";
 type SpriteEntry = VillageResidentSprite["expressions"][number];
 type SpriteCatalog = {
   defaultExpressionId?: string;
+  named?: true;
   expressions: Pick<SpriteEntry, "expressionId" | "name" | "spriteName" | "view">[];
 };
 export type SpriteSelectionContext = {
@@ -28,12 +36,13 @@ export function sceneSpriteSelection(scene: VenueScene, village: VillageState): 
     ids.flatMap((id) => {
       const sprite = village.villagers.find((person) => person.characterId === id)?.sprite;
       if (!sprite) return [];
-      const { defaultExpressionId, expressions } = sprite;
+      const { defaultExpressionId, expressions, named } = sprite;
       return [
         [
           id,
           {
             defaultExpressionId,
+            ...(named ? { named } : {}),
             expressions: expressions.map(({ expressionId, name, spriteName, view }) => ({
               expressionId,
               name,
@@ -91,23 +100,35 @@ export function settleSceneSpriteCues(
   );
 }
 
-/** Engine convention: two or more suffixed names share the prefix before the first underscore.
- * Names have already had the structural full_ prefix and file extension removed by the media owner.
- * Mirrors Engine sprite.service / expression-agent-utils; no private Engine imports. */
 function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: boolean) {
-  const entries = [...new Map((sprite?.expressions ?? []).map((entry) => [entry.expressionId, entry])).values()];
+  const byExpression = new Map<string, SpriteCatalog["expressions"][number]>();
+  for (const entry of sprite?.expressions ?? [])
+    if (entry.view === "front" || !byExpression.has(entry.expressionId)) byExpression.set(entry.expressionId, entry);
+  const entries = [...byExpression.values()];
+  if (!variants) return entries.map((entry) => ({ id: entry.expressionId, name: entry.name, members: [entry] }));
+  const numbered = new Map(
+    groupNumberedSpritePairs(entries).flatMap(({ name, members }) => {
+      if (members.length < 2) return [];
+      const group = { id: "g-" + members[0]!.expressionId, name, members };
+      return members.map((entry) => [entry.expressionId, group] as const);
+    }),
+  );
+  // Existing filename groups also support descriptive suffixes.
+  const remaining = entries.filter((entry) => !numbered.has(entry.expressionId));
   const name = (entry: SpriteCatalog["expressions"][number]) => (entry.spriteName ?? entry.name).trim().toLowerCase();
   const prefixes = new Map<string, number>();
-  for (const entry of entries) {
+  for (const entry of remaining) {
     const key = name(entry).split("_")[0];
-    if (variants && name(entry).indexOf("_") > 0) prefixes.set(key, (prefixes.get(key) ?? 0) + 1);
+    if (name(entry).indexOf("_") > 0) prefixes.set(key, (prefixes.get(key) ?? 0) + 1);
   }
   const emitted = new Set<string>();
   return entries.flatMap((entry) => {
+    const group = numbered.get(entry.expressionId);
+    if (group) return group.members[0] === entry ? [group] : [];
     const key = name(entry).split("_")[0];
     const grouped = (prefixes.get(key) ?? 0) > 1;
     const members = grouped
-      ? entries.filter((item) => name(item) === key || name(item).startsWith(key + "_"))
+      ? remaining.filter((item) => name(item) === key || name(item).startsWith(key + "_"))
       : [entry];
     const id = grouped ? "g-" + members[0].expressionId : entry.expressionId;
     if (emitted.has(id)) return [];
@@ -117,6 +138,21 @@ function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: b
 }
 
 export function describeSpriteExpressions(sprite: SpriteCatalog | null | undefined, variants = false): string {
+  if (sprite?.named) {
+    const names = new Map<string, { views: Set<SpriteEntry["view"]>; isDefault: boolean }>();
+    for (const entry of sprite.expressions) {
+      for (const name of new Set([spriteMood(entry.name), spriteLook(entry.name)])) {
+        if (!name) continue;
+        const choice = names.get(name) ?? { views: new Set<SpriteEntry["view"]>(), isDefault: false };
+        choice.views.add(entry.view);
+        choice.isDefault ||= sprite.defaultExpressionId === entry.expressionId;
+        names.set(name, choice);
+      }
+    }
+    return [...names]
+      .map(([name, { views, isDefault }]) => JSON.stringify({ id: name, name, views: [...views], isDefault }))
+      .join("; ");
+  }
   const seen = new Set<string>();
   const defaultEntry = sprite?.expressions[0];
   const defaultId = sprite?.defaultExpressionId ?? defaultEntry?.expressionId;
@@ -142,6 +178,10 @@ export function describeSpriteExpressions(sprite: SpriteCatalog | null | undefin
     .join("; ");
 }
 
+function pickSprite(pool: readonly SpriteCatalog["expressions"][number][], random: number) {
+  return pool[Math.min(pool.length - 1, Math.max(0, Math.floor(random * pool.length)))]?.expressionId ?? "";
+}
+
 /** Resolve a model-visible group once to a concrete saved ID. Existing concrete IDs never reroll. */
 export function resolveSpriteExpression(
   sprite: SpriteCatalog | null | undefined,
@@ -152,13 +192,21 @@ export function resolveSpriteExpression(
 ): string {
   const exact = validateSpriteExpression(sprite, requested);
   if (exact) return exact;
+  if (sprite?.named) {
+    const matching = matchingSpriteLabels(
+      sprite.expressions.filter((entry) => entry.view === view),
+      requested,
+    );
+    const pool = matching.length ? matching : matchingSpriteLabels(sprite.expressions, requested);
+    return pickSprite(pool, variants ? random : 0);
+  }
   const choice = expressionChoices(sprite, variants).find((entry) => entry.id === requested);
   if (!choice) return "";
   const matching = choice.members.filter((member) =>
     sprite?.expressions.some((entry) => entry.expressionId === member.expressionId && entry.view === view),
   );
   const pool = matching.length ? matching : choice.members;
-  return pool[Math.min(pool.length - 1, Math.max(0, Math.floor(random * pool.length)))]?.expressionId ?? "";
+  return pickSprite(pool, random);
 }
 
 /** Replies may select only this resident's assigned expression IDs. */
@@ -204,6 +252,17 @@ export function resolveSceneSpriteExpressions(
     };
     for (const cue of cues) {
       if (!cue.expression) continue;
+      const sprite = spriteFor(cue.characterId);
+      if (sprite?.named && !validateSpriteExpression(sprite, cue.expression)) {
+        const requested = spriteLabelKey(cue.expression);
+        const roll = random(index, cue.characterId, requested);
+        const front = resolveSpriteExpression(sprite, requested, variants, "front", roll);
+        const side = resolveSpriteExpression(sprite, requested, variants, "side", roll);
+        if (front) cue.expression = front;
+        else delete cue.expression;
+        if (side && side !== front) cue.sideExpression = side;
+        continue;
+      }
       const expression = resolveExpression(cue.characterId, cue.expression);
       if (expression) cue.expression = expression;
       else delete cue.expression;

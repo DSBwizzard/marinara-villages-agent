@@ -7,6 +7,7 @@ import type { SavedDeviceDraft } from "../../shared/device-drafts.js";
 import { type AreaDraftCache } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_BACKGROUND } from "./villages-player-background.js";
+import { CONNECTION_SETUP_PROBLEMS } from "../../shared/constants.js";
 import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
@@ -107,7 +108,7 @@ export function useFoundingState() {
 
   const [preparationProblem, setPreparationProblem] = useState("");
 
-  const [connectionSetupProblem, setConnectionSetupProblem] = useState("Connections are still loading.");
+  const [connectionSetupProblem, setConnectionSetupProblem] = useState(CONNECTION_SETUP_PROBLEMS.reading);
 
   /** Why the wizard cannot finish yet, said next to the button that would finish it. */
   const [setupProblem, setSetupProblem] = useState("");

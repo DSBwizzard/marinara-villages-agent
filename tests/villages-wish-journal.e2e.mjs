@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import { snapshot, mapImage, now } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { snapshot, mapImage, now, emptyAgendaWeek } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -69,9 +69,12 @@ await withBrowser(browser, async () => {
       fulfill(route, { contentType: "application/json", body: "[]" }),
     );
     await page.route("**/api/villages**", async (route) => {
-      const path = new URL(route.request().url()).pathname;
+      const url = new URL(route.request().url());
+      const path = url.pathname;
       let value = village;
       if (path.endsWith("/relationships")) value = { profiles, starting: { pending: false } };
+      else if (path.endsWith("/agendas") && url.searchParams.has("characterId"))
+        value = emptyAgendaWeek(url.searchParams.get("inspect") === "true");
       else if (path.endsWith("/wishes")) value = { wishes: path.includes("/feddy/") ? [wish] : [] };
       else if (path.endsWith("/wishes/swim/follow")) {
         follows++;

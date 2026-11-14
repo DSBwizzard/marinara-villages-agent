@@ -15,7 +15,7 @@ import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
-import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
+import { readPlayerIdentity, villagePresence } from "../../domain/rules/village-projections.js";
 import {
   exactSnapshotTransition,
   isVillageFounded,
@@ -81,13 +81,10 @@ export function createVillageSnapshot({
         return observed ? { ...zone, observed } : zone;
       }),
     };
-    // ONE schedule read for the whole village, so every villager's pin and their
-    // own drawer's plate are resolved off the same answer. Null when the Engine
-    // will not answer, which leaves every villager unplaced rather than failing
-    // the poll — a map with no locators on it is a map, and an error is not.
+    const presence = villagePresence(village, minuteOfDay, now);
     const villagers = village.villagers.map((villager) => {
       const card = cardsById.get(villager.characterId) ?? null;
-      let destination = villagerPlaceView(village, villager, minuteOfDay, now);
+      let destination = presence.get(villager.characterId) ?? null;
       const companion = residenceAccess?.accompanying?.find((entry) => entry.characterId === villager.characterId);
       const companionVenue = companion && capturedVenue;
       const companionZone = companionVenue && resolveVenueZone(companionVenue, companion!.zoneId);

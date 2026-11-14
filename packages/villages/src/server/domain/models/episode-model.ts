@@ -42,6 +42,7 @@ export type AcceptedEpisode = {
       | "contact"
       | "scene"
       | "appointment"
+      | "meeting"
       | "venue-request"
       | "mail";
     targetId: string;

@@ -1,5 +1,6 @@
 import type { villageEngineJson } from "../../adapters/engine/engine-transport.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { villageConnectionCategory } from "../../../shared/helpers/connection-category.js";
 import type { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../../adapters/engine/agent-config.js";
 import type { DocumentSlot, mutateDocument } from "../../adapters/storage/document-store.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
@@ -84,16 +85,11 @@ export function createConnectionSettings(ports: ConnectionSettingsPorts) {
     }
     const listed = await villageEngineJson<unknown>("/api/connections");
     const rows = Array.isArray(listed) ? listed.map(asRecord) : [];
-    const byId = new Map(rows.map((row) => [asTrimmedString(row.id), asTrimmedString(row.provider)]));
-    const isLanguageConnection = (id: string) => {
-      const provider = byId.get(id);
-      return (
-        provider !== undefined &&
-        !["image_generation", "video_generation", "decision", "audio_generation"].includes(provider)
-      );
-    };
-    if (!isLanguageConnection(systemId)) throw badRequest("Choose a valid language connection for System.");
-    if (!isLanguageConnection(narrationId)) throw badRequest("Choose a valid language connection for Narration.");
+    const byId = new Map(
+      rows.map((row) => [asTrimmedString(row.id), villageConnectionCategory(asTrimmedString(row.provider))]),
+    );
+    if (byId.get(systemId) !== "language") throw badRequest("Choose a valid language connection for System.");
+    if (byId.get(narrationId) !== "language") throw badRequest("Choose a valid language connection for Narration.");
 
     const imageId = settings.imageConnectionId.trim();
     if (imageId.length === 0 || imageId === VILLAGES_IMAGE_CONNECTION_DISABLED) return;

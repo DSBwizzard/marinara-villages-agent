@@ -166,6 +166,9 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   let holdGuardRead = false,
     guardRead;
   await page.route("**/api/villages**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/agendas") && url.searchParams.has("characterId"))
+      return fulfill(route, { json: { villagers: [] } });
     if (route.request().url().endsWith("/rooms/active") && holdGuardRead) {
       guardRead = route;
       return;
@@ -199,6 +202,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
     window.navigation.setScreen("person");
   });
   await expect(page.locator("#screen")).toHaveText("person");
+  await expect(page.getByText("Could not read the Agenda.", { exact: true })).toBeVisible();
   await openCharacterTools(page);
   await expect(page.getByRole("button", { name: "Inspect", exact: true })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Generate signature", exact: true })).toBeEnabled();

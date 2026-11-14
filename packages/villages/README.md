@@ -32,7 +32,7 @@ Create or check your model connections in Engine before founding. Choose them on
 | **GM**     | Writes new Scenes and proposes their gameplay updates.                    |
 | **Images** | Generates artwork when requested. Choose **Disabled** to supply your own. |
 
-Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. Later, change these choices in Villages' **General Settings**. Existing connection selections and model settings are preserved.
+Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. In **Settings → General Preferences → Model Connections**, select a job to change its model or replace a missing connection. Set up providers and keys in Engine's **Connections** panel.
 
 An image connection is optional if you upload your map. Founding requires an uploaded or generated map; the initial grid is a placeholder. Sprite setup makes no model requests.
 
@@ -43,7 +43,7 @@ An image connection is optional if you upload your map. Founding requires an upl
 The setup steps are **Setting → People → Venues and Map → Review**.
 
 1. **Setting:** Name the Village, then name and describe its **Starting location**, such as a harbour between a river and cliffs. The Village is the shared community across its maps; Founding establishes its first location. This description supplies context rather than enforcing a travel boundary. Select lorebooks for world history and references. Use **World rules** for standing constraints. The clock follows Engine’s timezone. **Art settings** selects one Engine preset or custom style for the map and Venue images, with map-specific details and exclusions. Changes save with the draft and apply to future generations; existing artwork stays intact.
-2. **People:** Choose your Persona and one to three residents. Their cards and lorebooks supply backstory. Select a resident to open their appearance. Browse Engine folders or **Uncategorized**, then drag a sprite into **Front** or **Side**; selecting it and using the folder’s **+** also works. Assigned sprites dim in the library and cannot belong to both views. Only the default has a green check. **Use Portrait** shows the character’s Scene portrait and preserves sprite assignments. Changes save automatically; navigation waits for the confirmed revision.
+2. **People:** Choose your Persona and one to three residents. Their cards and lorebooks supply backstory. Select a resident to open **Appearance**, choose **Portrait** or **Sprites**, then **Save** any changes. The same screen is available under **Character Tools** after founding.
 3. **Venues and Map:** Open any starting Venue from its card or map pin. **About** has the Venue description and household. Select a person to move them into that Residence. **Zones** opens the same Zone list used in play. Select a Zone to edit its details, artwork, sleeping assignments, personal space and visitor access. **Manage** is where you add, remove and connect Zones. Edits save automatically. **Map**, **Done**, or Escape returns to the overview. **Suggest** replaces the current draft with AI-written separate Residences and a Community Venue after confirmation. Pending requests recover automatically, and **Retry** appears after a confirmed failure. Drag map pins to position Venues. Upload or generate the map before continuing.
 4. **Review:** Check the map, households and where everyone sleeps. Use **First day** to describe what’s happening as play begins. Every founder needs exactly one home and an accessible sleeping destination. Every Venue needs connected Zones and descriptions, with Entrance plus at most six Zones. The Village opens at the Community Venue once local routines are usable; optional personal routines and Wishes continue preparing in the background.
 
@@ -132,6 +132,8 @@ Profiles show each villager’s current attitude toward you and other villagers 
 
 Ten hearts show separate romantic interest toward you and each villager. Each point on the 0–20 scale fills half a heart. A witnessed change in attraction can add one point per Village day. Cooling can lower interest on that same day. Attraction guides banter, letters, and invitations alongside warmth, history and boundaries. Each villager has their own score and the player expresses their own interest through play.
 
+The **Agenda** in **People → Overview** shows seven Village days. It starts blank and adds witnessed schedule details and mutually accepted plans. A sighting records only that moment. A dated agreement reserves flexible time on the resident’s actual Agenda. A resident who feels close to you shares their full current schedule. Use **Character Tools → Inspect** to view the full schedule at any warmth, then **Leave Inspect** to return to your normal view. Empty space in the known view may include undiscovered plans.
+
 The line below **Toward you** is one sentence of at most 15 words in the villager’s own voice. A completed Scene with the villager makes the first blurb eligible. When you return, one batch of due blurbs can be written at the end of catch-up using the day’s background allowance. A routine refresh requires two Village days and a 12-point shift since the last sentence. A turning point or serious breach can qualify sooner. Shared Wishes, routines, history, motivations and commitments follow what your Persona has learned. Statements retain their qualifications and full agreement terms. Returning to **People** keeps your directory page. **Inspect** opens private directional perspectives and their sources. Standing-invitation buttons reflect current access permissions.
 
 Each resident's current attitude shapes who they seek out, what they confide, and how they respond to requests in Scenes and letters. Their history, motives and boundaries determine how that attitude shows up. For optional free-time meetups between Villagers, the background planner ranks candidates using both warmth scores, weighting the lower one at 75% and the higher one at 25%. You author your Persona’s feelings. Serious choices can end a friendship or partnership; reconciliation is possible and never guaranteed. Time away creates no automatic penalty, and friendship grants neither access nor secrets.
@@ -143,6 +145,12 @@ Starting history honors the resident cards, your backstory, and selected lore, i
 Residents follow routines, and their availability changes through the day. Founding admits the chosen characters; accepted sprite copies and your original library cards stay separate.
 
 Moving into an occupied home requires your incoming resident and every current housemate to agree to the exact destination and sleeping space. Private rooms retain their individual control; shared rooms use household control. Resident moves take 24 Village hours after approval; your own move applies immediately once the required people agree. Changed membership or room availability holds a scheduled move for renewed review. Cancelling releases its reservation.
+
+### Activities and Keepsakes
+
+Agreed plans appear in the Villager’s **Agenda**. Visit the meeting place at the agreed time and use its usual entrances and access rules. After a shared Scene, planned or spontaneous, a Villager may send a follow-up through the usual background activity allowance. A rare Keepsake recalls a particular moment that mattered to its sender.
+
+Open a letter to reveal any attached Keepsake. **Mailbox → Keepsakes** collects the gifts you’ve opened. **Generate illustration** uses your configured image connection for that gift. The letter and caption are saved independently.
 
 ### Memories
 
@@ -200,13 +208,9 @@ Day/night imagery is standard, with one image reused for AI-known constant light
 
 The map's artwork changes tint with Village time, leaving markers and controls readable. Morning begins at 05:00, daytime at 08:00, evening at 17:00 and night at 20:00 in the saved Village timezone, including daylight-saving changes. The server clock and saved development time advance govern presentation; the browser's local timezone does not. Active Scenes select their saved day/night background from the time admitted between exchanges, while concluded Scenes retain their captured presentation. Clock changes never request artwork.
 
-Founding’s People pane saves each assignment, default and portrait choice automatically. Opening an old character setup does not adopt it into a new founding draft. Removing an assignment keeps its independent artwork copy available for reuse. Empty Sprite mode falls back to the portrait until artwork is assigned.
+In **Appearance → Sprites**, use **Add Front sprites** or **Add Side sprites** to select a batch from the character’s Engine library. Choose **No folder** or an Engine folder in either picker. Engine labels such as `happy_01`, `happy_blush` and `happy_pajamas_04` group automatically under `happy`. Front and Side can have different numbers of variants. Choose right-facing art for Side so Villages can mirror it to face left.
 
-Sprite Manager’s **Import Engine sprites** lets you choose an Engine folder and import its artwork as **Front**, **Side**, or **Unassigned**. Names start from Engine labels. Review individual names, facing, default, and framing before choosing **Add villager with sprites** or **Use sprites**. Unassigned artwork stays available for later setup without appearing in Scenes; **Keep artwork** saves a wholly unassigned set. **Add without sprites** remains available. Closing the editor or saving framing does not approve the set.
-
-Imports make independent copies and reuse existing copies by their original Engine filename. Reimporting preserves reviewed names, assignments, framing and the default. Large folders import in bounded batches; failed images stay listed for retry, and completed copies survive leaving setup. Matching unambiguous Front and Side names share an expression. An existing assignment is never silently replaced; rename or unassign a conflicting import before applying it. Later Engine renames and folder moves do not change imported artwork. Older Engines without the folder catalog retain flat full-body import.
-
-Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The GM selects expressions and attention while writing new Scenes. Code handles placement, variants, mirroring and animation without another request.
+Use **Remove** below a sprite to remove its assignment. Reopen the picker to add it again. Upload and edit the original images in Engine. Re-select a linked sprite after editing it in Engine to update the saved version or label. You can add up to 200 sprites per save. **Portrait** shows the card portrait and keeps the sprite selection for later.
 
 **Generate signature** makes one image request for the habitual identifying mark a character would leave on a brief note in their usual social or public life. Their adopted narrative card guides the identity they present and the pace, control and legibility of their strokes; neither the display name nor an alias is prescribed. It needs only an image connection. Retries reuse a saved image where available. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
 
@@ -215,6 +219,8 @@ Side-facing artwork must look right; Villages mirrors it to look left. Front-fac
 Time, schedules, construction, approved moves, and expiry can advance without model requests. Recurring creative activity runs while Villages is visible and pauses before its next request after you leave. Work you already requested can finish while you are away.
 
 Set **Pace → Off** to pause automatic resident and world reviews. Local time, construction, approved moves and established environmental expiry continue. Retained Wishes do not expire.
+
+A resident encounter can establish a meetup when both participants speak. The GM chooses from feasible times and places, and the game reserves that free time. If both attend, each can remember being there even with Pace Off. Attendance alone never settles a Wish or gives the player knowledge of a private meetup.
 
 Quiet, Average, and Busy permit at most 2, 6, and 12 shared automatic reviews per Village-local day, at least 60, 30, and 15 minutes apart respectively. Midnight resets the allowance without shortening spacing. Automatic reviews begin after the opening gathering. Accepted due arrangements have priority. A new shared visit can warrant one review for that group and Zone per day. World reviews need a new active circumstance. An eligible review uses one model request, and one eligible automatic retry can buy another. Quiet outcomes, failures, and unknown outcomes count. Completed replies are reused. Unknown outcomes require deliberate recovery. Residents may initiate personal mail during eligible activity.
 
@@ -245,9 +251,9 @@ Failures do not automatically purchase replacement responses. Explicit interpret
 
 **Visual Settings** contains **Random sprite variants**, **Card-flip sprite changes**, **Character chat colors**, **Dynamic Images** and scenery style, each with a short explanation. Toggles and style presets save immediately; custom style text saves after a short typing pause. Pending edits survive settings navigation, and failed saves retain the latest draft with Retry. The personalization default remains compatible with saved worlds but is no longer exposed here. Random variants and card flips default On; reduced-motion preferences still disable flip animation.
 
-Use Engine's filename convention for approved sprites: happy_01.png and happy_blush.png share the happy choice. Full-body files use full_happy_01.png and full_happy_blush.png. At least two suffixed names form a group; an exact base image joins its group when present. Original filenames determine groups even when Sprite Setup supplies different display names. No separate variant assignments are needed. With random variants Off, expressions remain individual choices.
+Folder sprites use Engine labels. For `happy_pajamas_wounded`, Villages looks for the full look, then `happy_pajamas`, then `happy` artwork in that facing. It uses the other facing when the expression is unavailable in the requested one. **Random sprite variants** chooses among matches. With it off, Villages uses the first match.
 
-Each new expression cue chooses an approved variant for its facing and saves that concrete choice. Refresh, backward reading and dialogue pagination retain it. Random picks can repeat. Artwork creation and cleanup remain in Engine, which also handles downloads from Sprite Manager.
+Each new expression cue saves the concrete Front and Side choices. Turning, refreshing the page, and reading backward use the recorded choices while the selected artwork remains available. Random picks can repeat.
 
 ## Settings and saved worlds
 

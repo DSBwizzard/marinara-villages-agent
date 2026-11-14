@@ -25,7 +25,9 @@ export type PersonalLetter = {
   scope: string;
   thread: PersonalMailThread;
   message: PersonalMailSummary & { text: string };
+  keepsake?: Keepsake;
 };
+export type Keepsake = { id: string; caption: string; sender: string; at: string };
 export type MailboxMutation = { scope: string; threadId: string; messageId: string; token: string };
 export type MailboxView = {
   scope: string;

@@ -167,7 +167,6 @@ export const isolatedTests = new Set([
   "tests/villages-signatures.regression.ts",
   "tests/villages-snapshot-ownership.regression.ts",
   "tests/villages-speech-shape.regression.ts",
-  "tests/villages-sprite-manager.e2e.mjs",
   "tests/villages-sprite-manager.regression.ts",
   "tests/villages-sprite-ownership.regression.ts",
   "tests/villages-state-service.regression.ts",

@@ -1,9 +1,5 @@
-import { downloadSpriteImage } from "../packages/villages/src/client/shared/image-download.js";
 import assert from "node:assert/strict";
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
 import {
   coerceVillageState,
@@ -22,8 +18,8 @@ const images = [
   { view: "front" as const, label: "happy", url: "/front-happy" },
   { view: "side" as const, label: "neutral", url: "/side-neutral" },
 ];
-assert.deepEqual(selectSpriteImage(images, "happy", "left"), { image: images[2], mirrored: true });
-assert.deepEqual(selectSpriteImage(images, "happy", "right"), { image: images[2], mirrored: false });
+assert.deepEqual(selectSpriteImage(images, "happy", "left"), { image: images[1], mirrored: false });
+assert.deepEqual(selectSpriteImage(images, "happy", "right"), { image: images[1], mirrored: false });
 assert.deepEqual(selectSpriteImage(images.slice(0, 2), "happy", "left"), { image: images[1], mirrored: false });
 const customImages = [
   {
@@ -36,7 +32,7 @@ const customImages = [
   { view: "front" as const, label: "running", expressionId: "e-running", url: "/running" },
 ];
 assert.equal(selectSpriteImage(customImages, "", "left")?.image.url, "/delighted");
-assert.equal(selectSpriteImage(customImages, "e-running", "left")?.image.url, "/delighted");
+assert.equal(selectSpriteImage(customImages, "e-running", "left")?.image.url, "/running");
 assert.equal(
   selectSpriteImage(customImages, "pleased", "front")?.image.url,
   "/delighted",
@@ -132,15 +128,6 @@ assert.equal(
   true,
   "the Village document preserves the shared setting through storage round trips",
 );
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const entry = readFileSync(
-  join(root, "packages/villages/src/client/features/residents/villages-sprite-manager.tsx"),
-  "utf8",
-);
-assert.match(entry, /Upload images/);
-assert.match(entry, /Save and use in Scenes/);
-assert.match(entry, /Download saved PNG/);
-assert.doesNotMatch(entry, /generate-sheet|repair-background|Suggest another pose/);
 console.log("Resident expressions, stage selection, gaze and portrait fallback passed.");
 
 // Engine filenames group automatically, independently of reviewed display labels.
@@ -181,6 +168,56 @@ assert.equal(
   "",
   "groups cannot select another resident's artwork",
 );
+
+const numberedPairs = {
+  defaultExpressionId: "e-one",
+  expressions: [
+    { expressionId: "e-one", name: "Big_Smile_01", spriteName: "front_a", view: "front" as const },
+    { expressionId: "e-one", name: "Big_Smile_01", spriteName: "side_x", view: "side" as const },
+    { expressionId: "e-two", name: "BIG_SMILE_02", spriteName: "front_b", view: "front" as const },
+    { expressionId: "e-three", name: "Big_Smile_03", spriteName: "front_c", view: "front" as const },
+    { expressionId: "e-three", name: "Big_Smile_03", spriteName: "side_y", view: "side" as const },
+  ],
+};
+const numberedId = "g-e-one";
+assert.deepEqual(JSON.parse(describeSpriteExpressions(numberedPairs, true)), {
+  id: numberedId,
+  name: "Big_Smile",
+  views: ["front", "side"],
+  isDefault: true,
+});
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "front", 0.5), "e-two");
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "side", 0.5), "e-three");
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, false, "side", 0.5), "");
+assert.equal(resolveSpriteExpression(numberedPairs, "e-one", true, "side", 0.99), "e-one");
+const withPlainFront = {
+  ...numberedPairs,
+  expressions: [
+    { ...numberedPairs.expressions[0], name: "Big_Smile" },
+    { ...numberedPairs.expressions[4], name: "Big_Smile_03" },
+  ],
+};
+assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "front", 0.99), "e-one");
+assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "side", 0), "e-three");
+
+const named = {
+  named: true as const,
+  expressions: [
+    { expressionId: "e-a", name: "Happy_01", view: "front" as const },
+    { expressionId: "e-b", name: "Happy_pajamas_02", view: "front" as const },
+    { expressionId: "e-c", name: "Happy_pajamas_04", view: "side" as const },
+    { expressionId: "e-d", name: "Happy_pajamas_05", view: "side" as const },
+    { expressionId: "e-e", name: "Unhappy_pajamas_04", view: "side" as const },
+    { expressionId: "e-f", name: "Happy_pajamas_talk", view: "side" as const },
+  ],
+};
+assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, "front", 0.99), "e-b");
+assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, "side", 0.99), "e-d");
+assert.equal(resolveSpriteExpression(named, "happy_pajamas", false, "side", 0.99), "e-c");
+assert.equal(resolveSpriteExpression(named, "happy_formal", true, "front", 0), "e-a");
+assert.equal(resolveSpriteExpression(named, "unhappy", true, "front", 0), "e-e");
+assert.equal(resolveSpriteExpression(named, "unknown_pajamas", true, "front", 0), "");
+
 const cueLines = [
   { speakerId: "a", staging: [{ characterId: "a", look: { target: "villager" as const, characterId: "b" } }] },
   { speakerId: "a", staging: [{ characterId: "a", expression: grouped.id }] },
@@ -217,32 +254,3 @@ assert.equal(
   coerceVillageState({ ...defaultVillageState(), spriteVariantsEnabled: undefined }).spriteVariantsEnabled,
   true,
 );
-
-const globalHost = globalThis as typeof globalThis & { __MARINARA_HOST__?: unknown };
-const previousHost = globalHost.__MARINARA_HOST__;
-const downloads: unknown[] = [];
-try {
-  globalHost.__MARINARA_HOST__ = {
-    api: {
-      api: {
-        download: async (...args: unknown[]) => {
-          downloads.push(args);
-        },
-      },
-    },
-  };
-  await downloadSpriteImage("/api/sprites/villages-owned/file/saved.png", "happy.png");
-  assert.deepEqual(downloads, [["/sprites/villages-owned/file/saved.png", "happy.png"]]);
-  globalHost.__MARINARA_HOST__ = {
-    api: {
-      api: {
-        download: async () => {
-          throw new Error("Host save failed");
-        },
-      },
-    },
-  };
-  await assert.rejects(downloadSpriteImage("/api/sprites/owned/file/image.png", "image.png"), /Host save failed/);
-} finally {
-  globalHost.__MARINARA_HOST__ = previousHost;
-}

@@ -1,4 +1,5 @@
 export type SpriteView = "front" | "side";
+export type SpriteFolders = Record<SpriteView, string>;
 export const SPRITE_CANVAS = { width: 1024, height: 1536, margin: 32, baseline: 1504, bodyHeight: 1280 };
 export type SpriteExpression = { id: string; name: string };
 export type SpriteFrame = {
@@ -24,13 +25,20 @@ export type SpriteArtwork = {
   | { origin: "upload"; engineSource?: never }
   | { origin: "engine"; engineSource: { characterId: string; filename: string } }
 );
-export type SpriteAssignment = { expressionId: string; view: SpriteView; artworkId: string };
+export type SpriteAssignment = { expressionId: string; view: SpriteView } & (
+  | { artworkId: string; engineFilename?: never; version?: never }
+  | { engineFilename: string; version?: string; artworkId?: never }
+);
 export type SpriteManagerState = {
   version: 1;
   artwork: SpriteArtwork[];
   expressions: SpriteExpression[];
   assignments: SpriteAssignment[];
   defaultExpressionId?: string;
+  useSprites?: boolean;
+  folders?: SpriteFolders;
+  excluded?: Record<SpriteView, string[]>;
+  lastSave?: { id: string; digest: string };
   framing: { mode: "full" | "half" };
 };
 export type SpriteLibraryItem = {
@@ -38,6 +46,7 @@ export type SpriteLibraryItem = {
   label?: string;
   url: string;
   folderId?: string | null;
+  version?: string;
   adoptedArtworkId?: string;
 };
 export type SpriteLibraryFolder = { id: string; name: string; category: "expressions" | "full-body" };
@@ -57,11 +66,20 @@ export type SpriteSetupDraft = {
   useSprites: boolean;
   errors: Record<string, string>;
 };
-export type SpriteSetupState = SpriteSetupDraft & {
+export type SpriteAppearance = {
+  revision: number;
+  token: string;
+  manager: SpriteManagerState;
   files: SpriteLibraryItem[];
-  resident: boolean;
-  residentToken: string;
+  folders: SpriteLibraryFolder[];
   libraryError?: string;
-  folders?: SpriteLibraryFolder[];
-  folderSupport?: boolean;
+};
+
+export type SpriteChoice =
+  { artworkId: string; filename?: never; version?: never } | { filename: string; version?: string; artworkId?: never };
+export type AppearanceExpression = {
+  id: string;
+  name: string;
+  front?: SpriteChoice;
+  side?: SpriteChoice;
 };

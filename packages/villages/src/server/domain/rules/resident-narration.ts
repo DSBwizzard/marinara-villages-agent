@@ -88,7 +88,7 @@ const localDate = (state: VillageState, at: string) =>
   new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 function nativeFingerprint(state: VillageState, opportunity: ResidentPlanningOpportunity) {
-  if (opportunity.kind === "relationship")
+  if (opportunity.kind === "relationship" || opportunity.kind === "activity")
     return memoryHash([
       state.seed,
       state.setupAt,
@@ -286,6 +286,7 @@ export function acceptResidentNarration(
   acceptedAt: string,
 ) {
   capture = readResidentNarrationCapture(capture);
+  memoryRequire(capture.opportunity.kind !== "activity", "Activity follow-up only publishes personal mail");
   const episodeId = "resident-" + memoryHash([capture.context.seed, capture.opportunity.id]).slice(0, 32),
     digest = memoryHash([capture, raw, responseDigest]),
     prior = state.episodes.records.find((row) => row.id === episodeId);
@@ -321,6 +322,8 @@ function prepareResidentNarration(
   acceptedAt: string,
   excluded: Map<string, string>,
 ) {
+  const kind = capture.opportunity.kind;
+  memoryRequire(kind !== "activity", "Activity follow-up only publishes personal mail");
   const value = output.parse(raw);
   const relationship = capture.opportunity.kind === "relationship";
   if (relationship)
@@ -808,7 +811,7 @@ function prepareResidentNarration(
     ...(capture.room ? { room: capture.room.holder } : {}),
     opportunity: {
       id: capture.opportunity.id,
-      kind: capture.opportunity.kind,
+      kind,
       venueId: capture.opportunity.venueId,
       zoneId: capture.opportunity.zoneId || "native",
     },

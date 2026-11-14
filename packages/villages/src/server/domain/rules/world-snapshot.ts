@@ -4,6 +4,11 @@ import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
+import {
+  engineSpriteUrl,
+  groupNumberedSpritePairs,
+  groupSpritesByMood,
+} from "../../../shared/helpers/sprite-variants.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -53,6 +58,16 @@ export function projectVillager(
   dialogueColor: string,
   place: VillagePlaceView | null,
 ): VillageVillagerView {
+  const sprite = villager.sprite;
+  const pairs = [...new Map(sprite?.expressions.map((entry) => [entry.expressionId, entry])).values()];
+  const groups = sprite?.named
+    ? [...groupSpritesByMood(pairs).values()]
+    : groupNumberedSpritePairs(pairs).map(({ members }) => members);
+  const variantGroups = new Map(
+    groups.flatMap((members) =>
+      members.length > 1 ? members.map((entry) => [entry.expressionId, members[0]!.expressionId] as const) : [],
+    ),
+  );
   return {
     characterId: villager.characterId,
     letterFontId: villager.letterFontId,
@@ -60,15 +75,16 @@ export function projectVillager(
     ...(villager.signature ? { signature: villager.signature } : {}),
     nameColor,
     dialogueColor,
-    sprite: villager.sprite
+    sprite: sprite
       ? {
-          ...villager.sprite,
-          images: villager.sprite.expressions.map(({ view, label, filename, assetId, expressionId }) => ({
+          ...sprite,
+          images: sprite.expressions.map(({ view, label, filename, assetId, expressionId, version }) => ({
             view,
             label,
             expressionId,
-            isDefault: Boolean(expressionId) && expressionId === villager.sprite!.defaultExpressionId,
-            url: `/api/sprites/${assetId}/file/${encodeURIComponent(filename)}`,
+            variantGroup: variantGroups.get(expressionId),
+            isDefault: Boolean(expressionId) && expressionId === sprite.defaultExpressionId,
+            url: engineSpriteUrl(assetId, filename, version),
           })),
         }
       : null,

@@ -53,12 +53,14 @@ export type VillageVillagerView = {
 
 export type ResidentSprite = {
   assetId: string;
+  named?: true;
   expressions: Array<{ view: "front" | "side"; label: string; filename: string }>;
   images: Array<{
     view: "front" | "side";
     label: string;
     url: string;
     expressionId?: string;
+    variantGroup?: string;
     isDefault?: boolean;
   }>;
   framing: { mode: "full" | "half" };

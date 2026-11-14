@@ -121,6 +121,7 @@ export interface BackgroundWorkPorts {
   measurePipeline: typeof measurePipeline;
   runtimeDebug: typeof runtimeDebug;
   backgroundCalls: BackgroundContext["backgroundCalls"];
+  tracksProviderDispatch?(model: Parameters<BackgroundCompletion>[0]): boolean;
   handlers: Iterable<readonly [BackgroundKind, Handler]>;
   activityChanged?: () => void;
   withRepairWork?<T>(work: () => Promise<T>): Promise<T>;
@@ -158,6 +159,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   const pendingPresence = new Map<string, symbol>();
   const pausedConnections = new Set<string>();
   const controllers = new Map<string, AbortController>();
+  const pendingCatchupDispatch = new Map<string, string>();
   const superseded = new Set<string>();
   const tickets: Ticket[] = [];
   let dispatching = false;
@@ -170,6 +172,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   async function cancelReturnCatchup(batchId: string): Promise<void> {
     if (!/^[a-zA-Z0-9-]{1,100}$/.test(batchId)) throw badRequest("Choose a Village catch-up.");
     await withCatchupAdmission(async () => {
+      for (const [id, pendingBatch] of pendingCatchupDispatch)
+        if (pendingBatch === batchId) pendingCatchupDispatch.delete(id);
       const mutate = ports.mutateVillageAuthority ?? mutateVillageState;
       await mutate((state) => {
         const batch = state.returnCatchup?.batch;
@@ -882,6 +886,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     let invoked = false;
     let stage = "generation";
     let dispatched = false;
+    let counted = false;
     const unsubmittedSteps = new Set<string>();
     const complete: BackgroundCompletion = async (model, messages, maxTokens, options) => {
       // Provider and token-limit changes do not invalidate already purchased responses.
@@ -965,6 +970,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           });
           ports.activityChanged?.();
         }
+        counted = !catchupBatchId(job!);
         job = await updateJob((current) => {
           if (current?.id !== job!.id || superseded.has(current.instanceId))
             throw new Obsolete("This job was replaced.");
@@ -1003,11 +1009,22 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         const hostTiming = { ...timing, hostStartedAt: new Date().toISOString() };
         let response: Awaited<ReturnType<BackgroundCompletion>>;
         try {
+          const beforeDispatch = () => {
+            assertActive();
+            const batch = catchupBatchId(job!);
+            if (batch && pendingCatchupDispatch.get(id) !== batch)
+              throw new Obsolete("This catch-up opportunity is no longer active.");
+            if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
+              throw new Paused("Waiting until Villages is visible.");
+            pendingCatchupDispatch.delete(id);
+            unsubmittedSteps.delete(job!.steps[index].responseClaim!.id);
+            invoked = true;
+            dispatched = true;
+          };
+          complete.beforeProviderDispatch = beforeDispatch;
           const startRequest = () =>
             withUsagePurpose(options.usagePurpose ?? "background", () => {
-              unsubmittedSteps.delete(job!.steps[index].responseClaim!.id);
-              invoked = true;
-              dispatched = true;
+              if (!ports.tracksProviderDispatch?.(model)) beforeDispatch();
               return model.chatComplete(messages, {
                 ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
                 ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
@@ -1030,27 +1047,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                     current.requests++;
                     return current;
                   });
-                  if (
-                    !hasVillagePresence() ||
-                    stopped ||
-                    owner !== runOwner ||
-                    controller.signal.aborted ||
-                    superseded.has(runInstanceId)
-                  ) {
-                    job = await updateJob(
-                      (current) => {
-                        if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
-                          throw new Obsolete("Request admission ownership changed.");
-                        current.requests = Math.max(0, current.requests - 1);
-                        if (current.steps[index]?.status === "running") current.steps.splice(index, 1);
-                        return current;
-                      },
-                      { step: index },
-                    );
-                    assertActive();
-                    throw new Paused("Waiting until Villages is visible.");
-                  }
-                  assertActive();
+                  counted = true;
+                  pendingCatchupDispatch.set(id, catchupBatchId(job!)!);
                   return { pending: startRequest() };
                 })
               ).pending
@@ -1205,7 +1203,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             unsubmittedSteps.has(current.steps[lastIndex].responseClaim!.id)
           ) {
             current.steps.splice(lastIndex, 1);
-            if (!catchupBatchId(current)) current.requests = Math.max(0, current.requests - 1);
+            if (counted) current.requests = Math.max(0, current.requests - 1);
           }
           if (obsolete && current.replacement && uncertainAttempt(current)) return holdReplacement(current);
           return {
@@ -1283,6 +1281,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             villagesLogger().warn("[villages] could not save failed work status: %s", String(followup)),
           );
     } finally {
+      pendingCatchupDispatch.delete(id);
       if (controllers.get(id) === controller) controllers.delete(id);
     }
     if (await promoteReplacement(id, job, documents, runOwner)) relaunch.add(id);

@@ -375,6 +375,7 @@ assert.ok(
 assert.match(returnCatchupOpportunities(inaccessible, now, afterTwoHours, 3).reason, /Zones could not be verified/);
 const sleeping = structuredClone(capture);
 for (const resident of sleeping.villagers) resident.agenda!.activeDay!.blocks[0]!.activity = "Sleeping";
+assert.equal(residentPlanningOpportunity(sleeping, moment, now.toISOString()), null);
 assert.deepEqual(returnCatchupOpportunities(sleeping, now, afterTwoHours, 3).opportunities, []);
 assert.match(returnCatchupOpportunities(sleeping, now, afterTwoHours, 3).reason, /Sleeping intervals/);
 const longAbsence = structuredClone(capture);

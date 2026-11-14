@@ -6,8 +6,19 @@ export type StagingLook =
   | { target: "villager"; characterId: string }
   | { target: "direction"; direction: "left" | "right" };
 export type StagingPosition = "left" | "center" | "right";
-export type StagingCue = { characterId: string; position?: StagingPosition; expression?: string; look?: StagingLook };
-export type StagingPerson = { position: StagingPosition; expression: string; look: StagingLook };
+export type StagingCue = {
+  characterId: string;
+  position?: StagingPosition;
+  expression?: string;
+  sideExpression?: string;
+  look?: StagingLook;
+};
+export type StagingPerson = {
+  position: StagingPosition;
+  expression: string;
+  sideExpression?: string;
+  look: StagingLook;
+};
 export type StagingState = Record<string, StagingPerson>;
 export type StagingLine = {
   speakerId: string;
@@ -46,6 +57,7 @@ export function readStagingCues(
   value: unknown,
   activeIds: readonly string[],
   expressionId: (characterId: string, requested: string) => string = (_id, requested) => requested,
+  saved = false,
 ): StagingCue[] {
   if (!Array.isArray(value)) return [];
   const allowed = new Set(activeIds);
@@ -55,9 +67,13 @@ export function readStagingCues(
     if (typeof raw.characterId !== "string" || !allowed.has(raw.characterId)) continue;
     const cue: StagingCue = { characterId: raw.characterId };
     if (raw.position === "left" || raw.position === "center" || raw.position === "right") cue.position = raw.position;
-    if (typeof raw.expression === "string" && raw.expression.trim().length <= 40) {
+    if (typeof raw.expression === "string" && raw.expression.trim().length <= (saved ? 40 : 100)) {
       const expression = expressionId(cue.characterId, raw.expression.trim().toLowerCase());
-      if (expression) cue.expression = expression;
+      if (expression) {
+        cue.expression = expression;
+        if (saved && typeof raw.sideExpression === "string" && /^e-[a-f0-9-]{36}$/iu.test(raw.sideExpression))
+          cue.sideExpression = raw.sideExpression.toLowerCase();
+      }
     }
     const look = record(raw.look);
     if (look.target === "player") cue.look = { target: "player" };
@@ -70,7 +86,11 @@ export function readStagingCues(
       look.characterId !== cue.characterId
     )
       cue.look = { target: "villager", characterId: look.characterId };
-    if (cue.position || cue.expression || cue.look) cues.set(cue.characterId, { ...cues.get(cue.characterId), ...cue });
+    if (cue.position || cue.expression || cue.look) {
+      const merged = { ...cues.get(cue.characterId), ...cue };
+      if (cue.expression && !cue.sideExpression) delete merged.sideExpression;
+      cues.set(cue.characterId, merged);
+    }
   }
   return [...cues.values()];
 }
@@ -124,6 +144,7 @@ export function currentStaging(ids: readonly string[], events: readonly StagingE
       if (!activeIds.includes(cue.characterId) || !state[cue.characterId]) continue;
       const { characterId, ...fields } = cue;
       state[characterId] = { ...state[characterId], ...fields };
+      if (cue.expression && !cue.sideExpression) delete state[characterId].sideExpression;
     }
     if (event.afterIds) {
       activeIds = event.afterIds;
@@ -262,6 +283,7 @@ export function advanceStaging(cursor: StagingCursor, event: StagingEvent) {
     const prior = cursor.state[cue.characterId],
       { characterId, ...fields } = cue;
     const person = { ...prior, ...fields, look: fields.look ? { ...fields.look } : prior.look };
+    if (cue.expression && !cue.sideExpression) delete person.sideExpression;
     if (prior.position !== person.position) {
       const ordinal = cursor.index.order.get(characterId)!;
       const before = cursor.index.groups[prior.position],

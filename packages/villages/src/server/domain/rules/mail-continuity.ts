@@ -21,6 +21,7 @@ import { assertContinuityRetention } from "./continuity-retention.js";
 import { appendEpisode } from "./episodes.js";
 import { mailReceipt, mailEvidence, type MailIdentity } from "./mail-evidence.js";
 import { prepareContinuityKeep } from "./narration-keep.js";
+import { applySceneAppointment, cloneAppointmentState } from "./agenda-overview.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
@@ -231,6 +232,7 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     const effect: SceneEffectResult = { ...header };
     try {
       const proposal = readContinuityProposal(raw);
+      memoryRequire(!proposal.agenda, "A new Agenda item needs a Scene with its admitted schedule");
       memoryRequire(
         Array.isArray(proposal.for) &&
           proposal.for.every((id) => id === (phase === "written" ? mail.from.id : mail.to.id)),
@@ -279,16 +281,24 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
     effects.push(effect);
   }
   let continuity = state.continuity;
+  let scheduledWorld = state;
   let selection: ReturnType<typeof selectSceneEffects>;
   for (;;) {
     selection = selectSceneEffects(effects, publication.requires);
     if (selection.held) return { ...selection, episode: undefined, replayed: false };
     continuity = state.continuity;
+    scheduledWorld = state;
     let failed = false;
     for (const id of selection.acceptedIds) {
       const keep = prepared.get(id)!;
       try {
-        continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        const next = applyContinuityWrite(continuity, keep.write, keep.admission);
+        if (keep.write.accept || keep.write.closeOffer) {
+          const candidate = cloneAppointmentState(scheduledWorld);
+          if (applySceneAppointment(candidate, next, keep.write, keep.admission.operationId + ":" + id, acceptedAt))
+            scheduledWorld = candidate;
+        }
+        continuity = next;
       } catch (error) {
         effects.find((effect) => effect.id === id)!.failure = String(error).slice(0, 2000);
         failed = true;
@@ -386,6 +396,8 @@ export function acceptMailContinuity(state: VillageState, publication: MailPubli
   assertContinuityRetention(continuity, episodes);
   assertMailboxRetention(mailbox, episodes, state.seed);
   state.continuity = continuity;
+  state.residentPlans = scheduledWorld.residentPlans;
+  state.villagers = scheduledWorld.villagers;
   state.episodes = episodes;
   state.mailbox = mailbox;
   return { ...selection, episode: episodes.records.at(-1)!, replayed: false };

@@ -57,6 +57,7 @@ export function createSceneArchive({ villagesDocuments, readActive }: SceneArchi
     const visits = [
       ...(await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND)),
       ...(await documents.list(VILLAGES_PACKAGE_ID, "scene-terminal")),
+      ...(await documents.list(VILLAGES_PACKAGE_ID, "keepsake-art")),
     ];
     for (const visit of visits)
       if (!(await documents.remove(VILLAGES_PACKAGE_ID, visit.id, visit.revision)))

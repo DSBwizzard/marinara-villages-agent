@@ -1,8 +1,10 @@
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { calendarReplay } from "../../domain/rules/clock-state.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
+import { activityMoments, keepsakeAvailable } from "../../domain/rules/activity-followup.js";
 import { dueRelationshipAnswers } from "../../domain/rules/continuity-library.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
@@ -42,6 +44,7 @@ import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import {
   acceptSocialPlan,
   completeSocialPlan,
+  recordSocialAttendance,
   socialContinuationValid,
   socialPlanCandidates,
 } from "../../domain/rules/social-rules.js";
@@ -56,6 +59,9 @@ export type ResidentPlanningPorts = {
   afterCatchup?: (input: unknown) => Promise<void>;
   afterCatchupFailure?: (input: unknown) => Promise<void>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
+  mutateVillageState?: typeof import("../world/village-store.js").mutateVillageState;
+  withSceneNavigation?<T>(work: () => Promise<T>): Promise<T>;
+  hasActiveScene?: () => Promise<boolean>;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
   queueBackgroundJob: typeof import("../../jobs/background-work.js").queueBackgroundJob;
   backgroundJobSnapshot: typeof import("../../jobs/background-work.js").backgroundJobSnapshot;
@@ -95,7 +101,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         now,
       }),
       narration = captureResidentNarration(state, opportunity, catchup),
-      limited = catchup || opportunity.kind === "relationship";
+      limited = catchup || opportunity.kind === "relationship" || opportunity.kind === "activity";
     return {
       format: 1,
       ...(catchup ? { catchup: true as const } : {}),
@@ -133,7 +139,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
                 )
                 .map(({ id, name }) => ({ id, name })),
             })),
-      plans: limited ? [] : socialPlanCandidates(state, now),
+      plans: limited ? [] : socialPlanCandidates(state, now, opportunity.actorIds),
       narration,
     };
   }
@@ -190,6 +196,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       assertResidentNarrationCurrent(historical, context.narration);
     } else {
       assertResidentNarrationCurrent(state, context.narration);
+      if (context.activity) {
+        const activity = state.residentPlans.activities?.[opportunity.id];
+        memoryRequire(
+          activity?.outcome === "pending" &&
+            (activity.purpose ?? "") === (context.activity.purpose ?? "") &&
+            memoryHash(activityMoments(state, activity)) === memoryHash(context.activity.moments),
+          "The Activity's witnessed moments changed.",
+        );
+      }
       memoryRequire(
         !input.socialPlan ||
           socialContinuationValid(state, input.socialPlan.id, input.socialPlan, new Date(context.narration.context.at)),
@@ -222,6 +237,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       conflicts = absentPlayerConflicts(state, await ports.activeVenueSession(), now),
       due = state.residentPlans.plans.find(
         (plan) =>
+          !plan.followThrough &&
           plan.status === "planned" &&
           plan.kind === "meeting" &&
           !plan.actors.some((actor) => conflicts.has(actor.id)) &&
@@ -230,8 +246,25 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           plan.startMinute <= moment.minuteOfDay &&
           plan.endMinute > moment.minuteOfDay,
       );
+    let followup;
+    if (!due && !dueOnly) {
+      for (const row of Object.values(state.residentPlans.activities ?? {}).toReversed()) {
+        if (
+          row.outcome !== "pending" ||
+          now.getTime() - Date.parse(row.endedAt) > 86_400_000 ||
+          conflicts.has(row.resident.id) ||
+          !activityMoments(state, row).length
+        )
+          continue;
+        const work = await ports.backgroundJobSnapshot("resident-planning", "activity:" + row.id);
+        if (work?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(work.status))
+          continue;
+        followup = row;
+        break;
+      }
+    }
     if (dueOnly && !due) return false;
-    const subjectId = due ? "social:" + due.id : "village",
+    const subjectId = due ? "social:" + due.id : followup ? "activity:" + followup.id : "village",
       prior = await ports.backgroundJobSnapshot("resident-planning", subjectId);
     if (prior?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
       return;
@@ -246,9 +279,25 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           zoneId: due.zoneId,
           facts: ["An accepted free-time plan is happening now."],
         }
-      : residentPlanningOpportunity(state, moment, state.simulatedThrough, conflicts);
+      : followup
+        ? {
+            id: followup.id,
+            kind: "activity" as const,
+            actorIds: [followup.resident.id],
+            startsAt: now.toISOString(),
+            endsAt: now.toISOString(),
+            venueId: "",
+            facts: [],
+          }
+        : residentPlanningOpportunity(state, moment, state.simulatedThrough, conflicts);
     if (!opportunity || state.processedActionIds.includes(opportunity.id)) return;
     const context = contextFor(state, opportunity);
+    if (followup)
+      context.activity = {
+        ...(followup.purpose ? { purpose: followup.purpose } : {}),
+        ...(keepsakeAvailable(state, followup, now.toISOString()) ? {} : { recentKeepsake: true as const }),
+        moments: activityMoments(state, followup),
+      };
     if (due) context.plans = [];
     const input = readResidentPlanningInput({
       format: 1,
@@ -264,7 +313,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       seed: state.seed,
       revision: dateKey + ":" + used,
       finite: false,
-      label: "Resident activity",
+      label: followup ? "Activity follow-up" : "Resident activity",
       automaticDate: dateKey,
       input,
     });
@@ -426,6 +475,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       const input = readResidentPlanningInput(raw),
         id = input.context.narration.opportunity.id;
       if (state.seed !== input.context.narration.context.seed) return false;
+      if (input.context.activity && state.residentPlans.activities?.[id]?.outcome !== "pending")
+        return !!state.residentPlans.activities?.[id];
       if (state.processedActionIds.includes(id)) return true;
       assertCurrent(state, input);
       const capture = input.context.narration;
@@ -459,6 +510,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         capture = input.context.narration,
         opportunity = capture.opportunity,
         replayed = state.processedActionIds.includes(opportunity.id);
+      if (input.context.activity && state.residentPlans.activities?.[opportunity.id]?.outcome !== "pending") return;
       memoryRequire(
         typeof saved.responseDigest === "string" && /^[a-f0-9]{64}$/.test(saved.responseDigest),
         "resident response lost its source digest",
@@ -479,11 +531,12 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           proposal.mail.text,
           input.context.residents.find((row) => row.characterId === from.id)?.name,
         );
+        const letterId = "resident-mail-" + memoryHash([state.seed, opportunity.id]).slice(0, 32);
         acceptResidentLetter(
           next,
           capture.context,
           {
-            id: "resident-mail-" + memoryHash([state.seed, opportunity.id]).slice(0, 32),
+            id: letterId,
             at: capture.context.at,
             from,
             to,
@@ -502,6 +555,14 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               }
             : undefined,
         );
+        if (input.context.activity) {
+          const activity = next.residentPlans.activities![opportunity.id];
+          activity.outcome = "letter";
+          if (proposal.mail.keepsake && keepsakeAvailable(next, activity, at))
+            activity.keepsake = { letterId, ...proposal.mail.keepsake };
+        }
+      } else if (input.context.activity) {
+        next.residentPlans.activities![opportunity.id].outcome = "quiet";
       } else if (opportunity.kind !== "relationship" || relationshipContextCurrent(state, input.context)) {
         const target =
           input.catchup && capture.historical ? { ...next, ...structuredClone(input.catchup.world) } : next;
@@ -527,7 +588,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       }
       if (replayed) return;
       const now = new ZonedDate(villageNow(), state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-      acceptSocialPlan(next, input.context.plans, proposal.planId, now);
+      if (proposal.planWishId) {
+        const wish = next.continuity.records.find((row) => row.id === proposal.planWishId);
+        memoryRequire(
+          wish?.owner &&
+            capture.context.supplied.some((target) => target.id === wish.id && target.recordRevision === wish.revision),
+          "meetup Wish changed",
+        );
+      }
+      acceptSocialPlan(next, input.context.plans, proposal.planId, now, proposal.planWishId);
       if (input.socialPlan) {
         memoryRequire(!!proposal.encounter, "due encounter must preserve its accepted plan");
         completeSocialPlan(
@@ -604,5 +673,29 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (input.catchup) await ports.afterCatchupFailure?.(input);
     },
   };
-  return { reconcile, queueReturnOpportunity, handler };
+  async function settleAttendance(now: Date): Promise<void> {
+    if (!ports.mutateVillageState) return;
+    const state = await ports.readVillageState();
+    if (
+      !state.residentPlans.plans.some(
+        (plan) => plan.followThrough && socialContinuationValid(state, plan.id, plan, now),
+      )
+    )
+      return;
+    const mutate = ports.mutateVillageState;
+    const settle = async () => {
+      // A live Scene may own positions that the Agenda cannot establish.
+      if (await ports.hasActiveScene?.()) return;
+      await mutate(
+        (current) => {
+          const at = villageNow();
+          if (current.seed !== state.seed || current.setupAt !== state.setupAt || calendarReplay(current, at)) return;
+          recordSocialAttendance(current, at, new Set());
+        },
+        { memories: true },
+      );
+    };
+    await (ports.withSceneNavigation ? ports.withSceneNavigation(settle) : settle());
+  }
+  return { reconcile, settleAttendance, queueReturnOpportunity, handler };
 }

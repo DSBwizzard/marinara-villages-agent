@@ -1,6 +1,17 @@
 import { projectVenueAccess, projectZoneAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
 import { venueFixture } from "../helpers/venues.fixture.js";
 const now = new Date().toISOString();
+
+export function emptyAgendaWeek(inspect) {
+  return {
+    visibility: inspect ? "inspect" : "known",
+    days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((weekday, index) => ({
+      date: `2026-11-${16 + index}`,
+      weekday,
+      blocks: [],
+    })),
+  };
+}
 const image = (color) =>
   `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000"><rect width="1500" height="1000" fill="${color}"/><path d="M0 500h1500M750 0v1000" stroke="#eee1bf" stroke-width="80"/></svg>`).toString("base64")}`;
 const spriteImage = (color) =>

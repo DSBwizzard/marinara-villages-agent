@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -10,6 +11,7 @@ import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import {
   createSceneWriting,
@@ -24,7 +26,7 @@ const participants = ["a", "b", "remote"].map((characterId) => ({
   name: characterId,
   doing: "Listening",
 }));
-const artwork = ["happy_01", "happy_blush", "happy_side"].map((name, index) => {
+const artwork = ["front_a", "front_b", "side_a"].map((name, index) => {
   const id = "00000000-0000-4000-8000-00000000000" + (index + 1);
   const assetId = "villages-" + id;
   return {
@@ -69,10 +71,14 @@ const world = coerceVillageState({
       ? {
           spriteManager: {
             version: 1,
+            folders: { front: "front", side: "side" },
             framing: { mode: "full" },
             defaultExpressionId: first,
             artwork,
-            expressions: [first, second, side].map((id) => ({ id, name: "Smile" })),
+            expressions: [first, second, side].map((id, index) => ({
+              id,
+              name: ["Smile_01", "Smile_pajamas_02", "Smile_pajamas_04"][index],
+            })),
             assignments: artwork.map(({ id }, index) => ({
               artworkId: id,
               expressionId: [first, second, side][index],
@@ -85,6 +91,34 @@ const world = coerceVillageState({
 });
 const venue = world.venues[0]!;
 assert.equal(world.villagers[0].sprite?.expressions.length, 3, "Current Sprite Manager assignments supply the catalog");
+const spriteImages = [
+  { view: "front" as const, label: "neutral", url: "/neutral", isDefault: true },
+  ...projectVillager(world.villagers[0], "A", "", [], "", "", null).sprite!.images.map((image) => ({
+    ...image,
+    isDefault: false,
+  })),
+];
+assert.equal(selectSpriteImage(spriteImages, side, "left")?.image.expressionId, side);
+assert.equal(selectSpriteImage(spriteImages, second, "front", side, true)?.image.expressionId, second);
+assert.equal(
+  selectSpriteImage(spriteImages, second, "right", side, true)?.image.expressionId,
+  side,
+  "Turning back reuses the same Side",
+);
+assert.equal(
+  selectSpriteImage(
+    spriteImages.filter((image) => image.expressionId !== side),
+    second,
+    "right",
+    side,
+    true,
+  )?.image.expressionId,
+  second,
+  "An unavailable Side falls back to the selected Front",
+);
+assert.equal(selectSpriteImage(spriteImages, side, "front", undefined, true)?.image.expressionId, side);
+const initialImages = projectVillager(world.villagers[0], "A", "", [], "", "", null).sprite!.images;
+assert.equal(selectSpriteImage(initialImages, "", "right", undefined, true)?.image.expressionId, side);
 const scene = zoneEventScene(
   coerceSession({
     version: 5,
@@ -131,7 +165,7 @@ const raw = {
       id: "gesture",
       kind: "narration",
       text: "A smiles.",
-      staging: [{ characterId: "a", expression: group, position: "right" }],
+      staging: [{ characterId: "a", expression: "smile_pajamas_wounded", sideExpression: first, position: "right" }],
     },
     {
       id: "quiet",
@@ -148,7 +182,7 @@ const raw = {
       speakerId: "a",
       text: "Hello.",
       staging: [
-        { characterId: "a", expression: group },
+        { characterId: "a", expression: "smile_pajamas_wounded" },
         { characterId: "b", expression: first, look: { target: "villager", characterId: "remote" } },
         { characterId: "remote", look: { target: "player" } },
       ],
@@ -159,7 +193,7 @@ const raw = {
       kind: "dialogue",
       speakerId: "a",
       text: "How are you?",
-      staging: [{ characterId: "a", expression: group }],
+      staging: [{ characterId: "a", expression: "smile" }],
     },
     { id: "malformed", kind: "dialogue", speakerId: "a", text: "Fine.", staging: { invalid: true } },
   ],
@@ -210,9 +244,10 @@ const writer = createSceneWriting({
     assert.match(prompt, /Optional staging:/u);
     assert.doesNotMatch(prompt, /commands array|Native changes use commands|roomKeeps:\[/u);
     const catalog = scenePromptPacket(prompt, "calendar").presentation;
-    assert(catalog.sprites[0].expressions.includes(group));
+    assert(catalog.sprites[0].expressions.includes('"name":"smile"'));
+    assert(catalog.sprites[0].expressions.includes('"name":"smile_pajamas"'));
     assert.deepEqual(catalog.state.a, { expression: side, look: { target: "villager", characterId: "b" } });
-    assert.doesNotMatch(JSON.stringify(catalog), /original\.png|render\.png|happy_01|remote/);
+    assert.doesNotMatch(JSON.stringify(catalog), /original\.png|render\.png|front_a|Smile_01|remote/);
     return { finishReason: "stop", content: JSON.stringify(raw) };
   },
   rejectVenueCompletion: () => assert.fail("Optional presentation cannot reject purchased Scene prose"),
@@ -252,13 +287,13 @@ assert.deepEqual(
 );
 assert.deepEqual(
   lines[0].staging,
-  [{ characterId: "a", expression: side }],
-  "The captured side pose survives cold recovery",
+  [{ characterId: "a", expression: second, sideExpression: side }],
+  "Both captured views survive cold recovery and the model cannot supply a concrete side override",
 );
 assert.deepEqual(lines[1].staging, [], "Hidden cues cannot affect public playback");
 assert.deepEqual(
   lines[2].staging,
-  [{ characterId: "a", expression: side }],
+  [{ characterId: "a", expression: second, sideExpression: side }],
   "Offstage or foreign cues do not change the pose",
 );
 assert.deepEqual(lines[2].heardBy, ["a", "b", "player"]);
@@ -267,6 +302,7 @@ assert(
   [first, second].includes(lines[4].staging![0].expression!),
   "A departure clears the old gaze before selecting the next pose",
 );
+assert.equal(lines[4].staging![0].sideExpression, side);
 assert.deepEqual(lines[5].staging, []);
 const visible = publicSceneResponse({ lines });
 assert(!JSON.stringify(visible).includes(group), "Playback receives concrete artwork only");
