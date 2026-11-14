@@ -5,9 +5,10 @@ import type { VillageAgenda, VillageProject, VillageState } from "../models/worl
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { conflict } from "./errors.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
-import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { zoneActivityFits } from "./venue-presence.js";
 import { routineRevisionMatches } from "./wish-policy.js";
+import { continuityActor } from "./continuity-actors.js";
 
 export const PROJECT_FOCUS_MS = 6 * 60 * 60_000;
 const minuteMs = 60_000;
@@ -113,6 +114,26 @@ export function projectAgendaReservations(state: VillageState): void {
           activity: plan.kind === "meeting" ? "Shared time" : "Quiet time",
           replaces: "flexible",
         });
+  }
+  const player = continuityActor(state, "player");
+  for (const { id, resident, playerIncarnation, time, activity } of state.residentPlans.appointments ?? []) {
+    if (player?.incarnation !== playerIncarnation) continue;
+    const agenda = state.villagers.find(
+      (row) => row.characterId === resident.id && row.incarnation === resident.incarnation,
+    )?.agenda;
+    const destination = findLocation(state, time.venueId);
+    if (!agenda || !destination || !resolveVenueZone(destination, time.zoneId ?? "exterior")) continue;
+    agenda.reservations!.push({
+      id,
+      source: "appointment",
+      dateKey: time.date,
+      startMinute: time.startMinute,
+      endMinute: time.endMinute,
+      venueId: time.venueId,
+      zoneId: time.zoneId,
+      activity,
+      replaces: "flexible",
+    });
   }
 }
 

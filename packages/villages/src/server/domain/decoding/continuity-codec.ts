@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { agendaEvidence } from "./agenda-codec.js";
 import type { ContinuityCollection, ContinuityVersion } from "../models/continuity-model.js";
 import {
   continuityHolderKey,
@@ -84,6 +85,7 @@ const version = z
     createdRevision: revision.min(1),
     text: text(ROOM_CONTINUITY_TEXT_BYTES),
     class: z.enum(["experience", "information", "perspective", "desire", "motivation", "commitment", "open-matter"]),
+    agenda: agendaEvidence.optional(),
     relationshipScore: z.number().int().min(-100).max(100).optional(),
     romanticInterest: z.number().int().min(0).max(20).optional(),
     romanticDay: z

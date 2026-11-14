@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ResidentPlans } from "../models/resident-plans.js";
+import { playerAppointments } from "./agenda-codec.js";
 
 const id = z.string().min(1).max(160),
   date = z
@@ -45,6 +46,7 @@ const residentPlans = z
   .object({
     selectedDate: z.string().refine((value) => value === "" || date.safeParse(value).success),
     plans: z.array(socialPlanSchema).max(64),
+    appointments: playerAppointments.optional(),
   })
   .strict()
   .refine(

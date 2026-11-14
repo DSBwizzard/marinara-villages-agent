@@ -11,6 +11,7 @@ import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 import type { ResidentSprite } from "../../../shared/contracts/village.js";
 import { ResidentArtwork } from "./ResidentArtwork.js";
+import { WeeklyAgenda } from "./WeeklyAgenda.js";
 
 export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
 type ProfileSection = DossierSection | "tools";
@@ -119,6 +120,7 @@ function Sheet({
 /** One shared profile; private records are mounted only after deliberate inspection. */
 export function VillagerDossier({
   navigation,
+  villageDate,
   villager,
   portrait,
   request,
@@ -132,6 +134,7 @@ export function VillagerDossier({
   error,
 }: {
   navigation: DossierNavigation;
+  villageDate?: string;
   villager?: {
     characterId: string;
     name: string;
@@ -411,6 +414,15 @@ export function VillagerDossier({
                             </p>
                           ) : (
                             <Sheet title="Agenda" icon="agenda">
+                              {villager ? (
+                                <WeeklyAgenda
+                                  key={inspect && viewing !== false ? "inspect" : "player"}
+                                  actorId={navigation.actorId}
+                                  inspect={inspect && viewing !== false}
+                                  refresh={`${villageDate}:${backgroundRevision}:${focusRevision}:${revision}`}
+                                  request={request}
+                                />
+                              ) : null}
                               <RelationshipEntries
                                 entries={profile.entries.filter((entry) => entry.kind === "information")}
                               />

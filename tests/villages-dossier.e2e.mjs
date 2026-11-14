@@ -305,7 +305,8 @@ await withBrowser(browser, async () => {
     );
     await page.route("**/api/villages**", async (route) => {
       const request = route.request(),
-        path = new URL(request.url()).pathname;
+        requestUrl = new URL(request.url()),
+        path = requestUrl.pathname;
       if (request.method() === "GET") reads.push(path);
       else if (!path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
@@ -430,6 +431,31 @@ await withBrowser(browser, async () => {
         };
       } else if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/catalog")) value = { characters: [] };
+      else if (path.endsWith("/agenda"))
+        value = {
+          visibility: requestUrl.searchParams.get("inspect") === "true" ? "inspect" : "known",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
+            (weekday, index) => ({
+              date: "2026-11-" + (16 + index),
+              weekday,
+              blocks:
+                index === 0
+                  ? [
+                      {
+                        startMinute: 720,
+                        endMinute: 780,
+                        activity: "Review maps",
+                        place: "The Mill",
+                        source: "agreed",
+                      },
+                      ...(requestUrl.searchParams.get("inspect") === "true"
+                        ? [{ startMinute: 480, endMinute: 600, activity: "PRIVATE scheduled task" }]
+                        : []),
+                    ]
+                  : [],
+            }),
+          ),
+        };
       else if (path.endsWith("/relationships/inspect"))
         value = {
           processing: [
@@ -815,6 +841,17 @@ await withBrowser(browser, async () => {
     await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
     await expect(overview.getByText("Learn to swim")).toHaveCount(0);
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
+    if (width === 1440) {
+      await expect(overview.getByText("Known schedule", { exact: true })).toBeVisible();
+      await overview.getByRole("button", { name: /Review maps/ }).click();
+      await expect(overview.getByRole("status")).toContainText("Review maps");
+      await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
+      await clickCharacterTool(page, "Inspect");
+      await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toBeVisible();
+      await clickCharacterTool(page, "Leave Inspect");
+      await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
+      await expect(overview.getByText("Known schedule", { exact: true })).toBeVisible();
+    }
     await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
     await expect(overview.getByText("Work · The Harbour", { exact: true })).toBeVisible();
     await expect(overview.getByText("Work · The Market", { exact: true })).toBeVisible();

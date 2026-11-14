@@ -30,6 +30,7 @@ export type ContinuityVersion = {
   createdRevision: number;
   text: string;
   class: ContinuityClass;
+  agenda?: import("zod").infer<typeof import("../decoding/agenda-codec.js").agendaEvidence>;
   relationshipScore?: number;
   romanticInterest?: number;
   romanticDay?: { date: string; gained: boolean };
@@ -123,6 +124,7 @@ export type ContinuityWrite = {
   target?: ContinuityTarget;
   text?: string;
   class?: ContinuityClass;
+  agenda?: ContinuityVersion["agenda"];
   current?: boolean;
   relationship?: { impact?: RelationshipImpact; romance?: "grows" | "fades" | "drops"; answer?: string };
   about?: { id: string; incarnation: string }[];

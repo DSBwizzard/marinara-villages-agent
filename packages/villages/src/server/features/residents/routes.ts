@@ -17,6 +17,7 @@ import { socialMail } from "./social-mail.js";
 import { wishes } from "./wishes/service.js";
 import { continuityWishes } from "../../domain/rules/continuity-library.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { agendaWeek } from "../../domain/rules/agenda-overview.js";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
   engine.get<{ Params: { characterId: string } }>("/villagers/:characterId/wishes", async (request, reply) => {
@@ -211,6 +212,23 @@ export function registerResidentRoutes(engine: FastifyInstance) {
 }
 export function registerAgendaRoutes(engine: FastifyInstance) {
   const app = engine;
+
+  app.get<{ Params: CharacterParams; Querystring: { inspect?: string } }>(
+    "/villagers/:characterId/agenda",
+    async (request, reply) => {
+      try {
+        reply.header("Cache-Control", "no-store");
+        return agendaWeek(
+          await readVillageState({ memories: true }),
+          readCharacterId(request.params.characterId),
+          villageNow(),
+          request.query.inspect === "true",
+        );
+      } catch (error) {
+        return fail(reply, error, "reading the weekly Agenda");
+      }
+    },
+  );
 
   app.get("/agendas", async (_request, reply) => {
     try {

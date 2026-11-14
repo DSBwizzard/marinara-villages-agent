@@ -305,6 +305,7 @@ export function prepareContinuityKeep(
       supplied: target ? admission.supplied.map((row) => (row.id === target.id ? target : row)) : admission.supplied,
     },
     sources,
+    agenda: proposal.agenda,
   };
 }
 

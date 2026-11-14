@@ -3,6 +3,7 @@ import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { agendaSpeechOptions } from "../../domain/rules/agenda-overview.js";
 import type { NarrationReadset } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
@@ -217,6 +218,32 @@ export function createSceneWriting({
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
+    const agendaDiscussed =
+      /\b(?:agenda|schedule|free|available|when|tomorrow|tonight|today|meet|appointment|plan|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|o['’]clock|a\.?m\.?|p\.?m\.?)\b/iu.test(
+        input,
+      );
+    const agendaOptions = agendaSpeechOptions(authority, selectedIds, new Date(calendar.instant), !agendaDiscussed);
+    const agendaVenues = agendaDiscussed
+      ? places.slice(0, 10).flatMap(({ id }) => {
+          const destination = authority.venues.find((row) => row.id === id);
+          return destination
+            ? [
+                {
+                  id,
+                  name: destination.name,
+                  zones: (destination.zones ?? [])
+                    .filter(
+                      (zone) =>
+                        zone.seen || zone.kind === "exterior" || (id === scene.placeId && zone.id === scene.zoneId),
+                    )
+                    .slice(0, 8)
+                    .map(({ id, name }) => ({ id, name })),
+                },
+              ]
+            : [];
+        })
+      : [];
+    const agendaContext = "agenda-context";
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
     );
@@ -328,6 +355,18 @@ export function createSceneWriting({
               : undefined,
           }),
         ]),
+        ...(agendaOptions.length || agendaVenues.length
+          ? [
+              {
+                text:
+                  'Agenda discoveries use an information keep for ["player"] about the resident with agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Use only a supplied slot and actual quoted speech disclosing its times or a player-seen beat showing its activity in that Zone. For a sighting use a one-minute marker at the captured minute. For a plan together, use a commitment offer with both parties as holders, about the resident, and agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use an offered venue and Zone and cite each party’s exact proposing or accepting words with act. Accept a fitted existing offer by its alias. Include the effect ID in requires on any line claiming a booking.\n' +
+                  JSON.stringify({ agendaOptions, agendaVenues }),
+                evidenceId: agendaContext,
+                optional: "history" as const,
+                pruningPriority: -100,
+              },
+            ]
+          : []),
         ...(!nativeCommands && openOffers.length
           ? [{ text: SCENE_OFFER_DECISION, requiresEvidence: [openOffers] }]
           : []),
@@ -367,6 +406,10 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
+        ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
+          ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }
+          : {}),
         ...(context.codeRequestedMemory ? { recoverCodeMemoryEcho: true } : {}),
         ...(positions
           ? {

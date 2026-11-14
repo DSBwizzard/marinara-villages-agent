@@ -798,6 +798,7 @@ export function applyContinuityWrite(
       createdRevision: collection.revision + 1,
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
+      ...(write.agenda ? { agenda: structuredClone(write.agenda) } : {}),
       ...(relationshipScore !== undefined && owner && same(holder, owner)
         ? { relationshipScore, relationshipDay, ...(relationshipMilestone ? { relationshipMilestone } : {}) }
         : {}),
@@ -1154,7 +1155,10 @@ export function protectContinuity(
         operationId,
         administrative: { holder: structuredClone(holder), at },
       };
-      if (!restored) delete version.offerEvents;
+      if (!restored) {
+        delete version.offerEvents;
+        delete version.agenda;
+      }
       delete version.relationshipScore;
       delete version.relationshipDay;
       delete version.romanticInterest;

@@ -1,7 +1,7 @@
 /** Feature records own agreements; these are their derived claims on an Agenda. */
 export type AgendaReservation = {
   id: string;
-  source: "project" | "social";
+  source: "project" | "social" | "appointment";
   dateKey: string;
   startMinute: number;
   endMinute: number;

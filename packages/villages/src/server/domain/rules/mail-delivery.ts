@@ -169,6 +169,8 @@ function deliverLetter(
     state.continuity = checkedRead.continuity;
     state.episodes = checkedRead.episodes;
     state.mailbox = checkedRead.mailbox;
+    state.residentPlans = checkedRead.residentPlans;
+    state.villagers = checkedRead.villagers;
   } else {
     const final = requireAccepted(acceptMailContinuity(state, { ...writing, reading: plan(reading) }, at));
     memoryRequire(
@@ -255,6 +257,8 @@ export function acceptMailExchange(state: VillageState, exchange: MailExchange, 
   state.continuity = candidate.continuity;
   state.episodes = candidate.episodes;
   state.mailbox = candidate.mailbox;
+  state.residentPlans = candidate.residentPlans;
+  state.villagers = candidate.villagers;
   return delivered.rejected;
 }
 
@@ -341,5 +345,7 @@ export function acceptResidentLetter(
   state.continuity = candidate.continuity;
   state.episodes = candidate.episodes;
   state.mailbox = candidate.mailbox;
+  state.residentPlans = candidate.residentPlans;
+  state.villagers = candidate.villagers;
   return result.rejected;
 }
