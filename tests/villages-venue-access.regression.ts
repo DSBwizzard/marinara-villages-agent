@@ -33,6 +33,7 @@ import {
   withinVisitorHours,
 } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { prepareReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup.js";
 import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import {
@@ -1101,6 +1102,98 @@ async function main() {
         known,
       );
     });
+    for (const longAbsence of [false, true]) {
+      await mutateVillageState((current) => {
+        const home = current.venues[0];
+        home.zones!.find((row) => row.id === "bedroom")!.access!.managerIds = ["jim"];
+        for (const [zoneId, visitorId, duration] of [
+          ["bedroom", "player", "visit"],
+          ["living", "player", "visit"],
+          ["office", "mara", "visit"],
+        ] as const) {
+          applyAccessCommand(
+            home,
+            {
+              action: "invite",
+              operationId: [longAbsence ? "long" : "short", zoneId].join("-"),
+              expectedRevision: home.access!.revision,
+              zoneId,
+              visitorId,
+              duration,
+              accompanied: false,
+              outsideHours: true,
+            },
+            "jim",
+            stamp,
+            known,
+          );
+        }
+        current.returnCatchup = { lastPresenceWallTime: Date.now() - (longAbsence ? 61 : 20) * 60_000 };
+      });
+      const visit = await enterVenue("home", "bedroom");
+      assert.equal(visit.zoneId, "bedroom");
+      const bedGrant = (await readVillageState({ memories: true })).venues[0].access!.permissions.find(
+        (row) => row.sceneId === visit.id && row.zoneId === "bedroom",
+      )!;
+      await prepareReturnCatchup(new Date(Date.now() + 5000), longAbsence ? "long-return" : "short-return");
+      const after = await activeVenueSession();
+      const grants = (await readVillageState({ memories: true })).venues[0].access!.permissions;
+      assert.equal(after!.id, visit.id, "The same Scene stays open after return.");
+      assert.equal(grants.find((row) => row.id === bedGrant.id)!.revoked, longAbsence);
+      assert.equal(
+        grants.find((row) => row.id === "escorted-arrival")!.revoked,
+        false,
+        "Standing permission persists.",
+      );
+      assert.equal(
+        grants.find((row) => row.id === "long-living")?.revoked ?? false,
+        false,
+        "An unused invitation persists.",
+      );
+      assert.equal(
+        grants.find((row) => row.id === "long-office")?.revoked ?? false,
+        false,
+        "Other visitors keep their grants.",
+      );
+      if (longAbsence) {
+        assert.equal(after!.zoneId, "exterior");
+        await assert.rejects(() => moveVenueZone(visit.id, "bedroom", after!.sceneRevision), {
+          name: "VillagesRequestError",
+        });
+        const lineCount = after!.lines.filter((line) => line.content.includes("access has ended")).length;
+        await mutateVillageState((current) => {
+          const home = current.venues[0];
+          applyAccessCommand(
+            home,
+            {
+              action: "invite",
+              operationId: "fresh-return-grant",
+              expectedRevision: home.access!.revision,
+              zoneId: "bedroom",
+              visitorId: "player",
+              duration: "visit",
+              accompanied: false,
+              outsideHours: true,
+              sceneId: visit.id,
+            },
+            "jim",
+            stamp,
+            known,
+          );
+        });
+        await prepareReturnCatchup(new Date(Date.now() + 5000), "retry-return");
+        const fresh = (await readVillageState({ memories: true })).venues[0].access!.permissions.find(
+          (row) => row.id === "fresh-return-grant",
+        )!;
+        assert.equal(fresh.revoked, false, "Retrying the same return preserves a new invitation.");
+        assert.equal(lineCount, 1);
+        assert.equal(
+          (await activeVenueSession())!.lines.filter((line) => line.content.includes("access has ended")).length,
+          1,
+        );
+      } else assert.equal(after!.zoneId, "bedroom");
+      await endVenueSession(visit.id);
+    }
     const escortedArrival = await enterVenue("home", "office");
     assert.equal(escortedArrival.zoneId, "office", "Initial entry uses captured attendance for the named escort.");
     await endVenueSession(escortedArrival.id);

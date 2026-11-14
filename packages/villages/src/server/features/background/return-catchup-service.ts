@@ -3,6 +3,7 @@ import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain
 import {
   appendReturnRelationshipRefresh,
   discoverReturnBatch,
+  expirePlayerVisitsOnReturn,
   recordReturnVisibility,
 } from "../../domain/rules/return-catchup-state.js";
 import { conflict } from "../../domain/rules/errors.js";
@@ -40,11 +41,19 @@ export function createReturnCatchup(ports: Ports) {
     return result;
   }
   async function prepare(now: Date, id: string): Promise<void> {
-    await mutate((state) => discoverReturnBatch(state, now, id));
+    const wallTime = Date.now();
+    await mutate((state) => {
+      discoverReturnBatch(state, now, id);
+      expirePlayerVisitsOnReturn(state, wallTime);
+    });
   }
   async function recordVisible(now: Date, visible = true): Promise<void> {
+    const wallTime = Date.now();
     await mutate((state) => {
-      if (ports.hasPresence() === visible) recordReturnVisibility(state, now);
+      if (ports.hasPresence() !== visible || !state.seed || !state.setupAt) return;
+      state.returnCatchup ??= {};
+      state.returnCatchup.lastPresenceWallTime = Math.max(state.returnCatchup.lastPresenceWallTime ?? 0, wallTime);
+      recordReturnVisibility(state, now);
     });
   }
   async function update(batchId: string, change: (state: VillageState) => void): Promise<void> {
