@@ -92,6 +92,7 @@ function SpriteBatchPicker({
             <label key={file.filename}>
               <input
                 type="checkbox"
+                autoComplete="off"
                 disabled={Boolean(assigned.get(file.filename)?.artworkId)}
                 checked={checked.includes(file.filename)}
                 onChange={(event) =>
