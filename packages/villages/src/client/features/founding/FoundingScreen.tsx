@@ -6,7 +6,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
-import { SpriteSetupDialog } from "../residents/SpriteSetupDialog.js";
+import { Appearance } from "../residents/Appearance.js";
 import { FoundingPagination } from "./FoundingPagination.js";
 import { FoundingDialog } from "./FoundingDialog.js";
 import {
@@ -35,7 +35,7 @@ const PLACE_ERRORS = {
   locationName: "Name the starting location.",
   setting: "Describe the starting location.",
 };
-export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
+export function FoundingScreen({ controller, host }: { controller: FoundingScreenController; host?: HTMLElement }) {
   const {
     busy,
     catalog,
@@ -454,23 +454,21 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   disabled={busy || spriteBusy}
                 />
               </section>
-              <section className="villages-forging-card villages-founding-sprites" aria-label="Resident sprites">
+              <section className="villages-forging-card villages-founding-sprites" aria-label="Resident appearance">
                 {setupStep === 1 && activeSpriteId ? (
-                  <SpriteSetupDialog
+                  <Appearance
                     key={activeSpriteId}
-                    embedded
+                    host={host}
                     characterId={activeSpriteId}
                     name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
                     portrait={portraits[activeSpriteId]}
                     selectedRevision={setupSpriteRevisions[activeSpriteId]}
-                    onClose={() => setSpriteId(null)}
-                    onDone={spriteSaved}
+                    onSave={spriteSaved}
                     onBusyChange={spriteBusyChanged}
                   />
                 ) : (
                   <>
-                    <h3>Resident sprites</h3>
-                    <p>Choose a resident to set up their artwork.</p>
+                    <h3>Appearance</h3>
                   </>
                 )}
               </section>

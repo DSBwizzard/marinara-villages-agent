@@ -188,6 +188,7 @@ function coerceVillager(value: unknown): VillageVillager | null {
     throw new Error("This saved resident needs a current writing-style assignment.");
   const relationshipScene = asRecord(raw.relationshipScene);
   const relationshipSceneEndedAt = asIsoString(relationshipScene.endedAt);
+  const spriteManager = coerceSpriteManager(raw.spriteManager);
   return {
     incarnation: raw.incarnation,
     ...(relationshipSceneEndedAt && typeof relationshipScene.id === "string" && relationshipScene.id.length <= 180
@@ -216,8 +217,8 @@ function coerceVillager(value: unknown): VillageVillager | null {
       : {}),
     ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
     admission: readResidentAdmission(raw.admission) ?? { ...EMPTY_RESIDENT_ADMISSION },
-    spriteManager: coerceSpriteManager(raw.spriteManager),
-    sprite: managerResidentSprite(coerceSpriteManager(raw.spriteManager)),
+    spriteManager,
+    sprite: managerResidentSprite(spriteManager, characterId),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
     // Absent reads as null rather than as an empty agenda, and the difference
     // matters: null means "not written for yet", which is what makes the

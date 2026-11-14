@@ -54,24 +54,8 @@
       "path": "/characters/:characterId/sprites/setup/settled"
     },
     {
-      "method": "get",
-      "path": "/characters/:characterId/sprites/setup"
-    },
-    {
-      "method": "post",
-      "path": "/characters/:characterId/sprites/setup/prepare"
-    },
-    {
       "method": "post",
       "path": "/characters/:characterId/sprites/setup/save"
-    },
-    {
-      "method": "post",
-      "path": "/characters/:characterId/sprites/setup/frame"
-    },
-    {
-      "method": "post",
-      "path": "/characters/:characterId/sprites/setup/apply"
     },
     {
       "method": "get",

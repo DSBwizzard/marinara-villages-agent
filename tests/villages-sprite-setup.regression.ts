@@ -1,488 +1,255 @@
-import { describeSpriteExpressions } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { PNG } from "pngjs";
-import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { resolveSpriteExpression } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 import {
   createSpriteSetup,
   type SpriteSetupPorts,
 } from "../packages/villages/src/server/features/media/sprite-setup-service.js";
 import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
-import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
+import { retainedSpriteFiles } from "../packages/villages/src/server/adapters/storage/sprite-files.js";
 
+const id = "mara";
 const documents = new Map<string, unknown>();
-const imageBytes = PNG.sync.write(new PNG({ width: 64, height: 96 }));
-const imageData = "data:image/png;base64," + imageBytes.toString("base64");
-let village = coerceVillageState(defaultVillageState());
-let copied = 0;
-const libraryFiles = ["full_suicejejshe.png", "full_defeult-1.png", "happy.png"];
-let prepareGate: (() => Promise<void>) | undefined;
-let catalog:
-  | {
-      folders: { id: string; name: string; category: string }[];
-      sprites: { filename: string; label: string; folderId: string | null }[];
-    }
-  | undefined;
-let failImage = "";
-let catalogFailure: Error | undefined;
+const documentId = "villages-sprite-setup-" + createHash("sha256").update(id).digest("hex");
+const signal = new AbortController().signal;
+let world = defaultVillageState();
+const version = "100";
+const image = "data:image/png;base64,";
+const png = (name: string) => image + Buffer.from(name).toString("base64");
+const sourceDigest = (data: string) =>
+  createHash("sha256")
+    .update(Buffer.from(data.slice(image.length), "base64"))
+    .digest("hex");
+const makeArt = (filename: string, data: string, characterId = id) => {
+  const assetId = "villages-" + randomUUID();
+  const rendered = "r-" + randomUUID().replaceAll("-", "") + ".png";
+  const file = (name: string) => ({ filename: name, url: "/api/sprites/" + assetId + "/file/" + name });
+  return {
+    id: "a-" + randomUUID(),
+    name: filename,
+    origin: "engine" as const,
+    engineSource: { characterId, filename },
+    assetId,
+    source: { ...file("original.png"), width: 32, height: 32, sha256: sourceDigest(data) },
+    rendered: file(rendered),
+    frame: { x: 0, y: 0, width: 32, height: 32, scale: 1, offsetX: 0, offsetY: 0 },
+    warnings: [],
+  };
+};
+const front = makeArt("happy.png", png("happy.png?v=100"));
+const unassigned = makeArt("draft-only.png", png("old"));
+documents.set(documentId, {
+  revision: 5,
+  manager: { version: 1, artwork: [front, unassigned], expressions: [], assignments: [], framing: { mode: "half" } },
+  assignments: [
+    { artworkId: front.id, name: "Happy", view: "front", included: true, approved: true },
+    { artworkId: unassigned.id, name: "Draft", view: "front", included: true, approved: false },
+  ],
+  defaultArtworkId: front.id,
+  useSprites: true,
+  errors: {},
+});
+const initialDocument = structuredClone(documents.get(documentId));
+const happySide = Array.from({ length: 17 }, (_, index) => "side-" + (index + 1) + ".png");
+const looseFiles = ["new-front.png", ...happySide];
+let catalogReads = 0;
+let libraryAvailable = true;
 const service = createSpriteSetup({
-  villagesDocuments: () => ({ getById: async (_pkg, id) => ({ data: structuredClone(documents.get(id)) }) }),
-  mutateDocument: async (id, slot, update) => {
-    const next = slot.coerce(documents.get(id));
+  villagesDocuments: () => ({
+    getById: async (_pkg: string, key: string) => ({ data: structuredClone(documents.get(key)) }),
+  }),
+  mutateDocument: async (key, slot, update) => {
+    const next = slot.coerce(documents.get(key));
     await update(next);
-    documents.set(id, structuredClone(next));
+    documents.set(key, structuredClone(next));
   },
-  villageEngineJson: async (path) => {
-    if (path === "/api/connections/vision")
-      return { provider: "custom", defaultParameters: JSON.stringify({ imageCaptioningEnabled: false }) };
-    if (path === "/api/connections/pictures") return { provider: "image_generation" };
-    if (path.startsWith("/api/characters/")) return { id: "bupkis" };
-    if (path.endsWith("/catalog")) {
-      if (catalogFailure) throw catalogFailure;
-      if (catalog) return catalog;
-      throw new VillagesRequestError(502, "The Engine refused the sprite catalog (404).");
-    }
-    if (path.startsWith("/api/sprites/"))
-      return libraryFiles.map((filename, index) => ({ filename, ...(index === 0 ? { label: "Thoughtful" } : {}) }));
-    throw Error(path);
-  },
-  villagesLanguageModels: () => assert.fail("Sprite setup must never resolve a model."),
-  manager: {
-    readImage: async () => imageData,
-    prepareArtwork: async (name, _image, engineSource) => {
-      copied++;
-      if (name === failImage) throw new Error("Unreadable sprite");
-      await prepareGate?.();
-      const assetId = "villages-" + randomUUID();
-      return {
-        id: "a-" + randomUUID(),
-        name,
-        assetId,
-        origin: "engine",
-        engineSource,
-        frame: { x: 0, y: 0, width: 64, height: 96, scale: 1, offsetX: 0, offsetY: 0 },
-        source: {
-          filename: "original.png",
-          url: `/api/sprites/${assetId}/file/original.png`,
-          width: 64,
-          height: 96,
-          sha256: createHash("sha256").update(imageBytes).digest("hex"),
-        },
-        rendered: { filename: "rendered.png", url: `/api/sprites/${assetId}/file/rendered.png` },
-        warnings: [],
-      };
-    },
+  villageEngineJson: async (url) => {
+    if (url.startsWith("/api/characters/")) return { id };
+    if (!url.endsWith("/catalog")) throw new Error(url);
+    catalogReads++;
+    if (!libraryAvailable) throw new Error("Unavailable");
+    return {
+      folders: [],
+      sprites: looseFiles.map((filename, index) => ({
+        filename,
+        label: index === 0 ? "Happy_2" : "Happy_" + index,
+        folderId: null,
+        url: "/api/sprites/mara/file/" + filename + "?v=" + version,
+      })),
+    };
   },
   writes: createSpriteWrites(),
-  readVillageState: async () => structuredClone(village),
+  readVillageState: async () => structuredClone(world),
   mutateVillageState: async (update) => {
-    const next = structuredClone(village);
+    const next = structuredClone(world);
     update(next);
-    village = next;
-    return next;
+    world = coerceVillageState(next);
+    return structuredClone(world);
   },
-} as unknown as SpriteSetupPorts);
+} as SpriteSetupPorts);
 
-const emptyDraft = await service.read("empty-character");
-const awaitingFirstSprite = await service.save("empty-character", {
-  ...emptyDraft,
-  useSprites: true,
-  validateForUse: true,
-});
+const initial = await service.settled(id);
 assert.deepEqual(
-  (await service.preparedManager("empty-character", awaitingFirstSprite.revision))!.assignments,
-  [],
-  "Sprite mode can await its first explicit assignment without inventing a default",
+  documents.get(documentId),
+  initialDocument,
+  "Reading legacy data does not change the founding revision",
 );
-let draft = await service.prepare("bupkis");
-assert.equal(draft.manager.artwork.length, 2, "only Engine full-body images enter setup");
-assert.deepEqual(
-  draft.assignments.map((item) => item.name),
-  ["Thoughtful", "defeult-1"],
-  "Engine labels and filenames prefill editable names",
-);
-assert.ok(draft.assignments.every((item) => item.view === "front" && !item.approved));
-assert.equal("analyze" in service, false, "Sprite setup has no model analysis entry point");
-await service.prepare("bupkis");
-assert.equal(copied, 2, "opening setup reuses independent copies");
-const stale = draft.revision;
-draft = await service.save("bupkis", {
-  ...draft,
-  defaultArtworkId: draft.assignments[0].artworkId,
-  useSprites: true,
-  assignments: draft.assignments.map((item, index) => ({ ...item, view: index ? "front" : "side" })),
-});
-await assert.rejects(service.preparedManager("bupkis", draft.revision), /approved default/);
-await assert.rejects(service.save("bupkis", { ...draft, revision: stale }), /changed/);
-draft = await service.save("bupkis", {
-  ...draft,
-  assignments: draft.assignments.map((item, index) => ({ ...item, included: index === 0, approved: index === 0 })),
-  validateForUse: true,
-});
-const manager = await service.preparedManager("bupkis", draft.revision);
-assert.equal(manager!.assignments.length, 1);
-const sprite = managerResidentSprite(manager)!;
-assert.equal(sprite.expressions[0].view, "side");
-const image = { view: "side" as const, label: "thinking", url: "/sprite" };
-assert.equal(selectSpriteImage([image], "thinking", "right")!.mirrored, false);
-assert.equal(selectSpriteImage([image], "thinking", "left")!.mirrored, true);
-assert.equal(selectSpriteImage([{ ...image, view: "front" }], "thinking", "left")!.mirrored, false);
-draft = await service.save("bupkis", { ...draft, useSprites: false });
-assert.equal((await service.preparedManager("bupkis", draft.revision))!.assignments.length, 0);
-assert.equal((await service.read("bupkis")).manager.artwork.length, 2, "unassigned images stay available");
-await assert.rejects(service.preparedManager("bupkis", draft.revision - 1), /changed/);
-village = coerceVillageState({
-  ...defaultVillageState(),
+assert.deepEqual((await service.settled(id)).manager, initial.manager, "Migrated expression IDs are deterministic");
+assert.equal(await service.preparedManager(id), null);
+assert.equal(initial.manager.expressions.length, 1);
+assert.equal(initial.files[0].version, version);
+const happyId = initial.manager.expressions[0].id;
+const expressions = [
+  { id: happyId, name: "Happy", front: { artworkId: front.id } },
+  { id: "new-front", name: "Happy_2", front: { filename: looseFiles[0], version } },
+  ...happySide.map((filename, index) => ({
+    id: "new-side-" + index,
+    name: "Happy_" + (index + 1),
+    side: { filename, version },
+  })),
+];
+const body = { token: initial.token, requestId: "batch", useSprites: true, expressions, defaultExpressionId: happyId };
 
+await assert.rejects(
+  service.save(
+    id,
+    {
+      ...body,
+      defaultExpressionId: "new-front",
+      expressions: [{ ...expressions[1], front: { filename: looseFiles[0], version: "99" } }],
+    },
+    signal,
+  ),
+  /Engine sprites changed/,
+);
+await assert.rejects(
+  service.save(id, { ...body, expressions: [...expressions, { ...expressions[2], id: "new-duplicate" }] }, signal),
+  /Choose each sprite once per facing/,
+);
+await assert.rejects(
+  service.save(
+    id,
+    { ...body, expressions: [{ ...expressions[1], name: "Wrong" }], defaultExpressionId: "new-front" },
+    signal,
+  ),
+  /Engine sprites changed/,
+);
+await assert.rejects(
+  service.save(
+    id,
+    {
+      ...body,
+      expressions: [{ ...expressions[1], front: { filename: "outside-library.png", version } }],
+      defaultExpressionId: "new-front",
+    },
+    signal,
+  ),
+  /Engine sprites changed/,
+);
+assert.deepEqual(documents.get(documentId), initialDocument);
+const readsBeforeSave = catalogReads;
+const saved = await service.save(id, body, signal);
+assert.equal(catalogReads, readsBeforeSave + 1, "A whole batch validates against one Engine catalog read");
+assert.equal(saved.revision, 6);
+assert.equal(saved.manager.assignments.length, 19);
+assert.deepEqual(
+  saved.manager.artwork,
+  initial.manager.artwork,
+  "Selections reference Engine files without producing copies",
+);
+assert.equal(saved.manager.framing.mode, "half");
+assert.equal(saved.manager.assignments[0].artworkId, front.id);
+assert.deepEqual(await service.save(id, body, signal), saved, "Lost acknowledgements replay the exact committed save");
+await assert.rejects(service.save(id, { ...body, useSprites: false }, signal), /save changed/);
+await assert.rejects(service.preparedManager(id, 5), /changed/);
+assert.deepEqual(await service.preparedManager(id, 6), saved.manager);
+assert.equal(
+  retainedSpriteFiles("sprite-setup", documents.get(documentId)).length,
+  4,
+  "Only Village-owned files are retained",
+);
+
+world = coerceVillageState({
+  ...world,
+  seed: "resident-world",
   villagers: [
     {
+      characterId: id,
+      incarnation: "11111111-1111-4111-8111-111111111111",
+      addedAt: "2026-01-01T00:00:00.000Z",
       letterFontId: "caveat",
-      characterId: "bupkis",
-      incarnation: "bupkis:original",
-      addedAt: new Date().toISOString(),
       cardSnapshot: {
-        id: "bupkis",
-        name: "Bupkis",
+        id,
         revision: 1,
-        capturedAt: new Date().toISOString(),
         sourceStatus: "available",
+        capturedAt: "2026-01-01T00:00:00.000Z",
+        name: "Mara",
       },
-      spriteManager: await service.preparedManager("bupkis", draft.revision),
+      spriteManager: saved.manager,
     },
   ],
 });
-draft = await service.save("bupkis", { ...draft, useSprites: true });
-const resident = await service.read("bupkis");
-await service.applyResident("bupkis", { revision: draft.revision, residentToken: resident.residentToken });
-assert.equal(
-  village.villagers[0].spriteManager!.assignments.length,
-  1,
-  "deferred setup activates already-owned but unassigned artwork",
-);
-assert.equal(village.villagers[0].spriteManager!.assignments[0].view, "side");
-await assert.rejects(
-  service.applyResident("bupkis", { revision: draft.revision, residentToken: resident.residentToken }),
-  /changed/,
-);
-const assignedBeforeRefresh = structuredClone(draft.assignments);
-libraryFiles.push("full_new-art.png");
-draft = await service.prepare("bupkis");
-assert.equal(draft.manager.artwork.length, 3);
-assert.deepEqual(draft.assignments.slice(0, 2), assignedBeforeRefresh, "new imports preserve prepared assignments");
-libraryFiles.push(...Array.from({ length: 41 }, (_, index) => `full_more-${index}.png`));
-draft = await service.prepare("bupkis");
-assert.equal(
-  draft.manager.artwork.length,
-  43,
-  "large sets import in bounded groups without blocking portrait fallback",
-);
-draft = await service.save("bupkis", { ...draft, useSprites: false });
-assert.equal((await service.preparedManager("bupkis", draft.revision))!.assignments.length, 0);
-// Leaving setup must not wait for a batch, dispatch the next image, or lose the finished copy.
-libraryFiles.splice(0, libraryFiles.length, "full_one.png", "full_two.png");
-let entered!: () => void, release!: () => void;
-const started = new Promise<void>((resolve) => {
-  entered = resolve;
-});
-const held = new Promise<void>((resolve) => {
-  release = resolve;
-});
-prepareGate = async () => {
-  entered();
-  await held;
-};
-const firstImport = new AbortController(),
-  queuedImport = new AbortController();
-const beforeImports = copied;
-const firstWork = service.prepare("cold-one", firstImport.signal);
-await started;
-const queuedWork = service.prepare("cold-two", queuedImport.signal);
-const settledWork = service.settled("cold-one");
-assert.equal(await service.preparedManager("cold-one"), null, "Portrait selection bypasses pending sprite import.");
-assert.equal((await service.read("cold-one")).revision, 0, "Loading setup does not wait for image preparation.");
-queuedImport.abort();
-firstImport.abort();
-release();
-const [partial, cancelled] = await Promise.all([firstWork, queuedWork]);
-assert.equal(copied - beforeImports, 1, "Cancelled queued work never starts another image.");
-assert.equal(partial.manager.artwork.length, 1, "The image already processing is retained after leaving.");
-assert.equal(
-  (await settledWork).revision,
-  partial.revision,
-  "Returning to an existing selection uses the completed partial-import revision.",
-);
-assert.equal(cancelled.manager.artwork.length, 0);
-assert.deepEqual(partial.errors, {}, "Cancellation is not recorded as an image failure.");
-assert.equal(
-  await service.preparedManager("cold-one"),
-  null,
-  "Late imports cannot enable sprites for a portrait selection.",
-);
-prepareGate = undefined;
-const resumed = await service.prepare("cold-one");
-assert.equal(resumed.manager.artwork.length, 2);
-assert.equal(copied - beforeImports, 2, "Reopening resumes missing copies without importing completed artwork again.");
-libraryFiles.splice(0, libraryFiles.length, ...Array.from({ length: 40 }, (_, index) => `full_scale-${index}.png`));
-let activeImages = 0,
-  peakImages = 0;
-prepareGate = async () => {
-  activeImages++;
-  peakImages = Math.max(peakImages, activeImages);
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  activeImages--;
-};
-const beforeScale = copied;
-const manyCharacters = await Promise.all(Array.from({ length: 15 }, (_, index) => service.prepare(`scale-${index}`)));
-assert.equal(peakImages, 1, "Fifteen characters cannot process hundreds of setup images concurrently.");
-assert.equal(copied - beforeScale, 600);
-assert.ok(manyCharacters.every((state) => state.manager.artwork.length === 40));
-console.log(
-  "Sprite setup: labeled imports, manual review, cancellation, revision checks and right-facing side sprites passed.",
-);
+const resident = await service.settled(id, true);
+const sprite = managerResidentSprite(resident.manager, id)!;
+assert.equal(sprite.named, true);
+assert.equal(sprite.expressions.filter((row) => row.view === "front").length, 2);
+assert.equal(sprite.expressions.filter((row) => row.view === "side").length, 17);
+assert.equal(sprite.expressions[2].assetId, id);
+assert.equal(sprite.expressions[2].filename, "side-1.png");
+assert.equal(sprite.expressions[2].version, version);
+const projected = projectVillager(world.villagers[0], "Mara", "", [], "", "", null);
+assert.equal(projected.sprite?.images[2].url, "/api/sprites/mara/file/side-1.png?v=100");
+assert.equal(resolveSpriteExpression(sprite, "happy", true, "front", 0.999), sprite.expressions[1].expressionId);
+assert.equal(resolveSpriteExpression(sprite, "happy", true, "side", 0.999), sprite.expressions.at(-1)?.expressionId);
 
-// Stock naming needs no additional variant labels or grouping assignments.
-documents.clear();
-libraryFiles.splice(0, libraryFiles.length, "full_happy_01.png", "full_happy_blush.png");
-const variantDraft = await service.prepare("variants");
-const variantSaved = await service.save("variants", {
-  ...variantDraft,
-  useSprites: true,
-  defaultArtworkId: variantDraft.assignments[0].artworkId,
-  assignments: variantDraft.assignments.map((item) => ({
-    ...item,
-    included: true,
-    approved: true,
-    name: "Smile",
-    view: "front",
-  })),
-  validateForUse: true,
-});
-const variantManager = await service.preparedManager("variants", variantSaved.revision);
-assert.equal(variantManager!.assignments.length, 2, "same display label does not replace a filename variant");
-const filenameSprite = managerResidentSprite(variantManager)!;
+libraryAvailable = false;
+const rows = resident.manager.assignments.map(({ expressionId, artworkId, view, engineFilename, version }) => ({
+  id: expressionId,
+  name: resident.manager.expressions.find((row) => row.id === expressionId)!.name,
+  [view]: engineFilename ? { filename: engineFilename, version } : { artworkId },
+}));
+const portrait = await service.save(
+  id,
+  {
+    ...body,
+    token: resident.token,
+    requestId: "portrait",
+    resident: true,
+    useSprites: false,
+    expressions: rows,
+  },
+  signal,
+);
+assert.equal(managerResidentSprite(world.villagers[0].spriteManager, id), null);
 assert.deepEqual(
-  filenameSprite.expressions.map((entry) => entry.spriteName),
-  ["happy_01", "happy_blush"],
+  portrait.manager.assignments,
+  saved.manager.assignments,
+  "Unchanged references do not need the catalog",
 );
-const automaticGroup = JSON.parse(describeSpriteExpressions(filenameSprite, true));
-assert.equal(automaticGroup.name, "happy", "source filename grouping survives reviewed display names");
-assert.equal(automaticGroup.id.startsWith("g-"), true);
-
-// Engine folders are selected by ID; identical labels and renamed files retain their identity.
-prepareGate = undefined;
-documents.clear();
-village = coerceVillageState(defaultVillageState());
-catalog = {
-  folders: [
-    { id: "front-folder", name: "Everyday", category: "full-body" },
-    { id: "side-folder", name: "Everyday", category: "full-body" },
-    { id: "spare-folder", name: "Sketches", category: "expressions" },
-  ],
-  sprites: [
-    { filename: "full_front-handle.png", label: "Happy", folderId: "front-folder" },
-    { filename: "full_side-handle.png", label: "Happy", folderId: "side-folder" },
-    { filename: "portrait.png", label: "Spare", folderId: "spare-folder" },
-    { filename: "unfiled.png", label: "Loose", folderId: null },
-  ],
-};
-let folderDraft = await service.read("foldered");
-assert.equal(folderDraft.folderSupport, true);
-assert.equal(folderDraft.folders!.length, 3);
-assert.equal(folderDraft.manager.artwork.length, 0, "Reading a catalog does not copy sprites");
-await assert.rejects(service.prepare("foldered"), /Choose a sprite folder/);
-const importFolder = (folderId: string | null, view: string, filenames: string[], revision = folderDraft.revision) =>
-  service.prepare("foldered", undefined, { folderId, view, filenames, revision });
-await assert.rejects(importFolder("front-folder", "front", ["full_side-handle.png"]), /folder changed/);
-await assert.rejects(importFolder("missing", "front", ["full_front-handle.png"]), /Choose a folder/);
-await assert.rejects(importFolder("front-folder", "left", ["full_front-handle.png"]), /Choose a folder/);
-folderDraft = await importFolder("front-folder", "front", ["full_front-handle.png"]);
-assert.equal(folderDraft.assignments[0].name, "Happy");
-assert.equal(folderDraft.assignments[0].view, "front");
-await assert.rejects(importFolder("side-folder", "side", ["full_side-handle.png"], 0), /changed/);
-folderDraft = await importFolder("side-folder", "side", ["full_side-handle.png"]);
-assert.equal(folderDraft.assignments[1].view, "side");
-folderDraft = await service.save("foldered", {
-  ...folderDraft,
-  useSprites: true,
-  defaultArtworkId: folderDraft.assignments[0].artworkId,
-  assignments: folderDraft.assignments.map((item) => ({ ...item, approved: true })),
-  validateForUse: true,
-});
-const paired = (await service.preparedManager("foldered", folderDraft.revision))!;
-assert.equal(paired.expressions.length, 1, "Unambiguous front/side labels share an expression");
-assert.equal(paired.assignments.length, 2);
-const beforeRepeat = copied,
-  reviewed = structuredClone(folderDraft);
-catalog.sprites[0].label = "Renamed in Engine";
-folderDraft = await importFolder("front-folder", "unassigned", ["full_front-handle.png"]);
-assert.equal(copied, beforeRepeat, "Renaming or reimporting does not copy a stable filename twice");
-assert.deepEqual(folderDraft.assignments, reviewed.assignments, "Reimporting preserves reviewed facing and names");
-folderDraft = await importFolder("spare-folder", "unassigned", ["portrait.png"]);
-assert.equal(folderDraft.assignments[2].included, false);
-folderDraft = await service.save("foldered", { ...folderDraft, validateForUse: true });
-assert.equal(
-  (await service.preparedManager("foldered", folderDraft.revision))!.assignments.length,
-  2,
-  "Unassigned artwork is unavailable in Scenes",
+const removed = await service.save(
+  id,
+  {
+    ...body,
+    token: portrait.token,
+    requestId: "remove",
+    resident: true,
+    expressions: rows.slice(0, -1),
+  },
+  signal,
 );
-assert.equal(folderDraft.manager.artwork.length, 3);
-
-// A whole large folder is resumable across bounded requests, including a failed image.
-catalog.sprites.push(
-  ...Array.from({ length: 45 }, (_, index) => ({
-    filename: `full_batch-${index}.png`,
-    label: `Batch ${index}`,
-    folderId: "front-folder",
-  })),
-);
-const batchNames = catalog.sprites.slice(4).map((file) => file.filename);
-await assert.rejects(importFolder("front-folder", "front", batchNames), /Choose a folder/);
-failImage = batchNames[3];
-folderDraft = await importFolder("front-folder", "unassigned", batchNames.slice(0, 40));
-assert.equal(folderDraft.manager.artwork.length, 42);
-assert.ok(folderDraft.errors[failImage]);
-failImage = "";
-folderDraft = await importFolder("front-folder", "unassigned", batchNames.slice(40));
-folderDraft = await importFolder("front-folder", "unassigned", [batchNames[3]]);
-assert.equal(folderDraft.manager.artwork.length, 48);
-assert.deepEqual(folderDraft.errors, {});
-await assert.rejects(importFolder("front-folder", "front", ["../outside.png"]), /folder changed/);
-
-// Resident imports pair a new view while keeping the existing default and artwork.
-village = coerceVillageState({
-  ...defaultVillageState(),
-  villagers: [
-    {
-      letterFontId: "caveat",
-      characterId: "resident",
-      incarnation: "resident:original",
-      addedAt: new Date().toISOString(),
-      cardSnapshot: {
-        id: "resident",
-        name: "Resident",
-        revision: 1,
-        capturedAt: new Date().toISOString(),
-        sourceStatus: "available",
-      },
-      spriteManager: {
-        ...paired,
-        assignments: paired.assignments.filter((item) => item.view === "front"),
-        artwork: paired.artwork
-          .filter((art) => art.engineSource?.filename === "full_front-handle.png")
-          .map((art) => ({ ...art, engineSource: { characterId: "resident", filename: "full_front-handle.png" } })),
-      },
-    },
-  ],
-});
-let residentDraft = await service.read("resident");
-assert.ok(residentDraft.files.find((file) => file.filename === "full_front-handle.png")!.adoptedArtworkId);
-residentDraft = await service.prepare("resident", undefined, {
-  revision: 0,
-  folderId: "side-folder",
-  view: "side",
-  filenames: ["full_side-handle.png"],
-});
-residentDraft = await service.save("resident", {
-  ...residentDraft,
-  useSprites: true,
-  defaultArtworkId: residentDraft.assignments[0].artworkId,
-  assignments: residentDraft.assignments.map((item) => ({ ...item, approved: true })),
-  validateForUse: true,
-});
-await service.applyResident("resident", {
-  revision: residentDraft.revision,
-  residentToken: residentDraft.residentToken,
-});
-const applied = village.villagers[0].spriteManager!;
-assert.equal(applied.expressions.length, 1);
-assert.equal(applied.assignments.length, 2);
-assert.equal(applied.defaultExpressionId, paired.defaultExpressionId);
-assert.equal(applied.artwork.length, 2);
-catalog.sprites.push({ filename: "full_conflict.png", label: "Happy", folderId: "front-folder" });
-residentDraft = await service.prepare("resident", undefined, {
-  revision: residentDraft.revision,
-  folderId: "front-folder",
-  view: "front",
-  filenames: ["full_conflict.png"],
-});
-residentDraft = await service.save("resident", {
-  ...residentDraft,
-  assignments: residentDraft.assignments.map((item) => ({ ...item, approved: true })),
-  validateForUse: true,
-});
-const beforeConflict = structuredClone(village.villagers[0].spriteManager);
+assert.equal(removed.manager.assignments.length, 18);
+assert.deepEqual(removed.manager.artwork, initial.manager.artwork);
+assert.equal((await service.settled(id, true)).token, removed.token);
 await assert.rejects(
-  service.applyResident("resident", { revision: residentDraft.revision, residentToken: residentDraft.residentToken }),
-  /already has artwork/,
+  service.save(id, { ...body, token: portrait.token, requestId: "stale", resident: true }, signal),
+  /Appearance changed/,
 );
-assert.deepEqual(
-  village.villagers[0].spriteManager,
-  beforeConflict,
-  "A facing conflict never replaces an existing assignment or partially commits artwork",
-);
-for (const alreadyAssigned of [false, true]) {
-  const id = `adoption-race-${alreadyAssigned}`;
-  village.villagers.push({
-    ...village.villagers[0],
-    characterId: id,
-    incarnation: id + ":original",
-    spriteManager: undefined,
-  });
-  let racing = await service.prepare(id, undefined, {
-    revision: 0,
-    folderId: "side-folder",
-    view: "side",
-    filenames: ["full_side-handle.png"],
-  });
-  racing = await service.save(id, {
-    ...racing,
-    useSprites: true,
-    defaultArtworkId: racing.assignments[0].artworkId,
-    assignments: racing.assignments.map((item) => ({ ...item, approved: true })),
-    validateForUse: true,
-  });
-  const otherCopy = structuredClone(racing.manager.artwork[0]);
-  otherCopy.id = "a-" + randomUUID();
-  otherCopy.frame.offsetX = 12;
-  const existingExpression = { id: "e-" + randomUUID(), name: "Authored expression" };
-  village.villagers.at(-1)!.spriteManager = {
-    ...racing.manager,
-    artwork: [otherCopy],
-    assignments: alreadyAssigned
-      ? [{ expressionId: existingExpression.id, view: "front", artworkId: otherCopy.id }]
-      : [],
-    expressions: alreadyAssigned ? [existingExpression] : [],
-    defaultExpressionId: alreadyAssigned ? existingExpression.id : undefined,
-  };
-  const refreshed = await service.read(id);
-  await service.applyResident(id, { revision: racing.revision, residentToken: refreshed.residentToken });
-  const reconciled = village.villagers.at(-1)!.spriteManager!;
-  assert.equal(reconciled.artwork.length, 1, "Applying reuses a copy adopted after preparation");
-  assert.equal(reconciled.artwork[0].id, otherCopy.id);
-  assert.equal(reconciled.artwork[0].frame.offsetX, 12, "The resident copy's framing is preserved");
-  assert.equal(reconciled.assignments.length, 1);
-  assert.equal(reconciled.assignments[0].artworkId, otherCopy.id);
-  assert.equal(reconciled.assignments[0].view, alreadyAssigned ? "front" : "side");
-  assert.equal(
-    reconciled.defaultExpressionId,
-    alreadyAssigned ? existingExpression.id : reconciled.assignments[0].expressionId,
-  );
-}
 console.log(
-  "Sprite folder imports: scoped membership, front/side pairing, unassigned art, bounded retries and existing resident preservation passed.",
+  "Appearance saves independent Engine references, preserves owned art and retries, and resolves 2 Front and 17 Side sprites.",
 );
-catalog = undefined;
-assert.equal((await service.read("legacy-engine")).folderSupport, false, "Older Engines retain flat imports");
-catalogFailure = new Error("Engine catalog unavailable (500)");
-const unavailable = await service.read("unavailable-catalog");
-assert.equal(unavailable.folderSupport, true, "A failed catalog never enables automatic flat imports");
-assert.equal(unavailable.files.length, 0);
-assert.ok(unavailable.libraryError);
-await assert.rejects(service.prepare("unavailable-catalog"), /unavailable/);
-catalogFailure = undefined;
-assert.equal((await service.read("unavailable-catalog")).folderSupport, false, "A deliberate refresh can recover");
