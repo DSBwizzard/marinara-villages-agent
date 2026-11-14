@@ -33,11 +33,11 @@ function fixture(name: string) {
     owners.push(activationScope());
     if (activationScope()?.active === false) throw Error("Original archive connection unavailable.");
   };
-  const put = (id: string, revision = 1) =>
+  const put = (id: string, revision = 1, kind = id === ACTIVE_ID ? "venue-active" : SESSION_KIND) =>
     records.set(id, {
       id,
       packageId: "villages",
-      kind: id === ACTIVE_ID ? "venue-active" : SESSION_KIND,
+      kind,
       name,
       description: name,
       data: { owner: name },
@@ -66,7 +66,7 @@ function fixture(name: string) {
         async list(packageId, kind) {
           note("list");
           assert.equal(packageId, "villages");
-          assert.ok([SESSION_KIND, "scene-terminal", "project-scene-evidence"].includes(kind));
+          assert.ok([SESSION_KIND, "scene-terminal", "keepsake-art"].includes(kind));
           if (listFailure) throw listFailure;
           return structuredClone([...records.values()].filter((record) => record.kind === kind));
         },
@@ -120,9 +120,11 @@ async function main() {
   const complete = fixture("complete");
   complete.put(SESSION_PREFIX + "first", 3);
   complete.put(SESSION_PREFIX + "second", 7);
+  complete.put("keepsake", 2, "keepsake-art");
+  complete.put("portrait", 4, "resident-art");
   complete.put(ACTIVE_ID, 5);
   await complete.service.resetVenueSessions();
-  assert.equal(complete.records.size, 0);
+  assert.deepEqual([...complete.records.keys()], ["portrait"]);
   assert.deepEqual(
     complete.calls.filter((call) => call !== "list"),
     [
@@ -130,6 +132,7 @@ async function main() {
       "documents",
       "remove:" + SESSION_PREFIX + "first:3",
       "remove:" + SESSION_PREFIX + "second:7",
+      "remove:keepsake:2",
       "get:" + ACTIVE_ID,
       "remove:" + ACTIVE_ID + ":5",
     ],
