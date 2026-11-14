@@ -1,8 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
-  AppearanceExpression,
   SpriteAppearance,
-  SpriteArtwork,
+  SpriteAssignment,
   SpriteLibraryFolder,
   SpriteManagerState,
   SpriteSetupDraft,
@@ -10,17 +9,15 @@ import type {
 import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-transport.js";
-import type { SpriteManager } from "./sprite-manager-service.js";
 import type { SpriteWrites } from "./sprite-writes.js";
 import type { VillageState } from "../../domain/models/world.js";
 import {
   coerceSpriteManager,
   emptySpriteManager,
   isEngineSpriteFilename,
-  readSpriteExclusions,
-  readSpriteFolders,
+  isEngineSpriteVersion,
 } from "../../domain/rules/sprite-manager-model.js";
-import { spriteLabel } from "../../../shared/helpers/sprite-variants.js";
+import { engineSpriteName, engineSpriteUrl } from "../../../shared/helpers/sprite-variants.js";
 import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, badGateway, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
@@ -29,7 +26,6 @@ export interface SpriteSetupPorts {
   villagesDocuments: typeof villagesDocuments;
   mutateDocument: typeof mutateDocument;
   villageEngineJson: typeof villageEngineJson;
-  manager: Pick<SpriteManager, "prepareArtwork" | "readImage">;
   writes: SpriteWrites;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
@@ -93,30 +89,10 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     const world = await ports.readVillageState();
     if (resident) {
       const { manager, token } = residentState(world, id);
-      return { revision: 0, token, manager: await withPreparedArtwork(id, manager) };
+      return { revision: 0, token, manager };
     }
     const current = await draft(id);
     return { ...current, token: hash([villageWorldScope(world), current]) };
-  }
-
-  async function withPreparedArtwork(id: string, saved: SpriteManagerState) {
-    const artwork = [...saved.artwork];
-    for (const art of (await draft(id)).manager.artwork) {
-      if (
-        artwork.some(
-          (item) =>
-            item.id === art.id ||
-            (item.engineSource &&
-              art.engineSource &&
-              item.engineSource.characterId === art.engineSource.characterId &&
-              item.engineSource.filename === art.engineSource.filename &&
-              item.source.sha256 === art.source.sha256),
-        )
-      )
-        continue;
-      artwork.push(art);
-    }
-    return { ...saved, artwork };
   }
 
   async function files(id: string) {
@@ -146,13 +122,14 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     const items = response.map(asRecord).flatMap((file) => {
       const filename = asString(file.filename);
       if (!isEngineSpriteFilename(filename)) return [];
-      const version = asString(file.url).match(/\?v=(\d+)$/)?.[1];
+      const rawVersion = asString(file.url).match(/\?v=(\d+)$/)?.[1];
+      const version = isEngineSpriteVersion(rawVersion) ? rawVersion : undefined;
       return [
         {
           filename,
           label: asString(file.label).trim() || filename,
           folderId: folders.some((folder) => folder.id === file.folderId) ? asString(file.folderId) : null,
-          url: "/api/sprites/" + key + "/file/" + encodeURIComponent(filename) + (version ? "?v=" + version : ""),
+          url: engineSpriteUrl(id, filename, version),
           version,
         },
       ];
@@ -174,15 +151,11 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     const resident = input.resident === true;
     return ports.writes.serialize(writeKey(id, resident), async () => {
       const requestId = asString(input.requestId);
-      const folders = readSpriteFolders(input.folders);
-      const excluded = readSpriteExclusions(input.excluded);
       if (
         !/^[a-z0-9-]{1,80}$/i.test(requestId) ||
         typeof input.useSprites !== "boolean" ||
         !Array.isArray(input.expressions) ||
-        typeof input.defaultExpressionId !== "string" ||
-        (input.folders !== undefined && !folders) ||
-        (input.excluded !== undefined && !excluded)
+        typeof input.defaultExpressionId !== "string"
       )
         throw badRequest("Check the appearance choices.");
 
@@ -198,152 +171,78 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       }
       if (expected !== input.token) throw conflict("Appearance changed. Reload to continue.");
 
-      const manager = structuredClone(resident ? await withPreparedArtwork(id, current.manager) : current.manager);
-      if (manager.folders && !folders) throw conflict("Reload Appearance to choose sprite folders.");
-      const existingExpressions = new Set(manager.expressions.map((row) => row.id));
+      const manager = structuredClone(current.manager);
+      const existingExpressions = new Map(manager.expressions.map((row) => [row.id, row.name]));
+      const existingSlots = new Map(manager.assignments.map((slot) => [slot.expressionId + ":" + slot.view, slot]));
       const ids = new Map<string, string>();
-      const copies = new Map<string, SpriteArtwork>();
-      const rows: AppearanceExpression[] = [];
-      const filenames = new Map<string, string>();
-      const folderFiles = new Set<string>();
-      const excludedFiles = excluded ?? manager.excluded;
-      const blocked = { front: new Set(excludedFiles?.front), side: new Set(excludedFiles?.side) };
-      const rowLimit = folders && !folders.front && !folders.side ? 400 : 200;
-      if (input.expressions.length > manager.expressions.length + rowLimit)
+      const expressions: SpriteManagerState["expressions"] = [];
+      const assignments: SpriteAssignment[] = [];
+      const additions: { view: (typeof views)[number]; filename: string; version?: string; name: string }[] = [];
+      if (input.expressions.length > manager.expressions.length + 200)
         throw badRequest("Choose up to 200 new sprites at a time.");
 
       for (const value of input.expressions) {
         const row = asRecord(value);
         const key = asString(row.id);
         const name = asString(row.name).trim();
-        if (
-          (!existingExpressions.has(key) && !/^new-[a-z0-9-]{1,80}$/i.test(key)) ||
-          ids.has(key) ||
-          !name ||
-          name.length > 100
-        )
-          throw badRequest("Check the expression names.");
-        ids.set(key, existingExpressions.has(key) ? key : "e-" + randomUUID());
-        const next: AppearanceExpression = { id: key, name };
+        const existing = existingExpressions.has(key);
+        if ((!existing && !/^new-[a-z0-9-]{1,80}$/i.test(key)) || ids.has(key) || !name || name.length > 100)
+          throw badRequest("Check the expression labels.");
+        if (!row.front && !row.side) throw badRequest("Choose artwork for each expression.");
+        if (row.front && row.side && !existing) throw badRequest("Choose one facing for each new sprite.");
+        const expressionId = existing ? key : "e-" + randomUUID();
+        ids.set(key, expressionId);
+        expressions.push({ id: expressionId, name });
         for (const view of views) {
           if (row[view] === undefined) continue;
           const choice = asRecord(row[view]);
-          const artworkId = asString(choice.artworkId);
-          const file = choice.filename ?? manager.artwork.find((art) => art.id === artworkId)?.engineSource?.filename;
-          if (typeof file === "string" && blocked[view].has(file))
-            throw badRequest("Remove excluded sprites before saving.");
-          if (artworkId && choice.filename === undefined && manager.artwork.some((art) => art.id === artworkId)) {
-            if (
-              folders &&
-              (folders[view] !== manager.folders?.[view] ||
-                !manager.expressions.some((prior) => prior.id === key && prior.name === name) ||
-                !manager.assignments.some(
-                  (prior) => prior.expressionId === key && prior.view === view && prior.artworkId === artworkId,
-                ))
-            )
-              throw conflict("Refresh the sprite folders and review again.");
-            next[view] = { artworkId };
-          } else if (choice.artworkId === undefined && isEngineSpriteFilename(choice.filename)) {
-            const version = asString(choice.version);
-            const facingFile = view + ":" + choice.filename;
-            if (
-              (version && !/^\d{1,20}$/.test(version)) ||
-              (filenames.has(choice.filename) && filenames.get(choice.filename) !== version) ||
-              (folders && folderFiles.has(facingFile))
-            )
-              throw badRequest("Reopen the picker to choose the current sprite.");
-            folderFiles.add(facingFile);
-            next[view] = { filename: choice.filename };
-            filenames.set(choice.filename, version);
-          } else throw badRequest("Choose an available sprite.");
+          if (
+            typeof choice.artworkId === "string" &&
+            choice.filename === undefined &&
+            manager.artwork.some((art) => art.id === choice.artworkId)
+          ) {
+            assignments.push({ expressionId, view, artworkId: choice.artworkId });
+            continue;
+          }
+          const { filename } = choice;
+          const version = isEngineSpriteVersion(choice.version) ? choice.version : undefined;
+          if (choice.artworkId !== undefined || !isEngineSpriteFilename(filename) || choice.version !== version)
+            throw badRequest("Choose an available sprite.");
+          const prior = existingSlots.get(key + ":" + view);
+          if (prior?.engineFilename !== filename || prior.version !== version || name !== existingExpressions.get(key))
+            additions.push({ view, filename, version, name });
+          assignments.push({ expressionId, view, engineFilename: filename, ...(version ? { version } : {}) });
         }
-        if (!next.front && !next.side) throw badRequest("Choose artwork for each expression.");
-        if (folders && next.front && next.side) throw badRequest("Choose one facing for each folder sprite.");
-        rows.push(next);
       }
       if (input.defaultExpressionId && !ids.has(input.defaultExpressionId))
         throw badRequest("Choose an available default.");
-      if (filenames.size > 200) throw badRequest("Choose up to 200 new sprites at a time.");
-      if (filenames.size) {
-        const library = await files(id);
-        const byFilename = new Map(library.files.map((file) => [file.filename, file]));
-        if (folders) {
-          for (const row of rows) {
-            for (const view of views) {
-              const filename = row[view]?.filename;
-              if (!filename) continue;
-              const file = byFilename.get(filename);
-              const label =
-                file &&
-                (spriteLabel(file.label || file.filename)
-                  .slice(0, 100)
-                  .trim() ||
-                  "Sprite");
-              if (!file || (file.folderId ?? "") !== folders[view] || row.name !== label)
-                throw conflict("Engine folders or labels changed. Refresh the sprite folders and review again.");
-            }
+      if (additions.length > 200) throw badRequest("Choose up to 200 new sprites at a time.");
+      if (additions.length) {
+        const links = new Map<string, number>();
+        for (const slot of assignments) {
+          const filename =
+            slot.engineFilename ?? manager.artwork.find((art) => art.id === slot.artworkId)?.engineSource?.filename;
+          if (filename) {
+            const key = slot.view + ":" + filename;
+            links.set(key, (links.get(key) ?? 0) + 1);
           }
         }
-        for (const [filename, version] of filenames) {
+        const byFilename = new Map((await files(id)).files.map((file) => [file.filename, file]));
+        for (const { view, filename, version, name } of additions) {
+          if (links.get(view + ":" + filename) !== 1) throw badRequest("Choose each sprite once per facing.");
           const file = byFilename.get(filename);
-          if (!file || (file.version ?? "") !== version)
-            throw badRequest("Engine sprites changed. Reopen the picker and choose the current image.");
-          signal.throwIfAborted();
-          const artwork = await ports.writes.serialize("import", async () => {
-            signal.throwIfAborted();
-            const image = await ports.manager.readImage(file.url);
-            const sha256 = createHash("sha256")
-              .update(Buffer.from(image.split(",")[1]!, "base64"))
-              .digest("hex");
-            const prior = manager.artwork.find(
-              (art) =>
-                art.engineSource?.characterId === id &&
-                art.engineSource.filename === filename &&
-                art.source.sha256 === sha256,
-            );
-            return prior ?? ports.manager.prepareArtwork(filename, image, { characterId: id, filename });
-          });
-          if (!manager.artwork.some((art) => art.id === artwork.id)) manager.artwork.push(artwork);
-          copies.set(filename, artwork);
+          if (!file || file.version !== version || engineSpriteName(file.label ?? "", filename) !== name)
+            throw conflict("Engine sprites changed. Reopen the picker to choose the current images.");
         }
       }
-      manager.expressions = rows.map((row) => ({ id: ids.get(row.id)!, name: row.name }));
-      const replaced = new Set(
-        current.manager.assignments
-          .filter((old) => {
-            const next = rows.find((row) => row.id === old.expressionId)?.[old.view];
-            return next && (next.artworkId ?? copies.get(next.filename!)?.id) !== old.artworkId;
-          })
-          .map((old) => old.artworkId),
-      );
-      manager.assignments = rows.flatMap((row) =>
-        views.flatMap((view) => {
-          const choice = row[view];
-          return choice
-            ? [
-                {
-                  expressionId: ids.get(row.id)!,
-                  view,
-                  artworkId: choice.artworkId ?? copies.get(choice.filename!)!.id,
-                },
-              ]
-            : [];
-        }),
-      );
-      manager.artwork = manager.artwork.filter(
-        (art) => !replaced.has(art.id) || manager.assignments.some((row) => row.artworkId === art.id),
-      );
+      manager.expressions = expressions;
+      manager.assignments = assignments;
       manager.defaultExpressionId =
         ids.get(input.defaultExpressionId) ??
         manager.expressions.find((row) => row.name.toLowerCase() === "neutral")?.id ??
         manager.expressions[0]?.id;
       if (input.useSprites && manager.assignments.length) delete manager.useSprites;
       else manager.useSprites = false;
-      if (folders) manager.folders = folders;
-      if (excluded) {
-        if (excluded.front.length || excluded.side.length) manager.excluded = excluded;
-        else delete manager.excluded;
-      }
       manager.lastSave = { id: requestId, digest };
       signal.throwIfAborted();
 

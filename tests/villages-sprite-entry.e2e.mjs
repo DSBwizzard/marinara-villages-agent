@@ -21,25 +21,17 @@ await withBrowser(browser, async () => {
           "</svg>",
       );
     const files = [
-      { filename: "happy.png", label: "Happy", folderId: "front", url: picture(false), version: "100" },
-      { filename: "happy-side.png", label: " FULL_HAPPY.png ", folderId: "side", url: picture(true), version: "100" },
-      { filename: "neutral.png", label: "Neutral", folderId: "front", url: picture(false), version: "100" },
-      { filename: "neutral-1.png", label: "Neutral", folderId: "side", url: picture(true), version: "100" },
-      { filename: "neutral-2.png", label: "NEUTRAL", folderId: "side", url: picture(true), version: "100" },
-      { filename: "thinking.png", label: "Thinking", folderId: "front", url: picture(false), version: "100" },
-      { filename: "f1.png", label: "Grin_01", folderId: "front", url: picture(false, "#6192c3"), version: "100" },
-      {
-        filename: "f2.png",
-        label: "Grin_pajamas_02",
-        folderId: "front",
-        url: picture(false, "#a561c3"),
+      { filename: "front-a.png", label: "Happy_1", folderId: null, url: picture(false), version: "100" },
+      { filename: "front-b.png", label: "Happy_2", folderId: null, url: picture(false, "#a561c3"), version: "100" },
+      ...Array.from({ length: 17 }, (_, index) => ({
+        filename: "side-" + (index + 1) + ".png",
+        label: "Happy_" + (index + 1) + "_side",
+        folderId: null,
+        url: picture(true, "#6192c3"),
         version: "100",
-      },
-      { filename: "s2.png", label: "GRIN_02", folderId: "side", url: picture(true, "#a561c3"), version: "100" },
-      { filename: "s1.png", label: "Grin_01", folderId: "side", url: picture(true, "#6192c3"), version: "100" },
-      { filename: "s3.png", label: "Grin_pajamas_04", folderId: "side", url: picture(true, "#d49845"), version: "100" },
+      })),
+      { filename: "folder.png", label: "Thinking", folderId: "side", url: picture(true), version: "100" },
     ];
-    const loose = { filename: "unfiled.png", label: "Grin_wide", folderId: null, url: picture(false), version: "100" };
     const current = {
       revision: 0,
       token: "resident-0",
@@ -56,6 +48,11 @@ await withBrowser(browser, async () => {
         body: "<style>html,body{margin:0}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
     );
+    await page.route("**/api/sprites/**", (route) => {
+      const file = files.find((item) => item.filename === new URL(route.request().url()).pathname.split("/").at(-1));
+      assert.ok(file);
+      return fulfill(route, { contentType: "image/svg+xml", body: decodeURIComponent(file.url.split(",")[1]) });
+    });
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url());
       let value = snapshot;
@@ -68,30 +65,16 @@ await withBrowser(browser, async () => {
         assert.equal(body.token, current.token);
         saves.push(body);
         const rows = body.expressions;
-        for (const row of rows) {
-          for (const view of ["front", "side"]) {
-            const choice = row[view];
-            if (!choice?.filename) continue;
-            const source = files.find((file) => file.filename === choice.filename);
-            assert.equal(choice.version, source.version);
-            current.manager.artwork.push({
-              id: choice.filename,
-              name: source.label,
-              rendered: { url: source.url },
-              engineSource: { characterId: "mara", filename: choice.filename },
-            });
-          }
-        }
         current.manager.expressions = rows.map(({ id, name }) => ({ id, name }));
         current.manager.assignments = rows.flatMap((row) =>
           ["front", "side"].flatMap((view) =>
-            row[view] ? [{ expressionId: row.id, view, artworkId: row[view].artworkId ?? row[view].filename }] : [],
+            row[view]
+              ? [{ expressionId: row.id, view, engineFilename: row[view].filename, version: row[view].version }]
+              : [],
           ),
         );
         current.manager.defaultExpressionId = body.defaultExpressionId;
         current.manager.useSprites = body.useSprites;
-        current.manager.folders = body.folders;
-        current.manager.excluded = body.excluded;
         current.token = "resident-" + saves.length;
         value = current;
       } else if (path.pathname.endsWith("/debug/runtime")) value = { showUsageMeter: false };
@@ -129,88 +112,72 @@ await withBrowser(browser, async () => {
       exact: true,
     });
     await expect(engineLink).toHaveCount(0);
-    const frontFolder = screen.getByRole("combobox", { name: "Front folder" });
-    const sideFolder = screen.getByRole("combobox", { name: "Side folder" });
-    await expect(frontFolder).toHaveCount(0);
+    const addFront = screen.getByRole("button", { name: "Add Front sprites", exact: true });
+    const addSide = screen.getByRole("button", { name: "Add Side sprites", exact: true });
+    await expect(addFront).toHaveCount(0);
     await screen.getByRole("button", { name: "Sprites", exact: true }).click();
-    await expect(frontFolder).toHaveValue("front");
-    await expect(sideFolder).toHaveValue("side");
-    await expect(frontFolder.getByRole("option", { name: "None", exact: true })).toHaveCount(0);
-    await engineLink.click();
-    const confirm = page.getByRole("dialog", { name: "Confirm" });
-    await confirm.getByRole("button", { name: "Keep editing" }).click();
-    const grin = screen.getByRole("button", { name: "grin", exact: true });
-    await grin.click();
+    await expect(screen.getByText("No sprites added.")).toBeVisible();
+    await addFront.click();
+    const frontPicker = page.getByRole("dialog", { name: "Add Front sprites", exact: true });
+    await expect(frontPicker.getByRole("combobox", { name: "Sprite source" })).toHaveValue("");
+    await expect(frontPicker.getByRole("option", { name: "No folder" })).toBeAttached();
+    await expect(frontPicker.getByRole("checkbox", { name: "Thinking" })).toHaveCount(0);
+    await frontPicker.getByRole("checkbox", { name: "Happy_1", exact: true }).check();
+    await frontPicker.getByRole("checkbox", { name: "Happy_2", exact: true }).check();
+    await frontPicker.getByRole("button", { name: "Add 2 Front sprites", exact: true }).click();
     const front = screen.getByRole("region", { name: "Front", exact: true });
     const side = screen.getByRole("region", { name: "Side", exact: true });
     await expect(front.getByRole("heading", { name: "Front · 2" })).toBeVisible();
-    await expect(side.getByRole("heading", { name: "Side · 3" })).toBeVisible();
-    await expect(front.getByRole("img", { name: "Grin_pajamas_02 · Front" })).toHaveAttribute("src", files[7].url);
-    await expect(side.getByRole("img", { name: "Grin_pajamas_04 · Side" })).toHaveAttribute("src", files[10].url);
+    await expect(side.getByRole("heading", { name: "Side · 0" })).toBeVisible();
+    await addSide.click();
+    const sidePicker = page.getByRole("dialog", { name: "Add Side sprites", exact: true });
+    const source = sidePicker.getByRole("combobox", { name: "Sprite source" });
+    await expect(source).toHaveValue("");
+    await source.selectOption("side");
+    await expect(sidePicker.getByRole("checkbox", { name: "Thinking" })).toBeVisible();
+    await source.selectOption("");
+    for (let i = 1; i <= 17; i++) {
+      await sidePicker.getByRole("checkbox", { name: "Happy_" + i + "_side", exact: true }).check();
+    }
+    await sidePicker.getByRole("button", { name: "Add 17 Side sprites", exact: true }).click();
+    await expect(side.getByRole("heading", { name: "Side · 17" })).toBeVisible();
+    await expect(screen.getByRole("heading", { name: "happy", exact: true })).toBeVisible();
+    await expect(front.getByRole("img", { name: "Happy_1 · Front" })).toHaveAttribute("src", files[0].url);
+    await side.getByRole("button", { name: "Happy_17_side", exact: true }).click();
+    await expect(side.getByRole("img", { name: "Happy_17_side · Side" })).toBeVisible();
+    await expect(front.getByRole("img", { name: "Happy_1 · Front" })).toBeVisible();
     const sideBounds = await side.boundingBox();
     assert.ok(sideBounds && sideBounds.x + sideBounds.width <= width);
-    await screen.getByRole("button", { name: "Set as default" }).click();
+    await engineLink.click();
+    const confirm = page.getByRole("dialog", { name: "Confirm" });
+    await confirm.getByRole("button", { name: "Keep editing" }).click();
     assert.equal(saves.length, 0);
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
-    assert.deepEqual(saves[0].folders, { front: "front", side: "side" });
-    assert.equal(saves[0].expressions.length, files.length);
+    assert.equal(saves[0].expressions.length, 19);
     assert.ok(saves[0].expressions.every((row) => Boolean(row.front) !== Boolean(row.side)));
-    assert.equal(saves[0].expressions.filter((row) => row.name.toLowerCase() === "neutral").length, 3);
+    assert.equal(saves[0].folders, undefined);
     await engineLink.click();
     assert.deepEqual(await page.evaluate(() => window.engineOpen), ["mara", { tab: "sprites" }]);
-    await frontFolder.selectOption({ label: "No folder" });
-    await screen.getByRole("button", { name: "grin", exact: true }).click();
-    await expect(front.getByRole("heading", { name: "Front · 0" })).toBeVisible();
-    await expect(side.getByRole("heading", { name: "Side · 3" })).toBeVisible();
-    await screen.getByRole("button", { name: "Discard changes" }).click();
-    await expect(frontFolder).toHaveValue("front");
     await screen.getByRole("button", { name: "← Profile", exact: true }).click();
     await expect(entry).toBeFocused();
     await entry.click();
-    await expect(frontFolder).toHaveValue("front");
-    await expect(sideFolder).toHaveValue("side");
-    files.push(loose);
-    await screen.getByRole("button", { name: "Refresh folders" }).click();
-    await frontFolder.selectOption({ label: "No folder" });
-    await sideFolder.selectOption({ label: "No folder" });
-    await expect(front.getByRole("img", { name: "Grin_wide · Front" })).toBeVisible();
-    await expect(side.getByRole("img", { name: "Grin_wide · Side" })).toBeVisible();
-    const largePreview = await front.getByRole("img", { name: "Grin_wide · Front" }).boundingBox();
-    assert.ok(largePreview && largePreview.height > 160, "Full-body previews exceed the former thumbnail cap");
-    await screen.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(screen.getByRole("status")).toHaveText("Saved");
-    assert.deepEqual(saves[1].folders, { front: "", side: "" });
-    assert.deepEqual(
-      saves[1].expressions.map((row) => row.front?.filename ?? row.side?.filename),
-      [loose.filename, loose.filename],
-    );
-    const removeFront = front.getByRole("button", { name: "Remove Grin_wide from Front" });
-    await removeFront.click();
-    await expect(front.getByRole("heading", { name: "Front · 0" })).toBeVisible();
-    await expect(side.getByRole("img", { name: "Grin_wide · Side" })).toBeVisible();
+    await expect(side.getByRole("heading", { name: "Side · 17" })).toBeVisible();
+    const remove = side.getByRole("button", { name: "Remove Happy_1_side from Side" });
+    await remove.click();
+    await expect(side.getByRole("heading", { name: "Side · 16" })).toBeVisible();
     await screen.getByRole("button", { name: "Discard changes" }).click();
-    await expect(removeFront).toBeVisible();
-    await removeFront.click();
+    await expect(remove).toBeVisible();
+    await remove.click();
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
-    assert.deepEqual(saves[2].excluded, { front: [loose.filename], side: [] });
-    assert.equal(saves[2].expressions.length, 1);
-    await screen.getByRole("button", { name: "← Profile", exact: true }).click();
-    await entry.click();
-    await screen.getByRole("button", { name: "Refresh folders" }).click();
-    await expect(front.getByRole("heading", { name: "Front · 0" })).toBeVisible();
-    await side.getByRole("button", { name: "Remove Grin_wide from Side" }).click();
-    await expect(screen.getByText("No sprites in the selected sources.")).toBeVisible();
-    await screen.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(screen.getByRole("status")).toHaveText("Saved");
-    assert.deepEqual(saves[3].expressions, []);
-    await screen.getByRole("button", { name: "Sprites", exact: true }).click();
-    await screen.getByRole("button", { name: "Restore removed sprites" }).click();
-    await expect(removeFront).toBeVisible();
-    await expect(side.getByRole("img", { name: "Grin_wide · Side" })).toBeVisible();
+    assert.equal(saves[1].expressions.length, 18);
+    assert.ok(files.some((file) => file.filename === "side-1.png"));
+    await addSide.click();
+    await expect(sidePicker.getByRole("checkbox", { name: "Happy_1_side", exact: true })).toBeVisible();
+    await sidePicker.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.deepEqual(errors, []);
     await page.close();
   }
 });
-console.log("People Appearance groups independent Front and Side folder sprites on desktop and phone.");
+console.log("People Appearance adds 2 Front and 17 Side sprites from No folder on desktop and phone.");

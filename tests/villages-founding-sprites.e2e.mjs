@@ -110,13 +110,18 @@ await withBrowser(browser, async () => {
             ["front", "side"].flatMap((view) => {
               const choice = row[view];
               if (!choice) return [];
-              const artworkId = choice.artworkId ?? choice.filename;
-              if (choice.filename) state.manager.artwork.push({ id: artworkId, rendered: { url: image } });
-              return [{ expressionId: row.id, view, artworkId }];
+              return [
+                {
+                  expressionId: row.id,
+                  view,
+                  ...(choice.filename
+                    ? { engineFilename: choice.filename, version: choice.version }
+                    : { artworkId: choice.artworkId }),
+                },
+              ];
             }),
           );
           state.manager.useSprites = body.useSprites;
-          state.manager.folders = body.folders;
           state.manager.defaultExpressionId = body.defaultExpressionId;
           saved = structuredClone(state);
           return fulfill(route, {
@@ -168,7 +173,7 @@ await withBrowser(browser, async () => {
       }
       const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
       await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute("aria-pressed", "true");
-      await expect(pane.getByRole("combobox", { name: "Front folder" })).toHaveCount(0);
+      await expect(pane.getByRole("button", { name: "Add Front sprites", exact: true })).toHaveCount(0);
       const portrait = pane.locator(".appearance-portrait img");
       await expect(portrait).toHaveJSProperty("complete", true);
       const crop = await portrait.evaluate((image) => {
@@ -189,8 +194,17 @@ await withBrowser(browser, async () => {
       );
       await pane.getByRole("button", { name: "Sprites", exact: true }).click();
       await expect(pane.getByRole("img", { name: "Old Happy · Front" })).toBeVisible();
-      await pane.getByRole("combobox", { name: "Front folder" }).selectOption("body");
-      await pane.getByRole("combobox", { name: "Side folder" }).selectOption("profile");
+      await pane.getByRole("button", { name: "Add Front sprites", exact: true }).click();
+      const frontPicker = page.getByRole("dialog", { name: "Add Front sprites", exact: true });
+      await frontPicker.getByRole("combobox", { name: "Sprite source" }).selectOption("body");
+      await frontPicker.getByRole("checkbox", { name: "Happy_01", exact: true }).check();
+      await frontPicker.getByRole("checkbox", { name: "Happy_02", exact: true }).check();
+      await frontPicker.getByRole("button", { name: "Add 2 Front sprites", exact: true }).click();
+      await pane.getByRole("button", { name: "Add Side sprites", exact: true }).click();
+      const sidePicker = page.getByRole("dialog", { name: "Add Side sprites", exact: true });
+      await sidePicker.getByRole("combobox", { name: "Sprite source" }).selectOption("profile");
+      await sidePicker.getByRole("checkbox", { name: "Happy_blush", exact: true }).check();
+      await sidePicker.getByRole("button", { name: "Add 1 Side sprite", exact: true }).click();
       await pane.getByRole("button", { name: "happy", exact: true }).click();
       await expect(pane.getByRole("heading", { name: "Front · 2" })).toBeVisible();
       await expect(pane.getByRole("heading", { name: "Side · 1" })).toBeVisible();
@@ -206,10 +220,12 @@ await withBrowser(browser, async () => {
       await pane.getByRole("button", { name: "Retry save", exact: true }).click();
       await expect(next).toBeEnabled();
       assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
-      assert.deepEqual(writes[0].folders, { front: "body", side: "profile" });
+      assert.equal(writes[0].expressions.length, 4);
+      assert.equal(writes[0].expressions[0].front.artworkId, "old");
+      assert.equal(writes[0].expressions[3].side.filename, "happy-side.png");
       await page.screenshot({ path: ".build-tmp/founding-sprites/appearance-" + viewport.width + ".png" });
       await page.close();
     });
   }
 });
-console.log("Founding Appearance uses Engine folders and adopts only an acknowledged save.");
+console.log("Founding Appearance selects Engine sprites by facing and adopts only an acknowledged save.");

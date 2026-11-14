@@ -3,13 +3,13 @@ import type {
   AppearanceExpression,
   SpriteAppearance,
   SpriteChoice,
-  SpriteFolders,
-  SpriteManagerState,
+  SpriteLibraryItem,
   SpriteView,
 } from "../../../shared/contracts/sprites.js";
-import { groupSpritesByMood, spriteLabel } from "../../../shared/helpers/sprite-variants.js";
+import { engineSpriteName, engineSpriteUrl, groupSpritesByMood } from "../../../shared/helpers/sprite-variants.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { useConfirmation } from "../../shared/confirmation.js";
+import { ModalDialog } from "../../shared/ModalDialog.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { Portrait } from "../../shared/types.js";
@@ -20,19 +20,167 @@ type Choice = {
   useSprites: boolean;
   expressions: AppearanceExpression[];
   defaultExpressionId: string;
-  folders?: SpriteFolders;
-  excluded?: SpriteManagerState["excluded"];
 };
 type SaveResult = Pick<SpriteAppearance, "revision" | "token" | "manager">;
 const views = ["front", "side"] as const;
+const viewLabels = { front: "Front", side: "Side" };
 const empty: Choice = { useSprites: false, expressions: [], defaultExpressionId: "" };
 
-function suggestedFolders({ folders }: SpriteAppearance): SpriteFolders {
-  function find(view: SpriteView) {
-    const matches = folders.filter((folder) => folder.name.trim().toLowerCase() === view);
-    return matches.length === 1 ? matches[0]!.id : "";
-  }
-  return { front: find("front"), side: find("side") };
+function SpriteBatchPicker({
+  view,
+  readPath,
+  assigned,
+  onClose,
+  onAdd,
+}: {
+  view: SpriteView;
+  readPath: string;
+  assigned: ReadonlyMap<string, SpriteChoice>;
+  onClose(): void;
+  onAdd(files: SpriteLibraryItem[]): void;
+}) {
+  const label = viewLabels[view];
+  const [library, setLibrary] = useState<Pick<SpriteAppearance, "files" | "folders" | "libraryError">>();
+  const [source, setSource] = useState("");
+  const [checked, setChecked] = useState<string[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void request<SpriteAppearance>(readPath, { signal: controller.signal })
+      .then((value) => {
+        if (!controller.signal.aborted) setLibrary(value);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted)
+          setLibrary({ files: [], folders: [], libraryError: messageFrom(cause, "Could not load Engine sprites.") });
+      });
+    return () => controller.abort();
+  }, [readPath]);
+
+  const visible = library?.files.filter((file) => (file.folderId ?? "") === source) ?? [];
+  const selected = library?.files.filter((file) => checked.includes(file.filename)) ?? [];
+  const available = visible.filter((file) => !assigned.get(file.filename)?.artworkId);
+  return (
+    <ModalDialog title={`Add ${label} sprites`} onClose={onClose} className="appearance-picker" scrollBody>
+      <div className="appearance-picker-body">
+        <div className="appearance-source">
+          <label>
+            Sprite source
+            <select value={source} onChange={(event) => setSource(event.target.value)} disabled={!library}>
+              <option value="">No folder</option>
+              {library?.folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {available.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setChecked([...new Set([...checked, ...available.map((file) => file.filename)])])}
+            >
+              Select all
+            </button>
+          ) : null}
+        </div>
+        {!library ? <p role="status">Loading Engine sprites…</p> : null}
+        {library?.libraryError ? <p role="alert">{library.libraryError}</p> : null}
+        {library && !library.libraryError && !visible.length ? <p>No sprites in this source.</p> : null}
+        <div className="appearance-picker-grid">
+          {visible.map((file) => (
+            <label key={file.filename}>
+              <input
+                type="checkbox"
+                disabled={Boolean(assigned.get(file.filename)?.artworkId)}
+                checked={checked.includes(file.filename)}
+                onChange={(event) =>
+                  setChecked(
+                    event.target.checked
+                      ? [...checked, file.filename]
+                      : checked.filter((filename) => filename !== file.filename),
+                  )
+                }
+              />
+              <img src={file.url} alt="" loading="lazy" />
+              <span>{engineSpriteName(file.label ?? "", file.filename)}</span>
+              {assigned.get(file.filename)?.artworkId ? <small>Added</small> : null}
+            </label>
+          ))}
+        </div>
+      </div>
+      <footer>
+        <span aria-live="polite">{selected.length} selected</span>
+        <button type="button" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="appearance-primary"
+          disabled={!selected.length || selected.length > 200}
+          onClick={() => onAdd(selected)}
+        >
+          Add {selected.length} {label} {selected.length === 1 ? "sprite" : "sprites"}
+        </button>
+      </footer>
+    </ModalDialog>
+  );
+}
+
+function SpriteGallery({
+  view,
+  rows,
+  image,
+  onRemove,
+  locked,
+}: {
+  view: SpriteView;
+  rows: AppearanceExpression[];
+  image(source: SpriteChoice | undefined): string;
+  onRemove(row: AppearanceExpression): void;
+  locked: boolean;
+}) {
+  const label = viewLabels[view];
+  const [selection, setSelection] = useState("");
+  const row = rows.find(({ id }) => id === selection) ?? rows[0];
+  return (
+    <section className="appearance-view" aria-label={label}>
+      <h4>
+        {label} · {rows.length}
+      </h4>
+      {row ? (
+        <>
+          <img className="appearance-full-sprite" src={image(row[view]) || undefined} alt={row.name + " · " + label} />
+          {rows.length > 1 ? (
+            <div className="appearance-gallery" role="group" aria-label={label + " variants"}>
+              {rows.map((variant) => (
+                <button
+                  key={variant.id}
+                  type="button"
+                  aria-pressed={variant === row}
+                  onClick={() => setSelection(variant.id)}
+                >
+                  <img src={image(variant[view]) || undefined} alt="" loading="lazy" />
+                  <span>{variant.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <span className="appearance-variant-name">{row.name}</span>
+          )}
+          <button
+            type="button"
+            className="appearance-link"
+            aria-label={`Remove ${row.name} from ${label}`}
+            disabled={locked}
+            onClick={() => onRemove(row)}
+          >
+            Remove
+          </button>
+        </>
+      ) : null}
+    </section>
+  );
 }
 
 function savedChoice(manager: SpriteAppearance["manager"], enabled: boolean): Choice {
@@ -40,7 +188,11 @@ function savedChoice(manager: SpriteAppearance["manager"], enabled: boolean): Ch
     const row: AppearanceExpression = { ...expression };
     for (const view of views) {
       const art = manager.assignments.find((slot) => slot.expressionId === row.id && slot.view === view);
-      if (art) row[view] = { artworkId: art.artworkId };
+      if (art) {
+        row[view] = art.engineFilename
+          ? { filename: art.engineFilename, version: art.version }
+          : { artworkId: art.artworkId };
+      }
     }
     return row.front || row.side ? [row] : [];
   });
@@ -48,8 +200,6 @@ function savedChoice(manager: SpriteAppearance["manager"], enabled: boolean): Ch
     useSprites: enabled && manager.useSprites !== false && expressions.length > 0,
     expressions,
     defaultExpressionId: manager.defaultExpressionId ?? "",
-    folders: manager.folders,
-    excluded: manager.excluded,
   };
 }
 
@@ -83,6 +233,7 @@ export function Appearance({
   const [baseline, setBaseline] = useState<Choice>(empty);
   const [choice, setChoice] = useState<Choice>(empty);
   const [selectedId, select] = useState("");
+  const [picker, setPicker] = useState<SpriteView>();
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -94,8 +245,6 @@ export function Appearance({
   const heading = useRef<HTMLHeadingElement>(null);
   const spriteEdits =
     choice.defaultExpressionId !== baseline.defaultExpressionId ||
-    JSON.stringify(choice.folders) !== JSON.stringify(baseline.folders) ||
-    JSON.stringify(choice.excluded) !== JSON.stringify(baseline.excluded) ||
     JSON.stringify(choice.expressions) !== JSON.stringify(baseline.expressions);
   const dirty = spriteEdits || choice.useSprites !== baseline.useSprites;
   const locked = pending || uncertain;
@@ -170,114 +319,82 @@ export function Appearance({
 
   function image(source: SpriteChoice | undefined) {
     if (!source || !data) return "";
-    return source.artworkId
-      ? (data.manager.artwork.find((art) => art.id === source.artworkId)?.rendered.url ?? "")
-      : (data.files.find((file) => file.filename === source.filename)?.url ?? "");
+    return source.filename
+      ? (data.files.find((file) => file.filename === source.filename && file.version === source.version)?.url ??
+          engineSpriteUrl(characterId, source.filename, source.version))
+      : (data.manager.artwork.find((art) => art.id === source.artworkId)?.rendered.url ?? "");
   }
 
-  function updateSprites(expressions: AppearanceExpression[], folders = choice.folders, excluded = choice.excluded) {
+  function assignedFiles(view: SpriteView) {
+    const files = new Map<string, SpriteChoice>();
+    for (const row of choice.expressions) {
+      const source = row[view];
+      if (!source) continue;
+      const filename =
+        source.filename ?? data?.manager.artwork.find((art) => art.id === source.artworkId)?.engineSource?.filename;
+      if (filename) files.set(filename, source);
+    }
+    return files;
+  }
+
+  function updateSprites(expressions: AppearanceExpression[]) {
     const defaultExpressionId =
       (
         expressions.find((row) => row.id === choice.defaultExpressionId) ??
         groupSpritesByMood(expressions).get("neutral")?.[0] ??
         expressions[0]
       )?.id ?? "";
-    edit({ useSprites: true, expressions, defaultExpressionId, folders, excluded });
+    edit({ useSprites: true, expressions, defaultExpressionId });
   }
 
   function removeSprite(row: AppearanceExpression, view: SpriteView) {
-    function filenameOf(source: SpriteChoice | undefined) {
-      return (
-        source?.filename ?? data?.manager.artwork.find((art) => art.id === source?.artworkId)?.engineSource?.filename
-      );
-    }
-    const filename = filenameOf(row[view]);
-    const excluded = choice.excluded ?? { front: [], side: [] };
     const remaining = { ...row, [view]: undefined };
-    const expressions = choice.expressions.flatMap((entry) =>
-      entry !== row ? [entry] : remaining.front || remaining.side ? [remaining] : [],
-    );
     updateSprites(
-      expressions,
-      choice.folders,
-      filename && !expressions.some((entry) => filenameOf(entry[view]) === filename)
-        ? { ...excluded, [view]: [...new Set([...excluded[view], filename])] }
-        : choice.excluded,
+      choice.expressions.flatMap((entry) =>
+        entry !== row ? [entry] : remaining.front || remaining.side ? [remaining] : [],
+      ),
     );
   }
 
-  function chooseFolders(folders: SpriteFolders, library: SpriteAppearance, changedView?: SpriteView, restore = false) {
-    const savedByFile = new Map<string, AppearanceExpression>();
-    const filenameByArtwork = new Map(library.manager.artwork.map((art) => [art.id, art.engineSource?.filename]));
-    for (const row of [...baseline.expressions, ...choice.expressions]) {
-      for (const view of views) {
-        const source = row[view];
-        const filename = source?.filename ?? (source?.artworkId && filenameByArtwork.get(source.artworkId));
-        if (filename && !(row.front && row.side)) savedByFile.set(view + ":" + filename, row);
-      }
+  function addSprites(view: SpriteView, files: SpriteLibraryItem[]) {
+    const expressions = [...choice.expressions];
+    const existing = assignedFiles(view);
+    let first = "";
+    for (const { filename, label, version } of files) {
+      if (existing.get(filename)?.artworkId) continue;
+      const index = expressions.findIndex((row) => row[view]?.filename === filename);
+      const row = {
+        ...expressions[index],
+        id: expressions[index]?.id ?? "new-" + createVillagesClientId(),
+        name: engineSpriteName(label ?? "", filename),
+        [view]: { filename, version },
+      };
+      if (index === -1) expressions.push(row);
+      else expressions[index] = row;
+      first ||= row.id;
     }
-    const expressions = views.flatMap((view) => {
-      const folder = folders[view];
-      const excluded = new Set(choice.excluded?.[view]);
-      if (changedView && view !== changedView && choice.folders?.[view] === folder) {
-        return choice.expressions.filter((row) => row[view]);
-      }
-      if (!restore && folder && !library.folders.some(({ id }) => id === folder)) {
-        return choice.expressions.filter((row) => choice.folders?.[view] === folder && row[view]);
-      }
-      return library.files
-        .filter((file) =>
-          restore
-            ? excluded.has(file.filename) && (!choice.folders || (file.folderId ?? "") === folder)
-            : (file.folderId ?? "") === folder && !excluded.has(file.filename),
-        )
-        .map((file) => ({
-          id: savedByFile.get(view + ":" + file.filename)?.id ?? "new-" + createVillagesClientId(),
-          name:
-            spriteLabel(file.label || file.filename)
-              .slice(0, 100)
-              .trim() || "Sprite",
-          [view]: { filename: file.filename, version: file.version },
-        }));
-    });
-    if (restore) {
-      const excluded = choice.excluded ?? { front: [], side: [] };
-      updateSprites([...choice.expressions, ...expressions], choice.folders, {
-        front: excluded.front.filter((file) => !expressions.some((row) => row.front?.filename === file)),
-        side: excluded.side.filter((file) => !expressions.some((row) => row.side?.filename === file)),
-      });
-    } else updateSprites(expressions, folders);
+    updateSprites(expressions);
+    if (first) select(first);
+    setPicker(undefined);
   }
 
-  const pendingFilenames = new Set(
-    choice.expressions.flatMap((row) => views.flatMap((view) => row[view]?.filename ?? [])),
-  );
-  const rowLimit = choice.folders && !choice.folders.front && !choice.folders.side ? 400 : 200;
+  const baselineRows = new Map(baseline.expressions.map((row) => [row.id, row]));
   const overLimit =
-    pendingFilenames.size > 200 || choice.expressions.length > (data?.manager.expressions.length ?? 0) + rowLimit;
-  async function refreshFolders() {
-    if (!data || working.current) return;
-    working.current = true;
-    setPending(true);
-    setError("");
-    try {
-      const library = await request<SpriteAppearance>(readPath);
-      if (!alive.current) return;
-      setData({ ...data, files: library.files, folders: library.folders, libraryError: library.libraryError });
-      const folders = choice.folders ?? suggestedFolders(library);
-      if (
-        !library.libraryError &&
-        (choice.folders || folders.front || folders.side || library.files.some((file) => !file.folderId))
-      )
-        chooseFolders(folders, library);
-    } catch (cause) {
-      if (alive.current) setError(messageFrom(cause, "Could not refresh sprite folders."));
-    } finally {
-      working.current = false;
-      if (alive.current) setPending(false);
-    }
-  }
-
+    choice.expressions.reduce(
+      (count, row) =>
+        count +
+        views.filter((view) => {
+          const file = row[view];
+          const prior = baselineRows.get(row.id);
+          return (
+            file?.filename &&
+            (file.filename !== prior?.[view]?.filename ||
+              file.version !== prior?.[view]?.version ||
+              row.name !== prior?.name)
+          );
+        }).length,
+      0,
+    ) > 200;
   async function save() {
     if (!data || working.current) return;
     const body = { ...choice, token: data.token, resident };
@@ -367,18 +484,7 @@ export function Appearance({
                 key={label}
                 aria-pressed={choice.useSprites === (label === "Sprites")}
                 disabled={locked}
-                onClick={() => {
-                  const folders = suggestedFolders(data);
-                  if (
-                    label === "Sprites" &&
-                    !choice.expressions.length &&
-                    !choice.folders &&
-                    !choice.excluded &&
-                    !data.libraryError
-                  ) {
-                    chooseFolders(folders, data);
-                  } else edit({ ...choice, useSprites: label === "Sprites" });
-                }}
+                onClick={() => edit({ ...choice, useSprites: label === "Sprites" })}
               >
                 {label}
               </button>
@@ -386,52 +492,12 @@ export function Appearance({
           </div>
           {choice.useSprites ? (
             <>
-              <div className="appearance-set-folders">
-                {views.map((view) => (
-                  <label key={view}>
-                    {view === "front" ? "Front folder" : "Side folder"}
-                    <select
-                      value={choice.folders?.[view] ?? ""}
-                      disabled={locked || Boolean(data.libraryError)}
-                      onChange={(event) =>
-                        chooseFolders(
-                          { ...(choice.folders ?? { front: "", side: "" }), [view]: event.target.value },
-                          data,
-                          view,
-                        )
-                      }
-                    >
-                      <option value="">No folder</option>
-                      {choice.folders?.[view] &&
-                      !data.folders.some((folder) => folder.id === choice.folders?.[view]) ? (
-                        <option value={choice.folders[view]}>Unavailable folder</option>
-                      ) : null}
-                      {data.folders.map((folder) => (
-                        <option
-                          key={folder.id}
-                          value={folder.id}
-                          disabled={folder.id === choice.folders?.[view === "front" ? "side" : "front"]}
-                        >
-                          {folder.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
               <div className="appearance-actions">
-                <button type="button" disabled={locked} onClick={() => void refreshFolders()}>
-                  Refresh folders
-                </button>
-                {choice.excluded && (choice.excluded.front.length > 0 || choice.excluded.side.length > 0) ? (
-                  <button
-                    type="button"
-                    disabled={locked || Boolean(data.libraryError)}
-                    onClick={() => chooseFolders(choice.folders ?? suggestedFolders(data), data, undefined, true)}
-                  >
-                    Restore removed sprites
+                {views.map((view) => (
+                  <button key={view} type="button" disabled={locked} onClick={() => setPicker(view)}>
+                    Add {viewLabels[view]} sprites
                   </button>
-                ) : null}
+                ))}
                 {typeof openCharacter === "function" ? (
                   <button
                     type="button"
@@ -448,9 +514,17 @@ export function Appearance({
                   </button>
                 ) : null}
               </div>
-              {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
+              {picker ? (
+                <SpriteBatchPicker
+                  view={picker}
+                  readPath={readPath}
+                  assigned={assignedFiles(picker)}
+                  onClose={() => setPicker(undefined)}
+                  onAdd={(files) => addSprites(picker, files)}
+                />
+              ) : null}
               {!selectedGroup ? (
-                <p>No sprites in the selected sources.</p>
+                <p>No sprites added.</p>
               ) : (
                 <div className="appearance-layout">
                   <div className="appearance-preview">
@@ -466,7 +540,9 @@ export function Appearance({
                             aria-pressed={mood === selectedGroup[0]}
                             onClick={() => select(row.id)}
                           >
-                            <img src={image(row.front ?? row.side) || undefined} alt="" />
+                            <span className="appearance-expression-image">
+                              <img src={image(row.front ?? row.side) || undefined} alt="" />
+                            </span>
                             <span>{mood}</span>
                             {preferred ? <small>Default</small> : null}
                           </button>
@@ -491,38 +567,16 @@ export function Appearance({
                       </button>
                     </div>
                     <div className="appearance-views">
-                      {views.map((view) => {
-                        const label = view === "front" ? "Front" : "Side";
-                        const rows = selectedGroup[1].filter((row) => row[view]);
-                        return (
-                          <section key={view} className="appearance-view" aria-label={label}>
-                            <h4>
-                              {label} · {rows.length}
-                            </h4>
-                            <div className="appearance-thumbnails">
-                              {rows.map((row) => (
-                                <figure key={row.id}>
-                                  <img
-                                    src={image(row[view]) || undefined}
-                                    alt={row.name + " · " + label}
-                                    loading="lazy"
-                                  />
-                                  <figcaption>{row.name}</figcaption>
-                                  <button
-                                    type="button"
-                                    className="appearance-link"
-                                    aria-label={`Remove ${row.name} from ${label}`}
-                                    disabled={locked}
-                                    onClick={() => removeSprite(row, view)}
-                                  >
-                                    Remove
-                                  </button>
-                                </figure>
-                              ))}
-                            </div>
-                          </section>
-                        );
-                      })}
+                      {views.map((view) => (
+                        <SpriteGallery
+                          key={selectedGroup[0] + ":" + view}
+                          view={view}
+                          rows={selectedGroup[1].filter((row) => row[view])}
+                          locked={locked}
+                          image={image}
+                          onRemove={(row) => removeSprite(row, view)}
+                        />
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -537,7 +591,7 @@ export function Appearance({
           ) : null}
           <div className="appearance-footer">
             <span role="status">{notice}</span>
-            {overLimit ? <p role="alert">Choose smaller folders. You can import up to 200 images per save.</p> : null}
+            {overLimit ? <p role="alert">You can add up to 200 sprites per save.</p> : null}
             {dirty || stale || uncertain ? (
               <button
                 type="button"
@@ -563,11 +617,7 @@ export function Appearance({
                 (!dirty && !stale && !uncertain) ||
                 overLimit ||
                 choice.expressions.some((row) => !row.name.trim()) ||
-                (choice.useSprites &&
-                  !choice.expressions.length &&
-                  !baseline.expressions.length &&
-                  !choice.excluded?.front.length &&
-                  !choice.excluded?.side.length)
+                (choice.useSprites && !choice.expressions.length && !baseline.expressions.length)
               }
               onClick={() => void save()}
             >

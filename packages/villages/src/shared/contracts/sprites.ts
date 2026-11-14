@@ -25,7 +25,10 @@ export type SpriteArtwork = {
   | { origin: "upload"; engineSource?: never }
   | { origin: "engine"; engineSource: { characterId: string; filename: string } }
 );
-export type SpriteAssignment = { expressionId: string; view: SpriteView; artworkId: string };
+export type SpriteAssignment = { expressionId: string; view: SpriteView } & (
+  | { artworkId: string; engineFilename?: never; version?: never }
+  | { engineFilename: string; version?: string; artworkId?: never }
+);
 export type SpriteManagerState = {
   version: 1;
   artwork: SpriteArtwork[];
@@ -73,7 +76,7 @@ export type SpriteAppearance = {
 };
 
 export type SpriteChoice =
-  { artworkId: string; filename?: never } | { filename: string; version?: string; artworkId?: never };
+  { artworkId: string; filename?: never; version?: never } | { filename: string; version?: string; artworkId?: never };
 export type AppearanceExpression = {
   id: string;
   name: string;

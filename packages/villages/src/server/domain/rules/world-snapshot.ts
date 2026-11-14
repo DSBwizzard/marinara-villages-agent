@@ -4,7 +4,11 @@ import { sceneMoveAccompanying } from "./venue-contact.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
-import { groupNumberedSpritePairs, groupSpritesByMood } from "../../../shared/helpers/sprite-variants.js";
+import {
+  engineSpriteUrl,
+  groupNumberedSpritePairs,
+  groupSpritesByMood,
+} from "../../../shared/helpers/sprite-variants.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -74,13 +78,13 @@ export function projectVillager(
     sprite: sprite
       ? {
           ...sprite,
-          images: sprite.expressions.map(({ view, label, filename, assetId, expressionId }) => ({
+          images: sprite.expressions.map(({ view, label, filename, assetId, expressionId, version }) => ({
             view,
             label,
             expressionId,
             variantGroup: variantGroups.get(expressionId),
             isDefault: Boolean(expressionId) && expressionId === sprite.defaultExpressionId,
-            url: `/api/sprites/${assetId}/file/${encodeURIComponent(filename)}`,
+            url: engineSpriteUrl(assetId, filename, version),
           })),
         }
       : null,

@@ -4,6 +4,8 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { resolveSpriteExpression } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 import {
   createSpriteSetup,
@@ -17,10 +19,7 @@ const documents = new Map<string, unknown>();
 const documentId = "villages-sprite-setup-" + createHash("sha256").update(id).digest("hex");
 const signal = new AbortController().signal;
 let world = defaultVillageState();
-let version = "100";
-let copied = 0;
-let prepareHook = () => {};
-let fail = "";
+const version = "100";
 const image = "data:image/png;base64,";
 const png = (name: string) => image + Buffer.from(name).toString("base64");
 const sourceDigest = (data: string) =>
@@ -57,7 +56,10 @@ documents.set(documentId, {
   errors: {},
 });
 const initialDocument = structuredClone(documents.get(documentId));
-const looseFiles = ["loose.png", ...Array.from({ length: 100 }, (_, index) => `extra-${index}.png`)];
+const happySide = Array.from({ length: 17 }, (_, index) => "side-" + (index + 1) + ".png");
+const looseFiles = ["new-front.png", ...happySide];
+let catalogReads = 0;
+let libraryAvailable = true;
 const service = createSpriteSetup({
   villagesDocuments: () => ({
     getById: async (_pkg: string, key: string) => ({ data: structuredClone(documents.get(key)) }),
@@ -70,26 +72,17 @@ const service = createSpriteSetup({
   villageEngineJson: async (url) => {
     if (url.startsWith("/api/characters/")) return { id };
     if (!url.endsWith("/catalog")) throw new Error(url);
+    catalogReads++;
+    if (!libraryAvailable) throw new Error("Unavailable");
     return {
-      folders: [{ id: "full", name: "Full body", category: "full-body" }],
-      sprites: ["neutral.png", "happy.png", "happy-side.png", "happy-alt.png", ...looseFiles].map((filename) => ({
+      folders: [],
+      sprites: looseFiles.map((filename, index) => ({
         filename,
-        label: filename,
-        folderId: looseFiles.includes(filename) ? null : "full",
+        label: index === 0 ? "Happy_2" : "Happy_" + index,
+        folderId: null,
         url: "/api/sprites/mara/file/" + filename + "?v=" + version,
       })),
     };
-  },
-  manager: {
-    readImage: async (url) => {
-      if (url.includes(fail) && fail) throw Error("Unreadable");
-      return png(url.split("/").at(-1)!);
-    },
-    prepareArtwork: async (name, data, source) => {
-      copied++;
-      prepareHook();
-      return makeArt(name, data, source?.characterId);
-    },
   },
   writes: createSpriteWrites(),
   readVillageState: async () => structuredClone(world),
@@ -113,20 +106,74 @@ assert.equal(initial.manager.expressions.length, 1);
 assert.equal(initial.files[0].version, version);
 const happyId = initial.manager.expressions[0].id;
 const expressions = [
-  { id: happyId, name: "Happy", front: { artworkId: front.id }, side: { filename: "happy-side.png", version } },
+  { id: happyId, name: "Happy", front: { artworkId: front.id } },
+  { id: "new-front", name: "Happy_2", front: { filename: looseFiles[0], version } },
+  ...happySide.map((filename, index) => ({
+    id: "new-side-" + index,
+    name: "Happy_" + (index + 1),
+    side: { filename, version },
+  })),
 ];
-const body = { token: initial.token, requestId: "pair", useSprites: true, expressions, defaultExpressionId: happyId };
-const paired = await service.save(id, body, signal);
-assert.equal(paired.revision, 6);
-assert.equal(paired.manager.assignments.length, 2);
-assert.equal(paired.manager.framing.mode, "half");
-assert.equal(paired.manager.assignments[0].artworkId, front.id);
-assert.deepEqual(await service.save(id, body, signal), paired, "Lost acknowledgements replay the exact committed save");
-assert.equal(copied, 1);
+const body = { token: initial.token, requestId: "batch", useSprites: true, expressions, defaultExpressionId: happyId };
+
+await assert.rejects(
+  service.save(
+    id,
+    {
+      ...body,
+      defaultExpressionId: "new-front",
+      expressions: [{ ...expressions[1], front: { filename: looseFiles[0], version: "99" } }],
+    },
+    signal,
+  ),
+  /Engine sprites changed/,
+);
+await assert.rejects(
+  service.save(id, { ...body, expressions: [...expressions, { ...expressions[2], id: "new-duplicate" }] }, signal),
+  /Choose each sprite once per facing/,
+);
+await assert.rejects(
+  service.save(
+    id,
+    { ...body, expressions: [{ ...expressions[1], name: "Wrong" }], defaultExpressionId: "new-front" },
+    signal,
+  ),
+  /Engine sprites changed/,
+);
+await assert.rejects(
+  service.save(
+    id,
+    {
+      ...body,
+      expressions: [{ ...expressions[1], front: { filename: "outside-library.png", version } }],
+      defaultExpressionId: "new-front",
+    },
+    signal,
+  ),
+  /Engine sprites changed/,
+);
+assert.deepEqual(documents.get(documentId), initialDocument);
+const readsBeforeSave = catalogReads;
+const saved = await service.save(id, body, signal);
+assert.equal(catalogReads, readsBeforeSave + 1, "A whole batch validates against one Engine catalog read");
+assert.equal(saved.revision, 6);
+assert.equal(saved.manager.assignments.length, 19);
+assert.deepEqual(
+  saved.manager.artwork,
+  initial.manager.artwork,
+  "Selections reference Engine files without producing copies",
+);
+assert.equal(saved.manager.framing.mode, "half");
+assert.equal(saved.manager.assignments[0].artworkId, front.id);
+assert.deepEqual(await service.save(id, body, signal), saved, "Lost acknowledgements replay the exact committed save");
 await assert.rejects(service.save(id, { ...body, useSprites: false }, signal), /save changed/);
 await assert.rejects(service.preparedManager(id, 5), /changed/);
-assert.deepEqual(await service.preparedManager(id, 6), paired.manager);
-assert.equal(retainedSpriteFiles("sprite-setup", documents.get(documentId)).length, 6);
+assert.deepEqual(await service.preparedManager(id, 6), saved.manager);
+assert.equal(
+  retainedSpriteFiles("sprite-setup", documents.get(documentId)).length,
+  4,
+  "Only Village-owned files are retained",
+);
 
 world = coerceVillageState({
   ...world,
@@ -144,197 +191,65 @@ world = coerceVillageState({
         capturedAt: "2026-01-01T00:00:00.000Z",
         name: "Mara",
       },
-      spriteManager: paired.manager,
+      spriteManager: saved.manager,
     },
   ],
 });
 const resident = await service.settled(id, true);
-const sideId = resident.manager.assignments.find((slot) => slot.view === "side")!.artworkId;
-const existing = [{ id: happyId, name: "Happy", front: { artworkId: front.id }, side: { artworkId: sideId } }];
+const sprite = managerResidentSprite(resident.manager, id)!;
+assert.equal(sprite.named, true);
+assert.equal(sprite.expressions.filter((row) => row.view === "front").length, 2);
+assert.equal(sprite.expressions.filter((row) => row.view === "side").length, 17);
+assert.equal(sprite.expressions[2].assetId, id);
+assert.equal(sprite.expressions[2].filename, "side-1.png");
+assert.equal(sprite.expressions[2].version, version);
+const projected = projectVillager(world.villagers[0], "Mara", "", [], "", "", null);
+assert.equal(projected.sprite?.images[2].url, "/api/sprites/mara/file/side-1.png?v=100");
+assert.equal(resolveSpriteExpression(sprite, "happy", true, "front", 0.999), sprite.expressions[1].expressionId);
+assert.equal(resolveSpriteExpression(sprite, "happy", true, "side", 0.999), sprite.expressions.at(-1)?.expressionId);
+
+libraryAvailable = false;
+const rows = resident.manager.assignments.map(({ expressionId, artworkId, view, engineFilename, version }) => ({
+  id: expressionId,
+  name: resident.manager.expressions.find((row) => row.id === expressionId)!.name,
+  [view]: engineFilename ? { filename: engineFilename, version } : { artworkId },
+}));
 const portrait = await service.save(
   id,
   {
+    ...body,
     token: resident.token,
-    resident: true,
     requestId: "portrait",
+    resident: true,
     useSprites: false,
-    expressions: existing,
-    defaultExpressionId: happyId,
+    expressions: rows,
   },
   signal,
 );
-assert.equal(managerResidentSprite(world.villagers[0].spriteManager), null);
-assert.equal(portrait.manager.assignments.length, 2);
-const enabled = await service.save(
+assert.equal(managerResidentSprite(world.villagers[0].spriteManager, id), null);
+assert.deepEqual(
+  portrait.manager.assignments,
+  saved.manager.assignments,
+  "Unchanged references do not need the catalog",
+);
+const removed = await service.save(
   id,
   {
+    ...body,
     token: portrait.token,
+    requestId: "remove",
     resident: true,
-    requestId: "sprites",
-    useSprites: true,
-    expressions: existing,
-    defaultExpressionId: happyId,
+    expressions: rows.slice(0, -1),
   },
   signal,
 );
-assert.equal(managerResidentSprite(world.villagers[0].spriteManager)?.expressions.length, 2);
-assert.equal(
-  enabled.token,
-  (await service.settled(id, true)).token,
-  "A second save in the same editor uses the acknowledged token",
-);
-assert.equal(copied, 1, "Portrait and metadata changes do not copy images");
-
-version = "200";
-const replacement = {
-  token: enabled.token,
-  resident: true,
-  requestId: "replace",
-  useSprites: true,
-  expressions: [{ ...existing[0], side: { filename: "happy-side.png", version: "100" } }],
-  defaultExpressionId: happyId,
-};
-await assert.rejects(service.save(id, replacement, signal), /Engine sprites changed/);
-const currentReplacement = {
-  ...replacement,
-  expressions: [{ ...existing[0], side: { filename: "happy-side.png", version } }],
-};
-fail = "happy-side.png";
-await assert.rejects(service.save(id, currentReplacement, signal), /Unreadable/);
-assert.equal((await service.settled(id, true)).token, enabled.token);
-fail = "";
-const replaced = await service.save(id, currentReplacement, signal);
-assert.equal(replaced.manager.assignments.find((row) => row.view === "front")?.artworkId, front.id);
-assert.notEqual(replaced.manager.assignments.find((row) => row.view === "side")?.artworkId, sideId);
-assert.equal(
-  replaced.manager.artwork.some((art) => art.id === sideId),
-  false,
-  "Replacement releases the old active copy",
-);
-assert.equal(
-  (await service.preparedManager(id, 6))?.artwork.some((art) => art.id === sideId),
-  true,
-  "Founding ownership remains separate",
-);
-await assert.rejects(service.save(id, { ...replacement, requestId: "stale" }, signal), /Appearance changed/);
-prepareHook = () => {
-  world.seed = "different-world";
-};
+assert.equal(removed.manager.assignments.length, 18);
+assert.deepEqual(removed.manager.artwork, initial.manager.artwork);
+assert.equal((await service.settled(id, true)).token, removed.token);
 await assert.rejects(
-  service.save(
-    id,
-    {
-      ...currentReplacement,
-      token: replaced.token,
-      requestId: "racing",
-      expressions: [{ ...existing[0], side: { filename: "happy-alt.png", version } }],
-    },
-    signal,
-  ),
+  service.save(id, { ...body, token: portrait.token, requestId: "stale", resident: true }, signal),
   /Appearance changed/,
 );
-assert.deepEqual(world.villagers[0].spriteManager, replaced.manager);
-prepareHook = () => {};
-const beforeFolders = await service.settled(id);
-const folderSave = {
-  token: beforeFolders.token,
-  requestId: "use-folders",
-  useSprites: true,
-  folders: { front: "full", side: "" },
-  defaultExpressionId: "new-happy",
-  expressions: [{ id: "new-happy", name: "happy", front: { filename: "happy.png", version } }],
-};
-await assert.rejects(
-  service.save(id, { ...folderSave, folders: { front: "wrong", side: "" } }, signal),
-  /Engine folders or labels changed/,
-);
-await assert.rejects(
-  service.save(id, { ...folderSave, expressions: [{ ...folderSave.expressions[0], name: "wrong" }] }, signal),
-  /Engine folders or labels changed/,
-);
-const folderSaved = await service.save(id, folderSave, signal);
-assert.deepEqual(folderSaved.manager.folders, folderSave.folders);
-assert.equal(folderSaved.manager.assignments.length, 1);
-assert.deepEqual(await service.save(id, folderSave, signal), folderSaved);
-assert.deepEqual((await service.settled(id)).manager, folderSaved.manager);
-const selected = folderSaved.manager.assignments[0];
-const portraitSave = await service.save(
-  id,
-  {
-    ...folderSave,
-    token: folderSaved.token,
-    requestId: "folder-portrait",
-    useSprites: false,
-    defaultExpressionId: selected.expressionId,
-    expressions: [{ id: selected.expressionId, name: "happy", front: { artworkId: selected.artworkId } }],
-  },
-  signal,
-);
-assert.deepEqual(portraitSave.manager.assignments, folderSaved.manager.assignments);
-assert.deepEqual(portraitSave.manager.folders, folderSave.folders);
-const looseSave = {
-  ...folderSave,
-  token: portraitSave.token,
-  requestId: "no-folder",
-  folders: { front: "", side: "" },
-  expressions: [{ id: "new-happy", name: "loose", front: { filename: "loose.png", version } }],
-};
-await assert.rejects(
-  service.save(id, { ...looseSave, expressions: folderSave.expressions }, signal),
-  /Engine folders or labels changed/,
-);
-const looseSaved = await service.save(id, looseSave, signal);
-assert.deepEqual(looseSaved.manager.folders, looseSave.folders);
-assert.equal(looseSaved.manager.assignments[0].view, "front");
-assert.deepEqual((await service.settled(id)).manager, looseSaved.manager);
-const bothFacings = await service.save(
-  id,
-  {
-    ...looseSave,
-    token: looseSaved.token,
-    requestId: "same-loose-source",
-    defaultExpressionId: "new-front-0",
-    expressions: ["front", "side"].flatMap((view) =>
-      looseFiles.map((filename, index) => ({
-        id: `new-${view}-${index}`,
-        name: filename.replace(/\.png$/, ""),
-        [view]: { filename, version },
-      })),
-    ),
-  },
-  signal,
-);
-assert.equal(bothFacings.manager.assignments.length, 202);
-assert.equal(new Set(bothFacings.manager.assignments.map((row) => row.artworkId)).size, 101);
-const removal = {
-  ...looseSave,
-  token: bothFacings.token,
-  requestId: "remove-from-front",
-  defaultExpressionId: "new-side-only",
-  excluded: { front: ["loose.png"], side: [] },
-  expressions: [{ id: "new-side-only", name: "loose", side: { filename: "loose.png", version } }],
-};
-await assert.rejects(
-  service.save(
-    id,
-    {
-      ...removal,
-      expressions: [...removal.expressions, ...looseSave.expressions],
-    },
-    signal,
-  ),
-  /Remove excluded sprites/,
-);
-const removed = await service.save(id, removal, signal);
-assert.deepEqual(removed.manager.excluded, removal.excluded);
-assert.deepEqual(
-  removed.manager.assignments.map((row) => row.view),
-  ["side"],
-);
-const reloaded = await service.settled(id);
-assert.deepEqual(reloaded.manager.excluded, removal.excluded);
-assert.ok(reloaded.files.some((file) => file.filename === "loose.png"));
-assert.deepEqual(await service.save(id, removal, signal), removed);
 console.log(
-  "Appearance preserves legacy drafts, validates Engine folder selections, retries exact saves and fences resident changes.",
+  "Appearance saves independent Engine references, preserves owned art and retries, and resolves 2 Front and 17 Side sprites.",
 );

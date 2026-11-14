@@ -6,6 +6,14 @@ export function spriteLabel(value: string) {
     .trim();
 }
 
+export const engineSpriteName = (label: string, filename: string) =>
+  spriteLabel(label || filename)
+    .slice(0, 100)
+    .trim() || "Sprite";
+
+export const engineSpriteUrl = (owner: string, filename: string, version?: string) =>
+  `/api/sprites/${encodeURIComponent(owner)}/file/${encodeURIComponent(filename)}${version ? `?v=${version}` : ""}`;
+
 export function spriteLabelKey(value: string) {
   return spriteLabel(value)
     .replace(/_sprite_[a-f0-9]{12}$/iu, "")

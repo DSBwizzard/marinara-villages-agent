@@ -63,7 +63,7 @@ export type VillageVillager = {
   characterId: string;
   /** Card prose captured at move-in; deliberately excludes the Engine-only first message. */
   cardSnapshot: VillageVillagerCardSnapshot;
-  /** Approved village-owned art, independent of the source character's sprites. */
+  /** Approved Scene sprite assignments and any retained village-owned artwork. */
   sprite?: VillageResidentSprite | null;
   spriteManager?: SpriteManagerState | null;
   addedAt: string;
@@ -93,6 +93,7 @@ export type VillageResidentSprite = {
     view: "front" | "side";
     label: string;
     filename: string;
+    version?: string;
     assetId: string;
     expressionId: string;
     spriteName?: string;

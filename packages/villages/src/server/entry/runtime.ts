@@ -707,7 +707,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       mutateDocument,
       villageEngineJson,
-      manager: spriteManagerService,
       writes: backendWork.spriteWrites,
       readVillageState,
       mutateVillageState,
