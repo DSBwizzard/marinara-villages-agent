@@ -80,6 +80,7 @@ export async function verifyFoundingLayout(group) {
         const page = await context.newPage();
         let payload,
           suggestions = 0,
+          failVenueConnection = false,
           generatedImages = 0,
           generationImage,
           mapReceipt;
@@ -123,6 +124,14 @@ export async function verifyFoundingLayout(group) {
           if (path.endsWith("/setup/venues/suggest")) {
             suggestions++;
             const body = route.request().postDataJSON();
+            if (failVenueConnection)
+              return send({
+                id: body.actionId,
+                sourceKey: body.sourceKey,
+                status: "failed",
+                result: null,
+                error: "Language model connection not found: stale-model-id",
+              });
             assert.equal(body.communityVenueId, "founding-community");
             assert.equal(body.mode, "quick-start");
             assert.equal(body.draftEntranceImage, undefined);
@@ -221,7 +230,7 @@ export async function verifyFoundingLayout(group) {
             contentType: "application/json",
             body: JSON.stringify([
               { id: "talk", name: "Language model", provider: "language", defaultForAgents: true },
-              { id: "image", name: "Image model", provider: "image_generation", defaultForAgents: true },
+              { id: "image", name: "Image model", provider: "image_generation", profileImportReviewRequired: "true" },
             ]),
           }),
         );
@@ -337,6 +346,7 @@ export async function verifyFoundingLayout(group) {
         const models = root.getByRole("region", { name: "Model Connections" });
         const system = models.getByRole("button", { name: /^System / });
         await expect(system).toContainText("Language model");
+        await expect(models.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
         await system.click();
         const systemPicker = page.getByRole("dialog", { name: "System", exact: true });
         await expect(systemPicker.getByRole("button", { name: /^Language model/ })).toHaveAttribute(
@@ -707,12 +717,29 @@ export async function verifyFoundingLayout(group) {
           .getByRole("button", { name: "Cancel", exact: true })
           .click();
         assert.equal(suggestions, 0);
+        failVenueConnection = true;
         await button("Suggest").click();
         await page
           .getByRole("dialog", { name: "Suggest", exact: true })
           .getByRole("button", { name: "Replace and suggest", exact: true })
           .click();
-        await expect.poll(() => suggestions).toBe(1);
+        await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
+        await expect(root.getByText("stale-model-id", { exact: false })).toHaveCount(0);
+        await button("Check Model Connections").click();
+        await expect(root).toHaveAttribute("data-step", "0");
+        await expect(models).toBeVisible();
+        await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Old Harbour");
+        await button("Continue to People").click();
+        await button("Continue to Venues and Map").click();
+        await expect(root).toHaveAttribute("data-step", "2");
+        assert.equal(suggestions, 1, "checking connections never retries generation");
+        failVenueConnection = false;
+        await button("Retry").click();
+        await page
+          .getByRole("dialog", { name: "Retry", exact: true })
+          .getByRole("button", { name: "Replace and suggest", exact: true })
+          .click();
+        await expect.poll(() => suggestions).toBe(2);
         await expect
           .poll(() =>
             page.evaluate(
@@ -794,7 +821,7 @@ export async function verifyFoundingLayout(group) {
             .sort(),
         );
         assert.equal(generatedImages, 2 * Number(view.width === 1366));
-        assert.equal(suggestions, 1);
+        assert.equal(suggestions, 2);
         await context.close();
       });
     }

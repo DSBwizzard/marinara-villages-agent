@@ -199,11 +199,14 @@ export function AgentConnectionsControls({
 
   const pickingImages = job?.key === "imageConnectionId";
   const modelOptions = pickingImages ? images : language;
+  const currentOption = job && modelOptions.find((option) => option.id === settings?.[job.key]);
   const query = search.trim().toLowerCase();
   const matches = modelOptions.filter((option) => `${option.name} ${option.detail}`.toLowerCase().includes(query));
   const specialChoices = [];
-  if (pickingImages) specialChoices.push({ id: VILLAGES_IMAGE_CONNECTION_DISABLED, name: "Disabled", detail: "" });
-  if (pickingImages || !onSetupProblem) specialChoices.push({ id: "", name: "Use Engine default", detail: "" });
+  if (pickingImages)
+    specialChoices.push({ id: VILLAGES_IMAGE_CONNECTION_DISABLED, name: "Disabled", detail: "", needsReview: false });
+  if (pickingImages || !onSetupProblem)
+    specialChoices.push({ id: "", name: "Use Engine default", detail: "", needsReview: false });
   const problem = error ? (
     <div className={`${P}-model-problem`} role="alert">
       <span>{error}</span>
@@ -255,9 +258,13 @@ export function AgentConnectionsControls({
                   <strong>{entry.label}</strong>
                   <small>{entry.purpose}</small>
                 </span>
-                <span className={`${P}-model-assignment`} data-needs-choice={missing || needsChoice || undefined}>
+                <span
+                  className={`${P}-model-assignment`}
+                  data-needs-choice={missing || needsChoice || selected?.needsReview || undefined}
+                >
                   <strong>{value}</strong>
                   {selected?.detail ? <small>{selected.detail}</small> : null}
+                  {selected?.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
                 </span>
                 <span className={`${P}-model-chevron`} aria-hidden="true" />
               </button>
@@ -274,10 +281,15 @@ export function AgentConnectionsControls({
             {problem}
             {settings[job.key] &&
             settings[job.key] !== VILLAGES_IMAGE_CONNECTION_DISABLED &&
-            !modelOptions.some((option) => option.id === settings[job.key]) &&
+            !currentOption &&
             !readFailed ? (
               <p className={`${P}-model-problem`} role="status">
                 Saved connection is missing
+              </p>
+            ) : null}
+            {currentOption?.needsReview ? (
+              <p className={`${P}-model-problem`} role="status">
+                Review this connection in Engine before using it to generate.
               </p>
             ) : null}
             <input
@@ -303,6 +315,7 @@ export function AgentConnectionsControls({
                     <span>
                       <strong>{option.name}</strong>
                       {option.detail ? <small>{option.detail}</small> : null}
+                      {option.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
                     </span>
                     {current ? <span aria-hidden="true">✓</span> : null}
                   </button>

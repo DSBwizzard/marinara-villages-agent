@@ -20,6 +20,7 @@ export function QuickStartVenues({
   focusIssue,
   saveError,
   problem,
+  problemAction,
   map,
   onSelect,
   onPatch,
@@ -40,6 +41,7 @@ export function QuickStartVenues({
   focusIssue: FoundingIssue | null;
   saveError?: string;
   problem?: string;
+  problemAction?: ReactNode;
   map: ReactNode;
   onSelect(venue: SetupVenueDraft): void;
   onPatch(venue: SetupVenueDraft): void;
@@ -191,6 +193,7 @@ export function QuickStartVenues({
           })}
         </FoundingVenuePages>
         {!open && (saveError || problem) ? <p role="alert">{saveError || problem}</p> : null}
+        {!open && !saveError ? problemAction : null}
       </section>
       {open && selected ? (
         <FoundingDialog title="Edit Venue" className="villages-quick-dialog" onClose={() => setEditorOpen(false)}>
@@ -369,6 +372,7 @@ export function QuickStartVenues({
           </div>
           <footer className="villages-quick-footer">
             {saveError || problem ? <p role="alert">{saveError || problem}</p> : null}
+            {!saveError ? problemAction : null}
             {saveStatus ? (
               <span role="status" className="villages-forging-saved">
                 {saveStatus}

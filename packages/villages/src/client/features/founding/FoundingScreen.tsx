@@ -117,7 +117,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     updateSetupMapRequest,
     uploadSetupImage,
   } = controller;
-  const setupProblem = currentSetupProblem || setupWorkspace.suggestionRequest?.failure || "";
+  const rawSetupProblem =
+    currentSetupProblem || (setupStep === 2 ? setupWorkspace.suggestionRequest?.failure : "") || "";
+  const venueConnectionUnavailable =
+    setupStep === 2 && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
+  const setupProblem = venueConnectionUnavailable
+    ? "The System connection is unavailable. Choose another model or review it in Engine."
+    : rawSetupProblem;
   const [contextView, setContextView] = useState("World rules");
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
@@ -691,6 +697,19 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   setupProblem ||
                   (venueShapeProblem ? venueShapeProblem + " Use Suggest to replace this older draft." : undefined)
                 }
+                problemAction={
+                  venueConnectionUnavailable ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContextView("Connections");
+                        gotoSetupStep(0);
+                      }}
+                    >
+                      Check Model Connections
+                    </button>
+                  ) : undefined
+                }
                 map=<>
                   {map(true)}
                   {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
@@ -820,7 +839,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </div>
             </>
           ) : null}
-          {setupProblem && !inlineProblem && !(setupStep === 2 && setupWorkspace.view === "details") ? (
+          {setupProblem &&
+          !inlineProblem &&
+          !venueConnectionUnavailable &&
+          !(setupStep === 2 && setupWorkspace.view === "details") ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupProblem}
             </p>

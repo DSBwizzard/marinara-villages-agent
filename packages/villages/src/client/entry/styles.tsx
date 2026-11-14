@@ -1582,7 +1582,8 @@ dialog.villages-founding-dialog:not([open]) { display:none; }
 .${ELEMENT_TAG}-model-chevron { width: .45rem; height: .45rem; border: solid currentColor; border-width: 1.5px 1.5px 0 0; rotate: 45deg; }
 .${ELEMENT_TAG}-model-row strong, .${ELEMENT_TAG}-model-choices strong { font-weight: 650; overflow-wrap: anywhere; }
 .${ELEMENT_TAG}-model-row small, .${ELEMENT_TAG}-model-choices small { display: block; font-size: .8rem; color: var(--muted-foreground); overflow-wrap: anywhere; }
-.${ELEMENT_TAG}-model-assignment[data-needs-choice] { color: var(--menu-warning-ink, var(--destructive, #bf5256)); }
+.${ELEMENT_TAG}-model-assignment[data-needs-choice],
+.${ELEMENT_TAG}-model-connections small[data-needs-review] { color: var(--menu-warning-ink, var(--destructive, #bf5256)); }
 .${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row:enabled:hover, .${ELEMENT_TAG}-model-choices button:enabled:hover,
 .${ELEMENT_TAG}-model-choices button[aria-current] { background: var(--menu-hover, var(--secondary)); }
 .${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row:focus-visible, .${ELEMENT_TAG}-model-choices button:focus-visible {

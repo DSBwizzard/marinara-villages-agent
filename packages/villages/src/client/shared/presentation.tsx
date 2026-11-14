@@ -78,6 +78,7 @@ export function connectionOptionsFrom(rows: readonly EngineConnectionRow[]): Vil
       name,
       category,
       detail,
+      needsReview: row.profileImportReviewRequired === true || row.profileImportReviewRequired === "true",
     });
   }
   return options;
