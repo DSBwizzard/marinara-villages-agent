@@ -62,6 +62,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
     Body: {
       venueId?: unknown;
       zoneId?: unknown;
+      appointmentId?: unknown;
       expectedSceneRevision?: unknown;
     };
   }>("/rooms", async (request, reply) => {
@@ -74,6 +75,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
           request.body?.expectedSceneRevision === undefined
             ? undefined
             : readSceneRevision(request.body.expectedSceneRevision),
+          request.body?.appointmentId === undefined ? undefined : readPlaceId(request.body.appointmentId),
         ),
       };
     } catch (error) {

@@ -4,7 +4,9 @@ import type { ResidentPlanningOpportunity } from "./world.js";
 export type ResidentNarrationCapture = {
   format: 1;
   context: ContinuityCapture;
-  opportunity: Omit<ResidentPlanningOpportunity, "kind"> & { kind: "encounter" | "routine" | "relationship" };
+  opportunity: Omit<ResidentPlanningOpportunity, "kind"> & {
+    kind: "encounter" | "routine" | "relationship" | "activity";
+  };
   actors: { id: string; incarnation: string; zoneId: string }[];
   nativeFingerprint: string;
   protectionFingerprint: string;

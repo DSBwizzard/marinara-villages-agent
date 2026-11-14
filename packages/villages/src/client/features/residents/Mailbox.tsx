@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { MailboxMutation, MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { invalidatesRead, request, VillageApiError, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
+import type { Keepsake } from "../../../shared/contracts/mailbox.js";
+import { KeepsakeCard } from "./KeepsakeCard.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import { StorybookHeading } from "../../shared/StorybookHeading.js";
@@ -187,6 +189,9 @@ export function Mailbox({
   });
   const [loadedView, setView] = useState<(MailboxView & { queryKey: string }) | null>(null);
   const [folder, setFolder] = useState<"inbox" | "sent">("inbox");
+  const [journal, setJournal] = useState(false);
+  const [gifts, setGifts] = useState<Keepsake[]>([]);
+  const [giftId, setGiftId] = useState("");
   const [selection, setSelection] = useState<Selection>(null);
   const currentSelection = useRef(selection);
   currentSelection.current = selection;
@@ -211,6 +216,20 @@ export function Mailbox({
   const retryIdentity = useRef<Record<string, string>>({});
   const sendIdentities = useRef(new Map<string, string>());
   const scope = snapshot?.worldScope ?? "";
+  useEffect(() => {
+    if (!open || !journal || !scope) return;
+    const abort = new AbortController();
+    setGifts([]);
+    void request<{ keepsakes: Keepsake[] }>(`/keepsakes?scope=${scope}`, { signal: abort.signal }).then(
+      (result) => {
+        if (!abort.signal.aborted) setGifts(result.keepsakes);
+      },
+      (cause) => {
+        if (!abort.signal.aborted) setError(String(cause.message ?? cause));
+      },
+    );
+    return () => abort.abort();
+  }, [open, journal, scope]);
   const cursor = cursors.at(-1) ?? "";
   const recoveryCursor = recoveryCursors.at(-1) ?? "";
   const queryKey = JSON.stringify([scope, folder, cursor, recoveryCursor]);
@@ -449,6 +468,7 @@ export function Mailbox({
   const draftKey = scope + ":" + recipient;
   const draft = drafts[draftKey] ?? "";
   const write = (id = "") => {
+    setJournal(false);
     choose(null);
     setRecipient(id);
     setComposing(true);
@@ -590,8 +610,9 @@ export function Mailbox({
               <div className="villages-letter-folders" aria-label="Mailbox folders">
                 <button
                   type="button"
-                  aria-pressed={folder === "inbox"}
+                  aria-pressed={!journal && folder === "inbox"}
                   onClick={() => {
+                    setJournal(false);
                     setFolder("inbox");
                     setCursors([]);
                     choose(null);
@@ -602,8 +623,9 @@ export function Mailbox({
                 </button>
                 <button
                   type="button"
-                  aria-pressed={folder === "sent"}
+                  aria-pressed={!journal && folder === "sent"}
                   onClick={() => {
+                    setJournal(false);
                     setFolder("sent");
                     setCursors([]);
                     choose(null);
@@ -612,12 +634,23 @@ export function Mailbox({
                 >
                   Sent
                 </button>
+                <button
+                  type="button"
+                  aria-pressed={journal}
+                  onClick={() => {
+                    setJournal(true);
+                    choose(null);
+                    setComposing(false);
+                  }}
+                >
+                  Keepsakes
+                </button>
               </div>
               <button className="villages-letter-compose" type="button" onClick={() => write()}>
                 Write a letter
               </button>
             </div>
-            <div className="villages-letter-rows">
+            <div className="villages-letter-rows" style={journal ? { display: "none" } : undefined}>
               {view?.recoveryTotal ? <h4>Recovery</h4> : null}
               {(view?.recovery ?? []).map((row) => (
                 <article key={row.messageId}>
@@ -786,6 +819,26 @@ export function Mailbox({
                   </button>
                 </div>
               </>
+            ) : journal ? (
+              <section aria-label="Keepsakes Journal">
+                <h4>Keepsakes Journal</h4>
+                {gifts.length ? (
+                  gifts.map((gift) => (
+                    <div key={gift.id}>
+                      <button
+                        type="button"
+                        aria-expanded={gift.id === giftId}
+                        onClick={() => setGiftId(gift.id === giftId ? "" : gift.id)}
+                      >
+                        {gift.caption}
+                      </button>
+                      {gift.id === giftId ? <KeepsakeCard key={scope + gift.id} gift={gift} scope={scope} /> : null}
+                    </div>
+                  ))
+                ) : (
+                  <p>No Keepsakes yet.</p>
+                )}
+              </section>
             ) : selected ? (
               <>
                 {selected.message.fromId !== "player" && !selected.message.read ? (
@@ -808,6 +861,9 @@ export function Mailbox({
                     portraitName={selected.message.fromId !== "player" ? selected.thread.residentName : undefined}
                   />
                 )}
+                {selected.keepsake ? (
+                  <KeepsakeCard key={scope + selected.keepsake.id} gift={selected.keepsake} scope={scope} />
+                ) : null}
                 {selected.message.error ? <p role="status">{selected.message.error}</p> : null}
                 <div className="villages-letter-actions">
                   {selected.message.fromId !== "player" &&

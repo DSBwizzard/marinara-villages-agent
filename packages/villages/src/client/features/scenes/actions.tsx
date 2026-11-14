@@ -1331,11 +1331,18 @@ export function useOpenRoom(ports: {
     setBusy: setRoomBusy,
   });
   return useCallback(
-    async (place: VillageVenue, zoneId?: string) => {
+    async (place: Pick<VillageVenue, "id" | "name">, zoneId?: string, appointmentId?: string) => {
       if (roomBusy) return;
-      const zoneOnly = !!(room?.id && room.status === "active" && room.placeId === place.id && zoneId);
+      const zoneOnly = !!(
+        !appointmentId &&
+        room?.id &&
+        room.status === "active" &&
+        room.placeId === place.id &&
+        zoneId
+      );
       if (room?.id && room.status !== "closed" && !zoneOnly) {
         setScreen("room");
+        if (appointmentId) setRoomError("Conclude this Scene before joining the Activity.");
         return;
       }
       const claim = lifetime.begin(zoneOnly);
@@ -1400,6 +1407,7 @@ export function useOpenRoom(ports: {
           body: JSON.stringify({
             venueId: place.id,
             zoneId,
+            appointmentId,
             expectedSceneRevision: room?.sceneRevision,
           }),
           signal: AbortSignal.timeout(20_000),

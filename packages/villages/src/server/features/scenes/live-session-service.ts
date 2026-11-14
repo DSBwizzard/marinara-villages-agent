@@ -8,6 +8,7 @@ import type { VenueScene } from "../../domain/models/scene-model.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
+import { recordCompletedActivity } from "../../domain/rules/activity-followup.js";
 
 import {
   accessExits,
@@ -115,12 +116,20 @@ export function createLiveScenes({
     const session = await readSession(active.sessionId);
     await observeVillageClock();
     if (session.status === "closed") {
-      if (session.openingGatheringId || ["player", "scene"].includes(session.endReason))
-        await mutateVillageState((state) => {
-          if (session.openingGatheringId) completeOpeningGathering(state, session);
-          if (state.seed === session.villageSeed && session.endedAt && ["player", "scene"].includes(session.endReason))
-            recordClosedRelationshipScene(state, session);
-        });
+      if (session.openingGatheringId || session.activity || ["player", "scene"].includes(session.endReason))
+        await mutateVillageState(
+          (state) => {
+            if (session.openingGatheringId) completeOpeningGathering(state, session);
+            if (session.activity) recordCompletedActivity(state, session);
+            if (
+              state.seed === session.villageSeed &&
+              session.endedAt &&
+              ["player", "scene"].includes(session.endReason)
+            )
+              recordClosedRelationshipScene(state, session);
+          },
+          session.activity ? { memories: true } : undefined,
+        );
       await clearActivePointer(session.id, true);
       return null;
     }

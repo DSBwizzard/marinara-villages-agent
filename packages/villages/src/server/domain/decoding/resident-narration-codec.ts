@@ -17,7 +17,7 @@ const capture = z
     opportunity: z
       .object({
         id,
-        kind: z.enum(["encounter", "routine", "relationship"]),
+        kind: z.enum(["encounter", "routine", "relationship", "activity"]),
         startsAt: at,
         endsAt: at,
         actorIds: z.array(id).min(1).max(4),
@@ -101,6 +101,8 @@ const capture = z
           value.context.actors.some((row) => row.id === actor.id && row.incarnation === actor.incarnation),
       ) &&
       (source.kind !== "encounter" || (value.actors.length >= 2 && !!source.venueId && !!source.zoneId)) &&
+      (source.kind !== "activity" ||
+        (!value.historical && !source.venueId && !source.zoneId && value.actors.length === 1)) &&
       (source.kind !== "relationship" ||
         (!value.historical &&
           !source.venueId &&

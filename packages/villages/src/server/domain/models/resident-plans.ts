@@ -12,8 +12,13 @@ export type SocialPlan = {
   followThrough?: true;
   wishId?: string;
 };
+export type PlayerAppointment = import("zod").infer<typeof import("../decoding/agenda-codec.js").playerAppointment>;
+export type CompletedActivity = import("zod").infer<
+  typeof import("../decoding/resident-plans-codec.js").completedActivity
+>;
 export type ResidentPlans = {
   selectedDate: string;
   plans: SocialPlan[];
   appointments?: import("zod").infer<typeof import("../decoding/agenda-codec.js").playerAppointments>;
+  activities?: Record<string, CompletedActivity>;
 };

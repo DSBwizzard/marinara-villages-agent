@@ -295,6 +295,12 @@ export function createSceneWriting({
       frame: blocksFor([
         JSON.stringify({
           location: sceneLocationContext(scene, venue, selectedIds),
+          activity: scene.activity &&
+            selectedIds.includes(scene.activity.resident.id) && {
+              agreedPurpose: scene.activity.activity,
+              knownOnlyBy: ["player", scene.activity.resident.id],
+              participants: ["player", scene.activity.resident.id],
+            },
           dialogueSpeakers: selectedIds.filter((id) => id !== "player"),
         }),
         zoneEventHearingContext({ ...scene, participants: cast }, venue),

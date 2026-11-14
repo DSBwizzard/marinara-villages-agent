@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   MailboxQuery,
   MailboxView,
+  Keepsake,
   PersonalLetter,
   PersonalLetterSummary,
 } from "../../../shared/contracts/mailbox.js";
@@ -11,9 +12,39 @@ import type { VillageState } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
 import { villageWorldScope } from "./village-identity.js";
 import { memoryHash } from "./memory-integrity.js";
+import { continuityActor } from "./continuity-actors.js";
 
 const peer = (message: MailboxMessage) => (message.from.id === "player" ? message.to : message.from);
 export const mailboxThreadId = (residentId: string) => "personal:" + residentId;
+export function readKeepsakes(village: VillageState): Keepsake[] {
+  return Object.values(village.residentPlans.activities ?? {})
+    .flatMap(({ appointment, keepsake }) => {
+      if (!keepsake) return [];
+      const message = village.mailbox.messages[keepsake.letterId];
+      if (
+        !message?.readAt ||
+        message.status !== "delivered" ||
+        message.to.id !== "player" ||
+        message.to.incarnation !== continuityActor(village, "player")?.incarnation ||
+        message.to.incarnation !== appointment.playerIncarnation ||
+        message.from.id !== appointment.resident.id ||
+        message.from.incarnation !== appointment.resident.incarnation
+      )
+        return [];
+      const resident = village.villagers.find(
+        (person) => person.characterId === message.from.id && person.incarnation === message.from.incarnation,
+      );
+      return [
+        {
+          id: appointment.id,
+          caption: keepsake.caption,
+          sender: resident?.cardSnapshot.name ?? "Former resident",
+          at: message.at,
+        },
+      ];
+    })
+    .sort((left, right) => right.at.localeCompare(left.at));
+}
 export function mailboxLetterIdentity(
   village: VillageState,
   _state: MailboxState,
@@ -224,10 +255,15 @@ export function createMailboxPresentation(village: VillageState, state: MailboxS
     const message = Object.hasOwn(state.messages, messageId) ? state.messages[messageId] : undefined;
     if (!message || mailboxThreadId(peer(message).id) !== threadId || !visible(message))
       throw badRequest("That letter is unavailable.");
+    const attachment = Object.values(village.residentPlans.activities ?? {}).find(
+      (row) => row.keepsake?.letterId === messageId,
+    );
+    const keepsake = attachment && readKeepsakes(village).find((row) => row.id === attachment.appointment.id);
     return {
       scope: villageWorldScope(village),
       thread: threadInfo(message),
       message: { ...summary(message), text: message.from.id === "player" || message.readAt ? message.text : "" },
+      ...(keepsake ? { keepsake } : {}),
     };
   }
   return { mailbox, letter };

@@ -31,6 +31,7 @@ export function WeeklyAgenda({
   request,
   date,
   onDate,
+  onJoin,
 }: {
   actorId: string;
   inspect: boolean;
@@ -38,6 +39,7 @@ export function WeeklyAgenda({
   request<T>(path: string, options?: RequestInit): Promise<T>;
   date: string | undefined;
   onDate(date: string): void;
+  onJoin?: (join: NonNullable<Block["join"]>, place: string) => Promise<void>;
 }) {
   const [week, setWeek] = useState<AgendaWeek | null>(null);
   const [error, setError] = useState("");
@@ -137,6 +139,11 @@ export function WeeklyAgenda({
             .filter(Boolean)
             .join(" · ")}
         </p>
+      ) : null}
+      {visibleSelection && visibleSelection.join && onJoin ? (
+        <button type="button" onClick={() => void onJoin(visibleSelection.join!, visibleSelection.place ?? "Activity")}>
+          Join Activity
+        </button>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </div>

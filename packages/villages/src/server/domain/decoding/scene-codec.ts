@@ -1,4 +1,5 @@
 import { readNarrationSubmission } from "./narration-submission.js";
+import { playerAppointment } from "./agenda-codec.js";
 import type { VenueOperation } from "../models/operation-model.js";
 import type { ActiveVenue, VenueScene } from "../models/scene-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
@@ -135,6 +136,7 @@ export function coerceSession(value: unknown): VenueScene {
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
     openingGatheringId: asTrimmedString(raw.openingGatheringId) || undefined,
+    ...(raw.activity !== undefined ? { activity: playerAppointment.parse(raw.activity) } : {}),
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),

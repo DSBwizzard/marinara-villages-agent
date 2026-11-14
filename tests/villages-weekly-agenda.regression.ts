@@ -7,7 +7,15 @@ import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { agendaSpeechOptions, agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import {
+  agendaSpeechOptions,
+  agendaWeek,
+  dueAppointment,
+} from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import {
+  activityMoments,
+  recordCompletedActivity,
+} from "../packages/villages/src/server/domain/rules/activity-followup.js";
 import { agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -74,15 +82,22 @@ function fixture() {
     }),
     venue,
   );
-  function publish(raw: Record<string, unknown>, operation: string, input: string) {
-    const context = narrationContinuityContext(world, scene, venue, operation, input, at);
+  function publish(
+    raw: Record<string, unknown>,
+    operation: string,
+    input: string,
+    authority = world,
+    source = scene,
+    instant = at,
+  ) {
+    const context = narrationContinuityContext(authority, source, venue, operation, input, instant);
     const readset = fittedNarrationReadset(
-      world,
+      authority,
       context,
       context.parts.flatMap(({ block }) => (block.evidenceId ? [block.evidenceId] : [])),
     );
     return acceptNarration(
-      world,
+      authority,
       {
         raw,
         responseDigest: memoryHash(raw),
@@ -93,10 +108,10 @@ function fixture() {
         },
       },
       operation,
-      later,
+      instant === at ? later : instant,
     );
   }
-  return { world, resident, publish };
+  return { world, resident, publish, scene };
 }
 
 await runCase("weekly-agenda/visibility", () => {
@@ -176,7 +191,7 @@ await runCase("weekly-agenda/visibility", () => {
 });
 
 await runCase("weekly-agenda/agreement", () => {
-  const { world, publish } = fixture();
+  const { world, publish, scene } = fixture();
   const propose = "Let's look through maps here tomorrow from noon to one.";
   const raw = {
     segments: [
@@ -224,4 +239,58 @@ await runCase("weekly-agenda/agreement", () => {
   const conflict = publish(raw, "another-appointment", propose);
   assert.equal(conflict.held, true);
   assert.equal(world.residentPlans.appointments?.length, 1);
+  const appointment = state.residentPlans.appointments![0];
+  const due = new Date(tomorrow + "T12:15:00Z");
+  assert.equal(dueAppointment(state, appointment.id, when), undefined);
+  assert.equal(dueAppointment(state, appointment.id, due), appointment);
+  assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].join?.id, appointment.id);
+
+  const meetup = { ...scene, id: "joined-meetup", startedAt: due.toISOString() };
+  const text = "I marked the old footbridge on this map.";
+  const resultAtMeetup = publish(
+    { segments: [{ id: "map", kind: "dialogue", speakerId: "mara", text }] },
+    "meetup-turn",
+    "A private thought",
+    state,
+    meetup,
+    due.toISOString(),
+  );
+  assert.equal(resultAtMeetup.held, false, JSON.stringify(resultAtMeetup.rejected));
+  const episode = resultAtMeetup.episode!;
+  const closed = coerceSession({
+    ...meetup,
+    activity: appointment,
+    status: "closed",
+    endReason: "player",
+    endedAt: due.toISOString(),
+  });
+  assert.equal(closed.activity?.id, appointment.id);
+  const noExchange = structuredClone(state);
+  recordCompletedActivity(noExchange, closed);
+  assert.equal(noExchange.residentPlans.activities?.[appointment.id].outcome, "quiet");
+  closed.submissions = [
+    {
+      id: "meetup-turn",
+      at: due.toISOString(),
+      message: "A private thought",
+      mode: "chat",
+      targetId: "",
+      requestFingerprint: "",
+      acceptance: { status: "applied", rejected: [] },
+      episodeId: episode.id,
+    },
+  ];
+  recordCompletedActivity(state, closed);
+  recordCompletedActivity(state, closed);
+  const activity = state.residentPlans.activities?.[appointment.id];
+  assert.equal(activity?.outcome, "pending");
+  assert.deepEqual(
+    activityMoments(state, activity!).map((row) => row.text),
+    [text],
+  );
+  assert.equal(dueAppointment(state, appointment.id, due), undefined);
+  assert.deepEqual(
+    coerceVillageState(JSON.parse(JSON.stringify(state))).residentPlans.activities,
+    state.residentPlans.activities,
+  );
 });

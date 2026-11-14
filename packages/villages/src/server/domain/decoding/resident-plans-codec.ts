@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ResidentPlans } from "../models/resident-plans.js";
-import { playerAppointments } from "./agenda-codec.js";
+import { playerAppointment, playerAppointments } from "./agenda-codec.js";
 
 const id = z.string().min(1).max(160),
   date = z
@@ -42,16 +42,34 @@ export const socialPlanSchema = z
       plan.actors.every((actor) => actor.id !== "player" && Object.hasOwn(plan.revisions, actor.id)) &&
       Object.keys(plan.revisions).length === plan.actors.length,
   );
+export const completedActivity = z
+  .object({
+    appointment: playerAppointment,
+    sceneId: id,
+    endedAt: z.iso.datetime(),
+    outcome: z.enum(["pending", "quiet", "letter"]),
+    keepsake: z
+      .object({
+        letterId: z.string().min(1).max(512),
+        caption: z.string().trim().min(1).max(400),
+        moment: id,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 const residentPlans = z
   .object({
     selectedDate: z.string().refine((value) => value === "" || date.safeParse(value).success),
     plans: z.array(socialPlanSchema).max(64),
     appointments: playerAppointments.optional(),
+    activities: z.record(id, completedActivity).optional(),
   })
   .strict()
   .refine(
     (value) =>
       new Set(value.plans.map((plan) => plan.id)).size === value.plans.length &&
+      Object.entries(value.activities ?? {}).every(([key, activity]) => key === activity.appointment.id) &&
       value.plans.every((plan) => plan.dateKey <= value.selectedDate),
   );
 export const emptyResidentPlans = (): ResidentPlans => ({ selectedDate: "", plans: [] });

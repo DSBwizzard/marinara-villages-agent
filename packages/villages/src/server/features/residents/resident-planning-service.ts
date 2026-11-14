@@ -4,6 +4,7 @@ import { calendarReplay } from "../../domain/rules/clock-state.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
+import { activityMoments } from "../../domain/rules/activity-followup.js";
 import { dueRelationshipAnswers } from "../../domain/rules/continuity-library.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
@@ -100,7 +101,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         now,
       }),
       narration = captureResidentNarration(state, opportunity, catchup),
-      limited = catchup || opportunity.kind === "relationship";
+      limited = catchup || opportunity.kind === "relationship" || opportunity.kind === "activity";
     return {
       format: 1,
       ...(catchup ? { catchup: true as const } : {}),
@@ -195,6 +196,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       assertResidentNarrationCurrent(historical, context.narration);
     } else {
       assertResidentNarrationCurrent(state, context.narration);
+      if (context.activity) {
+        const activity = state.residentPlans.activities?.[opportunity.id];
+        memoryRequire(
+          activity?.outcome === "pending" &&
+            activity.appointment.activity === context.activity.purpose &&
+            memoryHash(activityMoments(state, activity)) === memoryHash(context.activity.moments),
+          "The Activity's witnessed moments changed.",
+        );
+      }
       memoryRequire(
         !input.socialPlan ||
           socialContinuationValid(state, input.socialPlan.id, input.socialPlan, new Date(context.narration.context.at)),
@@ -236,8 +246,24 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           plan.startMinute <= moment.minuteOfDay &&
           plan.endMinute > moment.minuteOfDay,
       );
+    let followup;
+    if (!due && !dueOnly) {
+      for (const row of Object.values(state.residentPlans.activities ?? {})) {
+        if (
+          row.outcome !== "pending" ||
+          conflicts.has(row.appointment.resident.id) ||
+          !activityMoments(state, row).length
+        )
+          continue;
+        const work = await ports.backgroundJobSnapshot("resident-planning", "activity:" + row.appointment.id);
+        if (work?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(work.status))
+          continue;
+        followup = row;
+        break;
+      }
+    }
     if (dueOnly && !due) return false;
-    const subjectId = due ? "social:" + due.id : "village",
+    const subjectId = due ? "social:" + due.id : followup ? "activity:" + followup.appointment.id : "village",
       prior = await ports.backgroundJobSnapshot("resident-planning", subjectId);
     if (prior?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
       return;
@@ -252,9 +278,24 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           zoneId: due.zoneId,
           facts: ["An accepted free-time plan is happening now."],
         }
-      : residentPlanningOpportunity(state, moment, state.simulatedThrough, conflicts);
+      : followup
+        ? {
+            id: followup.appointment.id,
+            kind: "activity" as const,
+            actorIds: [followup.appointment.resident.id],
+            startsAt: now.toISOString(),
+            endsAt: now.toISOString(),
+            venueId: "",
+            facts: [],
+          }
+        : residentPlanningOpportunity(state, moment, state.simulatedThrough, conflicts);
     if (!opportunity || state.processedActionIds.includes(opportunity.id)) return;
     const context = contextFor(state, opportunity);
+    if (followup)
+      context.activity = {
+        purpose: followup.appointment.activity,
+        moments: activityMoments(state, followup),
+      };
     if (due) context.plans = [];
     const input = readResidentPlanningInput({
       format: 1,
@@ -270,7 +311,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       seed: state.seed,
       revision: dateKey + ":" + used,
       finite: false,
-      label: "Resident activity",
+      label: followup ? "Activity follow-up" : "Resident activity",
       automaticDate: dateKey,
       input,
     });
@@ -432,6 +473,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       const input = readResidentPlanningInput(raw),
         id = input.context.narration.opportunity.id;
       if (state.seed !== input.context.narration.context.seed) return false;
+      if (input.context.activity && state.residentPlans.activities?.[id]?.outcome !== "pending")
+        return !!state.residentPlans.activities?.[id];
       if (state.processedActionIds.includes(id)) return true;
       assertCurrent(state, input);
       const capture = input.context.narration;
@@ -465,6 +508,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         capture = input.context.narration,
         opportunity = capture.opportunity,
         replayed = state.processedActionIds.includes(opportunity.id);
+      if (input.context.activity && state.residentPlans.activities?.[opportunity.id]?.outcome !== "pending") return;
       memoryRequire(
         typeof saved.responseDigest === "string" && /^[a-f0-9]{64}$/.test(saved.responseDigest),
         "resident response lost its source digest",
@@ -485,11 +529,12 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           proposal.mail.text,
           input.context.residents.find((row) => row.characterId === from.id)?.name,
         );
+        const letterId = "resident-mail-" + memoryHash([state.seed, opportunity.id]).slice(0, 32);
         acceptResidentLetter(
           next,
           capture.context,
           {
-            id: "resident-mail-" + memoryHash([state.seed, opportunity.id]).slice(0, 32),
+            id: letterId,
             at: capture.context.at,
             from,
             to,
@@ -508,6 +553,13 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               }
             : undefined,
         );
+        if (input.context.activity) {
+          const activity = next.residentPlans.activities![opportunity.id];
+          activity.outcome = "letter";
+          if (proposal.mail.keepsake) activity.keepsake = { letterId, ...proposal.mail.keepsake };
+        }
+      } else if (input.context.activity) {
+        next.residentPlans.activities![opportunity.id].outcome = "quiet";
       } else if (opportunity.kind !== "relationship" || relationshipContextCurrent(state, input.context)) {
         const target =
           input.catchup && capture.historical ? { ...next, ...structuredClone(input.catchup.world) } : next;
