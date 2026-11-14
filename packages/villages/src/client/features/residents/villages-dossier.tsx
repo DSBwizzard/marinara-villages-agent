@@ -302,7 +302,11 @@ export function VillagerDossier({
   );
   return (
     <>
-      {spriteManager ? <div className={`${P}-root ${P}-sprite-manager-root`}>{spriteManager}</div> : null}
+      {spriteManager ? (
+        <div className={`${P}-dossier-scroll`} style={{ height: "100%", overflow: "auto" }}>
+          {spriteManager}
+        </div>
+      ) : null}
       <RetainedView active={!showingSprites}>
         <div className={`${P}-root ${P}-dossier-root`}>
           <PeopleBook label={`${name} profile`}>

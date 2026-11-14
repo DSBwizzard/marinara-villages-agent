@@ -546,7 +546,6 @@ export const VILLAGES_FORGING_STYLES = `
  .villages-place-panels,.villages-people-columns,.villages-quick-start { grid-template-columns:minmax(0,1fr); height:auto; }
  .villages-forging-body>div:not([hidden]),.villages-founding-places { height:auto; }
  .villages-place-panels>.villages-forging-card,.villages-people-columns>.villages-forging-card { height:auto; min-height:0; }
- .villages-people-columns>.villages-founding-sprites:has(.villages-founding-sprite-setup) { height:560px; }
  .villages-quick-venue-list,.villages-quick-map-panel { height:auto; max-height:none; grid-column:1; grid-row:auto; }
  .villages-quick-start { grid-template-rows:auto; }
  .villages-quick-map-panel .villages-quick-map { height:300px; flex:none; }

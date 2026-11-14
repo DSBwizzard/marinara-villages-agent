@@ -74,7 +74,14 @@ const id = z.string().min(1),
     z.object({ target: z.literal("villager"), characterId: id }).strict(),
     z.object({ target: z.literal("direction"), direction: z.enum(["left", "right"]) }).strict(),
   ]),
-  person = z.object({ position: z.enum(["left", "center", "right"]), expression: z.string(), look }).strict(),
+  person = z
+    .object({
+      position: z.enum(["left", "center", "right"]),
+      expression: z.string(),
+      sideExpression: z.string().max(40).optional(),
+      look,
+    })
+    .strict(),
   facing = z.enum(["front", "left", "right"]),
   finite = z.number().finite(),
   presentation = z
@@ -540,6 +547,7 @@ export function encodeScenePresentations(
           row.person !== undefined &&
           prior.person.position === row.person.position &&
           prior.person.expression === row.person.expression &&
+          prior.person.sideExpression === row.person.sideExpression &&
           prior.person.look.target === row.person.look.target &&
           (prior.person.look.target !== "villager" ||
             (row.person.look.target === "villager" && prior.person.look.characterId === row.person.look.characterId)) &&

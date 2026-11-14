@@ -1,7 +1,31 @@
-import type { SpriteArtwork, SpriteManagerState } from "../../../shared/contracts/sprites.js";
+import type { SpriteArtwork, SpriteFolders, SpriteManagerState } from "../../../shared/contracts/sprites.js";
+
+export function readSpriteFolders(value: unknown): SpriteFolders | undefined {
+  const folders = value as Partial<SpriteFolders> | null | undefined;
+  if (
+    typeof folders?.front !== "string" ||
+    typeof folders.side !== "string" ||
+    folders.front.length > 160 ||
+    folders.side.length > 160 ||
+    (folders.front && folders.front === folders.side)
+  )
+    return undefined;
+  return { front: folders.front, side: folders.side };
+}
 
 export const isEngineSpriteFilename = (value: unknown): value is string =>
   typeof value === "string" && /^[\p{L}\p{N}._-]+\.(png|jpe?g|webp)$/iu.test(value) && !value.includes("..");
+
+export const isEngineSpriteVersion = (value: unknown): value is string =>
+  typeof value === "string" && /^\d{1,20}$/.test(value);
+
+export function readSpriteExclusions(value: unknown): SpriteManagerState["excluded"] {
+  const excluded = value as Partial<NonNullable<SpriteManagerState["excluded"]>> | null | undefined;
+  if (!Array.isArray(excluded?.front) || !Array.isArray(excluded.side)) return undefined;
+  if (!excluded.front.every(isEngineSpriteFilename) || !excluded.side.every(isEngineSpriteFilename)) return undefined;
+  return { front: [...new Set(excluded.front)], side: [...new Set(excluded.side)] };
+}
+
 export const emptySpriteManager = (): SpriteManagerState => ({
   version: 1,
   artwork: [],
@@ -109,7 +133,10 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
     .filter((entry) => {
       if (
         !entry ||
-        !seenArtwork.has(entry.artworkId) ||
+        !(entry.artworkId !== undefined
+          ? seenArtwork.has(entry.artworkId) && entry.engineFilename === undefined && entry.version === undefined
+          : isEngineSpriteFilename(entry.engineFilename) &&
+            (entry.version === undefined || isEngineSpriteVersion(entry.version))) ||
         !seenExpressions.has(entry.expressionId) ||
         !["front", "side"].includes(entry.view) ||
         seenAssignments.has(entry.expressionId + ":" + entry.view)
@@ -118,13 +145,27 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       seenAssignments.add(entry.expressionId + ":" + entry.view);
       return true;
     })
-    .map((entry) => ({ expressionId: entry.expressionId, view: entry.view, artworkId: entry.artworkId }));
+    .map(({ expressionId, view, artworkId, engineFilename, version }) => ({
+      expressionId,
+      view,
+      ...(engineFilename ? { engineFilename, ...(version ? { version } : {}) } : { artworkId: artworkId! }),
+    }));
   const framing = state.framing;
+  const folders = readSpriteFolders(state.folders);
+  const excluded = readSpriteExclusions(state.excluded);
   return {
     version: 1,
     artwork,
     expressions,
     assignments,
+    ...(state.useSprites === false ? { useSprites: false } : {}),
+    ...(folders ? { folders } : {}),
+    ...(excluded && (excluded.front.length || excluded.side.length) ? { excluded } : {}),
+    ...(typeof state.lastSave?.id === "string" &&
+    /^[a-z0-9-]{1,80}$/i.test(state.lastSave.id) &&
+    /^[a-f0-9]{64}$/.test(state.lastSave.digest)
+      ? { lastSave: { id: state.lastSave.id, digest: state.lastSave.digest } }
+      : {}),
     defaultExpressionId: assignments.some((entry) => entry.expressionId === state.defaultExpressionId)
       ? state.defaultExpressionId
       : assignments[0]?.expressionId,
@@ -133,27 +174,33 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
     },
   };
 }
-export function managerResidentSprite(state: SpriteManagerState | null | undefined) {
-  if (!state) return null;
+export function managerResidentSprite(state: SpriteManagerState | null | undefined, characterId: string) {
+  if (!state || state.useSprites === false) return null;
   const expressions = state.assignments.flatMap((assignment) => {
     const art = state.artwork.find((item) => item.id === assignment.artworkId);
     const expression = state.expressions.find((item) => item.id === assignment.expressionId);
-    if (!art || !expression) return [];
+    if (!expression || (!art && !assignment.engineFilename)) return [];
     return [
       {
         view: assignment.view,
         label: expression.id,
         expressionId: expression.id,
         name: expression.name,
-        spriteName: (art.engineSource?.filename ?? art.name).replace(/\.(png|jpe?g|webp)$/i, "").replace(/^full_/i, ""),
-        filename: art.rendered.filename,
-        assetId: art.assetId,
+        spriteName: (art?.engineSource?.filename ?? art?.name ?? expression.name)
+          .replace(/\.(png|jpe?g|webp)$/i, "")
+          .replace(/^full_/i, ""),
+        filename: assignment.engineFilename ?? art!.rendered.filename,
+        assetId: assignment.engineFilename ? characterId : art!.assetId,
+        ...(assignment.version ? { version: assignment.version } : {}),
       },
     ];
   });
   return expressions.length
     ? {
         assetId: expressions[0]!.assetId,
+        ...(state.folders || state.assignments.some((assignment) => assignment.engineFilename)
+          ? { named: true as const }
+          : {}),
         expressions,
         defaultExpressionId: state.defaultExpressionId,
         framing: state.framing,

@@ -87,25 +87,18 @@ export async function verifyFoundingLayout(group) {
           generationImage,
           mapReceipt;
         const artRequests = [];
-        const sprites = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname,
             method = route.request().method();
           const send = (value) =>
             fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
-          if (/\/characters\/[^/]+\/sprites\/setup(?:\/(?:save|settled))?$/.test(path)) {
-            const id = decodeURIComponent(path.match(/\/characters\/([^/]+)/)[1]);
-            if (path.endsWith("/save")) sprites[id] = (sprites[id] ?? 0) + 1;
+          if (/\/characters\/[^/]+\/sprites\/setup\/settled$/.test(path)) {
             return send({
-              revision: sprites[id] ?? 0,
+              revision: 0,
+              token: "appearance",
               manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
               files: [],
-              assignments: [],
-              defaultArtworkId: "",
-              useSprites: false,
-              errors: {},
-              resident: false,
-              residentToken: "",
+              folders: [],
             });
           }
           if (path.endsWith("/maps/generate")) {
@@ -435,10 +428,12 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();
         await resident.getByRole("button", { name: characters[0].name, exact: true }).click();
-        const spritePane = page.getByRole("region", { name: characters[0].name + " sprite setup", exact: true });
-        await expect(spritePane.getByRole("button", { name: "Use Portrait", exact: true })).toBeEnabled();
+        const spritePane = page.getByRole("region", { name: characters[0].name + "’s appearance", exact: true });
+        await expect(spritePane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
         await expect(resident.getByRole("button", { name: "Sprites", exact: true })).toHaveCount(0);
-        await spritePane.getByRole("button", { name: "Use Portrait", exact: true }).click();
         await expect(button("Continue to Venues and Map")).toBeEnabled();
         await bounds("people");
         await button("Continue to Venues and Map").click();
