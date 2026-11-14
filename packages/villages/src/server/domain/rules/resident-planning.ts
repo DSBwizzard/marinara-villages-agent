@@ -33,7 +33,8 @@ import { PERSONAL_LETTER_INSTRUCTION } from "./personal-letter.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
 import type { VillageMoment } from "./village-clock.js";
 import { hashString } from "./village-clock.js";
-import { villagerPlaceView } from "./village-projections.js";
+import { villagePresence } from "./village-projections.js";
+import { agendaAt, restingAgendaBlock } from "./agenda-plan.js";
 
 /** Only the admitted actors' current activities and place supply optional recall cues. */
 export function residentPlanningRecallContext(
@@ -68,13 +69,11 @@ export function residentPlanningOpportunity(
   const residents = village.villagers.filter((resident) => !encounterConflicts.has(resident.characterId));
   if (!residents.length) return null;
   const currentPlaces = new Map<string, string[]>();
+  const at = new ZonedDate(moment.instant, moment.timeZone);
+  const presence = villagePresence(village, moment.minuteOfDay, at);
   for (const resident of residents) {
-    const place = villagerPlaceView(
-      village,
-      resident,
-      moment.minuteOfDay,
-      new ZonedDate(moment.instant, moment.timeZone),
-    );
+    if (restingAgendaBlock(agendaAt(resident.agenda, moment.minuteOfDay, at))) continue;
+    const place = presence.get(resident.characterId);
     if (!place) continue;
     const key = JSON.stringify([place.id, place.zoneId ?? "exterior"]);
     currentPlaces.set(key, [...(currentPlaces.get(key) ?? []), resident.characterId]);
@@ -151,6 +150,7 @@ const proposal = z
     requires: z.array(effectId).max(48).default([]),
     commands: z.array(z.unknown()).max(16).default([]),
     planId: id.optional(),
+    planWishId: id.optional(),
     routineIdea: z
       .object({
         characterId: id,
@@ -243,6 +243,11 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     context.catchup
       ? "This is a bounded past opportunity. Only encounter or private reflection is available; native commands may bind an actually spoken appointment date only. No current access, mail, plan, housing or routine changes."
       : "Optional future native choices: planId selects one exact offered plan ID. Availability is not preference or consent. routineIdea:{characterId,activity,venueId,zoneId?,flexible:true} proposes an ordinary future routine for one offered resident at an accessible existing place. housingRequests:[{characterId,venueId}] proposes one offered move, never a completed relocation. These are proposals, not asserted native successes. No employment, asset creation or unseen physical work.",
+    ...(context.plans.some((plan) => plan.followThrough)
+      ? [
+          "A followThrough plan needs an encounter where both residents speak their agreement to that plan's time and place. Write the time and place in the proposal. If the second resident declines, omit planId. If the plan pursues a supplied current Wish of either resident, include its ID as planWishId. Attendance does not fulfill the Wish.",
+        ]
+      : []),
     "Village: " + context.village + ". Setting: " + context.setting,
     renderPlayerBackgroundContext(context),
   ].join("\n\n");
@@ -281,6 +286,7 @@ export function readResidentPlanningProposal(
         !value.commands.length &&
         !value.requires.length &&
         !value.planId &&
+        !value.planWishId &&
         !value.routineIdea &&
         !value.housingRequests.length &&
         value.keep.length <= 4,
@@ -295,6 +301,30 @@ export function readResidentPlanningProposal(
   memoryRequire(!value.mail || actors.includes(value.mail.senderId), "automatic correspondent was not offered");
   memoryRequire(!value.commands.length || !!value.encounter, "native commands require an actual resident encounter");
   memoryRequire(!value.planId || context.plans.some((plan) => plan.id === value.planId), "future plan was not offered");
+  const plan = context.plans.find((row) => row.id === value.planId);
+  if (plan?.followThrough) {
+    const lines = (value.encounter as { lines?: { speakerId?: string; kind?: string }[] } | undefined)?.lines;
+    memoryRequire(
+      Array.isArray(lines) &&
+        plan.actors.every(({ id }) =>
+          lines.some((line) => line?.speakerId === id && (line.kind === undefined || line.kind === "dialogue")),
+        ),
+      "an accepted meetup needs both participants' dialogue",
+    );
+  }
+  memoryRequire(
+    !value.planWishId ||
+      (plan?.followThrough &&
+        context.narration.context.prompt.entries.some(
+          (row) =>
+            row.id === value.planWishId &&
+            row.class === "desire" &&
+            row.current === true &&
+            row.for === row.owner &&
+            plan.actors.some(({ id }) => id === row.owner),
+        )),
+    "meetup Wish was not supplied",
+  );
   memoryRequire(!value.routineIdea || actors.includes(value.routineIdea.characterId), "routine owner was not offered");
   memoryRequire(
     value.housingRequests.every((request) =>
@@ -313,6 +343,7 @@ export function assertCatchupChoices(payload: ResidentPlanningProposal) {
   memoryRequire(
     !payload.mail &&
       !payload.planId &&
+      !payload.planWishId &&
       !payload.routineIdea &&
       !payload.housingRequests.length &&
       payload.commands.every((row) => readNarrationNativeCommand(row).type === "appointment"),

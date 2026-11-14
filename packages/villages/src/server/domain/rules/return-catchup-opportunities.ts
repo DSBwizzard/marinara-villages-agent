@@ -5,7 +5,8 @@ import { agendaBlocksFor } from "./agenda-week.js";
 import { planRoutineDays } from "./resident-agenda.js";
 import { localDateKey } from "./resident-planning.js";
 import { hashString } from "./village-clock.js";
-import { villagerPlaceView } from "./village-projections.js";
+import { villagePresence } from "./village-projections.js";
+import { restingAgendaBlock } from "./agenda-plan.js";
 import { canEnter } from "./social-rules.js";
 import { admitDueWorldDevelopment } from "./narrative-development.js";
 import { preferredActivityLane } from "./activity-arbitration.js";
@@ -87,6 +88,7 @@ export function returnCatchupOpportunities(
       if (right <= left) continue;
       const at = new ZonedDate(left + Math.floor((right - left) / 2), zone);
       const minute = at.getHours() * 60 + at.getMinutes();
+      const presence = villagePresence(projected, minute, at);
       const groups = new Map<string, string[]>();
       for (const { resident, blocks } of schedules) {
         const block = blocks.find((row) => row.startMinute <= minute && row.endMinute > minute);
@@ -94,7 +96,7 @@ export function returnCatchupOpportunities(
           omissions.add("Some intervals had no saved resident routine.");
           continue;
         }
-        if (/\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(block.activity)) {
+        if (restingAgendaBlock(block)) {
           omissions.add("Sleeping intervals were skipped.");
           continue;
         }
@@ -107,7 +109,7 @@ export function returnCatchupOpportunities(
           omissions.add("Some scheduled Venues were unavailable.");
           continue;
         }
-        const place = villagerPlaceView(projected, resident, minute, at);
+        const place = presence.get(resident.characterId);
         if (
           !place ||
           place.id !== venue.id ||

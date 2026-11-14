@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ResidentPlans } from "../models/resident-plans.js";
+import { playerAppointments } from "./agenda-codec.js";
 
 const id = z.string().min(1).max(160),
   date = z
@@ -26,6 +27,8 @@ export const socialPlanSchema = z
     revisions: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
     kind: z.enum(["meeting", "avoidance"]),
     status: z.enum(["planned", "completed", "cancelled"]),
+    followThrough: z.literal(true).optional(),
+    wishId: id.optional(),
   })
   .strict()
   .refine(
@@ -33,6 +36,8 @@ export const socialPlanSchema = z
       plan.endMinute - plan.startMinute >= 30 &&
       plan.endMinute - plan.startMinute <= 60 &&
       plan.actors.length === (plan.kind === "meeting" ? 2 : 1) &&
+      (!plan.followThrough || plan.kind === "meeting") &&
+      (!plan.wishId || plan.followThrough === true) &&
       new Set(plan.actors.map((actor) => actor.id)).size === plan.actors.length &&
       plan.actors.every((actor) => actor.id !== "player" && Object.hasOwn(plan.revisions, actor.id)) &&
       Object.keys(plan.revisions).length === plan.actors.length,
@@ -41,6 +46,7 @@ const residentPlans = z
   .object({
     selectedDate: z.string().refine((value) => value === "" || date.safeParse(value).success),
     plans: z.array(socialPlanSchema).max(64),
+    appointments: playerAppointments.optional(),
   })
   .strict()
   .refine(

@@ -5,6 +5,7 @@ import type {
   ContinuityHolder,
   ContinuityWrite,
 } from "../models/continuity-model.js";
+import type { NarrationReadset } from "../models/narration-model.js";
 import { continuityHolderKey, ownedContinuityClass } from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { asRecord } from "./coerce.js";
@@ -304,6 +305,7 @@ export function prepareContinuityKeep(
       supplied: target ? admission.supplied.map((row) => (row.id === target.id ? target : row)) : admission.supplied,
     },
     sources,
+    agenda: proposal.agenda,
   };
 }
 
@@ -315,6 +317,7 @@ export function prepareNarrationKeep(
   sourceContext: NarrationSourceContext,
   ordinaryDialogue?: true,
   ordinaryReplyRecovery?: true,
+  recognizeDirectOfferSpeech?: NarrationReadset["recognizeDirectOfferSpeech"],
 ) {
   if (ordinaryReplyRecovery) {
     const row = asRecord(raw);
@@ -351,6 +354,22 @@ export function prepareNarrationKeep(
       const line = sourceContext.lines.find((line) => line.id === id);
       const { proposer, participants } = proposal.offer;
       if (
+        (recognizeDirectOfferSpeech === 3 || recognizeDirectOfferSpeech === 4 || recognizeDirectOfferSpeech === 5) &&
+        proposal.owner === proposer &&
+        Array.isArray(proposal.for) &&
+        proposal.for.length === 1 &&
+        proposal.for[0] === proposer &&
+        "act" in segment &&
+        segment.act === "offer"
+      )
+        memoryRequire(
+          line?.role === "assistant" &&
+            line.kind !== "narration" &&
+            line.speakerId === proposer &&
+            participants.every((party) => party === proposer || line.heardBy.includes(party)),
+          "every offer participant must hear the proposer’s words",
+        );
+      if (
         line?.role === "assistant" &&
         line.kind !== "narration" &&
         line.speakerId === proposer &&
@@ -359,9 +378,11 @@ export function prepareNarrationKeep(
       ) {
         if (
           ("act" in segment && segment.act === "offer") ||
-          (/(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
+          ((/(?:^|[.!?]\s+)(?:come\b[^.!?]{0,120}\band I['’]ll\b|if you want\b[^.!?]{0,130},\s*say yes and I['’]ll\b)/iu.test(
             line.content,
-          ) &&
+          ) ||
+            (recognizeDirectOfferSpeech === true &&
+              /^(?:then )?say the word and I['’]ll walk you through\b/iu.test(line.content))) &&
             !/["“”«»‘]|(?:^|[\s,:;])'/u.test(line.content))
         ) {
           const { owner, ...withoutOwner } = keep;

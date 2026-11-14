@@ -156,6 +156,7 @@ import {
   usePendingWorkPolling,
   useSnapshotReference,
   useVillagePresence,
+  useVillageTransition,
   useVillageSnapshot,
 } from "../shared/data-controller.js";
 import type { MapFrameShape, MapPin, MenuPage } from "../shared/types.js";
@@ -554,6 +555,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const presenceSession = useRef("");
 
   useVillagePresence({ visible, presenceSession, beginSnapshotRead, snapshot });
+  useVillageTransition(visible && !!snapshot?.isFounded, snapshot?.village, loadSnapshot);
 
   const backgroundPending =
     snapshot?.foundingPreparation?.status === "pending" ||

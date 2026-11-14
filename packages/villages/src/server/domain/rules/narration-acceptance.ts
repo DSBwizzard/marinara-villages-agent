@@ -36,6 +36,7 @@ import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
+import { applySceneAppointment, cloneAppointmentState, sceneAgendaEvidence } from "./agenda-overview.js";
 
 export type NarrationPublication = {
   readset: NarrationReadset;
@@ -296,8 +297,76 @@ export function acceptNarrationContinuity(
     memoryRequire(effects[index].id === header.id, "native effect identity changed");
   }
   const prepared = new Map<string, ReturnType<typeof prepareNarrationKeep>>();
+  const repeatedOfferDecisions = new Set<string>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
-  for (const [index, raw] of reply.keep.entries()) {
+  const requestedMemory = readset.requestedMemory;
+  const memoryFallback = readset.optionalActorMemories;
+  const optionalActorMemories =
+    (memoryFallback === true ||
+      memoryFallback === 2 ||
+      memoryFallback === 3 ||
+      memoryFallback === 4 ||
+      memoryFallback === 5) &&
+    allowTranscriptNotes &&
+    !requestedMemory &&
+    !native.effects.length &&
+    !native.admissions.length
+      ? new Set<string>()
+      : undefined;
+  const keeps = reply.keep.slice();
+  if (readset.codeRequestedMemory) {
+    memoryRequire(
+      requestedMemory?.recipientId && !admission.protectedRoots.length && !reply.commands.length,
+      "the automatic memory lost its captured scope",
+    );
+    const { start, end, recipientId } = requestedMemory;
+    const fact = source.input.slice(start, end);
+    memoryRequire(
+      fact && Number.isSafeInteger(start) && Number.isSafeInteger(end) && start >= 0 && end <= source.input.length,
+      "the automatic memory lost its exact words",
+    );
+    let occurrence = 0;
+    for (
+      let index = source.input.indexOf(fact);
+      index >= 0 && index <= start;
+      index = source.input.indexOf(fact, index + 1)
+    )
+      occurrence++;
+    memoryRequire(source.input.indexOf(fact, start) === start, "the automatic memory lost its exact words");
+    if (readset.recoverCodeMemoryEcho === true && keeps.length === 1) {
+      const echo = asRecord(keeps[0]);
+      const ref = Array.isArray(echo.source) && echo.source.length === 1 ? asRecord(echo.source[0]) : {};
+      const ground = asRecord(ref.ground);
+      if (
+        echo.id === "remember-fact" &&
+        Object.keys(echo).every((key) => ["id", "for", "class", "text", "source"].includes(key)) &&
+        echo.class === "information" &&
+        typeof echo.text === "string" &&
+        echo.text.trim() &&
+        Array.isArray(echo.for) &&
+        echo.for.length === 1 &&
+        echo.for[0] === recipientId &&
+        Object.keys(ref).every((key) => key === "input" || key === "ground") &&
+        typeof ref.input === "string" &&
+        ref.input.replace(/[.!]+$/u, "") === fact &&
+        Object.keys(ground).every((key) => key === "kind" || key === "to") &&
+        ground.kind === "spoken" &&
+        Array.isArray(ground.to) &&
+        ground.to.length === 1 &&
+        ground.to[0] === recipientId
+      )
+        keeps.pop();
+    }
+    memoryRequire(!keeps.some((raw) => asRecord(raw).id === "remember-fact"), "automatic memory effect ID is reserved");
+    keeps.push({
+      id: "remember-fact",
+      for: [recipientId],
+      class: "information",
+      text: "Player said: " + fact,
+      source: [{ input: fact, occurrence, ground: { kind: "spoken", to: [recipientId], at: "start" } }],
+    });
+  }
+  for (const [index, raw] of keeps.entries()) {
     let header: ReturnType<typeof readNarrationEffectHeader>;
     try {
       header = readNarrationEffectHeader(raw, "keep-" + index);
@@ -306,6 +375,60 @@ export function acceptNarrationContinuity(
       continue;
     }
     const note = asRecord(raw);
+    const optionalCurrentOpenMatter =
+      memoryFallback === 5 &&
+      note.class === "open-matter" &&
+      Array.isArray(note.for) &&
+      note.for.length === 1 &&
+      note.owner === note.for[0] &&
+      Array.isArray(note.about) &&
+      note.about.length === 2 &&
+      note.about.includes(note.owner) &&
+      note.about.includes("room");
+    if (
+      optionalActorMemories &&
+      typeof note.text === "string" &&
+      note.text.trim() &&
+      Array.isArray(note.for) &&
+      note.for.some((id) => id !== "player") &&
+      new Set(note.for).size === note.for.length &&
+      note.for.every((id) => source.actors.some((actor) => actor.id === id)) &&
+      (!Object.hasOwn(note, "owner") || (note.owner !== "player" && note.for.includes(note.owner))) &&
+      (note.class === "experience" ||
+        note.class === "information" ||
+        note.class === "perspective" ||
+        note.class === "open-matter" ||
+        (note.class === "commitment" &&
+          ((typeof note.owner === "string" && note.owner !== "player") ||
+            ((memoryFallback === 4 || memoryFallback === 5) && !Object.hasOwn(note, "owner"))))) &&
+      Object.keys(note).every(
+        (key) =>
+          ["id", "for", "text", "class", "source", "owner", "about", "independent"].includes(key) ||
+          ((memoryFallback === 2 || memoryFallback === 3 || memoryFallback === 4 || memoryFallback === 5) &&
+            key === "current" &&
+            typeof note.current === "boolean" &&
+            (note.class === "information" ||
+              note.class === "experience" ||
+              (optionalCurrentOpenMatter && note.current === true))),
+      ) &&
+      Array.isArray(note.source) &&
+      note.source.some((ref) => ref !== "self") &&
+      note.source.every((ref: unknown) => {
+        const citation = asRecord(ref);
+        const keys = Object.keys(citation);
+        return (
+          ((memoryFallback === 3 || memoryFallback === 4 || memoryFallback === 5) &&
+            ref === "self" &&
+            note.class === "open-matter" &&
+            Array.isArray(note.for) &&
+            note.for.length === 1 &&
+            note.for[0] === note.owner) ||
+          (keys.length === 1 && typeof citation.segment === "string") ||
+          (keys.length === 2 && typeof citation.speakerId === "string" && typeof citation.quote === "string")
+        );
+      })
+    )
+      optionalActorMemories.add(header.id);
     const optionalNote =
       Array.isArray(note.for) &&
       typeof note.text === "string" &&
@@ -341,7 +464,28 @@ export function acceptNarrationContinuity(
         source,
         readset.ordinaryDialogue,
         readset.ordinaryReplyRecovery,
+        readset.recognizeDirectOfferSpeech,
       );
+      const write = keep.write;
+      if (
+        readset.coalesceOfferDecisions === true &&
+        !reply.commands.length &&
+        write.target &&
+        (write.accept || write.closeOffer) &&
+        !Object.hasOwn(note, "id") &&
+        !Object.hasOwn(note, "requires") &&
+        !Object.hasOwn(note, "independent") &&
+        !reply.assertedDependencies.includes(header.id) &&
+        !keeps.some((other) => {
+          const { id, requires } = asRecord(other);
+          return id === header.id || (Array.isArray(requires) && requires.includes(header.id));
+        })
+      ) {
+        const { id: _id, ...decision } = write;
+        const key = memoryHash([decision, keep.sources]);
+        if (repeatedOfferDecisions.has(key)) continue;
+        repeatedOfferDecisions.add(key);
+      }
       for (const holder of keep.write.holders.filter((holder) => holder.kind === "room")) {
         const scope = (venue: typeof source.venue) => {
           const zone = venue.zones?.find((row) => row.id === holder.zoneId);
@@ -383,7 +527,6 @@ export function acceptNarrationContinuity(
           return id;
         });
       effect.requires = [...new Set([...header.requires, ...nativeDependencies])];
-      const { write } = keep;
       if (
         allowTranscriptNotes &&
         !effect.requires.length &&
@@ -496,9 +639,13 @@ export function acceptNarrationContinuity(
       effect.failure = "The completed repair needs every linked Room entry changed by the same observed work.";
   }
   let continuity: ContinuityCollection = state.continuity;
+  let scheduledWorld = state;
   let selection: ReturnType<typeof selectSceneEffects>;
   const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
   for (;;) {
+    for (const effect of effects)
+      if (effect.failure && optionalActorMemories?.has(effect.id) && !referenced.has(effect.id))
+        effect.independent = true;
     selection = selectSceneEffects(effects, [
       ...reply.assertedDependencies,
       ...arrivalDependencies,
@@ -506,6 +653,7 @@ export function acceptNarrationContinuity(
     ]);
     if (selection.held) return { ...selection, episode: undefined };
     continuity = state.continuity;
+    scheduledWorld = state;
     let failed = false;
     const essential = new Set([
       ...reply.assertedDependencies,
@@ -534,6 +682,12 @@ export function acceptNarrationContinuity(
       try {
         if (keep) {
           let write = keep.write;
+          if (keep.agenda) {
+            const evidence = { ...keep.agenda, activity: keep.agenda.activity ?? "" };
+            write = { ...write, agenda: evidence };
+            sceneAgendaEvidence(scheduledWorld, write, readset, keep.sources);
+            memoryRequire(evidence.activity.trim(), "An Agenda item needs its actual activity");
+          }
           const owner = write.owner;
           const { answer, ...changes } = write.relationship ?? {};
           // A private score and a shared answer may be proposed together even though self cannot support disclosure.
@@ -554,6 +708,11 @@ export function acceptNarrationContinuity(
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
+          if (write.agenda?.kind === "offer" || write.accept || write.closeOffer) {
+            const candidate = cloneAppointmentState(scheduledWorld);
+            if (applySceneAppointment(candidate, next, write, keep.admission.operationId + ":" + id, acceptedAt))
+              scheduledWorld = candidate;
+          }
           const root = damageRoots.get(id);
           if (root) {
             const saved = next.receipts[keep.admission.operationId + ":" + id];
@@ -596,7 +755,6 @@ export function acceptNarrationContinuity(
     if (!failed) break;
   }
   const acceptedKeeps = selection.acceptedIds.flatMap((id) => (prepared.has(id) ? [prepared.get(id)!] : []));
-  const requestedMemory = readset.requestedMemory;
   const memoryText =
     requestedMemory && "Player said: " + source.input.slice(requestedMemory.start, requestedMemory.end);
   if (
@@ -771,5 +929,7 @@ export function acceptNarrationContinuity(
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
   state.episodes = episodes;
+  state.residentPlans = scheduledWorld.residentPlans;
+  state.villagers = scheduledWorld.villagers;
   return { ...selection, episode: episodes.records.at(-1)! };
 }

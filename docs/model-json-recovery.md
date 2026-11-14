@@ -2,9 +2,9 @@
 
 App-generated structured responses request JSON mode. Villages uses the pinned bundled jsonrepair library behind a domain-owned, value-preserving policy, followed by the current application parser. Saved settings, persisted records, image-service protocol data and authored content do not acquire model-text repair.
 
-A repair candidate must finish normally, fit 128 KiB, 64 nesting levels and 32,768 lexical tokens, and require at most eight punctuation edits. Only missing commas or closing delimiters and trailing commas may change. All original data tokens and non-comma delimiters remain in order. Closing an unfinished response at EOF, creating empty missing containers, inventing values or quotes, selecting partial rows, duplicate keys and competing objects are rejected. Reported truncation is never repaired.
+A punctuation repair candidate must finish normally, fit 128 KiB, 64 nesting levels and 32,768 lexical tokens, and require at most eight punctuation edits. Only missing commas or closing delimiters and trailing commas may change. All original data tokens and non-comma delimiters remain in order. Closing an unfinished response at EOF, creating empty missing containers, inventing values or quotes, selecting partial rows and duplicate keys are rejected. Reported truncation is never repaired.
 
-Scene responses require one complete current object. There is no partial-core salvage, embedded Scene selection, speech-capture recovery call or retired-format parser. The current source, speaker, citation, witness, access, consent, revision and effect validators still decide whether repaired syntax can apply. Optional defaults apply only to complete current responses and never replace malformed supplied effects.
+Scene responses require one complete current object. Ordinary Say/Do can select the final complete object after a single explicit correction that replaces a recognizable earlier draft. Only the final object supplies prose and proposed effects. Undeclared competing objects and incomplete replacements stay held. The current source, speaker, citation, witness, access, consent, revision and effect validators still decide whether the reply can apply. Optional defaults apply only to complete current responses and never replace malformed supplied effects.
 
 ## Response ownership
 

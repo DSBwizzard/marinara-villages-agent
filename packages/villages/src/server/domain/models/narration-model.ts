@@ -4,6 +4,12 @@ import type { AcceptedEpisode } from "./episode-model.js";
 
 /** Exact final fitted evidence and native circumstances, retained by the existing operation checkpoint. */
 export type NarrationReadset = {
+  agendaOptions?: {
+    actorId: string;
+    activity: string;
+    time: import("../../../shared/contracts/agenda.js").AgendaTime;
+  }[];
+  agendaVenues?: { id: string; zones: string[] }[];
   format: 1;
   setupAt: string;
   capturedAt: string;
@@ -17,7 +23,19 @@ export type NarrationReadset = {
   ordinaryDialogue?: true;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
+  stripSceneHistoryDecoration?: true;
+  ordinaryFormatRecovery?: true | 2 | 3 | 4 | 5 | 6;
+  quotedSceneSources?: true;
+  splitKeepRecovery?: true | 2;
+  explicitSceneReplacement?: true;
+  coalesceOfferDecisions?: true;
+  stripOfferContributionEcho?: true;
+  recognizeDirectOfferSpeech?: true | 2 | 3 | 4 | 5;
+  optionalActorMemories?: true | 2 | 3 | 4 | 5;
+  stripSceneReplyDecorations?: true | 2 | 3 | 4;
+  recoverCodeMemoryEcho?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
+  codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];
   npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];
   circumstance: import("./narrative-model.js").NarrativeAdmission | null;

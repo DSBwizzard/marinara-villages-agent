@@ -3,6 +3,7 @@ import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { agendaSpeechOptions } from "../../domain/rules/agenda-overview.js";
 import type { NarrationReadset } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
 import { badGateway, conflict } from "../../domain/rules/errors.js";
@@ -16,6 +17,8 @@ import {
   RELATIONSHIP_KEEP,
   SCENE_NARRATION_KEEP,
   SCENE_OFFER_DECISION,
+  SCENE_RELATIONSHIP_DIRECTION,
+  SCENE_RELATIONSHIP_KEEP,
 } from "../../domain/rules/narration-contract.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
@@ -215,13 +218,39 @@ export function createSceneWriting({
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
+    const agendaDiscussed =
+      /\b(?:agenda|schedule|free|available|when|tomorrow|tonight|today|meet|appointment|plan|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|o['’]clock|a\.?m\.?|p\.?m\.?)\b/iu.test(
+        input,
+      );
+    const agendaOptions = agendaSpeechOptions(authority, selectedIds, new Date(calendar.instant), !agendaDiscussed);
+    const agendaVenues = agendaDiscussed
+      ? places.slice(0, 10).flatMap(({ id }) => {
+          const destination = authority.venues.find((row) => row.id === id);
+          return destination
+            ? [
+                {
+                  id,
+                  name: destination.name,
+                  zones: (destination.zones ?? [])
+                    .filter(
+                      (zone) =>
+                        zone.seen || zone.kind === "exterior" || (id === scene.placeId && zone.id === scene.zoneId),
+                    )
+                    .slice(0, 8)
+                    .map(({ id, name }) => ({ id, name })),
+                },
+              ]
+            : [];
+        })
+      : [];
+    const agendaContext = "agenda-context";
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
     );
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         narrationDirection(nativeCommands, positions),
-        RELATIONSHIP_DIRECTION,
+        positions ? SCENE_RELATIONSHIP_DIRECTION : RELATIONSHIP_DIRECTION,
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
           ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech."
@@ -244,7 +273,7 @@ export function createSceneWriting({
       metadata: blocksFor([
         narrationResponse(nativeCommands, positions),
         nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
-        RELATIONSHIP_KEEP,
+        positions ? SCENE_RELATIONSHIP_KEEP : RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
       ]),
       identity: blocksFor([
@@ -290,9 +319,11 @@ export function createSceneWriting({
           housing,
           nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
-          requestedMemory
-            ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
-            : "",
+          context.codeRequestedMemory
+            ? 'Code records the exact requested fact for the named resident. Omit a keep for that fact. The resident may acknowledge it. Use "remember-fact" in requires on any line claiming it was saved.'
+            : requestedMemory
+              ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
+              : "",
           !nativeCommands && context.protections.length
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
             : "",
@@ -324,6 +355,18 @@ export function createSceneWriting({
               : undefined,
           }),
         ]),
+        ...(agendaOptions.length || agendaVenues.length
+          ? [
+              {
+                text:
+                  'Agenda discoveries use an information keep for ["player"] about the resident with agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Use only a supplied slot and actual quoted speech disclosing its times or a player-seen beat showing its activity in that Zone. For a sighting use a one-minute marker at the captured minute. For a plan together, use a commitment offer with both parties as holders, about the resident, and agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use an offered venue and Zone and cite each party’s exact proposing or accepting words with act. Accept a fitted existing offer by its alias. Include the effect ID in requires on any line claiming a booking.\n' +
+                  JSON.stringify({ agendaOptions, agendaVenues }),
+                evidenceId: agendaContext,
+                optional: "history" as const,
+                pruningPriority: -100,
+              },
+            ]
+          : []),
         ...(!nativeCommands && openOffers.length
           ? [{ text: SCENE_OFFER_DECISION, requiresEvidence: [openOffers] }]
           : []),
@@ -336,9 +379,9 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Dialogue and narration have no source field. Historical pastSpeaker and witnessedWords belong to input. Put new keeps in one top-level keep array. ' +
+        ? '## Scene reply reminder\nBegin with {"segments":[. Return one complete JSON object. End at the player’s opening. Use only reply fields in dialogue and narration. Put new keeps in one top-level keep array. ' +
             (positions
-              ? "Count every current segment from 1 when citing it. "
+              ? 'For a developed exchange, aim for about 500 words of visible prose. Give the addressed resident room to answer. Other residents speak when they change the answer or the next choice. End at that choice. Use short exact quotes and speakerId for keeps, or count current segments from 1. A reported Room change stays in dialogue. For a change shown now, use for:"room" and cite the narration as seen by its actual witnesses. '
               : "Cite the exact id you gave each current line. ") +
             "Close the object once."
         : undefined,
@@ -363,7 +406,28 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
-        ...(positions ? { ordinaryDialogue: true, ordinaryReplyRecovery: true, positionedSceneSources: true } : {}),
+        ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
+        ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
+          ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }
+          : {}),
+        ...(context.codeRequestedMemory ? { recoverCodeMemoryEcho: true } : {}),
+        ...(positions
+          ? {
+              ordinaryDialogue: true,
+              ordinaryReplyRecovery: true,
+              positionedSceneSources: true,
+              stripSceneHistoryDecoration: true,
+              ordinaryFormatRecovery: 6,
+              quotedSceneSources: true,
+              splitKeepRecovery: 2,
+              explicitSceneReplacement: true,
+              coalesceOfferDecisions: true,
+              stripOfferContributionEcho: true,
+              recognizeDirectOfferSpeech: 5,
+              optionalActorMemories: 5,
+              stripSceneReplyDecorations: 4,
+            }
+          : {}),
       },
       model: { model: model.model, connectionId: model.connectionId },
       // Plain transport lets local validation see replies that JSON mode can return as spaces.
@@ -409,6 +473,9 @@ export function createSceneWriting({
         completion.finishReason,
         parsed,
         request.readset.ordinaryReplyRecovery,
+        request.readset.ordinaryFormatRecovery,
+        request.readset.splitKeepRecovery,
+        request.readset.explicitSceneReplacement,
       );
       const diagnostics = responseDiagnostics(
         request.model,

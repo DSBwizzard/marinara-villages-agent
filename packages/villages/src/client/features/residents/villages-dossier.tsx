@@ -11,6 +11,7 @@ import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 import type { ResidentSprite } from "../../../shared/contracts/village.js";
 import { ResidentArtwork } from "./ResidentArtwork.js";
+import { WeeklyAgenda } from "./WeeklyAgenda.js";
 
 export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
 type ProfileSection = DossierSection | "tools";
@@ -119,6 +120,7 @@ function Sheet({
 /** One shared profile; private records are mounted only after deliberate inspection. */
 export function VillagerDossier({
   navigation,
+  villageDate,
   villager,
   portrait,
   request,
@@ -132,6 +134,7 @@ export function VillagerDossier({
   error,
 }: {
   navigation: DossierNavigation;
+  villageDate?: string;
   villager?: {
     characterId: string;
     name: string;
@@ -159,6 +162,7 @@ export function VillagerDossier({
     navigation.section ?? (navigation.wishId ? "wishes" : "overview"),
   );
   const [inspect, setInspect] = useState(false);
+  const [agendaDate, setAgendaDate] = useState<string>();
   const [visited, setVisited] = useState<ProfileSection[]>([section]);
   const toolsOrigin = useRef<DossierSection>("overview");
   const [signatureTools, setSignatureTools] = useState<HTMLDivElement | null>(null);
@@ -171,6 +175,7 @@ export function VillagerDossier({
   const content = useRef<HTMLDivElement>(null);
   const positions = useRef<Partial<Record<ProfileSection, number>>>({});
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
+  const knownInformation = profile?.entries.filter((entry) => entry.kind === "information") ?? [];
   const name = villager?.name ?? "Former villager";
   const images = villager?.sprite?.images ?? [];
   const neutral =
@@ -413,13 +418,22 @@ export function VillagerDossier({
                                 ? "Profile information is still being prepared."
                                 : "Profile information is unavailable."}
                             </p>
-                          ) : (
-                            <Sheet title="Agenda" icon="agenda">
-                              <RelationshipEntries
-                                entries={profile.entries.filter((entry) => entry.kind === "information")}
-                              />
-                            </Sheet>
-                          )}
+                          ) : villager || knownInformation.length ? (
+                            <div className={`${P}-dossier-sheet`}>
+                              {villager ? (
+                                <WeeklyAgenda
+                                  key={inspect && viewing !== false ? "inspect" : "player"}
+                                  actorId={navigation.actorId}
+                                  inspect={inspect && viewing !== false}
+                                  refresh={`${villageDate}:${backgroundRevision}:${focusRevision}:${revision}`}
+                                  request={request}
+                                  date={agendaDate}
+                                  onDate={setAgendaDate}
+                                />
+                              ) : null}
+                              {knownInformation.length ? <RelationshipEntries entries={knownInformation} /> : null}
+                            </div>
+                          ) : null}
                           <div ref={setSignatureSurface} />
                           <Sheet title="Home and work" icon="venues">
                             {venues.some((venue) => venue.publicConnections.length) ? (

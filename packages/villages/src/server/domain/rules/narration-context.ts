@@ -519,6 +519,13 @@ export function narrationContinuityContext(
       .filter((entry) => !circumstanceRoots.has(entry.id))
       .map((entry) => [JSON.stringify([entry.for, entry.id]), sourceAlias()]),
   );
+  const modelMemory = <T extends { offer?: (typeof actorSelection.packet.entries)[number]["offer"] }>(entry: T) =>
+    readOnlyRecall && entry.offer
+      ? {
+          ...entry,
+          offer: { ...entry.offer, contributions: entry.offer.contributions.map(({ by, act }) => ({ by, act })) },
+        }
+      : entry;
   for (const entry of actorSelection.packet.entries) {
     if (circumstanceRoots.has(entry.id)) continue;
     const holder = holders.find((row) => row.id === entry.for)!,
@@ -590,7 +597,7 @@ export function narrationContinuityContext(
                   knownBy: [actor],
                 })),
               }
-            : { privateContinuity: entries },
+            : { privateContinuity: entries.map(modelMemory) },
         ),
         evidenceId: "actor-context:" + parts.length,
         ...(!required ? { optional: "memory" as const } : {}),
@@ -606,7 +613,7 @@ export function narrationContinuityContext(
         prior.part.block.text = JSON.stringify(
           readOnlyRecall && prior.part.plainRecall
             ? { recalledFacts: [{ ...meaning, knownBy: prior.holders.map(({ for: actor }) => actor) }] }
-            : { privateContinuity: [{ id: prior.holders[0].source, ...meaning, holders: prior.holders }] },
+            : { privateContinuity: [{ id: prior.holders[0].source, ...modelMemory(meaning), holders: prior.holders }] },
         );
         prior.part.sources[source] = part.sources[source];
         prior.part.provenance[key] = part.provenance[key];
@@ -757,9 +764,9 @@ export function narrationContinuityContext(
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))
     .map((part): Part => (readOnlyRecall && part.plainRecall ? { ...part, readOnly: true } : part));
-  const references = episodeContextActors({ actors, room }, [
-    ...new Set(bounded.flatMap((part) => Object.keys(part.provenance))),
-  ]);
+  const provenanceKeys = [...new Set(bounded.flatMap((part) => Object.keys(part.provenance)))];
+  const references = episodeContextActors({ actors, room }, provenanceKeys);
+  const roomReferences = episodeContextRooms({ actors, room }, provenanceKeys);
   const protections = continuityConstraints(state.continuity, [
     ...new Map(
       [...actors, room, ...npcCandidates.map((row) => row.holder), ...references].map((holder) => [
@@ -768,6 +775,12 @@ export function narrationContinuityContext(
       ]),
     ).values(),
   ]);
+  const codeRequestedMemory =
+    requestedMemory?.recipientId &&
+    fact &&
+    !/[*_[\]()`:]|^['‘]|\b(?:privately|to myself|in my head)\b/iu.test(fact) &&
+    !protections.length &&
+    !continuityConstraints(state.continuity, roomReferences).length;
   return {
     episodeId,
     actors,
@@ -786,6 +799,7 @@ export function narrationContinuityContext(
     at,
     memoryChange,
     requestedMemory,
+    codeRequestedMemory,
     parts: bounded,
     recentLore: bounded
       .filter((part) => part.sharedLoreWords)
@@ -798,10 +812,7 @@ export function narrationContinuityContext(
     residence: narrationResidenceContext(captured, ["player", ...writerIds]),
     places: narrationPlaceContext(captured, ["player", ...writerIds]),
     protections,
-    roomReferences: readOnlyRoomContext(
-      state,
-      episodeContextRooms({ actors, room }, [...new Set(bounded.flatMap((part) => Object.keys(part.provenance)))]),
-    ),
+    roomReferences: readOnlyRoomContext(state, roomReferences),
     source: {
       seed: state.seed,
       episodeId,
@@ -881,6 +892,7 @@ export function fittedNarrationReadset(
     source: { ...context.source, historical, subjects },
     ...(readOnlyKnowledge.length ? { readOnlyKnowledge } : {}),
     ...(context.requestedMemory ? { requestedMemory: context.requestedMemory } : {}),
+    ...(context.codeRequestedMemory ? { codeRequestedMemory: true as const } : {}),
     admission: {
       seed: state.seed,
       // The Scene request ID is local to one visit. Common continuity uses its Episode identity.
