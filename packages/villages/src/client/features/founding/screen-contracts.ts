@@ -2,8 +2,6 @@ import type { PortraitMap } from "../../shared/types.js";
 
 import type { FoundingState } from "./useFoundingState.js";
 
-import type { createFoundingExitSetupDraft } from "./draft-controller.js";
-
 import type { useFoundVillage } from "./actions.js";
 
 import type { createFoundingGenerateSetupImage } from "./image-controller.js";
@@ -43,9 +41,6 @@ export type FoundingScreenController = {
   readonly connectionSetupProblem: FoundingState["connectionSetupProblem"];
   readonly draftPins: import("../../shared/types").MapPin[];
   readonly draftSaveError: FoundingState["draftSaveError"];
-  readonly draftSavedAt: FoundingState["draftSavedAt"];
-  readonly draftSaving: FoundingState["draftSaving"];
-  readonly exitSetupDraft: ReturnType<typeof createFoundingExitSetupDraft>;
   readonly foundVillage: ReturnType<typeof useFoundVillage>;
   readonly generateSetupImage: ReturnType<typeof createFoundingGenerateSetupImage>;
   readonly generateSetupTownMap: ReturnType<typeof useFoundingGenerateSetupTownMap>;
@@ -107,7 +102,6 @@ export type FoundingScreenController = {
   readonly setupEditorOpen: FoundingState["setupEditorOpen"];
   readonly setupFocusIssue: FoundingState["setupFocusIssue"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
-  readonly setupImageClaim: FoundingState["setupImageClaim"];
   readonly setupImageTarget: FoundingState["setupImageTarget"];
   readonly setupKeyboardSpot: FoundingState["setupKeyboardSpot"];
   readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
@@ -134,7 +128,6 @@ export type FoundingScreenController = {
   readonly setupShowIssues: FoundingState["setupShowIssues"];
   readonly setupStep: FoundingState["setupStep"];
   readonly setupSuggestionsBusy: FoundingState["setupSuggestionsBusy"];
-  readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
   readonly setupSuggestionsKey: FoundingState["setupSuggestionsKey"];
   readonly setupVenueBusy: FoundingState["setupVenueBusy"];
   readonly setupVenues: FoundingState["setupVenues"];

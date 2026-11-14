@@ -44,7 +44,6 @@ export function QuickStartVenues({
   communityVenueId,
   actions,
   mapArtwork,
-  saveStatus,
   onRetrySaving,
 }: {
   venues: SetupVenueDraft[];
@@ -68,7 +67,6 @@ export function QuickStartVenues({
   communityVenueId?: string;
   actions?: ReactNode;
   mapArtwork?: ReactNode;
-  saveStatus?: string;
   onRetrySaving?(): void;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
@@ -621,11 +619,6 @@ export function QuickStartVenues({
           <footer className="villages-quick-footer">
             {saveError || problem ? <p role="alert">{saveError || problem}</p> : null}
             {!saveError ? problemAction : null}
-            {saveStatus ? (
-              <span role="status" className="villages-forging-saved">
-                {saveStatus}
-              </span>
-            ) : null}
             {saveError && onRetrySaving ? (
               <button type="button" onClick={onRetrySaving}>
                 Retry saving draft

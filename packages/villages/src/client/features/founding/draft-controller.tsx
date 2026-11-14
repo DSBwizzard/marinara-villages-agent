@@ -12,29 +12,16 @@ export function useFoundingPersistSetupDraft(ports: {
   readonly draftBlocked: FoundingState["draftBlocked"];
   readonly draftRevision: FoundingState["draftRevision"];
   readonly draftSaveQueue: FoundingState["draftSaveQueue"];
-  readonly pendingDraftSaves: React.RefObject<number>;
   readonly setDraftSavedAt: FoundingState["setDraftSavedAt"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
-  readonly setDraftSaving: FoundingState["setDraftSaving"];
   readonly setSavedSetupDraft: React.Dispatch<
     React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
 }) {
-  const {
-    draftBlocked,
-    draftRevision,
-    draftSaveQueue,
-    pendingDraftSaves,
-    setDraftSavedAt,
-    setDraftSaveError,
-    setDraftSaving,
-    setSavedSetupDraft,
-  } = ports;
+  const { draftBlocked, draftRevision, draftSaveQueue, setDraftSavedAt, setDraftSaveError, setSavedSetupDraft } = ports;
 
   return useCallback(
     (data: SetupDraftData) => {
-      pendingDraftSaves.current += 1;
-      setDraftSaving(true);
       const pending = draftSaveQueue.current.then(async () => {
         if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open and retry saving.");
         try {
@@ -50,24 +37,9 @@ export function useFoundingPersistSetupDraft(ports: {
         }
       });
       draftSaveQueue.current = pending.catch(() => undefined);
-      void pending
-        .finally(() => {
-          pendingDraftSaves.current -= 1;
-          if (!pendingDraftSaves.current) setDraftSaving(false);
-        })
-        .catch(() => undefined);
       return pending;
     },
-    [
-      draftBlocked,
-      draftRevision,
-      draftSaveQueue,
-      pendingDraftSaves,
-      setDraftSaveError,
-      setDraftSavedAt,
-      setDraftSaving,
-      setSavedSetupDraft,
-    ],
+    [draftBlocked, draftRevision, draftSaveQueue, setDraftSaveError, setDraftSavedAt, setSavedSetupDraft],
   );
 }
 export function useFoundingDraftAutosave(ports: {
@@ -273,31 +245,6 @@ export function createFoundingRestoreSetupDraft(ports: {
     void loadPersonas();
     void loadLorebooks();
     void loadCatalog();
-  };
-}
-export function createFoundingExitSetupDraft(ports: {
-  readonly flushSetupDraft: () => Promise<void>;
-  readonly setScreen: React.Dispatch<
-    React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
-  >;
-  readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
-  readonly setSetupProblem: FoundingState["setSetupProblem"];
-  readonly setupImageClaim: FoundingState["setupImageClaim"];
-  readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
-}) {
-  return async () => {
-    const { flushSetupDraft, setScreen, setSetupEditorOpen, setSetupProblem, setupImageClaim, setupSuggestionsClaim } =
-      ports;
-
-    if (setupImageClaim.current || setupSuggestionsClaim.current) return;
-    try {
-      await flushSetupDraft();
-      if (setupImageClaim.current || setupSuggestionsClaim.current) return;
-      setSetupEditorOpen(false);
-      setScreen("resume");
-    } catch (cause) {
-      setSetupProblem(messageFrom(cause, "The draft has not been saved. Keep this tab open."));
-    }
   };
 }
 export function createFoundingNewSetupDraft(ports: {

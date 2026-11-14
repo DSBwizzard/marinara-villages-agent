@@ -125,7 +125,10 @@ export async function verifyFoundingLayout(group) {
             const body = route.request().postDataJSON();
             if (body.mode === "draft-setting") {
               settingCalls++;
-              assert.equal(body.brief, "Our village is a converted cargo ship.");
+              assert.equal(
+                body.brief,
+                settingCalls === 1 ? "Our village is a converted cargo ship." : "Our village is inside a dumpster.",
+              );
               assert.deepEqual(Object.keys(body).sort(), ["actionId", "brief", "mode", "sourceKey"]);
               settingReceipt = {
                 id: body.actionId,
@@ -134,15 +137,25 @@ export async function verifyFoundingLayout(group) {
                 error: "",
                 result: {
                   venues: [],
-                  setting: {
-                    name: "Wayfarer",
-                    startingLocationName: "Main Deck",
-                    description: "A shared galley aboard a cargo ship.",
-                    worldName: "",
-                    rules: "",
-                  },
+                  setting:
+                    settingCalls === 1
+                      ? {
+                          name: "Wayfarer",
+                          startingLocationName: "Main Deck",
+                          description: "A shared galley aboard a cargo ship.",
+                          worldName: "",
+                          rules: "",
+                        }
+                      : {
+                          name: "Glimmerdump",
+                          startingLocationName: "Scavenger Rim",
+                          description: "Lanterns hang from the lip of the bin. ".repeat(90),
+                          worldName: "",
+                          rules: "",
+                        },
                 },
               };
+              if (settingCalls === 2) return send(settingReceipt);
               return send({ ...settingReceipt, status: "running", result: null });
             }
             suggestions++;
@@ -303,11 +316,11 @@ export async function verifyFoundingLayout(group) {
           );
           await button(
             phase === "setting"
-              ? "Continue to People"
+              ? "Let’s meet the villagers"
               : phase === "people"
-                ? "Continue to Venues and Map"
+                ? "Let’s set up their homes"
                 : phase === "venues"
-                  ? "Review village"
+                  ? "Let’s look it over"
                   : "Found village",
           ).scrollIntoViewIfNeeded();
           if (phase === "venues") {
@@ -351,6 +364,13 @@ export async function verifyFoundingLayout(group) {
             });
         };
         await expect(root).toHaveAttribute("data-step", "0");
+        await expect(
+          root.locator(".villages-forging-heading, .villages-forging-footer, .villages-forging-saved"),
+        ).toHaveCount(0);
+        await expect(button("Exit")).toHaveCount(0);
+        await expect(
+          root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]'),
+        ).toHaveAttribute("aria-label", "Setting");
         assert.deepEqual(
           await root
             .getByRole("list", { name: "Founding phases" })
@@ -364,12 +384,15 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mari-setting-" + view.width + ".png"),
           });
-        await button("Continue to People").click();
+        await button("Let’s meet the villagers").click();
         await expect(root.getByLabel("Village Name", { exact: true })).toBeFocused();
         await root.getByLabel("Village Name", { exact: true }).fill("Coastal Community");
-        await button("Continue to People").click();
+        await button("Let’s meet the villagers").click();
         await expect(root.getByLabel("Location name", { exact: true })).toBeFocused();
-        if (view.width > 1000) {
+        if (view.width === 1280 || view.width === 390) {
+          const stage = root.locator(".villages-setting-stage");
+          const settingPanel = root.getByRole("region", { name: "Your setting" });
+          const originalStage = await stage.boundingBox();
           await root.getByLabel("Tell Mari about your village").fill("Our village is a converted cargo ship.");
           await button("Draft with Mari").click();
           await expect.poll(() => settingCalls).toBe(1);
@@ -383,10 +406,31 @@ export async function verifyFoundingLayout(group) {
             "A place I chose while Mari drafted",
           );
           const suggestion = (value) => root.locator(".villages-setting-proposal").filter({ hasText: value });
+          await button("Review Mari’s suggestions").click();
           await suggestion("Wayfarer").getByRole("button", { name: "Dismiss" }).click();
           await suggestion("Main Deck").getByRole("button", { name: "Use suggestion" }).click();
           await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
           assert.equal(settingCalls, 1, "One explicit action dispatches one request");
+          await root.getByLabel("Tell Mari about your village").fill("Our village is inside a dumpster.");
+          const originalEditorHeight = (await settingPanel.boundingBox()).height;
+          await button("Draft again with Mari").click();
+          await expect.poll(() => settingCalls).toBe(2);
+          await expect(button("Review Mari’s suggestions")).toContainText("3");
+          assert.equal(
+            (await stage.boundingBox()).height,
+            originalStage.height,
+            "Another draft keeps Mari’s stage at its original size",
+          );
+          assert.ok(
+            Math.abs((await settingPanel.boundingBox()).height - originalEditorHeight) <= 1,
+            "Long alternatives occupy a single review control",
+          );
+          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Coastal Community");
+          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
+          await button("Review Mari’s suggestions").click();
+          await expect(suggestion("Scavenger Rim")).toBeVisible();
+          await page.keyboard.press("Escape");
+          await expect(button("Review Mari’s suggestions")).toBeFocused();
         }
         await root.getByLabel("Location name", { exact: true }).fill("Old Harbour");
         await root
@@ -422,7 +466,7 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(() => connectionReadHeld).toBe(true);
         await expect(systemPicker.getByRole("status")).toHaveText("Checking model connections…");
         await page.keyboard.press("Escape");
-        await button("Continue to People").click();
+        await button("Let’s meet the villagers").click();
         await expect(root).toHaveAttribute("data-step", "0");
         await expect(models.getByRole("status")).toBeFocused();
         await page.evaluate(() => window.expireConnectionRead());
@@ -468,7 +512,7 @@ export async function verifyFoundingLayout(group) {
         );
         await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
         await bounds("setting");
-        await button("Continue to People").click();
+        await button("Let’s meet the villagers").click();
         await expect(root).toHaveAttribute("data-step", "1");
         for (const person of characters.slice(0, view.count)) {
           await button("+ Add villager").click();
@@ -484,9 +528,9 @@ export async function verifyFoundingLayout(group) {
           "true",
         );
         await expect(resident.getByRole("button", { name: "Sprites", exact: true })).toHaveCount(0);
-        await expect(button("Continue to Venues and Map")).toBeEnabled();
+        await expect(button("Let’s set up their homes")).toBeEnabled();
         await bounds("people");
-        await button("Continue to Venues and Map").click();
+        await button("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
@@ -584,15 +628,15 @@ export async function verifyFoundingLayout(group) {
         assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 2);
         const mapWarning = root.getByText("Upload or generate a map image before continuing.", { exact: true });
         await expect(mapWarning).toHaveCount(0);
-        await expect(button("Review village")).toBeEnabled();
-        await button("Review village").click();
+        await expect(button("Let’s look it over")).toBeEnabled();
+        await button("Let’s look it over").click();
         await expect(root).toHaveAttribute("data-step", "2");
         await expect(mapWarning).toBeVisible();
         assert.deepEqual(await root.boundingBox(), frame, "Validation does not resize the Founding window");
         assert.equal(await mapWarning.evaluate((node) => getComputedStyle(node).color), "rgb(255, 155, 165)");
         await button("Back").click();
         await expect(root).toHaveAttribute("data-step", "1");
-        await button("Continue to Venues and Map").click();
+        await button("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");
         await expect(mapWarning).toHaveCount(0);
 
@@ -700,10 +744,21 @@ export async function verifyFoundingLayout(group) {
             .getByLabel("Upload map image", { exact: true })
             .setInputFiles({ name: "map.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") });
         }
-        await expect(button("Review village")).toBeEnabled();
+        await expect(button("Let’s look it over")).toBeEnabled();
         await expect(mapWarning).toHaveCount(0);
         if (view.width === 1366) {
-          await button("Exit").click();
+          await expect
+            .poll(() =>
+              page.evaluate(() => {
+                const draft = window.featureController.savedSetupDraft?.data;
+                return (
+                  !!draft?.mapImage &&
+                  draft.step === 2 &&
+                  draft.venues.some((row) => row.id === "founding-home:player" && row.presentation.x !== null)
+                );
+              }),
+            )
+            .toBe(true);
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await page.getByRole("button", { name: "Resume founding", exact: true }).click();
@@ -748,8 +803,8 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-step", "0");
         await expect(models).toBeVisible();
         await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Old Harbour");
-        await button("Continue to People").click();
-        await button("Continue to Venues and Map").click();
+        await button("Let’s meet the villagers").click();
+        await button("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");
         assert.equal(suggestions, 1, "checking connections never retries generation");
         failVenueConnection = false;
@@ -786,7 +841,7 @@ export async function verifyFoundingLayout(group) {
         const savedAppearance = await appearance.inputValue();
         await appearance.fill("");
         await sheet.getByRole("button", { name: "Done", exact: true }).click();
-        await button("Review village").click();
+        await button("Let’s look it over").click();
         await expect(sheet).toBeVisible();
         await expect(appearance).toHaveAttribute("aria-invalid", "true");
         await expect(appearance).toBeFocused();
@@ -808,13 +863,13 @@ export async function verifyFoundingLayout(group) {
           )
           .toBe("");
         await sheet.getByRole("button", { name: "Done", exact: true }).click();
-        await button("Review village").click();
+        await button("Let’s look it over").click();
         await expect(sheet.locator(".villages-quick-selected-zone")).toHaveAttribute("data-zone-id", "common:base");
         await expect(purpose).toBeFocused();
         await purpose.fill(savedPurpose);
         await sheet.getByRole("button", { name: "Done", exact: true }).click();
         await bounds("venues");
-        await button("Review village").click();
+        await button("Let’s look it over").click();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.getByText("World rules: The sun never sets.", { exact: true })).toBeVisible();
 

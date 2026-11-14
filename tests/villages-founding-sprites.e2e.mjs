@@ -159,11 +159,11 @@ await withBrowser(browser, async () => {
       await page.goto("http://founding-sprites.test/");
       await page.addScriptTag({ content: bundle });
       const root = page.locator(".villages-forging-v2"),
-        next = root.getByRole("button", { name: "Continue to Venues and Map", exact: true });
+        next = root.getByRole("button", { name: "Let’s set up their homes", exact: true });
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
       await root.getByLabel("Location name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      await root.getByRole("button", { name: "Continue to People", exact: true }).click();
+      await root.getByRole("button", { name: "Let’s meet the villagers", exact: true }).click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
         await page

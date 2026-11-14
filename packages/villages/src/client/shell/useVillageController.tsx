@@ -52,7 +52,6 @@ import {
   useFoundingVenueReference,
 } from "../features/founding/controller-hooks.js";
 import {
-  createFoundingExitSetupDraft,
   createFoundingNewSetupDraft,
   createFoundingRestoreSetupDraft,
   createFoundingRetrySetupSaving,
@@ -461,8 +460,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setScreen,
     updateSetupMapRequest,
   });
-
-  const exitSetupDraft = createFoundingExitSetupDraft({ ...founding, flushSetupDraft, setScreen });
 
   const confirmVillages = useConfirmation(snapshot?.settings.maps?.[0]?.id);
   const newSetupDraft = createFoundingNewSetupDraft({
@@ -1321,11 +1318,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     draftPins,
     draftSaveError: founding.draftSaveError,
     draftSavedAt: founding.draftSavedAt,
-    draftSaving: founding.draftSaving,
     drawPlaceImage,
     dropPlaceImage,
     error,
-    exitSetupDraft,
     explorationOrigin,
     explorationReturnTab,
     explorationSearch,

@@ -1,4 +1,5 @@
 import { FOUNDING_SETTING_BRIEF_LIMIT, type FoundingSetting } from "../../../shared/contracts/founding.js";
+import type { ReactNode } from "react";
 import { FoundingField } from "./FoundingField.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
@@ -9,10 +10,12 @@ export function FoundingSettingScene({
   controller,
   onConnections,
   onEditSetting,
+  next,
 }: {
   controller: FoundingScreenController;
   onConnections(): void;
   onEditSetting(): void;
+  next: ReactNode;
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const request = setupWorkspace.suggestionRequest;
@@ -34,7 +37,7 @@ export function FoundingSettingScene({
           {setupSuggestionsBusy && waitingForMari
             ? "I’m putting those details together. You can keep editing your setting."
             : drafted
-              ? "There’s your starting point. Read it over and change anything you’d like before we meet your villagers."
+              ? "How does that feel? Tweak your setting, then we’ll meet the people who live there."
               : "Where do your people call home? Tell me what it’s like there. That’ll help us make places that fit when we get to your map."}
         </p>
         <form
@@ -108,6 +111,7 @@ export function FoundingSettingScene({
                 Dismiss request
               </button>
             ) : null}
+            {next}
           </div>
         </form>
       </div>
@@ -117,11 +121,13 @@ export function FoundingSettingScene({
 
 export function SettingProposal({
   proposal,
+  title,
   value,
   onUse,
   onDismiss,
 }: {
   proposal: FoundingSetting[keyof FoundingSetting] | undefined;
+  title: string;
   value: string;
   onUse(value: string): void;
   onDismiss(): void;
@@ -129,7 +135,7 @@ export function SettingProposal({
   if (!proposal || proposal === value) return null;
   return (
     <div className="villages-setting-proposal">
-      <strong>Mari’s suggestion</strong>
+      <strong>{title}</strong>
       <p>{proposal}</p>
       <div>
         <button type="button" onClick={() => onUse(proposal)}>

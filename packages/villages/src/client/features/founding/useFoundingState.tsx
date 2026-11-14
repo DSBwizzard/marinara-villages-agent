@@ -15,7 +15,6 @@ export function useFoundingState() {
   const [savedSetupDraft, setSavedSetupDraft] = useState<SavedDeviceDraft<SetupDraftData> | null>(null);
   const [lorebooks, setLorebooks] = useState<VillageLorebookOption[] | null>(null);
   const [lorebooksError, setLorebooksError] = useState("");
-  const pendingDraftSaves = useRef(0);
   const [setupLorebookDraft, setSetupLorebookDraft] = useState<string[]>([]);
 
   const [setupLoreTokenBudgetDraft, setSetupLoreTokenBudgetDraft] = useState(1600);
@@ -127,8 +126,6 @@ export function useFoundingState() {
 
   const [draftSaveError, setDraftSaveError] = useState("");
 
-  const [draftSaving, setDraftSaving] = useState(false);
-
   const [draftSavedAt, setDraftSavedAt] = useState("");
 
   const draftRevision = useRef(0);
@@ -151,7 +148,6 @@ export function useFoundingState() {
     setLorebooks,
     lorebooksError,
     setLorebooksError,
-    pendingDraftSaves,
     setupLorebookDraft,
     setSetupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -253,8 +249,6 @@ export function useFoundingState() {
     setDraftReady,
     draftSaveError,
     setDraftSaveError,
-    draftSaving,
-    setDraftSaving,
     draftSavedAt,
     setDraftSavedAt,
     draftRevision,
