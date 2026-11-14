@@ -162,6 +162,7 @@ export function VillagerDossier({
     navigation.section ?? (navigation.wishId ? "wishes" : "overview"),
   );
   const [inspect, setInspect] = useState(false);
+  const [agendaDate, setAgendaDate] = useState<string>();
   const [visited, setVisited] = useState<ProfileSection[]>([section]);
   const toolsOrigin = useRef<DossierSection>("overview");
   const [signatureTools, setSignatureTools] = useState<HTMLDivElement | null>(null);
@@ -422,6 +423,8 @@ export function VillagerDossier({
                                   inspect={inspect && viewing !== false}
                                   refresh={`${villageDate}:${backgroundRevision}:${focusRevision}:${revision}`}
                                   request={request}
+                                  date={agendaDate}
+                                  onDate={setAgendaDate}
                                 />
                               ) : null}
                               {knownInformation.length ? <RelationshipEntries entries={knownInformation} /> : null}

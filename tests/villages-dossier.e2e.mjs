@@ -458,7 +458,9 @@ await withBrowser(browser, async () => {
                           ]
                         : []),
                     ]
-                  : [],
+                  : index === 1
+                    ? [{ startMinute: 720, endMinute: 721, activity: "Seen here", place: "The Mill", source: "seen" }]
+                    : [],
             }),
           ),
         };
@@ -848,19 +850,31 @@ await withBrowser(browser, async () => {
     await expect(overview.getByText("Learn to swim")).toHaveCount(0);
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     if (width === 1440) {
-      await expect(overview.getByRole("group", { name: "Weekly Agenda", exact: true })).toBeVisible();
-      await overview.getByRole("button", { name: /Review maps/ }).click();
+      const planner = overview.getByRole("group", { name: "Day planner", exact: true });
+      const maps = planner.getByRole("button", { name: /Review maps/ });
+      const monday = planner.getByRole("button", { name: "Monday, Nov 16" });
+      const tuesday = planner.getByRole("button", { name: "Tuesday, Nov 17" });
+      await expect(monday).toHaveAttribute("aria-pressed", "true");
+      await maps.click();
       await expect(overview.getByRole("status")).toContainText("Review maps");
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
+      await tuesday.click();
+      await expect(maps).toHaveCount(0);
+      await expect(overview.getByRole("status")).toHaveCount(0);
+      await expect(planner.getByRole("button", { name: "12:00 PM · Seen here · The Mill · Observed" })).toBeVisible();
       await clickCharacterTool(page, "Inspect");
+      await expect(tuesday).toHaveAttribute("aria-pressed", "true");
+      await monday.click();
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toBeVisible();
-      const week = overview.getByRole("group", { name: "Weekly Agenda", exact: true });
-      const axis = await week.getByText("Noon", { exact: true }).boundingBox();
-      const appointment = await week.getByRole("button", { name: /Review maps/ }).boundingBox();
-      assert.ok(Math.abs(axis.y + axis.height / 2 - appointment.y) < 1, "Noon aligns exactly with the appointment");
+      const am = planner.getByRole("group", { name: "AM", exact: true });
+      const pm = planner.getByRole("group", { name: "PM", exact: true });
+      await expect(am.getByRole("button", { name: /Sleeping/ })).toBeVisible();
+      await expect(pm.getByRole("button", { name: /Review maps/ })).toBeVisible();
+      const [left, right] = await Promise.all([am.boundingBox(), pm.boundingBox()]);
+      assert.ok(Math.abs(left.y - right.y) < 1 && left.x + left.width <= right.x, "AM and PM sit side by side");
       const tints = await Promise.all(
         [/Sleeping/, /PRIVATE scheduled task/, /Review maps/].map((name) =>
-          week.getByRole("button", { name }).evaluate((button) => getComputedStyle(button).backgroundColor),
+          planner.getByRole("button", { name }).evaluate((button) => getComputedStyle(button).borderInlineStartColor),
         ),
       );
       assert.equal(new Set(tints).size, 3, "Sleep, routine, and agreed plans are distinct");
