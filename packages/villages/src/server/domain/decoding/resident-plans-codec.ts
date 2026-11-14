@@ -42,22 +42,42 @@ export const socialPlanSchema = z
       plan.actors.every((actor) => actor.id !== "player" && Object.hasOwn(plan.revisions, actor.id)) &&
       Object.keys(plan.revisions).length === plan.actors.length,
   );
-export const completedActivity = z
+const activityResult = {
+  sceneId: id,
+  endedAt: z.iso.datetime(),
+  outcome: z.enum(["pending", "quiet", "letter"]),
+  keepsake: z
+    .object({
+      letterId: z.string().min(1).max(512),
+      caption: z.string().trim().min(1).max(400),
+      moment: id,
+    })
+    .strict()
+    .optional(),
+};
+const sceneFollowup = z
   .object({
-    appointment: playerAppointment,
-    sceneId: id,
-    endedAt: z.iso.datetime(),
-    outcome: z.enum(["pending", "quiet", "letter"]),
-    keepsake: z
-      .object({
-        letterId: z.string().min(1).max(512),
-        caption: z.string().trim().min(1).max(400),
-        moment: id,
-      })
-      .strict()
-      .optional(),
+    id,
+    resident: z.object({ id, incarnation: id }).strict(),
+    playerIncarnation: id,
+    purpose: z.string().min(1).max(240).optional(),
+    ...activityResult,
   })
   .strict();
+const completedActivity = z.union([
+  sceneFollowup,
+  z
+    .object({ appointment: playerAppointment, ...activityResult })
+    .strict()
+    .transform(({ appointment, ...result }) => ({
+      id: appointment.id,
+      resident: appointment.resident,
+      playerIncarnation: appointment.playerIncarnation,
+      purpose: appointment.activity,
+      ...result,
+    })),
+]);
+export type SceneFollowup = z.infer<typeof sceneFollowup>;
 const residentPlans = z
   .object({
     selectedDate: z.string().refine((value) => value === "" || date.safeParse(value).success),
@@ -69,7 +89,7 @@ const residentPlans = z
   .refine(
     (value) =>
       new Set(value.plans.map((plan) => plan.id)).size === value.plans.length &&
-      Object.entries(value.activities ?? {}).every(([key, activity]) => key === activity.appointment.id) &&
+      Object.entries(value.activities ?? {}).every(([key, activity]) => key === activity.id) &&
       value.plans.every((plan) => plan.dateKey <= value.selectedDate),
   );
 export const emptyResidentPlans = (): ResidentPlans => ({ selectedDate: "", plans: [] });

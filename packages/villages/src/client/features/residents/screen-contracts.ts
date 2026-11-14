@@ -31,7 +31,6 @@ export type ResidentsScreenController = {
   readonly memoryLibrary: ResidentsState["memoryLibrary"];
   readonly openMenu: (tab: MenuPage) => void;
   readonly openVenue: (place: VillageVenue) => void;
-  readonly openRoom: (place: Pick<VillageVenue, "id" | "name">, zoneId: string, appointmentId: string) => Promise<void>;
   readonly personProfile: ResidentsState["personProfile"];
   readonly portraits: ResidentsState["portraits"];
   readonly previewVillagerRefresh: ReturnType<typeof usePreviewVillagerRefresh>;

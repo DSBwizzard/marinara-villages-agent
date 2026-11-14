@@ -66,13 +66,9 @@ await withBrowser(browser, async () => {
       );
       state.residentPlans.activities = {
         garden: {
-          appointment: {
-            id: "garden",
-            resident: mara,
-            playerIncarnation: player.incarnation,
-            time: { date: "2026-11-09", startMinute: 720, endMinute: 780, venueId: "cafe" },
-            activity: "Plant the garden",
-          },
+          id: "garden",
+          resident: { id: mara.id, incarnation: mara.incarnation },
+          playerIncarnation: player.incarnation,
           sceneId: "cafe-garden",
           endedAt: at,
           outcome: "letter",

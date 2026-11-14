@@ -22,20 +22,6 @@ import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 export const AGENDA_SHARED_WARMTH = 60;
 const dateAt = (world: VillageState, instant: Date) =>
   new ZonedDate(instant, world.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-export function dueAppointment(world: VillageState, id: string, now: Date) {
-  if (Object.hasOwn(world.residentPlans.activities ?? {}, id)) return;
-  const appointment = world.residentPlans.appointments?.find((row) => row.id === id);
-  if (
-    !appointment ||
-    continuityActor(world, "player")?.incarnation !== appointment.playerIncarnation ||
-    continuityActor(world, appointment.resident.id)?.incarnation !== appointment.resident.incarnation
-  )
-    return;
-  const at = dateAt(world, now),
-    time = appointment.time;
-  if (at >= calendarAt(at, time.date, time.startMinute) && at < calendarAt(at, time.date, time.endMinute))
-    return appointment;
-}
 const scheduled = (block: VillageAgendaBlock) =>
   !(!block.venueId && flexibleAgendaBlock(block) && block.activity === "Taking care of their own affairs");
 const dayOffset = (now: ZonedDate, offset: number) => {
@@ -144,14 +130,12 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
       const visible = known.filter((row) => row.time.date === date);
       const effective = resident.agenda ? agendaBlocksFor(resident.agenda, day).filter(scheduled) : [];
       const times: (Omit<AgendaTime, "date"> & {
-        id?: string;
         activity: string;
         source?: "told" | "seen" | "agreed";
       })[] =
         inspect || shared
           ? effective.map((block) => ({
               ...block,
-              id: block.commitmentId,
               source: visible.find(
                 (row) =>
                   row.source === "agreed" &&
@@ -161,11 +145,10 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
                   row.time.venueId === block.venueId,
               )?.source,
             }))
-          : visible.map(({ id, time, activity, source }) => ({ ...time, id, activity, source }));
-      const blocks = times.map(({ id, startMinute, endMinute, activity, venueId, zoneId, source }) => {
+          : visible.map(({ time, activity, source }) => ({ ...time, activity, source }));
+      const blocks = times.map(({ startMinute, endMinute, activity, venueId, zoneId, source }) => {
         const venue = findLocation(world, venueId);
         const zone = venue && zoneId && resolveVenueZone(venue, zoneId);
-        const join = id && source === "agreed" && dueAppointment(world, id, now);
         return {
           startMinute,
           endMinute,
@@ -173,9 +156,6 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
           ...(restingAgendaBlock({ activity }) ? { resting: true as const } : {}),
           ...(venue ? { place: zone && (inspect || zone.seen || source === "agreed") ? zone.name : venue.name } : {}),
           ...(source ? { source } : {}),
-          ...(join
-            ? { join: { id: join.id, venueId: join.time.venueId, zoneId: join.time.zoneId ?? "exterior" } }
-            : {}),
         };
       });
       return {

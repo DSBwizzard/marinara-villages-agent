@@ -338,7 +338,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
           key={`${snapshot?.worldScope}:${personProfile.actorId}`}
           navigation={personProfile}
           villageDate={snapshot?.village.dateLabel}
-          villageMinute={snapshot?.village.minuteOfDay}
           villager={person}
           portrait={
             <AvatarFace
@@ -348,10 +347,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
             />
           }
           request={request}
-          onJoin={async (join, place) => {
-            if (await canLeaveDocument())
-              await controller.openRoom({ id: join.venueId, name: place }, join.zoneId, join.id);
-          }}
           venues={relevantVenues}
           links={relatedLinks}
           error={error}

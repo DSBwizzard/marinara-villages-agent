@@ -121,7 +121,6 @@ function Sheet({
 export function VillagerDossier({
   navigation,
   villageDate,
-  villageMinute,
   villager,
   portrait,
   request,
@@ -131,13 +130,11 @@ export function VillagerDossier({
   spriteManager,
   inspectors,
   onInspectSection,
-  onJoin,
   onVenue,
   error,
 }: {
   navigation: DossierNavigation;
   villageDate?: string;
-  villageMinute?: number;
   villager?: {
     characterId: string;
     name: string;
@@ -155,7 +152,6 @@ export function VillagerDossier({
   spriteManager?: ReactNode;
   inspectors: Partial<Record<DossierSection, ReactNode>>;
   onInspectSection: (section: DossierSection | null) => void;
-  onJoin?: React.ComponentProps<typeof WeeklyAgenda>["onJoin"];
   onVenue: (id: string) => void;
   error?: string;
 }) {
@@ -425,11 +421,10 @@ export function VillagerDossier({
                                   key={inspect && viewing !== false ? "inspect" : "player"}
                                   actorId={navigation.actorId}
                                   inspect={inspect && viewing !== false}
-                                  refresh={`${villageDate}:${villageMinute}:${backgroundRevision}:${focusRevision}:${revision}`}
+                                  refresh={`${villageDate}:${backgroundRevision}:${focusRevision}:${revision}`}
                                   request={request}
                                   date={agendaDate}
                                   onDate={setAgendaDate}
-                                  onJoin={onJoin}
                                 />
                               ) : null}
                               {knownInformation.length ? <RelationshipEntries entries={knownInformation} /> : null}

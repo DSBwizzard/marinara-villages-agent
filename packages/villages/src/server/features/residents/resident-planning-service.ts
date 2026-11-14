@@ -4,7 +4,7 @@ import { calendarReplay } from "../../domain/rules/clock-state.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
-import { activityMoments } from "../../domain/rules/activity-followup.js";
+import { activityMoments, keepsakeAvailable } from "../../domain/rules/activity-followup.js";
 import { dueRelationshipAnswers } from "../../domain/rules/continuity-library.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
@@ -200,7 +200,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         const activity = state.residentPlans.activities?.[opportunity.id];
         memoryRequire(
           activity?.outcome === "pending" &&
-            activity.appointment.activity === context.activity.purpose &&
+            (activity.purpose ?? "") === (context.activity.purpose ?? "") &&
             memoryHash(activityMoments(state, activity)) === memoryHash(context.activity.moments),
           "The Activity's witnessed moments changed.",
         );
@@ -248,14 +248,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       );
     let followup;
     if (!due && !dueOnly) {
-      for (const row of Object.values(state.residentPlans.activities ?? {})) {
+      for (const row of Object.values(state.residentPlans.activities ?? {}).toReversed()) {
         if (
           row.outcome !== "pending" ||
-          conflicts.has(row.appointment.resident.id) ||
+          now.getTime() - Date.parse(row.endedAt) > 86_400_000 ||
+          conflicts.has(row.resident.id) ||
           !activityMoments(state, row).length
         )
           continue;
-        const work = await ports.backgroundJobSnapshot("resident-planning", "activity:" + row.appointment.id);
+        const work = await ports.backgroundJobSnapshot("resident-planning", "activity:" + row.id);
         if (work?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(work.status))
           continue;
         followup = row;
@@ -263,7 +264,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       }
     }
     if (dueOnly && !due) return false;
-    const subjectId = due ? "social:" + due.id : followup ? "activity:" + followup.appointment.id : "village",
+    const subjectId = due ? "social:" + due.id : followup ? "activity:" + followup.id : "village",
       prior = await ports.backgroundJobSnapshot("resident-planning", subjectId);
     if (prior?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
       return;
@@ -280,9 +281,9 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         }
       : followup
         ? {
-            id: followup.appointment.id,
+            id: followup.id,
             kind: "activity" as const,
-            actorIds: [followup.appointment.resident.id],
+            actorIds: [followup.resident.id],
             startsAt: now.toISOString(),
             endsAt: now.toISOString(),
             venueId: "",
@@ -293,7 +294,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     const context = contextFor(state, opportunity);
     if (followup)
       context.activity = {
-        purpose: followup.appointment.activity,
+        ...(followup.purpose ? { purpose: followup.purpose } : {}),
+        ...(keepsakeAvailable(state, followup, now.toISOString()) ? {} : { recentKeepsake: true as const }),
         moments: activityMoments(state, followup),
       };
     if (due) context.plans = [];
@@ -556,7 +558,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         if (input.context.activity) {
           const activity = next.residentPlans.activities![opportunity.id];
           activity.outcome = "letter";
-          if (proposal.mail.keepsake) activity.keepsake = { letterId, ...proposal.mail.keepsake };
+          if (proposal.mail.keepsake && keepsakeAvailable(next, activity, at))
+            activity.keepsake = { letterId, ...proposal.mail.keepsake };
         }
       } else if (input.context.activity) {
         next.residentPlans.activities![opportunity.id].outcome = "quiet";

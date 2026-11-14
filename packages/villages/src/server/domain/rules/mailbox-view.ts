@@ -18,7 +18,7 @@ const peer = (message: MailboxMessage) => (message.from.id === "player" ? messag
 export const mailboxThreadId = (residentId: string) => "personal:" + residentId;
 export function readKeepsakes(village: VillageState): Keepsake[] {
   return Object.values(village.residentPlans.activities ?? {})
-    .flatMap(({ appointment, keepsake }) => {
+    .flatMap(({ id, resident: author, playerIncarnation, keepsake }) => {
       if (!keepsake) return [];
       const message = village.mailbox.messages[keepsake.letterId];
       if (
@@ -26,9 +26,9 @@ export function readKeepsakes(village: VillageState): Keepsake[] {
         message.status !== "delivered" ||
         message.to.id !== "player" ||
         message.to.incarnation !== continuityActor(village, "player")?.incarnation ||
-        message.to.incarnation !== appointment.playerIncarnation ||
-        message.from.id !== appointment.resident.id ||
-        message.from.incarnation !== appointment.resident.incarnation
+        message.to.incarnation !== playerIncarnation ||
+        message.from.id !== author.id ||
+        message.from.incarnation !== author.incarnation
       )
         return [];
       const resident = village.villagers.find(
@@ -36,7 +36,7 @@ export function readKeepsakes(village: VillageState): Keepsake[] {
       );
       return [
         {
-          id: appointment.id,
+          id,
           caption: keepsake.caption,
           sender: resident?.cardSnapshot.name ?? "Former resident",
           at: message.at,
@@ -258,7 +258,7 @@ export function createMailboxPresentation(village: VillageState, state: MailboxS
     const attachment = Object.values(village.residentPlans.activities ?? {}).find(
       (row) => row.keepsake?.letterId === messageId,
     );
-    const keepsake = attachment && readKeepsakes(village).find((row) => row.id === attachment.appointment.id);
+    const keepsake = attachment && readKeepsakes(village).find((row) => row.id === attachment.id);
     return {
       scope: villageWorldScope(village),
       thread: threadInfo(message),

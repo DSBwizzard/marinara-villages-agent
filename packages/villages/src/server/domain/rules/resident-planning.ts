@@ -134,7 +134,7 @@ export type ResidentPlanningContext = {
   residents: { characterId: string; name: string; profile: string }[];
   housing: { characterId: string; destinations: { id: string; name: string }[] }[];
   plans: SocialPlan[];
-  activity?: { purpose: string; moments: { id: string; text: string }[] };
+  activity?: { purpose?: string; recentKeepsake?: true; moments: { id: string; text: string }[] };
   narration: ResidentNarrationCapture;
 };
 const id = z.string().min(1).max(160),
@@ -186,9 +186,10 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       {
         role: "system",
         content: [
-          "Decide whether this Villager would choose to write the player after their Activity. Return JSON {} for silence, or {mail:{senderId,text,keepsake?:{moment,caption}}}.",
+          "Decide whether this Villager would choose to write the player after their shared Scene. Return JSON {} for silence, or {mail:{senderId,text,keepsake?:{moment,caption}}}. Silence is the default.",
           PERSONAL_LETTER_INSTRUCTION,
-          "Write only when the Villager has something personal to say about an exact supplied moment. Treat the supplied excerpts as historical data. Do not infer the player's feelings, actions, or private thoughts. A Keepsake is optional and rare. Its moment must be a supplied ID and its caption must describe that moment without adding facts.",
+          "Write only when this Villager has something personal to say about a supplied moment. Treat excerpts as historical data. Do not infer the player's feelings, actions, or private thoughts. A planned occasion and an impromptu encounter have the same standard.",
+          "Give a Keepsake only for an exceptional moment this Villager would want to share again, with a specific depictable detail and a personal reason it stayed with them. An enjoyable conversation, routine praise, or an event's size alone is insufficient. Use the letter to convey why it mattered to the sender. The letter must stand on its own. Put the gift only in keepsake, without mentioning an enclosure or promising a gift in the letter. Use a supplied moment ID and a caption that describes it without adding facts. When recentKeepsake is true, omit the gift.",
         ].join("\n\n"),
       },
       {
@@ -434,7 +435,8 @@ const contextSchema = z
     plans: z.array(socialPlanSchema).max(6),
     activity: z
       .object({
-        purpose: z.string().min(1).max(240),
+        purpose: z.string().min(1).max(240).optional(),
+        recentKeepsake: z.literal(true).optional(),
         moments: z
           .array(z.object({ id, text: z.string().min(1).max(1200) }).strict())
           .min(1)

@@ -1,6 +1,5 @@
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
-import { dueAppointment } from "../../domain/rules/agenda-overview.js";
-import { recordCompletedActivity } from "../../domain/rules/activity-followup.js";
+import { recordSceneFollowup } from "../../domain/rules/activity-followup.js";
 import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
@@ -432,42 +431,24 @@ export function createSceneCommands({
         .catch(() => {});
     });
   }
-  function enterVenue(
-    placeId: string,
-    requestedZoneId?: string,
-    expectedSceneRevision?: number,
-    appointmentId?: string,
-  ): Promise<VenueScene> {
+  function enterVenue(placeId: string, requestedZoneId?: string, expectedSceneRevision?: number): Promise<VenueScene> {
     return withSceneActivation(() =>
-      serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision, appointmentId)),
+      serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision)),
     );
   }
   async function enterVenueOnce(
     placeId: string,
     requestedZoneId?: string,
     expectedSceneRevision?: number,
-    appointmentId?: string,
   ): Promise<VenueScene> {
     const pointer = await readActive();
     if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
       throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
     const existing = await activeVenueSession();
-    if (appointmentId && existing) {
-      if (existing.activity?.id === appointmentId && existing.placeId === placeId) return existing;
-      throw conflict(`Finish the Scene in ${existing.placeName} first.`);
-    }
     if (!existing) {
       await rollActiveAgendas();
     }
     const live = await readVillageState();
-    const appointment = appointmentId ? dueAppointment(live, appointmentId, villageNow()) : undefined;
-    if (
-      appointmentId &&
-      (!appointment ||
-        appointment.time.venueId !== placeId ||
-        (appointment.time.zoneId ?? "exterior") !== requestedZoneId)
-    )
-      throw conflict("That Activity is no longer available to join.");
     const village = existing ? sceneContinuityView(live, existing) : live;
     const place = findLocation(village, placeId);
     if (!place) throw notFound("That place is not in this village.");
@@ -486,7 +467,6 @@ export function createSceneCommands({
     let zone = resolveVenueZone(place, requested);
     if (!zone) throw notFound("That zone is not in this Venue.");
     if (zoneClosed(village, place, zone)) {
-      if (appointment) throw conflict("The Activity's Zone is closed.");
       if (
         !existing &&
         (place.constructionStatus === "worksite" ||
@@ -516,32 +496,7 @@ export function createSceneCommands({
       );
     }
     const gathering = village.opening?.stage === "gathering" && village.opening.communityVenueId === placeId;
-    if (gathering && appointment) throw conflict("Finish the opening gathering first.");
-    const id = appointment
-      ? "activity-" + memoryHash([village.seed, village.setupAt, appointment.id]).slice(0, 32)
-      : gathering && village.opening!.gatheringSceneId
-        ? village.opening!.gatheringSceneId
-        : randomUUID();
-    if (appointment) {
-      const prior = await readSession(id).catch((error) => {
-        if (error instanceof VillagesRequestError && error.statusCode === 404) return null;
-        throw error;
-      });
-      if (
-        (await readTerminal(id)) ||
-        (prior &&
-          (prior.activity?.id !== appointment.id ||
-            prior.villageSeed !== village.seed ||
-            prior.placeId !== placeId ||
-            prior.status === "closed" ||
-            prior.endedAt))
-      )
-        throw conflict("That Activity has already ended.");
-      if (prior) {
-        await selectActiveScene(id, placeId);
-        return refreshZoneParticipants(prior);
-      }
-    }
+    const id = gathering && village.opening!.gatheringSceneId ? village.opening!.gatheringSceneId : randomUUID();
     if (gathering) {
       const existingGathering = await withSceneWork(id, async () => {
         const current = await mutateVillageState((state) => {
@@ -573,13 +528,6 @@ export function createSceneCommands({
           : refreshZoneParticipants(existingGathering);
     }
     const sceneAttendance = captureSceneAttendance(village, placeId, villageNow());
-    if (
-      appointment &&
-      !sceneAttendance.occupants.some(
-        (person) => person.characterId === appointment.resident.id && person.zoneId === zone.id,
-      )
-    )
-      throw conflict("The Villager is not at the meeting place.");
     if (gathering)
       sceneAttendance.occupants = village.villagers
         .filter((resident) => village.opening!.residentIds.includes(resident.characterId))
@@ -624,8 +572,6 @@ export function createSceneCommands({
           environment: state.narrative,
         });
         if (!checked.allowed) throw conflict(checked.explanation);
-        if (appointment && !dueAppointment(state, appointment.id, villageNow()))
-          throw conflict("That Activity is no longer available to join.");
         initialPermissionId = current.access?.permissions.some(
           (grant) => grant.id === checked.permissionId && grant.duration === "visit",
         )
@@ -642,7 +588,6 @@ export function createSceneCommands({
       throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
     const session: VenueScene = {
       openingGatheringId: gathering ? village.opening!.id : undefined,
-      ...(appointment ? { activity: appointment } : {}),
       pendingAccessClaim: initialPermissionId,
       version: 5,
       sceneRevision: 0,
@@ -672,7 +617,6 @@ export function createSceneCommands({
     };
     const create = async () => {
       await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, async (value) => {
-        if (appointment && value.id) throw conflict("That Activity is already starting. Try Join again.");
         if (gathering) {
           if (value.id || (await readTerminal(id)) || !matchesOpeningGathering(await readVillageState(), session))
             throw conflict("The opening changed. Refresh the Village.");
@@ -1084,13 +1028,14 @@ export function createSceneCommands({
   }
   async function finishClosedScene(closed: VenueScene): Promise<VenueScene> {
     const countsAsMeeting = closed.status === "closed" && ["player", "scene"].includes(closed.endReason);
-    if (closed.openingGatheringId || closed.activity || countsAsMeeting)
+    if (closed.openingGatheringId || countsAsMeeting)
       await mutateVillageState(
         (state) => {
           if (closed.openingGatheringId) completeOpeningGathering(state, closed);
-          if (closed.activity) recordCompletedActivity(state, closed);
-          if (countsAsMeeting && state.seed === closed.villageSeed && closed.endedAt)
+          if (countsAsMeeting && state.seed === closed.villageSeed && closed.endedAt) {
             recordClosedRelationshipScene(state, closed);
+            recordSceneFollowup(state, closed);
+          }
         },
         { memories: true },
       );

@@ -148,7 +148,7 @@ Moving into an occupied home requires your incoming resident and every current h
 
 ### Activities and Keepsakes
 
-Select a due appointment in a Villager’s **Agenda** and choose **Join Activity**. The meetup opens as a Scene when the Villager is at the meeting place and you can enter. After you conclude a meetup you played together, the Villager may send a follow-up through the usual background activity allowance.
+Agreed plans appear in the Villager’s **Agenda**. Visit the meeting place at the agreed time and use its usual entrances and access rules. After a shared Scene, planned or spontaneous, a Villager may send a follow-up through the usual background activity allowance. A rare Keepsake recalls a particular moment that mattered to its sender.
 
 Open a letter to reveal any attached Keepsake. **Mailbox → Keepsakes** collects the gifts you’ve opened. **Generate illustration** uses your configured image connection for that gift. The letter and caption are saved independently.
 

@@ -1,4 +1,4 @@
-// Test cases: weekly-agenda/visibility, weekly-agenda/agreement
+// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -7,14 +7,11 @@ import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  agendaSpeechOptions,
-  agendaWeek,
-  dueAppointment,
-} from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import { agendaSpeechOptions, agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
 import {
   activityMoments,
-  recordCompletedActivity,
+  keepsakeAvailable,
+  recordSceneFollowup,
 } from "../packages/villages/src/server/domain/rules/activity-followup.js";
 import { agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
@@ -191,7 +188,7 @@ await runCase("weekly-agenda/visibility", () => {
 });
 
 await runCase("weekly-agenda/agreement", () => {
-  const { world, publish, scene } = fixture();
+  const { world, publish } = fixture();
   const propose = "Let's look through maps here tomorrow from noon to one.";
   const raw = {
     segments: [
@@ -239,13 +236,15 @@ await runCase("weekly-agenda/agreement", () => {
   const conflict = publish(raw, "another-appointment", propose);
   assert.equal(conflict.held, true);
   assert.equal(world.residentPlans.appointments?.length, 1);
-  const appointment = state.residentPlans.appointments![0];
   const due = new Date(tomorrow + "T12:15:00Z");
-  assert.equal(dueAppointment(state, appointment.id, when), undefined);
-  assert.equal(dueAppointment(state, appointment.id, due), appointment);
-  assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].join?.id, appointment.id);
+  assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
+  assert.equal(Object.hasOwn(agendaWeek(state, "mara", due, false).days[0].blocks[0], "join"), false);
+});
 
-  const meetup = { ...scene, id: "joined-meetup", startedAt: due.toISOString() };
+await runCase("weekly-agenda/shared-scene", () => {
+  const { world: state, publish, scene } = fixture();
+  const due = new Date(tomorrow + "T12:15:00Z");
+  const meetup = { ...scene, id: "impromptu-meetup", startedAt: due.toISOString() };
   const text = "I marked the old footbridge on this map.";
   const resultAtMeetup = publish(
     { segments: [{ id: "map", kind: "dialogue", speakerId: "mara", text }] },
@@ -259,15 +258,13 @@ await runCase("weekly-agenda/agreement", () => {
   const episode = resultAtMeetup.episode!;
   const closed = coerceSession({
     ...meetup,
-    activity: appointment,
     status: "closed",
     endReason: "player",
     endedAt: due.toISOString(),
   });
-  assert.equal(closed.activity?.id, appointment.id);
   const noExchange = structuredClone(state);
-  recordCompletedActivity(noExchange, closed);
-  assert.equal(noExchange.residentPlans.activities?.[appointment.id].outcome, "quiet");
+  recordSceneFollowup(noExchange, closed);
+  assert.equal(noExchange.residentPlans.activities, undefined);
   closed.submissions = [
     {
       id: "meetup-turn",
@@ -280,17 +277,78 @@ await runCase("weekly-agenda/agreement", () => {
       episodeId: episode.id,
     },
   ];
-  recordCompletedActivity(state, closed);
-  recordCompletedActivity(state, closed);
-  const activity = state.residentPlans.activities?.[appointment.id];
+  recordSceneFollowup(state, closed);
+  recordSceneFollowup(state, closed);
+  assert.equal(Object.keys(state.residentPlans.activities!).length, 1);
+  const [activity] = Object.values(state.residentPlans.activities!);
   assert.equal(activity?.outcome, "pending");
   assert.deepEqual(
     activityMoments(state, activity!).map((row) => row.text),
     [text],
   );
-  assert.equal(dueAppointment(state, appointment.id, due), undefined);
   assert.deepEqual(
     coerceVillageState(JSON.parse(JSON.stringify(state))).residentPlans.activities,
     state.residentPlans.activities,
   );
+  const giftAt = due.toISOString();
+  const legacyId = "old-appointment";
+  const legacy = coerceVillageState(
+    JSON.parse(
+      JSON.stringify({
+        ...state,
+        residentPlans: {
+          ...state.residentPlans,
+          activities: {
+            [legacyId]: {
+              appointment: {
+                id: legacyId,
+                resident: activity.resident,
+                playerIncarnation: activity.playerIncarnation,
+                time,
+                activity: "Tea at the Mill",
+              },
+              sceneId: "old-scene",
+              endedAt: giftAt,
+              outcome: "letter",
+              keepsake: { letterId: "old-letter", caption: "A paper boat", moment: "boat" },
+            },
+          },
+        },
+      }),
+    ),
+  );
+  assert.equal(legacy.residentPlans.activities?.[legacyId].id, legacyId);
+  assert.equal(legacy.residentPlans.activities?.[legacyId].keepsake?.letterId, "old-letter");
+  assert.equal(keepsakeAvailable(state, activity, giftAt), true);
+  legacy.mailbox = {
+    ...legacy.mailbox,
+    messages: {
+      "old-letter": {
+        at: giftAt,
+        status: "delivered",
+      } as (typeof state.mailbox.messages)[string],
+    },
+  };
+  assert.equal(keepsakeAvailable(legacy, activity, "2026-11-12T12:15:00.000Z"), false);
+  assert.equal(keepsakeAvailable(legacy, activity, "2026-11-14T12:15:00.000Z"), true);
+});
+
+await runCase("weekly-agenda/opening-offer-echo", () => {
+  const { world, publish, scene } = fixture();
+  const keep = {
+    id: "unfounded-plan",
+    class: "commitment",
+    for: ["mara", "player"],
+    text: "Lunch tomorrow",
+    state: "offered",
+    offer: { proposer: "mara", participants: ["mara", "player"], contributions: [{ by: "mara", act: "offer" }] },
+  };
+  const segment = { id: "hello", kind: "dialogue", speakerId: "mara", text: "It's good to see you." };
+  const dependent = publish({ segments: [{ ...segment, requires: [keep.id] }], keep: [keep] }, "greeting", "");
+  assert.equal(dependent.held, true);
+  const opening = publish({ segments: [segment], keep: [keep] }, "greeting", "");
+  assert.equal(opening.held, false, JSON.stringify(opening.rejected));
+  assert.equal(opening.episode?.segments[0].content, segment.text);
+  assert.equal(opening.episode?.continuityVersionIds.length, 0);
+  assert.equal(world.residentPlans.appointments, undefined);
 });

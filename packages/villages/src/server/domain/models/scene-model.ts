@@ -76,7 +76,6 @@ export type VenueScene = {
   /** Private captured writing context; never part of a client projection. */
   continuity?: import("../rules/scene-continuity.js").SceneContinuity;
   openingGatheringId?: string;
-  activity?: import("./resident-plans.js").PlayerAppointment;
   version: 5;
   changeSequence?: number;
   villageSeed?: string;

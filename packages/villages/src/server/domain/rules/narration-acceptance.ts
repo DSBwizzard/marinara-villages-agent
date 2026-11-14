@@ -375,6 +375,20 @@ export function acceptNarrationContinuity(
       continue;
     }
     const note = asRecord(raw);
+    const offer = asRecord(note.offer);
+    // An opening can echo the offered calendar context as a source-free offer. Keep it out of authority.
+    const openingOfferEcho =
+      submissionId === "greeting" &&
+      !readset.source.input &&
+      !reply.commands.length &&
+      !Object.hasOwn(note, "source") &&
+      typeof offer.proposer === "string" &&
+      Array.isArray(offer.participants) &&
+      (offer.contributions === undefined || Array.isArray(offer.contributions)) &&
+      Object.keys(offer).every((key) => ["proposer", "participants", "contributions"].includes(key)) &&
+      Object.keys(note).every((key) =>
+        ["id", "for", "class", "about", "text", "offer", "agenda", "state"].includes(key),
+      );
     const optionalCurrentOpenMatter =
       memoryFallback === 5 &&
       note.class === "open-matter" &&
@@ -454,7 +468,10 @@ export function acceptNarrationContinuity(
           "requires",
         ].includes(key),
       );
-    const effect: SceneEffectResult = { ...header, independent: optionalNote || optionalAnswer || header.independent };
+    const effect: SceneEffectResult = {
+      ...header,
+      independent: openingOfferEcho || optionalNote || optionalAnswer || header.independent,
+    };
     try {
       const keep = prepareNarrationKeep(
         raw,

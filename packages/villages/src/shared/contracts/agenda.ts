@@ -18,7 +18,6 @@ export type AgendaWeek = {
       resting?: true;
       place?: string;
       source?: "told" | "seen" | "agreed";
-      join?: { id: string; venueId: string; zoneId: string };
     }[];
   }[];
 };
