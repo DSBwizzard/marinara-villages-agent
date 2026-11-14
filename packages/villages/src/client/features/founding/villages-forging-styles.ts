@@ -141,7 +141,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-help>button { display:grid; place-items:center; width:44px; min-width:44px; height:44px; padding:0; border:0; background:transparent; color:inherit; }
 .villages-founding-help>button>span { display:grid; place-items:center; width:18px; height:18px; border:1px solid currentColor; border-radius:50%; font:12px Arial,sans-serif; }
 .villages-admission-fields .villages-founding-help>button { min-height:44px; padding:0; border:0; border-radius:0; background:transparent; }
-.villages-forging-v2 p[role=alert],.villages-forging-v2 [role=alert],.villages-forging-v2 [data-founding-problem] { color:#ff9ba5; }
+.villages-forging-v2 [role=alert] { color:#ff9ba5; }
 .villages-forging-v2 [aria-invalid=true] { border-color:#ff9ba5; }
 
 
