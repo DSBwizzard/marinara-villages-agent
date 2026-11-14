@@ -973,7 +973,7 @@ console.log(
   f.present(false);
   Object.assign(f.zone(), {
     description: "SECRET_NEW_FURNITURE",
-    name: "SECRET_NEW_NAME",
+    name: "Renamed Hall",
     purpose: "SECRET_NEW_USE",
     roomSpecification: "SECRET_NEW_SPEC",
     dayNight: false,
@@ -1021,7 +1021,7 @@ console.log(
   assert.equal(f.zone().picture?.dirty, true, "unseen physical changes remain pending");
   const shown = result.settings.venues[0].zones!.find((zone) => zone.id === "living")!;
   assert.equal(shown.description, known.description);
-  assert.equal(shown.name, known.name);
+  assert.equal(shown.name, "Renamed Hall");
   assert.equal(shown.roomSpecification, known.roomSpecification);
   assert.equal(shown.dayNight, true);
   assert.equal(shown.pictureGenerateAvailable, true);
