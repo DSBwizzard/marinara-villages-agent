@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { agendaOptions, agendaVenues } from "./agenda-codec.js";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
 import { sceneEpisodeId } from "../rules/episode-sources.js";
@@ -121,6 +122,8 @@ const saved = z
             Array.isArray(row.offered) &&
             Array.isArray(row.npcCandidates) &&
             row.npcCandidates.length <= 4 &&
+            agendaOptions.optional().safeParse(row.agendaOptions).success &&
+            agendaVenues.optional().safeParse(row.agendaVenues).success &&
             repairs.safeParse(row.repairs).success &&
             (row.circumstance === null || row.circumstance?.source === "scene") &&
             row.source?.scene?.version === 5 &&

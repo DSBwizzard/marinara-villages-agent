@@ -36,7 +36,7 @@ import {
 } from "../adapters/engine/runtime-host.js";
 import { createSpriteFileRemoval } from "../adapters/engine/sprite-file-removal.js";
 import { readZonePictureReference } from "../adapters/engine/zone-picture-reference.js";
-import { villagesLanguageModels } from "../adapters/models/language-models.js";
+import { tracksProviderDispatch, villagesLanguageModels } from "../adapters/models/language-models.js";
 import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-pricing.js";
 import { createUsageLedger } from "../adapters/models/usage-ledger-service.js";
 import {
@@ -834,6 +834,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     afterCatchup: advanceReturnCatchup,
     afterCatchupFailure: advanceReturnCatchup,
     readVillageState,
+    mutateVillageState,
+    withSceneNavigation: (work) => sceneWork().serializeNavigation(work),
+    hasActiveScene: async () => !!(await readActive()).sessionId,
     readEffectiveVillagerCard,
     queueBackgroundJob,
     backgroundJobSnapshot,
@@ -861,6 +864,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     // Manual history edits preserve current mechanics and do not reconcile the world.
     mutateMemoryAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     reconcileNarrative: narrative.reconcile,
+    settleResidentAttendance: residentPlanning.settleAttendance,
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
@@ -908,6 +912,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       measurePipeline,
       runtimeDebug,
       backgroundCalls: background.backgroundCalls,
+      tracksProviderDispatch,
       handlers: [
         ["starting-ties", startingTies.handler],
         ["schedule-influence", scheduleInfluence.handler],

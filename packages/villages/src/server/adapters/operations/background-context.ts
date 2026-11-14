@@ -10,6 +10,9 @@ function backgroundContext(): BackgroundContext {
 export function configureBackgroundContext(service: BackgroundContext): () => void {
   return binding.configure(bindActivationService(service));
 }
+export function backgroundProviderDispatch(): (() => void) | undefined {
+  return binding.maybe()?.backgroundCalls.getStore()?.beforeProviderDispatch;
+}
 export const backgroundCalls = {
   getStore(): BackgroundCompletion | undefined {
     return backgroundContext().backgroundCalls.getStore();

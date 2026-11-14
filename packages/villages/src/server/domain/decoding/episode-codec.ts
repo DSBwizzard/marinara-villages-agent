@@ -80,6 +80,7 @@ const episode = z
               "contact",
               "scene",
               "appointment",
+              "meeting",
               "venue-request",
               "mail",
             ]),

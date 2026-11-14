@@ -4,6 +4,12 @@ import type { AcceptedEpisode } from "./episode-model.js";
 
 /** Exact final fitted evidence and native circumstances, retained by the existing operation checkpoint. */
 export type NarrationReadset = {
+  agendaOptions?: {
+    actorId: string;
+    activity: string;
+    time: import("../../../shared/contracts/agenda.js").AgendaTime;
+  }[];
+  agendaVenues?: { id: string; zones: string[] }[];
   format: 1;
   setupAt: string;
   capturedAt: string;

@@ -337,6 +337,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
         <VillagerDossier
           key={`${snapshot?.worldScope}:${personProfile.actorId}`}
           navigation={personProfile}
+          villageDate={snapshot?.village.dateLabel}
           villager={person}
           portrait={
             <AvatarFace

@@ -12,7 +12,13 @@ export function arrangementActivityAt(state: VillageState, now: Date): number | 
   const local = new ZonedDate(now, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
   const until = now.getTime() + VILLAGE_ACTIVITY_POLICY[state.backgroundPace].intervalMs;
   const times = state.residentPlans.plans.flatMap((plan) => {
-    if (plan.kind !== "meeting" || plan.status !== "planned" || !/^\d{4}-\d{2}-\d{2}$/.test(plan.dateKey)) return [];
+    if (
+      plan.followThrough ||
+      plan.kind !== "meeting" ||
+      plan.status !== "planned" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(plan.dateKey)
+    )
+      return [];
     if (
       !plan.actors.every((actor) =>
         state.villagers.some(

@@ -153,6 +153,30 @@ export function usePendingWorkPolling(ports: {
   );
 }
 
+export function useVillageTransition(
+  visible: boolean,
+  moment: VillageSnapshot["village"] | undefined,
+  loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>,
+) {
+  const instant = moment?.instant;
+  const next = moment?.nextTransitionAt;
+  useEffect(() => {
+    const delay = Date.parse(next ?? "") - Date.parse(instant ?? "");
+    if (!visible || !Number.isFinite(delay) || delay <= 0) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      await loadSnapshot({ signal: controller.signal, quiet: true });
+      if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), 30_000);
+    };
+    timer = setTimeout(() => void refresh(), delay + 1_000);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [visible, instant, next, loadSnapshot]);
+}
+
 export function useLoadPersonas(ports: {
   readonly setError: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;

@@ -305,8 +305,12 @@ await withBrowser(browser, async () => {
     );
     await page.route("**/api/villages**", async (route) => {
       const request = route.request(),
-        path = new URL(request.url()).pathname;
-      if (request.method() === "GET") reads.push(path);
+        requestUrl = new URL(request.url()),
+        path = requestUrl.pathname;
+      if (request.method() === "GET")
+        reads.push(
+          path.endsWith("/agendas") && requestUrl.searchParams.has("characterId") ? path + requestUrl.search : path,
+        );
       else if (!path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
       if (path.endsWith("/background/presence"))
@@ -430,6 +434,36 @@ await withBrowser(browser, async () => {
         };
       } else if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/catalog")) value = { characters: [] };
+      else if (path.endsWith("/agendas") && requestUrl.searchParams.has("characterId"))
+        value = {
+          visibility: requestUrl.searchParams.get("inspect") === "true" ? "inspect" : "known",
+          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
+            (weekday, index) => ({
+              date: "2026-11-" + (16 + index),
+              weekday,
+              blocks:
+                index === 0
+                  ? [
+                      {
+                        startMinute: 720,
+                        endMinute: 780,
+                        activity: "Review maps",
+                        place: "The Mill",
+                        source: "agreed",
+                      },
+                      ...(requestUrl.searchParams.get("inspect") === "true"
+                        ? [
+                            { startMinute: 0, endMinute: 360, activity: "Sleeping", resting: true },
+                            { startMinute: 480, endMinute: 600, activity: "PRIVATE scheduled task" },
+                          ]
+                        : []),
+                    ]
+                  : index === 1
+                    ? [{ startMinute: 720, endMinute: 721, activity: "Seen here", place: "The Mill", source: "seen" }]
+                    : [],
+            }),
+          ),
+        };
       else if (path.endsWith("/relationships/inspect"))
         value = {
           processing: [
@@ -815,6 +849,49 @@ await withBrowser(browser, async () => {
     await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
     await expect(overview.getByText("Learn to swim")).toHaveCount(0);
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
+    if (width === 1440) {
+      const planner = overview.getByRole("group", { name: "Day planner", exact: true });
+      const maps = planner.getByRole("button", { name: /Review maps/ });
+      const monday = planner.getByRole("button", { name: "Monday, Nov 16" });
+      const tuesday = planner.getByRole("button", { name: "Tuesday, Nov 17" });
+      await expect(monday).toHaveAttribute("aria-pressed", "true");
+      await maps.click();
+      await expect(overview.getByRole("status")).toContainText("Review maps");
+      await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
+      await tuesday.click();
+      await expect(maps).toHaveCount(0);
+      await expect(overview.getByRole("status")).toHaveCount(0);
+      await expect(planner.getByRole("button", { name: "12:00 PM · Seen here · The Mill · Observed" })).toBeVisible();
+      await clickCharacterTool(page, "Inspect");
+      await expect(tuesday).toHaveAttribute("aria-pressed", "true");
+      await monday.click();
+      await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toBeVisible();
+      const am = planner.getByRole("group", { name: "AM", exact: true });
+      const pm = planner.getByRole("group", { name: "PM", exact: true });
+      await expect(am.getByRole("button", { name: /Sleeping/ })).toBeVisible();
+      await expect(pm.getByRole("button", { name: /Review maps/ })).toBeVisible();
+      const rowStyle = (row) =>
+        row.evaluate((button) => {
+          const style = getComputedStyle(button);
+          return { fill: style.backgroundColor, marker: parseFloat(style.borderInlineStartWidth) };
+        });
+      const ordinary = await rowStyle(am.getByRole("button", { name: /PRIVATE scheduled task/ }));
+      const agreed = await rowStyle(maps);
+      assert.equal(ordinary.fill, "rgba(0, 0, 0, 0)");
+      assert.notEqual(agreed.fill, ordinary.fill, "An unselected agreed plan is highlighted across the row");
+      assert.ok(ordinary.marker >= 6 && agreed.marker >= 6, "Color markers are visible on both kinds of row");
+      const [left, right] = await Promise.all([am.boundingBox(), pm.boundingBox()]);
+      assert.ok(Math.abs(left.y - right.y) < 1 && left.x + left.width <= right.x, "AM and PM sit side by side");
+      const tints = await Promise.all(
+        [/Sleeping/, /PRIVATE scheduled task/, /Review maps/].map((name) =>
+          planner.getByRole("button", { name }).evaluate((button) => getComputedStyle(button).borderInlineStartColor),
+        ),
+      );
+      assert.equal(new Set(tints).size, 3, "Sleep, routine, and agreed plans are distinct");
+      await clickCharacterTool(page, "Leave Inspect");
+      await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
+      await expect(overview.getByRole("button", { name: /Review maps/ })).toBeVisible();
+    }
     await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
     await expect(overview.getByText("Work · The Harbour", { exact: true })).toBeVisible();
     await expect(overview.getByText("Work · The Market", { exact: true })).toBeVisible();

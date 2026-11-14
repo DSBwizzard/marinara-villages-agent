@@ -36,6 +36,7 @@ import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
+import { applySceneAppointment, cloneAppointmentState, sceneAgendaEvidence } from "./agenda-overview.js";
 
 export type NarrationPublication = {
   readset: NarrationReadset;
@@ -638,6 +639,7 @@ export function acceptNarrationContinuity(
       effect.failure = "The completed repair needs every linked Room entry changed by the same observed work.";
   }
   let continuity: ContinuityCollection = state.continuity;
+  let scheduledWorld = state;
   let selection: ReturnType<typeof selectSceneEffects>;
   const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
   for (;;) {
@@ -651,6 +653,7 @@ export function acceptNarrationContinuity(
     ]);
     if (selection.held) return { ...selection, episode: undefined };
     continuity = state.continuity;
+    scheduledWorld = state;
     let failed = false;
     const essential = new Set([
       ...reply.assertedDependencies,
@@ -679,6 +682,12 @@ export function acceptNarrationContinuity(
       try {
         if (keep) {
           let write = keep.write;
+          if (keep.agenda) {
+            const evidence = { ...keep.agenda, activity: keep.agenda.activity ?? "" };
+            write = { ...write, agenda: evidence };
+            sceneAgendaEvidence(scheduledWorld, write, readset, keep.sources);
+            memoryRequire(evidence.activity.trim(), "An Agenda item needs its actual activity");
+          }
           const owner = write.owner;
           const { answer, ...changes } = write.relationship ?? {};
           // A private score and a shared answer may be proposed together even though self cannot support disclosure.
@@ -699,6 +708,11 @@ export function acceptNarrationContinuity(
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
+          if (write.agenda?.kind === "offer" || write.accept || write.closeOffer) {
+            const candidate = cloneAppointmentState(scheduledWorld);
+            if (applySceneAppointment(candidate, next, write, keep.admission.operationId + ":" + id, acceptedAt))
+              scheduledWorld = candidate;
+          }
           const root = damageRoots.get(id);
           if (root) {
             const saved = next.receipts[keep.admission.operationId + ":" + id];
@@ -915,5 +929,7 @@ export function acceptNarrationContinuity(
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
   state.episodes = episodes;
+  state.residentPlans = scheduledWorld.residentPlans;
+  state.villagers = scheduledWorld.villagers;
   return { ...selection, episode: episodes.records.at(-1)! };
 }
