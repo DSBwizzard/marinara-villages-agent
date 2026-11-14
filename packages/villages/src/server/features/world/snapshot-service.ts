@@ -79,8 +79,8 @@ export function createVillageSnapshot({
     const scenePresentation = sceneLayout && {
       ...sceneLayout,
       zones: sceneLayout.zones?.map((zone) => {
-        const observed = liveVenue && resolveVenueZone(liveVenue, zone.id)?.observed;
-        return observed ? { ...zone, observed } : zone;
+        const liveZone = liveVenue && resolveVenueZone(liveVenue, zone.id);
+        return liveZone ? { ...zone, name: liveZone.name, observed: liveZone.observed ?? zone.observed } : zone;
       }),
     };
     const presence = villagePresence(village, minuteOfDay, now);

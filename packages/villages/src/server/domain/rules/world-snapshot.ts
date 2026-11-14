@@ -186,7 +186,7 @@ export function villageSettings(
         (venue.zones ?? [])
           .filter((zone) => zone.preparation?.status === "ready" && (!isVillageFounded(village) || !!zone.observed))
           .map((zone) => ({
-            label: `${venue.name} · ${observedZone(zone, !isVillageFounded(village)).name}`,
+            label: `${venue.name} · ${zone.name}`,
             entries: readLoreUse(zone.preparation?.lore),
           })),
       ),
@@ -312,7 +312,6 @@ export function villageSettings(
           originalZone.observed?.context === zonePictureContext(village, venue, originalZone, previewAt.toISOString());
         const zone = {
           ...visible,
-          name: reachable ? originalZone.name : visible.name,
           observed: undefined,
           picture: undefined,
           pictureReference: originalZone.picture?.reference,

@@ -41,7 +41,9 @@ place.location.zones!.find((zone) => zone.id === "kitchen")!.picture = {
 };
 assert.equal(projectPlace(state, place).zones?.find((zone) => zone.id === "kitchen")?.picture, undefined);
 assert.equal(projected.access, undefined);
+assert.equal(projected.zones?.find((zone) => zone.id === "kitchen")?.name, "Kitchen");
 assert.equal(projected.zones?.find((zone) => zone.id === "kitchen")?.description, "");
+assert.equal(projected.zones?.find((zone) => zone.id === "kitchen")?.image, null);
 assert.equal(projected.zones?.find((zone) => zone.id === "kitchen")?.access, undefined);
 const encoded = encodeContinuityPages(memoryPayload(state), "a".repeat(32));
 const decoded = decodeContinuityPagesSync(

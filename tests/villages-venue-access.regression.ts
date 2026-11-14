@@ -491,6 +491,7 @@ for (const scenario of [
     ["invited", "escort-already-inside"].includes(scenario),
     scenario,
   );
+  assert.equal(projected.name, target.name, "The Zone name is visible for every access state.");
   assert.equal(projected.description, "", "An invitation never reveals the unvisited interior");
   if (scenario === "invited") {
     const player = { name: "Player", description: "", personaId: "", missing: false };
@@ -504,7 +505,8 @@ for (const scenario of [
     live.venues[0].access!.permissions[0].revoked = true;
     const revoked = choices(live).find((zone) => zone.id === target.id)!;
     assert.equal(revoked.accessView?.reachable, false);
-    assert.notEqual(revoked.name, target.name, "Captured access cannot reveal the name after live revocation");
+    assert.equal(revoked.name, target.name, "Revocation changes reachability, so the Zone name stays visible.");
+    assert.equal(revoked.description, "");
   }
   assert.equal(
     JSON.stringify({ home, scene }),
