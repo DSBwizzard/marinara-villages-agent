@@ -23,6 +23,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
     <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
       {category === "general" ? (
         <>
+          <AgentConnectionsControls connections={connections} disabled={busy} />
           {snapshot?.isFounded ? <VillageWritingSettings writing={writing} /> : null}
 
           {snapshot ? (
@@ -84,7 +85,6 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
         </>
       ) : (
         <>
-          <AgentConnectionsControls connections={connections} disabled={busy} />
           <div className={`${ELEMENT_TAG}-field`}>
             <span className={`${ELEMENT_TAG}-label`}>Erase Village</span>
             <p className={`${ELEMENT_TAG}-empty`}>

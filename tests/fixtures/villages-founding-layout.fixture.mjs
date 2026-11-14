@@ -80,29 +80,25 @@ export async function verifyFoundingLayout(group) {
         const page = await context.newPage();
         let payload,
           suggestions = 0,
+          failVenueConnection = false,
+          holdConnectionRead = false,
+          connectionReadHeld = false,
           generatedImages = 0,
           generationImage,
           mapReceipt;
         const artRequests = [];
-        const sprites = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname,
             method = route.request().method();
           const send = (value) =>
             fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
-          if (/\/characters\/[^/]+\/sprites\/setup(?:\/(?:save|settled))?$/.test(path)) {
-            const id = decodeURIComponent(path.match(/\/characters\/([^/]+)/)[1]);
-            if (path.endsWith("/save")) sprites[id] = (sprites[id] ?? 0) + 1;
+          if (/\/characters\/[^/]+\/sprites\/setup\/settled$/.test(path)) {
             return send({
-              revision: sprites[id] ?? 0,
+              revision: 0,
+              token: "appearance",
               manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
               files: [],
-              assignments: [],
-              defaultArtworkId: "",
-              useSprites: false,
-              errors: {},
-              resident: false,
-              residentToken: "",
+              folders: [],
             });
           }
           if (path.endsWith("/maps/generate")) {
@@ -123,6 +119,14 @@ export async function verifyFoundingLayout(group) {
           if (path.endsWith("/setup/venues/suggest")) {
             suggestions++;
             const body = route.request().postDataJSON();
+            if (failVenueConnection)
+              return send({
+                id: body.actionId,
+                sourceKey: body.sourceKey,
+                status: "failed",
+                result: null,
+                error: "Language model connection not found: stale-model-id",
+              });
             assert.equal(body.communityVenueId, "founding-community");
             assert.equal(body.mode, "quick-start");
             assert.equal(body.draftEntranceImage, undefined);
@@ -207,8 +211,13 @@ export async function verifyFoundingLayout(group) {
             return send({
               persona: { ...personas[0], description: "A patient observer.", identity: "A patient observer." },
             });
-          if (path.endsWith("/connections"))
+          if (path.endsWith("/connections")) {
+            if (holdConnectionRead) {
+              connectionReadHeld = true;
+              return;
+            }
             return send({ systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" });
+          }
           if (path.endsWith("/catalog")) return send({ characters });
           if (path.endsWith("/lorebooks")) return send({ books: [] });
           if (path.endsWith("/image-style-profiles"))
@@ -221,7 +230,7 @@ export async function verifyFoundingLayout(group) {
             contentType: "application/json",
             body: JSON.stringify([
               { id: "talk", name: "Language model", provider: "language", defaultForAgents: true },
-              { id: "image", name: "Image model", provider: "image_generation", defaultForAgents: true },
+              { id: "image", name: "Image model", provider: "image_generation", profileImportReviewRequired: "true" },
             ]),
           }),
         );
@@ -333,6 +342,47 @@ export async function verifyFoundingLayout(group) {
           .fill("An oceanfront expanse between the cliffs and river.");
         await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
+        await button("Connections").click();
+        const models = root.getByRole("region", { name: "Model Connections" });
+        const system = models.getByRole("button", { name: /^System / });
+        await expect(system).toContainText("Language model");
+        await expect(models.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
+        await system.click();
+        const systemPicker = page.getByRole("dialog", { name: "System", exact: true });
+        await expect(systemPicker.getByRole("button", { name: /^Language model/ })).toHaveAttribute(
+          "aria-current",
+          "true",
+        );
+        await expect(systemPicker.getByRole("button", { name: "Use Engine default" })).toHaveCount(0);
+        await page.evaluate(() => {
+          const deadline = AbortSignal.timeout.bind(AbortSignal);
+          AbortSignal.timeout = (ms) => {
+            if (ms !== 15_000) return deadline(ms);
+            const controller = new AbortController();
+            window.expireConnectionRead = () => controller.abort(new DOMException("Timed out", "TimeoutError"));
+            return controller.signal;
+          };
+        });
+        holdConnectionRead = true;
+        await systemPicker.getByRole("button", { name: "Refresh list", exact: true }).click();
+        await expect.poll(() => connectionReadHeld).toBe(true);
+        await expect(systemPicker.getByRole("status")).toHaveText("Checking model connections…");
+        await page.keyboard.press("Escape");
+        await button("Continue to People").click();
+        await expect(root).toHaveAttribute("data-step", "0");
+        await expect(models.getByRole("status")).toBeFocused();
+        await page.evaluate(() => window.expireConnectionRead());
+        const timedOut = models.getByRole("alert");
+        await expect(timedOut).toContainText("Checking model connections timed out.");
+        await expect(system).toBeDisabled();
+        holdConnectionRead = false;
+        await timedOut.getByRole("button", { name: "Retry", exact: true }).click();
+        await expect(system).toBeEnabled();
+        await expect(root.getByText("Checking model connections…", { exact: true })).toHaveCount(0);
+        await expect(system).toContainText("Language model");
+        await system.click();
+        await page.keyboard.press("Escape");
+        await expect(system).toBeFocused();
         await button("Circumstances").click();
         const circumstance = root.getByRole("textbox", { name: "Starting circumstances", exact: true });
         await expect(circumstance).toHaveCount(1);
@@ -378,10 +428,12 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();
         await resident.getByRole("button", { name: characters[0].name, exact: true }).click();
-        const spritePane = page.getByRole("region", { name: characters[0].name + " sprite setup", exact: true });
-        await expect(spritePane.getByRole("button", { name: "Use Portrait", exact: true })).toBeEnabled();
+        const spritePane = page.getByRole("region", { name: characters[0].name + "’s appearance", exact: true });
+        await expect(spritePane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
         await expect(resident.getByRole("button", { name: "Sprites", exact: true })).toHaveCount(0);
-        await spritePane.getByRole("button", { name: "Use Portrait", exact: true }).click();
         await expect(button("Continue to Venues and Map")).toBeEnabled();
         await bounds("people");
         await button("Continue to Venues and Map").click();
@@ -694,12 +746,29 @@ export async function verifyFoundingLayout(group) {
           .getByRole("button", { name: "Cancel", exact: true })
           .click();
         assert.equal(suggestions, 0);
+        failVenueConnection = true;
         await button("Suggest").click();
         await page
           .getByRole("dialog", { name: "Suggest", exact: true })
           .getByRole("button", { name: "Replace and suggest", exact: true })
           .click();
-        await expect.poll(() => suggestions).toBe(1);
+        await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
+        await expect(root.getByText("stale-model-id", { exact: false })).toHaveCount(0);
+        await button("Check Model Connections").click();
+        await expect(root).toHaveAttribute("data-step", "0");
+        await expect(models).toBeVisible();
+        await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Old Harbour");
+        await button("Continue to People").click();
+        await button("Continue to Venues and Map").click();
+        await expect(root).toHaveAttribute("data-step", "2");
+        assert.equal(suggestions, 1, "checking connections never retries generation");
+        failVenueConnection = false;
+        await button("Retry").click();
+        await page
+          .getByRole("dialog", { name: "Retry", exact: true })
+          .getByRole("button", { name: "Replace and suggest", exact: true })
+          .click();
+        await expect.poll(() => suggestions).toBe(2);
         await expect
           .poll(() =>
             page.evaluate(
@@ -781,7 +850,7 @@ export async function verifyFoundingLayout(group) {
             .sort(),
         );
         assert.equal(generatedImages, 2 * Number(view.width === 1366));
-        assert.equal(suggestions, 1);
+        assert.equal(suggestions, 2);
         await context.close();
       });
     }

@@ -1561,12 +1561,80 @@ dialog.villages-founding-dialog:not([open]) { display:none; }
 .${ELEMENT_TAG}-identity-details dt { font-weight: 700; color: #cfdaff; }
 .${ELEMENT_TAG}-identity-details dd { margin: 0; }
 .${ELEMENT_TAG}-identity-context { color: #bdc8ed; }
-.${ELEMENT_TAG}-connections-compact { min-height: 0; }
-.${ELEMENT_TAG}-connections-compact > .${ELEMENT_TAG}-hint { margin: 0; }
-.${ELEMENT_TAG}-connections-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; }
-.${ELEMENT_TAG}-connections-grid > .${ELEMENT_TAG}-field { min-width: 0; }
-.${ELEMENT_TAG}-connections-grid .${ELEMENT_TAG}-select { width: 100%; }
-.${ELEMENT_TAG}-connections-grid .${ELEMENT_TAG}-hint { line-height: 1.25; }
+.${ELEMENT_TAG}-model-connections { margin: 0 0 1rem; }
+.${ELEMENT_TAG}-model-connections h2 { margin: 0 0 .55rem; font: 600 1.35rem/1.25 var(--menu-font, Georgia, serif); }
+.${ELEMENT_TAG}-model-rows {
+  background: var(--menu-card, var(--popover)); border: 1px solid var(--menu-card-line, var(--border));
+  border-radius: .75rem; overflow: hidden; container-type: inline-size;
+}
+.${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row, .${ELEMENT_TAG}-model-choices button {
+  width: 100%; min-width: 0; min-height: 44px; color: inherit; text-align: start;
+  border: 0; border-radius: 0; background: transparent; font: .95rem/1.35 system-ui, sans-serif; cursor: pointer;
+}
+.${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row {
+  display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) minmax(0, .92fr) .55rem;
+  align-items: center; gap: .75rem; padding: .65rem .85rem;
+}
+.${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row + .${ELEMENT_TAG}-model-row,
+.${ELEMENT_TAG}-model-choices button + button { border-top: 1px solid var(--border); }
+.${ELEMENT_TAG}-model-icon { display: grid; place-items: center; align-self: center; min-height: 2.5rem; border-radius: .5rem; background: var(--secondary); }
+.${ELEMENT_TAG}-model-icon svg { width: 1.25rem; height: 1.25rem; }
+.${ELEMENT_TAG}-model-chevron { width: .45rem; height: .45rem; border: solid currentColor; border-width: 1.5px 1.5px 0 0; rotate: 45deg; }
+.${ELEMENT_TAG}-model-pending { width: .7rem; height: .7rem; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; }
+.${ELEMENT_TAG}-model-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.${ELEMENT_TAG}-model-row strong, .${ELEMENT_TAG}-model-choices strong { font-weight: 650; overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-model-row small, .${ELEMENT_TAG}-model-choices small { display: block; font-size: .8rem; color: var(--muted-foreground); overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-model-assignment[data-needs-choice],
+.${ELEMENT_TAG}-model-connections small[data-needs-review] { color: var(--menu-warning-ink, var(--destructive, #bf5256)); }
+.${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row:enabled:not([aria-disabled]):hover, .${ELEMENT_TAG}-model-choices button:enabled:hover,
+.${ELEMENT_TAG}-model-choices button[aria-current] { background: var(--menu-hover, var(--secondary)); }
+.${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row:focus-visible, .${ELEMENT_TAG}-model-choices button:focus-visible {
+  outline: 2px solid var(--menu-focus, var(--primary)); outline-offset: -3px;
+}
+.${ELEMENT_TAG}-model-row:disabled, .${ELEMENT_TAG}-model-picker button:disabled { opacity: .65; cursor: default; }
+.${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row[aria-disabled] { cursor: default; }
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker {
+  width: min(30rem, 100vw - 1.5rem); height: auto; max-height: min(42rem, 100dvh - 2rem);
+  margin: auto; padding: 0; box-sizing: border-box; border: 1px solid var(--menu-card-line, var(--border));
+  border-radius: .85rem; background: var(--menu-card, var(--popover)); color: var(--foreground); overflow: hidden;
+  font: .95rem/1.4 system-ui, sans-serif;
+}
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker header {
+  display: flex; justify-content: space-between; align-items: center; padding: .5rem 1rem;
+  background: transparent; border-bottom: 1px solid var(--border);
+}
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker h3 { font: 600 1.5rem/1.25 var(--menu-font, Georgia, serif); }
+.${ELEMENT_TAG}-model-picker::backdrop { background: #11141b85; }
+.${ELEMENT_TAG}-model-picker-body { display: grid; gap: .65rem; overflow: auto; padding: .75rem 1rem 1rem; }
+.${ELEMENT_TAG}-model-picker-body p { margin: 0; }
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker input[type="search"], .villages-founding-dialog.${ELEMENT_TAG}-model-picker button {
+  background: var(--menu-field, var(--background)); color: inherit; border: 1px solid var(--menu-field-border, var(--border));
+}
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker .${ELEMENT_TAG}-model-picker-body input[type="search"] { font: inherit; }
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker input[type="search"]::placeholder { color: var(--muted-foreground); }
+.${ELEMENT_TAG}-model-picker-body > button { justify-self: start; }
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker .${ELEMENT_TAG}-model-choices button {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .6rem .65rem;
+  border: 0; border-radius: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: start;
+}
+.villages-founding-dialog.${ELEMENT_TAG}-model-picker .${ELEMENT_TAG}-model-choices button:is(:enabled:hover, [aria-current]) {
+  background: var(--menu-hover, var(--secondary));
+}
+.${ELEMENT_TAG}-model-problem {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-top: .4rem;
+  padding: .45rem .65rem; border-radius: .45rem; color: var(--menu-warning-ink, var(--destructive, #bf5256));
+  background: var(--menu-warning-surface, var(--secondary)); font-size: .875rem;
+}
+@container (max-width: 26rem) {
+  .${ELEMENT_TAG}-model-rows > .${ELEMENT_TAG}-model-row { grid-template-columns: 2.25rem minmax(0, 1fr) .55rem; gap: .12rem .55rem; }
+  .${ELEMENT_TAG}-model-icon { grid-row: span 2; min-height: 2.25rem; }
+  .${ELEMENT_TAG}-model-assignment { grid-column: 2; }
+  .${ELEMENT_TAG}-model-chevron, .${ELEMENT_TAG}-model-pending { grid-area: 1 / 3 / span 2; }
+}
+@media (max-width: 704px) {
+  .villages-founding-dialog.${ELEMENT_TAG}-model-picker { width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .${ELEMENT_TAG}-model-picker-body { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
+}
 @container (min-width: 80rem) {
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
@@ -1586,7 +1654,6 @@ dialog.villages-founding-dialog:not([open]) { display:none; }
   .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side,
   .${ELEMENT_TAG}-setup-visual { flex: 1 1 100%; }
   .${ELEMENT_TAG}-identity-preview { max-height: none; }
-  .${ELEMENT_TAG}-connections-grid { grid-template-columns: 1fr; }
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .${ELEMENT_TAG}-setup-advanced .${ELEMENT_TAG}-reason-options { grid-template-columns: 1fr; }
   .${ELEMENT_TAG}-scenario-art-panel { flex: none; height: 18rem; }

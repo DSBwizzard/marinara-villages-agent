@@ -2,11 +2,11 @@ import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venu
 import { simpleFoundingMap } from "./simple-map.js";
 import { foundingHomeMembers, reconcileFoundingRoster } from "./founding-homes.js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ELEMENT_TAG } from "../../shared/constants.js";
+import { CONNECTION_SETUP_PROBLEMS, ELEMENT_TAG } from "../../shared/constants.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
-import { SpriteSetupDialog } from "../residents/SpriteSetupDialog.js";
+import { Appearance } from "../residents/Appearance.js";
 import { FoundingPagination } from "./FoundingPagination.js";
 import { FoundingDialog } from "./FoundingDialog.js";
 import {
@@ -35,7 +35,7 @@ const PLACE_ERRORS = {
   locationName: "Name the starting location.",
   setting: "Describe the starting location.",
 };
-export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
+export function FoundingScreen({ controller, host }: { controller: FoundingScreenController; host?: HTMLElement }) {
   const {
     busy,
     catalog,
@@ -117,7 +117,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     updateSetupMapRequest,
     uploadSetupImage,
   } = controller;
-  const setupProblem = currentSetupProblem || setupWorkspace.suggestionRequest?.failure || "";
+  const rawSetupProblem =
+    currentSetupProblem || (setupStep === 2 ? setupWorkspace.suggestionRequest?.failure : "") || "";
+  const venueConnectionUnavailable =
+    setupStep === 2 && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
+  const setupProblem = venueConnectionUnavailable
+    ? "The System connection is unavailable. Choose another model or review it in Engine."
+    : rawSetupProblem;
   const [contextView, setContextView] = useState("World rules");
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
@@ -196,7 +202,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     !!backgroundError ||
     setupProblem === "Choose an available Persona." ||
     setupProblem === "Choose one to three available founding villagers." ||
-    (!!connectionSetupProblem && setupProblem === connectionSetupProblem);
+    Object.values(CONNECTION_SETUP_PROBLEMS).includes(setupProblem);
   useEffect(() => {
     if (focusedValidationAttempt.current === validationAttempt) return;
     focusedValidationAttempt.current = validationAttempt;
@@ -454,23 +460,21 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   disabled={busy || spriteBusy}
                 />
               </section>
-              <section className="villages-forging-card villages-founding-sprites" aria-label="Resident sprites">
+              <section className="villages-forging-card villages-founding-sprites" aria-label="Resident appearance">
                 {setupStep === 1 && activeSpriteId ? (
-                  <SpriteSetupDialog
+                  <Appearance
                     key={activeSpriteId}
-                    embedded
+                    host={host}
                     characterId={activeSpriteId}
                     name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
                     portrait={portraits[activeSpriteId]}
                     selectedRevision={setupSpriteRevisions[activeSpriteId]}
-                    onClose={() => setSpriteId(null)}
-                    onDone={spriteSaved}
+                    onSave={spriteSaved}
                     onBusyChange={spriteBusyChanged}
                   />
                 ) : (
                   <>
-                    <h3>Resident sprites</h3>
-                    <p>Choose a resident to set up their artwork.</p>
+                    <h3>Appearance</h3>
                   </>
                 )}
               </section>
@@ -613,7 +617,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </>
                 ) : null}
                 <div hidden={contextView !== "Connections"}>
-                  {connectionSetupProblem && validatedFields.includes("connections") ? (
+                  {validatedFields.includes("connections") &&
+                  [CONNECTION_SETUP_PROBLEMS.required, CONNECTION_SETUP_PROBLEMS.missing].includes(
+                    connectionSetupProblem,
+                  ) ? (
                     <p role="alert" data-founding-problem tabIndex={-1}>
                       {connectionSetupProblem}
                     </p>
@@ -690,6 +697,19 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 problem={
                   setupProblem ||
                   (venueShapeProblem ? venueShapeProblem + " Use Suggest to replace this older draft." : undefined)
+                }
+                problemAction={
+                  venueConnectionUnavailable ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContextView("Connections");
+                        gotoSetupStep(0);
+                      }}
+                    >
+                      Check Model Connections
+                    </button>
+                  ) : undefined
                 }
                 map=<>
                   {map(true)}
@@ -820,7 +840,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </div>
             </>
           ) : null}
-          {setupProblem && !inlineProblem && !(setupStep === 2 && setupWorkspace.view === "details") ? (
+          {setupProblem &&
+          !inlineProblem &&
+          !venueConnectionUnavailable &&
+          !(setupStep === 2 && setupWorkspace.view === "details") ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupProblem}
             </p>

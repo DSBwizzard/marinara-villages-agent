@@ -1,5 +1,5 @@
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
-import type { ProjectRoomEdit, VillageSettings } from "../../../shared/contracts/village.js";
+import type { ProjectRoomEdit, ResidentSprite, VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 
@@ -63,7 +63,7 @@ export type VillageVillager = {
   characterId: string;
   /** Card prose captured at move-in; deliberately excludes the Engine-only first message. */
   cardSnapshot: VillageVillagerCardSnapshot;
-  /** Approved village-owned art, independent of the source character's sprites. */
+  /** Approved Scene sprite assignments and any retained village-owned artwork. */
   sprite?: VillageResidentSprite | null;
   spriteManager?: SpriteManagerState | null;
   addedAt: string;
@@ -87,11 +87,13 @@ export type VillageVillager = {
 
 export type VillageResidentSprite = {
   assetId: string;
+  named?: true;
   defaultExpressionId?: string;
   expressions: Array<{
     view: "front" | "side";
     label: string;
     filename: string;
+    version?: string;
     assetId: string;
     expressionId: string;
     spriteName?: string;
@@ -886,13 +888,7 @@ export type VillageVillagerView = {
   dialogueColor: string;
   sprite:
     | (VillageResidentSprite & {
-        images: Array<{
-          view: "front" | "side";
-          label: string;
-          url: string;
-          expressionId?: string;
-          isDefault?: boolean;
-        }>;
+        images: ResidentSprite["images"];
       })
     | null;
   name: string;

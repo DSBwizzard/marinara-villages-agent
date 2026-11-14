@@ -689,15 +689,29 @@ async function main() {
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () =>
-      new Response(JSON.stringify([{ id: "connection-big", provider: "openai" }]), {
-        headers: { "content-type": "application/json" },
-      });
+      new Response(
+        JSON.stringify([
+          { id: "connection-big", provider: "openai" },
+          { id: "connection-voice", provider: "audio" },
+        ]),
+        {
+          headers: { "content-type": "application/json" },
+        },
+      );
     try {
       await validateVillageSetupConnections({
         systemConnectionId: "connection-big",
         narrationConnectionId: "connection-big",
         imageConnectionId: "__villages_image_disabled__",
       });
+      await assert.rejects(
+        validateVillageSetupConnections({
+          systemConnectionId: "connection-big",
+          narrationConnectionId: "connection-voice",
+          imageConnectionId: "__villages_image_disabled__",
+        }),
+        /Choose a valid language connection/,
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
