@@ -431,7 +431,7 @@ await withBrowser(browser, async () => {
         };
       } else if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/catalog")) value = { characters: [] };
-      else if (path.endsWith("/agenda"))
+      else if (path.endsWith("/agendas") && requestUrl.searchParams.has("characterId"))
         value = {
           visibility: requestUrl.searchParams.get("inspect") === "true" ? "inspect" : "known",
           days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(

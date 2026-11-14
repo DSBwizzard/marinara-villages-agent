@@ -213,28 +213,20 @@ export function registerResidentRoutes(engine: FastifyInstance) {
 export function registerAgendaRoutes(engine: FastifyInstance) {
   const app = engine;
 
-  app.get<{ Params: CharacterParams; Querystring: { inspect?: string } }>(
-    "/villagers/:characterId/agenda",
-    async (request, reply) => {
-      try {
+  app.get<{ Querystring: { characterId?: string; inspect?: string } }>("/agendas", async (request, reply) => {
+    try {
+      if (request.query.characterId !== undefined) {
         reply.header("Cache-Control", "no-store");
         return agendaWeek(
           await readVillageState({ memories: true }),
-          readCharacterId(request.params.characterId),
+          readCharacterId(request.query.characterId),
           villageNow(),
           request.query.inspect === "true",
         );
-      } catch (error) {
-        return fail(reply, error, "reading the weekly Agenda");
       }
-    },
-  );
-
-  app.get("/agendas", async (_request, reply) => {
-    try {
       return { villagers: await buildVillageAgendas() };
     } catch (error) {
-      return fail(reply, error, "reading what the villagers wish for");
+      return fail(reply, error, "reading Agendas");
     }
   });
   app.post<{ Params: CharacterParams; Body: { actionId?: unknown } }>(

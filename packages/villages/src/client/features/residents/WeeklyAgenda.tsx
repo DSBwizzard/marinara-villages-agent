@@ -31,7 +31,7 @@ export function WeeklyAgenda({
   useEffect(() => {
     if (!visible) return;
     const controller = new AbortController();
-    void request<AgendaWeek>(`/villagers/${encodeURIComponent(actorId)}/agenda${inspect ? "?inspect=true" : ""}`, {
+    void request<AgendaWeek>(`/agendas?characterId=${encodeURIComponent(actorId)}${inspect ? "&inspect=true" : ""}`, {
       signal: controller.signal,
     })
       .then((result) => {
