@@ -294,6 +294,7 @@ export function AgentConnectionsControls({
             ) : null}
             <input
               type="search"
+              autoComplete="off"
               aria-label={pickingImages ? "Search image models" : "Search language models"}
               placeholder={pickingImages ? "Search image models" : "Search language models"}
               value={search}
