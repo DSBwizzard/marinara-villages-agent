@@ -12,8 +12,7 @@ const sourceLabel = { told: "Told you", seen: "Observed", agreed: "Agreed with y
 type Block = AgendaWeek["days"][number]["blocks"][number];
 const periods = ["AM", "PM"] as const;
 const periodOf = (minute: number) => (minute % 1440 < 720 ? "AM" : "PM");
-const clockLabel = (minute: number) =>
-  `${Math.floor(minute / 60) % 12 || 12}:${String(minute % 60).padStart(2, "0")}`;
+const clockLabel = (minute: number) => `${Math.floor(minute / 60) % 12 || 12}:${String(minute % 60).padStart(2, "0")}`;
 
 function blockTime({ source, startMinute, endMinute }: Block, includePeriod = false) {
   const startPeriod = periodOf(startMinute);
@@ -91,7 +90,9 @@ export function WeeklyAgenda({
       <div className={P + "-planner-day"} role="group" aria-label={day.weekday + " Agenda"}>
         {periods.map((period) => (
           <div key={period} className={P + "-planner-period"} role="group" aria-label={period}>
-            <div className={P + "-planner-period-label"} aria-hidden="true">{period}</div>
+            <div className={P + "-planner-period-label"} aria-hidden="true">
+              {period}
+            </div>
             {day.blocks
               .filter((block) => periodOf(block.startMinute) === period)
               .map((block, index) => (
