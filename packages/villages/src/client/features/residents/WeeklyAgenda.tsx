@@ -20,7 +20,7 @@ function blockTime({ source, startMinute, endMinute }: Block, includePeriod = fa
   const start = clockLabel(startMinute);
   if (source === "seen") return includePeriod ? `${start} ${startPeriod}` : start;
   const end = clockLabel(endMinute);
-  if (startPeriod !== endPeriod) return `${start} ${startPeriod}–${end} ${endPeriod}`;
+  if (includePeriod && startPeriod !== endPeriod) return `${start} ${startPeriod}–${end} ${endPeriod}`;
   return `${start}–${end}${includePeriod ? ` ${endPeriod}` : ""}`;
 }
 
@@ -102,6 +102,7 @@ export function WeeklyAgenda({
                   className={P + "-planner-block"}
                   data-source={block.source}
                   data-resting={block.resting}
+                  title={`${blockTime(block, true)} · ${block.activity}`}
                   aria-label={[
                     blockTime(block, true),
                     block.activity,
@@ -170,6 +171,9 @@ const agendaStyles = `
 .${P}-day-planner button.${P}-planner-block:is(:hover,[aria-pressed=true]){background:var(--period-fill)}
 .${P}-planner-time{font-size:12px;font-variant-numeric:tabular-nums}
 .${P}-dossier-overview .${P}-planner-detail{margin:6px 0 0}
+@container village-desk (min-width:701px){
+ .${P}-planner-block span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+}
 @container village-desk (max-width:700px){
  .${P}-planner-day{grid-template-columns:1fr}
  .${P}-planner-period+.${P}-planner-period{border-inline-start:0;padding:4px 0 0}
