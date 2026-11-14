@@ -149,7 +149,9 @@ function fixture(): VillageVenue {
   const visible = venueDisplayZones(projected as any);
   assert(visible.find((zone) => zone.id === "exterior")!.allowed);
   assert(visible.find((zone) => zone.id === "bedroom")!.allowed);
+  assert.equal(visible.find((zone) => zone.id === "bedroom")!.accessLabel, "Invited for one visit");
   assert.equal(visible.find((zone) => zone.id === "living")!.allowed, false);
+  assert.equal(visible.find((zone) => zone.id === "living")!.accessLabel, "Permission required");
   assert.equal(
     venueDisplayZones({ ...projected, zones: projected.zones.map((zone) => ({ ...zone, closed: true })) } as any).some(
       (zone) => zone.allowed,
@@ -351,6 +353,7 @@ command({
   outsideHours: false,
 } as any);
 assert.equal(decide("living", "player").allowed, true, "Explicit standing permission permits entry");
+assert.equal(projectZoneAccess(venue, zone("living"), "player", {}).decision.invitationDuration, "standing");
 const ban = command({ action: "ban", zoneId: null, visitorId: "player" } as any);
 assert.equal(decide("exterior").allowed, true);
 assert.equal(decide("bedroom").reason, "banned");

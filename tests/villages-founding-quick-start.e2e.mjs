@@ -403,7 +403,7 @@ await withBrowser(browser, async () => {
 
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
-      const access = sheet.getByRole("switch", { name: "Restricted access", exact: true });
+      const access = sheet.getByRole("switch", { name: "Permission required", exact: true });
       await expect(access).not.toBeChecked();
       const preserved = await page.evaluate(() => window.quickState.venues[0]);
       await access.check();

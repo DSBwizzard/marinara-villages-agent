@@ -652,7 +652,7 @@ export function VenueScreen({
                       </span>
                       <span className={`${ELEMENT_TAG}-venue-zone-caption`}>
                         <span>{zone.name}</span>
-                        {zone.accessLabel !== "Open to you" ? <small>{zone.accessLabel}</small> : null}
+                        {zone.accessLabel ? <small>{zone.accessLabel}</small> : null}
                       </span>
                       <span className={`${ELEMENT_TAG}-venue-zone-chevron`} aria-hidden="true">
                         ›

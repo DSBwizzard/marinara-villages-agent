@@ -189,6 +189,14 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet exterior");
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Contact", exact: true })).toHaveCount(0);
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    const move = page.getByLabel("Move to Zone");
+    await expect(move.locator("option[value=common]")).toHaveText("Interior entrance · Permission required");
+    await expect(move.locator("option[value=common]")).toBeDisabled();
+    await expect(move.locator('option[value="private:mara"]')).toHaveText(
+      "Personal room doorway · Permission required",
+    );
+    await expect(page.getByText("Ask to enter in the Scene.", { exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await composer.fill("I call through the entrance: Is anyone there?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -217,9 +225,8 @@ await withBrowser(browser, async () => {
     await readUntil(/still listening through the doorway/);
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-    await expect(page.getByLabel("Move to Zone").getByRole("option", { name: /invited/ })).toHaveText(
-      "Interior entrance (invited)",
-    );
+    await expect(move.locator("option[value=common]")).toHaveText("Interior entrance · Invited for this visit");
+    await expect(move.locator("option[value=common]")).toBeEnabled();
     await page.getByLabel("Move to Zone").selectOption("common");
     await expect.poll(() => entered?.zoneId).toBe("common");
     assert.equal(entered.expectedSceneRevision, 3);

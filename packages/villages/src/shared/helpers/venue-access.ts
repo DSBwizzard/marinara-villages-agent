@@ -84,6 +84,7 @@ export type ZoneAccessDecision = {
   canInvite: boolean;
   canRecover?: boolean;
   permissionId?: string;
+  invitationDuration?: AccessPermission["duration"];
   accompaniedBy?: string;
 };
 /** Explicit player projections. Never serialize the authoritative ledger. */

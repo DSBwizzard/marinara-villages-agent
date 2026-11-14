@@ -40,9 +40,9 @@ import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
 /** Unseen Zone names remain private. */
 export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boolean }): string {
+  if (zone?.kind === "exterior") return "Entrance";
   if (zone?.seen) return zone.name;
-  if (zone?.kind === "exterior") return "Exterior";
-  if (zone?.kind === "private-residence") return "Private-space doorway";
+  if (zone?.kind === "private-residence") return "Personal room doorway";
   if (zone?.kind === "staff" || zone?.kind === "restricted") return "Restricted doorway";
   return "Interior entrance";
 }
@@ -294,7 +294,7 @@ export function RoomPanel({
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
-  movementZones: { id: string; label: string; closed?: boolean }[];
+  movementZones: { id: string; label: string; allowed: boolean; needsPermission: boolean }[];
   onMovementTarget: (id: string) => void;
   currentZoneLabel: string;
 }) {
@@ -626,7 +626,7 @@ export function RoomPanel({
   const canDraft = !ended && room.status === "active";
   const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
   const canSend = canCompose && !contactRecovery && !(changeStatus && changeStatus.pending + changeStatus.failed > 0);
-  const moveDestinations = movementZones.filter((zone) => zone.id !== room.zoneId && !zone.closed);
+  const moveDestinations = movementZones.filter((zone) => zone.id !== room.zoneId);
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -907,11 +907,12 @@ export function RoomPanel({
               >
                 <option value="">Choose a Zone · in {currentZoneLabel}</option>
                 {moveDestinations.map((zone) => (
-                  <option key={zone.id} value={zone.id}>
+                  <option key={zone.id} value={zone.id} disabled={!zone.allowed}>
                     {zone.label}
                   </option>
                 ))}
               </select>
+              {moveDestinations.some((zone) => zone.needsPermission) ? <small>Ask to enter in the Scene.</small> : null}
             </span>
           ) : null}
         </span>
@@ -985,13 +986,6 @@ export function RoomPanel({
             {sceneSettings}
           </div>
         </div>
-      ) : null}
-      {room.area === "outside" ? (
-        <p className={`${ELEMENT_TAG}-hint`} role="status">
-          {room.spaceClass === "residence"
-            ? "You’re outside this Residence. A resident needs to invite you in. You can speak in your own words, or leave whenever you like."
-            : "You’re outside this Venue. You can speak in your own words, or leave whenever you like."}
-        </p>
       ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
         {!settingsOpen ? (

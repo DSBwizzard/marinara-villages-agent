@@ -566,7 +566,7 @@ export async function verifyFoundingLayout(group) {
           "data-zone-id",
           "common:base",
         );
-        await expect(sheet.getByRole("switch", { name: "Restricted access", exact: true })).toBeVisible();
+        await expect(sheet.getByRole("switch", { name: "Permission required", exact: true })).toBeVisible();
         await expect(
           sheet
             .getByRole("region", { name: "Zone artwork", exact: true })

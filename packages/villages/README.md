@@ -94,7 +94,7 @@ Each Zone, including the Entrance, keeps one account of **Long-term details**. P
 
 A Zone can also retain one paragraph of **Short-term details**, such as cups left after tea. It fades after about a Village day. Unrelated new activity does not extend that window; deliberately maintaining the whole arrangement can renew it. Looking at a place or mentioning it does not refresh it. Ordinary temporary use requires valid access; enduring alterations also need evidenced authority over that Zone. Already scheduled resident encounters use the same rules without a new activity scheduler. A residence move changes who lives there and who controls access; it does not automatically rewrite the room or transport belongings.
 
-Entering a private space requires permission. Knowing that a room exists, being friends with someone, or hearing a sound from it does not grant access or reveal its contents. An invitation permits entry; use **Move** when you want to go there. The [Venue and Zone reference](venue-zones.md) covers detailed access and sound rules.
+Visit a Venue to arrive at its Entrance. Use **Move** to see which Zones you can enter. When a room says **Permission required**, ask to enter in the Scene. An invitation opens the room for this visit. Standing permission can also apply on a later visit. The [Venue and Zone reference](venue-zones.md) covers detailed access and sound rules.
 
 On a phone, use portrait orientation. Places opens as a drawer, and Venue editing opens as a sheet.
 
