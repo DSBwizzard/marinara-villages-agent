@@ -452,7 +452,10 @@ await withBrowser(browser, async () => {
                         source: "agreed",
                       },
                       ...(requestUrl.searchParams.get("inspect") === "true"
-                        ? [{ startMinute: 480, endMinute: 600, activity: "PRIVATE scheduled task" }]
+                        ? [
+                            { startMinute: 0, endMinute: 360, activity: "Sleeping", resting: true },
+                            { startMinute: 480, endMinute: 600, activity: "PRIVATE scheduled task" },
+                          ]
                         : []),
                     ]
                   : [],
@@ -851,6 +854,16 @@ await withBrowser(browser, async () => {
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
       await clickCharacterTool(page, "Inspect");
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toBeVisible();
+      const week = overview.getByRole("group", { name: "Weekly Agenda", exact: true });
+      const axis = await week.getByText("Noon", { exact: true }).boundingBox();
+      const appointment = await week.getByRole("button", { name: /Review maps/ }).boundingBox();
+      assert.ok(Math.abs(axis.y + axis.height / 2 - appointment.y) < 1, "Noon aligns exactly with the appointment");
+      const tints = await Promise.all(
+        [/Sleeping/, /PRIVATE scheduled task/, /Review maps/].map((name) =>
+          week.getByRole("button", { name }).evaluate((button) => getComputedStyle(button).backgroundColor),
+        ),
+      );
+      assert.equal(new Set(tints).size, 3, "Sleep, routine, and agreed plans are distinct");
       await clickCharacterTool(page, "Leave Inspect");
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
       await expect(overview.getByRole("button", { name: /Review maps/ })).toBeVisible();

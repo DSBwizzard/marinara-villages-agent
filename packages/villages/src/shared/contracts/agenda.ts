@@ -15,6 +15,7 @@ export type AgendaWeek = {
       startMinute: number;
       endMinute: number;
       activity: string;
+      resting?: true;
       place?: string;
       source?: "told" | "seen" | "agreed";
     }[];

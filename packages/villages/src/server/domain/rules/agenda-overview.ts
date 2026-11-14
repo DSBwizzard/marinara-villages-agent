@@ -150,6 +150,7 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
           startMinute,
           endMinute,
           activity,
+          ...(restingAgendaBlock({ activity }) ? { resting: true as const } : {}),
           ...(venue ? { place: zone && (inspect || zone.seen || source === "agreed") ? zone.name : venue.name } : {}),
           ...(source ? { source } : {}),
         };
