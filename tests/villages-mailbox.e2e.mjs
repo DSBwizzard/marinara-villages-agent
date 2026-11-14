@@ -11,7 +11,7 @@ import {
   acceptResidentLetter,
   readDeliveredLetter,
 } from "../packages/villages/src/server/domain/rules/mail-delivery.js";
-import { createMailboxPresentation } from "../packages/villages/src/server/domain/rules/mailbox-view.js";
+import { createMailboxPresentation, readKeepsakes } from "../packages/villages/src/server/domain/rules/mailbox-view.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
@@ -64,6 +64,21 @@ await withBrowser(browser, async () => {
         memoryHash("one already generated response"),
         at,
       );
+      state.residentPlans.activities = {
+        garden: {
+          appointment: {
+            id: "garden",
+            resident: mara,
+            playerIncarnation: player.incarnation,
+            time: { date: "2026-11-09", startMinute: 720, endMinute: 780, venueId: "cafe" },
+            activity: "Plant the garden",
+          },
+          sceneId: "cafe-garden",
+          endedAt: at,
+          outcome: "letter",
+          keepsake: { letterId: "letter", caption: "The café garden", moment: "flowers" },
+        },
+      };
       const snapshot = structuredClone(base);
       snapshot.worldScope = villageWorldScope(state);
       const signatureImage = { id: "signature", ref: "signature", url: "http://mailbox.test/signature.svg" };
@@ -122,6 +137,8 @@ await withBrowser(browser, async () => {
         }
         if (url.pathname.endsWith("/messages/letter"))
           return fulfill(route, { json: presentation.letter("personal:mara", "letter") });
+        if (url.pathname.endsWith("/keepsakes")) return fulfill(route, { json: { keepsakes: readKeepsakes(state) } });
+        if (url.pathname.endsWith("/illustration")) return fulfill(route, { json: { image: "" } });
         assert(url.pathname.endsWith("/mailbox"));
         return fulfill(route, { json: presentation.mailbox(Object.fromEntries(url.searchParams)) });
       });
@@ -168,6 +185,16 @@ await withBrowser(browser, async () => {
       await expect(mail.getByRole("button", { name: "Write back" })).toHaveCount(0);
       assert.equal(readCommands, 2, "an already read former author's letter needs no further publication");
       await page.screenshot({ path: resolve(output, name + "-former.png") });
+      await expect(mail.getByText(/The café garden · Former resident/)).toBeVisible();
+      if (name === "phone") await mail.getByRole("button", { name: /Back to letters/ }).click();
+      await mail.getByRole("button", { name: "Keepsakes", exact: true }).click();
+      await expect(mail.getByRole("heading", { name: "Keepsakes Journal" })).toBeVisible();
+      await mail.getByRole("button", { name: "The café garden", exact: true }).click();
+      await expect(mail.getByRole("button", { name: "Generate illustration" })).toBeVisible();
+      if (name === "phone") {
+        await mail.getByRole("button", { name: /Back to letters/ }).click();
+        await expect(mail.getByRole("button", { name: "Inbox", exact: true })).toBeVisible();
+      }
       await page.close();
     });
 });

@@ -506,7 +506,7 @@ export function Mailbox({
       if (epoch === uiEpoch.current) setBusy(false);
     }
   };
-  const detail = !!selection || composing;
+  const detail = !!selection || composing || journal;
   const retryPath = (threadId: string, messageId: string) =>
     `/mailbox/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/retry`;
 
@@ -759,6 +759,7 @@ export function Mailbox({
               type="button"
               className="villages-letter-back"
               onClick={() => {
+                setJournal(false);
                 choose(null);
                 setComposing(false);
               }}
