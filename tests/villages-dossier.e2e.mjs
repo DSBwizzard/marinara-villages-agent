@@ -307,7 +307,10 @@ await withBrowser(browser, async () => {
       const request = route.request(),
         requestUrl = new URL(request.url()),
         path = requestUrl.pathname;
-      if (request.method() === "GET") reads.push(path);
+      if (request.method() === "GET")
+        reads.push(
+          path.endsWith("/agendas") && requestUrl.searchParams.has("characterId") ? path + requestUrl.search : path,
+        );
       else if (!path.endsWith("/background/presence") && !path.endsWith("/reconcile"))
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
       if (path.endsWith("/background/presence"))
