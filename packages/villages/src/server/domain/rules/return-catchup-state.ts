@@ -153,13 +153,15 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   };
 }
 
-export const PLAYER_VISIT_ABSENCE_MS = 60 * 60_000;
+export function playerVisitAbsenceElapsed(state: VillageState, wallTime: number): boolean {
+  const lastPresence = state.returnCatchup?.lastPresenceWallTime;
+  return lastPresence !== undefined && wallTime - lastPresence >= 60 * 60_000;
+}
 
 /** Consume the return boundary in the same write as expiration. */
-export function expirePlayerVisitsOnReturn(state: VillageState, wallTime: number): void {
-  const tracking = state.returnCatchup;
-  if (!tracking?.lastPresenceWallTime || wallTime - tracking.lastPresenceWallTime < PLAYER_VISIT_ABSENCE_MS) return;
-  tracking.lastPresenceWallTime = wallTime;
+export function expirePlayerVisitsOnReturn(state: VillageState, wallTime: number): false | void {
+  if (!state.returnCatchup || !playerVisitAbsenceElapsed(state, wallTime)) return false;
+  state.returnCatchup.lastPresenceWallTime = wallTime;
   const locations = [
     ...state.venues,
     ...Object.values(placeRegistry(state)?.places ?? {}).map((place) => place.location),

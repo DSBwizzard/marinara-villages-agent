@@ -1128,14 +1128,19 @@ async function main() {
             known,
           );
         }
-        current.returnCatchup = { lastPresenceWallTime: Date.now() - (longAbsence ? 61 : 20) * 60_000 };
       });
       const visit = await enterVenue("home", "bedroom");
       assert.equal(visit.zoneId, "bedroom");
       const bedGrant = (await readVillageState({ memories: true })).venues[0].access!.permissions.find(
         (row) => row.sceneId === visit.id && row.zoneId === "bedroom",
       )!;
-      await prepareReturnCatchup(new Date(Date.now() + 5000), longAbsence ? "long-return" : "short-return");
+      await mutateVillageState((current) => {
+        current.returnCatchup = { lastPresenceWallTime: Date.now() - (longAbsence ? 61 : 20) * 60_000 };
+        if (longAbsence)
+          current.villagers.find((resident) => resident.characterId === "jim")!.agenda!.activeDay!.blocks[0].zoneId =
+            "bedroom";
+      });
+      if (!longAbsence) await prepareReturnCatchup(new Date(Date.now() + 5000), "short-return");
       const after = await activeVenueSession();
       const grants = (await readVillageState({ memories: true })).venues[0].access!.permissions;
       assert.equal(after!.id, visit.id, "The same Scene stays open after return.");
@@ -1157,6 +1162,10 @@ async function main() {
       );
       if (longAbsence) {
         assert.equal(after!.zoneId, "exterior");
+        assert(
+          !after!.participants.some((person) => person.characterId === "jim"),
+          "The return read does not disclose the newly occupied bedroom.",
+        );
         await assert.rejects(() => moveVenueZone(visit.id, "bedroom", after!.sceneRevision), {
           name: "VillagesRequestError",
         });
@@ -1194,6 +1203,10 @@ async function main() {
       } else assert.equal(after!.zoneId, "bedroom");
       await endVenueSession(visit.id);
     }
+    await mutateVillageState((current) => {
+      current.villagers.find((resident) => resident.characterId === "jim")!.agenda!.activeDay!.blocks[0].zoneId =
+        "office";
+    });
     const escortedArrival = await enterVenue("home", "office");
     assert.equal(escortedArrival.zoneId, "office", "Initial entry uses captured attendance for the named escort.");
     await endVenueSession(escortedArrival.id);
