@@ -18,6 +18,7 @@ const jobs = [
 ] as const;
 
 type ConnectionJob = (typeof jobs)[number];
+type ConnectionChoice = { key: ConnectionJob["key"]; id: string };
 
 const CONNECTION_READ_TIMEOUT_MS = 15_000;
 
@@ -39,7 +40,7 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
   const [settings, setSettings] = useState<VillageConnectionSettings | null>(null);
   const [options, setOptions] = useState<VillageConnectionOption[]>([]);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<ConnectionChoice | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [readFailed, setReadFailed] = useState(false);
   const alive = useRef(false);
@@ -122,44 +123,37 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
     if (enabled && viewing) refresh(true);
   }, [enabled, viewing, refresh]);
 
-  /**
-   * Save the moment a picker moves, the same way the automatic-update switches
-   * do. The reply is what was actually stored rather than what was sent, so
-   * every box is redrawn from the server's own answer — a picker that showed a
-   * choice the server refused would be worse than one that showed nothing.
-   */
   const choose = useCallback(
-    async (patch: Partial<VillageConnectionSettings>) => {
+    (choice: ConnectionChoice) => {
       if (!alive.current || saving.current || read.current || readFailed) return false;
       saving.current = true;
       const current = ++generation.current;
-      setBusy(true);
+      setPending(choice);
       setError("");
-      try {
-        const next = await request<VillageConnectionSettings>("/connections", {
-          method: "PUT",
-          body: JSON.stringify(patch),
-        });
-        if (alive.current && generation.current === current) setSettings(next);
-        return true;
-      } catch (cause) {
-        if (alive.current && generation.current === current) {
-          setReadFailed(true);
-          setError(
-            messageFrom(cause, "That connection could not be saved. Check the saved connections before continuing."),
-          );
-        }
-        return false;
-      } finally {
-        saving.current = false;
-        if (alive.current) {
-          setBusy(false);
-          if (refreshAfterSave.current) {
+      void (async () => {
+        try {
+          const next = await request<VillageConnectionSettings>("/connections", {
+            method: "PUT",
+            body: JSON.stringify({ [choice.key]: choice.id }),
+          });
+          if (alive.current && generation.current === current) setSettings(next);
+        } catch (cause) {
+          if (alive.current && generation.current === current) {
+            setReadFailed(true);
+            setError(
+              messageFrom(cause, "That connection could not be saved. Check the saved connections before continuing."),
+            );
+          }
+        } finally {
+          saving.current = false;
+          setPending(null);
+          if (alive.current && refreshAfterSave.current) {
             refreshAfterSave.current = false;
             refresh();
           }
         }
-      }
+      })();
+      return true;
     },
     [readFailed, refresh],
   );
@@ -169,9 +163,10 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
     options,
     error,
     readFailed,
-    saving: busy,
+    pending,
+    saving: pending !== null,
     refreshing,
-    busy: busy || refreshing || readFailed,
+    busy: pending !== null || refreshing || readFailed,
     choose,
     refresh,
   };
@@ -193,26 +188,26 @@ export function AgentConnectionsControls({
   compact?: boolean;
   disabled?: boolean;
 }) {
-  const { settings, options, error, readFailed, busy, choose, refresh } = connections;
+  const { settings, options, error, readFailed, busy, pending, choose, refresh } = connections;
   const [job, setJob] = useState<ConnectionJob | null>(null);
   const [search, setSearch] = useState("");
   const titleId = useId();
+  const pendingId = useId();
   const language = options.filter((option) => option.category === "language");
   const images = options.filter((option) => option.category === "image_generation");
   const systemId = settings?.systemConnectionId;
   const gmId = settings?.narrationConnectionId;
   const hasLanguageChoices = [systemId, gmId].every((id) => language.some((option) => option.id === id));
-  let progress = "";
-  if (connections.saving) progress = CONNECTION_SETUP_PROBLEMS.saving;
-  else if (!readFailed && (connections.refreshing || !settings)) progress = CONNECTION_SETUP_PROBLEMS.reading;
+  const progress = !readFailed && (connections.refreshing || !settings) ? CONNECTION_SETUP_PROBLEMS.reading : "";
 
   useEffect(() => {
-    if (progress) onSetupProblem?.(progress);
+    if (pending) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.saving);
+    else if (progress) onSetupProblem?.(progress);
     else if (readFailed) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.failed);
     else if (!systemId || !gmId) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.required);
     else if (!hasLanguageChoices) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.missing);
     else onSetupProblem?.("");
-  }, [gmId, hasLanguageChoices, onSetupProblem, progress, readFailed, systemId]);
+  }, [gmId, hasLanguageChoices, onSetupProblem, pending, progress, readFailed, systemId]);
 
   const pickingImages = job?.key === "imageConnectionId";
   const modelOptions = pickingImages ? images : language;
@@ -255,11 +250,17 @@ export function AgentConnectionsControls({
     >
       {compact ? null : <h2 id={titleId}>Model Connections</h2>}
       {job ? null : feedback}
+      {pending ? (
+        <span id={pendingId} className={`${P}-model-status`} role="status">
+          {CONNECTION_SETUP_PROBLEMS.saving}
+        </span>
+      ) : null}
       {settings ? (
         <div className={`${P}-model-rows`}>
           {jobs.map((entry) => {
             const artwork = entry.key === "imageConnectionId";
-            const id = settings[entry.key];
+            const saving = pending?.key === entry.key;
+            const id = saving ? pending.id : settings[entry.key];
             const selected = (artwork ? images : language).find((option) => option.id === id);
             const off = artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
             const missing = !!id && !off && !selected;
@@ -275,8 +276,12 @@ export function AgentConnectionsControls({
                 type="button"
                 className={`${P}-model-row`}
                 aria-haspopup="dialog"
-                disabled={busy || disabled}
+                aria-disabled={pending ? true : undefined}
+                aria-describedby={saving ? pendingId : undefined}
+                data-founding-problem={saving && onSetupProblem ? "" : undefined}
+                disabled={(busy && !pending) || disabled}
                 onClick={() => {
+                  if (pending) return;
                   setSearch("");
                   setJob(entry);
                 }}
@@ -296,7 +301,7 @@ export function AgentConnectionsControls({
                   {selected?.detail ? <small>{selected.detail}</small> : null}
                   {selected?.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
                 </span>
-                <span className={`${P}-model-chevron`} aria-hidden="true" />
+                <span className={saving ? `${P}-model-pending ${P}-spin` : `${P}-model-chevron`} aria-hidden="true" />
               </button>
             );
           })}
@@ -337,8 +342,8 @@ export function AgentConnectionsControls({
                     key={option.id}
                     aria-current={current || undefined}
                     disabled={busy || disabled}
-                    onClick={async () => {
-                      if (current || (await choose({ [job.key]: option.id }))) setJob(null);
+                    onClick={() => {
+                      if (current || choose({ key: job.key, id: option.id })) setJob(null);
                     }}
                   >
                     <span>

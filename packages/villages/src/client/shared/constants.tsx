@@ -10,7 +10,7 @@ export const VILLAGES_IMAGE_CONNECTION_DISABLED = "__villages_image_disabled__";
 
 export const CONNECTION_SETUP_PROBLEMS = {
   reading: "Checking model connections…",
-  saving: "Saving model connection…",
+  saving: "Model change pending",
   failed: "Check connections before continuing.",
   required: "Choose both System and GM connections before continuing.",
   missing: "Choose available language connections for System and GM.",
