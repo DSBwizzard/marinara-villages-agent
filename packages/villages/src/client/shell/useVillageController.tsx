@@ -345,8 +345,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useRemovedVenueNavigation({ closeExploration, openPlaceId, snapshot });
 
   const [menuPage, setMenuPage] = useState<MenuPage>("index");
-  const advancedOpen = screen === "menu" && menuPage === "advanced";
-  const connections = useAgentConnections(snapshot?.isFounded === true || advancedOpen, advancedOpen);
+  const generalOpen = screen === "menu" && (menuPage === "index" || menuPage === "general");
+  const connections = useAgentConnections(snapshot?.isFounded === true || generalOpen, generalOpen);
 
   useVenueRequestFocus({ element, focusedRequestId, menuPage, screen });
 

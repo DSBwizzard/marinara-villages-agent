@@ -116,6 +116,12 @@ await withBrowser(browser, async () => {
     let progressReads = 0;
     let consequence = "gentle";
     let progressFails = false;
+    let connectionSettings = {
+      systemConnectionId: "talk",
+      narrationConnectionId: "missing",
+      imageConnectionId: "__villages_image_disabled__",
+    };
+    const connectionPatches = [];
     let holdWorldSave = false,
       heldWorldSave,
       holdMapSave = false,
@@ -150,8 +156,13 @@ await withBrowser(browser, async () => {
         const body = route.request().postDataJSON();
         if (body.narrativeConsequence) consequence = body.narrativeConsequence;
       }
+      if (path.endsWith("/connections") && route.request().method() === "PUT") {
+        const patch = route.request().postDataJSON();
+        connectionPatches.push(patch);
+        connectionSettings = { ...connectionSettings, ...patch };
+      }
       const response = path.endsWith("/connections")
-        ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
+        ? connectionSettings
         : path.endsWith("/narration")
           ? {
               tense: "present",
@@ -190,7 +201,12 @@ await withBrowser(browser, async () => {
       fulfill(route, {
         status: 200,
         contentType: "application/json",
-        body: "[]",
+        json: [
+          { id: "talk", name: "Village Planner", provider: "openrouter", model: "fixture/planner" },
+          { id: "story", name: "Story Writer", provider: "anthropic", model: "fixture/story" },
+          { id: "image", name: "Paintbrush", provider: "image_generation" },
+          { id: "voice", name: "Voice Model", provider: "audio" },
+        ],
       }),
     );
     await page.route("http://villages.test/", (route) =>
@@ -220,6 +236,39 @@ await withBrowser(browser, async () => {
     if (mobile) await expect(picker).toBeVisible();
     else await expect(nav).toBeVisible();
     await expect(main).toBeVisible();
+    const models = main.getByRole("region", { name: "Model Connections" });
+    await expect(models.getByRole("button", { name: /^System .*Village Planner/ })).toBeEnabled();
+    const gm = models.getByRole("button", { name: /^GM / });
+    await expect(gm).toContainText("Missing connection");
+    await gm.click();
+    const gmPicker = page.getByRole("dialog", { name: "GM", exact: true });
+    await expect(gmPicker.getByText("Saved connection is missing")).toBeVisible();
+    await expect(gmPicker.getByRole("button", { name: /Paintbrush|Voice Model/ })).toHaveCount(0);
+    const search = gmPicker.getByRole("searchbox", { name: "Search language models" });
+    await search.fill("FIXTURE/STORY");
+    await expect(gmPicker.getByRole("button", { name: /Village Planner/ })).toHaveCount(0);
+    if (process.env.VILLAGES_MENU_SCREENSHOTS) {
+      await page.screenshot({
+        path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `model-picker-${width}-${height}.png`),
+      });
+    }
+    await gmPicker.getByRole("button", { name: /^Story Writer/ }).click();
+    await expect(gmPicker).toHaveCount(0);
+    await expect(gm).toContainText("Story Writer");
+    await expect(gm).toBeFocused();
+    const imageJob = models.getByRole("button", { name: /^Images / });
+    await expect(imageJob).toContainText("Disabled");
+    await imageJob.click();
+    const imagePicker = page.getByRole("dialog", { name: "Images", exact: true });
+    await expect(imagePicker.getByRole("button", { name: "Disabled", exact: true })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await expect(imagePicker.getByRole("button", { name: "Paintbrush", exact: true })).toBeVisible();
+    await expect(imagePicker.getByRole("button", { name: /^Story Writer/ })).toHaveCount(0);
+    await imagePicker.getByRole("button", { name: "Use Engine default", exact: true }).click();
+    await expect(imageJob).toContainText("Engine default");
+    assert.deepEqual(connectionPatches, [{ narrationConnectionId: "story" }, { imageConnectionId: "" }]);
     if (process.env.VILLAGES_MENU_SCREENSHOTS) {
       await page.screenshot({ path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `menu-index-${width}-${height}.png`) });
     }
@@ -241,6 +290,7 @@ await withBrowser(browser, async () => {
         await consequenceControl.selectOption("moderate");
         await expect(consequenceControl).toHaveValue("moderate");
       }
+      if (key === "advanced") await expect(models).toHaveCount(0);
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toHaveCount(0);
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);

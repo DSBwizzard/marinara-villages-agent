@@ -333,6 +333,19 @@ export async function verifyFoundingLayout(group) {
           .fill("An oceanfront expanse between the cliffs and river.");
         await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
+        await button("Connections").click();
+        const models = root.getByRole("region", { name: "Model Connections" });
+        const system = models.getByRole("button", { name: /^System / });
+        await expect(system).toContainText("Language model");
+        await system.click();
+        const systemPicker = page.getByRole("dialog", { name: "System", exact: true });
+        await expect(systemPicker.getByRole("button", { name: "Language model", exact: true })).toHaveAttribute(
+          "aria-current",
+          "true",
+        );
+        await expect(systemPicker.getByRole("button", { name: "Use Engine default" })).toHaveCount(0);
+        await page.keyboard.press("Escape");
+        await expect(system).toBeFocused();
         await button("Circumstances").click();
         const circumstance = root.getByRole("textbox", { name: "Starting circumstances", exact: true });
         await expect(circumstance).toHaveCount(1);

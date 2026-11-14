@@ -1,63 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { VillageConnectionSettings } from "../../../shared/contracts/village.js";
 import { messageFrom, request, requestHost } from "../../shared/api.js";
-import { ELEMENT_TAG, VILLAGES_IMAGE_CONNECTION_DISABLED } from "../../shared/constants.js";
+import { ELEMENT_TAG as P, VILLAGES_IMAGE_CONNECTION_DISABLED } from "../../shared/constants.js";
+import { ModalDialog } from "../../shared/ModalDialog.js";
 import { connectionOptionsFrom } from "../../shared/presentation.js";
+import { VillageIcon } from "../../shared/VillageIcon.js";
 import type { EngineConnectionRow, VillageConnectionOption } from "../../shared/types.js";
-/**
- * One connection picker.
- *
- * `Engine default` is the first option and the empty string, which is what the
- * server stores to mean "let the Engine choose". It is deliberately not a
- * fabricated id: an agent that has never been set up has no connection to name,
- * and the Engine already knows what to do with that.
- *
- * A choice whose connection has since been deleted still has to be drawn. A
- * `<select>` whose value matches no option silently shows its first one, so the
- * player would be told they had chosen the Engine default when what is stored
- * is the id of something that is gone. The missing id is added as an option
- * instead, so the box says what is actually saved and the next save can clear
- * it.
- */
-function ConnectionPicker({
-  id,
-  label,
-  options,
-  value,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  options: readonly VillageConnectionOption[];
-  value: string;
-  disabled: boolean;
-  onChange: (next: string) => void;
-}) {
-  const gone = value.length > 0 && !options.some((option) => option.id === value);
-  return (
-    <div className={`${ELEMENT_TAG}-field`}>
-      <label className={`${ELEMENT_TAG}-label`} htmlFor={id}>
-        {label}
-      </label>
-      <select
-        id={id}
-        className={`${ELEMENT_TAG}-select`}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">Engine default</option>
-        {gone ? <option value={value}>Missing — this connection is gone</option> : null}
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
+
+const jobs = [
+  { key: "systemConnectionId", label: "System", purpose: "World setup and background activity" },
+  { key: "narrationConnectionId", label: "GM", purpose: "Scenes and dialogue" },
+  { key: "imageConnectionId", label: "Images", purpose: "Maps and artwork" },
+] as const;
+
+type ConnectionJob = (typeof jobs)[number];
 
 /**
  * Which connection the village sends which kind of work to.
@@ -160,8 +116,8 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
    * choice the server refused would be worse than one that showed nothing.
    */
   const choose = useCallback(
-    async (patch: { systemConnectionId?: string; narrationConnectionId?: string; imageConnectionId?: string }) => {
-      if (!alive.current || saving.current || read.current || readFailed) return;
+    async (patch: Partial<VillageConnectionSettings>) => {
+      if (!alive.current || saving.current || read.current || readFailed) return false;
       saving.current = true;
       const current = ++generation.current;
       setBusy(true);
@@ -172,6 +128,7 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
           body: JSON.stringify(patch),
         });
         if (alive.current && generation.current === current) setSettings(next);
+        return true;
       } catch (cause) {
         if (alive.current && generation.current === current) {
           setReadFailed(true);
@@ -179,6 +136,7 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
             messageFrom(cause, "That connection could not be saved. Check the saved connections before continuing."),
           );
         }
+        return false;
       } finally {
         saving.current = false;
         if (alive.current) {
@@ -205,11 +163,7 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
   };
 }
 
-export function AgentConnections(props: {
-  onSetupProblem?: (problem: string) => void;
-  onImageWarningChange?: (needed: boolean) => void;
-  compact?: boolean;
-}) {
+export function AgentConnections(props: { onSetupProblem?: (problem: string) => void; compact?: boolean }) {
   const connections = useAgentConnections(true);
   return <AgentConnectionsControls {...props} connections={connections} />;
 }
@@ -217,108 +171,182 @@ export function AgentConnections(props: {
 export function AgentConnectionsControls({
   connections,
   onSetupProblem,
-  onImageWarningChange,
   compact = false,
   disabled = false,
 }: {
-  disabled?: boolean;
   connections: ReturnType<typeof useAgentConnections>;
   onSetupProblem?: (problem: string) => void;
-  onImageWarningChange?: (needed: boolean) => void;
   compact?: boolean;
+  disabled?: boolean;
 }) {
   const { settings, options, error, readFailed, busy, choose, refresh } = connections;
-
-  const talk = options.filter((option) => option.category === "language");
-  const pictures = options.filter((option) => option.category === "image_generation");
-  const hasEngineImageDefault = pictures.some((option) => option.defaultForAgents);
-  const imageNeedsWarning =
-    settings !== null &&
-    (settings.imageConnectionId === VILLAGES_IMAGE_CONNECTION_DISABLED ||
-      pictures.length === 0 ||
-      (settings.imageConnectionId.length === 0 && !hasEngineImageDefault));
-
-  useEffect(() => {
-    if (!onSetupProblem) return;
-    const systemId = settings?.systemConnectionId ?? "";
-    const narrationId = settings?.narrationConnectionId ?? "";
-    if (connections.readFailed) {
-      onSetupProblem("Check connections before continuing.");
-    } else if (connections.saving || !settings) {
-      onSetupProblem("Connections are still loading.");
-    } else if (systemId.length === 0 || narrationId.length === 0) {
-      onSetupProblem("Choose both System and GM connections before continuing.");
-    } else if (!talk.some((option) => option.id === systemId) || !talk.some((option) => option.id === narrationId)) {
-      onSetupProblem("Choose available language connections for System and GM.");
-    } else {
-      onSetupProblem("");
-    }
-  }, [connections.readFailed, connections.saving, onSetupProblem, settings, talk]);
+  const [job, setJob] = useState<ConnectionJob | null>(null);
+  const [search, setSearch] = useState("");
+  const titleId = useId();
+  const language = options.filter((option) => option.category === "language");
+  const images = options.filter((option) => option.category === "image_generation");
+  const systemId = settings?.systemConnectionId;
+  const gmId = settings?.narrationConnectionId;
+  const hasLanguageChoices = [systemId, gmId].every((id) => language.some((option) => option.id === id));
 
   useEffect(() => {
-    onImageWarningChange?.(imageNeedsWarning);
-  }, [imageNeedsWarning, onImageWarningChange]);
+    if (readFailed) onSetupProblem?.("Check connections before continuing.");
+    else if (busy || !settings) onSetupProblem?.("Connections are still loading.");
+    else if (!systemId || !gmId) onSetupProblem?.("Choose both System and GM connections before continuing.");
+    else if (!hasLanguageChoices) onSetupProblem?.("Choose available language connections for System and GM.");
+    else onSetupProblem?.("");
+  }, [busy, gmId, hasLanguageChoices, onSetupProblem, readFailed, settings, systemId]);
 
-  return (
-    <div className={`${ELEMENT_TAG}-field ${compact ? `${ELEMENT_TAG}-connections-compact` : ""}`}>
-      <span className={`${ELEMENT_TAG}-label`}>Connections</span>
-      {settings ? (
-        <div className={compact ? `${ELEMENT_TAG}-connections-grid` : ""}>
-          <ConnectionPicker
-            id={`${ELEMENT_TAG}-connection-system`}
-            label="System"
-            options={talk}
-            value={settings.systemConnectionId}
-            disabled={busy || disabled}
-            onChange={(next) => void choose({ systemConnectionId: next })}
-          />
-          <ConnectionPicker
-            id={`${ELEMENT_TAG}-connection-narration`}
-            label="GM"
-            options={talk}
-            value={settings.narrationConnectionId}
-            disabled={busy || disabled}
-            onChange={(next) => void choose({ narrationConnectionId: next })}
-          />
-          <div className={`${ELEMENT_TAG}-field`}>
-            <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-connection-image`}>
-              Images
-            </label>
-            <select
-              id={`${ELEMENT_TAG}-connection-image`}
-              className={`${ELEMENT_TAG}-select`}
-              value={settings.imageConnectionId}
-              disabled={busy || disabled}
-              onChange={(event) => void choose({ imageConnectionId: event.target.value })}
-            >
-              <option value={VILLAGES_IMAGE_CONNECTION_DISABLED}>Disabled</option>
-              <option value="">Use Engine default</option>
-              {settings.imageConnectionId.length > 0 &&
-              settings.imageConnectionId !== VILLAGES_IMAGE_CONNECTION_DISABLED &&
-              !pictures.some((option) => option.id === settings.imageConnectionId) ? (
-                <option value={settings.imageConnectionId}>Missing — this connection is gone</option>
-              ) : null}
-              {pictures.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      ) : error.length === 0 ? (
-        <span className={`${ELEMENT_TAG}-hint`}>Reading this agent&apos;s connections…</span>
-      ) : null}
-      {error ? (
-        <p className={`${ELEMENT_TAG}-error`} role="alert">
-          {error}
-          {readFailed ? (
-            <button type="button" onClick={() => refresh()}>
-              Retry
-            </button>
-          ) : null}
-        </p>
+  const pickingImages = job?.key === "imageConnectionId";
+  const modelOptions = pickingImages ? images : language;
+  const query = search.trim().toLowerCase();
+  const matches = modelOptions.filter((option) => `${option.name} ${option.detail}`.toLowerCase().includes(query));
+  const specialChoices = [];
+  if (pickingImages) specialChoices.push({ id: VILLAGES_IMAGE_CONNECTION_DISABLED, name: "Disabled", detail: "" });
+  if (pickingImages || !onSetupProblem) specialChoices.push({ id: "", name: "Use Engine default", detail: "" });
+  const problem = error ? (
+    <div className={`${P}-model-problem`} role="alert">
+      <span>{error}</span>
+      {readFailed ? (
+        <button type="button" onClick={() => refresh()}>
+          Retry
+        </button>
       ) : null}
     </div>
+  ) : null;
+
+  return (
+    <section
+      className={`${P}-model-connections`}
+      aria-label={compact ? "Model Connections" : undefined}
+      aria-labelledby={compact ? undefined : titleId}
+    >
+      {compact ? null : <h2 id={titleId}>Model Connections</h2>}
+      {settings ? (
+        <div className={`${P}-model-rows`}>
+          {jobs.map((entry) => {
+            const artwork = entry.key === "imageConnectionId";
+            const id = settings[entry.key];
+            const selected = (artwork ? images : language).find((option) => option.id === id);
+            const off = artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
+            const missing = !!id && !off && !selected;
+            const needsChoice = !!onSetupProblem && !artwork && !id;
+            let value = "Engine default";
+            if (off) value = "Disabled";
+            else if (missing) value = "Missing connection";
+            else if (needsChoice) value = "Choose a model";
+            else if (selected) value = selected.name;
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                className={`${P}-model-row`}
+                aria-haspopup="dialog"
+                disabled={busy || disabled}
+                onClick={() => {
+                  setSearch("");
+                  setJob(entry);
+                }}
+              >
+                <span className={`${P}-model-icon`}>
+                  <JobIcon job={entry} />
+                </span>
+                <span>
+                  <strong>{entry.label}</strong>
+                  <small>{entry.purpose}</small>
+                </span>
+                <span className={`${P}-model-assignment`} data-needs-choice={missing || needsChoice || undefined}>
+                  <strong>{value}</strong>
+                  {selected?.detail ? <small>{selected.detail}</small> : null}
+                </span>
+                <span className={`${P}-model-chevron`} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      ) : error ? null : (
+        <p role="status">Reading connections…</p>
+      )}
+      {job && settings ? (
+        <ModalDialog title={job.label} onClose={() => setJob(null)} className={`${P}-model-picker`}>
+          <div className={`${P}-model-picker-body`}>
+            <p>{job.purpose}</p>
+            {problem}
+            {settings[job.key] &&
+            settings[job.key] !== VILLAGES_IMAGE_CONNECTION_DISABLED &&
+            !modelOptions.some((option) => option.id === settings[job.key]) &&
+            !readFailed ? (
+              <p className={`${P}-model-problem`} role="status">
+                Saved connection is missing
+              </p>
+            ) : null}
+            <input
+              type="search"
+              aria-label={pickingImages ? "Search image models" : "Search language models"}
+              placeholder={pickingImages ? "Search image models" : "Search language models"}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <div className={`${P}-model-choices`}>
+              {[...specialChoices, ...matches].map((option) => {
+                const current = option.id === settings[job.key];
+                return (
+                  <button
+                    type="button"
+                    key={option.id}
+                    aria-current={current || undefined}
+                    disabled={busy || disabled}
+                    onClick={async () => {
+                      if (current || (await choose({ [job.key]: option.id }))) setJob(null);
+                    }}
+                  >
+                    <span>
+                      <strong>{option.name}</strong>
+                      {option.detail ? <small>{option.detail}</small> : null}
+                    </span>
+                    {current ? <span aria-hidden="true">✓</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+            {!modelOptions.length && !busy ? <p>Add a compatible model in Engine’s Connections panel.</p> : null}
+            {modelOptions.length > 0 && !matches.length ? <p>No matching models.</p> : null}
+            <button type="button" disabled={busy || disabled} onClick={() => refresh()}>
+              Refresh list
+            </button>
+          </div>
+        </ModalDialog>
+      ) : (
+        problem
+      )}
+    </section>
+  );
+}
+
+function JobIcon({ job }: { job: ConnectionJob }) {
+  if (job.key === "systemConnectionId") return <VillageIcon name="settings" />;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="24"
+      height="24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {job.key === "narrationConnectionId" ? (
+        <path d="M12 6c-2.5-2-6-2.5-9-1v14c3-1.5 6.5-1 9 1 2.5-2 6-2.5 9-1V5c-3-1.5-6.5-1-9 1Zm0 0v14" />
+      ) : (
+        <>
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <circle cx="15.5" cy="9" r="1.5" />
+          <path d="m3 16 5-5 9 9" />
+        </>
+      )}
+    </svg>
   );
 }

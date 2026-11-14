@@ -2,6 +2,7 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import type { SceneView, VillagerAgendaView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "./constants.js";
 import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
+import { villageConnectionCategory } from "../../shared/helpers/connection-category.js";
 import { isHouse, venueClassesFor, venueSpaceFor } from "./venue.js";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
 
@@ -59,27 +60,24 @@ export function venuePictureOf(venues: readonly VillageVenue[], room: SceneView)
   return (room.spaceClass ? venueSpaceFor(venue, room.spaceClass).image : null)?.url ?? "";
 }
 
-/**
- * The Engine's connection list, reduced to what a picker can draw.
- *
- * Video connections are dropped rather than shown greyed out: the village never
- * generates video, so offering one would be a choice that cannot be made.
- * Anything that is not an image connection is a language connection, which is
- * the same rule the Engine's own dropdowns apply.
- */
+/** Engine list metadata used to identify saved connections in the picker. */
 export function connectionOptionsFrom(rows: readonly EngineConnectionRow[]): VillageConnectionOption[] {
   const options: VillageConnectionOption[] = [];
   for (const row of rows) {
     const id = typeof row.id === "string" ? row.id.trim() : "";
-    if (id.length === 0) continue;
-    const provider = typeof row.provider === "string" ? row.provider : "";
-    if (["video_generation", "decision", "audio_generation"].includes(provider)) continue;
-    const name = typeof row.name === "string" && row.name.trim() ? row.name.trim() : id;
+    const category = villageConnectionCategory(typeof row.provider === "string" ? row.provider.trim() : "");
+    if (!id || !category) continue;
+    const model = typeof row.model === "string" ? row.model.trim() : "";
+    const name = (typeof row.name === "string" && row.name.trim()) || model || id;
+    const provider = category === "image_generation" ? row.imageService : row.provider;
+    const detail = [typeof provider === "string" ? provider.trim() : "", model]
+      .filter((text) => text && text.toLowerCase() !== name.toLowerCase())
+      .join(" · ");
     options.push({
       id,
       name,
-      category: provider === "image_generation" ? "image_generation" : "language",
-      defaultForAgents: row.defaultForAgents === true || row.defaultForAgents === "true",
+      category,
+      detail,
     });
   }
   return options;
