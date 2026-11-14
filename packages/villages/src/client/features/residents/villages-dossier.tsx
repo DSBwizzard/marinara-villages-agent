@@ -174,6 +174,7 @@ export function VillagerDossier({
   const content = useRef<HTMLDivElement>(null);
   const positions = useRef<Partial<Record<ProfileSection, number>>>({});
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
+  const knownInformation = profile?.entries.filter((entry) => entry.kind === "information") ?? [];
   const name = villager?.name ?? "Former villager";
   const images = villager?.sprite?.images ?? [];
   const neutral =
@@ -412,8 +413,8 @@ export function VillagerDossier({
                                 ? "Profile information is still being prepared."
                                 : "Profile information is unavailable."}
                             </p>
-                          ) : (
-                            <Sheet title="Agenda" icon="agenda">
+                          ) : villager || knownInformation.length ? (
+                            <div className={`${P}-dossier-sheet`}>
                               {villager ? (
                                 <WeeklyAgenda
                                   key={inspect && viewing !== false ? "inspect" : "player"}
@@ -423,11 +424,9 @@ export function VillagerDossier({
                                   request={request}
                                 />
                               ) : null}
-                              <RelationshipEntries
-                                entries={profile.entries.filter((entry) => entry.kind === "information")}
-                              />
-                            </Sheet>
-                          )}
+                              {knownInformation.length ? <RelationshipEntries entries={knownInformation} /> : null}
+                            </div>
+                          ) : null}
                           <div ref={setSignatureSurface} />
                           <Sheet title="Home and work" icon="venues">
                             {venues.some((venue) => venue.publicConnections.length) ? (

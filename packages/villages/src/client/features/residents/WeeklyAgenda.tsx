@@ -53,20 +53,8 @@ export function WeeklyAgenda({
       (block) => block.startMinute === selection?.block.startMinute && block.activity === selection.block.activity,
     );
   return (
-    <div className={P + "-weekly-agenda"} aria-label="Weekly Agenda">
+    <div className={P + "-weekly-agenda"} role="group" aria-label="Weekly Agenda">
       <style>{agendaStyles}</style>
-      <div className={P + "-week-heading"}>
-        <span>
-          {dayLabel(week.days[0].date)} – {dayLabel(week.days[6].date)}
-        </span>
-        <span>
-          {week.visibility === "inspect"
-            ? "Inspect · Full schedule"
-            : week.visibility === "shared"
-              ? "Shared schedule"
-              : "Known schedule"}
-        </span>
-      </div>
       <div className={P + "-week-grid"}>
         <div className={P + "-week-axis"} aria-hidden="true">
           <span>12 AM</span>
@@ -128,8 +116,6 @@ export function WeeklyAgenda({
             .filter(Boolean)
             .join(" · ")}
         </p>
-      ) : week.days.every(({ blocks }) => !blocks.length) ? (
-        <p>No known plans yet.</p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
     </div>
@@ -138,7 +124,6 @@ export function WeeklyAgenda({
 
 const agendaStyles = `
 .${P}-weekly-agenda{font:400 14px/1.35 var(--notebook-hand);container-type:inline-size}
-.${P}-week-heading{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin:0 0 8px}
 .${P}-week-grid{--hours:276px;display:grid;grid-template-columns:43px repeat(7,minmax(0,1fr));background:var(--menu-field);border:1px solid var(--dossier-line);border-radius:6px}
 .${P}-week-axis{margin-top:33px;display:grid;grid-template-rows:repeat(4,1fr);height:var(--hours);padding:0 4px;font-size:12px}
 .${P}-week-day{min-width:0;border-inline-start:1px solid var(--dossier-line)}

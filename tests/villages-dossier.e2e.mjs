@@ -845,7 +845,7 @@ await withBrowser(browser, async () => {
     await expect(overview.getByText("Learn to swim")).toHaveCount(0);
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     if (width === 1440) {
-      await expect(overview.getByText("Known schedule", { exact: true })).toBeVisible();
+      await expect(overview.getByRole("group", { name: "Weekly Agenda", exact: true })).toBeVisible();
       await overview.getByRole("button", { name: /Review maps/ }).click();
       await expect(overview.getByRole("status")).toContainText("Review maps");
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
@@ -853,7 +853,7 @@ await withBrowser(browser, async () => {
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toBeVisible();
       await clickCharacterTool(page, "Leave Inspect");
       await expect(overview.getByRole("button", { name: /PRIVATE scheduled task/ })).toHaveCount(0);
-      await expect(overview.getByText("Known schedule", { exact: true })).toBeVisible();
+      await expect(overview.getByRole("button", { name: /Review maps/ })).toBeVisible();
     }
     await expect(overview.getByText("Home · The Mill", { exact: true })).toBeVisible();
     await expect(overview.getByText("Work · The Harbour", { exact: true })).toBeVisible();
