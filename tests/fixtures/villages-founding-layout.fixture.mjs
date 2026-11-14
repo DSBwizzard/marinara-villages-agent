@@ -339,7 +339,7 @@ export async function verifyFoundingLayout(group) {
         await expect(system).toContainText("Language model");
         await system.click();
         const systemPicker = page.getByRole("dialog", { name: "System", exact: true });
-        await expect(systemPicker.getByRole("button", { name: "Language model", exact: true })).toHaveAttribute(
+        await expect(systemPicker.getByRole("button", { name: /^Language model/ })).toHaveAttribute(
           "aria-current",
           "true",
         );
