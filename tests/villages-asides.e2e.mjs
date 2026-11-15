@@ -132,7 +132,7 @@ await withBrowser(browser, async () => {
     };
     session.lines.push(...asides);
     await load();
-    const band = page.locator(`.${tag}-chat-vn-asides`);
+    const band = page.locator(`.${tag}-scene-asides`);
     await expect(band).toContainText("Save me the good chair.");
     await expect(band).toContainText("→ Riley");
     await expect(band.getByText("Whisper", { exact: true })).toHaveCount(1);
@@ -145,20 +145,20 @@ await withBrowser(browser, async () => {
       "src",
       /npc-silhouette\.webp$/,
     );
-    await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(4);
+    await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(2);
     const after = {
       dock: await dock.boundingBox(),
       reading: await reading.boundingBox(),
       text: await reading.textContent(),
     };
-    assert.deepEqual(after, before, "four asides never change the main reading, paging or dock geometry");
+    assert.deepEqual(after, before, "aside bubbles leave the reading and dock geometry stable");
     async function checkGeometry(label) {
       const geometry = await page.evaluate((tag) => {
         const rect = (node) => {
           const r = node.getBoundingClientRect();
           return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom };
         };
-        const band = document.querySelector(`.${tag}-chat-vn-asides`);
+        const band = document.querySelector(`.${tag}-scene-asides`);
         return {
           band: rect(band),
           dock: rect(document.querySelector(`.${tag}-chat-vn`)),
@@ -168,9 +168,7 @@ await withBrowser(browser, async () => {
           asideSize: parseFloat(getComputedStyle(band.querySelector(`.${tag}-chat-vn-aside-text`)).fontSize),
         };
       }, tag);
-      const available = await band.evaluate((node) =>
-        parseFloat(node.style.getPropertyValue("--villages-aside-available-height")),
-      );
+      const available = await band.evaluate((node) => parseFloat(node.style.getPropertyValue("--aside-height")));
       assert.ok(
         geometry.band.height > 0 || available === 0,
         `${label}: available stage space is used: ${JSON.stringify(geometry)}`,
@@ -178,16 +176,14 @@ await withBrowser(browser, async () => {
       assert.ok(geometry.band.y >= geometry.scene.y - 1, `${label}: no top clipping: ${JSON.stringify(geometry)}`);
       assert.ok(geometry.band.bottom <= geometry.dock.y + 1, `${label}: no dialogue overlap`);
       assert.ok(geometry.band.x >= 0 && geometry.band.right <= width, `${label}: no side clipping`);
-      if (mobile) assert.ok(geometry.asideSize < geometry.mainSize, "Aside text is smaller than main dialogue");
+      if (mobile) {
+        assert.ok(geometry.asideSize < geometry.mainSize, "Aside text is smaller than main dialogue");
+        assert.ok(geometry.bubbles[1].y >= geometry.bubbles[0].bottom, "phone bubbles are stacked");
+      }
       return geometry;
     }
     await checkGeometry("normal viewport");
-    if (mobile) {
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="left"]`)).toContainText("Mara");
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="left"]`)).toContainText("Eli");
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="right"]`)).toContainText("Lina");
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="right"]`)).toContainText("Taro");
-    }
+    await expect(band.locator(`.${tag}-aside-slot[data-side="left"]`)).toHaveCount(2);
     await page.screenshot({ path: resolve(output, `asides-${width}x${height}.png`) });
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     if (mobile) {
@@ -199,14 +195,7 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       }, visible);
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
-      await expect
-        .poll(async () => {
-          const bandBox = await band.boundingBox();
-          const sceneBox = await page.locator(`.${tag}-chat`).boundingBox();
-          return bandBox.y - sceneBox.y;
-        })
-        .toBeGreaterThanOrEqual(0);
-      await checkGeometry("keyboard viewport");
+      await expect(band).toBeHidden();
       await expect(composer).toHaveValue("A draft to keep.");
       await page.screenshot({ path: resolve(output, `asides-keyboard-${width}x${height}.png`) });
       await page.evaluate((height) => {
@@ -236,19 +225,17 @@ await withBrowser(browser, async () => {
     await expect(band).toContainText("A long aside with every word preserved.");
     if (mobile) {
       const text = band.locator(`.${tag}-chat-vn-aside-text`).first();
-      await expect.poll(() => text.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
-      const scrolled = await text.evaluate((node) => {
+      await expect.poll(() => band.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+      const scrolled = await band.evaluate((node) => {
         node.scrollTop = node.scrollHeight;
         return node.scrollTop;
       });
-      assert.ok(scrolled > 0, "long Aside text can be scrolled independently");
+      assert.ok(scrolled > 0, "the bubble pair can be scrolled without moving the dock");
       assert.equal(await text.locator("strong").count(), 35, "all Markdown and content survive");
     }
     assert.deepEqual(await dock.boundingBox(), before.dock);
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log(
-    "Scene asides: four speaker bubbles, full dock preservation, keyboard bounds, smaller text, paging, history, hide/restore and long-text scrolling passed.",
-  );
+  console.log("Scene asides: two speaker bubbles, mobile stacking, editing, history and long-text scrolling passed.");
 });

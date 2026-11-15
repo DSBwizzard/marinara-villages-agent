@@ -706,7 +706,6 @@ export function RoomPanel({
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
   const mobileLayout = stagingFrame.mobile;
   const stageLayout = stagingFrame.desktop;
-  const asideSide = (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5 ? "left" : "right";
 
   const waiting = (
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
@@ -1147,6 +1146,53 @@ export function RoomPanel({
           ))}
         </div>
       ) : null}
+      {!dialogueHidden && !historyOpen && step && step.asides.length > 0 ? (
+        <SceneAsides
+          asides={step.asides}
+          mobile={mobile}
+          positions={mobile ? mobileLayout : stageLayout}
+          renderAside={(aside, index) => (
+            <div
+              key={`${index}-${aside.register}`}
+              className={`${ELEMENT_TAG}-chat-vn-aside`}
+              data-register={aside.register}
+            >
+              <SceneFace
+                actorId={aside.speakerId ?? step.speakerId}
+                portrait={aside.speakerId ? portraits[aside.speakerId] : speakerPortrait}
+                name={aside.name ?? step.name}
+                glyph={step.player ? "person" : "initial"}
+                className={`${ELEMENT_TAG}-chat-vn-aside-face`}
+              />
+              <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
+                <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
+                  {aside.register === "side" ? null : (
+                    <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
+                      {aside.register === "whisper" ? "Whisper" : "Shout"}
+                    </span>
+                  )}
+                  <span
+                    className={`${ELEMENT_TAG}-chat-vn-aside-name`}
+                    style={nameStyle(aside.speakerId ?? step.speakerId)}
+                  >
+                    {aside.name ?? step.name}
+                  </span>
+                  {aside.register === "whisper" && aside.target ? (
+                    <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`→ ${aside.target}`}</span>
+                  ) : null}
+                </p>
+                <p
+                  className={`${ELEMENT_TAG}-chat-vn-aside-text`}
+                  style={speechStyle(aside.speakerId ?? step.speakerId)}
+                >
+                  {renderVillagesMarkdown(aside.text, `vn-aside-${index}-`)}
+                </p>
+              </div>
+            </div>
+          )}
+        />
+      ) : null}
+
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
         <div
           className={`${ELEMENT_TAG}-chat-cast`}
@@ -1297,55 +1343,6 @@ export function RoomPanel({
             />
           </div>
         ) : null}
-        {step && step.asides.length > 0 ? (
-          <SceneAsides
-            asides={step.asides}
-            mobile={mobile}
-            positions={mobile ? mobileLayout : stageLayout}
-            mainSpeakerId={step.speakerId}
-            desktopSide={asideSide}
-            renderAside={(aside, index) => (
-              <div
-                key={`${index}-${aside.register}`}
-                className={`${ELEMENT_TAG}-chat-vn-aside`}
-                data-register={aside.register}
-              >
-                <SceneFace
-                  actorId={aside.speakerId ?? step.speakerId}
-                  portrait={aside.speakerId ? portraits[aside.speakerId] : speakerPortrait}
-                  name={aside.name ?? step.name}
-                  glyph={step.player ? "person" : "initial"}
-                  className={`${ELEMENT_TAG}-chat-vn-aside-face`}
-                />
-                <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
-                  <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
-                    {aside.register === "side" ? null : (
-                      <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
-                        {aside.register === "whisper" ? "Whisper" : "Shout"}
-                      </span>
-                    )}
-                    <span
-                      className={`${ELEMENT_TAG}-chat-vn-aside-name`}
-                      style={nameStyle(aside.speakerId ?? step.speakerId)}
-                    >
-                      {aside.name ?? step.name}
-                    </span>
-                    {aside.register === "whisper" && aside.target ? (
-                      <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`→ ${aside.target}`}</span>
-                    ) : null}
-                  </p>
-                  <p
-                    className={`${ELEMENT_TAG}-chat-vn-aside-text`}
-                    style={speechStyle(aside.speakerId ?? step.speakerId)}
-                  >
-                    {renderVillagesMarkdown(aside.text, `vn-aside-${index}-`)}
-                  </p>
-                </div>
-              </div>
-            )}
-          />
-        ) : null}
-
         {/* One readable paragraph shares the same dock with navigation and the composer at the latest paragraph. */}
         <div
           className={`${ELEMENT_TAG}-chat-vn-card`}

@@ -77,7 +77,6 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-room-actions-menu { max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 4rem)); overflow-y: auto; }
 .${tag}-room-screen .${tag}-room-actions-menu > select { width: 100%; min-width: 0; }
 .${tag}-room-screen .${tag}-chat-head:has(.${tag}-room-actions-menu) { z-index: 25; }
-.${tag}-room-screen .${tag}-chat-vn-asides { z-index: 1; max-height: min(20cqh, max(2rem, calc(var(--villages-scene-visible-height, 100cqh) - 18rem))); }
 .${tag}-scene-settings-backdrop { position: absolute; z-index: 30; inset: 0; height: var(--villages-scene-visible-height, 100%); display: grid; place-items: center; padding: .75rem; box-sizing: border-box; background: #0008; }
 .${tag}-scene-settings { width: min(36rem, 100%); max-height: 100%; overflow-y: auto; padding: .75rem; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); }
 .${tag}-scene-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -155,7 +154,7 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
   --cast-image-height: min(105cqw, 100cqh);
   --cast-lift: min(max(0px, calc(var(--villages-scene-resting-dock-height, 13.25rem) - min(26.25cqw, 25cqh) + var(--cast-depth, 0px))), max(0px, calc(100cqh - var(--cast-image-height))));
   left: calc(var(--cast-center) - var(--cast-display-width) / 2);
-  bottom: var(--cast-lift); height: var(--cast-image-height); opacity: .72; z-index: 1;
+  bottom: max(var(--cast-lift), var(--villages-aside-cast-lift, 0px)); height: var(--cast-image-height); opacity: .72; z-index: 1;
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-active="true"] { opacity: 1; z-index: 3; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="true"] > span:not(.${tag}-avatar) { display: none; }
