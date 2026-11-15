@@ -1031,6 +1031,14 @@ export function acceptNarrationContinuity(
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
   state.episodes = episodes;
+  for (const visitor of state.visitors ?? []) {
+    if (
+      !visitor.firstMetAt &&
+      source.actors.some((actor) => actor.id === visitor.characterId && actor.incarnation === visitor.incarnation) &&
+      episode.segments.some((line) => line.speakerId === visitor.characterId && line.heardBy?.includes("player"))
+    )
+      visitor.firstMetAt = readset.capturedAt;
+  }
   state.residentPlans = scheduledWorld.residentPlans;
   state.villagers = scheduledWorld.villagers;
   return { ...selection, episode: episodes.records.at(-1)! };

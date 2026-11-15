@@ -44,6 +44,7 @@ export type MailboxState = {
   messages: Record<string, MailboxMessage>;
 };
 export type PersonalMailInput = {
+  visitor?: string;
   seed: string;
   setupAt: string;
   residentId: string;
@@ -61,6 +62,7 @@ export type PersonalMailInput = {
   residentName: string;
 };
 export type PersonalMailResult = {
+  visitPreference?: { kind: "invite" | "space"; requestQuote: string; replyQuote: string };
   replyText: string;
   incomingMeaning: { keep: unknown[]; requires: string[] };
   replyMeaning: { keep: unknown[]; requires: string[] };

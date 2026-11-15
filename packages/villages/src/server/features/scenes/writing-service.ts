@@ -29,6 +29,7 @@ import { fittedNarrationReadset, narrationContinuityContext } from "../../domain
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
+import { findCardCharacter } from "../../domain/rules/visitors.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
@@ -138,12 +139,20 @@ export function createSceneWriting({
       .filter((row) => selectedIds.includes(row.characterId))
       .toSorted((a, b) => a.characterId.localeCompare(b.characterId, "en"));
     const cards = cast.flatMap((person) => {
-      const resident = village.villagers.find((row) => row.characterId === person.characterId);
+      const resident = findCardCharacter(village, person.characterId);
       return resident ? [readEffectiveVillagerCard(resident)] : [];
     });
     const profiles = cast.map((person) => {
       const card = cards.find((row) => row.id === person.characterId);
-      if (card) return venueCardProfile(card, player.name, false, false);
+      if (card) {
+        const visitor = village.visitors?.some((row) => row.characterId === person.characterId);
+        return (
+          venueCardProfile(card, player.name, false, false) +
+          (visitor
+            ? "\nVillage role: Visiting for a short stay. They can speak, react, and form relationships. Their attendance is supplied by the Village. They have no local job, Agenda, Wish or Project role."
+            : "")
+        );
+      }
       const npc = findNpc(village, person.characterId);
       if (!npc) throw conflict("A captured character's authored identity is unavailable.");
       return npcProfile(npc);
@@ -239,7 +248,7 @@ export function createSceneWriting({
       /\b(?:when (?:are|can|could|do|does|is|shall|should|will|would)|what (?:time|day|hours)|any plans|plans for|rest of your day|what(?: is|['’]s) on today|(?:doing|you do|up to|working|busy|hours|have time|plans?)\b[^.!?\r\n]{0,40}\btoday)\b/iu.test(
         input,
       );
-    const agendaOptions = agendaSpeechOptions(authority, selectedIds, new Date(calendar.instant), !agendaDiscussed);
+    const agendaOptions = agendaSpeechOptions(village, selectedIds, new Date(calendar.instant), !agendaDiscussed);
     const agendaVenues = agendaDiscussed
       ? [venue.id, ...places.filter(({ id }) => id !== venue.id).map(({ id }) => id)].slice(0, 10).flatMap((id) => {
           const destination = findLocation(village, id);
@@ -456,6 +465,13 @@ export function createSceneWriting({
       });
     }
     const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
+    const visitorIds = village.visitors
+      ?.filter((visitor) =>
+        readset.source.actors.some(
+          (actor) => actor.id === visitor.characterId && actor.incarnation === visitor.incarnation,
+        ),
+      )
+      .map((visitor) => visitor.characterId);
     const request: Request = {
       fitted,
       readset: {
@@ -472,6 +488,7 @@ export function createSceneWriting({
               })),
             }
           : {}),
+        ...(visitorIds?.length ? { visitorIds } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
           ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }

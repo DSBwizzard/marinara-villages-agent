@@ -1,3 +1,4 @@
+import { findCardCharacter } from "../../domain/rules/visitors.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   SpriteAppearance,
@@ -79,7 +80,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
   }
 
   function residentState(world: VillageState, id: string) {
-    const person = world.villagers.find((item) => item.characterId === id);
+    const person = findCardCharacter(world, id);
     if (!person) throw notFound("That resident no longer lives here.");
     const manager = coerceSpriteManager(person.spriteManager) ?? emptySpriteManager();
     return { person, manager, token: hash([villageWorldScope(world), person.incarnation, manager]) };

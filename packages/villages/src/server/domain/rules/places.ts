@@ -1,3 +1,4 @@
+import { cardCharacters } from "./visitors.js";
 import { z } from "zod";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import type { PlaceSummary } from "../../../shared/contracts/places.js";
@@ -186,7 +187,7 @@ export function findNpc(state: VillageState, id: string): NpcIdentity | undefine
 
 export function sceneActorIds(state: VillageState): string[] {
   return [
-    ...state.villagers.map((person) => person.characterId),
+    ...cardCharacters(state).map((person) => person.characterId),
     ...Object.values(placeRegistry(state)?.npcs ?? {})
       .filter((npc) => !npc.disabled)
       .map((npc) => npc.id),

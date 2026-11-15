@@ -1,7 +1,10 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/unwitnessed-relationship-and-room-target, narration-acceptance/passive-actor-notes
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/unwitnessed-relationship-and-room-target, narration-acceptance/passive-actor-notes, narration-acceptance/visitor-introduction
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
@@ -49,8 +52,11 @@ import {
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
-function fixture(input = "I think privately that I am nervous. I say, “My mother taught me weaving.”\n  🪑") {
-  const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
+function fixture(
+  input = "I think privately that I am nervous. I say, “My mother taught me weaving.”\n  🪑",
+  visitor = false,
+) {
+  const state: VillageState = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const place = establishPlace(
     state,
     {
@@ -66,7 +72,21 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     at,
     true,
   );
-  const id = Object.keys(state.worldPlaces.npcs)[0];
+  const id = visitor ? "visitor-mara" : Object.keys(state.worldPlaces.npcs)[0];
+  if (visitor) {
+    const card = readVillagerCard({ id, comment: "", data: { name: "Mara" } });
+    state.visitors = [
+      {
+        characterId: id,
+        incarnation: "visiting-mara",
+        addedAt: at,
+        letterFontId: "caveat",
+        cardSnapshot: { ...snapshotFromCard(card, 1), capturedAt: at },
+        visitsRevision: "visits-enabled",
+        visitsEnabled: true,
+      },
+    ];
+  }
   const scene = zoneEventScene(
     coerceSession({
       version: 5,
@@ -134,6 +154,20 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     ],
   };
 }
+
+await runCase("narration-acceptance/visitor-introduction", () => {
+  const f = fixture("Hello, I'm glad I caught you.", true);
+  const silent = f.publication(
+    { segments: [{ id: "silent", kind: "narration", text: "Footsteps cross the room." }] },
+    "silent",
+  );
+  assert.equal(acceptNarrationContinuity(f.state, silent, "silent", later).held, false);
+  assert.equal(f.state.visitors![0].firstMetAt, undefined);
+  const introduction = f.publication({ segments: f.response() }, "introduction");
+  assert.equal(acceptNarrationContinuity(f.state, introduction, "introduction", later).held, false);
+  assert.equal(f.state.visitors![0].firstMetAt, at);
+  assert.equal(acceptNarrationContinuity(f.state, introduction, "introduction", later).replayed, true);
+});
 
 await runCase("narration-acceptance/requested-memory", () => {
   const fact = "My mother taught me weaving";

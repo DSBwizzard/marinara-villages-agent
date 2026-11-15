@@ -17,6 +17,7 @@ import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import type { VillageResidentSprite } from "../models/world.js";
 import { memoryHash } from "./memory-integrity.js";
+import { findCardCharacter } from "./visitors.js";
 
 type SpriteEntry = VillageResidentSprite["expressions"][number];
 type SpriteCatalog = {
@@ -34,7 +35,7 @@ export function sceneSpriteSelection(scene: VenueScene, village: VillageState): 
   const ids = scene.activeIds;
   const sprites = Object.fromEntries(
     ids.flatMap((id) => {
-      const sprite = village.villagers.find((person) => person.characterId === id)?.sprite;
+      const sprite = findCardCharacter(village, id)?.sprite;
       if (!sprite) return [];
       const { defaultExpressionId, expressions, named } = sprite;
       return [

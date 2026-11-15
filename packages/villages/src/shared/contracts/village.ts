@@ -51,6 +51,8 @@ export type VillageVillagerView = {
   place: VillagePlaceView | null;
 };
 
+export type VillageVisitorView = VillageVillagerView & { met: boolean; visitsEnabled: boolean };
+
 export type ResidentSprite = {
   assetId: string;
   named?: true;
@@ -175,6 +177,8 @@ export type VillageSnapshot = {
     completesAt?: string;
   }[];
   villagers: VillageVillagerView[];
+  visitors?: VillageVisitorView[];
+  visitorNotice?: { venueId: string; venueName: string; name?: string };
   /**
    * Whether the village has been founded yet. Not part of the settings: it is a
    * fact about the village, not something the player can edit.

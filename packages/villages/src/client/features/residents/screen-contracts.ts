@@ -64,6 +64,8 @@ export type ResidentsScreenController = {
 
 /** Values and actions used by RosterScreen; independent of shell implementation. */
 export type RosterScreenController = {
+  readonly setSnapshot: ResidentsScreenController["setSnapshot"];
+  readonly openVenue: ResidentsScreenController["openVenue"];
   readonly error: string;
   readonly menuPage: import("../../shared/types").MenuPage;
   readonly openPerson: (navigation: DossierNavigation) => void;

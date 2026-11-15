@@ -1,3 +1,4 @@
+import { knownCardCharacters } from "./visitors.js";
 import type { VillageState } from "../models/world.js";
 import type { ContinuityCapture, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import { episodeContextRooms } from "./episode-sources.js";
@@ -107,7 +108,7 @@ export function captureContinuityContext(
     renderedHistory = { ...history, episodes: interactions };
   const subjects = [
       continuityActor(state, "player")!,
-      ...state.villagers.map((resident) => continuityActor(state, resident.characterId)!),
+      ...knownCardCharacters(state).map((resident) => continuityActor(state, resident.characterId)!),
       ...holders,
       ...references,
     ]

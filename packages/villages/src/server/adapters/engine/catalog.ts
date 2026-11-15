@@ -7,7 +7,7 @@ import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type {
   VillageCatalogEntry,
   VillagePersona,
-  VillageVillager,
+  VillageCardCharacter,
   VillageVillagerCardSnapshot,
 } from "../../domain/models/world.js";
 import { asRecord, asString, asStringArray, asTrimmedString, condense } from "../../domain/rules/coerce.js";
@@ -45,7 +45,9 @@ export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot):
 }
 
 /** Runtime reads use the adopted snapshot. Live cards are only read by refresh/capture flows. */
-export function readEffectiveVillagerCard(villager: VillageVillager): VillagerCard {
+export function readEffectiveVillagerCard(
+  villager: VillageCardCharacter & { admission?: VillagerCard["admission"] },
+): VillagerCard {
   return { ...villagerCardFromSnapshot(villager.cardSnapshot), admission: villager.admission };
 }
 

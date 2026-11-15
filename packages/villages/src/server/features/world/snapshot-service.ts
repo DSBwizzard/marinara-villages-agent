@@ -17,6 +17,7 @@ import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagePresence } from "../../domain/rules/village-projections.js";
+import { cardCharacters, visitorPosition } from "../../domain/rules/visitors.js";
 import {
   exactSnapshotTransition,
   isVillageFounded,
@@ -50,7 +51,7 @@ export function createVillageSnapshot({
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock) now = new ZonedDate(now, clock.timeZone);
     if (await rollActiveAgendas(now, village, clock?.revision)) village = await readVillageState({ memories: true });
-    const residentIds = village.villagers.map((villager) => villager.characterId);
+    const residentIds = cardCharacters(village).map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
     if (
@@ -149,6 +150,23 @@ export function createVillageSnapshot({
         villager.cardSnapshot.dialogueColor ?? "",
         destination,
       );
+    });
+    const visit = visitorPosition(village, now, presence);
+    const visitors = village.visitors?.map((visitor) => {
+      const card = cardsById.get(visitor.characterId);
+      return {
+        ...projectVillager(
+          visitor,
+          card ? visitor.cardSnapshot.name : null,
+          "",
+          visitor.cardSnapshot.tags,
+          visitor.cardSnapshot.nameColor ?? "",
+          visitor.cardSnapshot.dialogueColor ?? "",
+          null,
+        ),
+        met: Boolean(visitor.firstMetAt),
+        visitsEnabled: visitor.visitsEnabled,
+      };
     });
     const snapshot: VillageSnapshot = {
       worldScope: villageWorldScope(village),
@@ -270,6 +288,16 @@ export function createVillageSnapshot({
       })),
       residences: village.residences,
       villagers,
+      ...(visitors?.length ? { visitors } : {}),
+      ...(visit
+        ? {
+            visitorNotice: {
+              venueId: visit.venueId,
+              venueName: visit.name,
+              ...(visit.person.firstMetAt ? { name: visit.person.cardSnapshot.name } : {}),
+            },
+          }
+        : {}),
       isFounded: isVillageFounded(village),
       settings: villageSettings(
         village,

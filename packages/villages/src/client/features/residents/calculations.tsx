@@ -7,6 +7,7 @@ export function calculatePortraitWanted(ports: {
   const { catalog, screen, setupStep, snapshot } = ports;
   return [
     ...(snapshot?.villagers ?? []).map((villager) => villager.characterId),
+    ...(snapshot?.visitors ?? []).map((visitor) => visitor.characterId),
     ...(screen === "setup" && setupStep === 1 ? (catalog ?? []).map((entry) => entry.id) : []),
   ].join("\n");
 }

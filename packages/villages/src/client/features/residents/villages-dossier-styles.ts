@@ -113,6 +113,17 @@ export const DOSSIER_STYLES = `
 .${P}-directory-text:has(small) strong{-webkit-line-clamp:1}
 .${P}-directory-pagination{display:flex;align-items:center;justify-content:center;gap:16px;flex:none;margin-top:12px;font-size:17px}
 .${P}-directory-root .${P}-directory-pagination button{min-width:44px;min-height:44px;padding:4px 10px;background:transparent;border-color:var(--dossier-line)}
+.${P}-people-sections{justify-content:flex-start;margin:0 0 .65rem;gap:.5rem}
+.${P}-directory-root .${P}-people-sections button[aria-pressed=true]{border-color:currentColor}
+.${P}-visitor-directory{flex:1;min-height:0;min-width:0;overflow:auto;padding:0 .35rem .8rem 0}
+.${P}-visitor-directory form,.${P}-visitor-actions,.${P}-visitor-heading{display:flex;align-items:center;flex-wrap:wrap;gap:.55rem}
+.${P}-visitor-directory form{align-items:end}
+.${P}-visitor-directory select{display:block;max-width:100%;width:100%;min-height:44px}
+.${P}-visitor-directory form label{flex:1;min-width:min(14rem,100%)}
+.${P}-visitor-directory button{min-height:44px}
+.${P}-visitor-directory>article{padding:.85rem 0;border-bottom:1px solid var(--dossier-line)}
+.${P}-visitor-heading{margin-bottom:.55rem}
+.${P}-visitor-heading .${P}-avatar{width:2.5rem;height:2.5rem;flex:none}
 
 @container village-desk (min-width:701px) and (max-width:1100px){
  .${P}-people-layout{grid-template-columns:220px minmax(0,1fr);gap:24px}

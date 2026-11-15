@@ -455,7 +455,7 @@ export function createLiveScenes({
     const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
     const previousMoment = moment(new Date(previousAt));
     const { attendance, accompanying, departedIds, sameRoutine } = projectLiveAttendance(village, session, venue, now);
-    const continuity = captureSceneContinuity(village, session, now.getTime());
+    const continuity = captureSceneContinuity(village, { ...session, sceneAttendance: attendance }, now.getTime());
     if (
       session.continuity &&
       Math.floor(Date.parse(session.continuity.capturedAt) / 60_000) === Math.floor(now.getTime() / 60_000) &&

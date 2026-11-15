@@ -11,7 +11,7 @@ import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
 import { clarifyRelationships, readRelationshipsInspect, readRelationshipsView } from "./relationships.js";
 import { applyVillagerRefresh, previewVillagerRefresh } from "./resident-cards.js";
-import { addVillager, editIdentityDescription, removeVillager } from "./resident-roster.js";
+import { addVillager, editIdentityDescription, removeVillager, setVisitor } from "./resident-roster.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
 import { socialMail } from "./social-mail.js";
 import { wishes } from "./wishes/service.js";
@@ -171,6 +171,25 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
 }
 export function registerResidentRoutes(engine: FastifyInstance) {
   const app = engine;
+  const scopeId = z.string().regex(/^[a-f0-9]{64}$/);
+  app.put<{ Params: CharacterParams }>("/visitors/:characterId", async (request, reply) => {
+    try {
+      const { scope, enabled } = z.object({ scope: scopeId, enabled: z.boolean() }).strict().parse(request.body);
+      await setVisitor(readCharacterId(request.params.characterId), scope, enabled);
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "updating visits");
+    }
+  });
+  app.post<{ Params: CharacterParams }>("/visitors/:characterId/move-in", async (request, reply) => {
+    try {
+      const { scope } = z.object({ scope: scopeId }).strict().parse(request.body);
+      await addVillager(readCharacterId(request.params.characterId), undefined, undefined, scope);
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "moving a Visitor in");
+    }
+  });
   app.patch<{ Params: CharacterParams; Body: unknown }>(
     "/villagers/:characterId/description",
     async (request, reply) => {

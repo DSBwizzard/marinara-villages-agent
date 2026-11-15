@@ -13,6 +13,7 @@ import { badRequest, conflict } from "./errors.js";
 import { villageWorldScope } from "./village-identity.js";
 import { memoryHash } from "./memory-integrity.js";
 import { continuityActor } from "./continuity-actors.js";
+import { findCardCharacter } from "./visitors.js";
 
 const peer = (message: MailboxMessage) => (message.from.id === "player" ? message.to : message.from);
 export const mailboxThreadId = (residentId: string) => "personal:" + residentId;
@@ -117,9 +118,8 @@ export function createMailboxPresentation(village: VillageState, state: MailboxS
     message.from.id === "player" || (message.to.id === "player" && message.status === "delivered");
   function threadInfo(message: MailboxMessage) {
     const party = peer(message),
-      resident = village.villagers.find(
-        (resident) => resident.characterId === party.id && resident.incarnation === party.incarnation,
-      );
+      person = findCardCharacter(village, party.id),
+      resident = person?.incarnation === party.incarnation ? person : undefined;
     const letterFontId = resident?.letterFontId ?? village.formerLetterFonts?.[party.id];
     if (letterFontId === undefined) throw conflict("This correspondent has no writing-style assignment.");
     return {

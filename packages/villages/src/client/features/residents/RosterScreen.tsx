@@ -4,10 +4,12 @@ import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHea
 import { PeopleBook } from "./PeopleBook.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import type { RosterScreenController } from "./screen-contracts.js";
+import { VisitorDirectory } from "./VisitorDirectory.js";
 
 export function RosterScreen({ controller, selectedId }: { controller: RosterScreenController; selectedId?: string }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [showVisitors, setShowVisitors] = useState(false);
   const { error, menuPage, openPerson, portraits, screen, snapshot } = controller;
   if (screen !== "menu" || menuPage !== "villagers") return null;
   const villagers = (snapshot?.villagers ?? []).filter((person) =>
@@ -23,78 +25,95 @@ export function RosterScreen({ controller, selectedId }: { controller: RosterScr
           <header className={`${ELEMENT_TAG}-directory-head`}>
             <StorybookHeading>People</StorybookHeading>
           </header>
-          <label className={`${ELEMENT_TAG}-directory-search`}>
-            <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
-            <StorybookSearchIcon />
-            <input
-              type="search"
-              autoComplete="off"
-              placeholder="Find a person"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-                setPage(0);
-              }}
-            />
-          </label>
-          {error ? (
-            <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
-              {error}
-            </p>
-          ) : null}
-          <div className={`${ELEMENT_TAG}-directory-reading`}>
-            {villagers.length ? (
-              <div className={`${ELEMENT_TAG}-directory-grid`}>
-                {villagers.slice(currentPage * 4, currentPage * 4 + 4).map((person) => (
+          <nav
+            className={`${ELEMENT_TAG}-directory-pagination ${ELEMENT_TAG}-people-sections`}
+            aria-label="People sections"
+          >
+            <button type="button" aria-pressed={!showVisitors} onClick={() => setShowVisitors(false)}>
+              Villagers
+            </button>
+            <button type="button" aria-pressed={showVisitors} onClick={() => setShowVisitors(true)}>
+              {snapshot?.visitorNotice ? "Visitors · In town" : "Visitors"}
+            </button>
+          </nav>
+          {showVisitors && snapshot ? (
+            <VisitorDirectory controller={controller} />
+          ) : (
+            <>
+              <label className={`${ELEMENT_TAG}-directory-search`}>
+                <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
+                <StorybookSearchIcon />
+                <input
+                  type="search"
+                  autoComplete="off"
+                  placeholder="Find a person"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(0);
+                  }}
+                />
+              </label>
+              {error ? (
+                <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
+                  {error}
+                </p>
+              ) : null}
+              <div className={`${ELEMENT_TAG}-directory-reading`}>
+                {villagers.length ? (
+                  <div className={`${ELEMENT_TAG}-directory-grid`}>
+                    {villagers.slice(currentPage * 4, currentPage * 4 + 4).map((person) => (
+                      <button
+                        type="button"
+                        key={person.characterId}
+                        className={`${ELEMENT_TAG}-directory-card`}
+                        aria-label={`Open ${person.name} profile`}
+                        aria-pressed={selectedId === person.characterId}
+                        onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
+                      >
+                        <AvatarFace
+                          portrait={portraits[person.characterId]}
+                          name={person.name}
+                          className={`${ELEMENT_TAG}-avatar`}
+                        />
+                        <span className={`${ELEMENT_TAG}-directory-text`}>
+                          <strong>{person.name}</strong>
+                          {person.missing ? <small>Card missing</small> : null}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p role={!snapshot ? "status" : undefined}>
+                    {!snapshot ? "Reading villagers…" : search.trim() ? "No matching villagers." : "No villagers yet."}
+                  </p>
+                )}
+              </div>
+              {pageCount > 1 ? (
+                <nav className={`${ELEMENT_TAG}-directory-pagination`} aria-label="People pages">
                   <button
                     type="button"
-                    key={person.characterId}
-                    className={`${ELEMENT_TAG}-directory-card`}
-                    aria-label={`Open ${person.name} profile`}
-                    aria-pressed={selectedId === person.characterId}
-                    onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
+                    aria-label="Previous people page"
+                    disabled={currentPage === 0}
+                    onClick={() => setPage(currentPage - 1)}
                   >
-                    <AvatarFace
-                      portrait={portraits[person.characterId]}
-                      name={person.name}
-                      className={`${ELEMENT_TAG}-avatar`}
-                    />
-                    <span className={`${ELEMENT_TAG}-directory-text`}>
-                      <strong>{person.name}</strong>
-                      {person.missing ? <small>Card missing</small> : null}
-                    </span>
+                    ←
                   </button>
-                ))}
-              </div>
-            ) : (
-              <p role={!snapshot ? "status" : undefined}>
-                {!snapshot ? "Reading villagers…" : search.trim() ? "No matching villagers." : "No villagers yet."}
-              </p>
-            )}
-          </div>
-          {pageCount > 1 ? (
-            <nav className={`${ELEMENT_TAG}-directory-pagination`} aria-label="People pages">
-              <button
-                type="button"
-                aria-label="Previous people page"
-                disabled={currentPage === 0}
-                onClick={() => setPage(currentPage - 1)}
-              >
-                ←
-              </button>
-              <span role="status">
-                {currentPage + 1} / {pageCount}
-              </span>
-              <button
-                type="button"
-                aria-label="Next people page"
-                disabled={currentPage + 1 === pageCount}
-                onClick={() => setPage(currentPage + 1)}
-              >
-                →
-              </button>
-            </nav>
-          ) : null}
+                  <span role="status">
+                    {currentPage + 1} / {pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Next people page"
+                    disabled={currentPage + 1 === pageCount}
+                    onClick={() => setPage(currentPage + 1)}
+                  >
+                    →
+                  </button>
+                </nav>
+              ) : null}
+            </>
+          )}
         </main>
       </PeopleBook>
     </div>

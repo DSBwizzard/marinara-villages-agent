@@ -240,6 +240,14 @@ export function prepareNarrationNative(
       "native decision must match its actual current utterance",
     );
     assertNarrationSourceOrder(sources);
+    if (
+      command.type === "residence.request" ||
+      command.type === "residence.decide" ||
+      command.type === "venue.request" ||
+      command.type === "appointment" ||
+      command.type === "project.decide"
+    )
+      memoryRequire(!readset.visitorIds?.includes(command.by), "the deciding character was a Visitor in this exchange");
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
     if (command.type === "circumstance") {
       if (!command.situation) {

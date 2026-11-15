@@ -17,6 +17,7 @@ import { readEstablishment } from "../rules/establishment.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
+  VillageCardCharacter,
   VillagePendingDecision,
   VillageProject,
   VillageResidence,
@@ -28,6 +29,7 @@ import type {
   VillageVenueZone,
   VillageVillager,
   VillageVillagerCardSnapshot,
+  VillageVisitor,
   VillageZoneDraft,
 } from "../models/world.js";
 import { completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
@@ -174,7 +176,7 @@ export function defaultVillageState(): VillageState {
     maps: [],
   };
 }
-function coerceVillager(value: unknown): VillageVillager | null {
+function coerceCardCharacter(value: unknown): VillageCardCharacter | null {
   const raw = asRecord(value);
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
@@ -204,7 +206,6 @@ function coerceVillager(value: unknown): VillageVillager | null {
       : {}),
     characterId,
     letterFontId: raw.letterFontId,
-    agendaGeneration: asString(raw.agendaGeneration),
     cardSnapshot,
     ...(typeof asRecord(raw.identityDescription).revision === "string"
       ? {
@@ -216,10 +217,19 @@ function coerceVillager(value: unknown): VillageVillager | null {
         }
       : {}),
     ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
-    admission: readResidentAdmission(raw.admission) ?? { ...EMPTY_RESIDENT_ADMISSION },
     spriteManager,
     sprite: managerResidentSprite(spriteManager, characterId),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
+  };
+}
+function coerceVillager(value: unknown): VillageVillager | null {
+  const person = coerceCardCharacter(value);
+  if (!person) return null;
+  const raw = asRecord(value);
+  return {
+    ...person,
+    agendaGeneration: asString(raw.agendaGeneration),
+    admission: readResidentAdmission(raw.admission) ?? { ...EMPTY_RESIDENT_ADMISSION },
     // Absent reads as null rather than as an empty agenda, and the difference
     // matters: null means "not written for yet", which is what makes the
     // village write one. An empty agenda is a positive statement that asking
@@ -227,6 +237,53 @@ function coerceVillager(value: unknown): VillageVillager | null {
     agenda: coerceAgenda(raw.agenda),
     scheduleInfluence: influenceSettings(raw.scheduleInfluence),
   };
+}
+function coerceVisitors(value: unknown, residentIds: Set<string>): VillageVisitor[] {
+  memoryRequire(Array.isArray(value), "invalid saved Visitor list");
+  return value.map((entry) => {
+    const raw = asRecord(entry);
+    const person = coerceCardCharacter(entry);
+    const firstMetAt = asIsoString(raw.firstMetAt);
+    const preference = asRecord(raw.visitPreference);
+    const sentAt = asIsoString(preference.sentAt);
+    const from = asIsoString(preference.from);
+    const until = asIsoString(preference.until);
+    const kind = preference.kind;
+    const sourceId = asString(preference.sourceId);
+    const latestSourceId = asString(preference.latestSourceId);
+    memoryRequire(
+      person &&
+        asIsoString(raw.addedAt) &&
+        !residentIds.has(person.characterId) &&
+        typeof raw.visitsEnabled === "boolean" &&
+        typeof raw.visitsRevision === "string" &&
+        raw.visitsRevision.length > 0 &&
+        raw.visitsRevision.length <= 160 &&
+        (raw.firstMetAt === undefined || firstMetAt) &&
+        (raw.visitPreference === undefined ||
+          ((kind === "invite" || kind === "space") &&
+            sentAt &&
+            from &&
+            until &&
+            sentAt < until &&
+            from < until &&
+            sourceId.length > 0 &&
+            sourceId.length <= 400 &&
+            latestSourceId.length > 0 &&
+            latestSourceId.length <= 400)),
+      "invalid saved Visitor",
+    );
+    residentIds.add(person.characterId);
+    return {
+      ...person,
+      visitsEnabled: raw.visitsEnabled,
+      visitsRevision: raw.visitsRevision,
+      ...(firstMetAt ? { firstMetAt } : {}),
+      ...(sentAt && from && until && (kind === "invite" || kind === "space")
+        ? { visitPreference: { kind, sentAt, from, until, sourceId, latestSourceId } }
+        : {}),
+    };
+  });
 }
 function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot | null {
   const raw = asRecord(value);
@@ -1525,6 +1582,7 @@ export function coerceVillageState(value: unknown): VillageState {
       seen.add(entry.characterId);
       return true;
     }),
+    ...(raw.visitors === undefined ? {} : { visitors: coerceVisitors(raw.visitors, seen) }),
     // A stored box keeps its internal formatting, so it is bounded but not
     // trimmed to nothing; an empty box means "this village wrote nothing", which
     // is what the renderer answers with the shipped text.
