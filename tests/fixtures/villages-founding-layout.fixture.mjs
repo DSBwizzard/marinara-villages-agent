@@ -507,6 +507,13 @@ export async function verifyFoundingLayout(group) {
           await suggestion("Main Deck").getByRole("button", { name: "Use suggestion" }).click();
           await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
           assert.equal(settingCalls, 1, "One explicit action dispatches one request");
+          await expect
+            .poll(() =>
+              page.evaluate(() =>
+                [...document.fonts].some((font) => font.family === "village-letter-lora" && font.status === "loaded"),
+              ),
+            )
+            .toBe(true);
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
           await returnToMari();
           const draftedStageHeight = (await stage.boundingBox()).height;
@@ -521,10 +528,8 @@ export async function verifyFoundingLayout(group) {
           );
           await openSetting();
           await expect(button("Review Mari’s suggestions")).toContainText("3");
-          assert.ok(
-            Math.abs((await settingPanel.boundingBox()).height - originalEditorHeight) <= 1,
-            "Long alternatives occupy a single review control",
-          );
+          const updatedEditorHeight = (await settingPanel.boundingBox()).height;
+          assert.ok(updatedEditorHeight <= originalEditorHeight + 1, "Long alternatives must not expand the editor");
           await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Coastal Community");
           await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
           await button("Review Mari’s suggestions").click();

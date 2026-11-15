@@ -549,6 +549,9 @@ export const VILLAGES_FORGING_STYLES = `
   gap:0;
   background:linear-gradient(100deg,#271c3530,#271c35a8 58%,#271c35ea),url('/api/capability-packages/villages/assets/mari-founding-overlook.webp') center 62% / cover no-repeat #302d47;
 }
+.villages-forging-v2[data-lighting=day] {
+  background:linear-gradient(180deg,#23364b9c,transparent 7rem),linear-gradient(100deg,#23364b14,#23364b55),url('/api/capability-packages/villages/assets/mari-founding-overlook-day.webp') center 62% / cover no-repeat #526b82;
+}
 .villages-forging-steps {
   position:relative; isolation:isolate; display:grid; grid-template-columns:repeat(4,1fr); list-style:none;
   flex:none; width:min(15rem,75%); margin:.65rem auto 0; padding:0 0 1.15rem; text-align:center;

@@ -39,7 +39,15 @@ const PLACE_ERRORS = {
   locationName: "Name the starting location.",
   setting: "Describe the starting location.",
 };
-export function FoundingScreen({ controller, host }: { controller: FoundingScreenController; host?: HTMLElement }) {
+export function FoundingScreen({
+  controller,
+  host,
+  storybookDaylight,
+}: {
+  controller: FoundingScreenController;
+  host?: HTMLElement;
+  storybookDaylight: boolean;
+}) {
   const {
     busy,
     catalog,
@@ -447,6 +455,7 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
       <div
         className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}
         data-step={setupStep}
+        data-lighting={storybookDaylight ? "day" : "night"}
         ref={rootRef}
       >
         <ol className="villages-forging-steps" aria-label="Founding phases" role="list">

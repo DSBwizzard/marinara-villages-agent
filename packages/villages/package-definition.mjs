@@ -8,6 +8,7 @@ const menuArtAssets = [
   "venue-fallback.webp",
   "venue-fallback-day.webp",
   "mari-founding-overlook.webp",
+  "mari-founding-overlook-day.webp",
   "mari-founding-neutral.webp",
   "mari-founding-happy.webp",
   "mari-founding-playful.webp",

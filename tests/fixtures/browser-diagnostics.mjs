@@ -23,6 +23,7 @@ const deskAssets = {
   "venue-fallback.webp": "image/webp",
   "venue-fallback-day.webp": "image/webp",
   "mari-founding-overlook.webp": "image/webp",
+  "mari-founding-overlook-day.webp": "image/webp",
   "mari-founding-neutral.webp": "image/webp",
   "mari-founding-happy.webp": "image/webp",
   "mari-founding-playful.webp": "image/webp",

@@ -73,11 +73,25 @@ await withBrowser(browser, async () => {
     });
     await runCase("founding-timezone/" + width, async () => {
       founding = true;
+      serverInstant = "2026-10-15T02:59:59Z";
+      await page.clock.install({ time: new Date("2030-01-01T12:00:00Z") });
+      await page.clock.pauseAt(new Date("2030-01-01T12:01:00Z"));
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await expect(page.getByRole("list", { name: "Founding phases" })).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);
-      await page.screenshot({ path: ".build-tmp/clock-visual/founding-" + width + ".png" });
+      const scene = page.locator(".villages-forging-v2");
+      await expect(scene).toHaveAttribute("data-lighting", "day");
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
+      await scene.getByRole("button", { name: "Let’s get started" }).click();
+      const world = scene.getByLabel("The larger world");
+      await world.fill("A string of settlements along the coast");
+      await page.clock.fastForward(2000);
+      await expect(scene).toHaveAttribute("data-lighting", "night");
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook\.webp/);
+      await expect(world).toHaveValue("A string of settlements along the coast");
+      await page.screenshot({ path: ".build-tmp/clock-visual/founding-night-" + width + ".png" });
     });
     assert.deepEqual(errors, []);
     await context.close();

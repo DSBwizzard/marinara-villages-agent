@@ -123,6 +123,7 @@ export function FoundingSettingScene({
         ) : null}
         {beat === "village" ? (
           <form
+            autoComplete="off"
             onSubmit={(event) => {
               event.preventDefault();
               void draftSetupSetting(true);
