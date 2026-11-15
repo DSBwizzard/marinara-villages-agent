@@ -11,6 +11,7 @@ import {
   type FoundingSuggestionsPorts,
 } from "../packages/villages/src/server/features/founding/founding-suggestions-service.js";
 import { requestFoundingSuggestions } from "../packages/villages/src/client/features/founding/suggestion-request.js";
+import { createFoundingDraftSetting } from "../packages/villages/src/client/features/founding/setup-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 
 const tick = () => new Promise<void>((done) => setImmediate(done));
@@ -61,6 +62,8 @@ const service = createFoundingSuggestions(ports);
 const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
 {
   const brief = "Home is a converted freighter named Wayfarer.";
+  const worldBrief = "The Relay Belt has settlements on former cargo routes.";
+  const lorebookReference = "The Wayfarer runs supply deliveries between Relay Belt stations.";
   const setting = {
     name: "Wayfarer",
     startingLocationName: "The Main Deck",
@@ -69,8 +72,25 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     rules: "",
   };
   let completions = 0;
+  let lookups = 0;
   let finishReason = "stop";
+  let prompt: { role: string; content: string }[] = [];
   const writer = createFoundingDrafts({
+    readVillageLore: async (
+      ids: string[],
+      context: string,
+      _signal: AbortSignal | undefined,
+      budget: number,
+      options: { current: string },
+    ) => {
+      lookups++;
+      assert.equal(context, worldBrief);
+      assert.equal(options.current, brief);
+      assert.equal(budget, 900);
+      if (ids.includes("missing")) throw new Error("Selected lorebooks are unavailable.");
+      assert.deepEqual(ids, ["relay-belt"]);
+      return [lorebookReference];
+    },
     villagesConnectionIdFor: async (role: string) => {
       assert.equal(role, "system");
       return "test-system";
@@ -81,22 +101,37 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
         return { fitContext: (messages: unknown[]) => ({ messages }) };
       },
     }),
-    completeWithRoom: async (_model: unknown, messages: unknown[], maxTokens: number, options: any) => {
-      assert.deepEqual(messages.slice(1), [{ role: "user", content: brief }]);
+    completeWithRoom: async (_model: unknown, messages: typeof prompt, maxTokens: number, options: any) => {
+      prompt = messages;
       assert.ok(maxTokens <= 1536);
       assert.equal(options.reasoningEffort, undefined);
       completions++;
       return { content: JSON.stringify(setting), finishReason };
     },
   } as any);
-  const draftInput = { ...input, mode: "draft-setting", brief, selectedLorebookIds: ["excluded"] };
+  const draftInput = { ...input, mode: "draft-setting", brief };
   await assert.rejects(writer.suggestStartingVenues({ ...draftInput, brief: " " }), /Tell Mari/);
   assert.equal(completions, 0);
   assert.deepEqual(await writer.suggestStartingVenues(draftInput), { venues: [], setting });
+  assert.deepEqual(prompt.slice(1), [{ role: "user", content: brief }]);
+  assert.equal(lookups, 0, "Old or skipped lore selection never reads books");
   assert.equal(completions, 1);
   finishReason = "length";
   await assert.rejects(writer.suggestStartingVenues(draftInput), /complete setting/);
   assert.equal(completions, 2);
+  finishReason = "stop";
+  const withLore = { ...draftInput, worldBrief, selectedLorebookIds: ["relay-belt"], loreTokenBudget: 900 };
+  await assert.rejects(writer.suggestStartingVenues({ ...withLore, loreTokenBudget: -1 }), /token budget/);
+  assert.equal(lookups, 0);
+  await assert.rejects(writer.suggestStartingVenues({ ...withLore, selectedLorebookIds: ["missing"] }), /unavailable/);
+  assert.equal(completions, 2, "Unavailable lore does not dispatch a paid completion");
+  assert.deepEqual(await writer.suggestStartingVenues(withLore), { venues: [], setting });
+  assert.match(prompt[0]!.content, /follow the player's description whenever they differ/u);
+  assert.deepEqual(
+    prompt.slice(1).map((row) => JSON.parse(row.content)),
+    [{ lorebookReferences: [lorebookReference] }, { world: worldBrief, village: brief }],
+  );
+  assert.equal(completions, 3);
 }
 {
   const app = Fastify();
@@ -341,6 +376,69 @@ try {
   };
   await requestFoundingSuggestions(clientPorts, {}, {});
   assert.equal(retried, 1);
+  assert.equal(workspace.suggestionRequest, undefined);
+
+  const originalSetting = {
+    mode: "draft-setting",
+    brief: "Old village",
+    worldBrief: "Old world",
+    selectedLorebookIds: ["original-book"],
+    loreTokenBudget: 700,
+  };
+  workspace = {
+    ...emptyFoundingWorkspace(),
+    settingBrief: "Edited village",
+    settingWorldBrief: "Edited world",
+    suggestionRequest: {
+      id: "lore-draft-1",
+      sourceKey: "founding-setting",
+      quickStart: false,
+      draftSetting: true,
+      sourceInputs: JSON.stringify(originalSetting),
+    },
+  };
+  let settingPosts = 0;
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method !== "POST") return Response.json({ error: "Saved attempt not found" }, { status: 404 });
+    settingPosts++;
+    assert.deepEqual(JSON.parse(String(init.body)), {
+      ...originalSetting,
+      actionId: "lore-draft-1",
+      sourceKey: "founding-setting",
+    });
+    const setting = {
+      name: "Old village",
+      startingLocationName: "Old quay",
+      description: "An old quay.",
+      worldName: "Old world",
+      rules: "",
+    };
+    return Response.json({
+      id: "lore-draft-1",
+      sourceKey: "founding-setting",
+      status: "complete",
+      result: { setting, venues: [] },
+      error: "",
+    });
+  };
+  const noop = () => undefined;
+  const resume = createFoundingDraftSetting({
+    ...clientPorts,
+    setupWorkspace: workspace,
+    setupLorebookDraft: ["new-book"],
+    setupLoreTokenBudgetDraft: 1800,
+    setupSuggestionsClaim: { current: false },
+    setSetupSuggestionsBusy: noop,
+    setSetupName: noop,
+    setSetupLocationName: noop,
+    setSetupSetting: noop,
+    setSetupWorldName: noop,
+    setSetupContext: noop,
+  });
+  await resume(false);
+  assert.equal(settingPosts, 0, "Automatic recovery only reads the saved attempt");
+  await resume(true);
+  assert.equal(settingPosts, 1, "Explicit resume keeps the original lore selection and request ID");
   assert.equal(workspace.suggestionRequest, undefined);
   lost = false;
 } finally {

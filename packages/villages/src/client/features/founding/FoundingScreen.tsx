@@ -17,7 +17,7 @@ import {
 } from "../../../shared/helpers/founding-circumstance.js";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide } from "./FoundingGuide.js";
-import { FoundingSettingScene, SettingProposal } from "./FoundingSettingScene.js";
+import { FoundingSettingScene, SettingProposal, settingBeat } from "./FoundingSettingScene.js";
 import type { FoundingSetting } from "../../../shared/contracts/founding.js";
 import {
   FoundingPersonaSelector,
@@ -623,12 +623,21 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
               </section>
             </div>
           </div>
-          <div hidden={setupStep !== 0} className="villages-place-panels" data-editing={settingEditorOpen || undefined}>
+          <div
+            hidden={setupStep !== 0}
+            className="villages-place-panels"
+            data-editing={settingEditorOpen || undefined}
+            data-intro={settingBeat(setupWorkspace) !== "village" || undefined}
+          >
             {setupStep === 0 ? (
               <FoundingSettingScene
                 controller={controller}
                 onConnections={() => openSettingEditor("Connections")}
                 onEditSetting={() => openSettingEditor()}
+                onBeatChange={() => {
+                  setSettingEditorOpen(false);
+                  bodyRef.current?.scrollTo({ top: 0 });
+                }}
                 editSettingButton={editSettingButton}
                 next={nextReply}
               />

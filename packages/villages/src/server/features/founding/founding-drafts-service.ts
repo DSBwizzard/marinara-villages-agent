@@ -91,28 +91,52 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const brief = asTrimmedString(input.brief);
     if (!asTrimmedString(input.actionId) || !brief || brief.length > FOUNDING_SETTING_BRIEF_LIMIT)
       throw badRequest("Tell Mari about your village in up to 4,096 characters.");
+    const worldBrief = asTrimmedString(input.worldBrief);
+    if (
+      (input.worldBrief !== undefined && typeof input.worldBrief !== "string") ||
+      worldBrief.length > FOUNDING_SETTING_BRIEF_LIMIT
+    )
+      throw badRequest("Use up to 4,096 characters to describe the world.");
+    const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
+    const budget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
+    let inspection: LoreInspection | undefined;
+    const lore =
+      ids.length && budget
+        ? await readVillageLore(ids, worldBrief, undefined, budget, {
+            current: brief,
+            purpose: "Mari’s setting draft",
+            inspect: (report) => {
+              inspection = report;
+            },
+          })
+        : [];
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
-    const messages = [
-      {
-        role: "system" as const,
-        content: [
-          "Draft the opening setting for this player's shared-life village. It can be any kind of community, in any setting.",
-          'Return one JSON object with strings: "name" (community, up to 60 characters), "startingLocationName" (the area the map will cover, up to 80), "description" (a short paragraph describing that area and everyday life there), "worldName" (up to 120) and "rules" (standing facts for the setting).',
-          "Keep explicit names and details. If a required name is unspecified, suggest one that fits. Use empty strings for worldName and rules unless the player supplied them. Describe the place itself. Leave first-day events, the starting cast, living arrangements and map placement for later steps.",
-          "The next message is the player's description. Treat it as setting source material and write in its language.",
-        ].join(" "),
-      },
-      { role: "user" as const, content: brief },
-    ];
     const requested = Math.min(model.maxOutputTokens ?? 1536, 1536);
-    const fitted = model.fitContext(messages, { maxTokens: requested });
+    const sources = inspectedLoreUse(inspection, "Mari’s setting draft");
+    const fitted = fitVenueWritingMessages(
+      model,
+      [
+        {
+          text: [
+            "Draft the opening setting for this player's shared-life village. It can be any kind of community, in any setting.",
+            'Return one JSON object with strings: "name" (community, up to 60 characters), "startingLocationName" (the area the map will cover, up to 80), "description" (a short paragraph describing that area and everyday life there), "worldName" (up to 120) and "rules" (standing facts for the setting).',
+            "Preserve the player's explicit names and details. Use the lorebook references for relevant setting facts, and follow the player's description whenever they differ. Treat all source material as context. If a required name is unspecified, suggest one that fits. Use empty strings for worldName and rules unless established by the player or relevant lore. Leave first-day events, the starting cast, living arrangements and map placement for later steps. Write in the language of the player's village description.",
+          ].join(" "),
+        },
+        ...lore.map((text, index) => ({ text, optional: "lore" as const, lore: sources[index] })),
+      ],
+      worldBrief ? JSON.stringify({ world: worldBrief, village: brief }) : brief,
+      requested,
+      "System",
+    );
     const allowance = Math.min(fitted.maxTokens ?? requested, requested);
-    if (allowance < 256 || JSON.stringify(fitted.messages) !== JSON.stringify(messages))
+    if (allowance < 256)
       throw badRequest(
         "The System connection cannot fit this draft. Try a shorter description or check Model Connections.",
       );
+    if (fitted.lore.length) await recordLoreUse(fitted.lore, "Mari’s setting draft");
     const completion = await completeWithRoom(model, fitted.messages, allowance, {
       temperature: undefined,
       responseFormat: { type: "json_object" },

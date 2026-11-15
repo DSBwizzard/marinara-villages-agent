@@ -76,6 +76,8 @@ export async function verifyFoundingLayout(group) {
           hasTouch: view.width < 600,
           isMobile: view.width < 600,
         });
+        const draftWithLore = view.width === 1280 || view.width === 390;
+        const worldBrief = "The Relay Belt is a chain of settlements on old cargo routes.";
         await mockEngineLookups(context);
         const page = await context.newPage();
         if (view.width === 390 && view.height === 844)
@@ -135,7 +137,18 @@ export async function verifyFoundingLayout(group) {
                 body.brief,
                 settingCalls === 1 ? "Our village is a converted cargo ship." : "Our village is inside a dumpster.",
               );
-              assert.deepEqual(Object.keys(body).sort(), ["actionId", "brief", "mode", "sourceKey"]);
+              assert.deepEqual(Object.keys(body).sort(), [
+                "actionId",
+                "brief",
+                "loreTokenBudget",
+                "mode",
+                "selectedLorebookIds",
+                "sourceKey",
+                "worldBrief",
+              ]);
+              assert.deepEqual(body.selectedLorebookIds, ["relay-belt"]);
+              assert.equal(body.worldBrief, worldBrief);
+              assert.equal(body.loreTokenBudget, 1600);
               settingReceipt = {
                 id: body.actionId,
                 sourceKey: body.sourceKey,
@@ -265,7 +278,8 @@ export async function verifyFoundingLayout(group) {
             return send({ systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" });
           }
           if (path.endsWith("/catalog")) return send({ characters });
-          if (path.endsWith("/lorebooks")) return send({ books: [] });
+          if (path.endsWith("/lorebooks"))
+            return send({ books: [{ id: "relay-belt", name: "Relay Belt", enabled: true }] });
           if (path.endsWith("/image-style-profiles"))
             return send({ defaultProfileId: "fixture-ink", profiles: [{ id: "fixture-ink", name: "Ink" }] });
           return send(snapshot);
@@ -384,6 +398,26 @@ export async function verifyFoundingLayout(group) {
             .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
           ["Setting", "People", "Venues and Map", "Review"],
         );
+        const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
+        const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
+        await expect(scene).toContainText("Villages is about sharing life with a community");
+        await expect(button("Draft with Mari")).toHaveCount(0);
+        await button("Let’s get started").click();
+        await expect(currentStar).toHaveAttribute("aria-label", "Setting");
+        if (draftWithLore) {
+          await scene.getByLabel("The larger world").fill(worldBrief);
+          await button("Use this world").click();
+        } else await button("I only know the village so far").click();
+        await expect(currentStar).toHaveAttribute("aria-label", "Setting");
+        if (draftWithLore) {
+          await button("Choose lorebooks").click();
+          const picker = page.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
+          await picker.getByRole("checkbox", { name: "Relay Belt" }).check();
+          await picker.getByRole("button", { name: "Done", exact: true }).click();
+          await expect(scene).toContainText("1 lorebook selected for drafting");
+        } else await button("Skip for now").click();
+        await expect(currentStar).toHaveAttribute("aria-label", "Setting");
+        assert.equal(settingCalls, 0, "The opening beats do not call a model");
         await expect(root.locator(".villages-setting-stage img")).toHaveJSProperty("complete", true);
         assert.ok(await root.locator(".villages-setting-stage img").evaluate((image) => image.naturalWidth > 0));
         if (process.env.VILLAGES_SCREENSHOT_DIR)
@@ -391,7 +425,6 @@ export async function verifyFoundingLayout(group) {
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mari-setting-" + view.width + ".png"),
           });
         const phone = view.width <= 727;
-        const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
         const settingPanel = root.getByRole("region", { name: "Your setting" });
         const stage = root.locator(".villages-setting-stage");
         const openSetting = async () => {
@@ -435,7 +468,7 @@ export async function verifyFoundingLayout(group) {
           await button("Let’s meet the villagers").click();
           await expect(root.getByLabel("Location name", { exact: true })).toBeFocused();
         }
-        if (view.width === 1280 || view.width === 390) {
+        if (draftWithLore) {
           await returnToMari();
           if (phone) await expect(button("Edit setting")).toBeFocused();
           const originalStage = await stage.boundingBox();

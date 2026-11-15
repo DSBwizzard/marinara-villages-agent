@@ -32,6 +32,8 @@ export function createFoundingDraftSetting(
     | "setSetupSetting"
     | "setSetupWorldName"
     | "setSetupContext"
+    | "setupLorebookDraft"
+    | "setupLoreTokenBudgetDraft"
   > & {
     signal?: AbortSignal;
     persistSetupDraft: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
@@ -50,7 +52,13 @@ export function createFoundingDraftSetting(
     try {
       const input = pending
         ? JSON.parse(pending.sourceInputs ?? "null")
-        : { mode: "draft-setting", brief: setupWorkspace.settingBrief!.trim() };
+        : {
+            mode: "draft-setting",
+            brief: setupWorkspace.settingBrief!.trim(),
+            worldBrief: setupWorkspace.settingWorldBrief?.trim() ?? "",
+            selectedLorebookIds: ports.setupLorebookDraft,
+            loreTokenBudget: ports.setupLoreTokenBudgetDraft,
+          };
       const { setting } = await requestFoundingSuggestions(
         { ...ports, signal, setupBeginningSourceKey: "founding-setting" },
         { draftSetting: true, checkSetting: userInitiated },
@@ -66,6 +74,7 @@ export function createFoundingDraftSetting(
       ports.setSetupContext((context) => (context.rules.trim() ? context : { ...context, rules: setting.rules }));
       setSetupWorkspace((workspace) => ({
         ...workspace,
+        settingBeat: "village",
         suggestionRequest: undefined,
         settingDraft: setting,
         settingProblem: undefined,
