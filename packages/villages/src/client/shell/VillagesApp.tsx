@@ -54,6 +54,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     controller.screen === "person" || (controller.screen === "menu" && controller.menuPage === "villagers");
   const destination = (screen: Controller["screen"], page = controller.menuPage): DeskDestination | null => {
     if (screen === "person" || (screen === "menu" && page === "villagers")) return "people";
+    if (screen === "menu" && page === "repair") return null;
     if (screen === "menu") return page === "projects" ? "projects" : "settings";
     if (screen === "venue") return arriving ? null : "places";
     if (screen === "home" && controller.exploreSheet?.tab === "places") return "places";
