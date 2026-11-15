@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/spoken-stay
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -47,8 +47,56 @@ import {
   recordClosedRelationshipScene,
 } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 
+import { activeLodging } from "../packages/villages/src/server/domain/rules/lodging-presence.js";
+import { sceneLodgingOptions } from "../packages/villages/src/server/domain/rules/lodging.js";
+
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
+await runCase("narration-acceptance/spoken-stay", () => {
+  for (const [words, answer, revoked, held] of [
+    ["Mara, could I sleep in the Parlor?", "Yes, you can sleep in the Parlor.", false, false],
+    ["Mara, could I sleep in the Parlor?", "Yes, you can sleep in the Parlor.", true, true],
+    ["Mara, could I sleep in the Parlor?", "Yes, you can sleep in the Attic.", false, true],
+    ["Mara, could we have tea in the Parlor?", "Yes, let's.", false, true],
+    ["Mara, could I sleep in the Parlor?", "Yes, but only for an hour.", false, true],
+    ["Mara, could I sleep in the Parlor tonight only until noon?", "Yes, of course.", false, true],
+  ] as const) {
+    const f = fixture(words);
+    const publication = f.publication({
+      segments: [{ ...f.response()[0], text: answer }],
+      keep: [
+        {
+          id: "stay",
+          for: ["player", f.id],
+          class: "commitment",
+          text: "Mara lets the player sleep in the Parlor for one day.",
+          offer: { proposer: "player", participants: ["player", f.id] },
+          lodging: { guest: "player", venue: f.scene.placeId, zone: "parlor" },
+          source: [
+            { input: words, ground: { kind: "spoken", to: [f.id] }, act: "offer" },
+            { segment: "reply", act: "accept" },
+          ],
+        },
+      ],
+    });
+    publication.readset.lodging = sceneLodgingOptions(f.state, ["player", f.id], f.scene.placeId);
+    assert.equal(publication.readset.lodging[0]?.host, f.id);
+    if (revoked) {
+      f.state.worldPlaces.places[f.scene.placeId].location.zones!.find(
+        (zone) => zone.id === "parlor",
+      )!.access!.managerIds = ["player"];
+    }
+    const result = acceptNarrationContinuity(f.state, publication, "stay", later);
+    assert.equal(result.held, held, JSON.stringify(result.rejected));
+    assert.equal(activeLodging(f.state, "player", new Date(later))?.zone.id, held ? undefined : "parlor");
+    assert.equal(activeLodging(f.state, "player", new Date("2026-11-10T12:00:00.000Z")), undefined);
+    if (!held) {
+      assert(acceptNarrationContinuity(f.state, publication, "stay", later).replayed);
+      assert.equal(f.state.worldPlaces.places[f.scene.placeId].location.access!.permissions.length, 1);
+    }
+  }
+});
+
 function fixture(input = "I think privately that I am nervous. I say, “My mother taught me weaving.”\n  🪑") {
   const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const place = establishPlace(

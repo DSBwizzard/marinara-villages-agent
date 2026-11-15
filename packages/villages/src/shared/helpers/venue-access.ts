@@ -17,7 +17,9 @@ export type AccessPermission = {
   zoneId: string;
   visitorId: string;
   issuerId: string;
-  duration: "visit" | "standing";
+  duration: "visit" | "standing" | "stay";
+  expiresAt?: string;
+  route?: string[];
   /** Unclaimed future invitations bind to exactly one Scene on acceptance. */
   sceneId: string | null;
   accompaniedBy: string | null;

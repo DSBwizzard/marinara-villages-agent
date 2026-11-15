@@ -31,6 +31,7 @@ export type ContinuityVersion = {
   text: string;
   class: ContinuityClass;
   agenda?: import("zod").infer<typeof import("../decoding/agenda-codec.js").agendaEvidence>;
+  lodging?: import("zod").infer<typeof import("../decoding/lodging-codec.js").lodgingTerms>;
   relationshipScore?: number;
   romanticInterest?: number;
   romanticDay?: { date: string; gained: boolean };
@@ -125,6 +126,7 @@ export type ContinuityWrite = {
   text?: string;
   class?: ContinuityClass;
   agenda?: ContinuityVersion["agenda"];
+  lodging?: ContinuityVersion["lodging"];
   current?: boolean;
   relationship?: { impact?: RelationshipImpact; romance?: "grows" | "fades" | "drops"; answer?: string };
   about?: { id: string; incarnation: string }[];

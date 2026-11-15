@@ -28,6 +28,7 @@ import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js"
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
+import { LODGING_SPEECH, sceneLodgingOptions } from "../../domain/rules/lodging.js";
 import { narrationResidencePrompt } from "../../domain/rules/narration-residence.js";
 import { narrationPlacePrompt } from "../../domain/rules/narration-place.js";
 import {
@@ -243,6 +244,16 @@ export function createSceneWriting({
             : [];
         })
       : [];
+    const lodgingContext = "lodging-context";
+    const lodgingTopic =
+      /\b(?:sleep|sleeping|nap|crash|couch|overnight|stay (?:here|over|with|the night)|spend the night|turn in|somewhere to rest)\b/iu;
+    const lodging =
+      lodgingTopic.test(input) ||
+      scene.lines
+        .slice(-4)
+        .some((line) => !line.contactHidden && line.heardBy?.includes("player") && lodgingTopic.test(line.content))
+        ? sceneLodgingOptions(authority, ["player", ...selectedIds.filter((id) => id !== "player")], venue.id, input)
+        : [];
     const agendaContext = "agenda-context";
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
@@ -367,6 +378,15 @@ export function createSceneWriting({
               },
             ]
           : []),
+        ...(lodging.length
+          ? [
+              {
+                text: LODGING_SPEECH + "\n" + JSON.stringify(lodging),
+                evidenceId: lodgingContext,
+                optional: "history" as const,
+              },
+            ]
+          : []),
         ...(!nativeCommands && openOffers.length
           ? [{ text: SCENE_OFFER_DECISION, requiresEvidence: [openOffers] }]
           : []),
@@ -406,6 +426,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        ...(fitted.evidenceIds.includes(lodgingContext) ? { lodging } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
           ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }

@@ -799,6 +799,7 @@ export function applyContinuityWrite(
       text,
       class: room ? "information" : (write.class ?? prior?.class ?? "experience"),
       ...(write.agenda ? { agenda: structuredClone(write.agenda) } : {}),
+      ...(write.lodging ? { lodging: { ...write.lodging } } : {}),
       ...(relationshipScore !== undefined && owner && same(holder, owner)
         ? { relationshipScore, relationshipDay, ...(relationshipMilestone ? { relationshipMilestone } : {}) }
         : {}),

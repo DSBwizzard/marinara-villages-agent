@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { lodgingOptions } from "./lodging-codec.js";
 import { agendaOptions, agendaVenues } from "./agenda-codec.js";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
@@ -118,6 +119,7 @@ const saved = z
             presentation.safeParse(row.presentation).success &&
             Array.isArray(row.projects) &&
             Array.isArray(row.access) &&
+            (row.lodging === undefined || lodgingOptions.safeParse(row.lodging).success) &&
             Array.isArray(row.places) &&
             Array.isArray(row.residence?.homes) &&
             Array.isArray(row.residence?.requests) &&

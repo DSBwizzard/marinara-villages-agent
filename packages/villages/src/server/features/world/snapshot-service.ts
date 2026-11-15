@@ -1,3 +1,4 @@
+import { activeLodging } from "../../domain/rules/lodging-presence.js";
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
 import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
@@ -122,6 +123,17 @@ export function createVillageSnapshot({
           zoneId: companionZone.id,
           zoneName: companionZone.name,
         };
+      const stay = destination && activeLodging(village, villager.characterId, now);
+      if (
+        stay &&
+        stay.venue.id === destination?.id &&
+        stay.zone.id === destination?.zoneId &&
+        !(
+          residenceAccess?.placeId === stay.venue.id &&
+          sceneAccessContext(residenceAccess).positions?.[villager.characterId] === residenceAccess.zoneId
+        )
+      )
+        destination = null;
       const destinationVenue = destination && village.venues.find((venue) => venue.id === destination.id);
       if (
         destinationVenue?.access &&

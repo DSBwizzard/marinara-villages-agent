@@ -36,6 +36,7 @@ import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
+import { lodgingSettlement, lodgingWrite } from "./lodging.js";
 import { applySceneAppointment, cloneAppointmentState, sceneAgendaEvidence } from "./agenda-overview.js";
 
 export type NarrationPublication = {
@@ -699,6 +700,15 @@ export function acceptNarrationContinuity(
       try {
         if (keep) {
           let write = keep.write;
+          if (keep.lodging)
+            write = lodgingWrite(
+              write,
+              keep.lodging,
+              keep.sources,
+              readset.lodging ?? [],
+              readset.calendar,
+              scene.placeId,
+            );
           if (keep.agenda) {
             const evidence = { ...keep.agenda, activity: keep.agenda.activity ?? "" };
             write = { ...write, agenda: evidence };
@@ -725,6 +735,14 @@ export function acceptNarrationContinuity(
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
+          const lodging = lodgingSettlement(
+            scheduledWorld,
+            next,
+            write,
+            keep.admission.operationId + ":" + id,
+            new Date(acceptedAt),
+          );
+          if (lodging) scheduledWorld = { ...scheduledWorld, ...lodging };
           if (write.agenda?.kind === "offer" || write.accept || write.closeOffer) {
             const candidate = cloneAppointmentState(scheduledWorld);
             if (applySceneAppointment(candidate, next, write, keep.admission.operationId + ":" + id, acceptedAt))
@@ -948,5 +966,7 @@ export function acceptNarrationContinuity(
   state.episodes = episodes;
   state.residentPlans = scheduledWorld.residentPlans;
   state.villagers = scheduledWorld.villagers;
+  state.venues = scheduledWorld.venues;
+  state.worldPlaces = scheduledWorld.worldPlaces;
   return { ...selection, episode: episodes.records.at(-1)! };
 }

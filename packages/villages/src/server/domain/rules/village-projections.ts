@@ -1,6 +1,7 @@
 import type { VillagePlaceView, VillagePlayerIdentity, VillageState, VillageVillager } from "../models/world.js";
 import { findLocation } from "./places.js";
-import { agendaAt } from "./agenda-plan.js";
+import { agendaAt, restingAgendaBlock } from "./agenda-plan.js";
+import { activeLodging } from "./lodging-presence.js";
 import { badRequest, conflict } from "./errors.js";
 import { homeBuildingOptions } from "./prompt-preset.js";
 import { MAX_ZONE_VILLAGERS, venueResidentIds } from "./venue-model.js";
@@ -132,6 +133,30 @@ export function villagePresence(
       if (placed) break;
     }
     if (!placed) throw conflict("No permitted Zone has room for this villager. Saved positions are preserved.");
+  }
+  for (const resident of residents) {
+    const actor = resident.characterId;
+    if (positions?.has(actor) || !restingAgendaBlock(agendaAt(resident.agenda, minuteOfDay, at))) continue;
+    const stay = activeLodging(village, actor, at);
+    if (!stay) continue;
+    const { venue, zone } = stay;
+    const prior = result.get(actor);
+    if (prior?.id === venue.id && prior.zoneId === zone.id) continue;
+    if (
+      place(resident, {
+        id: venue.id,
+        name: venue.name,
+        image: venue.presentation.image,
+        kind: "venue",
+        zoneId: zone.id,
+        zoneName: zone.name,
+      })
+    ) {
+      if (prior) {
+        const before = key(prior.id, prior.zoneId ?? "exterior");
+        counts.set(before, counts.get(before)! - 1);
+      }
+    }
   }
   return result;
 }

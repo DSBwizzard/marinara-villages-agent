@@ -4,6 +4,7 @@ import type { VenueRecordEvent } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityProtectionUnits, continuitySourceUnit, continuityVersionId, continuityViews } from "./continuity.js";
+import { activeLodging } from "./lodging-presence.js";
 import { memoryHash } from "./memory-integrity.js";
 
 const nativeNotices: Partial<
@@ -107,6 +108,14 @@ export function narrationSceneNotices(state: VillageState, episode: AcceptedEpis
         text: status === "fulfilled" ? "Wish fulfilled" : status === "revealed" ? "Wish shared" : "Wish updated",
         wishUpdate: { actorId: view.owner.id, wishId: view.id, state: status },
       });
+    } else if (
+      view.offer?.state === "accepted" &&
+      view.offer.participants.some(
+        (party) => activeLodging(state, party.id, new Date(episode.acceptedAt))?.permission.id === view.id,
+      )
+    ) {
+      const id = "notice:" + memoryHash([episode.id, "stay", view.id]);
+      notices.set(id, { id, kind: "venue", text: "Stay agreed" });
     } else if (
       !version.parentId &&
       !version.sources.some((source) => source.committedReceiptId && notifiedReceipts.has(source.committedReceiptId))

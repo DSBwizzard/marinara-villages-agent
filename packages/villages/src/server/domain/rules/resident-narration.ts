@@ -36,6 +36,7 @@ import {
   narrationSourceSchema,
   residentReflectionSchema,
 } from "./narration-contract.js";
+import { lodgingSettlement, lodgingWrite, sceneLodgingOptions } from "./lodging.js";
 import { prepareContinuityKeep } from "./narration-keep.js";
 import { bindNarrationSegment, bindNarrationReceipt, type NarrationCommunication } from "./narration-sources.js";
 import { findLocation } from "./places.js";
@@ -222,6 +223,9 @@ export function captureResidentNarration(
     calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
     access: narrationAccessScopes(state, opportunity.actorIds),
     residence: narrationResidenceContext(state, opportunity.actorIds),
+    ...(opportunity.kind === "encounter" && {
+      lodging: sceneLodgingOptions(state, opportunity.actorIds, opportunity.venueId),
+    }),
     ...(room ? { room } : {}),
   };
   if (opportunity.kind === "relationship") {
@@ -284,6 +288,7 @@ export function acceptResidentNarration(
   raw: ResidentNarration,
   responseDigest: string,
   acceptedAt: string,
+  liveLodgingWorld = state,
 ) {
   capture = readResidentNarrationCapture(capture);
   memoryRequire(capture.opportunity.kind !== "activity", "Activity follow-up only publishes personal mail");
@@ -304,7 +309,17 @@ export function acceptResidentNarration(
   const selected = resolveNarrationEffects((excluded) => {
     const candidate = raw.commands?.length ? structuredClone(state) : { ...state };
     return {
-      ...prepareResidentNarration(candidate, state, capture, raw, episodeId, digest, acceptedAt, excluded),
+      ...prepareResidentNarration(
+        candidate,
+        state,
+        capture,
+        raw,
+        episodeId,
+        digest,
+        acceptedAt,
+        excluded,
+        capture.historical ? liveLodgingWorld : candidate,
+      ),
       candidate,
     };
   });
@@ -321,6 +336,7 @@ function prepareResidentNarration(
   digest: string,
   acceptedAt: string,
   excluded: Map<string, string>,
+  liveLodgingWorld: VillageState,
 ) {
   const kind = capture.opportunity.kind;
   memoryRequire(kind !== "activity", "Activity follow-up only publishes personal mail");
@@ -695,16 +711,36 @@ function prepareResidentNarration(
     effects.push(effect);
   }
   let continuity = state.continuity,
+    lodgingWorld = liveLodgingWorld,
     selection: ReturnType<typeof selectSceneEffects>;
   for (;;) {
     selection = selectSceneEffects(effects, value.requires);
     if (selection.held) return { result: { ...selection, episode: undefined, replayed: false }, provisional };
     continuity = state.continuity;
+    lodgingWorld = liveLodgingWorld;
     let failed = false;
     for (const id of selection.acceptedIds) {
       const keep = prepared.get(id);
       try {
-        if (keep) continuity = applyContinuityWrite(continuity, keep.write, keep.admission);
+        if (keep) {
+          const write = keep.lodging
+            ? lodgingWrite(
+                keep.write,
+                keep.lodging,
+                keep.sources,
+                capture.lodging ?? [],
+                capture.calendar,
+                capture.opportunity.venueId,
+              )
+            : keep.write;
+          memoryRequire(!keep.lodging || !!value.encounter, "lodging needs an actual resident encounter");
+          const next = applyContinuityWrite(continuity, write, keep.admission);
+          const lodging =
+            value.encounter &&
+            lodgingSettlement(lodgingWorld, next, write, keep.admission.operationId + ":" + id, new Date(acceptedAt));
+          if (lodging) lodgingWorld = { ...lodgingWorld, ...lodging };
+          continuity = next;
+        }
         const receipt = receipts[id];
         if (receipt?.kind === "access" && receipt.witnesses.length) {
           const evidence = bindNarrationReceipt(receipt, communication);
@@ -820,5 +856,15 @@ function prepareResidentNarration(
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
   state.episodes = episodes;
-  return { result: { ...selection, episode: episodes.records.at(-1)!, replayed: false }, provisional };
+  return {
+    result: {
+      ...selection,
+      episode: episodes.records.at(-1)!,
+      replayed: false,
+      ...(lodgingWorld !== liveLodgingWorld && {
+        lodging: { venues: lodgingWorld.venues, worldPlaces: lodgingWorld.worldPlaces },
+      }),
+    },
+    provisional,
+  };
 }

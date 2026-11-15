@@ -1,4 +1,4 @@
-// Test cases: resident-narration/ordinary, resident-narration/reflection, resident-narration/private-source, resident-narration/attendance, resident-narration/replay, resident-narration/large-room, resident-narration/protection, resident-narration/agreements, resident-narration/due-identities, resident-narration/mail-room, resident-narration/room-units, resident-narration/room-history-hop, resident-narration/native-access, resident-narration/native-authority, resident-narration/native-independent, resident-narration/native-calendar, resident-narration/native-residence
+// Test cases: resident-narration/ordinary, resident-narration/reflection, resident-narration/private-source, resident-narration/attendance, resident-narration/replay, resident-narration/large-room, resident-narration/protection, resident-narration/agreements, resident-narration/due-identities, resident-narration/mail-room, resident-narration/room-units, resident-narration/room-history-hop, resident-narration/native-access, resident-narration/native-authority, resident-narration/native-independent, resident-narration/native-calendar, resident-narration/native-residence, resident-narration/catchup-stay
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -45,8 +45,55 @@ import {
   readDeliveredLetter,
 } from "../packages/villages/src/server/domain/rules/mail-delivery.js";
 
+import { activeLodging } from "../packages/villages/src/server/domain/rules/lodging-presence.js";
+import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+
 const at = "2026-11-10T12:00:00.000Z",
   later = "2026-11-10T12:10:00.000Z";
+await runCase("resident-narration/catchup-stay", () => {
+  const f = fixture();
+  const home = venueFixture({ id: "cottage", name: "Cottage", classes: ["residence"], residentIds: ["mara"] });
+  f.state.venues.push(home);
+  const room = home.zones!.find((zone) => zone.kind !== "exterior")!;
+  room.name = "Sunroom";
+  const capture = captureResidentNarration(f.state, f.opportunity, true);
+  const historical = structuredClone(f.state);
+  const reply = {
+    encounter: {
+      opportunityId: f.opportunity.id,
+      lines: [
+        { id: "offer", speakerId: "mara", text: "You can sleep in the Sunroom." },
+        { id: "yes", speakerId: "leo", text: "I would like that." },
+      ],
+    },
+    requires: [],
+    keep: [
+      {
+        id: "stay",
+        for: ["mara", "leo"],
+        class: "commitment",
+        text: "Mara offered Leo the Sunroom for one day, and Leo accepted.",
+        offer: { proposer: "mara", participants: ["mara", "leo"] },
+        lodging: { guest: "leo", venue: home.id, zone: room.id },
+        source: [
+          { segment: "offer", act: "offer" },
+          { segment: "yes", act: "accept" },
+        ],
+      },
+    ],
+  };
+  const accepted = acceptResidentNarration(historical, capture, reply, memoryHash(reply), later, f.state);
+  assert(!accepted.held, JSON.stringify(accepted.rejected));
+  assert("lodging" in accepted && accepted.lodging);
+  assert.equal(home.access!.permissions.length, 0);
+  Object.assign(f.state, accepted.lodging);
+  assert.equal(activeLodging(f.state, "leo", new Date(later))?.zone.id, room.id);
+  const venue = f.state.venues.find((entry) => entry.id === home.id)!;
+  assert(evaluateZoneAccess(venue, room, "leo", { at: new Date(later) }).allowed);
+  assert(!evaluateZoneAccess(venue, room, "player", { at: new Date(later) }).allowed);
+  assert(!evaluateZoneAccess(venue, room, "leo", { at: new Date("2026-11-11T12:00:00.000Z") }).allowed);
+});
+
 function fixture(stamp = at) {
   const at = stamp;
   const state = defaultVillageState();

@@ -42,6 +42,7 @@ export type NarrationReadset = {
   repairs: { id: string; revision: number; entries: string[] }[];
   projects: import("../rules/project-interpretation.js").ProjectSpeechContext[];
   access: import("../rules/narration-access.js").NarrationAccessScope[];
+  lodging?: ReturnType<typeof import("../rules/lodging.js").sceneLodgingOptions>;
   residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
   places: ReturnType<typeof import("../rules/narration-place.js").narrationPlaceContext>;
 };
