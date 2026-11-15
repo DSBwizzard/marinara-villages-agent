@@ -59,8 +59,8 @@ export function RosterScreen({
               Visitors
             </button>
             {showVisitors && snapshot ? (
-              <button type="button" onClick={() => setAddingVisitor(true)}>
-                Add Visitor
+              <button type="button" aria-label="Add Visitor" title="Add Visitor" onClick={() => setAddingVisitor(true)}>
+                <span aria-hidden="true">+</span>
               </button>
             ) : null}
           </nav>
