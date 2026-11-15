@@ -1,4 +1,4 @@
-// Test cases: narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep
+// Test cases: narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep, narration-access/spoken-visit, narration-access/spoken-visit-uncertain, narration-access/spoken-visit-authority
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -20,6 +20,7 @@ import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { playerAccess } from "../packages/villages/src/server/domain/rules/player-access.js";
+import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
   continuityRelationships,
@@ -169,6 +170,135 @@ function fixture(resident = false) {
   const command = { ...decision, id: "grant-access", at: "grant", source: [{ segment: "grant" }] };
   return { state, actorId, home, cafe, readset, context, sources, decision, before, apply, publication, command };
 }
+
+function cottageInvitation(setup?: (cottage: VillageVenue, actorId: string) => void) {
+  const f = fixture(true);
+  const cottage = { ...structuredClone(f.home.location), id: "cottage", name: "Mara's cottage" };
+  cottage.zones = cottage.zones!.map((zone) =>
+    zone.id === "library"
+      ? { ...zone, id: "living", name: "Living Room", kind: "shared-residence", seen: true, connectedTo: ["exterior"] }
+      : zone.id === "study"
+        ? { ...zone, name: "Bedroom", kind: "private-residence", connectedTo: ["living"] }
+        : { ...zone, connectedTo: [] },
+  );
+  setup?.(cottage, f.actorId);
+  f.state.venues.push(cottage);
+  const scene = zoneEventScene(
+    {
+      ...f.context.scene,
+      placeId: cottage.id,
+      placeName: cottage.name,
+      zoneId: "exterior",
+      sceneAttendance: {
+        capturedAt: at,
+        layout: captureSceneLayout(cottage),
+        occupants: [{ characterId: f.actorId, name: "Mara", doing: "Talking", zoneId: "exterior" }],
+      },
+    },
+    cottage,
+  );
+  const prepared = narrationContinuityContext(f.state, scene, cottage, "invite", "May I stay here tonight?", at);
+  const readset = {
+    ...fittedNarrationReadset(
+      f.state,
+      prepared,
+      prepared.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+    ),
+    access: narrationAccessScopes(f.state, ["player", f.actorId]),
+  };
+  const publication = (texts: string[], commands: unknown[] = []) => {
+    const raw = {
+      segments: texts.map((text, index) => ({ kind: "dialogue", id: "line-" + index, speakerId: f.actorId, text })),
+      commands,
+    };
+    return { readset, raw, responseDigest: memoryHash(raw) };
+  };
+  return { state: f.state, scene, actorId: f.actorId, publication, cottage: () => f.state.venues[0] };
+}
+
+await runCase("narration-access/spoken-visit", () => {
+  for (const words of [
+    "Come in.",
+    "Come in and look at the living room.",
+    "Come in out of the rain and look at it first. Then you tell me if that works.",
+  ]) {
+    const f = cottageInvitation();
+    const publication = f.publication(["The bedroom is off limits. I can show you the couch.", words]);
+    const result = acceptNarration(f.state, publication, "submission", at);
+    assert.equal(result.held, false);
+    assert.deepEqual(result.rejected, []);
+    assert.deepEqual(
+      result.episode?.commandReceipts.map(({ kind }) => kind),
+      ["access"],
+    );
+    assert.deepEqual(
+      result.episode?.playerAccessChanges?.map(({ action, entry }) => [
+        action,
+        entry.room,
+        entry.kind,
+        entry.thisVisit,
+      ]),
+      [["added", "Living Room", "visit", true]],
+    );
+    const cottage = f.cottage();
+    const [grant] = cottage.access!.permissions;
+    assert.equal(grant.issuerId, f.actorId);
+    assert.deepEqual(grant.sourceLineIds, [result.episode!.segments[1].id]);
+    assert.equal(evaluateZoneAccess(cottage, cottage.zones![1], "player", { sceneId: f.scene.id }).allowed, true);
+    assert.equal(evaluateZoneAccess(cottage, cottage.zones![1], "player", { sceneId: "later" }).allowed, false);
+    assert.equal(evaluateZoneAccess(cottage, cottage.zones![2], "player", { sceneId: f.scene.id }).allowed, false);
+    assert.equal(acceptNarration(f.state, publication, "submission", at).replayed, true);
+    assert.equal(f.cottage().access!.permissions.length, 1);
+  }
+});
+
+await runCase("narration-access/spoken-visit-uncertain", () => {
+  for (const texts of [
+    ["Come in if my housemate agrees."],
+    ["You said ‘come in’ when we arrived."],
+    ["“Come in,” is what I would say."],
+    ["Come in and look at the bedroom."],
+    ["Come in. Wait outside until I get back."],
+    ["Come in.", "Wait outside. I need to ask first."],
+  ]) {
+    const f = cottageInvitation();
+    assert.equal(acceptNarration(f.state, f.publication(texts), "submission", at).held, false);
+    assert.deepEqual(f.cottage().access!.permissions, [], texts.join(" "));
+  }
+});
+
+await runCase("narration-access/spoken-visit-authority", () => {
+  const setups: ((cottage: VillageVenue, actorId: string) => void)[] = [
+    (cottage) => Object.assign(cottage.zones![2], { kind: "shared-residence", connectedTo: ["exterior", "living"] }),
+    (cottage) => Object.assign(cottage.zones![1].access!, { managerIds: ["player"], inviterIds: [] }),
+    (cottage) => {
+      cottage.zones![1].access!.accompanied = true;
+    },
+    (cottage) => {
+      cottage.access!.visitorHours = [{ days: ["Monday"], start: "00:00", end: "00:01" }];
+    },
+    (cottage, issuerId) =>
+      cottage.access!.visitDenials.push({ zoneId: "living", visitorId: "player", sceneId: "scene", issuerId }),
+  ];
+  for (const setup of setups) {
+    const f = cottageInvitation(setup);
+    assert.equal(acceptNarration(f.state, f.publication(["Come in!"]), "submission", at).held, false);
+    assert.deepEqual(f.cottage().access!.permissions, []);
+  }
+  const f = cottageInvitation();
+  const command = {
+    type: "access.decide",
+    at: "line-0",
+    source: [{ segment: "line-0" }],
+    by: f.actorId,
+    venue: f.cottage().id,
+    zone: "living",
+    decision: { outcome: "invite-now", visitor: "player" },
+  };
+  const result = acceptNarration(f.state, f.publication(["Come in!"], [command]), "submission", at);
+  assert.equal(result.held, false);
+  assert.equal(f.cottage().access!.permissions.length, 1);
+});
 await runCase("narration-access/away-home", () => {
   const f = fixture();
   assert(!JSON.stringify(f.readset.access).includes("PRIVATE"), "native authority never captures remote appearance");

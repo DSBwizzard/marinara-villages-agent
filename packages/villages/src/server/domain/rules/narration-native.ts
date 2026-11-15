@@ -35,8 +35,14 @@ import { findLocation } from "./places.js";
 import { applyNarrationCircumstance, applyNarrationRepair } from "./narration-circumstance.js";
 import { nativeCommand, readNarrationNativeCommand } from "./narration-command-contract.js";
 import { projectSpeechContext } from "./project-interpretation.js";
-import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
+import {
+  applyNarrationAccess,
+  assertNarrationDecision,
+  narrationAccessScopes,
+  spokenVisitInvitation,
+} from "./narration-access.js";
 import { asRecord } from "./coerce.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -211,6 +217,30 @@ export function prepareNarrationNative(
     native.effects.find((effect) => effect.id === crossing.effectId)!.failure =
       "Tentative movement routing failed: " + String(error).slice(0, 1900);
     return { native, candidate: structuredClone(state), routingFailure: true as const };
+  }
+  const visit =
+    !reply.commands.length &&
+    !reply.halt &&
+    spokenVisitInvitation(state, context, new ZonedDate(at, readset.calendar.timeZone));
+  if (visit && !reply.segments[visit.segment].requires?.length) {
+    const line = reply.segments[visit.segment];
+    const id = "spoken-visit-" + memoryHash([source.episodeId, line.id]).slice(0, 32);
+    const parsed = nativeCommand.safeParse({
+      type: "access.decide",
+      id,
+      at: line.id,
+      source: [{ segment: line.id }],
+      by: visit.by,
+      venue: visit.venue,
+      zone: visit.zone,
+      decision: { outcome: "invite-now", visitor: "player" },
+    });
+    if (parsed.success) {
+      const effect = { id, requires: [], independent: true as const, failure: excluded.get(id) };
+      native.spokenVisit = id;
+      native.effects.push(effect);
+      commands.push({ command: parsed.data, effect, segment: visit.segment, index: commands.length });
+    }
   }
   function apply(candidate: VillageState, row: (typeof commands)[number]) {
     const { command, effect } = row;

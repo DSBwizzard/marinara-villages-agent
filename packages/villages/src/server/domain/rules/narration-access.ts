@@ -6,13 +6,20 @@ import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import { narrationWitnesses, type NarrationCommunication } from "./narration-sources.js";
+import {
+  narrationPositions,
+  narrationWitnesses,
+  type NarrationCommunication,
+  type NarrationSourceContext,
+} from "./narration-sources.js";
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
-import { contactNeighbors } from "./venue-contact.js";
+import { contactNeighbors, sceneAccessContext } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
+import { zoneClosed } from "./venue-zones.js";
 import {
   applyAccessCommand,
   defaultZonePolicy,
+  evaluateZoneAccess,
   managesAccess,
   mayInvite,
   readAccessCommand,
@@ -244,6 +251,57 @@ export type NarrationAccessDecision = {
     }
   | { type: "access.decide"; outcome: "access-management"; management: unknown }
 );
+
+// shortcut: recognize direct welcomes at a single shared entrance; use explicit decisions for other arrangements.
+const visitWelcome =
+  /^(?:please,? )?(?:(?:come|step)(?: on)?|you (?:can|may) come) (?:in|inside)(?: out of the (?:rain|cold|wind))?(?: and (?:look around|(?:have|take) a look|look at (?<lookAt>[\p{L}\p{M} ]+?))(?: first)?)?(?:, please)?(?:[.!](?: then (?:you )?tell me if (?:that|it) works[.!]?)?)?$/iu;
+
+export function spokenVisitInvitation(state: VillageState, context: NarrationSourceContext, at: Date) {
+  const { scene, lines } = context;
+  if (scene.zoneId !== "exterior" || !scene.sceneAttendance?.layout) return;
+  const segment = lines.findLastIndex((line) => line.kind !== "narration" && line.heardBy?.includes("player"));
+  const line = lines[segment];
+  if (
+    line?.kind !== "dialogue" ||
+    line.contactReport ||
+    (line.targetId ? line.targetId !== "player" : scene.activeIds.length !== 1)
+  )
+    return;
+  const by = line.speakerId;
+  const positions = narrationPositions(context, { index: segment, side: "after" });
+  if (!by || by === "player" || positions[by] !== "exterior" || positions.player !== "exterior") return;
+  const words = line.content.trim().replace(/\s+/gu, " ").match(visitWelcome);
+  if (!words) return;
+
+  const venue = findLocation(state, scene.placeId);
+  if (!venue) return;
+  const neighbors = contactNeighbors(venue, "exterior", scene);
+  const shared = sceneLayoutVenue(venue, scene).zones?.filter(
+    (zone) => zone.kind === "shared-residence" && neighbors.includes(zone.id),
+  );
+  if (shared?.length !== 1 || !shared[0].seen) return;
+  const zone = venue.zones?.find((zone) => zone.id === shared[0].id);
+  const object = words.groups?.lookAt?.toLowerCase().replace(/^the /u, "");
+  if (
+    zone?.kind !== "shared-residence" ||
+    !zone.seen ||
+    zone.closed ||
+    !zone.access ||
+    zone.access.accompanied ||
+    !mayInvite(venue, zone, by) ||
+    (object && object !== "it" && object !== zone.name.toLowerCase()) ||
+    !contactNeighbors(venue, "exterior").includes(zone.id)
+  )
+    return;
+  const access = evaluateZoneAccess(venue, zone, "player", {
+    ...sceneAccessContext(scene, at),
+    accepting: true,
+    unavailable: zoneClosed(state, venue, zone),
+    environment: state.narrative,
+  });
+  if (access.reason !== "permission-required") return;
+  return { by, venue: venue.id, zone: zone.id, segment };
+}
 
 /** The exact current communication is required; private context and recalled consent have no native authority. */
 export function assertNarrationDecision(

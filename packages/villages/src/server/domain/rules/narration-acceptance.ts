@@ -48,6 +48,7 @@ export type NarrationPublication = {
   /** Results and exact evidence from the native validators, never model-authored success flags. */
   native: {
     effects: SceneEffectResult[];
+    spokenVisit?: string;
     receipts: Record<string, AcceptedEpisode["commandReceipts"][number]>;
     sources: Record<string, ContinuityEvidence[]>;
     moves: (ContactMove & { effectId: string })[];
@@ -295,7 +296,11 @@ export function acceptNarrationContinuity(
     sources: [],
   };
   const effects = native.effects.map((effect) => ({ ...effect, requires: [...effect.requires] }));
-  memoryRequire(effects.length === reply.commands.length, "native validation did not cover every proposed command");
+  memoryRequire(
+    effects.length === reply.commands.length + Number(!!native.spokenVisit) &&
+      (!native.spokenVisit || (!reply.commands.length && effects[0].id === native.spokenVisit)),
+    "native validation did not cover every proposed command",
+  );
   for (const [index, command] of reply.commands.entries()) {
     const header = readNarrationEffectHeader(command, "command-" + index);
     memoryRequire(effects[index].id === header.id, "native effect identity changed");
