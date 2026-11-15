@@ -106,9 +106,11 @@ await runCase("narration-acceptance/conditional-stay", () => {
     ["The engine's heavy and needs to be moved.", false],
     ["I shifted the chair into the workshop corner.", false],
     ["The engine squealed while I shifted the chair into the workshop corner.", false],
+    ["I shifted the engine out of the workshop corner.", false],
     ["I shifted the engine into the workshop corner. You're all set.", true],
   ] as const) {
-    const f = fixture("Could I sleep in the Parlor once we shift the engine?");
+    const condition = "shift the engine into the workshop corner";
+    const f = fixture(`Could I sleep in the Parlor once we ${condition}?`);
     const offer = f.publication(
       {
         segments: [{ ...f.response()[0], text: "Yeah, of course." }],
@@ -119,7 +121,7 @@ await runCase("narration-acceptance/conditional-stay", () => {
             class: "commitment",
             text: "Parlor stay after we shift the engine.",
             offer: { proposer: "player", participants: ["player", f.id] },
-            lodging: { guest: "player", venue: f.scene.placeId, zone: "parlor", condition: "shift the engine" },
+            lodging: { guest: "player", venue: f.scene.placeId, zone: "parlor", condition },
             source: [
               { input: f.input, ground: { kind: "spoken", to: [f.id] }, act: "offer" },
               { segment: "reply", act: "accept" },
@@ -133,7 +135,7 @@ await runCase("narration-acceptance/conditional-stay", () => {
     const result = acceptNarrationContinuity(f.state, offer, "conditional", later);
     assert.equal(result.held, false, JSON.stringify(result.rejected));
     const pending = pendingLodging(f.state, "player", new Date(later));
-    assert.equal(pending?.pending.condition, "shift the engine");
+    assert.equal(pending?.pending.condition, condition);
     assert.equal(activeLodging(f.state, "player", new Date(later)), undefined);
     assert.equal(
       evaluateZoneAccess(pending!.venue, pending!.zone, "player", {

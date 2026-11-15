@@ -509,18 +509,27 @@ export function lodgingReady(
     )
       return false;
     if (/\b(?:move|shift|clear)\w*\b/iu.test(stay.pending.condition)) {
-      const object = details[0];
-      const action = "(?:moved|shifted|cleared|put|got|set|took)";
+      const object =
+        /\b(?:move|shift|clear)\w* (?:the |a |that |my |your )?([a-z]+)\b/iu
+          .exec(stay.pending.condition)?.[1]
+          ?.toLowerCase() ?? details[0];
+      const action = "(?:moved|shifted|cleared|put|got|set|took|slid|carried|dragged)";
       const completion = new RegExp(
         `\\b${action} (?:the |that |my |your )?${object}\\b|\\b${object}(?:'s| (?:is|was|has been|had been)) (?:now )?(?:${action}|out of the way|(?:in|on|by|over) \\w+)`,
         "u",
       );
+      const destination = /\b(?:into|onto|to) (?:the |a )?([a-z]+(?: [a-z]+)*)/u.exec(
+        stay.pending.condition.toLowerCase(),
+      )?.[1];
+      const arrived = destination && new RegExp(`\\b(?:in|into|at|on|onto|to) (?:the |a )?${destination}\\b`, "u");
       if (
         !words
           .split(/[.!?;]|\b(?:while|although|because|but)\b/u)
           .some(
             (clause) =>
-              completion.test(clause) && details.every((word) => new RegExp(`\\b${word}s?\\b`, "u").test(clause)),
+              completion.test(clause) &&
+              (!arrived || arrived.test(clause)) &&
+              details.every((word) => new RegExp(`\\b${word}s?\\b`, "u").test(clause)),
           )
       )
         return false;
