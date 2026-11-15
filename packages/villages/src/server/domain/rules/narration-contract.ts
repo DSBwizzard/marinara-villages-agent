@@ -159,6 +159,7 @@ const proposal = z
       .optional(),
     source: sources,
     lodging: lodgingProposal.optional(),
+    stayReady: id.optional(),
     agenda: agendaEvidence
       .omit({ activity: true })
       .extend({ activity: agendaEvidence.shape.activity.optional() })

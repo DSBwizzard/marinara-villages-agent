@@ -139,6 +139,10 @@ export type VillageSnapshot = {
   mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
+  sleepsIn?: {
+    place: string;
+    room: string;
+  } & ({ status: "pending"; condition: string } | { status: "confirmed"; endsAt: string });
   opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;
   backgroundWork?: BackgroundWork[];

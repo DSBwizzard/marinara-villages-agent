@@ -36,7 +36,7 @@ import {
   narrationSourceSchema,
   residentReflectionSchema,
 } from "./narration-contract.js";
-import { lodgingSettlement, lodgingWrite, sceneLodgingOptions } from "./lodging.js";
+import { lodgingReady, lodgingSettlement, lodgingWrite, sceneLodgingOptions } from "./lodging.js";
 import { prepareContinuityKeep } from "./narration-keep.js";
 import { bindNarrationSegment, bindNarrationReceipt, type NarrationCommunication } from "./narration-sources.js";
 import { findLocation } from "./places.js";
@@ -224,7 +224,7 @@ export function captureResidentNarration(
     access: narrationAccessScopes(state, opportunity.actorIds),
     residence: narrationResidenceContext(state, opportunity.actorIds),
     ...(opportunity.kind === "encounter" && {
-      lodging: sceneLodgingOptions(state, opportunity.actorIds, opportunity.venueId),
+      lodging: sceneLodgingOptions(state, opportunity.actorIds, opportunity.venueId, "", new Date(at)),
     }),
     ...(room ? { room } : {}),
   };
@@ -733,11 +733,31 @@ function prepareResidentNarration(
                 capture.opportunity.venueId,
               )
             : keep.write;
-          memoryRequire(!keep.lodging || !!value.encounter, "lodging needs an actual resident encounter");
+          memoryRequire(
+            !(keep.lodging || keep.stayReady) || !!value.encounter,
+            "lodging needs an actual resident encounter",
+          );
           const next = applyContinuityWrite(continuity, write, keep.admission);
           const lodging =
             value.encounter &&
-            lodgingSettlement(lodgingWorld, next, write, keep.admission.operationId + ":" + id, new Date(acceptedAt));
+            (keep.stayReady
+              ? lodgingReady(
+                  lodgingWorld,
+                  keep.stayReady,
+                  capture.lodging ?? [],
+                  write,
+                  keep.sources,
+                  { id: keep.admission.episodeId, capturedAt: capture.calendar.instant },
+                  capture.opportunity.venueId,
+                  new Date(acceptedAt),
+                )
+              : lodgingSettlement(
+                  lodgingWorld,
+                  next,
+                  write,
+                  keep.admission.operationId + ":" + id,
+                  new Date(acceptedAt),
+                ));
           if (lodging) lodgingWorld = { ...lodgingWorld, ...lodging };
           continuity = next;
         }

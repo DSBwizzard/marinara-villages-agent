@@ -49,6 +49,7 @@ export function narrationAccessScopes(state: VillageState, actors: string[]) {
         const permissions = venue.access!.permissions.filter(
           (permission) =>
             !permission.revoked &&
+            !permission.pendingStay &&
             (permission.issuerId === actorId ||
               venueManager ||
               zones.some((zone) => zone.manages && zone.id === permission.zoneId)),
@@ -132,10 +133,16 @@ export const narrationAccessScopeSchema = z
       .max(5),
   })
   .strict();
-export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, input: string) {
-  // shortcut: keep full rules for structured access and likely access dialogue, extend only if access requests are missed.
+export function discussesAccess(scene: VenueScene, input: string) {
   const accessWords =
     /\b(?:access|permission|invit(?:e|ed|es|ing|ation)|allow(?:ed|ing)?|forbid(?:den)?|ban(?:ned)?|visitor hours|visiting hours|(?:may|can|could) (?:i|we) (?:enter|come|go|use|visit)|come (?:in|through|inside)|let (?:me|us|them|you) (?:in|through)|open (?:the |this )?door|knock|locked|unlock)\b/iu;
+  return (
+    accessWords.test(input) ||
+    scene.lines.slice(-4).some((line) => !line.contactHidden && accessWords.test(line.content))
+  );
+}
+
+export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, input: string) {
   const origin = scene.zoneId ?? "exterior";
   const neighbors = contactNeighbors(venue, origin, scene);
   const named = input.normalize("NFKC").toLowerCase();
@@ -160,8 +167,7 @@ export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, inp
     !!scene.pendingAccessClaim ||
     !!scene.doorwayContacts?.length ||
     !!scene.contactGeneration?.instruction ||
-    accessWords.test(input) ||
-    scene.lines.slice(-4).some((line) => !line.contactHidden && accessWords.test(line.content))
+    discussesAccess(scene, input)
   );
 }
 

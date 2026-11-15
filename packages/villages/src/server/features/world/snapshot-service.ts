@@ -1,4 +1,4 @@
-import { activeLodging } from "../../domain/rules/lodging-presence.js";
+import { activeLodging, pendingLodging } from "../../domain/rules/lodging-presence.js";
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
 import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
@@ -160,8 +160,20 @@ export function createVillageSnapshot({
         destination,
       );
     });
+    const pendingStay = pendingLodging(village, "player", now);
+    const currentStay = activeLodging(village, "player", now);
+    const chosenStay = pendingStay ?? currentStay;
     const snapshot: VillageSnapshot = {
       worldScope: villageWorldScope(village),
+      ...(chosenStay && {
+        sleepsIn: {
+          place: chosenStay.venue.name,
+          room: chosenStay.zone.name,
+          ...(pendingStay
+            ? { status: "pending", condition: pendingStay.pending.condition }
+            : { status: "confirmed", endsAt: currentStay!.permission.expiresAt! }),
+        },
+      }),
       mailboxUnread: hasUnreadMail(village.mailbox),
       status: "ready",
       clock,

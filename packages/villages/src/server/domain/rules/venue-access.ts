@@ -40,6 +40,9 @@ export const permissionSchema = z
     duration: z.enum(["visit", "standing", "stay"]),
     expiresAt: z.iso.datetime().optional(),
     route: ids.optional(),
+    pendingStay: z
+      .object({ condition: z.string().trim().min(6).max(180), hostIncarnation: id, guestIncarnation: id })
+      .optional(),
     sceneId: id.nullable(),
     accompaniedBy: id.nullable(),
     outsideHours: z.boolean(),
@@ -49,8 +52,8 @@ export const permissionSchema = z
   })
   .refine((grant) =>
     grant.duration === "stay"
-      ? !!grant.expiresAt && grant.sceneId === null && grant.accompaniedBy === null
-      : !grant.expiresAt && !grant.route,
+      ? (grant.pendingStay ? !grant.route : !!grant.expiresAt) && grant.sceneId === null && grant.accompaniedBy === null
+      : !grant.expiresAt && !grant.route && !grant.pendingStay,
   );
 export const banSchema = z.object({
   id,
@@ -319,6 +322,7 @@ export function evaluateZoneAccess(
   const grants = ledger.permissions.filter(
     (grant) =>
       !grant.revoked &&
+      !grant.pendingStay &&
       (!context.permissionId || grant.id === context.permissionId) &&
       (grant.zoneId === zone.id || (grant.duration === "stay" && grant.route?.includes(zone.id))) &&
       grant.visitorId === actor &&
@@ -660,6 +664,7 @@ export function projectVenueAccess(venue: VillageVenue, actor: string, community
             .filter(
               (grant) =>
                 !grant.revoked &&
+                grant.duration !== "stay" &&
                 venue.access!.bans.some(
                   (ban) => ban.active && ban.zoneId === null && ban.visitorId === grant.visitorId,
                 ),
@@ -679,12 +684,16 @@ export function projectZoneAccess(venue: VillageVenue, zone: VillageVenueZone, a
     ...(decision.canManage
       ? {
           policy: zone.access,
-          permissions: venue.access?.permissions.filter((row) => row.zoneId === zone.id),
+          permissions: venue.access?.permissions.filter((row) => row.zoneId === zone.id && !row.pendingStay),
           bans: venue.access?.bans.filter((row) => row.zoneId === zone.id),
           changes: venue.access?.changes.filter((row) => row.zoneId === zone.id),
         }
       : decision.canInvite
-        ? { permissions: venue.access?.permissions.filter((row) => row.zoneId === zone.id && row.issuerId === actor) }
+        ? {
+            permissions: venue.access?.permissions.filter(
+              (row) => row.zoneId === zone.id && row.issuerId === actor && !row.pendingStay,
+            ),
+          }
         : {}),
   };
 }

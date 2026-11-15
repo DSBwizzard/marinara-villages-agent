@@ -20,6 +20,7 @@ export type AccessPermission = {
   duration: "visit" | "standing" | "stay";
   expiresAt?: string;
   route?: string[];
+  pendingStay?: { condition: string; hostIncarnation: string; guestIncarnation: string };
   /** Unclaimed future invitations bind to exactly one Scene on acceptance. */
   sceneId: string | null;
   accompaniedBy: string | null;

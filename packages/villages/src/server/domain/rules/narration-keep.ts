@@ -307,6 +307,7 @@ export function prepareContinuityKeep(
     sources,
     agenda: proposal.agenda,
     lodging: proposal.lodging,
+    stayReady: proposal.stayReady,
   };
 }
 

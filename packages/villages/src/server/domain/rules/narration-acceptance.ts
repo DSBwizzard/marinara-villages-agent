@@ -36,7 +36,7 @@ import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
-import { lodgingSettlement, lodgingWrite } from "./lodging.js";
+import { lodgingReady, lodgingSettlement, lodgingWrite } from "./lodging.js";
 import { applySceneAppointment, cloneAppointmentState, sceneAgendaEvidence } from "./agenda-overview.js";
 
 export type NarrationPublication = {
@@ -735,13 +735,24 @@ export function acceptNarrationContinuity(
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
-          const lodging = lodgingSettlement(
-            scheduledWorld,
-            next,
-            write,
-            keep.admission.operationId + ":" + id,
-            new Date(acceptedAt),
-          );
+          const lodging = keep.stayReady
+            ? lodgingReady(
+                scheduledWorld,
+                keep.stayReady,
+                readset.lodging ?? [],
+                write,
+                keep.sources,
+                { id: keep.admission.episodeId, capturedAt: readset.capturedAt },
+                scene.placeId,
+                new Date(acceptedAt),
+              )
+            : lodgingSettlement(
+                scheduledWorld,
+                next,
+                write,
+                keep.admission.operationId + ":" + id,
+                new Date(acceptedAt),
+              );
           if (lodging) scheduledWorld = { ...scheduledWorld, ...lodging };
           if (write.agenda?.kind === "offer" || write.accept || write.closeOffer) {
             const candidate = cloneAppointmentState(scheduledWorld);

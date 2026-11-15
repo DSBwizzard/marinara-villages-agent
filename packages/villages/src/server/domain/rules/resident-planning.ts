@@ -1,7 +1,7 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { VILLAGE_ACTIVITY_POLICY } from "../../../shared/helpers/activity-policy.js";
 import { z } from "zod";
-import { LODGING_SPEECH } from "./lodging.js";
+import { LODGING_COMPLETION, LODGING_SPEECH } from "./lodging.js";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
 import { socialPlanSchema } from "../decoding/resident-plans-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
@@ -280,7 +280,8 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     ...(capture.lodging?.length
       ? [
           "In an actual encounter, a mutually agreed stay is the one lodging effect admitted through a keep, including a past encounter if the agreed stay is still available. " +
-            LODGING_SPEECH,
+            LODGING_SPEECH +
+            (capture.lodging.some((row) => row.pending) ? " " + LODGING_COMPLETION : ""),
         ]
       : []),
     "Village: " + context.village + ". Setting: " + context.setting,

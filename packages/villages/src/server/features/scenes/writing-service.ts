@@ -27,8 +27,8 @@ import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../dom
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
-import { narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
-import { LODGING_SPEECH, sceneLodgingOptions } from "../../domain/rules/lodging.js";
+import { discussesAccess, narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
+import { LODGING_COMPLETION, LODGING_SPEECH, sceneLodgingOptions } from "../../domain/rules/lodging.js";
 import { narrationResidencePrompt } from "../../domain/rules/narration-residence.js";
 import { narrationPlacePrompt } from "../../domain/rules/narration-place.js";
 import {
@@ -195,8 +195,12 @@ export function createSceneWriting({
     const plainJson =
       !nativeCommands &&
       ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"].includes(model.model.toLowerCase());
+    const housingTopic = /\b(?:housing|residence|household|roommate|move in|move out|live with)\b/iu;
+    const recentPlayerDialogue = scene.lines
+      .slice(-4)
+      .filter((line) => !line.contactHidden && line.heardBy?.includes("player"));
     const housingDiscussed =
-      /\b(?:housing|residence|household|roommate|lodging|move in|move out|live with|sleep here)\b/iu.test(input);
+      housingTopic.test(input) || recentPlayerDialogue.some((line) => housingTopic.test(line.content));
     const housing = narrationResidencePrompt(
       nativeCommands || housingDiscussed
         ? context.residence
@@ -207,7 +211,7 @@ export function createSceneWriting({
             ),
             requests: context.residence.requests,
           },
-      nativeCommands,
+      nativeCommands || housingDiscussed,
     );
     const placeQuery = input.toLocaleLowerCase("en-US");
     const places =
@@ -216,7 +220,6 @@ export function createSceneWriting({
         : context.places.filter(
             ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
           );
-    const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
     const agendaDiscussed =
@@ -247,13 +250,28 @@ export function createSceneWriting({
     const lodgingContext = "lodging-context";
     const lodgingTopic =
       /\b(?:sleep|sleeping|nap|crash|couch|overnight|stay (?:here|over|with|the night)|spend the night|turn in|somewhere to rest)\b/iu;
-    const lodging =
-      lodgingTopic.test(input) ||
-      scene.lines
-        .slice(-4)
-        .some((line) => !line.contactHidden && line.heardBy?.includes("player") && lodgingTopic.test(line.content))
-        ? sceneLodgingOptions(authority, ["player", ...selectedIds.filter((id) => id !== "player")], venue.id, input)
-        : [];
+    const discussLodging =
+      lodgingTopic.test(input) || recentPlayerDialogue.some((line) => lodgingTopic.test(line.content));
+    const lodging = sceneLodgingOptions(
+      authority,
+      ["player", ...selectedIds.filter((id) => id !== "player")],
+      venue.id,
+      input,
+      new Date(calendar.instant),
+      discussLodging,
+    );
+    const pendingStayVisit = lodging.some(
+      ({ pending }) =>
+        pending &&
+        pending.condition
+          .toLowerCase()
+          .split(/\W+/u)
+          .some((word) => word.length > 4 && input.toLowerCase().includes(word)),
+    );
+    const showAccess =
+      context.access.length > 0 && (nativeCommands || pendingStayVisit || sceneAccessDiscussed(scene, venue, input));
+    const teachAccess = showAccess && (nativeCommands || pendingStayVisit || discussesAccess(scene, input));
+    const socialCommands = !nativeCommands && (teachAccess || (housingDiscussed && !!housing));
     const agendaContext = "agenda-context";
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
@@ -286,6 +304,9 @@ export function createSceneWriting({
         nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
         positions ? SCENE_RELATIONSHIP_KEEP : RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
+        socialCommands
+          ? "Use commands:[{type,id,at:segment ID,source:[exact current speech],...fields}] for the supplied access and housing changes only. Give a cited dialogue segment an id. Use requires:[command ID] where prose claims that change succeeded."
+          : "",
       ]),
       identity: blocksFor([
         ...profiles,
@@ -326,9 +347,9 @@ export function createSceneWriting({
           nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           showAccess ? narrationAccessPrompt(context.access) : "",
-          nativeCommands && showAccess ? NARRATION_ACCESS_COMMANDS : "",
+          teachAccess ? NARRATION_ACCESS_COMMANDS : "",
           housing,
-          nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
+          (nativeCommands || housingDiscussed) && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
           context.codeRequestedMemory
             ? 'Code records the exact requested fact for the named resident. Omit a keep for that fact. The resident may acknowledge it. Use "remember-fact" in requires on any line claiming it was saved.'
@@ -381,7 +402,13 @@ export function createSceneWriting({
         ...(lodging.length
           ? [
               {
-                text: LODGING_SPEECH + "\n" + JSON.stringify(lodging),
+                text: [
+                  discussLodging ? LODGING_SPEECH : "",
+                  lodging.some((row) => row.pending) ? LODGING_COMPLETION : "",
+                  JSON.stringify(lodging),
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
                 evidenceId: lodgingContext,
                 optional: "history" as const,
               },

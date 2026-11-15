@@ -165,10 +165,10 @@ export const NARRATION_NATIVE =
   'npc.admit {localKey:"new:label",existingId} or {localKey:"new:label",name,label?,characterization} uses the Player-seen arrival at its own segment. Newcomers hear only later lines. place.discover {existingId} or {place:{name,description,form?,report?,controllers?,zones?,people?}} discovers existing infrastructure. venue.request {by,name,classes} records a villager request. appointment {by,when:{dayOffset}|{weekday,afterToday?}|{date:"YYYY-MM-DD"},minute?} uses current spoken agreement and the supplied calendar.';
 
 export const NARRATION_ACCESS_COMMANDS =
-  'Access commands use supplied venue and zone IDs: permission.grant or permission.revoke {by,visitor,venue,zone}; access.decide {by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?} or {outcome:"access-management",management:exact native action fields without operationId, expectedRevision, zoneId or sceneId}}. Cite deciding words. Only accompaniment is an allowed access condition.';
+  'Access commands use supplied venue and zone IDs: permission.grant or permission.revoke {by,visitor,venue,zone}; access.decide {by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?} or {outcome:"access-management",management:exact native action fields without operationId, expectedRevision, zoneId or sceneId}}. Cite natural deciding words and use the supplied Zone when the referent is clear. An unfinished prerequisite stays in dialogue; accompaniment may be recorded as a visit condition.';
 
 export const NARRATION_HOUSING_COMMANDS =
-  "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the request or current decision about its exact terms.";
+  "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the natural request or reply about the same supplied home and sleeping space. A reply can refer to the pending request without repeating its terms.";
 
 export const NARRATION_PROJECT_COMMANDS =
   'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words. place.establish {project,objective,quote,met:true} records a Player-witnessed objective.';
