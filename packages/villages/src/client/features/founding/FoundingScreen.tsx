@@ -138,7 +138,21 @@ export function FoundingScreen({
     ? "The System connection is unavailable. Choose another model or review it in Engine."
     : rawSetupProblem;
   const [contextView, setContextView] = useState("");
-  const [settingEditorOpen, setSettingEditorOpen] = useState(false);
+  const beat = settingBeat(setupWorkspace);
+  const hasSettingDraft = !!setupWorkspace.settingDraft;
+  const settingEditorOpen =
+    setupWorkspace.settingEditorOpen ??
+    (beat === "village" &&
+      hasSettingDraft &&
+      !setupWorkspace.suggestionRequest?.draftSetting &&
+      !setupWorkspace.settingProblem);
+  const setSettingEditorOpen = useCallback(
+    (open: boolean) =>
+      setSetupWorkspace((workspace) =>
+        workspace.settingEditorOpen === open ? workspace : { ...workspace, settingEditorOpen: open },
+      ),
+    [setSetupWorkspace],
+  );
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [settingSuggestionsOpen, setSettingSuggestionsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
@@ -174,9 +188,14 @@ export function FoundingScreen({
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0 });
     bodyRef.current?.scrollTo({ top: 0 });
-    if (setupStep !== 0) setSettingEditorOpen(false);
     setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
   }, [setupStep, screen]);
+  useEffect(() => {
+    if (screen !== "setup" || setupStep !== 0 || !settingEditorOpen || !window.matchMedia("(max-width:727px)").matches)
+      return;
+    bodyRef.current?.scrollTo({ top: 0 });
+    settingTitle.current?.focus({ preventScroll: true });
+  }, [screen, setupStep, settingEditorOpen]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const mapUpload = useRef<HTMLInputElement>(null);
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
@@ -239,12 +258,20 @@ export function FoundingScreen({
       target?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [setupProblem, inlineProblem, backgroundError, validationAttempt, setupStep, settingEditorOpen]);
+  }, [
+    setupProblem,
+    inlineProblem,
+    backgroundError,
+    validationAttempt,
+    setupStep,
+    settingEditorOpen,
+    setSettingEditorOpen,
+  ]);
   if (screen === "setup") {
     const openSettingEditor = (view?: "Connections") => {
       if (view) setContextView(view);
       setSettingEditorOpen(true);
-      requestAnimationFrame(() => settingTitle.current?.focus());
+      if (!window.matchMedia("(max-width:727px)").matches) requestAnimationFrame(() => settingTitle.current?.focus());
     };
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
       id,
@@ -637,17 +664,14 @@ export function FoundingScreen({
             hidden={setupStep !== 0}
             className="villages-place-panels"
             data-editing={settingEditorOpen || undefined}
-            data-intro={settingBeat(setupWorkspace) !== "village" || undefined}
+            data-intro={beat !== "village" || undefined}
           >
             {setupStep === 0 ? (
               <FoundingSettingScene
                 controller={controller}
                 onConnections={() => openSettingEditor("Connections")}
                 onEditSetting={() => openSettingEditor()}
-                onBeatChange={() => {
-                  setSettingEditorOpen(false);
-                  bodyRef.current?.scrollTo({ top: 0 });
-                }}
+                onBeatChange={() => bodyRef.current?.scrollTo({ top: 0 })}
                 editSettingButton={editSettingButton}
                 next={nextReply}
               />
@@ -659,18 +683,25 @@ export function FoundingScreen({
                 </h2>
                 <button
                   type="button"
-                  className="villages-setting-done villages-forging-primary"
+                  className="villages-setting-done"
                   onClick={() => {
                     setSettingEditorOpen(false);
                     bodyRef.current?.scrollTo({ top: 0 });
                     requestAnimationFrame(() => editSettingButton.current?.focus());
                   }}
                 >
-                  Done
+                  {hasSettingDraft ? "Back to Mari" : "Done"}
                 </button>
               </div>
-              <div className="villages-setting-instruction">
-                {suggestionCount > 0 ? (
+              <div className="villages-setting-editor-guide">
+                <FoundingGuide pose={hasSettingDraft ? "happy" : "neutral"}>
+                  {hasSettingDraft
+                    ? "Here’s your setting so far. Change anything you’d like."
+                    : "Start with a village name and the place where we’ll meet your villagers."}
+                </FoundingGuide>
+              </div>
+              {suggestionCount > 0 ? (
+                <div className="villages-setting-instruction">
                   <button
                     type="button"
                     className="villages-setting-suggestions"
@@ -678,10 +709,8 @@ export function FoundingScreen({
                   >
                     Review Mari’s suggestions <span aria-hidden="true">· {suggestionCount}</span>
                   </button>
-                ) : (
-                  <p>Draft with Mari or fill in the fields below.</p>
-                )}
-              </div>
+                </div>
+              ) : null}
               <FoundingField
                 title="Village name"
                 error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
@@ -824,6 +853,7 @@ export function FoundingScreen({
                   </div>
                 </div>
               </div>
+              <div className="villages-setting-editor-next">{nextReply}</div>
             </section>
           </div>
           {setupStep === 2 ? (

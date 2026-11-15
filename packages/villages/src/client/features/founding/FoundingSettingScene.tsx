@@ -31,9 +31,15 @@ export function FoundingSettingScene({
   const beat = settingBeat(setupWorkspace);
   const lineRef = useRef<HTMLParagraphElement>(null);
   const moveTo = (settingBeat: SettingBeat) => {
-    setSetupWorkspace((workspace) => ({ ...workspace, settingBeat }));
+    const openEditor =
+      settingBeat === "village" &&
+      !!setupWorkspace.settingDraft &&
+      !setupWorkspace.settingProblem &&
+      !setupWorkspace.suggestionRequest?.draftSetting;
+    setSetupWorkspace((workspace) => ({ ...workspace, settingBeat, settingEditorOpen: openEditor }));
     onBeatChange();
-    requestAnimationFrame(() => lineRef.current?.focus());
+    if (!openEditor || !window.matchMedia("(max-width:727px)").matches)
+      requestAnimationFrame(() => lineRef.current?.focus());
   };
   const request = setupWorkspace.suggestionRequest;
   const pending = request && !request.failure;
@@ -55,8 +61,8 @@ export function FoundingSettingScene({
       setupSuggestionsBusy && waitingForMari
         ? "I’m putting those details together. You can keep editing your setting."
         : drafted
-          ? "How does that feel? Look over the setting before we meet your villagers."
-          : "Tell me about this village. Who calls it home, and where should we begin?",
+          ? "What would you change about the village name, starting location, or description?"
+          : "Tell me about the village itself. I can use what you share to draft its name and starting location.",
   }[beat];
   return (
     <section className="villages-setting-guide" aria-label="Professor Mari">
@@ -193,7 +199,7 @@ export function FoundingSettingScene({
                 className="villages-setting-edit-link"
                 onClick={onEditSetting}
               >
-                Edit setting
+                {drafted ? "Review setting" : "Edit setting"}
               </button>
               {waitingForMari && !setupSuggestionsBusy ? (
                 <button

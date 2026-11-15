@@ -10,6 +10,7 @@ export type FoundingWorkspaceState = {
   settingBeat?: "welcome" | "world" | "lorebooks" | "village";
   settingWorldBrief?: string;
   settingDraft?: Partial<FoundingSetting>;
+  settingEditorOpen?: boolean;
   settingProblem?: string;
   suggestionRequest?: {
     id: string;

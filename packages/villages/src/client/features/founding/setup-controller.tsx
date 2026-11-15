@@ -77,6 +77,7 @@ export function createFoundingDraftSetting(
         settingBeat: "village",
         suggestionRequest: undefined,
         settingDraft: setting,
+        settingEditorOpen: true,
         settingProblem: undefined,
       }));
     } catch (cause) {
