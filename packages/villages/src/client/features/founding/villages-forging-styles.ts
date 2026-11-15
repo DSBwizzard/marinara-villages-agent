@@ -625,19 +625,15 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-place-options button[aria-expanded=true] { background:#83576b; border-color:#d29399; }
 @media(prefers-reduced-motion:no-preference) {
   .villages-setting-stage img { animation:villages-mari-arrive .2s ease-out; }
-  .villages-forging-v2[data-scene-arrival]::before {
-    content:''; position:absolute; inset:0; z-index:12; pointer-events:none; background:#30213f;
-    animation:villages-founding-reveal .4s ease-out both;
-  }
   .villages-forging-v2[data-scene-arrival] .villages-setting-stage img {
-    animation:villages-mari-enter .36s ease-out .16s both;
+    animation:villages-mari-enter .36s ease-out both;
   }
   .villages-forging-v2[data-scene-arrival] .villages-setting-guide>.villages-setting-dialogue {
-    animation:villages-founding-reveal .2s ease-out .45s reverse both;
+    animation:villages-mari-greet .2s ease-out .14s both;
   }
 }
 @keyframes villages-mari-arrive { from { opacity:.65; transform:translateY(.2rem); } }
-@keyframes villages-founding-reveal { from { opacity:1; } to { opacity:0; } }
+@keyframes villages-mari-greet { from { opacity:0; } }
 @keyframes villages-mari-enter { from { opacity:0; transform:translateX(-1.2rem); } to { opacity:1; transform:translateX(0); } }
 @media(min-width:728px) {
   /* Keep the terrace floor in frame as the overlook crops on wide displays. */

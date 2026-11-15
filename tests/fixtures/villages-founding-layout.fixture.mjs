@@ -416,11 +416,7 @@ export async function verifyFoundingLayout(group) {
         await start.click();
         await expect(start).toHaveCount(0);
         await expect(root).toHaveCSS("background-image", titleBackdrop);
-        assert.equal(
-          await root.evaluate((element) => getComputedStyle(element, "::before").animationName),
-          view.height === 650 ? "none" : "villages-founding-reveal",
-          "The entrance respects reduced motion",
-        );
+        await expect.poll(() => root.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
         await expect(
           root.locator(".villages-forging-heading, .villages-forging-footer, .villages-forging-saved"),
         ).toHaveCount(0);
@@ -437,6 +433,9 @@ export async function verifyFoundingLayout(group) {
         );
         const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
         const stage = root.locator(".villages-setting-stage");
+        const reduceMotion = view.height === 650;
+        await expect(stage.locator("img")).toHaveCSS("animation-name", reduceMotion ? "none" : "villages-mari-enter");
+        await expect(stage.locator("img")).toHaveCSS("animation-delay", "0s");
         const phone = view.width <= 727;
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
         await expect(scene.locator('p[aria-live="polite"]')).toBeFocused();
