@@ -997,7 +997,10 @@ await withBrowser(browser, async () => {
     await expect(page.locator('[data-villager-request="request:mara-request"]')).toBeFocused();
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
-    assert.equal(writes.length, 0, JSON.stringify(writes));
+    assert.deepEqual(
+      writes.map((row) => row.path),
+      exerciseActions ? ["/api/villages/visitors/river-visitor/host"] : [],
+    );
     await chooseSection("Overview");
     const signature = profile.getByRole("img", { name: "Mara's signature", exact: true, includeHidden: true });
     await expect(signature).toBeVisible();
