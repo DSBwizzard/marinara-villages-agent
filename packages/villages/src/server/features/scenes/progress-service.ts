@@ -173,7 +173,9 @@ export function createSceneProgress({
             "the committed narration changed before Scene publication",
           );
           return publish(
-            committed.continuityVersionIds.length || committed.commandReceipts.length
+            committed.continuityVersionIds.length ||
+              committed.commandReceipts.length ||
+              committed.playerAccessChanges?.length
               ? narrationSceneNotices(state, committed)
               : [],
           );

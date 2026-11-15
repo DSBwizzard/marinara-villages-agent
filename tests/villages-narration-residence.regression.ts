@@ -15,6 +15,7 @@ import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-
 import { requestResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
 import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
 import { createResidences } from "../packages/villages/src/server/features/venues/residence-service.js";
+import { playerAccess } from "../packages/villages/src/server/domain/rules/player-access.js";
 const at = "2026-11-09T18:00:00.000Z";
 function fixture() {
   const state = projectFixture().state(),
@@ -119,6 +120,19 @@ await runCase("narration-residence/decisions", () => {
     false,
   );
   assert.equal(g.state.residences.length, 0, "refusal unilaterally cancels the move");
+
+  const player = fixture();
+  requestResidenceMove(player.state, "player", "home", "player", "", "player-move", new Date(at));
+  assert(!playerAccess(player.state, new Date(at)).some((entry) => entry.placeId === "home" && entry.kind === "home"));
+  const moveIn = player
+    .prepare({ type: "residence.decide", by: "a", person: "player", venue: "home", approved: true }, "a")
+    .accept();
+  assert.equal(moveIn.held, false);
+  assert(
+    moveIn.episode!.playerAccessChanges?.some(
+      ({ action, entry }) => action === "added" && entry.placeId === "home" && entry.kind === "home",
+    ),
+  );
 });
 await runCase("narration-residence/authority", () => {
   for (const kind of ["outsider", "speaker", "private", "unknown", "unapproved"]) {

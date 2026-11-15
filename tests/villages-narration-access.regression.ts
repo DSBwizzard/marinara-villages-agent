@@ -19,6 +19,7 @@ import {
 import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { playerAccess } from "../packages/villages/src/server/domain/rules/player-access.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
   continuityRelationships,
@@ -383,6 +384,14 @@ await runCase("narration-native/atomic", () => {
   );
   assert.equal(f.state.episodes.records.length, 1);
   assert.equal(result.episode!.commandReceipts.length, 1);
+  assert.deepEqual(
+    result.episode!.playerAccessChanges?.map(({ action, entry }) => [action, entry.kind, entry.room]),
+    [["added", "standing", "Restricted Zone"]],
+  );
+  const home = f.state.worldPlaces.places.home;
+  assert.equal(playerAccess(f.state, new Date(at))[0].room, "Restricted Zone");
+  home.knownBy = [f.actorId];
+  assert.deepEqual(playerAccess(f.state, new Date(at)), [], "an unknown Place is not disclosed by a projected grant");
 });
 
 await runCase("narration-native/held-rollback", () => {

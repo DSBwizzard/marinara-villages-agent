@@ -16,6 +16,7 @@ import { WorkspaceShell } from "../shared/WorkspaceShell.js";
 import { StorybookHeading } from "../shared/StorybookHeading.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { MENU_PAGE_TITLES } from "./navigation.js";
+import { playerAccessLabel } from "../shared/player-access.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
   const confirmVillages = useConfirmation(controller.menuPage);
@@ -137,6 +138,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     const selected = menuPage === "index" ? "general" : menuPage;
     const sections: { page: MenuPage; label: string }[] = [
       { page: "general", label: "General Preferences" },
+      { page: "myAccess", label: "My access" },
       { page: "village", label: "World Configuration" },
       { page: "visual", label: "Visual Settings" },
       { page: "advanced", label: "Advanced" },
@@ -267,6 +269,25 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             // reads the village afresh, so a panel is never stale by the time it
             // is opened.
             <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
+              {menuPage === "myAccess" && snapshot ? (
+                snapshot.myAccess?.length ? (
+                  Object.entries(Object.groupBy(snapshot.myAccess, (entry) => entry.placeId)).map(([id, entries]) => (
+                    <section key={id} className={`${ELEMENT_TAG}-panel`}>
+                      <h2>{entries[0].place}</h2>
+                      <ul>
+                        {entries.map((entry) => (
+                          <li key={entry.id}>
+                            {entry.room ? <strong>{entry.room} · </strong> : null}
+                            {playerAccessLabel(entry, snapshot.village.timeZone)}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ))
+                ) : (
+                  <p>No personal access changes.</p>
+                )
+              ) : null}
               {menuSection === "debug" ? backgroundPanel : null}
               {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
               {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}

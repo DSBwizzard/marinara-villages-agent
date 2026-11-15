@@ -480,7 +480,13 @@ export function acceptNarration(
           usableIds: [],
           episode: undefined,
         }
-      : acceptNarrationContinuity(prepared.candidate, { ...publication, native: prepared.native }, submissionId, at);
+      : acceptNarrationContinuity(
+          prepared.candidate,
+          { ...publication, native: prepared.native },
+          submissionId,
+          at,
+          state,
+        );
   const selected = resolveNarrationEffects((excluded) => {
     const prepared = prepareNarrationNative(state, publication.readset, publication.raw, submissionId, at, excluded);
     const result = evaluate(prepared);

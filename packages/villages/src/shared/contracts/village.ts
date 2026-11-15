@@ -139,10 +139,7 @@ export type VillageSnapshot = {
   mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
-  sleepsIn?: {
-    place: string;
-    room: string;
-  } & ({ status: "pending"; condition: string } | { status: "confirmed"; endsAt: string });
+  myAccess?: import("../helpers/venue-access.js").PlayerAccessEntry[];
   opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;
   backgroundWork?: BackgroundWork[];
@@ -755,9 +752,11 @@ export type SceneView = {
 export type RoomRecordEvent = {
   wishUpdate?: { actorId?: string; wishId: string; state: "revealed" | "progress" | "fulfilled" };
   id: string;
-  kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
+  kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down" | "access";
   text: string;
   detail?: string;
+  accessChanges?: import("../helpers/venue-access.js").PlayerAccessChange[];
+  accessAt?: string;
 };
 
 export type MemoryPerson = { id: string; name: string };

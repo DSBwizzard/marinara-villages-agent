@@ -320,6 +320,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           onEnd={() => void closeRoom()}
           notices={roomNotices}
+          onOpenAccess={() => {
+            void loadSnapshot();
+            void openMenu("myAccess");
+          }}
+          timeZone={snapshot?.village.timeZone}
           onDismissNotice={dismissRoomNotice}
           onOpenWish={(actorId, wishId) => {
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });

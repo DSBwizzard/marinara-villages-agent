@@ -2,6 +2,7 @@ import type { ContinuityCollection, ContinuityEvidence, ContinuityHolder } from 
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor, relationshipActors, relationshipCalendar } from "./continuity-actors.js";
 import {
@@ -37,6 +38,7 @@ import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
 import { lodgingReady, lodgingSettlement, lodgingWrite } from "./lodging.js";
+import { playerAccess, playerAccessChanges } from "./player-access.js";
 import { applySceneAppointment, cloneAppointmentState, sceneAgendaEvidence } from "./agenda-overview.js";
 
 export type NarrationPublication = {
@@ -121,6 +123,7 @@ export function acceptNarrationContinuity(
   publication: NarrationPublication,
   submissionId: string,
   acceptedAt: string,
+  previousAuthority = state,
 ) {
   const { readset, native } = publication;
   const digest = memoryHash([publication.responseDigest, publication.raw, readset]);
@@ -928,6 +931,21 @@ export function acceptNarrationContinuity(
       .filter((id) => native.receipts[id])
       .map((id) => ["native:" + native.receipts[id].id, (native.sources[id] ?? []).map(continuitySourceUnit)]),
   );
+  const authorityChanged =
+    scheduledWorld.venues !== previousAuthority.venues || scheduledWorld.worldPlaces !== previousAuthority.worldPlaces;
+  const accessAt = new ZonedDate(acceptedAt, readset.calendar.timeZone);
+  const accessChanges =
+    authorityChanged &&
+    (scheduledWorld.venues !== state.venues ||
+      scheduledWorld.worldPlaces !== state.worldPlaces ||
+      commandReceipts.some(({ kind }) =>
+        ["access", "residence", "establishment", "project", "structure"].includes(kind),
+      ))
+      ? playerAccessChanges(
+          playerAccess(previousAuthority, accessAt, scene),
+          playerAccess(scheduledWorld, accessAt, scene),
+        )
+      : [];
   const episode: AcceptedEpisode = {
     format: 1,
     id: source.episodeId,
@@ -949,6 +967,7 @@ export function acceptNarrationContinuity(
     segments: source.lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((row) => row.id),
+    ...(accessChanges.length && { playerAccessChanges: accessChanges }),
     ...(selection.rejected.length ? { rejectedEffects: selection.rejected } : {}),
     offered: [
       ...readset.offered,

@@ -12,10 +12,8 @@ const nativeNotices: Partial<
 > = {
   project: { kind: "project", text: "Project updated" },
   establishment: { kind: "project", text: "Establishment updated" },
-  residence: { kind: "request", text: "Residence updated" },
   "venue-request": { kind: "request", text: "Venue request updated" },
   appointment: { kind: "memory", text: "Appointment recorded" },
-  access: { kind: "venue", text: "Access updated" },
   discovery: { kind: "venue", text: "Place discovered" },
 };
 
@@ -38,7 +36,13 @@ function eligibleWish(
 
 export function visibleSceneNotices(state: VillageState, events: VenueRecordEvent[]): VenueRecordEvent[] {
   const dismissed = new Set(state.dismissedNoticeIds);
-  if (!events.some((event) => event.kind === "wish")) return events.filter((event) => !dismissed.has(event.id));
+  const visible = events.filter(
+    (event) =>
+      !dismissed.has(event.id) &&
+      !(event.kind === "venue" && ["Stay agreed", "Access updated"].includes(event.text)) &&
+      !(event.kind === "request" && event.text === "Residence updated"),
+  );
+  if (!visible.some((event) => event.kind === "wish")) return visible;
   const player = continuityActor(state, "player")!;
   const blocked = continuityProtectionUnits(
     state.continuity,
@@ -50,8 +54,7 @@ export function visibleSceneNotices(state: VillageState, events: VenueRecordEven
       .filter((view) => eligibleWish(state, view))
       .map((view) => [wishNoticeId(view.version.id), view]),
   );
-  return events.filter((event) => {
-    if (dismissed.has(event.id)) return false;
+  return visible.filter((event) => {
     if (event.kind !== "wish") return true;
     const wish = eligible.get(event.id);
     return wish && wish.id === event.wishUpdate?.wishId && wish.owner?.id === event.wishUpdate?.actorId;
@@ -73,26 +76,48 @@ export function narrationSceneNotices(state: VillageState, episode: AcceptedEpis
     episodeSourceGraph(state.episodes.records, player),
   );
   const notices = new Map<string, VenueRecordEvent>();
+  if (episode.playerAccessChanges?.length) {
+    const id = "notice:" + memoryHash([episode.id, "player-access"]);
+    notices.set(id, {
+      id,
+      kind: "access",
+      text: "Access updated",
+      accessAt: episode.acceptedAt,
+      accessChanges: episode.playerAccessChanges,
+    });
+  }
   const notifiedReceipts = new Set<string>();
   for (const receipt of episode.commandReceipts) {
     const label = nativeNotices[receipt.kind];
-    if (!label || !receipt.witnesses.includes(player.id)) continue;
+    if ((!label && receipt.kind !== "access") || !receipt.witnesses.includes(player.id)) continue;
     const proof = episode.grounding.find(
       (source) => source.kind === "native" && source.committedReceiptId === receipt.id,
     );
     if (!proof || blocked.has(continuitySourceUnit(proof))) continue;
-    const id = "notice:" + memoryHash([episode.id, "receipt", receipt.id]);
-    notices.set(id, { id, ...label });
     notifiedReceipts.add(receipt.id);
+    if (label) {
+      const id = "notice:" + memoryHash([episode.id, "receipt", receipt.id]);
+      notices.set(id, { id, ...label });
+    }
   }
   if (!episode.continuityVersionIds.length) return [...notices.values()];
 
   const accepted = new Set(episode.continuityVersionIds);
+  const lodgingRoots = new Set(
+    state.continuity.versions.filter((version) => version.lodging).map((version) => version.rootId),
+  );
+  const lodgingSources = new Set(
+    episode.playerAccessChanges?.some(({ entry }) => entry.kind === "stay")
+      ? activeLodging(state, "player", new Date(episode.acceptedAt))?.permission.sourceLineIds
+      : [],
+  );
   const views = continuityViews(state.continuity, player, episode.acceptedAt, blocked);
   for (const view of views) {
     const { version } = view;
     if (
       view.repaired ||
+      lodgingRoots.has(view.id) ||
+      version.sources.some((source) => lodgingSources.has(source.id)) ||
       !accepted.has(version.id) ||
       version.id !== continuityVersionId(state.seed, version.operationId, player)
     )
@@ -108,14 +133,6 @@ export function narrationSceneNotices(state: VillageState, episode: AcceptedEpis
         text: status === "fulfilled" ? "Wish fulfilled" : status === "revealed" ? "Wish shared" : "Wish updated",
         wishUpdate: { actorId: view.owner.id, wishId: view.id, state: status },
       });
-    } else if (
-      view.offer?.state === "accepted" &&
-      view.offer.participants.some(
-        (party) => activeLodging(state, party.id, new Date(episode.acceptedAt))?.permission.id === view.id,
-      )
-    ) {
-      const id = "notice:" + memoryHash([episode.id, "stay", view.id]);
-      notices.set(id, { id, kind: "venue", text: "Stay agreed" });
     } else if (
       !version.parentId &&
       !version.sources.some((source) => source.committedReceiptId && notifiedReceipts.has(source.committedReceiptId))

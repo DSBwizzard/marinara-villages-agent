@@ -89,6 +89,18 @@ export type ZoneAccessDecision = {
   permissionId?: string;
   accompaniedBy?: string;
 };
+export type PlayerAccessEntry = {
+  id: string;
+  placeId: string;
+  place: string;
+  room?: string;
+  kind: "home" | "member" | "visit" | "standing" | "stay" | "ban" | "refused";
+  endsAt?: string;
+  thisVisit?: true;
+  escorted?: true;
+  visitorHours?: true;
+};
+export type PlayerAccessChange = { action: "added" | "changed" | "removed"; entry: PlayerAccessEntry };
 /** Explicit player projections. Never serialize the authoritative ledger. */
 export type ZoneAccessView = {
   decision: ZoneAccessDecision;

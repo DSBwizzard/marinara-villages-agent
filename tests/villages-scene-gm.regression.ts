@@ -66,7 +66,7 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
       assert.equal(messages.at(-1).content, calls === 1 ? message : "Why?");
       const prompt = messages.map((row) => row.content).join("\n");
       assert.equal(prompt.includes("Scoped native access authority"), invited);
-      assert.doesNotMatch(prompt, /Access commands use supplied venue and zone IDs/u);
+      assert.equal(prompt.includes("Access commands use supplied venue and zone IDs"), invited);
       if (calls === 2)
         assert(
           messages.some(
@@ -128,6 +128,20 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
         turn = saved.submissions.at(-1)!;
       assert.equal(turn.message, message);
       assert.equal(turn.acceptance.status, "applied");
+      const access = turn.recordEvents?.filter((notice) => notice.kind === "access") ?? [];
+      assert.equal(access.length, invited ? 1 : 0);
+      if (invited) {
+        assert.equal(access[0].accessChanges?.length, 1);
+        assert.equal(access[0].accessChanges?.[0].entry.room, "Workshop");
+        assert.equal(access[0].accessChanges?.[0].entry.thisVisit, true);
+        const changes = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/changes" });
+        assert.equal(changes.statusCode, 200, changes.body);
+        assert.deepEqual(
+          changes.json().notices.find((notice: { id: string }) => notice.id === access[0].id).accessChanges,
+          access[0].accessChanges,
+          "reload retains the chip details",
+        );
+      }
       const input = saved.lines.find((line) => line.inputOf === turn.id)!;
       assert.equal(input.content, message);
       assert.equal(input.kind, "input");
@@ -154,6 +168,11 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
         assert.equal(view.statusCode, 200, view.body);
         const entry = view.json().sceneVenue.venue.zones.find((zone: any) => zone.id === "workshop").accessView;
         assert(entry.decision.allowed, JSON.stringify(entry));
+        assert(
+          view
+            .json()
+            .myAccess.some((row: { room?: string; thisVisit?: true }) => row.room === "Workshop" && row.thisVisit),
+        );
         assert.equal(
           host.scene().accompanying?.find((row) => row.characterId === "mara")?.zoneId,
           "common",

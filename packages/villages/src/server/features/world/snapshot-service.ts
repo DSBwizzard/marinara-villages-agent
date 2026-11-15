@@ -1,4 +1,5 @@
-import { activeLodging, pendingLodging } from "../../domain/rules/lodging-presence.js";
+import { activeLodging } from "../../domain/rules/lodging-presence.js";
+import { playerAccess } from "../../domain/rules/player-access.js";
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
 import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
@@ -160,20 +161,12 @@ export function createVillageSnapshot({
         destination,
       );
     });
-    const pendingStay = pendingLodging(village, "player", now);
-    const currentStay = activeLodging(village, "player", now);
-    const chosenStay = pendingStay ?? currentStay;
+    const myAccess = playerAccess(village, now, residenceAccess);
+    const accessEnds = myAccess.flatMap(({ endsAt }) => (endsAt ? [endsAt] : []));
+    const nextTransition = [exactSnapshotTransition(village, now), ...accessEnds].sort()[0];
     const snapshot: VillageSnapshot = {
       worldScope: villageWorldScope(village),
-      ...(chosenStay && {
-        sleepsIn: {
-          place: chosenStay.venue.name,
-          room: chosenStay.zone.name,
-          ...(pendingStay
-            ? { status: "pending", condition: pendingStay.pending.condition }
-            : { status: "confirmed", endsAt: currentStay!.permission.expiresAt! }),
-        },
-      }),
+      myAccess,
       mailboxUnread: hasUnreadMail(village.mailbox),
       status: "ready",
       clock,
@@ -189,7 +182,7 @@ export function createVillageSnapshot({
             ).length,
           }
         : null,
-      village: villageMomentView(village, now, exactSnapshotTransition(village, now)),
+      village: villageMomentView(village, now, nextTransition),
       venueRequests: village.pendingDecisions
         .filter(
           (decision) =>

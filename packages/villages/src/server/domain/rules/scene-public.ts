@@ -4,20 +4,32 @@ import { deriveVillageMoment } from "./village-clock.js";
 import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { conflict } from "./errors.js";
+import { playerAccessChangesSchema } from "../decoding/player-access-codec.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
   const notices = (value: unknown) =>
-    (Array.isArray(value) ? value : []).map((value) => {
+    (Array.isArray(value) ? value : []).flatMap((value) => {
       const notice = asRecord(value),
         wish = asRecord(notice.wishUpdate);
-      return {
-        id: notice.id,
-        kind: notice.kind,
-        text: notice.text,
-        detail: notice.detail,
-        ...(notice.wishUpdate ? { wishUpdate: { actorId: wish.actorId, wishId: wish.wishId, state: wish.state } } : {}),
-      };
+      const access = notice.kind === "access" ? playerAccessChangesSchema.safeParse(notice.accessChanges) : undefined;
+      if (
+        access &&
+        (!access.success || typeof notice.accessAt !== "string" || !Number.isFinite(Date.parse(notice.accessAt)))
+      )
+        return [];
+      return [
+        {
+          id: notice.id,
+          kind: notice.kind,
+          text: notice.text,
+          detail: notice.detail,
+          ...(notice.wishUpdate
+            ? { wishUpdate: { actorId: wish.actorId, wishId: wish.wishId, state: wish.state } }
+            : {}),
+          ...(access?.success ? { accessChanges: access.data, accessAt: notice.accessAt } : {}),
+        },
+      ];
     });
   const summary = asRecord(row.processingSummary);
   return {

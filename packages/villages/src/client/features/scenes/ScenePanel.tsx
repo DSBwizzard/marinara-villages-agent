@@ -37,6 +37,7 @@ import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
+import { playerAccessLabel } from "../../shared/player-access.js";
 
 /** Unseen Zone names remain private. */
 export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boolean }): string {
@@ -52,6 +53,7 @@ function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
     memory: "memory",
     wish: "Wish update",
     venue: "Venue change",
+    access: "access change",
     request: "request",
     project: "Project update",
     "relationship-up": "relationship change",
@@ -231,6 +233,8 @@ export function RoomPanel({
   notices,
   onDismissNotice,
   onOpenWish,
+  onOpenAccess,
+  timeZone,
   changeStatus,
   onReplayChanges,
   unresolvedChanges,
@@ -284,6 +288,8 @@ export function RoomPanel({
   notices: RoomRecordEvent[];
   onDismissNotice: (id: string) => void;
   onOpenWish?: (actorId: string, wishId: string) => void;
+  onOpenAccess: () => void;
+  timeZone?: string;
   changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
   unresolvedChanges?: SceneChangeIssue[];
@@ -307,6 +313,7 @@ export function RoomPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [openAccessId, setOpenAccessId] = useState<string | null>(null);
   const [errorsOpen, setErrorsOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -320,7 +327,15 @@ export function RoomPanel({
   const [dialogueHidden, setDialogueHidden] = useState(false);
   const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
-  const presenceNotice = notices.find((notice) => notice.id.startsWith("presence:"));
+  const accessNotice = notices.reduce<RoomRecordEvent | undefined>(
+    (latest, notice) =>
+      notice.kind === "access" && (notice.accessAt ?? "") >= (latest?.accessAt ?? "") ? notice : latest,
+    undefined,
+  );
+  const worldNotices = useMemo(() => notices.filter((notice) => notice.kind !== "access"), [notices]);
+  const presenceNotice = worldNotices.find((notice) => notice.id.startsWith("presence:"));
+  const accessOpen = !!accessNotice && openAccessId === accessNotice.id;
+  const accessTrigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (settingsOpen) settingsRef.current?.focus();
@@ -328,16 +343,17 @@ export function RoomPanel({
 
   useEffect(() => {
     setNoticesOpen(false);
+    setOpenAccessId(null);
     setErrorsOpen(false);
     previousNoticeIds.current.clear();
   }, [room.id]);
 
   useEffect(() => {
-    const fresh = notices.some((notice) => !previousNoticeIds.current.has(notice.id));
-    previousNoticeIds.current = new Set(notices.map((notice) => notice.id));
-    if (fresh && !errorsOpen) setNoticesOpen(true);
-    else if (notices.length === 0) setNoticesOpen(false);
-  }, [notices, room.id, errorsOpen]);
+    const fresh = worldNotices.some((notice) => !previousNoticeIds.current.has(notice.id));
+    previousNoticeIds.current = new Set(worldNotices.map((notice) => notice.id));
+    if (fresh && !errorsOpen && !accessOpen) setNoticesOpen(true);
+    else if (worldNotices.length === 0) setNoticesOpen(false);
+  }, [worldNotices, room.id, errorsOpen, accessOpen]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -1001,27 +1017,32 @@ export function RoomPanel({
             open={errorsOpen}
             onOpen={(value) => {
               setErrorsOpen(value);
-              if (value) setNoticesOpen(false);
+              if (value) {
+                setNoticesOpen(false);
+                setOpenAccessId(null);
+              }
             }}
           />
         ) : null}
-        {notices.length > 0 ? (
+        {worldNotices.length > 0 ? (
           <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
             <button
               type="button"
               className={`${ELEMENT_TAG}-room-notices-trigger`}
               onClick={() => {
                 setNoticesOpen((value) => !value);
+                setOpenAccessId(null);
                 setErrorsOpen(false);
               }}
               aria-expanded={noticesOpen}
-              aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
+              aria-label={`${worldNotices.length} ${worldNotices.length === 1 ? "World change" : "World changes"}`}
             >
-              <span aria-hidden="true">{presenceNotice ? roomNoticeIcon(presenceNotice) : "✦"}</span> {notices.length}
+              <span aria-hidden="true">{presenceNotice ? roomNoticeIcon(presenceNotice) : "✦"}</span>{" "}
+              {worldNotices.length}
             </button>
             {noticesOpen ? (
               <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
-                {notices.map((notice) => (
+                {worldNotices.map((notice) => (
                   <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
                     <span aria-hidden="true">{roomNoticeIcon(notice)}</span>
                     {(notice.kind === "memory" ||
@@ -1069,6 +1090,51 @@ export function RoomPanel({
                   </div>
                 ))}
               </div>
+            ) : null}
+          </div>
+        ) : null}
+        {accessNotice ? (
+          <div
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || !accessOpen) return;
+              event.stopPropagation();
+              setOpenAccessId(null);
+              accessTrigger.current?.focus();
+            }}
+          >
+            <button
+              ref={accessTrigger}
+              type="button"
+              className={`${ELEMENT_TAG}-room-notices-trigger`}
+              aria-expanded={accessOpen}
+              onClick={() => {
+                setOpenAccessId(accessOpen ? null : accessNotice.id);
+                setNoticesOpen(false);
+                setErrorsOpen(false);
+              }}
+            >
+              <span aria-hidden="true">ⓘ</span> Access updated
+            </button>
+            {accessOpen ? (
+              <section
+                className={`${ELEMENT_TAG}-room-stars ${ELEMENT_TAG}-access-details`}
+                aria-label="Applied access changes"
+              >
+                <ul>
+                  {accessNotice.accessChanges?.map(({ action, entry }) => (
+                    <li key={entry.id}>
+                      <strong>
+                        {entry.place}
+                        {entry.room && ` · ${entry.room}`}
+                      </strong>
+                      <div>{playerAccessLabel(entry, timeZone, action)}</div>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onOpenAccess}>
+                  View my access
+                </button>
+              </section>
             ) : null}
           </div>
         ) : null}

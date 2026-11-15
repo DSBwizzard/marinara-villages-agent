@@ -50,6 +50,8 @@ import {
 import { activeLodging, pendingLodging } from "../packages/villages/src/server/domain/rules/lodging-presence.js";
 import { sceneLodgingOptions } from "../packages/villages/src/server/domain/rules/lodging.js";
 import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { narrationSceneNotices } from "../packages/villages/src/server/domain/rules/narration-notices.js";
+import { playerAccess } from "../packages/villages/src/server/domain/rules/player-access.js";
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
@@ -134,6 +136,8 @@ await runCase("narration-acceptance/conditional-stay", () => {
     offer.readset.lodging = sceneLodgingOptions(f.state, ["player", f.id], f.scene.placeId);
     const result = acceptNarrationContinuity(f.state, offer, "conditional", later);
     assert.equal(result.held, false, JSON.stringify(result.rejected));
+    assert.deepEqual(narrationSceneNotices(f.state, result.episode!), [], "pending terms stay in roleplay");
+    assert.deepEqual(playerAccess(f.state, new Date(later)), []);
     const pending = pendingLodging(f.state, "player", new Date(later));
     assert.equal(pending?.pending.condition, condition);
     assert.equal(activeLodging(f.state, "player", new Date(later)), undefined);
@@ -180,9 +184,17 @@ await runCase("narration-acceptance/conditional-stay", () => {
     const active = activeLodging(f.state, "player", new Date(afterward));
     assert.equal(active?.permission.expiresAt, confirmed ? "2026-11-10T12:22:00.000Z" : undefined);
     if (confirmed) {
-      assert(acceptNarrationContinuity(f.state, ready, "ready", afterward).replayed);
+      const notices = narrationSceneNotices(f.state, completion.episode!);
+      assert.equal(notices.length, 1);
+      assert.equal(notices[0].kind, "access");
+      assert.equal(notices[0].accessChanges?.[0].entry.room, "Parlor");
+      assert.equal(notices[0].accessChanges?.[0].entry.endsAt, "2026-11-10T12:22:00.000Z");
+      const replay = acceptNarrationContinuity(f.state, ready, "ready", afterward);
+      assert(replay.replayed);
+      assert.deepEqual(narrationSceneNotices(f.state, replay.episode!), notices);
       assert.equal(active?.permission.id, pending!.permission.id);
       assert.equal(activeLodging(f.state, "player", new Date("2026-11-10T12:22:00.000Z")), undefined);
+      assert.deepEqual(playerAccess(f.state, new Date("2026-11-10T12:22:00.000Z")), []);
     }
   }
 });

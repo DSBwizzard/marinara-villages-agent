@@ -13,6 +13,7 @@ export const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   venueRequests: "Venue Requests",
   projects: "Projects",
   village: "World Configuration",
+  myAccess: "My access",
   visual: "Visual Settings",
   general: "General Preferences",
   advanced: "Advanced",

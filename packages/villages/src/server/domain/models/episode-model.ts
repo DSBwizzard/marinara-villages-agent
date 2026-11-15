@@ -19,6 +19,7 @@ export type AcceptedEpisode = {
   segments: VenueLine[];
   grounding: ContinuityEvidence[];
   continuityVersionIds: string[];
+  playerAccessChanges?: import("../../../shared/helpers/venue-access.js").PlayerAccessChange[];
   rejectedEffects?: { id: string; reason: string }[];
   offered: { holder: Extract<import("./continuity-model.js").ContinuityHolder, { kind: "actor" }>; ids: string[] }[];
   commandReceipts: {

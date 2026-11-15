@@ -37,39 +37,9 @@ export function VillagesFrame({ controller, children }: FrameProps) {
 }
 
 function VillageContent({ controller, children }: FrameProps) {
-  const snapshot = controller.snapshot;
-  const stay = snapshot?.sleepsIn;
   return (
     <div style={{ height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
       <OpeningReminder controller={controller} />
-      {stay ? (
-        <details style={{ padding: "0.5rem 1rem", borderBottom: "1px solid rgba(127, 127, 127, 0.28)" }}>
-          <summary style={{ cursor: "pointer", overflowWrap: "anywhere" }}>
-            <strong>Sleeps in</strong> · {stay.place} · {stay.status === "pending" ? "Pending" : stay.room}
-          </summary>
-          <div style={{ padding: "0.375rem 0 0 1rem", overflowWrap: "anywhere" }}>
-            {stay.status === "pending" ? (
-              <>
-                <div>{stay.room}</div>
-                <div>Condition · {stay.condition}</div>
-                <div>Stay access pending</div>
-              </>
-            ) : (
-              <>
-                <div>Access to the room and its entry route</div>
-                <div>
-                  Ends{" "}
-                  {new Intl.DateTimeFormat(undefined, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                    timeZone: snapshot.village.timeZone,
-                  }).format(new Date(stay.endsAt))}
-                </div>
-              </>
-            )}
-          </div>
-        </details>
-      ) : null}
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{children}</div>
     </div>
   );
