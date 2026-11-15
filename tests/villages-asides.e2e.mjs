@@ -89,6 +89,7 @@ await withBrowser(browser, async () => {
       heardBy: [person.characterId],
       at: now,
     }));
+    let showNotice = false;
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = fixture;
@@ -99,7 +100,9 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/changes"))
         value = {
           changes: [],
-          notices: [],
+          notices: showNotice
+            ? [{ id: "presence:fixture", kind: "venue", text: "Eli is no longer here.", at: now }]
+            : [],
           dismissedNoticeIds: [],
           nextCursor: "",
           processingSummary: { pending: 0, failed: 0, rejected: 0 },
@@ -185,6 +188,24 @@ await withBrowser(browser, async () => {
     await checkGeometry("normal viewport");
     await expect(band.locator(`.${tag}-aside-slot[data-side="left"]`)).toHaveCount(2);
     await page.screenshot({ path: resolve(output, `asides-${width}x${height}.png`) });
+    showNotice = true;
+    await load();
+    const noticePanel = page.locator(`.${tag}-room-stars`);
+    await expect(noticePanel).toContainText("Eli is no longer here.");
+    await expect
+      .poll(() =>
+        band.evaluate((element, tag) => {
+          const notice = element.closest(`.${tag}-chat`).querySelector(`.${tag}-room-stars`);
+          return element.getBoundingClientRect().top - notice.getBoundingClientRect().bottom;
+        }, tag),
+      )
+      .toBeGreaterThanOrEqual(0);
+    const belowNotice = (await band.boundingBox()).y;
+    await checkGeometry("with the attendance notice open");
+    await page.getByRole("button", { name: "1 World change", exact: true }).click();
+    await expect(noticePanel).toBeHidden();
+    await expect.poll(async () => (await band.boundingBox()).y).toBeLessThan(belowNotice);
+    showNotice = false;
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     if (mobile) {
       await composer.fill("A draft to keep.");

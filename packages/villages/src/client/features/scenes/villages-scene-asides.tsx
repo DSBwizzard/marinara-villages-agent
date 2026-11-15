@@ -56,17 +56,25 @@ export function SceneAsides<T extends { speakerId?: string }>({
     const element = root.current;
     const scene = element?.closest<HTMLElement>(`.${tag}-chat`);
     const head = scene?.querySelector(`.${tag}-chat-head`);
+    const notices = scene?.querySelector(`.${tag}-scene-notice-chips`);
     const dock = scene?.querySelector(`.${tag}-chat-vn`);
-    if (!element || !scene || !head || !dock) return;
+    if (!element || !scene || !head || !notices || !dock) return;
     let frame = 0;
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         if (!element.getClientRects().length) return;
         const sceneTop = scene.getBoundingClientRect().top;
-        const headBottom = head.getBoundingClientRect().bottom;
+        const controlsBottom = Math.max(
+          head.getBoundingClientRect().bottom,
+          notices.getBoundingClientRect().bottom,
+          ...Array.from(
+            notices.querySelectorAll(`.${tag}-room-stars, .${tag}-scene-error-panel`),
+            (panel) => panel.getBoundingClientRect().bottom,
+          ),
+        );
         const dockTop = dock.getBoundingClientRect().top;
-        const top = Math.max(0, headBottom - sceneTop) + 8;
+        const top = Math.max(0, controlsBottom - sceneTop) + 8;
         const available = sceneAsideAvailableHeight(dockTop, sceneTop, window.visualViewport?.offsetTop ?? 0, top);
         element.style.setProperty("--aside-top", `${top}px`);
         element.style.setProperty("--aside-height", `${Math.min(available, Math.max(112, available * 0.6))}px`);
@@ -79,13 +87,16 @@ export function SceneAsides<T extends { speakerId?: string }>({
       });
     };
     const observer = new ResizeObserver(update);
-    for (const node of [element, head, dock, scene]) observer.observe(node);
+    for (const node of [element, head, notices, dock, scene]) observer.observe(node);
+    const noticeUpdates = new MutationObserver(update);
+    noticeUpdates.observe(notices, { childList: true, characterData: true, subtree: true });
     window.visualViewport?.addEventListener("resize", update);
     window.visualViewport?.addEventListener("scroll", update);
     update();
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      noticeUpdates.disconnect();
       window.visualViewport?.removeEventListener("resize", update);
       window.visualViewport?.removeEventListener("scroll", update);
       scene.style.removeProperty("--villages-aside-cast-height");
