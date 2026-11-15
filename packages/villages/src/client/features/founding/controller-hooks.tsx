@@ -272,7 +272,7 @@ export function useFoundingMapReceipt(ports: {
     React.SetStateAction<import("./villages-founding-workspace-state.js").FoundingWorkspaceState>
   >;
   visible: boolean;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   setSetupMapBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupMapGeneratedKey: React.Dispatch<React.SetStateAction<string>>;
   setSetupMapImage: React.Dispatch<React.SetStateAction<string>>;
@@ -523,10 +523,10 @@ export function useFoundingPreparationPolling(ports: {
   historyPending: boolean;
   canPlay: boolean | undefined;
   status: VillageSnapshot["foundingPreparation"]["status"] | undefined;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   setPreparationProblem: React.Dispatch<React.SetStateAction<string>>;
   setScreen: React.Dispatch<
-    React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
   setSnapshot: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageSnapshot>>;
 }) {

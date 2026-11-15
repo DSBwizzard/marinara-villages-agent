@@ -376,12 +376,14 @@ export function VillageLorebookPicker({
   selected,
   onChange,
   disabled,
+  triggerLabel,
 }: {
   books: VillageLorebookOption[] | null;
   error: string;
   selected: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
+  triggerLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
@@ -407,22 +409,28 @@ export function VillageLorebookPicker({
   ) : null;
   return (
     <section
-      className={ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"}
+      className={
+        triggerLabel ? undefined : ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"
+      }
       aria-label="Village Lorebooks"
     >
       <div className="villages-lorebook-header">
-        <div className="villages-lorebook-heading">
-          <h3>Village Lorebooks</h3>
-          <FoundingHelp label="Village Lorebooks">
-            Selected lorebooks enrich your Village with information for places, stories, village life and image
-            generation.
-          </FoundingHelp>
-        </div>
-        <LoreActivityButton />
+        {triggerLabel ? null : (
+          <>
+            <div className="villages-lorebook-heading">
+              <h3>Village Lorebooks</h3>
+              <FoundingHelp label="Village Lorebooks">
+                Selected lorebooks enrich your Village with information for places, stories, village life and image
+                generation.
+              </FoundingHelp>
+            </div>
+            <LoreActivityButton />
+          </>
+        )}
         <button
           type="button"
           className="villages-lorebook-action"
-          aria-label="Choose Village Lorebooks"
+          aria-label={triggerLabel ?? "Choose Village Lorebooks"}
           disabled={disabled}
           onClick={() => {
             setQuery("");
@@ -431,38 +439,40 @@ export function VillageLorebookPicker({
             setOpen(true);
           }}
         >
-          Choose...
+          {triggerLabel ?? "Choose..."}
         </button>
       </div>
-      <div className={ELEMENT_TAG + "-lore-selected"} aria-live="polite">
-        {selected.length ? (
-          selected.map((id) => (
-            <span className={ELEMENT_TAG + "-lore-chip"} key={id}>
-              <span>
-                {byId.get(id)?.name ?? id}
-                {books === null
-                  ? " (checking)"
-                  : !byId.has(id)
-                    ? " (missing)"
-                    : !byId.get(id)?.enabled
-                      ? " (disabled)"
-                      : ""}
+      {triggerLabel ? null : (
+        <div className={ELEMENT_TAG + "-lore-selected"} aria-live="polite">
+          {selected.length ? (
+            selected.map((id) => (
+              <span className={ELEMENT_TAG + "-lore-chip"} key={id}>
+                <span>
+                  {byId.get(id)?.name ?? id}
+                  {books === null
+                    ? " (checking)"
+                    : !byId.has(id)
+                      ? " (missing)"
+                      : !byId.get(id)?.enabled
+                        ? " (disabled)"
+                        : ""}
+                </span>
+                <button
+                  type="button"
+                  aria-label={"Remove " + (byId.get(id)?.name ?? id)}
+                  disabled={disabled}
+                  onClick={() => onChange(selected.filter((choice) => choice !== id))}
+                >
+                  ×
+                </button>
               </span>
-              <button
-                type="button"
-                aria-label={"Remove " + (byId.get(id)?.name ?? id)}
-                disabled={disabled}
-                onClick={() => onChange(selected.filter((choice) => choice !== id))}
-              >
-                ×
-              </button>
-            </span>
-          ))
-        ) : (
-          <span className={ELEMENT_TAG + "-hint"}>None selected</span>
-        )}
-      </div>
-      {!open ? status : null}
+            ))
+          ) : (
+            <span className={ELEMENT_TAG + "-hint"}>None selected</span>
+          )}
+        </div>
+      )}
+      {!open && !triggerLabel ? status : null}
       {open ? (
         <FoundingDialog title="Choose Lorebooks" scrollBody onClose={() => setOpen(false)}>
           <input

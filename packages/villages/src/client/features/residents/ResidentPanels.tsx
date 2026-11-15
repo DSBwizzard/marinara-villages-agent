@@ -201,7 +201,12 @@ export function AvatarFace({
           onError={() => setFailedUrl(portrait.url)}
         />
       ) : glyph === "person" ? (
-        <svg className={`${ELEMENT_TAG}-person`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <svg
+          className={`${ELEMENT_TAG}-person mari-rgb-static-icon`}
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
           <path
             d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"
             fill="none"

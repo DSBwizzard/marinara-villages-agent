@@ -134,7 +134,7 @@ export function useSceneSelectionReset(ports: {
   room: import("../../../shared/contracts/village.js").SceneView;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomMoveOperationIdRef: React.RefObject<string>;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   seenRoomEventIdsRef: React.RefObject<Set<string>>;
   setLastSceneEnding: React.Dispatch<React.SetStateAction<string>>;
   setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
@@ -146,7 +146,7 @@ export function useSceneSelectionReset(ports: {
   setRoomOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setRoomTargetId: React.Dispatch<React.SetStateAction<string>>;
   setScreen: React.Dispatch<
-    React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
 }) {
   const {
@@ -400,7 +400,7 @@ export function useActiveSceneRestoration(ports: {
   setRoomGreetingError: React.Dispatch<React.SetStateAction<{ sessionId: string; message: string }>>;
   setRoomOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setScreen: React.Dispatch<
-    React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
 }) {
   const {
