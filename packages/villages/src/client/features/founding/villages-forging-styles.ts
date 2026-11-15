@@ -553,14 +553,29 @@ export const VILLAGES_FORGING_STYLES = `
   background:linear-gradient(180deg,#23364b9c,transparent 7rem),linear-gradient(100deg,#23364b14,#23364b55),url('/api/capability-packages/villages/assets/mari-founding-overlook-day.webp') center 62% / cover no-repeat #526b82;
 }
 .villages-founding-title {
-  flex:1; display:grid; place-content:center; justify-items:center; gap:1rem; padding:1.25rem;
-  text-align:center; background:radial-gradient(ellipse at 50% 45%,#362947,#21192e 65%);
+  flex:1; display:grid; place-content:center; justify-items:center; gap:.55rem; padding:1.25rem 1.25rem 5dvh;
+  text-align:center; background:radial-gradient(ellipse at center,#21182d9c,transparent 66%);
 }
-.villages-founding-title img { width:5rem; height:5rem; border-radius:1rem; box-shadow:0 .5rem 1.5rem #170f2880; }
+.villages-founding-title-ornament {
+  display:flex; align-items:center; gap:.7rem; color:#ffe1a4; font:1.5rem/1 Georgia,serif;
+  text-shadow:0 0 .65rem #ffcf8aa6;
+}
+.villages-founding-title-ornament::before,.villages-founding-title-ornament::after {
+  content:''; width:clamp(2rem,8vw,5rem); height:1px; background:linear-gradient(90deg,transparent,#fbe1b6);
+}
+.villages-founding-title-ornament::after { transform:scaleX(-1); }
 .villages-forging-v2 .villages-founding-title h1 {
-  color:#f4e5c8; font:500 clamp(2.75rem,7vmin,5rem)/1 "village-letter-lora",Georgia,serif; letter-spacing:-.04em;
+  color:#fff0d1; font:400 clamp(3.5rem,min(18vw,16dvh),8.5rem)/.94 "village-letter-alegreya",Georgia,serif;
+  letter-spacing:-.045em; text-shadow:0 .06em .06em #24192c,0 .02em .26em #201525;
 }
-.villages-founding-title button { min-width:9rem; margin-top:.5rem; letter-spacing:.1em; }
+.villages-forging-v2 .villages-founding-title button {
+  min-width:10rem; margin-top:1.2rem; padding:.7rem 1.6rem; border:1px solid #fff0cd; border-radius:2rem;
+  color:#392838; background:linear-gradient(#ffedc9,#e3bd8d);
+  box-shadow:inset 0 0 0 3px #76503935,0 0 0 3px #322338b0,0 .45rem 1.15rem #1f152c85;
+  font-size:.88rem; font-weight:600; letter-spacing:.2em;
+}
+.villages-forging-v2 .villages-founding-title button:hover { background:linear-gradient(#fff5dc,#f4d6a9); }
+.villages-forging-v2 .villages-founding-title button:focus-visible { outline-color:#fff0cd; outline-offset:5px; }
 .villages-forging-steps {
   position:relative; isolation:isolate; display:grid; grid-template-columns:repeat(4,1fr); list-style:none;
   flex:none; width:min(15rem,75%); margin:.65rem auto 0; padding:0 0 1.15rem; text-align:center;

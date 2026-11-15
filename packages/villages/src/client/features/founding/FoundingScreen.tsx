@@ -164,6 +164,7 @@ export function FoundingScreen({
   const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
   useLetterFont(screen === "setup" ? "lora" : undefined);
+  useLetterFont(showTitle ? "alegreya" : undefined);
   const [openVenueFromMap, setOpenVenueFromMap] = useState<{ id: string }>();
   const availableSpriteIds = setupFoundingVillagerIds.filter((id) => catalog?.some((person) => person.id === id));
   const activeSpriteId = spriteId && availableSpriteIds.includes(spriteId) ? spriteId : (availableSpriteIds[0] ?? null);
@@ -278,11 +279,12 @@ export function FoundingScreen({
       return (
         <div className={FOUNDING_ROOT} data-step={0} data-lighting={storybookDaylight ? "day" : "night"} ref={rootRef}>
           <main className="villages-founding-title">
-            <img src="/api/capability-packages/villages/assets/villages-icon.png" alt="" width={80} height={80} />
+            <div className="villages-founding-title-ornament" aria-hidden="true">
+              ✦
+            </div>
             <h1>Villages</h1>
             <button
               type="button"
-              className="villages-forging-primary"
               onClick={() => {
                 setEnteringScene(true);
                 setSetupWorkspace((workspace) => ({

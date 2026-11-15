@@ -386,11 +386,19 @@ export async function verifyFoundingLayout(group) {
         };
         await expect(root).toHaveAttribute("data-step", "0");
         const start = button("START");
-        await expect(root.getByRole("heading", { name: "Villages", exact: true })).toBeVisible();
+        await expect(root.getByRole("heading", { name: "Villages", exact: true })).toBeInViewport({ ratio: 1 });
+        await expect(start).toBeInViewport({ ratio: 1 });
         await expect(root.getByRole("region", { name: "Professor Mari", exact: true })).toHaveCount(0);
         await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
-        await expect(root.locator(".villages-founding-title img")).toHaveJSProperty("complete", true);
-        assert.ok(await root.locator(".villages-founding-title img").evaluate((image) => image.naturalWidth > 0));
+        const titleBackdrop = await root.evaluate((element) => getComputedStyle(element).backgroundImage);
+        assert.match(titleBackdrop, /mari-founding-overlook(?:-day)?\.webp/u);
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              [...document.fonts].some((font) => font.family === "village-letter-alegreya" && font.status === "loaded"),
+            ),
+          )
+          .toBe(true);
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-title-" + view.width + ".png"),
@@ -407,6 +415,7 @@ export async function verifyFoundingLayout(group) {
         }
         await start.click();
         await expect(start).toHaveCount(0);
+        await expect(root).toHaveCSS("background-image", titleBackdrop);
         assert.equal(
           await root.evaluate((element) => getComputedStyle(element, "::before").animationName),
           view.height === 650 ? "none" : "villages-founding-reveal",
