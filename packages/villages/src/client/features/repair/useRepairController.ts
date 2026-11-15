@@ -13,8 +13,8 @@ import type {
 import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
-type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string };
-type Section = "memories" | "details";
+type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string; agendaToken?: string };
+type Section = "memories" | "agenda" | "details";
 type RecordTopic = RepairTopic | "all";
 type View = "hub" | "list" | "edit" | "review" | "done" | "history" | "checkpoints";
 export function useRepairController(
@@ -244,7 +244,8 @@ export function useRepairController(
             [key]: {
               values,
               knowers: focus ? [focus.id] : (record.people?.slice(0, 1).map((p) => p.id) ?? []),
-              action: record.actions[0].id,
+              action: record.actions[0]?.id ?? "",
+              ...(record.agendaDay ? { agendaToken: record.token } : {}),
             },
           },
     );
@@ -269,12 +270,13 @@ export function useRepairController(
       pending.current ??= {
         operationId: createVillagesClientId(),
         recordId: selected.id,
-        ...draft,
+        action: draft.action,
+        knowers: draft.knowers,
         values:
           selected.topic === "memories" && ["forget", "remember"].includes(draft.action)
             ? Object.fromEntries(selected.fields.map((field) => [field.key, field.value]))
             : draft.values,
-        expectedRecord: selected.token ?? "",
+        expectedRecord: draft.agendaToken ?? selected.token ?? "",
         ...(person ? { personId: person.id } : {}),
       };
       const result = await request<RepairReview>("/repair/review", {

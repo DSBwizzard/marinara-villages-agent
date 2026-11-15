@@ -1,5 +1,6 @@
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { applyWorldRepair, worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
+import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -283,33 +284,84 @@ const release = configureVillagesRuntime({
 
 async function main() {
   const repairedWorld = coerceVillageState(raw);
-  repairedWorld.villagers[0]!.agenda = unwrittenVillageAgenda(today);
-  const admittedDay = coerceVillageState(repairedWorld).villagers[0]!.agenda!.activeDay;
-  const repairRecord = worldRepairRecords(repairedWorld).find((row) => row.id === JSON.stringify(["routine", "a"]))!;
+  repairedWorld.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const repairAgenda = unwrittenVillageAgenda(today);
+  const nextDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12);
+  const followingDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2, 12);
+  const chosenDate = agendaDateKey(nextDay);
+  const ordinary = repairAgenda.day[0]!;
+  repairAgenda.plannedDays = {
+    [chosenDate]: [
+      { ...ordinary, endMinute: 540, activity: "Dawn walk", flexible: true },
+      { ...ordinary, startMinute: 540, activity: "Reading", flexible: true },
+    ],
+    [agendaDateKey(followingDay)]: [{ ...ordinary, activity: "Painting", flexible: true }],
+  };
+  repairAgenda.reservations = [
+    {
+      id: "appointment",
+      source: "appointment",
+      replaces: "flexible",
+      dateKey: chosenDate,
+      startMinute: 600,
+      endMinute: 660,
+      activity: "Meet at the gate",
+      venueId: "",
+    },
+  ];
+  repairedWorld.villagers[0]!.agenda = repairAgenda;
+  const original = structuredClone(repairAgenda);
+  const rows = worldRepairRecords(repairedWorld, false, "a", today.toISOString()).filter((row) => row.agendaDay);
+  assert.equal(rows.length, 7);
+  assert.equal(rows[0]!.actions.length, 0, "Today's admitted Agenda is available for inspection");
+  const repairRecord = rows.find((row) => row.id === JSON.stringify(["agenda", "a", chosenDate]))!;
+  assert.ok(repairRecord.source.some((text) => text.includes("10:00–11:00 · Meet at the gate")));
+  const request = (values: Record<string, string>) => ({ action: "correct", values }) as any;
+  assert.throws(
+    () => applyWorldRepair(repairedWorld, repairRecord, request({ "start:1": "08:00" }), today.toISOString()),
+    /overlap/,
+  );
+  assert.throws(
+    () => applyWorldRepair(repairedWorld, repairRecord, request({ "start:1": "9:72" }), today.toISOString()),
+    /24-hour/,
+  );
+  assert.throws(
+    () =>
+      applyWorldRepair(repairedWorld, repairRecord, request({ "activity:1": "Quiet crafting" }), nextDay.toISOString()),
+    /already started/,
+  );
+  assert.deepEqual(repairAgenda, original, "Rejected agenda repairs leave the saved plan intact");
   applyWorldRepair(
     repairedWorld,
     repairRecord,
-    {
-      action: "correct",
-      values: {
-        ...Object.fromEntries(repairRecord.fields.map((field) => [field.key, field.value])),
-        "activity:0": "Quiet crafting",
-      },
-    } as any,
+    request({ "activity:1": "Quiet crafting", "start:1": "09:30" }),
     today.toISOString(),
   );
   const repairedReload = coerceVillageState(JSON.parse(JSON.stringify(repairedWorld)));
+  const savedAgenda = repairedReload.villagers[0]!.agenda!;
+  planRoutineDays(repairedReload, today);
   assert.deepEqual(
-    repairedReload.villagers[0]!.agenda!.activeDay,
-    admittedDay,
+    savedAgenda.activeDay,
+    coerceVillageState({ ...repairedWorld, villagers: [{ ...repairedWorld.villagers[0], agenda: original }] })
+      .villagers[0]!.agenda!.activeDay,
     "Repair preserves today's admitted plan",
   );
+  assert.deepEqual(savedAgenda.repairedDays, [chosenDate]);
   assert.equal(
-    repairedReload.villagers[0]!.agenda!.week!.Monday![0]!.activity,
+    savedAgenda.plannedDays![chosenDate]!.find((block) => block.startMinute === 570)?.activity,
     "Quiet crafting",
-    "Repaired future routine survives reload without decoder adoption",
   );
-  assert.equal(calls, 0, "Manual routine repair never purchases generation");
+  assert.equal(savedAgenda.plannedDays![agendaDateKey(followingDay)]![0]!.activity, "Painting");
+  assert.deepEqual(
+    savedAgenda.routineProfile,
+    coerceVillageState({ ...repairedWorld, villagers: [{ ...repairedWorld.villagers[0], agenda: original }] })
+      .villagers[0]!.agenda!.routineProfile,
+  );
+  assert.deepEqual(
+    agendaBlocksFor(repairAgenda, nextDay).filter((block) => block.commitmentId),
+    agendaBlocksFor(original, nextDay).filter((block) => block.commitmentId),
+  );
+  assert.equal(calls, 0, "Manual Agenda repair never purchases generation");
 
   const currentWorld = coerceVillageState(raw),
     resident = currentWorld.villagers[0]!;

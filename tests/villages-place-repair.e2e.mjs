@@ -74,7 +74,7 @@ await withBrowser(browser, async () => {
       });
       initializeRoomContinuity(state, "hall", "exterior", description, "founding", at);
       const roomRecords = (world = state) =>
-        worldRepairRecords(world, false).filter((row) => row.summary === "Room description");
+        worldRepairRecords(world, false).filter((row) => row.summary === "Room detail");
       const original = roomRecords();
       const wall = original.find((row) => row.fields[0].value === "White walls. Two windows.");
       const table = original.find((row) => row.fields[0].value === "A table.");

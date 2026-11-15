@@ -556,9 +556,10 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       }
     });
   }
-  async function commit(id: string, transaction: RepairTransaction) {
+  async function commit(id: string, transaction: RepairTransaction, validate?: () => Promise<void>) {
     return alone(async () => {
       await guards(transaction);
+      await validate?.();
       const writes = transaction.writes;
       admission.epoch++;
       try {

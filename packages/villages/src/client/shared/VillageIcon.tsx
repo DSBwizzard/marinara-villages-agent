@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 export const VILLAGE_DESTINATIONS = ["people", "projects", "places", "mailbox", "settings"] as const;
 export type VillageDestination = (typeof VILLAGE_DESTINATIONS)[number];
-export type VillageIconName = VillageDestination | "memory" | "world" | "venue" | "zone" | "details" | "access";
+export type VillageIconName =
+  VillageDestination | "memory" | "world" | "venue" | "zone" | "details" | "access" | "calendar";
 // Curved silhouettes follow the reference without tracing its raster pixel edges.
 const glyphs: Record<VillageIconName, ReactNode> = {
   people: (
@@ -50,6 +51,9 @@ const glyphs: Record<VillageIconName, ReactNode> = {
   ),
   zone: <path fillRule="evenodd" d="M4 4h24v24H4Zm3 3v18h18V7H7Zm3 3h5v5h-5Zm7 0h5v5h-5Zm-7 7h5v5h-5Zm7 0h5v5h-5Z" />,
   details: <path fillRule="evenodd" d="M6 3h14l6 6v20H6Zm13 2v6h5ZM10 14v2h12v-2Zm0 5v2h12v-2Zm0 5v2h8v-2Z" />,
+  calendar: (
+    <path fillRule="evenodd" d="M4 5h5V2h3v3h8V2h3v3h5v24H4Zm3 8v13h18V13Zm3 4h4v3h-4Zm8 0h4v3h-4Zm-8 5h4v2h-4Z" />
+  ),
   access: (
     <path
       fillRule="evenodd"

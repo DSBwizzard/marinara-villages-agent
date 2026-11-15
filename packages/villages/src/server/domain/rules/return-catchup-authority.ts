@@ -19,8 +19,8 @@ export function sameReturnResident(
   const { agenda: newAgenda, ...newResident } = live;
   if (JSON.stringify(oldResident) !== JSON.stringify(newResident)) return false;
   if (!oldAgenda || !newAgenda) return oldAgenda === newAgenda;
-  const { activeDay: oldDay, plannedDays: oldPlans, ...oldRoutine } = oldAgenda;
-  const { activeDay: newDay, plannedDays: newPlans, ...newRoutine } = newAgenda;
+  const { activeDay: oldDay, plannedDays: oldPlans, repairedDays: _oldRepairs, ...oldRoutine } = oldAgenda;
+  const { activeDay: newDay, plannedDays: newPlans, repairedDays: _newRepairs, ...newRoutine } = newAgenda;
   if (JSON.stringify(oldRoutine) !== JSON.stringify(newRoutine)) return false;
   if (oldDay?.dateKey === newDay?.dateKey && JSON.stringify(oldDay) !== JSON.stringify(newDay)) return false;
   if (newPlans?.[date]) {

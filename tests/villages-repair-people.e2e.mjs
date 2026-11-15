@@ -1,4 +1,4 @@
-// Test cases: repair-people/navigation, repair-people/letter-font, repair-people/late-responses, repair-people/restore-draft
+// Test cases: repair-people/navigation, repair-people/agenda, repair-people/letter-font, repair-people/late-responses, repair-people/restore-draft
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -20,7 +20,7 @@ const code = await build({
 const browser = await chromium.launch({ headless: true });
 const people = [
   { id: "player", name: "Your Persona" },
-  { id: "a", name: "Nora" },
+  { id: "a", name: "Nora", hasAgenda: true },
   { id: "b", name: "Ellis" },
 ];
 const sharedId = '["memory","shared"]',
@@ -29,6 +29,31 @@ const sharedId = '["memory","shared"]',
 const known = "Your recollection of the telescope.",
   privateText = "Nora's private recollection.",
   secretText = "Nora's private compass.";
+const agendaDay = {
+  id: '["agenda","a","2026-11-17"]',
+  topic: "people",
+  token: "agenda-day",
+  title: "Nora · Agenda · Tuesday, Nov 17",
+  agendaDay: "Tuesday, Nov 17",
+  summary: "Edit this date",
+  fields: [
+    { key: "activity:0", label: "Activity 1", type: "text", value: "Tending herbs" },
+    { key: "start:0", label: "Activity 1 start", type: "clock", value: "09:00" },
+    { key: "end:0", label: "Activity 1 end", type: "clock", value: "24:00" },
+  ],
+  source: ["09:00–24:00 · Tending herbs · Garden", "10:00–11:00 · Meet at the gate · Agreed plan"],
+  actions: [{ id: "correct", label: "Modify" }],
+  related: [],
+};
+const today = {
+  ...agendaDay,
+  id: '["agenda","a","2026-11-16"]',
+  title: "Nora · Agenda · Monday, Nov 16",
+  agendaDay: "Monday, Nov 16",
+  summary: "Today · View schedule",
+  fields: [],
+  actions: [],
+};
 const deferred = () => {
   return Promise.withResolvers();
 };
@@ -159,6 +184,10 @@ async function fixture(width) {
         ],
       });
     if (path === "/repair/records") {
+      if (url.searchParams.get("section") === "agenda") {
+        assert.equal(person, "a");
+        return reply(route, "list", { records: [today, agendaDay], total: 2, next: null });
+      }
       const details = url.searchParams.get("section") === "details";
       const rows = details
         ? [
@@ -190,7 +219,15 @@ async function fixture(width) {
       return reply(
         route,
         `record:${id}`,
-        id === additionId ? addition : id === fontRecord.id ? fontRecord : record(id, person),
+        id === additionId
+          ? addition
+          : id === fontRecord.id
+            ? fontRecord
+            : id === today.id
+              ? today
+              : id === agendaDay.id
+                ? agendaDay
+                : record(id, person),
       );
     }
     if (path === "/repair/apply") return reply(route, "apply", { applied: true });
@@ -199,6 +236,18 @@ async function fixture(width) {
       const body = route.request().postDataJSON();
       assert.equal("inspection" in body, false);
       calls.push({ path, body });
+      if (body.recordId === agendaDay.id)
+        return reply(route, "repair", {
+          kind: "repair",
+          id: "agenda-review",
+          token: "agenda-review-token",
+          title: agendaDay.title,
+          changes: [{ label: "Activity 1 start", before: "09:00", after: body.values["start:0"] }],
+          affected: [agendaDay.title],
+          related: [],
+          checkpoint: false,
+          undoAvailable: true,
+        });
       const kind = path.endsWith("/undo") ? "undo" : path.endsWith("/restore") ? "restore" : "repair",
         creating = body.recordId === additionId;
       return reply(route, kind, {
@@ -248,6 +297,40 @@ const chooseEllis = async (page) => {
 };
 await withBrowser(browser, async () => {
   await mkdir(".build-tmp/repair-people", { recursive: true });
+  await runCase("repair-people/agenda", async () => {
+    for (const width of [1440, 390]) {
+      const f = await fixture(width),
+        { page, root } = f;
+      await goNora(page);
+      await page.getByRole("button", { name: "Agenda", exact: true }).click();
+      await expect(root.getByRole("heading", { name: "Nora · Agenda", exact: true })).toBeVisible();
+      await root.getByRole("button", { name: /Monday, Nov 16 Today/ }).click();
+      await expect(root.getByRole("heading", { name: "Scheduled that day" })).toBeVisible();
+      await expect(root.getByRole("button", { name: "Review changes" })).toHaveCount(0);
+      await root.getByRole("button", { name: "Back to records" }).click();
+      await root.getByRole("button", { name: /Tuesday, Nov 17/ }).click();
+      await expect(root.getByText(/Meet at the gate · Agreed plan/)).toBeVisible();
+      await expect(root.getByRole("textbox", { name: "Activity 1 end" })).toHaveValue("24:00");
+      await root.getByRole("textbox", { name: "Activity 1 start" }).fill("09:30");
+      await root.getByRole("button", { name: "Review changes" }).click();
+      const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
+      assert.equal(sent.recordId, agendaDay.id);
+      assert.equal(sent.values["start:0"], "09:30");
+      await expect(root.getByText(agendaDay.title, { exact: true })).toBeVisible();
+      assert.equal(await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true);
+      await root.getByRole("button", { name: "Back", exact: true }).click();
+      await root.getByRole("button", { name: "Back to records", exact: true }).click();
+      const refreshed = f.hold(`record:${agendaDay.id}`, { token: "new-plan" });
+      await root.getByRole("button", { name: /Tuesday, Nov 17/ }).click();
+      await refreshed.started;
+      refreshed.release();
+      await expect(root.getByRole("status")).toContainText("This date changed");
+      await expect(root.getByRole("button", { name: "Review changes" })).toHaveCount(0);
+      await root.getByRole("button", { name: "Discard draft and load this date" }).click();
+      await expect(root.getByRole("textbox", { name: "Activity 1 start" })).toHaveValue("09:00");
+      await f.close();
+    }
+  });
   await runCase("repair-people/navigation", async () => {
     for (const width of [1440, 390]) {
       const f = await fixture(width),

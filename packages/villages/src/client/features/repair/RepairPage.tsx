@@ -113,6 +113,8 @@ export function RepairPage({
           : "Modify memory"
     : c.selected?.title;
   const directory = c.view === "list" && c.topic === "people" && !c.person;
+  const browsingAgenda = c.topic === "people" && c.section === "agenda";
+  const agendaDraftStale = c.selected?.agendaDay && c.draft?.agendaToken !== c.selected.token;
   const browsingPlaces = c.view !== "hub" && c.topic === "places" && c.collection === "list";
   let placeItems = c.placeDirectory;
   const placeTrail = [];
@@ -235,7 +237,9 @@ export function RepairPage({
             {c.view === "hub"
               ? "Find a record"
               : c.view === "list"
-                ? (c.person?.name ?? (browsingPlaces ? placeTrail.at(-1)?.title : null) ?? currentTopic)
+                ? c.person && browsingAgenda
+                  ? c.person.name + " · Agenda"
+                  : (c.person?.name ?? (browsingPlaces ? placeTrail.at(-1)?.title : null) ?? currentTopic)
                 : c.view === "edit"
                   ? editorTitle
                   : c.view === "review"
@@ -384,6 +388,17 @@ export function RepairPage({
                   <VillageIcon name="memory" />
                   Memories
                 </button>
+                {c.person.hasAgenda ? (
+                  <button
+                    type="button"
+                    disabled={c.busy}
+                    aria-pressed={browsingAgenda}
+                    onClick={() => void c.chooseSection("agenda")}
+                  >
+                    <VillageIcon name="calendar" />
+                    Agenda
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={c.busy}
@@ -395,26 +410,28 @@ export function RepairPage({
                 </button>
               </div>
             ) : null}
-            <form
-              autoComplete="off"
-              className="repair-search"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void c.load(c.topic);
-              }}
-            >
-              <input
+            {!browsingAgenda ? (
+              <form
                 autoComplete="off"
-                type="search"
-                aria-label={directory ? "Search villagers" : "Search repair records"}
-                value={c.query}
-                onChange={(e) => c.setQuery(e.target.value)}
-                placeholder={directory ? "Find a villager…" : "Find a record…"}
-              />
-              <button type="submit" disabled={c.busy}>
-                Search
-              </button>
-            </form>
+                className="repair-search"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void c.load(c.topic);
+                }}
+              >
+                <input
+                  autoComplete="off"
+                  type="search"
+                  aria-label={directory ? "Search villagers" : "Search repair records"}
+                  value={c.query}
+                  onChange={(e) => c.setQuery(e.target.value)}
+                  placeholder={directory ? "Find a villager…" : "Find a record…"}
+                />
+                <button type="submit" disabled={c.busy}>
+                  Search
+                </button>
+              </form>
+            ) : null}
             {directory ? (
               <div className="repair-tiles">
                 {people.map((person) => (
@@ -438,12 +455,12 @@ export function RepairPage({
                     onClick={() => void c.open(c.creation!.id)}
                   />
                 ) : null}
-                <div className="repair-records">
+                <div className={browsingAgenda ? "repair-tiles" : "repair-records"}>
                   {c.records.map((r) => (
                     <RepairTile
                       key={r.id}
-                      title={r.title}
-                      icon={topicIcons[r.topic]}
+                      title={browsingAgenda ? (r.agendaDay ?? r.title) : r.title}
+                      icon={r.agendaDay ? "calendar" : topicIcons[r.topic]}
                       summary={c.topic === "all" ? searchSummary(r) : r.summary}
                       disabled={c.busy}
                       onClick={() => void c.open(r.id)}
@@ -478,7 +495,7 @@ export function RepairPage({
         ) : null}
         {c.view === "edit" && c.selected && c.draft ? (
           <div className="repair-layout" data-single={!hasSource}>
-            <section className="repair-panel repair-editor">
+            <section className="repair-panel repair-editor" data-agenda={!!c.selected.agendaDay}>
               {c.selected.actions.length > 1 ? (
                 <div className="repair-actions" role="group" aria-label="Repair action">
                   {c.selected.actions.map((a) => (
@@ -494,69 +511,103 @@ export function RepairPage({
                   ))}
                 </div>
               ) : null}
-              {c.selected.fields.map((f) => (
-                <div className="repair-field" key={f.key}>
-                  {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
-                  {f.key === "letterFontId" ? (
-                    <div>
-                      <p
-                        style={{
-                          fontFamily: letterFontFamily(display(c.draft?.values[f.key])),
-                          fontSize: "1.25rem",
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        Dear friend, I hope this letter finds you well. 123
-                      </p>
-                    </div>
-                  ) : null}
-                  {memoryReadOnly ? (
-                    <p>{display(f.value)}</p>
-                  ) : f.type === "choice" ? (
-                    <select
-                      id={`repair-${f.key}`}
-                      disabled={c.busy}
-                      value={display(c.draft?.values[f.key])}
-                      onChange={(e) => value(f.key, e.target.value)}
-                    >
-                      {f.options?.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : f.type === "number" ? (
-                    <input
-                      autoComplete="off"
-                      id={`repair-${f.key}`}
-                      type="number"
-                      min={f.min}
-                      max={f.max}
-                      step="any"
-                      disabled={c.busy}
-                      value={display(c.draft?.values[f.key])}
-                      onChange={(e) => value(f.key, e.target.value === "" ? "" : Number(e.target.value))}
-                    />
-                  ) : f.type === "boolean" ? (
-                    <input
-                      autoComplete="off"
-                      id={`repair-${f.key}`}
-                      type="checkbox"
-                      disabled={c.busy}
-                      checked={c.draft?.values[f.key] === true}
-                      onChange={(e) => value(f.key, e.target.checked)}
-                    />
-                  ) : (
-                    <textarea
-                      autoComplete="off"
-                      id={`repair-${f.key}`}
-                      disabled={c.busy}
-                      value={display(c.draft?.values[f.key])}
-                      onChange={(e) => value(f.key, e.target.value)}
-                    />
-                  )}
+              {agendaDraftStale && c.selected.actions.length ? (
+                <div className="repair-notice" role="status">
+                  <p>This date changed since you started editing.</p>
+                  <button
+                    type="button"
+                    disabled={c.busy}
+                    onClick={() =>
+                      c.update({
+                        action: c.selected!.actions[0]!.id,
+                        agendaToken: c.selected!.token,
+                        values: Object.fromEntries(c.selected!.fields.map((field) => [field.key, field.value])),
+                      })
+                    }
+                  >
+                    Discard draft and load this date
+                  </button>
                 </div>
-              ))}
+              ) : null}
+              {!agendaDraftStale &&
+                c.selected.fields.map((f) => (
+                  <div className="repair-field" key={f.key}>
+                    {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
+                    {f.key === "letterFontId" ? (
+                      <div>
+                        <p
+                          style={{
+                            fontFamily: letterFontFamily(display(c.draft?.values[f.key])),
+                            fontSize: "1.25rem",
+                            lineHeight: 1.6,
+                          }}
+                        >
+                          Dear friend, I hope this letter finds you well. 123
+                        </p>
+                      </div>
+                    ) : null}
+                    {memoryReadOnly ? (
+                      <p>{display(f.value)}</p>
+                    ) : f.type === "choice" ? (
+                      <select
+                        id={`repair-${f.key}`}
+                        disabled={c.busy}
+                        value={display(c.draft?.values[f.key])}
+                        onChange={(e) => value(f.key, e.target.value)}
+                      >
+                        {f.options?.some((option) => option.value === display(c.draft?.values[f.key])) ? null : (
+                          <option value={display(c.draft?.values[f.key])} disabled>
+                            Choose an option
+                          </option>
+                        )}
+                        {f.options?.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : f.type === "number" ? (
+                      <input
+                        autoComplete="off"
+                        id={`repair-${f.key}`}
+                        type="number"
+                        min={f.min}
+                        max={f.max}
+                        step="any"
+                        disabled={c.busy}
+                        value={display(c.draft?.values[f.key])}
+                        onChange={(e) => value(f.key, e.target.value === "" ? "" : Number(e.target.value))}
+                      />
+                    ) : f.type === "boolean" ? (
+                      <input
+                        autoComplete="off"
+                        id={`repair-${f.key}`}
+                        type="checkbox"
+                        disabled={c.busy}
+                        checked={c.draft?.values[f.key] === true}
+                        onChange={(e) => value(f.key, e.target.checked)}
+                      />
+                    ) : f.type === "clock" ? (
+                      <input
+                        id={`repair-${f.key}`}
+                        type="text"
+                        placeholder="HH:MM"
+                        maxLength={5}
+                        disabled={c.busy}
+                        value={display(c.draft?.values[f.key])}
+                        onChange={(e) => value(f.key, e.target.value)}
+                      />
+                    ) : (
+                      <textarea
+                        autoComplete="off"
+                        id={`repair-${f.key}`}
+                        disabled={c.busy}
+                        value={display(c.draft?.values[f.key])}
+                        onChange={(e) => value(f.key, e.target.value)}
+                      />
+                    )}
+                  </div>
+                ))}
               {c.selected.people ? (
                 <fieldset>
                   <legend>
@@ -597,16 +648,18 @@ export function RepairPage({
                 <button type="button" disabled={c.busy} onClick={() => void c.load(c.topic)}>
                   Back to records
                 </button>
-                <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
-                  {reviewTitle}
-                </button>
+                {c.selected.actions.length && !agendaDraftStale ? (
+                  <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
+                    {reviewTitle}
+                  </button>
+                ) : null}
               </div>
             </section>
             {hasSource ? (
               <aside className="repair-source">
                 {source.length ? (
                   <section className="repair-panel">
-                    <h2>Source</h2>
+                    <h2>{c.selected.agendaDay ? "Scheduled that day" : "Source"}</h2>
                     {source.map((s, i) => (
                       <blockquote key={i}>{s}</blockquote>
                     ))}

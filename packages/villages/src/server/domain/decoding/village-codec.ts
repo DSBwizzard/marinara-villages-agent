@@ -300,6 +300,16 @@ function coerceAgenda(value: unknown): VillageAgenda | null {
       .slice(-14)
       .map(([key, blocks]) => [key, completeAgendaWeek({ Monday: blocks }, agenda.week!).Monday!]),
   );
+  if (Array.isArray(raw.repairedDays)) {
+    const dates = [
+      ...new Set(
+        raw.repairedDays.filter(
+          (key): key is string => typeof key === "string" && Object.hasOwn(agenda.plannedDays!, key),
+        ),
+      ),
+    ];
+    if (dates.length) agenda.repairedDays = dates;
+  }
   const active = asRecord(raw.activeDay);
   if (
     typeof active.dateKey === "string" &&

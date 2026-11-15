@@ -1,6 +1,6 @@
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";
 export type RepairValue = string | number | boolean;
-export type RepairPerson = { id: string; name: string };
+export type RepairPerson = { id: string; name: string; hasAgenda?: boolean };
 export type RepairBrowseIcon = "places" | "venue" | "zone" | "details" | "access" | "people";
 export type RepairBrowseItem = {
   id: string;
@@ -13,7 +13,7 @@ export type RepairField = {
   key: string;
   label: string;
   value: RepairValue;
-  type: "text" | "number" | "choice" | "boolean";
+  type: "text" | "number" | "choice" | "boolean" | "clock";
   options?: { value: string; label: string }[];
   min?: number;
   max?: number;
@@ -31,6 +31,7 @@ export type RepairRecord = {
   revision?: number;
   token?: string;
   creating?: boolean;
+  agendaDay?: string;
   subjects?: string[];
   target?: import("./village.js").MemoryInspection["target"];
 };

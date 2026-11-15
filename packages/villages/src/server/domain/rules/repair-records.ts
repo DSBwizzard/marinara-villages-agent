@@ -1,4 +1,4 @@
-import { placeRegistry, readNpc, findLocation } from "./places.js";
+import { placeRegistry, readNpc, findLocation, sceneActorIds } from "./places.js";
 import { projectAgreementCurrent } from "./project-terms.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
 import type { RepairBrowseItem, RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
@@ -9,9 +9,7 @@ import { memoryHash, memoryRequire, memoryString, memoryTimestamp } from "./memo
 import { continuityRepairEntries, changeContinuityMemory } from "./continuity-library.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityHolderKey, protectContinuity } from "./continuity.js";
-import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
-import { routineProfileFromWeek } from "./owned-routine.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { agendaRepairRecords, applyAgendaRepair } from "./repair-agenda.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { hasVenueClass, venueCapacity, venueResidentIds } from "./venue-model.js";
@@ -164,6 +162,9 @@ export function worldRepairRecords(
       { revision: situation.revision },
     );
   for (const condition of state.narrative?.conditions ?? []) {
+    const situation = state.narrative!.situations.find((entry) => entry.id === condition.situationId);
+    const place = findLocation(state, condition.venueId);
+    const zone = place && venueZones(place).find((entry) => entry.id === condition.zoneId);
     add(
       ["narrative-condition", condition.id],
       "world",
@@ -180,7 +181,9 @@ export function worldRepairRecords(
       ],
       {
         revision: condition.revision,
-        source: ["Situation: " + condition.situationId, "Zone: " + condition.zoneId],
+        source: [situation?.title, [place?.name, zone?.name].filter(Boolean).join(" · ")].filter(
+          (value): value is string => Boolean(value),
+        ),
       },
     );
   }
@@ -244,7 +247,9 @@ export function worldRepairRecords(
   const people = [
     { id: "player", name: "Your Persona" },
     ...state.villagers.map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
-    ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
+    ...Object.values(placeRegistry(state)?.npcs ?? {})
+      .filter((npc) => !npc.disabled)
+      .map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
   ];
   if (includeMemories) {
     const grouped = new Map<string, ReturnType<typeof continuityRepairEntries>>();
@@ -296,12 +301,7 @@ export function worldRepairRecords(
         "places",
         `${name} · home assignment`,
         "Residence and sleep destination",
-        [
-          choices("destination", "Home", home && sleep ? repairId(home.id, sleep) : "", [
-            { value: "", label: "Unassigned" },
-            ...homeOptions,
-          ]),
-        ],
+        [choices("destination", "Home", home && sleep ? repairId(home.id, sleep) : "", homeOptions)],
         {
           source: ["Repairs ownership and the sleep destination. Objects stay in their recorded Zones."],
         },
@@ -348,30 +348,7 @@ export function worldRepairRecords(
       ],
       { source: [] },
     );
-    if (person.agenda) {
-      add(["routine", id], "people", `${name} · routine`, "Future routine plans", [
-        text("routineSummary", "Routine", person.agenda.routineSummary),
-        ...person.agenda.day.flatMap((block, i) => [
-          {
-            key: `start:${i}`,
-            label: `Block ${i + 1} start minute`,
-            value: block.startMinute,
-            type: "number" as const,
-            min: 0,
-            max: 1439,
-          },
-          {
-            key: `end:${i}`,
-            label: `Block ${i + 1} end minute`,
-            value: block.endMinute,
-            type: "number" as const,
-            min: 1,
-            max: 1440,
-          },
-          text(`activity:${i}`, `Block ${i + 1} activity`, block.activity),
-        ]),
-      ]);
-    }
+    if (!personId || personId === id) records.push(...agendaRepairRecords(state, person, at));
   }
   for (const root of state.continuity.records)
     for (const head of Object.values(root.heads)) {
@@ -382,16 +359,25 @@ export function worldRepairRecords(
       if (!zone) continue;
       const version = state.continuity.versions.find((row) => row.id === head.versionId)!,
         key = continuityHolderKey(holder);
+      const expires = version.room?.expiresAt;
+      if (expires && expires <= at) continue;
       add(
         ["room", root.id],
         "places",
         venue!.name + " · " + zone.name,
-        "Room description",
+        expires ? "Timed room detail" : "Room detail",
         [text("text", "Text", version.text)],
         {
           revision: root.revision,
           target: { id: root.id, recordRevision: root.revision, heads: { [key]: head.revision } },
-          source: version.sources.map((source) => source.excerpt),
+          source: [
+            ...(expires
+              ? [
+                  `Expires ${new Date(expires).toLocaleString("en-US", { timeZone: state.timeZone || undefined, dateStyle: "medium", timeStyle: "short" })}`,
+                ]
+              : []),
+            ...version.sources.map((source) => source.excerpt),
+          ],
           location: {
             kind: state.venues.some((entry) => entry.id === holder.placeId) ? "venue" : "place",
             id: holder.placeId,
@@ -515,10 +501,8 @@ export function worldRepairRecords(
   return records.map((record) => ({ ...record, related: record.related.filter((link) => visibleIds.has(link.id)) }));
 }
 
-export function repairPlaceDirectory(state: VillageState): RepairBrowseItem[] {
-  const records = worldRepairRecords(state, false, undefined, undefined, true).filter(
-    (record) => record.topic === "places",
-  );
+export function repairPlaceDirectory(state: VillageState, at?: string): RepairBrowseItem[] {
+  const records = worldRepairRecords(state, false, undefined, at, true).filter((record) => record.topic === "places");
   const scoped = new Map<string, RepairRecord[]>();
   for (const record of records) {
     const scope = record.location;
@@ -554,7 +538,7 @@ export function repairPlaceDirectory(state: VillageState): RepairBrowseItem[] {
         } else {
           items.push({
             id: record.id,
-            title: "Room detail",
+            title: record.summary,
             icon: "details",
             summary: String(record.fields[0]?.value ?? "").slice(0, 120),
           });
@@ -610,6 +594,10 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   const values = inputValues(record, request),
     [kind, id, sub, actor] = repairParts(record.id);
   const str = (key: string) => String(values[key] ?? "");
+  if (kind === "agenda") {
+    applyAgendaRepair(state, id, sub!, values, at);
+    return;
+  }
   if (kind === "npc" || kind === "place") {
     if (kind === "npc") {
       const npc = state.worldPlaces.npcs[id];
@@ -811,26 +799,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         const person = state.villagers.find((v) => v.characterId === id);
         if (!person) throw conflict("That villager is unavailable.");
         person.letterFontId = str("letterFontId");
-      } else if (kind === "routine") {
-        const agenda = state.villagers.find((v) => v.characterId === id)!.agenda!;
-        agenda.routineSummary = str("routineSummary");
-        agenda.day.forEach((b, i) => {
-          b.startMinute = Number(values[`start:${i}`]);
-          b.endMinute = Number(values[`end:${i}`]);
-          b.activity = str(`activity:${i}`);
-          if (!Number.isInteger(b.startMinute) || !Number.isInteger(b.endMinute) || b.endMinute <= b.startMinute)
-            throw badRequest("Routine blocks need a valid start and end.");
-        });
-        const sorted = [...agenda.day].sort((a, b) => a.startMinute - b.startMinute);
-        if (sorted.some((b, i) => i > 0 && b.startMinute < sorted[i - 1].endMinute))
-          throw badRequest("Routine blocks cannot overlap.");
-        agenda.week = completeAgendaWeek(
-          Object.fromEntries(VILLAGE_WEEKDAYS.map((weekday) => [weekday, sorted])),
-          workingAgendaWeek(),
-        );
-        agenda.routineProfile = routineProfileFromWeek(agenda.week);
-        agenda.plannedDays = {};
-        agenda.personalizationPending = false;
       } else if (kind === "venue") {
         const v = state.venues.find((v) => v.id === id)!;
         if (!str("name") || str("name").length > 100 || str("form").length > 240)
@@ -845,9 +813,11 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         v.layoutVersion = 1;
         const z = v.zones.find((z) => z.id === sub)!;
         if (kind === "access") {
-          const ids = ["player", ...state.villagers.map((p) => p.characterId)],
+          const ids = ["player", ...sceneActorIds(state)],
             managers = ids.filter((p) => values[`manager:${p}`] === true),
             members = ids.filter((p) => values[`member:${p}`] === true);
+          if (str("inheritManagers") === "custom" && !managers.length)
+            throw badRequest("Choose at least one manager or inherit Venue managers.");
           z.access!.mode = str("mode") as "public" | "permission-required";
           z.access!.managerIds = str("inheritManagers") === "inherit" ? null : managers;
           z.access!.memberIds = members;

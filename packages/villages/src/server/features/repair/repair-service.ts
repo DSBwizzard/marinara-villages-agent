@@ -1,4 +1,4 @@
-import { findNpc, placeRegistry } from "../../domain/rules/places.js";
+import { placeRegistry } from "../../domain/rules/places.js";
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
@@ -52,6 +52,7 @@ import {
   worldRepairRecords,
 } from "../../domain/rules/repair-records.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
+import { requireFutureAgendaDay } from "../../domain/rules/repair-agenda.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
 import {
   createRepairStorage,
@@ -314,7 +315,7 @@ export function createRepairService(ports: RepairPorts) {
       personId &&
       personId !== "player" &&
       !state.villagers.some((p) => p.characterId === personId) &&
-      !findNpc(state, personId)
+      !placeRegistry(state)?.npcs[personId]
     )
       throw notFound("Choose a person from People.");
     if (includeArchives) {
@@ -328,7 +329,10 @@ export function createRepairService(ports: RepairPorts) {
             id: repairId("saved-scene", scene.id),
             topic: "progress",
             title: scene.placeName + " · saved work",
-            summary: unfinished.length + " exchanges need acceptance",
+            summary:
+              unfinished.length === 1
+                ? "1 exchange has saved effects to apply"
+                : `${unfinished.length} exchanges have saved effects to apply`,
             fields: [],
             source: ["Retained response; no replacement request."],
             actions: [{ id: "replay", label: "Replay saved work" }],
@@ -409,7 +413,11 @@ export function createRepairService(ports: RepairPorts) {
       identity: repairDigest([state.seed, state.setupAt]),
       people: [
         { id: "player", name: "Your Persona" },
-        ...state.villagers.map((p) => ({ id: p.characterId, name: p.cardSnapshot.name })),
+        ...state.villagers.map((p) => ({
+          id: p.characterId,
+          name: p.cardSnapshot.name,
+          ...(p.agenda ? { hasAgenda: true } : {}),
+        })),
         ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
       ],
       records: [],
@@ -442,23 +450,29 @@ export function createRepairService(ports: RepairPorts) {
   ) {
     if (topic === "places" && browsePlaces) {
       const state = await read();
-      return { records: [], total: 0, next: null, directory: repairPlaceDirectory(state) };
+      return {
+        records: [],
+        total: 0,
+        next: null,
+        directory: repairPlaceDirectory(state, villageNow(state.clock?.advanceMs ?? 0).toISOString()),
+      };
     }
     if (topic === "people" && !personId) return { records: [], total: 0, next: null };
     const words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
     const searchAll = topic === "all";
     if (searchAll && !words.length) return { records: [], total: 0, next: null };
-    const memoryList = topic === "memories" || (topic === "people" && section !== "details");
+    const memoryList = topic === "memories" || (topic === "people" && section === "memories");
     const { state, records } = await allRecords(
       memoryList || searchAll,
       searchAll || topic === "world" || topic === "progress",
       personId,
     );
+    const npc = personId && placeRegistry(state)?.npcs[personId];
     const personName =
       personId === "player"
         ? "Your Persona"
         : (state.villagers.find((p) => p.characterId === personId)?.cardSnapshot.name ??
-          findNpc(state, personId ?? "")?.name);
+          (npc ? npc.label || npc.name : undefined));
     const creation = memoryList
       ? records.find((r) => r.creating && (!personId || r.people?.some((p) => p.id === personId)))
       : undefined;
@@ -469,7 +483,9 @@ export function createRepairService(ports: RepairPorts) {
           (topic === "people"
             ? memoryList
               ? r.topic === "memories"
-              : r.topic === "people" && repairParts(r.id).slice(1).includes(personId!)
+              : r.topic === "people" &&
+                repairParts(r.id)[1] === personId &&
+                Boolean(r.agendaDay) === (section === "agenda")
             : r.topic === topic)) &&
         words.every((w) =>
           `${r.title} ${r.summary} ${r.source.join(" ")} ${r.people?.map((p) => p.name).join(" ") ?? ""}`
@@ -482,7 +498,7 @@ export function createRepairService(ports: RepairPorts) {
         personName && memoryList
           ? {
               ...r,
-              summary: `${r.people?.some((p) => p.id === personId) ? "Remembered by" : "About"} ${personName} · ${r.summary}`,
+              summary: `${r.people?.some((p) => p.id === personId && p.forgotten) ? "Forgotten by" : r.people?.some((p) => p.id === personId) ? "Remembered by" : "About"} ${personName} · ${r.summary}`,
             }
           : r,
       ),
@@ -615,7 +631,8 @@ export function createRepairService(ports: RepairPorts) {
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at));
     } else
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at), {
-        memories: ["memory", "room", "npc", "place"].includes(kind) || kind.startsWith("narrative-"),
+        memories:
+          ["memory", "room", "npc", "place", "access", "permission"].includes(kind) || kind.startsWith("narrative-"),
       });
   }
   function validateRequest(input: RepairRequest) {
@@ -801,6 +818,9 @@ export function createRepairService(ports: RepairPorts) {
     const plan = await readPlan(row);
     if (plan.review?.token !== token)
       throw conflict("This review changed. Review the repair again; your draft is kept.");
+    const [kind, , date] = repairParts(plan.request.recordId);
+    if (kind === "routine" && plan.review.kind === "repair")
+      throw conflict("Routine repairs moved to Agenda. Choose a date and review a new repair.");
     const world = await repository.readAuthority();
     if (world.seed !== plan.seed || world.setupAt !== plan.setupAt) throw conflict("The Village changed.");
     const publication = await gate.simulate(async () => {
@@ -815,7 +835,13 @@ export function createRepairService(ports: RepairPorts) {
       await storage.saveHistory(plan.history, automaticIds);
       if (!(await documents.remove(PKG, fresh.id, fresh.revision))) throw conflict("Repair review changed.");
     }, plan.transaction);
-    await gate.commit(id, publication.transaction);
+    await gate.commit(id, publication.transaction, async () => {
+      if (kind === "agenda") {
+        const current = await repository.readAuthority();
+        requireFutureAgendaDay(current, date!, villageNow(current.clock?.advanceMs ?? 0).toISOString());
+      }
+      if (kind === "room" && plan.review.kind === "repair") await inspect(plan.request.recordId, plan.request.personId);
+    });
     return { applied: true };
   }
   async function cancelReview(id: string, token: string) {
@@ -843,6 +869,8 @@ export function createRepairService(ports: RepairPorts) {
     const saved = await storage.readHistory(row);
     const state = await read();
     if (state.seed !== saved.seed || state.setupAt !== saved.setupAt) throw conflict("The Village changed.");
+    const [kind, , date] = repairParts(saved.request.recordId);
+    if (kind === "agenda") requireFutureAgendaDay(state, date!, villageNow(state.clock?.advanceMs ?? 0).toISOString());
     const record =
       saved.memoryBefore || saved.undoWrites
         ? saved.record!

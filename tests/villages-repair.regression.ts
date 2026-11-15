@@ -1,5 +1,5 @@
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/checkpoint-pages, repair/journal-integrity, repair/places
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/people, repair/agenda, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/checkpoint-pages, repair/journal-integrity, repair/places
 import assert from "node:assert/strict";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
@@ -19,11 +19,14 @@ import {
   readMemoryHead,
 } from "../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
+import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { evaluateZoneAccess, mayInvite } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { nativeHistoryFixture, retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { fixture as projectFixture, venue } from "./fixtures/villages-projects.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -147,6 +150,61 @@ const edit = (recordId: string, values: RepairRequest["values"], operationId = "
   action: "correct",
   knowers: [],
   expectedRecord: "fixture",
+});
+
+await runCase("repair/agenda", async () => {
+  const f = await fixture();
+  await f.repo.mutateAuthority((state) => {
+    state.villagers[0]!.agenda = unwrittenVillageAgenda();
+  });
+  const person = (await f.api.index()).people.find((row) => row.id === "aqua")!;
+  const dates = (await f.api.list("people", "", 0, person.id, "agenda")).records;
+  assert.equal(person.hasAgenda, true);
+  assert.equal(dates.length, 7);
+  assert.equal(dates[0]!.actions.length, 0);
+  assert.ok((await f.api.list("people", "", 0, person.id, "details")).records.every((row) => !row.agendaDay));
+  assert.ok((await f.api.list("all", "Aqua Agenda")).records.some((row) => row.id === dates[1]!.id));
+  const [record, neighbor] = dates.slice(1, 3);
+  const start = (await f.read()).villagers[0]!.agenda!;
+  const plan = await f.prepare({
+    ...edit(record!.id, { "activity:0": "Arranging tools" }, "edit-day"),
+    personId: person.id,
+  });
+  assert.ok(plan.changes.some((row) => row.after === "Arranging tools"));
+  assert.deepEqual(plan.affected, [record!.title]);
+  await f.api.apply(plan.id, plan.token);
+  f.reopen();
+  assert.ok((await f.api.inspect(record!.id, person.id)).source.some((row) => row.includes("Arranging tools")));
+  assert.deepEqual((await f.api.inspect(neighbor!.id, person.id)).source, neighbor!.source);
+  const undo = await f.api.undo(plan.id, "undo-day");
+  await f.api.apply(undo.id, undo.token);
+  assert.deepEqual((await f.read()).villagers[0]!.agenda, start);
+
+  {
+    let clock = new Date("2026-05-20T12:00:00Z");
+    const release = configureVillageClock({
+      now: () => clock,
+      observe: async () => {
+        throw Error("The Agenda check reads the Village clock without advancing it");
+      },
+    });
+    try {
+      const timed = await fixture();
+      await timed.repo.mutateAuthority((state) => {
+        state.timeZone = "UTC";
+        state.villagers[0]!.agenda = unwrittenVillageAgenda(clock);
+      });
+      const review = await timed.prepare(
+        edit(repairId("agenda", "aqua", "2026-05-21"), { "activity:0": "Too late" }, "before-rollover"),
+      );
+      clock = new Date("2026-05-21T00:00:00Z");
+      await assert.rejects(timed.api.apply(review.id, review.token), /already started/);
+      assert.equal((await timed.api.index()).history.length, 0);
+      assert.equal((await timed.read()).villagers[0]!.agenda!.repairedDays, undefined);
+    } finally {
+      release();
+    }
+  }
 });
 
 await runCase("repair/review", async () => {
@@ -413,7 +471,7 @@ await runCase("repair/checkpoint-retention", async () => {
     },
     { memories: true },
   );
-  const room = (await f.api.list("places")).records.find((row) => row.summary === "Room description")!;
+  const room = (await f.api.list("places")).records.find((row) => row.summary === "Room detail")!;
   const manual = await f.api.createCheckpoint("Keep this", "manual-keep");
   const countBodies = () => [...f.rows.values()].filter((row) => row.kind === "repair-snapshot").length;
   const bodies = countBodies();
@@ -829,12 +887,25 @@ await runCase("repair/domain-editors", async () => {
   await f.api.apply(undoMap.id, undoMap.token);
   assert.ok((await f.read()).maps[0].revision > revision);
   assert.equal((await f.read()).venues[0].presentation.x, 0.2);
-  const room = (await f.api.list("places")).records.find((row) => row.summary === "Room description");
+  const room = (await f.api.list("places")).records.find((row) => row.summary === "Room detail");
   assert.ok(room, "Administrative records include unseen interiors");
   const roof = await f.prepare(edit(room.id, { text: "A shared room. The roof is sound." }, "fix-roof"));
   await f.api.apply(roof.id, roof.token);
   assert.equal((await f.api.inspect(room.id)).fields[0].value, "A shared room. The roof is sound.");
   assert.ok((await f.api.index()).checkpoints.length >= 2);
+  const guest = "a";
+  const policy = repairId("access", "cafe", "common");
+  const restrict = await f.prepare(edit(policy, { mode: "permission-required" }, "restrict-entry"));
+  await f.api.apply(restrict.id, restrict.token);
+  const grantId = repairId("permission", "cafe", "common", guest);
+  const grant = await f.prepare(edit(grantId, { standing: true }, "grant-standing"));
+  await f.api.apply(grant.id, grant.token);
+  f.reopen();
+  const grantedVenue = (await f.read()).venues[0]!;
+  const grantedZone = grantedVenue.zones!.find((zone) => zone.id === "common")!;
+  assert.equal(mayInvite(grantedVenue, grantedZone, "system"), false);
+  assert.ok(grantedVenue.access!.permissions.some((row) => !row.revoked && row.visitorId === guest));
+  assert.equal(evaluateZoneAccess(grantedVenue, grantedZone, guest).allowed, true);
   const oldHome = venue("old-home", "residence"),
     newHome = venue("new-home", "residence");
   newHome.residentIds = [];
@@ -1299,8 +1370,12 @@ await runCase("repair/places", async () => {
     assert.equal(review.undoAvailable, true);
     await f.api.apply(review.id, review.token);
     const changed = await f.read();
-    if (kind === "npc") assert.equal(changed.worldPlaces.npcs[id].disabled, true);
-    else assert.equal(changed.worldPlaces.places[id].location.name, "Corrected Cafe");
+    if (kind === "npc") {
+      assert.equal(changed.worldPlaces.npcs[id].disabled, true);
+      assert.ok(
+        (await f.api.list("people", "", 0, id, "details")).records.some((record) => record.id === repairId("npc", id)),
+      );
+    } else assert.equal(changed.worldPlaces.places[id].location.name, "Corrected Cafe");
     const undo = await f.api.undo(review.id, "undo-" + kind);
     await f.api.apply(undo.id, undo.token);
     const restored = await f.read();
@@ -1308,4 +1383,20 @@ await runCase("repair/places", async () => {
     assert.equal(restored.worldPlaces.places["place:cafe"].location.name, "Cafe");
     assert.deepEqual(restored.worldPlaces.places["place:cafe"].location.access?.managerIds, ["npc:place:cafe:jo"]);
   }
+  const jo = "npc:place:cafe:jo";
+  await f.repo.mutateAuthority((state) => {
+    state.venues.push(venue("workshop"));
+  });
+  const policyId = repairId("access", "workshop", "common");
+  const policy = await f.prepare(edit(policyId, { mode: "permission-required" }, "require-permission"));
+  await f.api.apply(policy.id, policy.token);
+  const grant = await f.prepare(edit(repairId("permission", "workshop", "common", jo), { standing: true }, "grant-jo"));
+  await f.api.apply(grant.id, grant.token);
+  const savedVenue = (await f.read()).venues.find((entry) => entry.id === "workshop")!;
+  const savedZone = savedVenue.zones!.find((entry) => entry.id === "common")!;
+  assert.equal(evaluateZoneAccess(savedVenue, savedZone, jo).reason, "invitation");
+  const manager = await f.prepare(edit(policyId, { inheritManagers: "custom", [`manager:${jo}`]: true }, "manage-jo"));
+  await f.api.apply(manager.id, manager.token);
+  const managed = (await f.read()).venues.find((entry) => entry.id === "workshop")!;
+  assert.ok(managed.zones!.find((entry) => entry.id === "common")!.access?.managerIds?.includes(jo));
 });

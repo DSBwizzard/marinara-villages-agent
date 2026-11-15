@@ -223,6 +223,18 @@ export function mayInvite(venue: VillageVenue, zone: VillageVenueZone, actor: st
     zone.kind !== "exterior" && (zoneManagers(venue, zone).includes(actor) || !!zone.access?.inviterIds.includes(actor))
   );
 }
+function validGrantIssuer(venue: VillageVenue, zone: VillageVenueZone, grant: VenueAccessState["permissions"][number]) {
+  return (
+    mayInvite(venue, zone, grant.issuerId) ||
+    (grant.issuerId === "system" &&
+      grant.id.startsWith("repair:") &&
+      grant.duration === "standing" &&
+      grant.sceneId === null &&
+      grant.accompaniedBy === null &&
+      !grant.outsideHours &&
+      !grant.sourceLineIds.length)
+  );
+}
 function members(venue: VillageVenue, zone: VillageVenueZone): string[] {
   const policy = zone.access;
   return [
@@ -303,7 +315,7 @@ export function evaluateZoneAccess(
       (!context.permissionId || grant.id === context.permissionId) &&
       grant.zoneId === zone.id &&
       grant.visitorId === actor &&
-      mayInvite(venue, zone, grant.issuerId) &&
+      validGrantIssuer(venue, zone, grant) &&
       (grant.duration === "standing" ||
         (context.sceneId && (grant.sceneId === context.sceneId || (context.accepting && grant.sceneId === null)))),
   );
@@ -391,8 +403,7 @@ export function reconcileVenueAccess(venue: VillageVenue, knownActors?: string[]
   }
   for (const grant of venue.access.permissions) {
     const zone = venue.zones?.find((row) => row.id === grant.zoneId);
-    if (!zone || (known && !known.has(grant.visitorId)) || !mayInvite(venue, zone, grant.issuerId))
-      grant.revoked = true;
+    if (!zone || (known && !known.has(grant.visitorId)) || !validGrantIssuer(venue, zone, grant)) grant.revoked = true;
   }
 }
 export function applyAccessCommand(
