@@ -1,4 +1,5 @@
 import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import { randomUUID } from "node:crypto";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
@@ -17,6 +18,7 @@ import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 
 export interface ResidentRosterPorts {
+  automaticVisitorSprites?(id: string): Promise<SpriteManagerState | null>;
   preparedSpriteManager?(
     id: string,
     revision?: number,
@@ -32,6 +34,7 @@ export interface ResidentRosterPorts {
 /** Roster commands own their saved-world, library and background connections. Construction is inert. */
 export function createResidentRoster({
   preparedSpriteManager,
+  automaticVisitorSprites,
   readVillageState,
   mutateVillageState,
   findVillagerCard,
@@ -139,6 +142,7 @@ export function createResidentRoster({
     if (!village.foundedAt || villageWorldScope(village) !== scope) throw conflict("The Village changed.");
     const existing = village.visitors?.some((person) => person.characterId === characterId);
     const card = existing ? null : await findVillagerCard(characterId);
+    const spriteManager = card && visitsEnabled ? await automaticVisitorSprites?.(characterId) : undefined;
     const addedAt = villageNow().toISOString();
     const incarnation = randomUUID();
     const letterFontId = chooseLetterFont(randomVillageSeed());
@@ -166,6 +170,7 @@ export function createResidentRoster({
         letterFontId,
         addedAt,
         cardSnapshot: { ...snapshotFromCard(card, 1), capturedAt: addedAt },
+        ...(spriteManager ? { spriteManager } : {}),
         visitsEnabled,
         visitsRevision: incarnation,
       });

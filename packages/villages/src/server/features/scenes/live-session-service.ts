@@ -4,6 +4,11 @@ import { findLocation, hasAssociatedNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import type { VillageVisitor } from "../../domain/models/world.js";
+import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
+import { managerResidentSprite } from "../../domain/rules/sprite-manager-model.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { sameVisitorWindow } from "../../domain/rules/visitors.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
@@ -35,6 +40,7 @@ export interface LiveScenePorts {
   withIdleSceneWork(id: string, work: () => Promise<void>): Promise<void>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
+  initializeVisitorSprites?(scope: string, visitor: VillageVisitor): Promise<SpriteManagerState | null | undefined>;
 }
 const ACTIVITY_WRITE_MS = 15 * 1000;
 /** Inert active-Scene lifecycle and attendance coordination with originating connections. */
@@ -46,6 +52,7 @@ export function createLiveScenes({
   hasVenueOperation,
   withSceneWork,
   withIdleSceneWork,
+  initializeVisitorSprites,
   readVillageState: readVillageStateWithoutPlaces,
   mutateVillageState: mutateVillageStateWithoutPlaces,
 }: LiveScenePorts) {
@@ -172,12 +179,16 @@ export function createLiveScenes({
     });
   }
 
-  async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
+  async function refreshZoneParticipants(
+    session: VenueScene,
+    completing = false,
+    firstAdmission = false,
+  ): Promise<VenueScene> {
     await observeVillageClock();
     if (session.status === "closed") return session;
     if (session.pendingAccessClaim) {
       const settled = await withSceneWork(session.id, () => settleEntryInvitation(session));
-      return refreshZoneParticipants(settled, completing);
+      return refreshZoneParticipants(settled, completing, true);
     }
     if (!completing && hasVenueOperation(session.id)) return session;
     if (!completing) {
@@ -187,7 +198,7 @@ export function createLiveScenes({
     }
     if (!session.zoneId || !session.sceneAttendance) throw conflict("That Scene has no current live admission.");
     if (!completing) {
-      session = await refreshLiveScene(session);
+      session = await refreshLiveScene(session, firstAdmission);
       await withIdleSceneWork(session.id, () => rememberCurrentZone(session));
       if (hasVenueOperation(session.id)) return session;
     }
@@ -427,7 +438,7 @@ export function createLiveScenes({
     });
   }
 
-  async function refreshLiveScene(session: VenueScene): Promise<VenueScene> {
+  async function refreshLiveScene(session: VenueScene, firstAdmission: boolean): Promise<VenueScene> {
     if (session.status === "closed") return session;
     let village = await readVillageState({ memories: true });
     const wallTime = Date.now();
@@ -455,7 +466,28 @@ export function createLiveScenes({
     const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
     const previousMoment = moment(new Date(previousAt));
     const { attendance, accompanying, departedIds, sameRoutine } = projectLiveAttendance(village, session, venue, now);
-    const continuity = captureSceneContinuity(village, { ...session, sceneAttendance: attendance }, now.getTime());
+    const visitor = village.visitors?.find(
+      (person) =>
+        !person.spriteManager &&
+        attendance.occupants.some((row) => row.characterId === person.characterId) &&
+        (firstAdmission ||
+          !session.continuity ||
+          !session.sceneAttendance?.occupants.some((row) => row.characterId === person.characterId) ||
+          !sameVisitorWindow(village, person.characterId, new Date(previousAt), now)),
+    );
+    const manager = visitor && (await initializeVisitorSprites?.(villageWorldScope(village), visitor));
+    const appearance =
+      manager && visitor
+        ? {
+            ...village,
+            visitors: village.visitors?.map((person) =>
+              person === visitor
+                ? { ...person, spriteManager: manager, sprite: managerResidentSprite(manager, person.characterId) }
+                : person,
+            ),
+          }
+        : village;
+    const continuity = captureSceneContinuity(appearance, { ...session, sceneAttendance: attendance }, now.getTime());
     if (
       session.continuity &&
       Math.floor(Date.parse(session.continuity.capturedAt) / 60_000) === Math.floor(now.getTime() / 60_000) &&

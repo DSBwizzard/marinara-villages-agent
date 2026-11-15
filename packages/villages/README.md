@@ -152,7 +152,7 @@ Residents follow routines, and their availability changes through the day. Found
 
 ### Visitors
 
-Open **People → Visitors** to browse profiles or choose **Add Visitor** and select an unused Character Card. **Character Tools → Appearance** lets you use their portrait or set up Scene sprites. When someone visits an open Village Venue, **Find visitor** opens the public location.
+Open **People → Visitors** to browse profiles or choose **Add Visitor** and select an unused Character Card. Villages sets up available standing sprites for new Visitors and for Visitors with untouched Appearance when they next enter a Scene. It uses recognizable expression labels when available and chooses one standing sprite when the labels give no expression clues. The portrait is the fallback. **Character Tools → Appearance** lets you adjust the sprites and set up side views. When someone visits an open Village Venue, **Find visitor** opens the public location.
 
 After you hear a Visitor speak in a Scene, you can write to them in **Mailbox**, including while they’re away. Scenes and letters can develop the same relationship scores as with a Villager. A Visitor who agrees to return in a letter has a better chance of visiting in the next few Village days. They may also agree to give you space. **Turn visits off** stops appearances and keeps the correspondence available.
 

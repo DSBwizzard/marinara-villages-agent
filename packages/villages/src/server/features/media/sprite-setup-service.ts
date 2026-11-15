@@ -11,7 +11,7 @@ import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-transport.js";
 import type { SpriteWrites } from "./sprite-writes.js";
-import type { VillageState } from "../../domain/models/world.js";
+import type { VillageState, VillageVisitor } from "../../domain/models/world.js";
 import {
   coerceSpriteManager,
   emptySpriteManager,
@@ -22,6 +22,7 @@ import { engineSpriteName, engineSpriteUrl } from "../../../shared/helpers/sprit
 import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, badGateway, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { automaticVisitorSprites } from "../../domain/rules/visitor-sprites.js";
 
 export interface SpriteSetupPorts {
   villagesDocuments: typeof villagesDocuments;
@@ -287,7 +288,32 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     return current.revision ? current.manager : null;
   }
 
+  async function automaticManager(id: string) {
+    const library = await files(id).catch(() => null);
+    return library ? automaticVisitorSprites(library.files, library.folders) : null;
+  }
+
+  async function initializeVisitor(scope: string, visitor: VillageVisitor) {
+    if (visitor.spriteManager) return visitor.spriteManager;
+    const id = visitor.characterId;
+    const matches = (state: VillageState) =>
+      villageWorldScope(state) === scope
+        ? state.visitors?.find((person) => person.characterId === id && person.incarnation === visitor.incarnation)
+        : undefined;
+    return ports.writes.serialize(writeKey(id, true), async () => {
+      const current = matches(await ports.readVillageState());
+      if (!current || current.spriteManager) return current?.spriteManager;
+      const manager = await automaticManager(id);
+      if (!manager) return null;
+      const saved = await ports.mutateVillageState((state) => {
+        const person = matches(state);
+        if (person && !person.spriteManager) person.spriteManager = manager;
+      });
+      return matches(saved)?.spriteManager;
+    });
+  }
+
   const settled = (id: string, resident = false) =>
     ports.writes.serialize(writeKey(id, resident), () => read(id, resident));
-  return { settled, save, preparedManager };
+  return { settled, save, preparedManager, automaticManager, initializeVisitor };
 }

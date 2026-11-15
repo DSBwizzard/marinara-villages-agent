@@ -126,7 +126,7 @@ import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.j
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
 import { createSpriteSetup } from "../features/media/sprite-setup-service.js";
-import { configureSpriteSetup, preparedSpriteManager } from "../features/media/sprite-setup.js";
+import { configureSpriteSetup, preparedSpriteManager, spriteSetup } from "../features/media/sprite-setup.js";
 import { createTownMapImage } from "../features/media/town-map-image-service.js";
 import { configureTownMapImage, generateVillageTownMap } from "../features/media/town-map-image.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
@@ -511,6 +511,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       withSceneWork: backendWork.sceneFence.run,
       withIdleSceneWork: (id, work) =>
         backendWork.sceneFence.isBusy(id) ? Promise.resolve() : backendWork.sceneFence.run(id, work),
+      initializeVisitorSprites: (scope, visitor) => spriteSetup().initializeVisitor(scope, visitor),
       readVillageState: readVillageMemoryState,
       mutateVillageState: mutateVillageMemoryState,
     }),
@@ -685,6 +686,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseResidentRoster = configureResidentRoster(
     createResidentRoster({
       preparedSpriteManager,
+      automaticVisitorSprites: (id) => spriteSetup().automaticManager(id),
       readVillageState,
       mutateVillageState: mutateVillageMemoryState,
       findVillagerCard,
