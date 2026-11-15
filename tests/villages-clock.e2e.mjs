@@ -78,13 +78,14 @@ await withBrowser(browser, async () => {
       await page.clock.pauseAt(new Date("2030-01-01T12:01:00Z"));
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await page.getByRole("button", { name: "START", exact: true }).click();
       await expect(page.getByRole("list", { name: "Founding phases" })).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);
       const scene = page.locator(".villages-forging-v2");
       await expect(scene).toHaveAttribute("data-lighting", "day");
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
-      await scene.getByRole("button", { name: "Let’s get started" }).click();
+      await scene.getByRole("button", { name: "Let’s talk about the world" }).click();
       const world = scene.getByLabel("The larger world");
       await world.fill("A string of settlements along the coast");
       await page.clock.fastForward(2000);

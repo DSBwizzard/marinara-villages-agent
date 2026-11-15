@@ -1,5 +1,5 @@
 import { FOUNDING_SETTING_BRIEF_LIMIT, type FoundingSetting } from "../../../shared/contracts/founding.js";
-import { useRef, type ReactNode, type Ref } from "react";
+import { useEffect, useRef, type ReactNode, type Ref } from "react";
 import { FoundingField } from "./FoundingField.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
@@ -14,6 +14,7 @@ export const foundingMariSprite = (pose: "neutral" | "happy" | "playful") => art
 
 export function FoundingSettingScene({
   controller,
+  enteringScene,
   onConnections,
   onEditSetting,
   onBeatChange,
@@ -21,6 +22,7 @@ export function FoundingSettingScene({
   next,
 }: {
   controller: FoundingScreenController;
+  enteringScene: boolean;
   onConnections(): void;
   onEditSetting(): void;
   onBeatChange(): void;
@@ -30,6 +32,9 @@ export function FoundingSettingScene({
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
   const lineRef = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (enteringScene) lineRef.current?.focus({ preventScroll: true });
+  }, [enteringScene]);
   const moveTo = (settingBeat: SettingBeat) => {
     const openEditor =
       settingBeat === "village" &&
@@ -53,7 +58,7 @@ export function FoundingSettingScene({
   const pickedBooks = controller.setupLorebookDraft.length;
   const dialogue = {
     welcome:
-      "All right, class. In Villages, you live alongside a community. A ship’s crew counts. So does one suspiciously dramatic apartment building. We’ll start with their world, then pick the people and places.",
+      "Hey, you made it. I’m Mari. In Villages, you live alongside a community. A ship’s crew counts. So does one suspiciously dramatic apartment building. We’ll start with their world, then pick the people and places.",
     world:
       "Give me a sentence about the wider world. It’ll help me draft a starting place that fits. Save volume twelve for office hours.",
     lorebooks:
@@ -78,7 +83,7 @@ export function FoundingSettingScene({
         {beat === "welcome" ? (
           <div className="villages-founding-replies">
             <button type="button" className="villages-forging-primary" onClick={() => moveTo("world")}>
-              Let’s get started
+              Let’s talk about the world
             </button>
           </div>
         ) : null}

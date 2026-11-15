@@ -552,6 +552,15 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2[data-lighting=day] {
   background:linear-gradient(180deg,#23364b9c,transparent 7rem),linear-gradient(100deg,#23364b14,#23364b55),url('/api/capability-packages/villages/assets/mari-founding-overlook-day.webp') center 62% / cover no-repeat #526b82;
 }
+.villages-founding-title {
+  flex:1; display:grid; place-content:center; justify-items:center; gap:1rem; padding:1.25rem;
+  text-align:center; background:radial-gradient(ellipse at 50% 45%,#362947,#21192e 65%);
+}
+.villages-founding-title img { width:5rem; height:5rem; border-radius:1rem; box-shadow:0 .5rem 1.5rem #170f2880; }
+.villages-forging-v2 .villages-founding-title h1 {
+  color:#f4e5c8; font:500 clamp(2.75rem,7vmin,5rem)/1 "village-letter-lora",Georgia,serif; letter-spacing:-.04em;
+}
+.villages-founding-title button { min-width:9rem; margin-top:.5rem; letter-spacing:.1em; }
 .villages-forging-steps {
   position:relative; isolation:isolate; display:grid; grid-template-columns:repeat(4,1fr); list-style:none;
   flex:none; width:min(15rem,75%); margin:.65rem auto 0; padding:0 0 1.15rem; text-align:center;
@@ -603,8 +612,22 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 button.villages-setting-suggestions { color:#f5bbc5; background:#422e48; border-color:#ba8198; padding:.35rem .6rem; font-size:.86rem; }
 .villages-setting-proposal { padding:.65rem .75rem; margin:.35rem 0 .65rem; border-left:2px solid #d29399; background:#51415766; overflow-wrap:anywhere; }
 .villages-setting-proposal p { margin:.35rem 0 .55rem; white-space:pre-wrap; }
-@media(prefers-reduced-motion:no-preference) { .villages-setting-stage img { animation:villages-mari-arrive .2s ease-out; } }
+@media(prefers-reduced-motion:no-preference) {
+  .villages-setting-stage img { animation:villages-mari-arrive .2s ease-out; }
+  .villages-forging-v2[data-scene-arrival]::before {
+    content:''; position:absolute; inset:0; z-index:12; pointer-events:none; background:#30213f;
+    animation:villages-founding-reveal .4s ease-out both;
+  }
+  .villages-forging-v2[data-scene-arrival] .villages-setting-stage img {
+    animation:villages-mari-enter .36s ease-out .16s both;
+  }
+  .villages-forging-v2[data-scene-arrival] .villages-setting-guide>.villages-setting-dialogue {
+    animation:villages-founding-reveal .2s ease-out .45s reverse both;
+  }
+}
 @keyframes villages-mari-arrive { from { opacity:.65; transform:translateY(.2rem); } }
+@keyframes villages-founding-reveal { from { opacity:1; } to { opacity:0; } }
+@keyframes villages-mari-enter { from { opacity:0; transform:translateX(-1.2rem); } to { opacity:1; transform:translateX(0); } }
 @media(min-width:728px) {
   /* Keep the terrace floor in frame as the overlook crops on wide displays. */
   .villages-forging-v2[data-step="0"] { background-position:center,center bottom; }

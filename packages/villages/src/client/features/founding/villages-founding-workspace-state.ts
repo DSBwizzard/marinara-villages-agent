@@ -8,6 +8,7 @@ export type FoundingWorkspaceState = {
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   settingBrief?: string;
   settingBeat?: "welcome" | "world" | "lorebooks" | "village";
+  settingIntroPending?: true;
   settingWorldBrief?: string;
   settingDraft?: Partial<FoundingSetting>;
   settingEditorOpen?: boolean;

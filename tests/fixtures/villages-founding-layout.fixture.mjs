@@ -75,6 +75,7 @@ export async function verifyFoundingLayout(group) {
           viewport: { width: view.width, height: view.height },
           hasTouch: view.width < 600,
           isMobile: view.width < 600,
+          reducedMotion: view.height === 650 ? "reduce" : "no-preference",
         });
         const draftWithLore = view.width === 1280 || view.width === 390;
         const worldBrief = "The Relay Belt is a chain of settlements on old cargo routes.";
@@ -384,6 +385,33 @@ export async function verifyFoundingLayout(group) {
             });
         };
         await expect(root).toHaveAttribute("data-step", "0");
+        const start = button("START");
+        await expect(root.getByRole("heading", { name: "Villages", exact: true })).toBeVisible();
+        await expect(root.getByRole("region", { name: "Professor Mari", exact: true })).toHaveCount(0);
+        await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
+        await expect(root.locator(".villages-founding-title img")).toHaveJSProperty("complete", true);
+        assert.ok(await root.locator(".villages-founding-title img").evaluate((image) => image.naturalWidth > 0));
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-title-" + view.width + ".png"),
+          });
+        if (view.width === 390 && view.height === 844) {
+          await expect
+            .poll(() =>
+              page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.settingIntroPending),
+            )
+            .toBe(true);
+          await page.reload();
+          await page.addScriptTag({ content: foundingBundle });
+          await expect(start).toBeVisible();
+        }
+        await start.click();
+        await expect(start).toHaveCount(0);
+        assert.equal(
+          await root.evaluate((element) => getComputedStyle(element, "::before").animationName),
+          view.height === 650 ? "none" : "villages-founding-reveal",
+          "The entrance respects reduced motion",
+        );
         await expect(
           root.locator(".villages-forging-heading, .villages-forging-footer, .villages-forging-saved"),
         ).toHaveCount(0);
@@ -402,6 +430,8 @@ export async function verifyFoundingLayout(group) {
         const stage = root.locator(".villages-setting-stage");
         const phone = view.width <= 727;
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
+        await expect(scene.locator('p[aria-live="polite"]')).toBeFocused();
+        await expect(scene).toContainText("Hey, you made it. I’m Mari.");
         await expect(scene).toContainText("you live alongside a community");
         await expect(button("Draft with Mari")).toHaveCount(0);
         if (!phone) {
@@ -415,13 +445,13 @@ export async function verifyFoundingLayout(group) {
             "Mari stands on the terrace",
           );
           assert.ok(dialogue.x >= portrait.x + portrait.width, "Dialogue sits beside Mari");
-          await expect(button("Let’s get started")).toBeInViewport({ ratio: 1 });
+          await expect(button("Let’s talk about the world")).toBeInViewport({ ratio: 1 });
           if (process.env.VILLAGES_SCREENSHOT_DIR)
             await page.screenshot({
               path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "desktop-welcome-" + view.width + ".png"),
             });
         }
-        await button("Let’s get started").click();
+        await button("Let’s talk about the world").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         if (draftWithLore) {
           await scene.getByLabel("The larger world").fill(worldBrief);

@@ -39,6 +39,7 @@ const PLACE_ERRORS = {
   locationName: "Name the starting location.",
   setting: "Describe the starting location.",
 };
+const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 export function FoundingScreen({
   controller,
   host,
@@ -139,6 +140,13 @@ export function FoundingScreen({
     : rawSetupProblem;
   const [contextView, setContextView] = useState("");
   const beat = settingBeat(setupWorkspace);
+  const showTitle =
+    setupStep === 0 &&
+    beat === "welcome" &&
+    setupWorkspace.settingBeat === undefined &&
+    setupWorkspace.settingIntroPending === true &&
+    !draftSaveError;
+  const [enteringScene, setEnteringScene] = useState(false);
   const hasSettingDraft = !!setupWorkspace.settingDraft;
   const settingEditorOpen =
     setupWorkspace.settingEditorOpen ??
@@ -268,6 +276,30 @@ export function FoundingScreen({
     setSettingEditorOpen,
   ]);
   if (screen === "setup") {
+    if (showTitle) {
+      return (
+        <div className={FOUNDING_ROOT} data-step={0} data-lighting={storybookDaylight ? "day" : "night"} ref={rootRef}>
+          <main className="villages-founding-title">
+            <img src="/api/capability-packages/villages/assets/villages-icon.png" alt="" width={80} height={80} />
+            <h1>Villages</h1>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              onClick={() => {
+                setEnteringScene(true);
+                setSetupWorkspace((workspace) => ({
+                  ...workspace,
+                  settingIntroPending: undefined,
+                  settingBeat: "welcome",
+                }));
+              }}
+            >
+              START
+            </button>
+          </main>
+        </div>
+      );
+    }
     const openSettingEditor = (view?: "Connections") => {
       if (view) setContextView(view);
       setSettingEditorOpen(true);
@@ -480,9 +512,10 @@ export function FoundingScreen({
     );
     return (
       <div
-        className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}
+        className={FOUNDING_ROOT}
         data-step={setupStep}
         data-lighting={storybookDaylight ? "day" : "night"}
+        data-scene-arrival={enteringScene && setupStep === 0 && beat === "welcome" ? true : undefined}
         ref={rootRef}
       >
         <ol className="villages-forging-steps" aria-label="Founding phases" role="list">
@@ -669,9 +702,13 @@ export function FoundingScreen({
             {setupStep === 0 ? (
               <FoundingSettingScene
                 controller={controller}
+                enteringScene={enteringScene}
                 onConnections={() => openSettingEditor("Connections")}
                 onEditSetting={() => openSettingEditor()}
-                onBeatChange={() => bodyRef.current?.scrollTo({ top: 0 })}
+                onBeatChange={() => {
+                  setEnteringScene(false);
+                  bodyRef.current?.scrollTo({ top: 0 });
+                }}
                 editSettingButton={editSettingButton}
                 next={nextReply}
               />

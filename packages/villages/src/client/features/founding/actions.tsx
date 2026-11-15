@@ -294,7 +294,7 @@ export function useOpenSetup(ports: {
       setPickerOpen(false);
       setSearch("");
       setSetupStep(0);
-      setSetupWorkspace(emptyFoundingWorkspace());
+      setSetupWorkspace({ ...emptyFoundingWorkspace(), settingIntroPending: true });
       setSetupShowIssues(false);
       setSetupFocusIssue(null);
       // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
