@@ -79,9 +79,8 @@ await withBrowser(browser, async () => {
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       const scene = page.locator(".villages-forging-v2");
-      const title = scene.locator(".villages-founding-title");
-      await expect(title).toHaveCSS("background-image", /storybook-background-day\.webp/);
-      await expect(title).toHaveCSS("color", "rgb(25, 58, 49)");
+      await expect(scene.locator(".villages-founding-title")).toBeVisible();
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
       await page.getByRole("button", { name: "START", exact: true }).click();
       await expect(page.getByRole("list", { name: "Founding phases" })).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);

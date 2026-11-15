@@ -278,7 +278,22 @@ export function FoundingScreen({
       return (
         <div className={FOUNDING_ROOT} data-step={0} data-lighting={storybookDaylight ? "day" : "night"} ref={rootRef}>
           <main className="villages-founding-title">
-            <h1>Villages</h1>
+            <div className="villages-founding-logo">
+              <h1>Villages</h1>
+              <svg viewBox="0 15 600 104" aria-hidden="true" focusable="false">
+                <path
+                  fill="currentColor"
+                  d="M8 102
+                    Q30 98 57 96 V85 L73 72 L90 86 V94 H106 V77 L126 60 L146 75 V91
+                    H160 V66 L182 48 L203 66 V89 H217 V76 L233 64 H238 V55 H245 V67 L257 78 V88
+                    H269 V65 L291 42 L310 62 V87 H328 V59 H340 V38 L350 25 L360 38 V59 H373 V87
+                    H392 V81 H400 V69 H426 V76 H447 V92 H458 V84 L473 72 L488 85 V94 H501
+                    C502 87 508 83 515 83 C522 83 528 88 529 95 H545 V85 L560 73 L576 86 V98
+                    Q587 99 594 103 Q561 98 529 100 C487 101 445 108 399 112
+                    C334 118 283 119 230 110 C152 97 81 94 8 102 Z"
+                />
+              </svg>
+            </div>
             <button
               type="button"
               onClick={() => {

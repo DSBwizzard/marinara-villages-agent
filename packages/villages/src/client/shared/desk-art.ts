@@ -11,13 +11,12 @@ type ArtworkLayer = {
 
 const assets = "/api/capability-packages/villages/assets/";
 export const STORYBOOK_BACKGROUND_URL = assets + "storybook-background-wide.webp";
-export const STORYBOOK_BACKGROUND_DAY_URL = assets + "storybook-background-day.webp";
 export const VENUE_FALLBACK_URL = assets + "venue-fallback.webp";
 export const VENUE_FALLBACK_DAY_URL = assets + "venue-fallback-day.webp";
 
 // The foreground matte uses the same pixel coordinates as the backdrop.
 const night: ArtworkLayer = { url: STORYBOOK_BACKGROUND_URL, property: "--menu-art" };
-const day: ArtworkLayer = { url: STORYBOOK_BACKGROUND_DAY_URL, property: "--menu-art" };
+const day: ArtworkLayer = { url: assets + "storybook-background-day.webp", property: "--menu-art" };
 const matte: ArtworkLayer = { url: assets + "storybook-scenery-matte.webp", property: "--menu-scenery-matte" };
 
 async function prepareLayer(layer: ArtworkLayer): Promise<void> {
