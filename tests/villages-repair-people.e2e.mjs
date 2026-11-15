@@ -229,13 +229,11 @@ async function fixture(width) {
   });
   await page.goto("http://repair-people.test/");
   await page.addScriptTag({ content: code.outputFiles[0].text });
-  await expect(page.getByRole("heading", { name: "REPAIR", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Find a record", exact: true })).toBeVisible();
   return { page, root: page.locator(".villages-repair"), hold, calls, close: () => page.close() };
 }
 const openPeople = async (page) => {
-  await page
-    .getByRole("button", { name: "People Villagers, their memories, and character details.", exact: true })
-    .click();
+  await page.getByRole("button", { name: "People", exact: true }).click();
   await expect(page.getByRole("button", { name: "Nora", exact: true })).toBeVisible();
 };
 const goNora = async (page) => {
@@ -243,7 +241,7 @@ const goNora = async (page) => {
   await page.getByRole("button", { name: "Nora", exact: true }).click();
 };
 const chooseEllis = async (page) => {
-  await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+  await page.getByRole("button", { name: "Find a record", exact: true }).click();
   await openPeople(page);
   await page.getByRole("button", { name: "Ellis", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
@@ -292,9 +290,7 @@ await withBrowser(browser, async () => {
       const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
       assert.deepEqual([...sent.knowers].sort(), ["a", "player"]);
       assert.equal(sent.personId, "a");
-      const scope = root
-        .locator(".repair-panel")
-        .filter({ has: page.getByRole("heading", { name: "Applies to", exact: true }) });
+      const scope = root.getByRole("region", { name: "Applies to", exact: true });
       await expect(scope).toContainText("Your Persona");
       await expect(scope).toContainText("Nora");
       await expect(root.getByText(known, { exact: true })).toBeVisible();
@@ -381,13 +377,8 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
     await expect(root).not.toContainText("Pending Nora draft.");
     for (const kind of ["undo", "restore"]) {
-      await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-      await page
-        .getByRole("button", {
-          name: kind === "undo" ? "Repair history" : "Backups & repairs Review repairs, undo, or restore a checkpoint.",
-          exact: true,
-        })
-        .click();
+      await page.getByRole("button", { name: "History & backups", exact: true }).click();
+      if (kind === "restore") await page.getByRole("button", { name: "Checkpoints", exact: true }).click();
       await expect(root).toContainText(kind === "undo" ? "Private correction" : "Private checkpoint");
       const pending = f.hold(kind);
       await page
@@ -399,10 +390,10 @@ await withBrowser(browser, async () => {
       await pending.done;
       await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
     }
-    await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Repair history", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Find a record", exact: true }).click();
+    await expect(page.getByRole("button", { name: "History & backups", exact: true })).toBeEnabled();
     const staleIndex = f.hold("index", { identity: "retired-world" });
-    await page.getByRole("button", { name: "Repair history", exact: true }).click();
+    await page.getByRole("button", { name: "History & backups", exact: true }).click();
     await staleIndex.started;
     await chooseEllis(page);
     staleIndex.release();
@@ -417,9 +408,8 @@ await withBrowser(browser, async () => {
   await runCase("repair-people/restore-draft", async () => {
     const f = await fixture(390),
       { page, root } = f;
-    await page
-      .getByRole("button", { name: "Backups & repairs Review repairs, undo, or restore a checkpoint.", exact: true })
-      .click();
+    await page.getByRole("button", { name: "History & backups", exact: true }).click();
+    await page.getByRole("button", { name: "Checkpoints", exact: true }).click();
     await expect(root).toContainText("Private checkpoint");
     await page.getByRole("button", { name: "Review restoration", exact: true }).click();
     await page.getByRole("checkbox", { name: "Replace Village progress with this checkpoint", exact: true }).check();

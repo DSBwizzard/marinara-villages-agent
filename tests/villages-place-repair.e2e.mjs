@@ -124,7 +124,7 @@ await withBrowser(browser, async () => {
       await page.goto("http://place-repair.test/");
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       const open = async () => {
-        await page.getByRole("button", { name: "Places Venues, Zones, homes, and access.", exact: true }).click();
+        await page.getByRole("button", { name: "Places", exact: true }).click();
         await page.getByRole("button", { name: /Hall · Entrance Room description/ }).click();
       };
       await open();

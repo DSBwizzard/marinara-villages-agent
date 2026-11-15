@@ -296,6 +296,12 @@ await runCase("repair/people", async () => {
   assert.equal((await f.api.list("people", "compass", 0, "b")).total, 1);
   assert.ok((await f.api.list("people", "", 0, "b")).records.some((record) => record.title.includes("harbor")));
   assert.ok(!JSON.stringify(await f.api.list("people", "", 0, "player")).includes("compass"));
+  assert.deepEqual(await f.api.list("all", "  "), { records: [], total: 0, next: null });
+  assert.equal((await f.api.list("all", "compass nonexistent")).total, 0);
+  const search = await f.api.list("all", "Nora");
+  assert.ok(search.records.some((record) => record.topic === "memories" && record.title.includes("compass")));
+  assert.ok(search.records.some((record) => record.topic === "people" && record.title.includes("Nora")));
+  assert.equal(search.creation, undefined);
   assert.deepEqual(await f.read(), before);
 });
 await runCase("repair/checkpoints", async () => {

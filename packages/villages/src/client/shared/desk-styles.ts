@@ -240,9 +240,6 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-error{color:#f3c2b8}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-pages{container-type:size}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-signature .${P}-signature-image{max-height:min(6rem,25cqh)}
-.${P}-desk-workspace[data-desk="settings"] .villages-repair{--repair-bg:transparent;--repair-paper:var(--secondary);--repair-ink:var(--foreground);--repair-muted:var(--muted-foreground);--repair-line:var(--border);--repair-soft:var(--menu-field);--repair-primary:var(--menu-sage);--repair-onprimary:var(--primary-foreground);--repair-mark:var(--menu-selected);--repair-warn:var(--destructive);--repair-focus:var(--menu-focus,#dca5ab);height:100%;font:inherit}
-.${P}-desk-workspace[data-desk="settings"] .repair-chrome{justify-content:end;padding:0 5px 12px;background:transparent}
-.${P}-desk-workspace[data-desk="settings"] .repair-chrome>span{display:none}
 @container village-desk (max-width:1050px){
  .${P}-workspace-content .${P}-maps-saved-row{grid-template-columns:72px minmax(0,1fr);gap:8px 12px}
  .${P}-workspace-content .${P}-maps-saved-row img{width:72px;height:52px}

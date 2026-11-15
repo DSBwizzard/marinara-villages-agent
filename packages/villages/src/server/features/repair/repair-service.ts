@@ -433,9 +433,15 @@ export function createRepairService(ports: RepairPorts) {
   }
   async function list(topic: string, query = "", offset = 0, personId?: string, section = "memories") {
     if (topic === "people" && !personId) return { records: [], total: 0, next: null };
+    const words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+    const searchAll = topic === "all";
+    if (searchAll && !words.length) return { records: [], total: 0, next: null };
     const memoryList = topic === "memories" || (topic === "people" && section !== "details");
-    const { state, records } = await allRecords(memoryList, topic === "world" || topic === "progress", personId),
-      words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+    const { state, records } = await allRecords(
+      memoryList || searchAll,
+      searchAll || topic === "world" || topic === "progress",
+      personId,
+    );
     const personName =
       personId === "player"
         ? "Your Persona"
@@ -447,11 +453,12 @@ export function createRepairService(ports: RepairPorts) {
     const selected = records.filter(
       (r) =>
         !r.creating &&
-        (topic === "people"
-          ? memoryList
-            ? r.topic === "memories"
-            : r.topic === "people" && repairParts(r.id).slice(1).includes(personId!)
-          : r.topic === topic) &&
+        (searchAll ||
+          (topic === "people"
+            ? memoryList
+              ? r.topic === "memories"
+              : r.topic === "people" && repairParts(r.id).slice(1).includes(personId!)
+            : r.topic === topic)) &&
         words.every((w) =>
           `${r.title} ${r.summary} ${r.source.join(" ")} ${r.people?.map((p) => p.name).join(" ") ?? ""}`
             .toLocaleLowerCase()

@@ -14,13 +14,14 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 
 type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string };
 type Section = "memories" | "details";
+type RecordTopic = RepairTopic | "all";
 type View = "hub" | "list" | "edit" | "review" | "done" | "history" | "checkpoints";
 export function useRepairController(
   active: boolean,
   onApplied: (kind: RepairReview["kind"]) => Promise<{ title: string; text: string } | null>,
 ) {
   const [index, setIndex] = useState<RepairIndex | null>(null),
-    [topic, setTopic] = useState<RepairTopic>("memories"),
+    [topic, setTopic] = useState<RecordTopic>("memories"),
     [view, setView] = useState<View>("hub");
   const [person, setPerson] = useState<RepairPerson | null>(null),
     [section, setSection] = useState<Section>("memories");
@@ -135,7 +136,7 @@ export function useRepairController(
     }
   };
   const fetchRecords = async (
-    nextTopic: RepairTopic,
+    nextTopic: RecordTopic,
     start: number,
     search: string,
     who: RepairPerson | null,
@@ -153,7 +154,7 @@ export function useRepairController(
     setOffset(start);
     setTotal(result.total);
   };
-  const load = (nextTopic: RepairTopic = topic, start = 0, search = query) => {
+  const load = (nextTopic: RecordTopic = topic, start = 0, search = query) => {
     if (reviewRef.current) {
       abandonReview();
       epoch.current++;
@@ -163,17 +164,17 @@ export function useRepairController(
       await fetchRecords(nextTopic, start, search, person, section, ticket);
     });
   };
-  const chooseTopic = (nextTopic: RepairTopic) => {
+  const chooseTopic = (nextTopic: RecordTopic, search = "") => {
     invalidate();
     setPerson(null);
     setSection("memories");
-    setQuery("");
+    setQuery(search);
     setTopic(nextTopic);
     collection.current = nextTopic === "restore" ? "checkpoints" : "list";
     setView(collection.current);
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords(nextTopic, 0, "", null, "memories", ticket);
+      await fetchRecords(nextTopic, 0, search, null, "memories", ticket);
     });
   };
   const choosePerson = (who: RepairPerson) => {
@@ -202,6 +203,8 @@ export function useRepairController(
   const showHub = () => {
     invalidate();
     setPerson(null);
+    setQuery("");
+    collection.current = "list";
     setView("hub");
     void act(() => readIndex());
   };
