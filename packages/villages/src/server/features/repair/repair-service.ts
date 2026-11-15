@@ -47,6 +47,7 @@ import {
   restoreContinuityProtection,
   retainAdministrativeCircumstance,
   repairId,
+  repairPlaceDirectory,
   repairParts,
   worldRepairRecords,
 } from "../../domain/rules/repair-records.js";
@@ -431,7 +432,18 @@ export function createRepairService(ports: RepairPorts) {
       checkpoints: checkpoints.slice(checkpointOffset, checkpointOffset + 50).map(storage.summary),
     };
   }
-  async function list(topic: string, query = "", offset = 0, personId?: string, section = "memories") {
+  async function list(
+    topic: string,
+    query = "",
+    offset = 0,
+    personId?: string,
+    section = "memories",
+    browsePlaces = false,
+  ) {
+    if (topic === "places" && browsePlaces) {
+      const state = await read();
+      return { records: [], total: 0, next: null, directory: repairPlaceDirectory(state) };
+    }
     if (topic === "people" && !personId) return { records: [], total: 0, next: null };
     const words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
     const searchAll = topic === "all";

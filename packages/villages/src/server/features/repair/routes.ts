@@ -20,6 +20,7 @@ export function registerRepairRoutes(app: FastifyInstance) {
       offset?: string;
       personId?: string;
       section?: string;
+      browse?: string;
     };
   }>("/repair/records", async (request, reply) => {
     try {
@@ -29,6 +30,7 @@ export function registerRepairRoutes(app: FastifyInstance) {
         Math.max(0, Number(request.query.offset) || 0),
         request.query.personId,
         request.query.section,
+        request.query.browse === "places",
       );
     } catch (e) {
       return fail(reply, e, "reading repair records");

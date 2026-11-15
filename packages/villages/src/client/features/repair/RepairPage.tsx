@@ -1,4 +1,5 @@
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
+import { VillageIcon, type VillageIconName } from "../../shared/VillageIcon.js";
 import type { RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import type { RepairController } from "./useRepairController.js";
@@ -6,13 +7,49 @@ import { REPAIR_STYLES } from "./repair-styles.js";
 const topics = {
   memories: "Memories",
   people: "People",
-  places: "Places",
+  places: "Places & venues",
   world: "World & history",
   progress: "Recover work",
   restore: "Checkpoints",
   all: "Search results",
 } satisfies Record<RepairTopic | "all", string>;
 const browseTopics = ["memories", "people", "places", "world"] as const;
+const topicIcons = {
+  memories: "memory",
+  people: "people",
+  places: "places",
+  world: "world",
+  progress: "projects",
+  restore: "details",
+} satisfies Record<RepairTopic, VillageIconName>;
+
+function RepairTile({
+  title,
+  icon,
+  summary,
+  disabled,
+  onClick,
+}: {
+  title: string;
+  icon: VillageIconName;
+  summary?: string;
+  disabled: boolean;
+  onClick(): void;
+}) {
+  return (
+    <button type="button" className="repair-tile" disabled={disabled} onClick={onClick}>
+      <VillageIcon name={icon} />
+      <span>
+        <strong>{title}</strong>
+        {summary ? <small>{summary}</small> : null}
+      </span>
+      <span aria-hidden="true" className="repair-chevron">
+        ›
+      </span>
+    </button>
+  );
+}
+
 export function RepairPage({
   controller: c,
   onBack,
@@ -63,6 +100,19 @@ export function RepairPage({
           : "Modify memory"
     : c.selected?.title;
   const directory = c.view === "list" && c.topic === "people" && !c.person;
+  const browsingPlaces = c.view !== "hub" && c.topic === "places" && c.collection === "list";
+  let placeItems = c.placeDirectory;
+  const placeTrail = [];
+  for (const id of c.placePath) {
+    const item = placeItems.find((node) => node.id === id);
+    if (!item?.children) break;
+    placeTrail.push(item);
+    placeItems = item.children;
+  }
+  const showPlacePath = (path: string[]) => {
+    c.setPlacePath(path);
+    if (c.view !== "list") void c.load();
+  };
   const people = (c.index?.people ?? []).filter((p) =>
     c.query
       .toLocaleLowerCase()
@@ -122,7 +172,22 @@ export function RepairPage({
         </button>
       </nav>
       <main>
-        {c.person || c.view === "edit" || c.view === "review" || c.view === "done" ? (
+        {browsingPlaces && (placeTrail.length > 0 || c.view !== "list") ? (
+          <nav className="repair-links" aria-label="Repair location navigation">
+            <button type="button" disabled={c.busy} onClick={() => showPlacePath([])}>
+              {topics.places}
+            </button>
+            {(c.view === "list" ? placeTrail.slice(0, -1) : placeTrail).map((item, i) => (
+              <span className="repair-crumb" key={item.id}>
+                <span aria-hidden="true">›</span>
+                <button type="button" disabled={c.busy} onClick={() => showPlacePath(c.placePath.slice(0, i + 1))}>
+                  {item.title}
+                </button>
+              </span>
+            ))}
+          </nav>
+        ) : null}
+        {!browsingPlaces && (c.person || c.view === "edit" || c.view === "review" || c.view === "done") ? (
           <nav className="repair-links" aria-label="Repair record navigation">
             {c.person ? (
               <button type="button" disabled={c.saving} onClick={() => void c.chooseTopic("people")}>
@@ -157,7 +222,7 @@ export function RepairPage({
             {c.view === "hub"
               ? "Find a record"
               : c.view === "list"
-                ? (c.person?.name ?? currentTopic)
+                ? (c.person?.name ?? (browsingPlaces ? placeTrail.at(-1)?.title : null) ?? currentTopic)
                 : c.view === "edit"
                   ? editorTitle
                   : c.view === "review"
@@ -201,6 +266,17 @@ export function RepairPage({
         {!c.index ? <p role="status">Opening REPAIR…</p> : null}
         {c.view === "hub" ? (
           <>
+            <div className="repair-tiles repair-hub-tiles">
+              {browseTopics.map((topic) => (
+                <RepairTile
+                  key={topic}
+                  title={topics[topic]}
+                  icon={topicIcons[topic]}
+                  disabled={c.busy}
+                  onClick={() => void c.chooseTopic(topic)}
+                />
+              ))}
+            </div>
             <form
               autoComplete="off"
               className="repair-search"
@@ -221,13 +297,6 @@ export function RepairPage({
                 Search
               </button>
             </form>
-            <div className="repair-links">
-              {browseTopics.map((topic) => (
-                <button type="button" key={topic} disabled={c.busy} onClick={() => void c.chooseTopic(topic)}>
-                  {topics[topic]}
-                </button>
-              ))}
-            </div>
             {preparation?.status === "failed" ? (
               <footer>
                 <span>Initial preparation needs attention</span>
@@ -258,7 +327,28 @@ export function RepairPage({
             </button>
           </nav>
         ) : null}
-        {c.view === "list" ? (
+        {c.view === "list" && browsingPlaces ? (
+          <>
+            <div className="repair-tiles">
+              {placeItems.map((item) => (
+                <RepairTile
+                  key={item.id}
+                  title={item.title}
+                  icon={item.icon}
+                  summary={item.summary}
+                  disabled={c.busy}
+                  onClick={() =>
+                    item.children
+                      ? showPlacePath([...placeTrail.map((node) => node.id), item.id])
+                      : void c.open(item.id)
+                  }
+                />
+              ))}
+            </div>
+            {!c.busy && !c.error && !placeItems.length ? <p>No editable records here.</p> : null}
+          </>
+        ) : null}
+        {c.view === "list" && !browsingPlaces ? (
           <>
             {c.topic === "progress" && preparation?.status === "failed" && onRetryPreparation ? (
               <section className="repair-notice" aria-label="Initial preparation">
@@ -271,13 +361,14 @@ export function RepairPage({
               </section>
             ) : null}
             {c.person ? (
-              <div className="repair-actions" role="group" aria-label="Villager records">
+              <div className="repair-tiles repair-sections" role="group" aria-label="Villager records">
                 <button
                   type="button"
                   disabled={c.busy}
                   aria-pressed={c.section === "memories"}
                   onClick={() => void c.chooseSection("memories")}
                 >
+                  <VillageIcon name="memory" />
                   Memories
                 </button>
                 <button
@@ -286,6 +377,7 @@ export function RepairPage({
                   aria-pressed={c.section === "details"}
                   onClick={() => void c.chooseSection("details")}
                 >
+                  <VillageIcon name="details" />
                   Details
                 </button>
               </div>
@@ -311,67 +403,62 @@ export function RepairPage({
               </button>
             </form>
             {directory ? (
-              <div className="repair-people">
+              <div className="repair-tiles">
                 {people.map((person) => (
-                  <button
-                    type="button"
-                    className="repair-person"
+                  <RepairTile
+                    title={person.name}
+                    icon="people"
                     disabled={c.busy}
                     key={person.id}
                     onClick={() => void c.choosePerson(person)}
-                  >
-                    {person.name}
-                  </button>
+                  />
                 ))}
                 {!c.busy && c.index && !people.length ? <p>No villagers match.</p> : null}
               </div>
             ) : (
               <>
                 {c.creation ? (
-                  <button type="button" disabled={c.busy} onClick={() => void c.open(c.creation!.id)}>
-                    {c.creation.title}
-                  </button>
+                  <RepairTile
+                    title={c.creation.title}
+                    icon="memory"
+                    disabled={c.busy}
+                    onClick={() => void c.open(c.creation!.id)}
+                  />
                 ) : null}
                 <div className="repair-records">
                   {c.records.map((r) => (
-                    <button
-                      type="button"
+                    <RepairTile
                       key={r.id}
-                      className="repair-record"
+                      title={r.title}
+                      icon={topicIcons[r.topic]}
+                      summary={c.topic === "all" ? [topics[r.topic], r.summary].filter(Boolean).join(" · ") : r.summary}
                       disabled={c.busy}
                       onClick={() => void c.open(r.id)}
-                    >
-                      <strong>{r.title}</strong>
-                      {c.topic === "all" || r.summary ? (
-                        <small>
-                          {c.topic === "all" ? topics[r.topic] : null}
-                          {c.topic === "all" && r.summary ? " · " : null}
-                          {r.summary}
-                        </small>
-                      ) : null}
-                    </button>
+                    />
                   ))}
                 </div>
                 {!c.busy && !c.records.length ? <p>No records match.</p> : null}
-                <footer>
-                  <button
-                    type="button"
-                    disabled={c.busy || !c.offset}
-                    onClick={() => void c.load(c.topic, Math.max(0, c.offset - 50))}
-                  >
-                    Previous
-                  </button>
-                  <span>
-                    {c.total ? `${c.offset + 1}–${Math.min(c.offset + 50, c.total)} of ${c.total}` : "0 records"}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={c.busy || c.offset + 50 >= c.total}
-                    onClick={() => void c.load(c.topic, c.offset + 50)}
-                  >
-                    Next
-                  </button>
-                </footer>
+                {c.total > 50 ? (
+                  <footer>
+                    <button
+                      type="button"
+                      disabled={c.busy || !c.offset}
+                      onClick={() => void c.load(c.topic, Math.max(0, c.offset - 50))}
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      {c.total ? `${c.offset + 1}–${Math.min(c.offset + 50, c.total)} of ${c.total}` : "0 records"}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={c.busy || c.offset + 50 >= c.total}
+                      onClick={() => void c.load(c.topic, c.offset + 50)}
+                    >
+                      Next
+                    </button>
+                  </footer>
+                ) : null}
               </>
             )}
           </>

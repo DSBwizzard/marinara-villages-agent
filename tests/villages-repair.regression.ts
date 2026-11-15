@@ -1139,6 +1139,16 @@ await runCase("repair/http", async () => {
         const memories = await app.inject({ url: "/repair/records?topic=memories&inspection=false" });
         assert.equal(memories.statusCode, 200, memories.body);
         assert.ok(memories.json().records.some((entry: any) => entry.title.includes("hidden brass compass")));
+        const places = await app.inject({ url: "/repair/records?topic=places&browse=places" });
+        assert.equal(places.statusCode, 200, places.body);
+        assert.deepEqual(
+          places
+            .json()
+            .directory.slice(0, 2)
+            .map((item: { title: string }) => item.title),
+          ["Places", "Venues"],
+        );
+        assert.deepEqual(places.json().records, []);
         assert.ok(index.json().people.some((person: any) => person.id === "aqua"));
         const checkpoint = await app.inject({
           method: "POST",
@@ -1268,6 +1278,12 @@ await runCase("repair/places", async () => {
     },
     { memories: true },
   );
+  const browse = await f.api.list("places", "", 0, undefined, "memories", true);
+  const cafe = browse.directory?.find((item) => item.title === "Places")?.children?.[0];
+  assert.equal(cafe?.title, "Cafe");
+  assert.ok(cafe?.children?.some((item) => item.id === repairId("place", "place:cafe")));
+  assert.ok(cafe?.children?.some((item) => item.title === "Room" && item.icon === "zone"));
+  assert.deepEqual(browse.directory?.find((item) => item.title === "Venues")?.children, []);
   for (const [kind, id, patch] of [
     ["npc", "npc:place:cafe:jo", { disabled: true }],
     ["place", "place:cafe", { name: "Corrected Cafe" }],

@@ -1,9 +1,9 @@
 import { placeRegistry, readNpc, findLocation } from "./places.js";
 import { projectAgreementCurrent } from "./project-terms.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
-import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
+import type { RepairBrowseItem, RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { ContinuityRecord, ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
-import type { VillageState } from "../models/world.js";
+import type { VillageState, VillageVenue } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
 import { memoryHash, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
 import { continuityRepairEntries, changeContinuityMemory } from "./continuity-library.js";
@@ -111,20 +111,23 @@ const choices = (
   options: { value: string; label: string }[],
 ): RepairField => ({ key, label, value, type: "choice", options });
 const actions = [{ id: "correct", label: "Modify" }];
+type ScopedRepairRecord = RepairRecord & { location?: { kind: "place" | "venue"; id: string; zoneId?: string } };
+
 export function worldRepairRecords(
   state: VillageState,
   includeMemories = true,
   personId?: string,
   at = state.simulatedThrough || state.foundedAt || state.setupAt,
-): RepairRecord[] {
-  const records: RepairRecord[] = [];
+  includePlaceScopes = false,
+): ScopedRepairRecord[] {
+  const records: ScopedRepairRecord[] = [];
   const add = (
     parts: string[],
     topic: RepairRecord["topic"],
     title: string,
     summary: string,
     fields: RepairField[],
-    extra: Partial<RepairRecord> = {},
+    { location, ...extra }: Partial<ScopedRepairRecord> = {},
   ) =>
     records.push({
       id: repairId(...parts),
@@ -136,6 +139,7 @@ export function worldRepairRecords(
       actions,
       related: [],
       ...extra,
+      ...(includePlaceScopes && location ? { location } : {}),
     });
   add(["world"], "world", "Village setting", state.name, [
     text("name", "Village name", state.name),
@@ -235,7 +239,7 @@ export function worldRepairRecords(
         { key: "disabled", label: "Disabled", type: "boolean", value: place.disabled },
         { key: "report", label: "Reported, unverified", type: "boolean", value: place.report },
       ],
-      { revision: place.revision, source: [place.source] },
+      { revision: place.revision, source: [place.source], location: { kind: "place", id: place.id } },
     );
   const people = [
     { id: "player", name: "Your Persona" },
@@ -388,24 +392,36 @@ export function worldRepairRecords(
           revision: root.revision,
           target: { id: root.id, recordRevision: root.revision, heads: { [key]: head.revision } },
           source: version.sources.map((source) => source.excerpt),
+          location: {
+            kind: state.venues.some((entry) => entry.id === holder.placeId) ? "venue" : "place",
+            id: holder.placeId,
+            zoneId: holder.zoneId,
+          },
         },
       );
     }
   for (const venue of state.venues) {
-    add(["venue", venue.id], "places", venue.name, "Venue identity and map placement", [
-      text("name", "Name", venue.name),
-      text("form", "Physical form", venue.form ?? ""),
-      ...(["x", "y"] as const)
-        .filter((key) => venue.presentation[key] !== null)
-        .map((key) => ({
-          key,
-          label: `Map ${key}`,
-          type: "number" as const,
-          value: venue.presentation[key]!,
-          min: 0.03,
-          max: 0.97,
-        })),
-    ]);
+    add(
+      ["venue", venue.id],
+      "places",
+      venue.name,
+      "Venue identity and map placement",
+      [
+        text("name", "Name", venue.name),
+        text("form", "Physical form", venue.form ?? ""),
+        ...(["x", "y"] as const)
+          .filter((key) => venue.presentation[key] !== null)
+          .map((key) => ({
+            key,
+            label: `Map ${key}`,
+            type: "number" as const,
+            value: venue.presentation[key]!,
+            min: 0.03,
+            max: 0.97,
+          })),
+      ],
+      { location: { kind: "venue", id: venue.id } },
+    );
     for (const zone of venueZones(venue)) {
       if (zone.access) {
         add(
@@ -437,6 +453,7 @@ export function worldRepairRecords(
               },
             ]),
           ],
+          { location: { kind: "venue", id: venue.id, zoneId: zone.id } },
         );
         for (const person of people)
           if (venue.access)
@@ -463,6 +480,7 @@ export function worldRepairRecords(
               ],
               {
                 source: ["Administrative access repair. Existing Venue-wide bans and opening hours remain separate."],
+                location: { kind: "venue", id: venue.id, zoneId: zone.id },
               },
             );
       }
@@ -495,6 +513,73 @@ export function worldRepairRecords(
     );
   const visibleIds = new Set(records.map((r) => r.id));
   return records.map((record) => ({ ...record, related: record.related.filter((link) => visibleIds.has(link.id)) }));
+}
+
+export function repairPlaceDirectory(state: VillageState): RepairBrowseItem[] {
+  const records = worldRepairRecords(state, false, undefined, undefined, true).filter(
+    (record) => record.topic === "places",
+  );
+  const scoped = new Map<string, RepairRecord[]>();
+  for (const record of records) {
+    const scope = record.location;
+    if (!scope) continue;
+    const key = repairId(scope.kind, scope.id, scope.zoneId ?? "");
+    const group = scoped.get(key) ?? [];
+    group.push(record);
+    scoped.set(key, group);
+  }
+  const folder = (
+    id: string,
+    title: string,
+    icon: RepairBrowseItem["icon"],
+    children: RepairBrowseItem[],
+  ): RepairBrowseItem => ({ id, title, icon, children });
+  const location = (kind: "place" | "venue", value: VillageVenue): RepairBrowseItem => {
+    const node = repairId("location", kind, value.id);
+    const zones = venueZones(value).map((zone) => {
+      const id = repairId("zone", kind, value.id, zone.id);
+      const zoneRecords = scoped.get(repairId(kind, value.id, zone.id)) ?? [];
+      const items: RepairBrowseItem[] = [];
+      const access: RepairBrowseItem[] = [];
+      for (const record of zoneRecords) {
+        const recordKind = repairParts(record.id)[0];
+        if (recordKind === "permission") {
+          access.push({
+            id: record.id,
+            title: record.title.slice((value.name + " · " + zone.name + " · ").length),
+            icon: "people",
+          });
+        } else if (recordKind === "access") {
+          items.push({ id: record.id, title: "Entry policy", icon: "access" });
+        } else {
+          items.push({
+            id: record.id,
+            title: "Room detail",
+            icon: "details",
+            summary: String(record.fields[0]?.value ?? "").slice(0, 120),
+          });
+        }
+      }
+      if (access.length) items.push(folder(id + "/access", "Standing access", "access", access));
+      return folder(id, zone.name, "zone", items);
+    });
+    const details: RepairBrowseItem[] = (scoped.get(repairId(kind, value.id, "")) ?? []).map((record) => ({
+      id: record.id,
+      title: kind === "place" ? "Place details" : "Venue details",
+      icon: "details",
+    }));
+    return folder(node, value.name, kind === "place" ? "places" : "venue", [...details, ...zones]);
+  };
+  const places = Object.values(placeRegistry(state)?.places ?? {}).map((place) => location("place", place.location));
+  const venues = state.venues.map((venue) => location("venue", venue));
+  const homes: RepairBrowseItem[] = records
+    .filter((record) => repairParts(record.id)[0] === "home")
+    .map(({ id, title }) => ({ id, title, icon: "people" }));
+  return [
+    folder("places", "Places", "places", places),
+    folder("venues", "Venues", "venue", venues),
+    ...(homes.length ? [folder("homes", "Home assignments", "people", homes)] : []),
+  ];
 }
 
 function inputValues(record: RepairRecord, request: RepairRequest) {

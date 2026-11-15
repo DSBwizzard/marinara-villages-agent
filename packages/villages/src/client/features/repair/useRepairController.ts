@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  RepairBrowseItem,
   RepairIndex,
   RepairPerson,
   RepairRecord,
@@ -28,6 +29,8 @@ export function useRepairController(
   const [records, setRecords] = useState<RepairRecord[]>([]),
     [creation, setCreation] = useState<RepairRecord | null>(null),
     [selected, setSelected] = useState<RepairRecord | null>(null);
+  const [placeDirectory, setPlaceDirectory] = useState<RepairBrowseItem[]>([]),
+    [placePath, setPlacePath] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({}),
     [review, setReview] = useState<RepairReview | null>(null);
   const [error, setError] = useState(""),
@@ -74,6 +77,8 @@ export function useRepairController(
       invalidate();
       setDrafts({});
       setPerson(null);
+      setPlaceDirectory([]);
+      setPlacePath([]);
       setView("hub");
       setIndex(result);
       checkpointRequest.current = null;
@@ -108,6 +113,8 @@ export function useRepairController(
           setReview(null);
           setPerson(null);
           setRecords([]);
+          setPlaceDirectory([]);
+          setPlacePath([]);
           setCreation(null);
           setView("hub");
           setIndex(result);
@@ -146,9 +153,10 @@ export function useRepairController(
     if (!current(ticket)) return;
     if (nextTopic === "restore" || (nextTopic === "people" && !who)) return;
     const result = await request<RepairRecordPage>(
-      `/repair/records?topic=${nextTopic}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}` : ""}`,
+      `/repair/records?topic=${nextTopic}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}` : ""}${nextTopic === "places" ? "&browse=places" : ""}`,
     );
     if (!current(ticket)) return;
+    if (nextTopic === "places") setPlaceDirectory(result.directory ?? []);
     setRecords(result.records.filter((row) => !row.creating));
     setCreation(result.creation ?? result.records.find((row) => row.creating) ?? null);
     setOffset(start);
@@ -167,6 +175,8 @@ export function useRepairController(
   const chooseTopic = (nextTopic: RecordTopic, search = "") => {
     invalidate();
     setPerson(null);
+    setPlaceDirectory([]);
+    setPlacePath([]);
     setSection("memories");
     setQuery(search);
     setTopic(nextTopic);
@@ -361,6 +371,9 @@ export function useRepairController(
     section,
     collection: collection.current,
     records,
+    placeDirectory,
+    placePath,
+    setPlacePath,
     creation,
     selected,
     draft,

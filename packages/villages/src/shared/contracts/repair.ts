@@ -1,6 +1,14 @@
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";
 export type RepairValue = string | number | boolean;
 export type RepairPerson = { id: string; name: string };
+export type RepairBrowseIcon = "places" | "venue" | "zone" | "details" | "access" | "people";
+export type RepairBrowseItem = {
+  id: string;
+  title: string;
+  icon: RepairBrowseIcon;
+  summary?: string;
+  children?: RepairBrowseItem[];
+};
 export type RepairField = {
   key: string;
   label: string;
@@ -78,4 +86,10 @@ export type RepairIndex = {
   sceneOpen: boolean;
   people: RepairPerson[];
 };
-export type RepairRecordPage = { records: RepairRecord[]; total: number; next: number | null; creation?: RepairRecord };
+export type RepairRecordPage = {
+  records: RepairRecord[];
+  total: number;
+  next: number | null;
+  creation?: RepairRecord;
+  directory?: RepairBrowseItem[];
+};
