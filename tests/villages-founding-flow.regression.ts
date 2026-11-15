@@ -930,6 +930,7 @@ await main()
   assert.equal(restore({ ...draft, venues: [null] }), false);
   assert.equal(restore({ ...draft, setting: null }), false);
   assert.equal(restore({ ...draft, startingLocationName: 42 }), false);
+  assert.equal(restore({ ...draft, workspace: { ...draft.workspace, settingWorldBrief: 42 } }), false);
   assert.deepEqual(values, {}, "Unreadable drafts never populate the editor or enable autosave");
   assert.equal(restore(JSON.parse(JSON.stringify(draft))), true);
   assert.equal(values.setSetupName, "Willowmere");

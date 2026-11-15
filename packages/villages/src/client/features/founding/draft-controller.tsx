@@ -189,6 +189,10 @@ export function createFoundingRestoreSetupDraft(ports: {
       !Array.isArray(data.lorebooks) ||
       !data.workspace ||
       !data.workspace.inactive ||
+      (data.workspace.settingBrief != null && typeof data.workspace.settingBrief !== "string") ||
+      (data.workspace.settingWorldBrief != null && typeof data.workspace.settingWorldBrief !== "string") ||
+      (data.workspace.settingBeat != null &&
+        !["welcome", "world", "lorebooks", "village"].includes(data.workspace.settingBeat)) ||
       !data.zoneDrafts ||
       !Array.isArray(data.venues) ||
       !Array.isArray(data.roster) ||
@@ -289,6 +293,7 @@ export function createFoundingRetrySetupSaving(ports: {
     try {
       const expectedRevision = draftRevision.current;
       if (draftNeedsReplacement && !(await confirmVillages("Replace the unreadable saved founding draft?"))) return;
+      setDraftReady(false);
       const saved = await readDeviceDraft<SetupDraftData>(API_PATH);
       if ((saved?.revision ?? 0) !== expectedRevision || draftRevision.current !== expectedRevision)
         throw new Error("This draft changed in another tab. Reload to resume the latest saved choices.");
