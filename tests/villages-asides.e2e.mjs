@@ -137,8 +137,13 @@ await withBrowser(browser, async () => {
     await expect(band).toContainText("→ Riley");
     await expect(band.getByText("Whisper", { exact: true })).toHaveCount(1);
     await expect(band.locator(`[data-register="side"] .${tag}-chat-vn-aside-icon`)).toHaveCount(0);
-    await expect(band.locator(`[data-register="whisper"] .${tag}-silhouette`)).toBeVisible();
-    await expect(page.locator(`[data-character-id="npc:eli"] .${tag}-silhouette`)).toBeVisible();
+    const npc = page.locator('[data-character-id="npc:eli"][data-sprite="true"] > img[data-npc-sprite]');
+    await expect(npc).toBeVisible();
+    await expect.poll(() => npc.evaluate((image) => image.naturalHeight)).toBe(768);
+    await expect(band.locator('[data-register="whisper"] img[data-npc-sprite]')).toHaveAttribute(
+      "src",
+      /npc-silhouette\.webp$/,
+    );
     await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(4);
     const after = {
       dock: await dock.boundingBox(),

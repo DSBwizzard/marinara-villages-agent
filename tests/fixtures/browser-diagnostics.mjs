@@ -22,6 +22,7 @@ const deskAssets = {
   "storybook-scenery-matte.webp": "image/webp",
   "venue-fallback.webp": "image/webp",
   "venue-fallback-day.webp": "image/webp",
+  "npc-silhouette.webp": "image/webp",
   "letter-fonts/assistant.json": "application/json",
   "letter-fonts/lora.json": "application/json",
 };

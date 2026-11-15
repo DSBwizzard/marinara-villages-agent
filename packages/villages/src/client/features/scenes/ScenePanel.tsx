@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -45,6 +46,21 @@ export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boole
   if (zone?.kind === "private-residence") return "Private-space doorway";
   if (zone?.kind === "staff" || zone?.kind === "restricted") return "Restricted doorway";
   return "Interior entrance";
+}
+
+function NpcSprite({ className }: { className?: string }) {
+  return (
+    <img
+      src="/api/capability-packages/villages/assets/npc-silhouette.webp"
+      alt=""
+      className={className}
+      data-npc-sprite=""
+    />
+  );
+}
+
+function SceneFace({ actorId, ...face }: ComponentProps<typeof AvatarFace> & { actorId?: string }) {
+  return actorId?.startsWith("npc:") ? <NpcSprite className={face.className} /> : <AvatarFace {...face} />;
 }
 
 function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
@@ -1137,6 +1153,7 @@ export function RoomPanel({
           data-animate={animateStaging ? "true" : "false"}
         >
           {displayed.map((villager, index) => {
+            const npc = villager.characterId.startsWith("npc:");
             const sprite = sprites[villager.characterId];
             const isSpeaker = villager.characterId === speaker?.characterId;
             const mobileSlot = mobileLayout[villager.characterId];
@@ -1155,7 +1172,7 @@ export function RoomPanel({
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
                 data-active={isSpeaker && (!mobile || register !== "narration") ? "true" : "false"}
-                data-sprite={selected ? "true" : "false"}
+                data-sprite={npc || selected ? "true" : "false"}
                 data-character-id={villager.characterId}
                 data-position={slot ? stagingState[villager.characterId].position : undefined}
                 data-attention={slot ? slot.facing : undefined}
@@ -1169,7 +1186,9 @@ export function RoomPanel({
                   } as CSSProperties
                 }
               >
-                {selected ? (
+                {npc ? (
+                  <NpcSprite />
+                ) : selected ? (
                   <CardFlipSprite
                     key={room.id}
                     url={selected.image.url}
@@ -1186,7 +1205,6 @@ export function RoomPanel({
                   <AvatarFace
                     portrait={portraits[villager.characterId]}
                     name={villager.name}
-                    glyph={villager.characterId.startsWith("npc:") ? "silhouette" : "initial"}
                     className={`${ELEMENT_TAG}-avatar`}
                   />
                 )}
@@ -1199,10 +1217,10 @@ export function RoomPanel({
           <div className={`${ELEMENT_TAG}-chat-cast-rest`}>
             {rest.map((person) => (
               <span key={person.characterId}>
-                <AvatarFace
+                <SceneFace
+                  actorId={person.characterId}
                   portrait={portraits[person.characterId]}
                   name={person.name}
-                  glyph={person.characterId.startsWith("npc:") ? "silhouette" : "initial"}
                   className={`${ELEMENT_TAG}-avatar`}
                 />
                 <span style={nameStyle(person.characterId)}>{person.name}</span>
@@ -1291,16 +1309,11 @@ export function RoomPanel({
                 className={`${ELEMENT_TAG}-chat-vn-aside`}
                 data-register={aside.register}
               >
-                <AvatarFace
+                <SceneFace
+                  actorId={aside.speakerId ?? step.speakerId}
                   portrait={aside.speakerId ? portraits[aside.speakerId] : speakerPortrait}
                   name={aside.name ?? step.name}
-                  glyph={
-                    (aside.speakerId ?? step.speakerId)?.startsWith("npc:")
-                      ? "silhouette"
-                      : step.player
-                        ? "person"
-                        : "initial"
-                  }
+                  glyph={step.player ? "person" : "initial"}
                   className={`${ELEMENT_TAG}-chat-vn-aside-face`}
                 />
                 <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
@@ -1345,10 +1358,11 @@ export function RoomPanel({
                 <SceneControlIcon name="narrator" />
               </div>
             ) : (
-              <AvatarFace
+              <SceneFace
+                actorId={step?.speakerId}
                 portrait={speakerPortrait}
                 name={step?.name ?? playerName}
-                glyph={step?.player ? "person" : step?.speakerId?.startsWith("npc:") ? "silhouette" : "initial"}
+                glyph={step?.player ? "person" : "initial"}
                 className={ELEMENT_TAG + "-chat-vn-portrait"}
               />
             )}

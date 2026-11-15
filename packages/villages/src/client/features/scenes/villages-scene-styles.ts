@@ -39,7 +39,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
   border: 1px solid var(--border); background: var(--secondary); display: grid; place-items: center; align-self: start;
 }
 .${tag}-chat-vn-portrait svg { width: 1.75rem; height: 1.75rem; color: var(--muted-foreground); }
-.${tag}-room-screen .${tag}-silhouette { display:block; width:78%; height:78%; margin:auto; color:#1d2333; background:#a3afc3; border-radius:50%; }
+.${tag}-room-screen img[data-npc-sprite] { object-fit: contain; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .${tag}-room-screen .${tag}-chat-vn-column { gap: .5rem; }
 .${tag}-room-screen .${tag}-chat-vn-name,
 .${tag}-room-screen .${tag}-chat-vn-label { font-size: .875rem; font-weight: 600; }

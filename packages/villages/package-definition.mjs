@@ -9,6 +9,8 @@ const menuArtAssets = [
   "venue-fallback-day.webp",
 ];
 
+const sceneSprite = "npc-silhouette.webp";
+
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
@@ -31,7 +33,7 @@ export const villagesDefinition = {
     description,
     runtimeDisabled: false,
   },
-  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", ...menuArtAssets],
+  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", ...menuArtAssets, sceneSprite],
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
@@ -45,7 +47,7 @@ export const villagesDefinition = {
       iconPaths: ["villages-icon.png"],
     },
     assets: {
-      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), ...menuArtAssets],
+      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), ...menuArtAssets, sceneSprite],
     },
   },
 };

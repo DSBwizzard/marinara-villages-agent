@@ -188,7 +188,7 @@ export function AvatarFace({
    * instead, which is the same glyph the Engine puts on the player's own turns in
    * its chats, and is the truer answer to which of the two is speaking.
    */
-  glyph?: "initial" | "person" | "silhouette";
+  glyph?: "initial" | "person";
 }) {
   const [failedUrl, setFailedUrl] = useState("");
   return (
@@ -200,10 +200,6 @@ export function AvatarFace({
           style={avatarCropStyle(portrait.crop)}
           onError={() => setFailedUrl(portrait.url)}
         />
-      ) : glyph === "silhouette" ? (
-        <svg className={`${ELEMENT_TAG}-silhouette`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path fill="currentColor" d="M12 3a5 5 0 1 0 0 10 5 5 0 0 0 0-10ZM3 22v-2a8 8 0 0 1 8-6h2a8 8 0 0 1 8 6v2Z" />
-        </svg>
       ) : glyph === "person" ? (
         <svg className={`${ELEMENT_TAG}-person`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path
