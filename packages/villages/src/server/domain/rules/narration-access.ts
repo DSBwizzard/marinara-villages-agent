@@ -357,17 +357,23 @@ export function applyNarrationAccess(
     );
     assertNarrationDecision(state, decision.by, context, offers);
     assertNarrationDecision(state, decision.visitor, context, accepts);
-    const roomName = venue.zones?.find((zone) => zone.id === decision.zone)?.name.toLowerCase();
+    const narrow =
+      /\b(?:(?:only|just) (?:tonight|one night)|(?:tonight|one night) only|for one night|until tomorrow)\b/iu;
     memoryRequire(
-      roomName &&
-        offers.some(
-          ({ excerpt }) =>
-            excerpt.toLowerCase().includes(roomName) &&
+      sources.every(({ excerpt }) => !narrow.test(excerpt)) &&
+        offers.some(({ excerpt }) => {
+          const named =
+            venue.zones?.filter((zone) => zone.name && excerpt.toLowerCase().includes(zone.name.toLowerCase())) ?? [];
+          const length = Math.max(...named.map((zone) => zone.name.length));
+          const exact = named.filter((zone) => zone.name.length === length);
+          return (
+            exact.length === 1 &&
+            exact[0].id === decision.zone &&
             /\b(?:for the (?:rest|remainder) of (?:your|this|the) (?:visit|stay)|until (?:you leave|checkout|check-out))\b/iu.test(
               excerpt,
-            ) &&
-            !/\b(?:only|just) (?:tonight|one night)|\b(?:tonight|one night) only\b/iu.test(excerpt),
-        ),
+            )
+          );
+        }),
       "the spoken offer must name the guest room and run through checkout",
     );
     const room = guestRoomOffer(state, visitor, new Date(at), decision.by, {

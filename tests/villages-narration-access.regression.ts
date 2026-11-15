@@ -583,6 +583,14 @@ await runCase("narration-access/overnight-agreement", () => {
         purpose: "Overnight lodging",
         seen: true,
       },
+      {
+        ...defaultVenueSpace("residence"),
+        id: "guest-east",
+        name: "East Guest Room",
+        kind: "shared-residence",
+        purpose: "Overnight lodging",
+        seen: true,
+      },
     ],
   });
   home.destinations = { [actorId]: {} };
@@ -658,7 +666,11 @@ await runCase("narration-access/overnight-agreement", () => {
   const stale = acceptNarration(wrongTrip, { readset, raw, responseDigest: memoryHash(raw) }, "overnight", at);
   assert.equal(stale.held, true);
   assert.equal(wrongTrip.venues.find((venue) => venue.id === home.id)?.access?.permissions.length, 0);
-  for (const text of ["You can use my Guest Room tonight only.", "You can use my Study for the rest of your visit."]) {
+  for (const text of [
+    "You can use my Guest Room tonight only.",
+    "You can use my Study for the rest of your visit.",
+    "You can use my East Guest Room for the rest of your visit.",
+  ]) {
     const wrongOffer = structuredClone(raw);
     wrongOffer.segments[0].text = text;
     const result = acceptNarration(
@@ -683,6 +695,17 @@ await runCase("narration-access/overnight-agreement", () => {
         raw: withoutAcceptance,
         responseDigest: memoryHash(withoutAcceptance),
       },
+      "overnight",
+      at,
+    ).held,
+    true,
+  );
+  const onlyTonight = structuredClone(raw);
+  onlyTonight.segments[1].text = "Yes, but tonight only.";
+  assert.equal(
+    acceptNarration(
+      structuredClone(state),
+      { readset, raw: onlyTonight, responseDigest: memoryHash(onlyTonight) },
       "overnight",
       at,
     ).held,

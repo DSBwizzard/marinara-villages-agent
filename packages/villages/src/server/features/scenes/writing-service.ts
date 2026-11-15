@@ -251,7 +251,8 @@ export function createSceneWriting({
         : context.places.filter(
             ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
           );
-    const showAccess = context.access.length > 0 && (mode !== "chat" || discussesLodging || sceneAccessDiscussed(scene, venue, input));
+    const showAccess =
+      context.access.length > 0 && (mode !== "chat" || discussesLodging || sceneAccessDiscussed(scene, venue, input));
     const remoteInvitations = mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds) : [];
     const canInviteForVisit = remoteInvitations.length > 0;
     const residentMovesInReply = mode === "chat";
