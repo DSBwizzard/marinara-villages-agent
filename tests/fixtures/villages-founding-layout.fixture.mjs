@@ -399,9 +399,28 @@ export async function verifyFoundingLayout(group) {
           ["Setting", "People", "Venues and Map", "Review"],
         );
         const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
+        const stage = root.locator(".villages-setting-stage");
+        const phone = view.width <= 727;
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
         await expect(scene).toContainText("Villages is about sharing life with a community");
         await expect(button("Draft with Mari")).toHaveCount(0);
+        if (!phone) {
+          const sprite = stage.locator("img");
+          await expect(sprite).toBeInViewport({ ratio: 1 });
+          const portrait = await sprite.boundingBox();
+          const dialogue = await scene.locator(".villages-setting-dialogue").boundingBox();
+          const artworkHeight = Math.max(frame.height, (frame.width * 820) / 1311);
+          assert.ok(
+            portrait.y + portrait.height > frame.y + frame.height - artworkHeight * 0.2,
+            "Mari stands on the terrace",
+          );
+          assert.ok(dialogue.x >= portrait.x + portrait.width, "Dialogue sits beside Mari");
+          await expect(button("Let’s get started")).toBeInViewport({ ratio: 1 });
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "desktop-welcome-" + view.width + ".png"),
+            });
+        }
         await button("Let’s get started").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         if (draftWithLore) {
@@ -440,9 +459,7 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mari-setting-" + view.width + ".png"),
           });
-        const phone = view.width <= 727;
         const settingPanel = root.getByRole("region", { name: "Your setting" });
-        const stage = root.locator(".villages-setting-stage");
         const openSetting = async () => {
           if (phone) await scene.getByRole("button", { name: /^(Edit|Review) setting$/u }).click();
         };
@@ -590,6 +607,15 @@ export async function verifyFoundingLayout(group) {
           });
         await button("World rules").click();
         await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
+        if (!phone) {
+          await root.getByLabel("World rules", { exact: true }).scrollIntoViewIfNeeded();
+          await expect(stage.locator("img")).toBeInViewport({ ratio: 1 });
+          assert.equal(
+            await root.locator('.villages-forging-body[data-step="0"]').evaluate((body) => body.scrollTop),
+            0,
+            "Scrolling settings keeps Mari on the terrace",
+          );
+        }
         await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
         await expect(root.getByLabel("First day", { exact: true })).toHaveCount(0);
         await button("Connections").click();
