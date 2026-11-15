@@ -430,6 +430,7 @@ export function QuickStartVenues({
                             }}
                           >
                             <svg
+                              className="mari-rgb-static-icon"
                               width="18"
                               height="18"
                               viewBox="0 0 24 24"

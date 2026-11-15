@@ -16,6 +16,46 @@ const VILLAGES_STYLES = `
 
 ${LORE_ACTIVITY_STYLES}
 
+${ELEMENT_TAG} {
+  --background: #302d47;
+  --foreground: #f0dfbc;
+  --popover: #393047;
+  --card: #352c44;
+  --muted: #4f3c53;
+  --muted-foreground: #d0c1b3;
+  --border: #a39b8460;
+  --primary: #969b7e;
+  --primary-foreground: #292938;
+  --secondary: #514157;
+  --destructive: #f3b6b7;
+  --ring: var(--primary);
+  color: var(--foreground);
+  background: var(--background);
+  color-scheme: dark;
+  accent-color: var(--primary);
+  /* Use the Village palette fallbacks instead of Engine's inherited chrome colors. */
+  --marinara-chat-chrome-accent: initial;
+  --marinara-chat-chrome-button-bg: initial;
+  --marinara-chat-chrome-button-bg-hover: initial;
+  --marinara-chat-chrome-button-border: initial;
+  --marinara-chat-chrome-button-border-hover: initial;
+  --marinara-chat-chrome-button-text: initial;
+  --marinara-chat-chrome-button-text-active: initial;
+  --marinara-chat-chrome-button-text-hover: initial;
+  --marinara-chat-chrome-focus-ring: initial;
+  --marinara-chat-chrome-highlight-text: initial;
+  --marinara-chat-chrome-input-bg: initial;
+  --marinara-chat-chrome-input-border: initial;
+  --marinara-chat-chrome-input-border-focus: initial;
+  --marinara-chat-chrome-panel-bg: initial;
+  --marinara-chat-chrome-panel-border: initial;
+  --marinara-chat-chrome-panel-divider: initial;
+  --marinara-chat-chrome-panel-muted: initial;
+  --marinara-chat-chrome-panel-text: initial;
+}
+${ELEMENT_TAG}, ${ELEMENT_TAG} :where(*) { scrollbar-color: #a3899680 transparent; }
+${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(--primary); }
+
 .${ELEMENT_TAG}-root {
   --${ELEMENT_TAG}-pad: clamp(.625rem, 2cqw, 1.25rem);
   --${ELEMENT_TAG}-gap: clamp(.5rem, 1.4cqw, 1rem);
@@ -162,7 +202,7 @@ ${LORE_ACTIVITY_STYLES}
 .${ELEMENT_TAG}-room-star {
   display: flex; align-items: flex-start; gap: .5rem; padding: .55rem .65rem;
   border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: .65rem;
-  background: var(--marinara-chat-chrome-panel-bg, var(--surface)); color: var(--text);
+  background: var(--marinara-chat-chrome-panel-bg, var(--popover)); color: var(--foreground);
   box-shadow: 0 .25rem 1rem #0003; font-size: .82rem; line-height: 1.35;
 }
 .${ELEMENT_TAG}-room-star > span:first-child { color: #e5b13e; font-size: 1.2rem; line-height: 1; }

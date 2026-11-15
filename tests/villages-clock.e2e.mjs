@@ -31,7 +31,13 @@ await withBrowser(browser, async () => {
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
-        body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: `<style>
+          html,body{margin:0;background:#171b25;color:white;font:16px Arial}
+          marinara-capability-villages{display:block;height:100vh}
+          [data-marinara-accent-animation] :where(.mari-rgb-icon-scope) svg:not(.mari-rgb-static-icon){
+            color:var(--marinara-chat-chrome-button-text-active);stroke:currentColor
+          }
+        </style><div class="mari-rgb-icon-scope"><marinara-capability-villages></marinara-capability-villages></div>`,
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -73,7 +79,7 @@ await withBrowser(browser, async () => {
     });
     await runCase("founding-timezone/" + width, async () => {
       founding = true;
-      serverInstant = "2026-10-15T02:59:59Z";
+      serverInstant = "2026-10-15T02:59:57Z";
       await page.clock.install({ time: new Date("2030-01-01T12:00:00Z") });
       await page.clock.pauseAt(new Date("2030-01-01T12:01:00Z"));
       await page.reload();
@@ -81,8 +87,25 @@ await withBrowser(browser, async () => {
       const scene = page.locator(".villages-forging-v2");
       await expect(scene.locator(".villages-founding-title")).toBeVisible();
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      await page.evaluate(() => {
+        document.documentElement.dataset.marinaraAccentAnimation = "true";
+        document.documentElement.style.setProperty("--marinara-chat-chrome-button-text-active", "#ec4899");
+      });
+      const skyline = scene.locator(".villages-founding-logo path");
+      await expect(skyline).toHaveCSS("fill", "rgb(224, 228, 201)");
+      await expect(skyline).toHaveCSS("stroke", "none");
       await page.getByRole("button", { name: "START", exact: true }).click();
-      await expect(page.getByRole("list", { name: "Founding phases" })).toBeVisible();
+      const phases = page.getByRole("list", { name: "Founding phases" });
+      const mari = scene.getByRole("region", { name: "Professor Mari", exact: true });
+      await expect(scene).toHaveAttribute("aria-busy", "true");
+      await expect(scene.locator(".villages-founding-title")).toHaveCount(0);
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      await page.clock.fastForward(1999);
+      await expect(phases).toHaveCount(0);
+      await expect(mari).toHaveCount(0);
+      await page.clock.fastForward(1);
+      await expect(phases).toBeVisible();
+      await expect(mari.getByText("Professor Mari", { exact: true })).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);
       await expect(scene).toHaveAttribute("data-lighting", "day");
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
