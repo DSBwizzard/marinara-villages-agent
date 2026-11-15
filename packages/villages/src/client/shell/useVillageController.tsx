@@ -52,7 +52,6 @@ import {
   useFoundingVenueReference,
 } from "../features/founding/controller-hooks.js";
 import {
-  createFoundingNewSetupDraft,
   createFoundingRestoreSetupDraft,
   createFoundingRetrySetupSaving,
   useFoundingDraftAutosave,
@@ -235,9 +234,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // the other half of that statement lives — a place with one person standing in
   // it never reaches this screen at all.
   const [room, setRoom] = useSceneRecord();
-  const [requestedScreen, setScreen] = useState<
-    "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person"
-  >("home");
+  const [requestedScreen, setScreen] = useState<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">(
+    "home",
+  );
 
   const {
     focusedProjectId,
@@ -462,17 +461,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const confirmVillages = useConfirmation(snapshot?.settings.maps?.[0]?.id);
-  const newSetupDraft = createFoundingNewSetupDraft({
+  const retrySetupSaving = createFoundingRetrySetupSaving({
     ...founding,
     confirmVillages,
-    get openSetup() {
-      return openSetup;
-    },
-    snapshot,
-    updateSetupMapRequest,
+    persistSetupDraft,
+    setupDraftData,
   });
-
-  const retrySetupSaving = createFoundingRetrySetupSaving({ ...founding, persistSetupDraft, setupDraftData });
 
   // Roster changes reconcile only the required graph; existing authored Venues survive.
 
@@ -1087,7 +1081,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSnapshot,
   });
 
-  useFoundingDraftOffer({ ...founding, loadCatalog, loadPersonas, openSetup, setScreen, snapshot });
+  useFoundingDraftOffer({ ...founding, openSetup, restoreSetupDraft, setScreen, snapshot });
 
   useFoundingPreparationPolling({
     ...founding,
@@ -1317,7 +1311,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     dismissRoomNotice,
     draftPins,
     draftSaveError: founding.draftSaveError,
-    draftSavedAt: founding.draftSavedAt,
+    draftNeedsReplacement: founding.draftNeedsReplacement,
     drawPlaceImage,
     dropPlaceImage,
     error,
@@ -1357,7 +1351,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     movingSetupVenueId: founding.movingSetupVenueId,
     nameOfCharacter,
     navigationView,
-    newSetupDraft,
     openMenu,
     openPerson,
     openPlace,
@@ -1389,7 +1382,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     removeVenue,
     requestEdits,
     resetArmed,
-    restoreSetupDraft,
     retryPreparation,
     retrySavedScene,
     retrySetupSaving,

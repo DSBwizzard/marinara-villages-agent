@@ -75,13 +75,9 @@ await withBrowser(browser, async () => {
       founding = true;
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      const zone = page.getByRole("combobox", { name: "Village Timezone" });
-      await expect(zone).toHaveCount(0);
-      await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
+      await expect(page.getByRole("list", { name: "Founding phases" })).toBeVisible();
+      await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-" + width + ".png" });
-      await page.getByRole("button", { name: "Exit", exact: true }).click();
-      await page.getByRole("button", { name: "Resume founding", exact: true }).click();
-      await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
     });
     assert.deepEqual(errors, []);
     await context.close();

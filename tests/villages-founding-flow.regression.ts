@@ -916,6 +916,9 @@ await main()
   const draft = {
     version: 2,
     name: "Willowmere",
+    setting: "A village by the river.",
+    persona: "",
+    lorebooks: [],
     context: { rules: "", circumstances: [], communityVenueId: "community", households: {} },
     workspace: emptyFoundingWorkspace(),
     zoneDrafts: {},
@@ -923,7 +926,12 @@ await main()
     roster: [],
     step: 0,
   } as any;
-  createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
+  const restore = createFoundingRestoreSetupDraft(setters as any);
+  assert.equal(restore({ ...draft, venues: [null] }), false);
+  assert.equal(restore({ ...draft, setting: null }), false);
+  assert.equal(restore({ ...draft, startingLocationName: 42 }), false);
+  assert.deepEqual(values, {}, "Unreadable drafts never populate the editor or enable autosave");
+  assert.equal(restore(JSON.parse(JSON.stringify(draft))), true);
   assert.equal(values.setSetupName, "Willowmere");
   assert.equal(values.setSetupLocationName, "Willowmere", "Older v2 drafts retain their original first-map name");
   for (const startingLocationName of ["Old Harbour", ""]) {

@@ -126,13 +126,14 @@ export function useFoundingState() {
 
   const [draftSaveError, setDraftSaveError] = useState("");
 
-  const [draftSavedAt, setDraftSavedAt] = useState("");
+  const [draftNeedsReplacement, setDraftNeedsReplacement] = useState(false);
 
   const draftRevision = useRef(0);
 
   const draftSaveQueue = useRef<Promise<void>>(Promise.resolve());
 
   const draftBlocked = useRef(false);
+  const skipRestoredDraftAutosave = useRef(false);
 
   const setupZoneDrafts = useRef<Record<string, AreaDraftCache["current"]>>({});
 
@@ -249,11 +250,12 @@ export function useFoundingState() {
     setDraftReady,
     draftSaveError,
     setDraftSaveError,
-    draftSavedAt,
-    setDraftSavedAt,
+    draftNeedsReplacement,
+    setDraftNeedsReplacement,
     draftRevision,
     draftSaveQueue,
     draftBlocked,
+    skipRestoredDraftAutosave,
     setupZoneDrafts,
     setupOfferedRef,
   };

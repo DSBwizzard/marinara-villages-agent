@@ -2017,7 +2017,6 @@ ${ELEMENT_TAG} {
 @media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person { transition: none; } }
 
 .${ELEMENT_TAG}-setup-root { display: flex; flex-direction: column; gap: .65rem; padding: .75rem; height: 100%; overflow: hidden; }
-.${ELEMENT_TAG}-setup-heading h1 { margin: 0; font-size: 1.5rem; }
 .${ELEMENT_TAG}-setup-root > .${ELEMENT_TAG}-setup-body { display: grid; grid-template-columns: 10rem minmax(0, 1fr); flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .${ELEMENT_TAG}-setup-workspace { display: flex; flex-direction: column; gap: .65rem; min-width: 0; padding: .15rem .25rem .5rem; }
 .${ELEMENT_TAG}-setup-workspace > h2 { margin: 0; }

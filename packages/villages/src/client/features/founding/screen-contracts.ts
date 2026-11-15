@@ -28,10 +28,6 @@ import type { createFoundingUploadSetupImage } from "./image-controller.js";
 
 import type { useRetryPreparation } from "./actions.js";
 
-import type { createFoundingNewSetupDraft } from "./draft-controller.js";
-
-import type { createFoundingRestoreSetupDraft } from "./draft-controller.js";
-
 /** Values and actions used by FoundingScreen; independent of shell implementation. */
 export type FoundingScreenController = {
   readonly setupTimeZone?: string;
@@ -40,6 +36,7 @@ export type FoundingScreenController = {
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
   readonly connectionSetupProblem: FoundingState["connectionSetupProblem"];
   readonly draftPins: import("../../shared/types").MapPin[];
+  readonly draftNeedsReplacement: FoundingState["draftNeedsReplacement"];
   readonly draftSaveError: FoundingState["draftSaveError"];
   readonly foundVillage: ReturnType<typeof useFoundVillage>;
   readonly generateSetupImage: ReturnType<typeof createFoundingGenerateSetupImage>;
@@ -59,7 +56,7 @@ export type FoundingScreenController = {
   readonly savedTownMapView: import("../../../shared/contracts/village").TownMapView;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
+  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly selectedResidentAdmissions: ReturnType<typeof useFoundingSelectedResidentContexts>;
   readonly selectedSetupVenueId: FoundingState["selectedSetupVenueId"];
   readonly setConnectionSetupProblem: FoundingState["setConnectionSetupProblem"];
@@ -68,7 +65,7 @@ export type FoundingScreenController = {
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
   readonly setSceneryStyleProfileId: FoundingState["setSceneryStyleProfileId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setSelectedSetupVenueId: FoundingState["setSelectedSetupVenueId"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
@@ -147,22 +144,6 @@ export type PreparationScreenController = {
   >;
   readonly preparationProblem: FoundingState["preparationProblem"];
   readonly retryPreparation: ReturnType<typeof useRetryPreparation>;
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
+  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-};
-
-/** Values and actions used by ResumeScreen; independent of shell implementation. */
-export type ResumeScreenController = {
-  readonly draftSaveError: FoundingState["draftSaveError"];
-  readonly draftSavedAt: FoundingState["draftSavedAt"];
-  readonly newSetupDraft: ReturnType<typeof createFoundingNewSetupDraft>;
-  readonly restoreSetupDraft: ReturnType<typeof createFoundingRestoreSetupDraft>;
-  readonly savedSetupDraft: import("../../shared/device-drafts").SavedDeviceDraft<
-    import("./draft-model").SetupDraftData
-  >;
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
-  readonly setSetupStep: FoundingState["setSetupStep"];
-  readonly setupMapBusy: FoundingState["setupMapBusy"];
-  readonly setupSuggestionsBusy: FoundingState["setupSuggestionsBusy"];
-  readonly setupVenueBusy: FoundingState["setupVenueBusy"];
 };

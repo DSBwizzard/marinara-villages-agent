@@ -406,7 +406,23 @@ export async function verifyFoundingLayout(group) {
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         if (draftWithLore) {
           await scene.getByLabel("The larger world").fill(worldBrief);
+          await expect
+            .poll(() =>
+              page.evaluate(() => {
+                const workspace = window.featureController.savedSetupDraft?.data.workspace;
+                return [workspace?.settingBeat, workspace?.settingWorldBrief];
+              }),
+            )
+            .toEqual(["world", worldBrief]);
+          const revision = await page.evaluate(() => window.featureController.savedSetupDraft.revision);
+          await page.reload();
+          await page.addScriptTag({ content: foundingBundle });
+          await expect(currentStar).toHaveAttribute("aria-label", "Setting");
+          await expect(scene.getByLabel("The larger world")).toHaveValue(worldBrief);
           await button("Use this world").click();
+          await expect
+            .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.revision))
+            .toBe(revision + 1);
         } else await button("I only know the village so far").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         if (draftWithLore) {
@@ -851,7 +867,6 @@ export async function verifyFoundingLayout(group) {
             .toBe(true);
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
-          await page.getByRole("button", { name: "Resume founding", exact: true }).click();
           await expect(root).toHaveAttribute("data-step", "2");
           await expect
             .poll(() =>
@@ -971,6 +986,7 @@ export async function verifyFoundingLayout(group) {
         await button("Found village").click();
         await expect.poll(() => payload).toBeTruthy();
         assert.equal(payload.name, "Coastal Community");
+        assert.equal(payload.timeZone, snapshot.clock?.timeZone || snapshot.village.timeZone);
         assert.equal(
           payload.startingLocationName,
           "Old Harbour",

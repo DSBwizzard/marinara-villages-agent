@@ -45,6 +45,7 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
     catalog,
     connectionSetupProblem,
     draftPins,
+    draftNeedsReplacement,
     draftSaveError,
     foundVillage,
     generateSetupImage,
@@ -1100,7 +1101,7 @@ export function FoundingScreen({ controller, host }: { controller: FoundingScree
             <div role="alert" className="villages-forging-notice">
               <p>{draftSaveError}</p>
               <button type="button" onClick={() => void retrySetupSaving()}>
-                Retry saving draft
+                {draftNeedsReplacement ? "Replace unreadable draft" : "Retry saving draft"}
               </button>
             </div>
           ) : null}

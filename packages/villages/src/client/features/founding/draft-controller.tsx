@@ -12,13 +12,12 @@ export function useFoundingPersistSetupDraft(ports: {
   readonly draftBlocked: FoundingState["draftBlocked"];
   readonly draftRevision: FoundingState["draftRevision"];
   readonly draftSaveQueue: FoundingState["draftSaveQueue"];
-  readonly setDraftSavedAt: FoundingState["setDraftSavedAt"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setSavedSetupDraft: React.Dispatch<
     React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
 }) {
-  const { draftBlocked, draftRevision, draftSaveQueue, setDraftSavedAt, setDraftSaveError, setSavedSetupDraft } = ports;
+  const { draftBlocked, draftRevision, draftSaveQueue, setDraftSaveError, setSavedSetupDraft } = ports;
 
   return useCallback(
     (data: SetupDraftData) => {
@@ -28,7 +27,6 @@ export function useFoundingPersistSetupDraft(ports: {
           const saved = await saveDeviceDraft(API_PATH, data, draftRevision.current);
           draftRevision.current = saved.revision;
           setSavedSetupDraft(saved);
-          setDraftSavedAt(saved.savedAt);
           setDraftSaveError("");
         } catch (cause) {
           draftBlocked.current = true;
@@ -39,22 +37,27 @@ export function useFoundingPersistSetupDraft(ports: {
       draftSaveQueue.current = pending.catch(() => undefined);
       return pending;
     },
-    [draftBlocked, draftRevision, draftSaveQueue, setDraftSaveError, setDraftSavedAt, setSavedSetupDraft],
+    [draftBlocked, draftRevision, draftSaveQueue, setDraftSaveError, setSavedSetupDraft],
   );
 }
 export function useFoundingDraftAutosave(ports: {
   readonly draftReady: FoundingState["draftReady"];
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
-  readonly screen: "menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  readonly skipRestoredDraftAutosave: FoundingState["skipRestoredDraftAutosave"];
+  readonly screen: "menu" | "home" | "setup" | "preparing" | "venue" | "room" | "person";
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  const { draftReady, persistSetupDraft, screen, setupDraftData, snapshot } = ports;
+  const { draftReady, persistSetupDraft, screen, setupDraftData, skipRestoredDraftAutosave, snapshot } = ports;
 
   useEffect(() => {
-    if (draftReady && !snapshot?.isFounded && (screen === "setup" || screen === "resume"))
-      void persistSetupDraft(setupDraftData).catch(() => undefined);
-  }, [draftReady, persistSetupDraft, setupDraftData, snapshot?.isFounded, screen]);
+    if (!draftReady || snapshot?.isFounded || screen !== "setup") return;
+    if (skipRestoredDraftAutosave.current) {
+      skipRestoredDraftAutosave.current = false;
+      return;
+    }
+    void persistSetupDraft(setupDraftData).catch(() => undefined);
+  }, [draftReady, persistSetupDraft, setupDraftData, skipRestoredDraftAutosave, snapshot?.isFounded, screen]);
 }
 export function useFoundingFlushSetupDraft(ports: {
   readonly draftBlocked: FoundingState["draftBlocked"];
@@ -75,14 +78,13 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly loadLorebooks: (signal?: AbortSignal) => Promise<void>;
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
   readonly setDraftReady: FoundingState["setDraftReady"];
-  readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonalizeHomes: FoundingState["setPersonalizeHomes"];
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
   readonly setSceneryStyleProfileId: FoundingState["setSceneryStyleProfileId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"menu" | "home" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
   readonly setSelectedSetupVenueId: FoundingState["setSelectedSetupVenueId"];
   readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
@@ -129,7 +131,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       loadLorebooks,
       loadPersonas,
       setDraftReady,
-      setDraftSaveError,
       setMovingSetupVenueId,
       setPersonaDraft,
       setPersonalizeHomes,
@@ -176,9 +177,16 @@ export function createFoundingRestoreSetupDraft(ports: {
     } = ports;
 
     if (
-      data.version !== 2 ||
+      data?.version !== 2 ||
+      typeof data.name !== "string" ||
+      (data.startingLocationName != null && typeof data.startingLocationName !== "string") ||
+      typeof data.setting !== "string" ||
+      typeof data.persona !== "string" ||
       !data.context ||
+      typeof data.context.rules !== "string" ||
       !Array.isArray(data.context.circumstances) ||
+      data.context.circumstances.some((row) => typeof row?.summary !== "string") ||
+      !Array.isArray(data.lorebooks) ||
       !data.workspace ||
       !data.workspace.inactive ||
       !data.zoneDrafts ||
@@ -186,10 +194,16 @@ export function createFoundingRestoreSetupDraft(ports: {
       !Array.isArray(data.roster) ||
       data.roster.length > 3 ||
       data.venues.length > 16 ||
-      data.venues.some((row) => !row.id || !row.presentation || !row.occupancy || typeof row.description !== "string")
+      data.venues.some(
+        (row) =>
+          !row?.id ||
+          !row.presentation ||
+          !row.occupancy ||
+          typeof row.name !== "string" ||
+          typeof row.description !== "string",
+      )
     ) {
-      setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
-      return;
+      return false;
     }
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
@@ -245,134 +259,76 @@ export function createFoundingRestoreSetupDraft(ports: {
     void loadPersonas();
     void loadLorebooks();
     void loadCatalog();
-  };
-}
-export function createFoundingNewSetupDraft(ports: {
-  readonly confirmVillages: (message: string) => Promise<boolean>;
-  readonly draftBlocked: FoundingState["draftBlocked"];
-  readonly draftRevision: FoundingState["draftRevision"];
-  readonly draftSaveQueue: FoundingState["draftSaveQueue"];
-  readonly openSetup: (fresh: boolean, village: import("../../../shared/contracts/village").VillageSnapshot) => void;
-  readonly savedSetupDraft: import("../../shared/device-drafts").SavedDeviceDraft<
-    import("./draft-model").SetupDraftData
-  >;
-  readonly setDraftReady: FoundingState["setDraftReady"];
-  readonly setDraftSaveError: FoundingState["setDraftSaveError"];
-  readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
-  >;
-  readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
-  readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
-  readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
-  readonly setSetupSuggestionsKey: FoundingState["setSetupSuggestionsKey"];
-  readonly setupMapBusy: FoundingState["setupMapBusy"];
-  readonly setupSuggestionsBusy: FoundingState["setupSuggestionsBusy"];
-  readonly setupVenueBusy: FoundingState["setupVenueBusy"];
-  readonly setupZoneDrafts: FoundingState["setupZoneDrafts"];
-  readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-  readonly updateSetupMapRequest: (value: import("../../../shared/contracts/village").SetupMapRequest) => void;
-}) {
-  return async () => {
-    const {
-      confirmVillages,
-      draftBlocked,
-      draftRevision,
-      draftSaveQueue,
-      openSetup,
-      savedSetupDraft,
-      setDraftReady,
-      setDraftSaveError,
-      setSavedSetupDraft,
-      setSetupAuthoredFields,
-      setSetupMapProblem,
-      setSetupMapReviewed,
-      setSetupSuggestionsKey,
-      setupMapBusy,
-      setupSuggestionsBusy,
-      setupVenueBusy,
-      setupZoneDrafts,
-      snapshot,
-      updateSetupMapRequest,
-    } = ports;
-
-    if (setupMapBusy || setupVenueBusy || setupSuggestionsBusy) return;
-    if (
-      savedSetupDraft &&
-      !(await confirmVillages("Discard this saved founding draft and its artwork? Your founded village is unchanged."))
-    )
-      return;
-    try {
-      setDraftReady(false);
-      await draftSaveQueue.current;
-      await removeDeviceDraft(API_PATH);
-      draftRevision.current = 0;
-      draftBlocked.current = false;
-      setDraftSaveError("");
-      setSavedSetupDraft(null);
-      setSetupAuthoredFields({});
-      setSetupSuggestionsKey("");
-      setSetupMapReviewed(false);
-      updateSetupMapRequest(null);
-      setSetupMapProblem("");
-      setupZoneDrafts.current = {};
-      openSetup(true, snapshot);
-      setDraftReady(true);
-    } catch (cause) {
-      setDraftSaveError(messageFrom(cause, "The draft could not be cleared."));
-    }
+    return true;
   };
 }
 export function createFoundingRetrySetupSaving(ports: {
+  readonly confirmVillages: (message: string) => Promise<boolean>;
   readonly draftBlocked: FoundingState["draftBlocked"];
+  readonly draftNeedsReplacement: FoundingState["draftNeedsReplacement"];
   readonly draftRevision: FoundingState["draftRevision"];
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
+  readonly setDraftNeedsReplacement: FoundingState["setDraftNeedsReplacement"];
   readonly setDraftReady: FoundingState["setDraftReady"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
 }) {
   return async () => {
-    const { draftBlocked, draftRevision, persistSetupDraft, setDraftReady, setDraftSaveError, setupDraftData } = ports;
+    const {
+      confirmVillages,
+      draftBlocked,
+      draftNeedsReplacement,
+      draftRevision,
+      persistSetupDraft,
+      setDraftNeedsReplacement,
+      setDraftReady,
+      setDraftSaveError,
+      setupDraftData,
+    } = ports;
 
     try {
+      const expectedRevision = draftRevision.current;
+      if (draftNeedsReplacement && !(await confirmVillages("Replace the unreadable saved founding draft?"))) return;
       const saved = await readDeviceDraft<SetupDraftData>(API_PATH);
-      if ((saved?.revision ?? 0) !== draftRevision.current)
+      if ((saved?.revision ?? 0) !== expectedRevision || draftRevision.current !== expectedRevision)
         throw new Error("This draft changed in another tab. Reload to resume the latest saved choices.");
       draftBlocked.current = false;
-      setDraftReady(true);
       await persistSetupDraft(setupDraftData);
+      setDraftNeedsReplacement(false);
+      setDraftReady(true);
     } catch (cause) {
       setDraftSaveError(messageFrom(cause, "Draft saving is unavailable."));
     }
   };
 }
 export function useFoundingDraftOffer(ports: {
+  readonly draftBlocked: FoundingState["draftBlocked"];
   readonly draftRevision: FoundingState["draftRevision"];
-  readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
   readonly openSetup: (fresh: boolean, village: import("../../../shared/contracts/village").VillageSnapshot) => void;
+  readonly restoreSetupDraft: ReturnType<typeof createFoundingRestoreSetupDraft>;
+  readonly setDraftNeedsReplacement: FoundingState["setDraftNeedsReplacement"];
   readonly setDraftReady: FoundingState["setDraftReady"];
-  readonly setDraftSavedAt: FoundingState["setDraftSavedAt"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
-  readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
-  >;
+  readonly setSavedSetupDraft: FoundingState["setSavedSetupDraft"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"menu" | "home" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
   readonly setupOfferedRef: FoundingState["setupOfferedRef"];
+  readonly skipRestoredDraftAutosave: FoundingState["skipRestoredDraftAutosave"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
   const {
+    draftBlocked,
     draftRevision,
-    loadCatalog,
-    loadPersonas,
     openSetup,
+    restoreSetupDraft,
+    setDraftNeedsReplacement,
     setDraftReady,
-    setDraftSavedAt,
     setDraftSaveError,
     setSavedSetupDraft,
     setScreen,
     setupOfferedRef,
+    skipRestoredDraftAutosave,
     snapshot,
   } = ports;
 
@@ -383,18 +339,25 @@ export function useFoundingDraftOffer(ports: {
       void readDeviceDraft<SetupDraftData>(API_PATH)
         .then((saved) => {
           if (saved) {
+            const restored = restoreSetupDraft(saved.data);
             draftRevision.current = saved.revision;
-            setSavedSetupDraft(saved);
-            setDraftSavedAt(saved.savedAt);
-            setScreen("resume");
-            void loadPersonas();
-            void loadCatalog();
+            if (restored) {
+              // Opening a second tab should not claim the draft revision until an edit.
+              skipRestoredDraftAutosave.current = true;
+              setSavedSetupDraft(saved);
+              return;
+            }
+            draftBlocked.current = true;
+            openSetup(false, snapshot);
+            setDraftNeedsReplacement(true);
+            setDraftSaveError("This saved founding draft cannot be read.");
           } else {
             openSetup(false, snapshot);
             setDraftReady(true);
           }
         })
         .catch((cause) => {
+          draftBlocked.current = true;
           openSetup(false, snapshot);
           setDraftSaveError(messageFrom(cause, "Draft storage is unavailable. Keep this tab open."));
         });
@@ -404,13 +367,14 @@ export function useFoundingDraftOffer(ports: {
     }
   }, [
     openSetup,
+    restoreSetupDraft,
     snapshot,
-    loadPersonas,
-    loadCatalog,
     setupOfferedRef,
+    draftBlocked,
     draftRevision,
+    setDraftNeedsReplacement,
     setSavedSetupDraft,
-    setDraftSavedAt,
+    skipRestoredDraftAutosave,
     setScreen,
     setDraftReady,
     setDraftSaveError,
