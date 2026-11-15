@@ -390,12 +390,13 @@ export async function verifyFoundingLayout(group) {
         await expect(start).toBeInViewport({ ratio: 1 });
         await expect(root.getByRole("region", { name: "Professor Mari", exact: true })).toHaveCount(0);
         await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
-        const titleBackdrop = await root.evaluate((element) => getComputedStyle(element).backgroundImage);
-        assert.match(titleBackdrop, /mari-founding-overlook(?:-day)?\.webp/u);
+        const title = root.locator(".villages-founding-title");
+        await expect(title).toHaveCSS("background-image", /storybook-background-(wide|day)\.webp/u);
+        await expect(title.locator("h1")).toHaveCSS("text-transform", "uppercase");
         await expect
           .poll(() =>
             page.evaluate(() =>
-              [...document.fonts].some((font) => font.family === "village-letter-alegreya" && font.status === "loaded"),
+              [...document.fonts].some((font) => font.family === "village-letter-lora" && font.status === "loaded"),
             ),
           )
           .toBe(true);
@@ -415,7 +416,7 @@ export async function verifyFoundingLayout(group) {
         }
         await start.click();
         await expect(start).toHaveCount(0);
-        await expect(root).toHaveCSS("background-image", titleBackdrop);
+        await expect(root).toHaveCSS("background-image", /mari-founding-overlook(?:-day)?\.webp/u);
         await expect.poll(() => root.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
         await expect(
           root.locator(".villages-forging-heading, .villages-forging-footer, .villages-forging-saved"),

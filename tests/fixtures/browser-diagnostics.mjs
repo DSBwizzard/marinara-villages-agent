@@ -29,7 +29,6 @@ const deskAssets = {
   "mari-founding-playful.webp": "image/webp",
   "villages-icon.png": "image/png",
   "letter-fonts/assistant.json": "application/json",
-  "letter-fonts/alegreya.json": "application/json",
   "letter-fonts/lora.json": "application/json",
 };
 const mockDeskAsset = async (context) => {
