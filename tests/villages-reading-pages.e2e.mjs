@@ -286,14 +286,15 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       });
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
-      assert.equal(await text.textContent(), beforeKeyboard);
-      assert.equal(await counter.textContent(), counterBeforeKeyboard);
+      await expect(reading).toBeHidden();
       assert.deepEqual(await images.first().boundingBox(), baseline);
       await page.evaluate(() => {
         window.sceneViewport.height = innerHeight;
         window.sceneViewport.dispatchEvent(new Event("resize"));
       });
       await expect(page.locator(tag)).not.toHaveAttribute("data-scene-keyboard", "");
+      assert.equal(await text.textContent(), beforeKeyboard);
+      assert.equal(await counter.textContent(), counterBeforeKeyboard);
       await draft.blur();
       if (width === 320) {
         const anchor = (await text.textContent()).trim().split(/\s+/).slice(0, 3).join(" ");

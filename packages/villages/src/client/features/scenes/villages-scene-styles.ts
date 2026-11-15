@@ -123,9 +123,16 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
   position: fixed !important; top: 0; left: -100000px; visibility: hidden; pointer-events: none;
   height: auto !important; max-height: none !important; margin: 0; overflow: visible;
 }
-.${tag}-dialogue-hide, .${tag}-dialogue-restore { display: none; }
+.${tag}-dialogue-hide, .${tag}-dialogue-restore, .${tag}-chat-keyboard-done { display: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem; gap: .25rem; }
-${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding-bottom: 0; }
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn:has(.${tag}-composer)
+  > :is(.${tag}-dialogue-hide, .${tag}-chat-tab, .${tag}-chat-log, .${tag}-chat-vn-asides, .${tag}-chat-vn-card) { display: none; }
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-composer-row { flex-wrap: nowrap; gap: .375rem; }
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-keyboard-done {
+  display: block; flex: 0 0 auto; min-height: 44px; min-width: 44px; padding: 0 .625rem;
+  border: 1px solid var(--border); border-radius: .75rem; font: inherit; font-size: .8125rem;
+  color: var(--foreground); background: var(--popover); cursor: pointer;
+}
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-tab { position: absolute; bottom: 100%; left: calc(50% - 22px); margin: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-history-toggle { width: 44px; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr); align-items: center; padding: .5rem .625rem; gap: .375rem .5rem; }

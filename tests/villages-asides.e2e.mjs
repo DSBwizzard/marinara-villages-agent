@@ -188,14 +188,12 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       }, visible);
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
-      await expect
-        .poll(async () => {
-          const bandBox = await band.boundingBox();
-          const sceneBox = await page.locator(`.${tag}-chat`).boundingBox();
-          return bandBox.y - sceneBox.y;
-        })
-        .toBeGreaterThanOrEqual(0);
-      await checkGeometry("keyboard viewport");
+      await expect(band).toBeHidden();
+      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
+      await expect(page.getByRole("button", { name: "History", exact: true })).toBeHidden();
+      const composerBox = await composer.boundingBox();
+      assert.ok(composerBox.y >= 0 && composerBox.y + composerBox.height <= visible);
+      await expect(page.getByRole("button", { name: "Done", exact: true })).toBeVisible();
       await expect(composer).toHaveValue("A draft to keep.");
       await page.screenshot({ path: resolve(output, `asides-keyboard-${width}x${height}.png`) });
       await page.evaluate((height) => {
@@ -203,6 +201,8 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       }, height);
       await expect(page.locator(tag)).not.toHaveAttribute("data-scene-keyboard", "");
+      await expect(band).toBeVisible();
+      await checkGeometry("after closing the keyboard");
       await composer.blur();
       await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
       await expect(band).toBeHidden();

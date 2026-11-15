@@ -313,23 +313,24 @@ await withBrowser(browser, async () => {
         });
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
         assert.deepEqual(await boxes(), baseline, "keyboard movement does not shrink or reposition the cast");
-        assert.equal(await reading.innerText(), text);
         const keyboardInput = await input.boundingBox();
         assert.ok(Math.abs(keyboardInput.y + keyboardInput.height - (height - 280)) < 1);
+        await expect(reading).toBeHidden();
         await screenshot("keyboard");
-        await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
+        await page.getByRole("button", { name: "Done", exact: true }).click();
         assert.equal(
           await page.locator("textarea[data-villages-scene-composer]").evaluate((el) => el === document.activeElement),
           false,
-          "hide dismisses keyboard focus",
+          "Done dismisses keyboard focus",
         );
         await page.evaluate(() => {
           window.sceneViewport.height += 280;
           window.sceneViewport.dispatchEvent(new Event("resize"));
         });
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-        await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
-        await expect(reading).toBeFocused();
+        await expect(reading).toBeVisible();
+        assert.equal(await reading.innerText(), text);
+        await expect(composer).toHaveValue("Preserve this draft.");
       }
       await screenshot();
       if (count === 4 && mode === "sprites") {
