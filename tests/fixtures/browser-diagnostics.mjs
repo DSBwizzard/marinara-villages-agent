@@ -23,10 +23,22 @@ const deskAssets = {
   "venue-fallback.webp": "image/webp",
   "venue-fallback-day.webp": "image/webp",
   "npc-silhouette.webp": "image/webp",
+  "mari-founding-overlook.webp": "image/webp",
+  "mari-founding-overlook-day.webp": "image/webp",
+  "mari-founding-neutral.webp": "image/webp",
+  "mari-founding-happy.webp": "image/webp",
+  "mari-founding-playful.webp": "image/webp",
+  "villages-icon.png": "image/png",
   "letter-fonts/assistant.json": "application/json",
   "letter-fonts/lora.json": "application/json",
 };
 const mockDeskAsset = async (context) => {
+  await context.route("**/sprites/mari/basic/pose-wave.webp", (route) =>
+    route.fulfill({
+      path: fileURLToPath(new URL("../../packages/villages/villages-icon.png", import.meta.url)),
+      contentType: "image/png",
+    }),
+  );
   for (const [asset, contentType] of Object.entries(deskAssets))
     await context.route("**/api/capability-packages/villages/assets/" + asset, (route) =>
       route.fulfill({ path: fileURLToPath(new URL("../../packages/villages/" + asset, import.meta.url)), contentType }),

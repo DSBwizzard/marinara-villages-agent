@@ -83,7 +83,7 @@ export type SceneScreenController = {
   readonly setRoomError: ScenesState["setRoomError"];
   readonly setRoomTargetId: ScenesState["setRoomTargetId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setSnapshot: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>

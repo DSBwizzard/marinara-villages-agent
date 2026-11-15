@@ -80,6 +80,7 @@ function roomNoticeIcon(notice: RoomRecordEvent): ReactNode {
   if (notice.id.startsWith("presence:"))
     return (
       <svg
+        className="mari-rgb-static-icon"
         viewBox="0 0 24 24"
         width="20"
         height="20"
@@ -184,7 +185,7 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "up" | "down" |
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className={name === "sending" ? ELEMENT_TAG + "-spin" : undefined}
+      className={name === "sending" ? ELEMENT_TAG + "-spin mari-rgb-static-icon" : "mari-rgb-static-icon"}
     >
       {name === "send" ? (
         <>

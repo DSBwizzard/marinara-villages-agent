@@ -1,16 +1,9 @@
-// Regenerates Villages' placeholder artwork. Run manually:
+// Regenerates the Villages catalog cover. Run manually:
 //   node packages/villages/build/cover.mjs
 //
-// Writes two files:
-//   artwork/agent-covers/villages.png  — 512x512 catalog cover
-//   packages/villages/villages-icon.png — 512x512 Home tab icon (assetPaths)
+// The Home tab icon source is artwork/villages-icon.svg.
 //
-// Deterministic pixel art: 64x64 (cover) and 32x32 (icon) scenes upscaled with
-// nearest-neighbor, so both are reproducible byte-for-byte on a given Node.
-//
-// ponytail: these are placeholders to prove the install and the Home tab. Swap
-// them for real covers when the art direction lands — nothing else depends on
-// the pixel contents, only on the 512x512 size the catalog validator enforces.
+// The catalog validator requires a 512x512 cover.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -150,54 +143,9 @@ function drawCover() {
   return upscale(art, 8);
 }
 
-// Tab icon: the same village reduced to a mark that still reads at 16-24px.
-function drawIcon() {
-  const S = 32;
-  const art = new Raster(S, S);
-  const rng = makeRng(0x1c0ffee5);
-
-  for (let y = 0; y < 20; y++) art.rect(0, y, S, 1, y < 10 ? "#4f76b4" : "#9bb8dd");
-  art.disc(25, 6, 4, "#ffd98a");
-  art.disc(25, 6, 2, "#fff3c8");
-
-  for (let x = 0; x < S; x++) {
-    const crest = 18 + Math.round(Math.sin(x / 6) * 1.5);
-    for (let y = crest; y < S; y++) art.px(x, y, rng() < 0.15 ? "#4c8a52" : "#3e7a44");
-  }
-
-  // Two cottages and a tree, in silhouette-ish flat color so they read small.
-  const cottage = (x, y, w, h) => {
-    art.rect(x, y, w, h, "#e6dcc3");
-    for (let row = 0; row < Math.ceil(w / 2); row++) {
-      art.rect(x - 1 + row, y - 1 - row, w + 2 - row * 2, 1, "#b0553f");
-    }
-    art.rect(x + Math.floor(w / 2) - 1, y + h - 4, 3, 4, "#6b4a30");
-    art.rect(x + 1, y + 2, 2, 2, "#ffd98a");
-  };
-  cottage(5, 19, 8, 7);
-  cottage(16, 21, 9, 6);
-  art.rect(27, 22, 2, 4, "#5b4432");
-  for (let y = -4; y <= 4; y++) {
-    for (let x = -4; x <= 4; x++) {
-      if (x * x + (y * y) / 1.3 < 15) art.px(28 + x, 17 + y, rng() < 0.25 ? "#5aa25e" : "#2c5a33");
-    }
-  }
-
-  art.rect(0, 0, S, 2, INK);
-  art.rect(0, S - 2, S, 2, INK);
-  art.rect(0, 0, 2, S, INK);
-  art.rect(S - 2, 0, 2, S, INK);
-
-  return upscale(art, 16);
-}
-
-const outputs = [
-  [join(repoRoot, "artwork/agent-covers/villages.png"), drawCover()],
-  [join(repoRoot, "packages/villages/villages-icon.png"), drawIcon()],
-];
-for (const [path, image] of outputs) {
-  mkdirSync(dirname(path), { recursive: true });
-  if (image.w !== 512 || image.h !== 512) throw new Error(`${path} must be 512x512, got ${image.w}x${image.h}`);
-  writeFileSync(path, image.toPng());
-  console.log(`wrote ${path} (${image.w}x${image.h})`);
-}
+const path = join(repoRoot, "artwork/agent-covers/villages.png");
+const image = drawCover();
+mkdirSync(dirname(path), { recursive: true });
+if (image.w !== 512 || image.h !== 512) throw new Error(`${path} must be 512x512, got ${image.w}x${image.h}`);
+writeFileSync(path, image.toPng());
+console.log(`wrote ${path} (${image.w}x${image.h})`);

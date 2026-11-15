@@ -6,7 +6,7 @@ export function useExplorationOutsideClick(ports: {
   element: HTMLElement;
   exploreSheet: import("./villages-exploration.js").ExplorationSheet;
   openPlaceId: string;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   setExploreSheet: React.Dispatch<React.SetStateAction<import("./villages-exploration.js").ExplorationSheet>>;
   setOpenPlaceId: React.Dispatch<React.SetStateAction<string>>;
 }) {

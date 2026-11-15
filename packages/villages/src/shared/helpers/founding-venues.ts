@@ -10,11 +10,11 @@ export function foundingVenueShapeProblem(venues: readonly VillageVenue[], commu
       return (
         venue.classes?.length !== 1 ||
         venue.classes[0] !== (community ? "community" : "residence") ||
-        members !== (community ? 0 : 1) ||
+        (community ? members !== 0 : members > 4) ||
         !!venue.workerIds?.length
       );
     })
   )
-    return "Founding needs separate Residences for each person and one Community Venue.";
+    return "Founding supports up to four Residences and one Community Venue.";
   return "";
 }
