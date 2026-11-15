@@ -1,6 +1,6 @@
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import { VillageIcon, type VillageIconName } from "../../shared/VillageIcon.js";
-import type { RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
+import type { RepairRecord, RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import type { RepairController } from "./useRepairController.js";
 import { REPAIR_STYLES } from "./repair-styles.js";
@@ -13,7 +13,7 @@ const topics = {
   restore: "Checkpoints",
   all: "Search results",
 } satisfies Record<RepairTopic | "all", string>;
-const browseTopics = ["memories", "people", "places", "world"] as const;
+const browseTopics = ["people", "places", "world"] as const;
 const topicIcons = {
   memories: "memory",
   people: "people",
@@ -22,6 +22,19 @@ const topicIcons = {
   progress: "projects",
   restore: "details",
 } satisfies Record<RepairTopic, VillageIconName>;
+
+function searchSummary(record: RepairRecord) {
+  if (record.topic !== "memories") return [topics[record.topic], record.summary].filter(Boolean).join(" · ");
+  const remembered = record.people?.filter((person) => !person.forgotten).map((person) => person.name);
+  const forgotten = record.people?.filter((person) => person.forgotten).map((person) => person.name);
+  return [
+    remembered?.length && `Remembered by ${remembered.join(", ")}`,
+    forgotten?.length && `Forgotten by ${forgotten.join(", ")}`,
+    record.summary,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 function RepairTile({
   title,
@@ -431,7 +444,7 @@ export function RepairPage({
                       key={r.id}
                       title={r.title}
                       icon={topicIcons[r.topic]}
-                      summary={c.topic === "all" ? [topics[r.topic], r.summary].filter(Boolean).join(" · ") : r.summary}
+                      summary={c.topic === "all" ? searchSummary(r) : r.summary}
                       disabled={c.busy}
                       onClick={() => void c.open(r.id)}
                     />
