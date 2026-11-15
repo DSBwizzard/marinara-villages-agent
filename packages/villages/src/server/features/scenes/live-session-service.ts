@@ -4,11 +4,11 @@ import { findLocation, hasAssociatedNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import type { VillageVisitor } from "../../domain/models/world.js";
+import type { VillageCardCharacter, VillageState } from "../../domain/models/world.js";
 import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import { managerResidentSprite } from "../../domain/rules/sprite-manager-model.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
-import { sameVisitorWindow } from "../../domain/rules/visitors.js";
+import { cardCharacters } from "../../domain/rules/visitors.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
@@ -40,7 +40,11 @@ export interface LiveScenePorts {
   withIdleSceneWork(id: string, work: () => Promise<void>): Promise<void>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
-  initializeVisitorSprites?(scope: string, visitor: VillageVisitor): Promise<SpriteManagerState | null | undefined>;
+  settleVisitorAttendance?(state: VillageState, at: Date): VillageState | Promise<VillageState>;
+  initializeCharacterSprites?(
+    scope: string,
+    character: VillageCardCharacter,
+  ): Promise<SpriteManagerState | null | undefined>;
 }
 const ACTIVITY_WRITE_MS = 15 * 1000;
 /** Inert active-Scene lifecycle and attendance coordination with originating connections. */
@@ -52,7 +56,8 @@ export function createLiveScenes({
   hasVenueOperation,
   withSceneWork,
   withIdleSceneWork,
-  initializeVisitorSprites,
+  initializeCharacterSprites,
+  settleVisitorAttendance,
   readVillageState: readVillageStateWithoutPlaces,
   mutateVillageState: mutateVillageStateWithoutPlaces,
 }: LiveScenePorts) {
@@ -449,11 +454,12 @@ export function createLiveScenes({
       });
       village = await readVillageState({ memories: true });
     }
+    const now = villageNow();
+    village = (await settleVisitorAttendance?.(village, now)) ?? village;
     if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
     const venue = findLocation(village, session.placeId);
     if (!venue) return session;
     if (!venue.access) throw conflict("That Place has no native access record.");
-    const now = villageNow();
     const moment = (at: Date) =>
       deriveVillageMoment({
         foundedAt: village.foundedAt,
@@ -466,27 +472,37 @@ export function createLiveScenes({
     const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
     const previousMoment = moment(new Date(previousAt));
     const { attendance, accompanying, departedIds, sameRoutine } = projectLiveAttendance(village, session, venue, now);
-    const visitor = village.visitors?.find(
+    const untouched = cardCharacters(village).filter(
       (person) =>
         !person.spriteManager &&
+        !person.sprite &&
         attendance.occupants.some((row) => row.characterId === person.characterId) &&
         (firstAdmission ||
           !session.continuity ||
           !session.sceneAttendance?.occupants.some((row) => row.characterId === person.characterId) ||
-          !sameVisitorWindow(village, person.characterId, new Date(previousAt), now)),
+          !sameRoutine(person.characterId)),
     );
-    const manager = visitor && (await initializeVisitorSprites?.(villageWorldScope(village), visitor));
-    const appearance =
-      manager && visitor
-        ? {
-            ...village,
-            visitors: village.visitors?.map((person) =>
-              person === visitor
-                ? { ...person, spriteManager: manager, sprite: managerResidentSprite(manager, person.characterId) }
-                : person,
-            ),
-          }
-        : village;
+    const managers = new Map(
+      await Promise.all(
+        untouched.map(
+          async (person) =>
+            [person.characterId, await initializeCharacterSprites?.(villageWorldScope(village), person)] as const,
+        ),
+      ),
+    );
+    const initialize = <T extends VillageCardCharacter>(person: T): T => {
+      const manager = managers.get(person.characterId);
+      return manager
+        ? { ...person, spriteManager: manager, sprite: managerResidentSprite(manager, person.characterId) }
+        : person;
+    };
+    const appearance = managers.size
+      ? {
+          ...village,
+          villagers: village.villagers.map(initialize),
+          visitors: village.visitors?.map(initialize),
+        }
+      : village;
     const continuity = captureSceneContinuity(appearance, { ...session, sceneAttendance: attendance }, now.getTime());
     if (
       session.continuity &&

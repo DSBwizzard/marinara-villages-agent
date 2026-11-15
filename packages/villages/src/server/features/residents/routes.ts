@@ -8,7 +8,8 @@ import {
   setVillagerScheduleInfluence,
 } from "../residents/resident-agendas.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { readVillageState } from "../world/village-store.js";
+import { mutateVillageState, readVillageState } from "../world/village-store.js";
+import { offerVisitorLodging } from "../../domain/rules/visitors.js";
 import { clarifyRelationships, readRelationshipsInspect, readRelationshipsView } from "./relationships.js";
 import { applyVillagerRefresh, previewVillagerRefresh } from "./resident-cards.js";
 import { addVillager, editIdentityDescription, removeVillager, setVisitor } from "./resident-roster.js";
@@ -188,6 +189,22 @@ export function registerResidentRoutes(engine: FastifyInstance) {
       return await buildVillageSnapshot();
     } catch (error) {
       return fail(reply, error, "moving a Visitor in");
+    }
+  });
+  app.post<{ Params: CharacterParams }>("/visitors/:characterId/host", async (request, reply) => {
+    try {
+      const id = readCharacterId(request.params.characterId);
+      const { scope, trip } = z.object({ scope: scopeId, trip: z.string().datetime() }).strict().parse(request.body);
+      await mutateVillageState(
+        (state) => {
+          if (villageWorldScope(state) !== scope) throw badRequest("The Village changed. Refresh People.");
+          offerVisitorLodging(state, id, trip, villageNow(state.clock?.advanceMs ?? 0));
+        },
+        { memories: true },
+      );
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "offering overnight lodging");
     }
   });
   app.patch<{ Params: CharacterParams; Body: unknown }>(

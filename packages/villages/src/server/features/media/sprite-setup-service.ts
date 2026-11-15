@@ -11,7 +11,7 @@ import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-transport.js";
 import type { SpriteWrites } from "./sprite-writes.js";
-import type { VillageState, VillageVisitor } from "../../domain/models/world.js";
+import type { VillageCardCharacter, VillageState } from "../../domain/models/world.js";
 import {
   coerceSpriteManager,
   emptySpriteManager,
@@ -293,21 +293,20 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     return library ? automaticVisitorSprites(library.files, library.folders) : null;
   }
 
-  async function initializeVisitor(scope: string, visitor: VillageVisitor) {
-    if (visitor.spriteManager) return visitor.spriteManager;
-    const id = visitor.characterId;
-    const matches = (state: VillageState) =>
-      villageWorldScope(state) === scope
-        ? state.visitors?.find((person) => person.characterId === id && person.incarnation === visitor.incarnation)
-        : undefined;
+  async function initializeCharacter(scope: string, character: VillageCardCharacter) {
+    const id = character.characterId;
+    const matches = (state: VillageState) => {
+      const person = villageWorldScope(state) === scope ? findCardCharacter(state, id) : undefined;
+      return person?.incarnation === character.incarnation ? person : undefined;
+    };
     return ports.writes.serialize(writeKey(id, true), async () => {
       const current = matches(await ports.readVillageState());
-      if (!current || current.spriteManager) return current?.spriteManager;
+      if (!current || current.spriteManager || current.sprite) return current?.spriteManager;
       const manager = await automaticManager(id);
       if (!manager) return null;
       const saved = await ports.mutateVillageState((state) => {
         const person = matches(state);
-        if (person && !person.spriteManager) person.spriteManager = manager;
+        if (person && !person.spriteManager && !person.sprite) person.spriteManager = manager;
       });
       return matches(saved)?.spriteManager;
     });
@@ -315,5 +314,5 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
 
   const settled = (id: string, resident = false) =>
     ports.writes.serialize(writeKey(id, resident), () => read(id, resident));
-  return { settled, save, preparedManager, automaticManager, initializeVisitor };
+  return { settled, save, preparedManager, automaticManager, initializeCharacter };
 }

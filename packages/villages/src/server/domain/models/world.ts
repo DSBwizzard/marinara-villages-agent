@@ -71,6 +71,7 @@ export type VillageVisitor = VillageCardCharacter & {
   visitsEnabled: boolean;
   visitsRevision: string;
   firstMetAt?: string;
+  trip?: VisitorTrip;
   visitPreference?: {
     kind: "invite" | "space";
     sentAt: string;
@@ -79,6 +80,12 @@ export type VillageVisitor = VillageCardCharacter & {
     from: string;
     until: string;
   };
+};
+
+export type VisitorTrip = {
+  arrivedAt: string;
+  leavesAt: string;
+  lodging?: { venueId: string; zoneId: string; hostId?: string };
 };
 
 export type VillageVillager = VillageCardCharacter & {

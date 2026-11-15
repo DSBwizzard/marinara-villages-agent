@@ -107,6 +107,7 @@ export interface SceneCommandPorts {
   rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
   withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
+  settleVisitorAttendance?(state: VillageState, at: Date): VillageState | Promise<VillageState>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
@@ -150,6 +151,7 @@ export function createSceneCommands({
   recoverVenueOperations,
   rollActiveAgendas,
   withVillageSceneAcceptance,
+  settleVisitorAttendance,
   mutateVillageState: mutateVillageStateWithoutPlaces,
   readVillageState: readVillageStateWithoutPlaces,
 }: SceneCommandPorts) {
@@ -502,7 +504,9 @@ export function createSceneCommands({
     if (!existing && !travel) {
       await rollActiveAgendas();
     }
-    const live = travel?.village ?? (await readVillageState());
+    const source = travel?.village ?? (await readVillageState());
+    const now = villageNow();
+    const live = existing || travel ? source : ((await settleVisitorAttendance?.(source, now)) ?? source);
     const village = existing ? sceneContinuityView(live, existing) : live;
     const place = findLocation(village, placeId);
     if (!place) throw notFound("That place is not in this village.");
@@ -586,7 +590,6 @@ export function createSceneCommands({
           ? existingGathering
           : refreshZoneParticipants(existingGathering);
     }
-    const now = villageNow();
     const entryAt = new ZonedDate(now, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     const invitation =
       travel &&

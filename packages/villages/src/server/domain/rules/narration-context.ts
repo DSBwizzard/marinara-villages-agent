@@ -825,6 +825,11 @@ export function narrationContinuityContext(
       operationId,
       input,
       actors,
+      visitorTrips: captured.visitors?.flatMap((person) =>
+        person.trip && actors.some((actor) => actor.id === person.characterId)
+          ? [{ characterId: person.characterId, arrivedAt: person.trip.arrivedAt, leavesAt: person.trip.leavesAt }]
+          : [],
+      ),
       scene: sourceScene(scene),
       venue: structuredClone(venue),
       historical: {},

@@ -244,6 +244,13 @@ function coerceVisitors(value: unknown, residentIds: Set<string>): VillageVisito
     const raw = asRecord(entry);
     const person = coerceCardCharacter(entry);
     const firstMetAt = asIsoString(raw.firstMetAt);
+    const trip = asRecord(raw.trip);
+    const arrivedAt = asIsoString(trip.arrivedAt);
+    const leavesAt = asIsoString(trip.leavesAt);
+    const lodging = asRecord(trip.lodging);
+    const venueId = asString(lodging.venueId);
+    const zoneId = asString(lodging.zoneId);
+    const hostId = asString(lodging.hostId);
     const preference = asRecord(raw.visitPreference);
     const sentAt = asIsoString(preference.sentAt);
     const from = asIsoString(preference.from);
@@ -260,6 +267,16 @@ function coerceVisitors(value: unknown, residentIds: Set<string>): VillageVisito
         raw.visitsRevision.length > 0 &&
         raw.visitsRevision.length <= 160 &&
         (raw.firstMetAt === undefined || firstMetAt) &&
+        (raw.trip === undefined ||
+          (arrivedAt &&
+            leavesAt &&
+            arrivedAt < leavesAt &&
+            (trip.lodging === undefined ||
+              (venueId &&
+                venueId.length <= 200 &&
+                zoneId &&
+                zoneId.length <= 200 &&
+                (lodging.hostId === undefined || (hostId && hostId.length <= 200)))))) &&
         (raw.visitPreference === undefined ||
           ((kind === "invite" || kind === "space") &&
             sentAt &&
@@ -279,6 +296,15 @@ function coerceVisitors(value: unknown, residentIds: Set<string>): VillageVisito
       visitsEnabled: raw.visitsEnabled,
       visitsRevision: raw.visitsRevision,
       ...(firstMetAt ? { firstMetAt } : {}),
+      ...(arrivedAt && leavesAt
+        ? {
+            trip: {
+              arrivedAt,
+              leavesAt,
+              ...(venueId && zoneId ? { lodging: { venueId, zoneId, ...(hostId ? { hostId } : {}) } } : {}),
+            },
+          }
+        : {}),
       ...(sentAt && from && until && (kind === "invite" || kind === "space")
         ? { visitPreference: { kind, sentAt, from, until, sourceId, latestSourceId } }
         : {}),

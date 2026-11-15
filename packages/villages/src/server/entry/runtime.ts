@@ -225,6 +225,7 @@ import { configureVenueRequests } from "../features/venues/venue-requests.js";
 import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVillageSnapshot } from "../features/world/snapshot-service.js";
 import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
+import { settleTripsForAttendance } from "../features/world/visitor-trips.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
 import { createVillageStateService } from "../features/world/village-state-service.js";
 import {
@@ -511,7 +512,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       withSceneWork: backendWork.sceneFence.run,
       withIdleSceneWork: (id, work) =>
         backendWork.sceneFence.isBusy(id) ? Promise.resolve() : backendWork.sceneFence.run(id, work),
-      initializeVisitorSprites: (scope, visitor) => spriteSetup().initializeVisitor(scope, visitor),
+      initializeCharacterSprites: (scope, character) => spriteSetup().initializeCharacter(scope, character),
+      settleVisitorAttendance: (state, at) => settleTripsForAttendance(state, at, mutateVillageMemoryState),
       readVillageState: readVillageMemoryState,
       mutateVillageState: mutateVillageMemoryState,
     }),
@@ -585,6 +587,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       recoverVenueOperations,
       rollActiveAgendas,
       withVillageSceneAcceptance,
+      settleVisitorAttendance: (state, at) => settleTripsForAttendance(state, at, mutateVillageMemoryState),
       mutateVillageState: mutateVillageMemoryState,
       readVillageState: readVillageMemoryState,
     }),
@@ -638,6 +641,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
+      mutateVillageState: mutateVillageMemoryState,
       readVillageState,
       listVillagerCards,
       rollActiveAgendas,
@@ -686,7 +690,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseResidentRoster = configureResidentRoster(
     createResidentRoster({
       preparedSpriteManager,
-      automaticVisitorSprites: (id) => spriteSetup().automaticManager(id),
+      automaticSprites: (id) => spriteSetup().automaticManager(id),
       readVillageState,
       mutateVillageState: mutateVillageMemoryState,
       findVillagerCard,
@@ -752,6 +756,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readFoundingImageLore,
       peekVillageAuthority,
       preparedSpriteManager,
+      automaticSprites: (id) => spriteSetup().automaticManager(id),
       readVillageState,
       mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,

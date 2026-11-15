@@ -16,9 +16,10 @@ import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
 import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { clearVisitorLodging } from "../../domain/rules/visitors.js";
 
 export interface ResidentRosterPorts {
-  automaticVisitorSprites?(id: string): Promise<SpriteManagerState | null>;
+  automaticSprites?(id: string): Promise<SpriteManagerState | null>;
   preparedSpriteManager?(
     id: string,
     revision?: number,
@@ -34,7 +35,7 @@ export interface ResidentRosterPorts {
 /** Roster commands own their saved-world, library and background connections. Construction is inert. */
 export function createResidentRoster({
   preparedSpriteManager,
-  automaticVisitorSprites,
+  automaticSprites,
   readVillageState,
   mutateVillageState,
   findVillagerCard,
@@ -77,7 +78,10 @@ export function createResidentRoster({
     let movedIn = false;
     let promoted = false;
     if (!alreadyResident) {
-      const spriteManager = expectedVisitor ? null : await preparedSpriteManager?.(characterId, spriteSetupRevision);
+      const spriteManager = expectedVisitor
+        ? null
+        : ((await preparedSpriteManager?.(characterId, spriteSetupRevision)) ??
+          (await automaticSprites?.(characterId)));
       const addedAt = villageNow().toISOString();
       const incarnation = randomUUID();
       const letterFontId = chooseLetterFont(randomVillageSeed());
@@ -109,6 +113,7 @@ export function createResidentRoster({
             letterFontId,
           admission,
           spriteManager: visitor?.spriteManager ?? spriteManager,
+          ...(visitor?.sprite ? { sprite: visitor.sprite } : {}),
           ...(visitor?.signature ? { signature: visitor.signature } : {}),
           ...(visitor?.relationshipScene ? { relationshipScene: visitor.relationshipScene } : {}),
           identityDescription: visitor?.identityDescription ?? initialIdentityDescription(),
@@ -118,7 +123,10 @@ export function createResidentRoster({
           agenda: unwrittenVillageAgenda(villageNow()),
           scheduleInfluence: influenceSettings(null),
         });
-        if (visitor) state.visitors = state.visitors!.filter((person) => person.characterId !== characterId);
+        if (visitor) {
+          clearVisitorLodging(state, visitor);
+          state.visitors = state.visitors!.filter((person) => person.characterId !== characterId);
+        }
         if (visitor?.firstMetAt) {
           state.startingHistory.reviewed[characterId] = visitor.incarnation;
           promoted = true;
@@ -142,7 +150,7 @@ export function createResidentRoster({
     if (!village.foundedAt || villageWorldScope(village) !== scope) throw conflict("The Village changed.");
     const existing = village.visitors?.some((person) => person.characterId === characterId);
     const card = existing ? null : await findVillagerCard(characterId);
-    const spriteManager = card && visitsEnabled ? await automaticVisitorSprites?.(characterId) : undefined;
+    const spriteManager = card && visitsEnabled ? await automaticSprites?.(characterId) : undefined;
     const addedAt = villageNow().toISOString();
     const incarnation = randomUUID();
     const letterFontId = chooseLetterFont(randomVillageSeed());
@@ -160,7 +168,14 @@ export function createResidentRoster({
         if (visitor.visitsEnabled === visitsEnabled) return;
         visitor.visitsEnabled = visitsEnabled;
         visitor.visitsRevision = incarnation;
-        if (!visitsEnabled) delete visitor.visitPreference;
+        if (!visitsEnabled) {
+          delete visitor.visitPreference;
+          clearVisitorLodging(state, visitor);
+          if (visitor.trip && visitor.trip.leavesAt > addedAt) {
+            if (visitor.trip.arrivedAt >= addedAt) delete visitor.trip;
+            else visitor.trip.leavesAt = addedAt;
+          }
+        }
         return;
       }
       if (!visitsEnabled || !card) throw notFound("That character is not in your library.");

@@ -14,12 +14,12 @@ import { venueResidentIds } from "./venue-model.js";
 import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagePresence } from "./village-projections.js";
-import { sameVisitorWindow, visitorPosition } from "./visitors.js";
+import { sameVisitorPhase, visitorPosition } from "./visitors.js";
 
 export function sameSceneRoutine(village: VillageState, scene: VenueScene, actorId: string, now: Date): boolean {
   const resident = village.villagers.find((row) => row.characterId === actorId);
   if (!resident)
-    return sameVisitorWindow(village, actorId, new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt), now);
+    return sameVisitorPhase(village, actorId, new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt), now);
   const previous = scene.continuity?.facts.villagers.find((row) => row.characterId === actorId) ?? resident;
   const timeZone = village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const before = new ZonedDate(scene.sceneAttendance?.capturedAt ?? scene.startedAt, timeZone);
@@ -101,7 +101,7 @@ export function captureSceneAttendance(
             {
               characterId: visitor.person.characterId,
               name: visitor.person.cardSnapshot.name,
-              doing: "Visiting",
+              doing: visitor.sleeping ? "Turning in for the night" : "Visiting",
               zoneId: visitor.zoneId,
             },
           ]

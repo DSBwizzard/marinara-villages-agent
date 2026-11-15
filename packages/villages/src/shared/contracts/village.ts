@@ -51,7 +51,11 @@ export type VillageVillagerView = {
   place: VillagePlaceView | null;
 };
 
-export type VillageVisitorView = VillageVillagerView & { met: boolean; visitsEnabled: boolean };
+export type VillageVisitorView = VillageVillagerView & {
+  met: boolean;
+  visitsEnabled: boolean;
+  visit?: { arrivedAt: string; leavesAt: string; offerHome: boolean; stayingWithPlayer: boolean };
+};
 
 export type ResidentSprite = {
   assetId: string;

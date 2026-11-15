@@ -299,22 +299,32 @@ assert.equal(automaticVisitorSprites([], []), null);
 assert.equal(automaticVisitorSprites([spriteFile("blink.png", "neutral_eyes_shut")], []), null);
 
 const person = world.villagers[0];
-const untouched = { ...person, spriteManager: null, visitsEnabled: true, visitsRevision: "visit" };
+const untouched = { ...person, sprite: null, spriteManager: null, visitsEnabled: true, visitsRevision: "visit" };
 world.visitors = [untouched];
 world.villagers = [];
 const scope = villageWorldScope(world);
-assert.equal(await service.initializeVisitor(scope, untouched), null, "A library failure leaves the Visitor eligible.");
+assert.equal(
+  await service.initializeCharacter(scope, untouched),
+  null,
+  "A library failure leaves the Visitor eligible.",
+);
 assert.equal(world.visitors[0].spriteManager, null);
 libraryAvailable = true;
-assert.equal(await service.initializeVisitor("stale-world", untouched), undefined);
-assert.equal(await service.initializeVisitor(scope, { ...untouched, incarnation: "other" }), undefined);
-const initialized = await service.initializeVisitor(scope, untouched);
+assert.equal(await service.initializeCharacter("stale-world", untouched), undefined);
+assert.equal(await service.initializeCharacter(scope, { ...untouched, incarnation: "other" }), undefined);
+const initialized = await service.initializeCharacter(scope, untouched);
 assert.deepEqual(world.visitors[0].spriteManager, initialized);
 assert(initialized?.assignments.length);
 world.visitors[0].spriteManager = portrait.manager;
 const readsBefore = catalogReads;
-assert.deepEqual(await service.initializeVisitor(scope, untouched), portrait.manager);
+assert.deepEqual(await service.initializeCharacter(scope, untouched), portrait.manager);
 assert.equal(catalogReads, readsBefore, "An explicit Portrait choice keeps its settings.");
+
+world.visitors = [];
+world.villagers = [{ ...person, spriteManager: null, sprite: null }];
+assert((await service.initializeCharacter(scope, world.villagers[0]))?.assignments.length);
+world.villagers[0].spriteManager = portrait.manager;
+assert.deepEqual(await service.initializeCharacter(scope, world.villagers[0]), portrait.manager);
 
 const newCard = readVillagerCard({ id: "new-visitor", comment: "", data: { name: "New Visitor" } });
 world.foundedAt ||= new Date().toISOString();
@@ -325,7 +335,7 @@ const roster = createResidentRoster({
     return world;
   },
   findVillagerCard: async () => newCard,
-  automaticVisitorSprites: service.automaticManager,
+  automaticSprites: service.automaticManager,
   queueVillagerAgenda: async () => {
     throw new Error("Visitor setup cannot queue Villager work.");
   },
@@ -333,7 +343,7 @@ const roster = createResidentRoster({
 });
 await roster.setVisitor(newCard.id, villageWorldScope(world), true);
 assert(
-  world.visitors[1].spriteManager?.assignments.length,
+  world.visitors[0].spriteManager?.assignments.length,
   "Adding a Visitor settles their sprites before attendance.",
 );
 console.log(

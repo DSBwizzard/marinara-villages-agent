@@ -86,6 +86,7 @@ export function VisitorProfileControls({
   const confirm = useConfirmation(snapshot.worldScope + ":" + person.characterId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const visit = person.visit;
   const change = async (enabled?: boolean) => {
     setBusy(true);
     setError("");
@@ -97,8 +98,39 @@ export function VisitorProfileControls({
       setBusy(false);
     }
   };
+  const offerHome = async (trip: string) => {
+    setBusy(true);
+    setError("");
+    const scope = snapshot.worldScope;
+    try {
+      const next = await request<VillageSnapshot>("/visitors/" + encodeURIComponent(person.characterId) + "/host", {
+        method: "POST",
+        body: JSON.stringify({ scope, trip }),
+      });
+      setSnapshot((current) => (current?.worldScope === scope && next.worldScope === scope ? next : current));
+    } catch (cause) {
+      setError(messageFrom(cause, "Could not offer a room for this visit."));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <>
+      {visit ? (
+        <span>
+          Visiting until{" "}
+          {new Intl.DateTimeFormat(undefined, {
+            weekday: "long",
+            timeZone: snapshot.clock?.timeZone,
+          }).format(new Date(visit.leavesAt))}
+        </span>
+      ) : null}
+      {visit?.stayingWithPlayer ? <span role="status">Staying with you</span> : null}
+      {visit?.offerHome ? (
+        <button type="button" disabled={busy} onClick={() => void offerHome(visit.arrivedAt)}>
+          Offer to host
+        </button>
+      ) : null}
       <button type="button" disabled={busy} onClick={() => void change(!person.visitsEnabled)}>
         {person.visitsEnabled ? "Turn visits off" : "Turn visits on"}
       </button>

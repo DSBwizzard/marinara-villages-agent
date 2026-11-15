@@ -55,8 +55,14 @@ await withBrowser(browser, async () => {
           ...village.villagers[0],
           characterId: "river-visitor",
           name: "River Visitor",
-          met: false,
+          met: true,
           visitsEnabled: true,
+          visit: {
+            arrivedAt: "2026-11-09T12:00:00.000Z",
+            leavesAt: "2026-11-11T17:00:00.000Z",
+            offerHome: true,
+            stayingWithPlayer: false,
+          },
         },
       ];
       village.visitorNotice = { venueId: village.settings.venues[0].id, venueName: village.settings.venues[0].name };
@@ -328,7 +334,14 @@ await withBrowser(browser, async () => {
       if (path.endsWith("/background/presence"))
         return fulfill(route, { json: { status: "ready", snapshot: village } });
       let value = village;
-      if (path.endsWith("/background/retry")) {
+      if (path.endsWith("/visitors/river-visitor/host")) {
+        const visit = village.visitors[0].visit;
+        assert.equal(request.method(), "POST");
+        assert.deepEqual(request.postDataJSON(), { scope: village.worldScope, trip: visit.arrivedAt });
+        visit.offerHome = false;
+        visit.stayingWithPlayer = true;
+        value = village;
+      } else if (path.endsWith("/background/retry")) {
         const body = request.postDataJSON();
         assert.equal(body.id, "history-job");
         assert.equal(body.expectedAttempt, 1);
@@ -652,8 +665,11 @@ await withBrowser(browser, async () => {
       await page.keyboard.press("Escape");
       await visitorTile.click();
       await expect(page.getByRole("heading", { name: "River Visitor", exact: true })).toBeVisible();
-      await expect(page.getByText("Awaiting first meeting", { exact: true })).toBeVisible();
       await openCharacterTools(page);
+      await expect(page.getByText(/^Visiting until /)).toBeVisible();
+      await page.getByRole("button", { name: "Offer to host", exact: true }).click();
+      await expect(page.getByText("Staying with you", { exact: true })).toBeVisible();
+      await page.screenshot({ path: resolve(output, `visitor-host-${width}-${height}.png`) });
       await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Turn visits off", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Agenda records", exact: true })).toHaveCount(0);

@@ -1,5 +1,8 @@
-// Test cases: narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep
+// Test cases: narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep, narration-access/overnight-agreement
 import assert from "node:assert/strict";
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -551,4 +554,132 @@ await runCase("narration-native/provisional-authority", () => {
       assert(!access.changes.some((change) => change.action === "zone-policy"));
     }
   }
+});
+
+await runCase("narration-access/overnight-agreement", () => {
+  const { state, actorId, cafe } = fixture(true);
+  state.timeZone = "UTC";
+  const card = socialWorldFixture().villagers[1];
+  const leavesAt = "2026-11-11T17:00:00.000Z";
+  const visitor = {
+    ...card,
+    firstMetAt: at,
+    visitsEnabled: true,
+    visitsRevision: "enabled",
+    trip: { arrivedAt: at, leavesAt },
+  };
+  state.visitors = [visitor];
+  const home = venueFixture({
+    id: "host-home",
+    name: "Mara's home",
+    classes: ["residence"],
+    residentIds: [actorId],
+    zones: [
+      {
+        ...defaultVenueSpace("residence"),
+        id: "guest",
+        name: "Guest Room",
+        kind: "shared-residence",
+        purpose: "Overnight lodging",
+        seen: true,
+      },
+    ],
+  });
+  home.destinations = { [actorId]: {} };
+  state.venues.push(home);
+  const participants = [
+    { characterId: actorId, name: "Mara", doing: "Talking" },
+    { characterId: visitor.characterId, name: "Bram", doing: "Visiting" },
+  ];
+  const input = "Do you have somewhere for Bram to stay overnight?";
+  const scene = zoneEventScene(
+    coerceSession({
+      version: 5,
+      id: "lodging-scene",
+      sceneRevision: 1,
+      placeId: cafe.id,
+      placeName: "Cafe",
+      zoneId: "parlor",
+      villageSeed: state.seed,
+      startedAt: at,
+      lastActivityAt: at,
+      status: "active",
+      activeIds: participants.map((person) => person.characterId),
+      participants,
+      sceneAttendance: {
+        capturedAt: at,
+        layout: captureSceneLayout(cafe.location),
+        occupants: participants.map((person) => ({ ...person, zoneId: "parlor" })),
+      },
+    }),
+    cafe.location,
+    { message: input },
+  );
+  const prepared = narrationContinuityContext(state, scene, cafe.location, "overnight", input, at);
+  const readset = fittedNarrationReadset(
+    state,
+    prepared,
+    prepared.parts.flatMap((part) => (part.block.evidenceId ? [part.block.evidenceId] : [])),
+  );
+  const raw = {
+    segments: [
+      {
+        id: "offer",
+        kind: "dialogue",
+        speakerId: actorId,
+        text: "Bram, you can use my Guest Room for the rest of your visit.",
+      },
+      {
+        id: "accept",
+        kind: "dialogue",
+        speakerId: visitor.characterId,
+        text: "Yes, I would like that.",
+        requires: ["overnight"],
+      },
+    ],
+    commands: [
+      {
+        id: "overnight",
+        type: "access.decide",
+        by: actorId,
+        venue: home.id,
+        zone: "guest",
+        at: "accept",
+        decision: { outcome: "host-visitor", visitor: visitor.characterId },
+        source: [
+          { segment: "offer", act: "offer" },
+          { segment: "accept", act: "accept" },
+        ],
+      },
+    ],
+  };
+  const wrongTrip = structuredClone(state);
+  wrongTrip.visitors[0].trip.leavesAt = "2026-11-12T17:00:00.000Z";
+  const stale = acceptNarration(wrongTrip, { readset, raw, responseDigest: memoryHash(raw) }, "overnight", at);
+  assert.equal(stale.held, true);
+  assert.equal(wrongTrip.venues[0].access?.permissions.length, 0);
+  const withoutAcceptance = structuredClone(raw);
+  withoutAcceptance.commands[0].source[1].act = "refuse";
+  assert.equal(
+    acceptNarration(
+      structuredClone(state),
+      {
+        readset,
+        raw: withoutAcceptance,
+        responseDigest: memoryHash(withoutAcceptance),
+      },
+      "overnight",
+      at,
+    ).held,
+    true,
+  );
+  const result = acceptNarration(state, { readset, raw, responseDigest: memoryHash(raw) }, "overnight", at);
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert.equal(state.visitors[0].trip.lodging?.venueId, home.id);
+  const guestHome = state.venues.find((venue) => venue.id === home.id)!;
+  assert.equal(guestHome.access!.permissions[0].expiresAt, leavesAt);
+  assert.deepEqual(
+    result.episode?.commandReceipts[0].witnesses.toSorted(),
+    ["player", actorId, visitor.characterId].toSorted(),
+  );
 });

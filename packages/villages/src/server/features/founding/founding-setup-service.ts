@@ -48,6 +48,7 @@ export interface FoundingSetupPorts {
     id: string,
     revision?: number,
   ): Promise<import("../../../shared/contracts/sprites.js").SpriteManagerState | null>;
+  automaticSprites?(id: string): Promise<import("../../../shared/contracts/sprites.js").SpriteManagerState | null>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
@@ -67,6 +68,7 @@ export interface FoundingSetupPorts {
 export function createFoundingSetup({
   peekVillageAuthority,
   preparedSpriteManager,
+  automaticSprites,
   readVillageState,
   mutateVillageState,
   buildVillageSnapshot,
@@ -178,7 +180,10 @@ export function createFoundingSetup({
             async (id) =>
               [
                 id,
-                await preparedSpriteManager?.(id, asRecord(input.foundingSpriteRevisions)[id] as number | undefined),
+                (await preparedSpriteManager?.(
+                  id,
+                  asRecord(input.foundingSpriteRevisions)[id] as number | undefined,
+                )) ?? (await automaticSprites?.(id)),
               ] as const,
           ),
       ),

@@ -143,6 +143,11 @@ const saved = z
             row.source.episodeId === sceneEpisodeId(row.source.seed, row.source.scene.id, row.source.operationId) &&
             Array.isArray(row.source.actors) &&
             row.source.actors.length <= 32 &&
+            z
+              .array(z.object({ characterId: id, arrivedAt: at, leavesAt: at }).strict())
+              .max(32)
+              .optional()
+              .safeParse(row.source.visitorTrips).success &&
             subjects.safeParse(row.source.subjects).success &&
             JSON.stringify(row.source.subjects) === JSON.stringify(row.admission.subjects) &&
             row.source.historical &&

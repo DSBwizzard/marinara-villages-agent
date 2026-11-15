@@ -389,7 +389,8 @@ export function prepareNarrationNative(
         sources,
       };
     }
-    assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
+    if (!(command.type === "access.decide" && command.decision.outcome === "host-visitor"))
+      assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
     if (command.type === "residence.request" || command.type === "residence.decide" || command.type === "venue.request")
       return {
         receipt: applyNarrationResidence(

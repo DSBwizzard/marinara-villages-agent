@@ -10,6 +10,7 @@ import { narrationWitnesses, type NarrationCommunication } from "./narration-sou
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
 import { contactNeighbors } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
+import { clearVisitorLodging, findCardCharacter, guestRoomOffer, visitingCharacter } from "./visitors.js";
 import {
   applyAccessCommand,
   defaultZonePolicy,
@@ -233,7 +234,15 @@ export type NarrationAccessDecision = {
   | {
       type: "access.decide";
       visitor: string;
-      outcome: "invite-now" | "invite-later" | "invite-outside-hours" | "refuse" | "dismiss" | "ban-zone" | "ban-venue";
+      outcome:
+        | "invite-now"
+        | "invite-later"
+        | "invite-outside-hours"
+        | "host-visitor"
+        | "refuse"
+        | "dismiss"
+        | "ban-zone"
+        | "ban-venue";
       accompanies?: boolean;
     }
   | { type: "access.decide"; outcome: "access-management"; management: unknown }
@@ -292,7 +301,7 @@ export function applyNarrationAccess(
   state: VillageState,
   decision: NarrationAccessDecision,
   readset: Pick<NarrationReadset, "setupAt" | "access"> & {
-    source: Pick<NarrationReadset["source"], "seed" | "episodeId">;
+    source: Pick<NarrationReadset["source"], "seed" | "episodeId" | "visitorTrips">;
   },
   context: NarrationCommunication,
   sources: ContinuityEvidence[],
@@ -315,6 +324,67 @@ export function applyNarrationAccess(
       captured.authorities.some((authority) => authority.actorId === decision.by),
     "the captured access authority changed or was not supplied",
   );
+  if (decision.type === "access.decide" && decision.outcome === "host-visitor") {
+    const visitor = visitingCharacter(state, new Date(at));
+    const capturedTrip = readset.source.visitorTrips?.find((trip) => trip.characterId === decision.visitor);
+    const offers = sources.filter((source) => source.actorId === decision.by);
+    const accepts = sources.filter((source) => source.actorId === decision.visitor);
+    memoryRequire(
+      context.visit &&
+        visitor?.characterId === decision.visitor &&
+        capturedTrip &&
+        capturedTrip.arrivedAt === visitor.trip.arrivedAt &&
+        capturedTrip.leavesAt === visitor.trip.leavesAt &&
+        decision.zone &&
+        !decision.accompanies &&
+        offers.length > 0 &&
+        accepts.length > 0 &&
+        offers.length + accepts.length === sources.length &&
+        decision.by !== decision.visitor &&
+        offers.every(
+          (source) =>
+            source.act === "offer" &&
+            source.perceptions.some((row) => row.actorId === decision.visitor && row.channel === "words"),
+        ) &&
+        accepts.every(
+          (source) =>
+            source.act === "accept" &&
+            source.perceptions.some((row) => row.actorId === decision.by && row.channel === "words"),
+        ) &&
+        Math.max(...offers.map((source) => source.moment?.index ?? Infinity)) <
+          Math.min(...accepts.map((source) => source.moment?.index ?? -Infinity)),
+      "lodging needs a witnessed offer followed by the Visitor's acceptance on this trip",
+    );
+    assertNarrationDecision(state, decision.by, context, offers);
+    assertNarrationDecision(state, decision.visitor, context, accepts);
+    const room = guestRoomOffer(state, visitor, new Date(at), decision.by, {
+      venueId: decision.venue,
+      zoneId: decision.zone,
+    });
+    memoryRequire(room, "that overnight room is unavailable");
+    const lineIds = sources.map((source) => source.unitId);
+    clearVisitorLodging(state, visitor);
+    visitor.trip.lodging = room.choice;
+    venue.access.permissions.push({ ...room.grant, id: receiptId, sourceLineIds: lineIds });
+    venue.access.revision++;
+    venue.access.changes.push({
+      id: receiptId,
+      revision: venue.access.revision,
+      actorId: decision.by,
+      zoneId: decision.zone,
+      action: "host-visitor",
+      at,
+      sourceLineIds: lineIds,
+    });
+    return {
+      id: receiptId,
+      kind: "access",
+      targetId: venue.id,
+      revision: venue.access.revision,
+      text: `${visitor.cardSnapshot.name} accepted overnight lodging at ${venue.name}.`,
+      witnesses: narrationWitnesses(sources, ["words"]),
+    };
+  }
   assertNarrationDecision(state, decision.by, context, sources);
   memoryRequire(
     sources.every((source) => source.perceptions.some((row) => row.channel === "words" && row.actorId !== decision.by)),
@@ -409,9 +479,7 @@ export function applyNarrationAccess(
   const person = (id: string) =>
     id === "player"
       ? state.playerPersonaName || state.playerName || "Player"
-      : state.villagers.find((actor) => actor.characterId === id)?.cardSnapshot.name ||
-        findNpc(state, id)?.name ||
-        "Former resident";
+      : findCardCharacter(state, id)?.cardSnapshot.name || findNpc(state, id)?.name || "Former resident";
   const grant = venue.access.permissions.find((grant) => grant.id === receiptId);
   const destination =
     (venue.zones?.find((zone) => zone.id === decision.zone)?.name ?? "the Venue") + " at " + venue.name;
