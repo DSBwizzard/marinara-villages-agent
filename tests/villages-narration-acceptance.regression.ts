@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/spoken-stay, narration-acceptance/conditional-stay
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/spoken-stay, narration-acceptance/conditional-stay, narration-acceptance/shared-offer-head
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -196,6 +196,73 @@ await runCase("narration-acceptance/conditional-stay", () => {
       assert.equal(activeLodging(f.state, "player", new Date("2026-11-10T12:22:00.000Z")), undefined);
       assert.deepEqual(playerAccess(f.state, new Date("2026-11-10T12:22:00.000Z")), []);
     }
+  }
+});
+
+await runCase("narration-acceptance/shared-offer-head", () => {
+  for (const scenario of ["accept", "withdraw", "changed-head", "changed-terms", "other-edit"] as const) {
+    const f = fixture("Yes, that works.");
+    const terms = "Meet by the bench.";
+    const created = f.publication(
+      {
+        segments: [{ ...f.response()[0], text: "Would you meet me by the bench?" }],
+        keep: [
+          {
+            for: [f.id, "player"],
+            class: "commitment",
+            text: terms,
+            offer: { proposer: f.id, participants: [f.id, "player"] },
+            source: [{ segment: "reply", act: "offer" }],
+          },
+        ],
+      },
+      "open-offer",
+    );
+    assert.equal(acceptNarrationContinuity(f.state, created, "open-offer", at).held, false);
+    const root = f.state.continuity.records[0];
+    const playerKey = continuityHolderKey(continuityActor(f.state, "player")!);
+    const hostKey = continuityHolderKey(continuityActor(f.state, f.id)!);
+    const decision = f.publication({ segments: f.response(), keep: [] }, "decide-offer", true, later);
+    const fit = decision.readset.admission.supplied.find((row) => row.id === root.id)!;
+    assert(fit.heads[hostKey]);
+    const alias = Object.entries(decision.readset.source.historical).find(
+      ([, source]) => source.kind === "knowledge" && source.unitId === root.heads[hostKey].versionId,
+    )?.[0];
+    assert(alias);
+    delete fit.heads[playerKey];
+    decision.readset.ordinaryDialogue = true;
+    if (scenario === "changed-head") fit.recordRevision++;
+    if (scenario === "changed-terms")
+      f.state.continuity = {
+        ...f.state.continuity,
+        versions: f.state.continuity.versions.map((version) =>
+          version.id === root.heads[playerKey].versionId ? { ...version, text: "Meet by the river." } : version,
+        ),
+      };
+    decision.raw.keep = [
+      {
+        replace: alias,
+        for: ["player", f.id],
+        ...(scenario === "withdraw" ? { closeOffer: { by: "player", reason: "withdrawn" } } : { accept: "player" }),
+        ...(scenario === "other-edit" ? { current: false } : {}),
+        source: [
+          {
+            input: f.input,
+            ground: { kind: "spoken", to: [f.id, "player"] },
+            act: scenario === "withdraw" ? "withdraw" : "accept",
+          },
+        ],
+      },
+    ];
+    const result = acceptNarrationContinuity(f.state, decision, "decide-offer", later);
+    const held = scenario !== "accept" && scenario !== "withdraw";
+    assert.equal(result.held, held, JSON.stringify(result.rejected));
+    const offer = f.state.continuity.records[0].offer!;
+    assert.deepEqual(
+      offer.events.map(({ act }) => act),
+      held ? ["offer"] : ["offer", scenario],
+    );
+    if (!held) assert(acceptNarrationContinuity(f.state, decision, "decide-offer", later).replayed);
   }
 });
 
