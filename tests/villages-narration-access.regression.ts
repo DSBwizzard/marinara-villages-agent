@@ -657,7 +657,22 @@ await runCase("narration-access/overnight-agreement", () => {
   wrongTrip.visitors[0].trip.leavesAt = "2026-11-12T17:00:00.000Z";
   const stale = acceptNarration(wrongTrip, { readset, raw, responseDigest: memoryHash(raw) }, "overnight", at);
   assert.equal(stale.held, true);
-  assert.equal(wrongTrip.venues[0].access?.permissions.length, 0);
+  assert.equal(wrongTrip.venues.find((venue) => venue.id === home.id)?.access?.permissions.length, 0);
+  for (const text of ["You can use my Guest Room tonight only.", "You can use my Study for the rest of your visit."]) {
+    const wrongOffer = structuredClone(raw);
+    wrongOffer.segments[0].text = text;
+    const result = acceptNarration(
+      structuredClone(state),
+      {
+        readset,
+        raw: wrongOffer,
+        responseDigest: memoryHash(wrongOffer),
+      },
+      "overnight",
+      at,
+    );
+    assert.equal(result.held, true, text);
+  }
   const withoutAcceptance = structuredClone(raw);
   withoutAcceptance.commands[0].source[1].act = "refuse";
   assert.equal(
