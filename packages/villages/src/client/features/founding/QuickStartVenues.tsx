@@ -289,12 +289,12 @@ export function QuickStartVenues({
               <div className={`${P}-venue-profile-body`}>
                 <FoundingGuide>
                   {section === "about"
-                    ? "Open Zones to edit the spaces inside this Venue."
+                    ? "Open Zones to edit the spaces inside this Venue. Yes, even the suspicious little cupboard."
                     : section === "manage"
-                      ? "Connect the Zones so people can reach them from the entrance."
+                      ? "Connect the Zones so people can get there from the entrance. Walls are famously uncooperative."
                       : zoneDetails
-                        ? "Someone can sleep in a shared space. Choose visitor access separately."
-                        : "Choose a Zone to see who uses it."}
+                        ? "Who sleeps here, whose space it is, and who gets in are three separate choices. People are complicated."
+                        : "Pick a Zone to see who uses it. I’m curious, too."}
                 </FoundingGuide>
                 {section === "about" ? (
                   <section aria-label="About this Venue">

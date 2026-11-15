@@ -526,9 +526,9 @@ export function FoundingScreen({
             {
               [
                 "",
-                "Who’s here when the village begins? Choose your villagers and how they’ll appear when you meet them in a Scene.",
-                "Open a Venue from the map or the list. Its Zones show where people can sleep and visit.",
-                "Check where everyone lives and sleeps. If there’s something happening on the first day, add it here.",
+                "Right, the good part. Pick your starting villagers and set up their sprites. I want to see who’s showing up in Scenes.",
+                "Open a Venue from the map or list. Its Zones are where people visit and sleep. Yes, the couch counts.",
+                "Last check. Look at where everyone lives and sleeps. If day one already has drama, add it under First day.",
               ][setupStep]!
             }
           </FoundingGuide>
@@ -696,8 +696,8 @@ export function FoundingScreen({
               <div className="villages-setting-editor-guide">
                 <FoundingGuide pose={hasSettingDraft ? "happy" : "neutral"}>
                   {hasSettingDraft
-                    ? "Here’s your setting so far. Change anything you’d like."
-                    : "Start with a village name and the place where we’ll meet your villagers."}
+                    ? "Go ahead and change anything. I’m very brave about edits. Mostly."
+                    : "Start with a name and a place to meet the locals. A working name will do."}
                 </FoundingGuide>
               </div>
               {suggestionCount > 0 ? (

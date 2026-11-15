@@ -53,16 +53,17 @@ export function FoundingSettingScene({
   const pickedBooks = controller.setupLorebookDraft.length;
   const dialogue = {
     welcome:
-      "Villages is about sharing life with a community. It could be a town, a ship’s crew, or the people in one building. We’ll start with their world, then choose who lives there and where they spend their days.",
-    world: "What’s the larger world like? A sentence is plenty. It’ll help me suggest a place that fits.",
+      "All right, class. In Villages, you live alongside a community. A ship’s crew counts. So does one suspiciously dramatic apartment building. We’ll start with their world, then pick the people and places.",
+    world:
+      "Give me a sentence about the wider world. It’ll help me draft a starting place that fits. Save volume twelve for office hours.",
     lorebooks:
-      "Do you have any lorebooks about this world or its people? I can use the entries that fit your idea when I draft.",
+      "Got lorebooks about this world or its people? Pick what you want me to read. I’ll use the relevant bits in your draft. Yes, the reading is optional.",
     village:
       setupSuggestionsBusy && waitingForMari
-        ? "I’m putting those details together. You can keep editing your setting."
+        ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
         : drafted
-          ? "What would you change about the village name, starting location, or description?"
-          : "Tell me about the village itself. I can use what you share to draft its name and starting location.",
+          ? "There’s your draft. Go ahead and meddle with the name, starting location, or description. That’s the fun bit."
+          : "Where do these people call home? Give me the messy version. I’ll draft the name, starting location, and description.",
   }[beat];
   return (
     <section className="villages-setting-guide" aria-label="Professor Mari">

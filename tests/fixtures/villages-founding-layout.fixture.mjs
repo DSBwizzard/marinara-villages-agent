@@ -402,7 +402,7 @@ export async function verifyFoundingLayout(group) {
         const stage = root.locator(".villages-setting-stage");
         const phone = view.width <= 727;
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
-        await expect(scene).toContainText("Villages is about sharing life with a community");
+        await expect(scene).toContainText("you live alongside a community");
         await expect(button("Draft with Mari")).toHaveCount(0);
         if (!phone) {
           const sprite = stage.locator("img");
