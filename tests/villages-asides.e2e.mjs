@@ -140,6 +140,7 @@ await withBrowser(browser, async () => {
     const npc = page.locator('[data-character-id="npc:eli"][data-sprite="true"] > img[data-npc-sprite]');
     await expect(npc).toBeVisible();
     await expect.poll(() => npc.evaluate((image) => image.naturalHeight)).toBe(768);
+    await expect(npc).toHaveCSS("opacity", "0.78");
     await expect(band.locator('[data-register="whisper"] img[data-npc-sprite]')).toHaveAttribute(
       "src",
       /npc-silhouette\.webp$/,
