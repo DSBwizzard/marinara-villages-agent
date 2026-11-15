@@ -536,15 +536,22 @@ export async function verifyFoundingLayout(group) {
           await expect(root.getByLabel("Location name", { exact: true })).toBeFocused();
         }
         if (draftWithLore) {
-          if (phone) await root.getByLabel("Location name", { exact: true }).fill("A place I chose while Mari drafted");
+          await root.getByLabel("Location name", { exact: true }).fill("My starting location");
           await returnToMari();
           if (phone) await expect(button("Edit setting")).toBeFocused();
           const originalStage = await stage.boundingBox();
           await root.getByLabel("Tell Mari about your village").fill("Our village is a converted cargo ship.");
           await button("Draft with Mari").click();
+          await expect(scene).toContainText("I’ll replace what’s in your setting");
+          assert.equal(settingCalls, 0, "Mari asks before sending a replacement request");
+          await button("Keep my setting").click();
+          await expect(button("Draft with Mari")).toBeFocused();
+          if (!phone) await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Coastal Community");
+          assert.equal(settingCalls, 0, "Keeping the setting does not send a request");
+          await button("Draft with Mari").click();
+          await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(1);
-          if (!phone)
-            await root.getByLabel("Location name", { exact: true }).fill("A place I chose while Mari drafted");
+          if (!phone) await root.getByLabel("Location name", { exact: true }).fill("");
           else await expect(settingPanel).toBeHidden();
           settingReady = true;
           if (phone) {
@@ -557,15 +564,8 @@ export async function verifyFoundingLayout(group) {
           await expect(root.getByLabel("Location description", { exact: true })).toHaveValue(
             "A shared galley aboard a cargo ship.",
           );
-          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Coastal Community");
-          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue(
-            "A place I chose while Mari drafted",
-          );
-          const suggestion = (value) => root.locator(".villages-setting-proposal").filter({ hasText: value });
-          await button("Review Mari’s suggestions").click();
-          await suggestion("Wayfarer").getByRole("button", { name: "Dismiss" }).click();
-          await suggestion("Main Deck").getByRole("button", { name: "Use suggestion" }).click();
-          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
+          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Wayfarer");
+          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue(phone ? "Main Deck" : "");
           assert.equal(settingCalls, 1, "One explicit action dispatches one request");
           await expect
             .poll(() =>
@@ -574,19 +574,13 @@ export async function verifyFoundingLayout(group) {
               ),
             )
             .toBe(true);
-          const editorHeightWithoutSuggestions = () =>
-            settingPanel.evaluate((panel) => {
-              const control = panel.querySelector(".villages-setting-instruction");
-              const style = control && getComputedStyle(control);
-              const height = control ? control.getBoundingClientRect().height : 0;
-              const margins = style ? parseFloat(style.marginTop) + parseFloat(style.marginBottom) : 0;
-              return panel.getBoundingClientRect().height - height - margins;
-            });
-          const originalEditorHeight = await editorHeightWithoutSuggestions();
+          const originalEditorHeight = (await settingPanel.boundingBox()).height;
           await returnToMari();
           const draftedStageHeight = (await stage.boundingBox()).height;
           await root.getByLabel("Tell Mari about your village").fill("Our village is inside a dumpster.");
           await button("Draft again with Mari").click();
+          await expect(scene).toContainText("I’ll replace what’s in your setting");
+          await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(2);
           if (phone) {
             await expect(settingPanel.getByRole("heading")).toBeFocused();
@@ -599,15 +593,14 @@ export async function verifyFoundingLayout(group) {
             "Another draft keeps Mari’s stage at the same size",
           );
           await openSetting();
-          await expect(button("Review Mari’s suggestions")).toContainText("3");
-          const updatedEditorHeight = await editorHeightWithoutSuggestions();
-          assert.ok(updatedEditorHeight <= originalEditorHeight + 1, "Long alternatives must not expand the editor");
-          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Coastal Community");
-          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
-          await button("Review Mari’s suggestions").click();
-          await expect(suggestion("Scavenger Rim")).toBeVisible();
-          await page.keyboard.press("Escape");
-          await expect(button("Review Mari’s suggestions")).toBeFocused();
+          await expect(button("Review Mari’s suggestions")).toHaveCount(0);
+          const updatedEditorHeight = (await settingPanel.boundingBox()).height;
+          assert.ok(updatedEditorHeight <= originalEditorHeight + 1, "A long draft must not expand the editor");
+          await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Glimmerdump");
+          await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Scavenger Rim");
+          await expect(root.getByLabel("Location description", { exact: true })).toHaveValue(
+            "Lanterns hang from the lip of the bin. ".repeat(90),
+          );
           if (phone) {
             await returnToMari();
             await scene.getByRole("button", { name: "Back", exact: true }).click();
@@ -623,7 +616,7 @@ export async function verifyFoundingLayout(group) {
               await page.reload();
               await page.addScriptTag({ content: foundingBundle });
               await expect(settingPanel.getByRole("heading")).toBeFocused();
-              await expect(settingPanel.getByLabel("Location name", { exact: true })).toHaveValue("Main Deck");
+              await expect(settingPanel.getByLabel("Location name", { exact: true })).toHaveValue("Scavenger Rim");
             }
           }
         }
@@ -1088,7 +1081,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("review");
         await button("Found village").click();
         await expect.poll(() => payload).toBeTruthy();
-        assert.equal(payload.name, "Coastal Community");
+        assert.equal(payload.name, draftWithLore ? "Glimmerdump" : "Coastal Community");
         assert.equal(payload.timeZone, snapshot.clock?.timeZone || snapshot.village.timeZone);
         assert.equal(
           payload.startingLocationName,

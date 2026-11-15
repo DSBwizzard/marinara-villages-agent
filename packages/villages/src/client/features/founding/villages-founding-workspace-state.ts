@@ -24,6 +24,7 @@ export type FoundingWorkspaceState = {
     fullVenue?: boolean;
     draftEntranceImage?: boolean;
     draftSetting?: boolean;
+    settingReplacement?: FoundingSetting;
     failure?: string;
   };
 

@@ -3,6 +3,7 @@ import { reconcileFoundingHome } from "./founding-homes.js";
 import { applyFoundingVenueDraft, foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
+import type { FoundingSetting } from "../../../shared/contracts/founding.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
@@ -40,15 +41,19 @@ export function createFoundingDraftSetting(
     setupDraftData: import("./draft-model.js").SetupDraftData;
   },
 ) {
-  return async (userInitiated: boolean, signal = ports.signal) => {
+  return async (mode: "request" | "replace" | "recover", signal = ports.signal) => {
     const { setupWorkspace, setSetupWorkspace, setupSuggestionsClaim, setSetupSuggestionsBusy } = ports;
     const request = setupWorkspace.suggestionRequest;
     const pending = request && !request.failure ? request : undefined;
-    if (setupSuggestionsClaim.current || (pending && !pending.draftSetting) || (!pending && !userInitiated)) return;
+    if (setupSuggestionsClaim.current || (pending && !pending.draftSetting) || (!pending && mode === "recover")) return;
     if (!pending && !setupWorkspace.settingBrief?.trim()) return;
+    const { name, startingLocationName, setting: description, worldName, context } = ports.setupDraftData;
+    const current = { name, startingLocationName, description, worldName, rules: context?.rules ?? "" };
+    if (!pending && mode !== "replace" && Object.values(current).some((value) => value.trim())) return;
+    const baseline = pending ? pending.settingReplacement : current;
     setupSuggestionsClaim.current = true;
     setSetupSuggestionsBusy(true);
-    if (userInitiated) setSetupWorkspace((workspace) => ({ ...workspace, settingProblem: undefined }));
+    if (mode !== "recover") setSetupWorkspace((workspace) => ({ ...workspace, settingProblem: undefined }));
     try {
       const input = pending
         ? JSON.parse(pending.sourceInputs ?? "null")
@@ -61,17 +66,19 @@ export function createFoundingDraftSetting(
           };
       const { setting } = await requestFoundingSuggestions(
         { ...ports, signal, setupBeginningSourceKey: "founding-setting" },
-        { draftSetting: true, checkSetting: userInitiated },
+        { draftSetting: true, checkSetting: mode !== "recover", settingReplacement: baseline },
         input,
       );
       signal?.throwIfAborted();
       if (!setting) throw new Error("The saved attempt has no setting draft.");
       // Fields may have been edited while Mari was working, including after a reload.
-      ports.setSetupName((value) => (value.trim() ? value : setting.name));
-      ports.setSetupLocationName((value) => (value.trim() ? value : setting.startingLocationName));
-      ports.setSetupSetting((value) => (value.trim() ? value : setting.description));
-      ports.setSetupWorldName((value) => (value.trim() ? value : setting.worldName));
-      ports.setSetupContext((context) => (context.rules.trim() ? context : { ...context, rules: setting.rules }));
+      const apply = (field: keyof FoundingSetting, value: string) =>
+        (baseline ? value === baseline[field] : !value.trim()) ? setting[field] : value;
+      ports.setSetupName((value) => apply("name", value));
+      ports.setSetupLocationName((value) => apply("startingLocationName", value));
+      ports.setSetupSetting((value) => apply("description", value));
+      ports.setSetupWorldName((value) => apply("worldName", value));
+      ports.setSetupContext((context) => ({ ...context, rules: apply("rules", context.rules) }));
       setSetupWorkspace((workspace) => ({
         ...workspace,
         settingBeat: "village",

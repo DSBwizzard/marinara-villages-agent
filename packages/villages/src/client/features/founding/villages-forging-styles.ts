@@ -593,25 +593,21 @@ export const VILLAGES_FORGING_STYLES = `
   box-shadow:0 .65rem 2rem #170f2859;
 }
 .villages-setting-dialogue { position:relative; min-width:0; }
-.villages-setting-dialogue>strong,.villages-setting-proposal>strong { color:#efb6bc; font-size:.85rem; }
+.villages-setting-dialogue>strong { color:#efb6bc; font-size:.85rem; }
 .villages-setting-dialogue p { margin:.2rem 0 .35rem; line-height:1.4; }
 .villages-setting-dialogue form { margin-top:.7rem; border-top:1px solid #ad839b62; }
 .villages-setting-dialogue .villages-founding-field { margin:.5rem 0; }
 .villages-setting-lore-notice { color:#e8b9c2; font-size:.85rem; }
 .villages-setting-dialogue-actions .villages-founding-next-reply { margin-inline-start:auto; }
 .villages-forging-v2 :is(.villages-setting-edit-link,.villages-setting-done,.villages-setting-editor-guide,.villages-setting-editor-next) { display:none; }
-.villages-setting-dialogue-actions,.villages-setting-proposal>div { display:flex; flex-wrap:wrap; gap:.4rem; }
+.villages-setting-dialogue-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
 .villages-forging-v2 .villages-place-panels>.villages-founding-setting { height:auto; min-height:0; overflow:visible; margin:clamp(.35rem,5dvh,3rem) 0 0; }
 .villages-founding-setting h2 { font:500 clamp(1.45rem,3vw,2rem)/1.15 "village-letter-lora",Georgia,serif; color:#f4e5c8; margin:0; letter-spacing:-.035em; }
-.villages-setting-instruction { display:flex; align-items:center; min-height:44px; margin:.25rem 0 .65rem; color:#ded0c2; font-size:.86rem; }
 .villages-forging-v2 .villages-place-panels .villages-founding-field+.villages-founding-field { border-top:0; padding-top:0; }
 .villages-place-panels .villages-founding-field :is(input,textarea) { background:#3c3049; border-color:#9b768c; margin-top:.25rem; }
 .villages-forging-v2 .villages-place-panels textarea { resize:vertical; }
 .villages-founding-setting .villages-place-options { margin-top:.9rem; border-top:1px solid #ad839b62; padding-top:.7rem; }
 .villages-place-options button[aria-expanded=true] { background:#83576b; border-color:#d29399; }
-.villages-forging-v2 button.villages-setting-suggestions { color:#f5bbc5; background:#422e48; border-color:#ba8198; padding:.35rem .6rem; font-size:.86rem; }
-.villages-setting-proposal { padding:.65rem .75rem; margin:.35rem 0 .65rem; border-left:2px solid #d29399; background:#51415766; overflow-wrap:anywhere; }
-.villages-setting-proposal p { margin:.35rem 0 .55rem; white-space:pre-wrap; }
 @media(prefers-reduced-motion:no-preference) {
   .villages-setting-stage img { animation:villages-mari-arrive .2s ease-out; }
   .villages-forging-v2[data-scene-arrival]::before {

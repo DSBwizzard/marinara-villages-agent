@@ -1,7 +1,7 @@
 import { request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SetupDraftData } from "./draft-model.js";
-import type { FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
+import type { FoundingSetting, FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
 import type { FoundingState } from "./useFoundingState.js";
 
 export type FoundingSuggestionOptions = {
@@ -12,6 +12,7 @@ export type FoundingSuggestionOptions = {
   draftEntranceImage?: boolean;
   draftSetting?: boolean;
   checkSetting?: boolean;
+  settingReplacement?: FoundingSetting;
 };
 type Result = FoundingSuggestionsResult;
 type Receipt = {
@@ -49,7 +50,7 @@ export async function requestFoundingSuggestions(
     ...(options?.separateHomes ? { separateHomes: true, sourceVenues: JSON.stringify(setupDraftData.venues) } : {}),
     venueId: options?.venueId,
     ...(options?.fullVenue ? { fullVenue: true, draftEntranceImage: !!options.draftEntranceImage } : {}),
-    ...(options?.draftSetting ? { draftSetting: true } : {}),
+    ...(options?.draftSetting ? { draftSetting: true, settingReplacement: options.settingReplacement } : {}),
     ...((!options?.quickStart && options?.venueId) || options?.separateHomes || options?.draftSetting
       ? { sourceInputs: JSON.stringify(input) }
       : {}),

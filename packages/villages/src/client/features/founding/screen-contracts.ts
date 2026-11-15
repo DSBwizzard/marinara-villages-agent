@@ -125,6 +125,7 @@ export type FoundingScreenController = {
   readonly setupShowIssues: FoundingState["setupShowIssues"];
   readonly setupStep: FoundingState["setupStep"];
   readonly setupSuggestionsBusy: FoundingState["setupSuggestionsBusy"];
+  readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
   readonly setupSuggestionsKey: FoundingState["setupSuggestionsKey"];
   readonly setupVenueBusy: FoundingState["setupVenueBusy"];
   readonly setupVenues: FoundingState["setupVenues"];

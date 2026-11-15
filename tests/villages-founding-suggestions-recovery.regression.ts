@@ -422,23 +422,68 @@ try {
     });
   };
   const noop = () => undefined;
-  const resume = createFoundingDraftSetting({
+  let name = "My village";
+  let location = "My quay";
+  const settingPorts: Parameters<typeof createFoundingDraftSetting>[0] = {
     ...clientPorts,
     setupWorkspace: workspace,
+    setupDraftData: { name, startingLocationName: location, setting: "", worldName: "", context: { rules: "" } },
     setupLorebookDraft: ["new-book"],
     setupLoreTokenBudgetDraft: 1800,
     setupSuggestionsClaim: { current: false },
     setSetupSuggestionsBusy: noop,
-    setSetupName: noop,
-    setSetupLocationName: noop,
+    setSetupName: (update) => {
+      name = typeof update === "function" ? update(name) : update;
+    },
+    setSetupLocationName: (update) => {
+      location = typeof update === "function" ? update(location) : update;
+    },
     setSetupSetting: noop,
     setSetupWorldName: noop,
     setSetupContext: noop,
-  });
-  await resume(false);
+  };
+  const resume = createFoundingDraftSetting(settingPorts);
+  await resume("recover");
   assert.equal(settingPosts, 0, "Automatic recovery only reads the saved attempt");
-  await resume(true);
+  await resume("request");
   assert.equal(settingPosts, 1, "Explicit resume keeps the original lore selection and request ID");
+  assert.equal(name, "My village", "An older request cannot replace existing text without confirmation");
+  assert.equal(workspace.suggestionRequest, undefined);
+
+  workspace = { ...emptyFoundingWorkspace(), settingBrief: "A new village" };
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method, "POST");
+    settingPosts++;
+    assert.equal(persisted.workspace.suggestionRequest.settingReplacement.name, "My village");
+    assert.equal(persisted.workspace.suggestionRequest.settingReplacement.startingLocationName, "My quay");
+    assert.equal(JSON.parse(String(init?.body)).settingReplacement, undefined);
+    throw new TypeError("Synthetic lost connection after admission");
+  };
+  const draft = createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace });
+  await draft("request");
+  assert.equal(settingPosts, 1, "A populated setting needs confirmation");
+  await draft("replace");
+  assert.equal(settingPosts, 2);
+  assert.equal(name, "My village", "A lost response leaves the setting alone");
+  location = "";
+  const pending = persisted.workspace.suggestionRequest;
+  workspace = persisted.workspace;
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method ?? "GET", "GET");
+    return Response.json({
+      id: pending.id,
+      sourceKey: pending.sourceKey,
+      status: "complete",
+      result: {
+        venues: [],
+        setting: { name: "New village", startingLocationName: "New quay", description: "", worldName: "", rules: "" },
+      },
+      error: "",
+    });
+  };
+  await createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace })("recover");
+  assert.equal(name, "New village", "A recovered result honors the original replacement confirmation");
+  assert.equal(location, "", "Recovery preserves a field cleared after confirmation");
   assert.equal(workspace.suggestionRequest, undefined);
   lost = false;
 } finally {

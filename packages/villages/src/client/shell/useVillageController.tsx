@@ -506,7 +506,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     (signal) => {
       const pending = founding.setupWorkspace.suggestionRequest;
       if (pending && !pending.failure)
-        return pending.draftSetting ? draftSetupSetting(false, signal) : suggestSetupVenues(undefined, signal);
+        return pending.draftSetting ? draftSetupSetting("recover", signal) : suggestSetupVenues(undefined, signal);
     },
     founding.setupWorkspace.suggestionRequest && !founding.setupWorkspace.suggestionRequest.failure ? 2000 : null,
     visible && screen === "setup",

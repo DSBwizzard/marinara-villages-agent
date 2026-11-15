@@ -1,5 +1,5 @@
-import { FOUNDING_SETTING_BRIEF_LIMIT, type FoundingSetting } from "../../../shared/contracts/founding.js";
-import { useEffect, useRef, type ReactNode, type Ref } from "react";
+import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding.js";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { FoundingField } from "./FoundingField.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
@@ -31,10 +31,15 @@ export function FoundingSettingScene({
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const lineRef = useRef<HTMLParagraphElement>(null);
+  const draftButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (enteringScene) lineRef.current?.focus({ preventScroll: true });
   }, [enteringScene]);
+  useEffect(() => {
+    if (confirmReplace) lineRef.current?.focus();
+  }, [confirmReplace]);
   const moveTo = (settingBeat: SettingBeat) => {
     const openEditor =
       settingBeat === "village" &&
@@ -56,6 +61,12 @@ export function FoundingSettingScene({
   const brief = setupWorkspace.settingBrief ?? "";
   const world = setupWorkspace.settingWorldBrief ?? "";
   const pickedBooks = controller.setupLorebookDraft.length;
+  const canDraft =
+    !!brief.trim() &&
+    !controller.busy &&
+    !setupSuggestionsBusy &&
+    !controller.draftSaveError &&
+    (!pending || waitingForMari);
   const dialogue = {
     welcome:
       "Hey, you made it. I’m Mari. In Villages, you live alongside a community. A ship’s crew counts. So does one suspiciously dramatic apartment building. We’ll start with their world, then pick the people and places.",
@@ -63,8 +74,9 @@ export function FoundingSettingScene({
       "Give me a sentence about the wider world. It’ll help me draft a starting place that fits. Save volume twelve for office hours.",
     lorebooks:
       "Got lorebooks about this world or its people? Pick what you want me to read. I’ll use the relevant bits in your draft. Yes, the reading is optional.",
-    village:
-      setupSuggestionsBusy && waitingForMari
+    village: confirmReplace
+      ? "Hang on, there’s already something here. If I draft it again, I’ll replace what’s in your setting, including any world name and rules. Want me to go ahead?"
+      : setupSuggestionsBusy && waitingForMari
         ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
         : drafted
           ? "There’s your draft. Go ahead and meddle with the name, starting location, or description. That’s the fun bit."
@@ -133,12 +145,47 @@ export function FoundingSettingScene({
             </button>
           </div>
         ) : null}
-        {beat === "village" ? (
+        {beat === "village" && confirmReplace ? (
+          <div className="villages-founding-replies">
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmReplace(false);
+                requestAnimationFrame(() => draftButton.current?.focus());
+              }}
+            >
+              Keep my setting
+            </button>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              disabled={!canDraft}
+              onClick={() => {
+                setConfirmReplace(false);
+                void draftSetupSetting("replace");
+              }}
+            >
+              Replace and draft
+            </button>
+          </div>
+        ) : null}
+        {beat === "village" && !confirmReplace ? (
           <form
             autoComplete="off"
             onSubmit={(event) => {
               event.preventDefault();
-              void draftSetupSetting(true);
+              if (!canDraft) return;
+              const { setupName, setupLocationName, setupSetting, setupWorldName, setupContext } = controller;
+              if (
+                !waitingForMari &&
+                [setupName, setupLocationName, setupSetting, setupWorldName, setupContext.rules].some((value) =>
+                  value.trim(),
+                )
+              ) {
+                setConfirmReplace(true);
+              } else {
+                void draftSetupSetting("request");
+              }
             }}
           >
             <FoundingField title="Tell Mari about your village">
@@ -175,17 +222,7 @@ export function FoundingSettingScene({
               >
                 Back
               </button>
-              <button
-                type="submit"
-                className="villages-forging-primary"
-                disabled={
-                  !brief.trim() ||
-                  controller.busy ||
-                  setupSuggestionsBusy ||
-                  !!controller.draftSaveError ||
-                  (!!pending && !waitingForMari)
-                }
-              >
+              <button type="submit" ref={draftButton} className="villages-forging-primary" disabled={!canDraft}>
                 {setupSuggestionsBusy && waitingForMari
                   ? "Drafting…"
                   : waitingForMari
@@ -210,13 +247,14 @@ export function FoundingSettingScene({
               {waitingForMari && !setupSuggestionsBusy ? (
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    if (controller.setupSuggestionsClaim.current) return;
                     setSetupWorkspace((workspace) =>
                       workspace.suggestionRequest?.id === request.id
                         ? { ...workspace, suggestionRequest: undefined, settingProblem: undefined }
                         : workspace,
-                    )
-                  }
+                    );
+                  }}
                 >
                   Dismiss request
                 </button>
@@ -227,35 +265,5 @@ export function FoundingSettingScene({
         ) : null}
       </div>
     </section>
-  );
-}
-
-export function SettingProposal({
-  proposal,
-  title,
-  value,
-  onUse,
-  onDismiss,
-}: {
-  proposal: FoundingSetting[keyof FoundingSetting] | undefined;
-  title: string;
-  value: string;
-  onUse(value: string): void;
-  onDismiss(): void;
-}) {
-  if (!proposal || proposal === value) return null;
-  return (
-    <div className="villages-setting-proposal">
-      <strong>{title}</strong>
-      <p>{proposal}</p>
-      <div>
-        <button type="button" onClick={() => onUse(proposal)}>
-          Use suggestion
-        </button>
-        <button type="button" onClick={onDismiss}>
-          Dismiss
-        </button>
-      </div>
-    </div>
   );
 }

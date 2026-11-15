@@ -17,8 +17,7 @@ import {
 } from "../../../shared/helpers/founding-circumstance.js";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide } from "./FoundingGuide.js";
-import { FoundingSettingScene, SettingProposal, settingBeat } from "./FoundingSettingScene.js";
-import type { FoundingSetting } from "../../../shared/contracts/founding.js";
+import { FoundingSettingScene, settingBeat } from "./FoundingSettingScene.js";
 import {
   FoundingPersonaSelector,
   FoundingVillagerPicker,
@@ -162,7 +161,6 @@ export function FoundingScreen({
     [setSetupWorkspace],
   );
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
-  const [settingSuggestionsOpen, setSettingSuggestionsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
   useLetterFont(screen === "setup" ? "lora" : undefined);
@@ -309,40 +307,6 @@ export function FoundingScreen({
       id,
       name: catalog?.find((person) => person.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
     }));
-    const dismissSetting = (key: keyof FoundingSetting) => {
-      setSetupWorkspace((workspace) => {
-        if (!workspace.settingDraft?.[key]) return workspace;
-        return { ...workspace, settingDraft: { ...workspace.settingDraft, [key]: undefined } };
-      });
-    };
-    const proposeSetting = (key: keyof FoundingSetting, title: string, value: string, set: (value: string) => void) => (
-      <SettingProposal
-        key={key}
-        title={title}
-        proposal={setupWorkspace.settingDraft?.[key]}
-        value={value}
-        onUse={(next) => {
-          set(next);
-          if (suggestionCount === 1) setSettingSuggestionsOpen(false);
-          dismissSetting(key);
-        }}
-        onDismiss={() => {
-          if (suggestionCount === 1) setSettingSuggestionsOpen(false);
-          dismissSetting(key);
-        }}
-      />
-    );
-    const setting = {
-      name: setupName,
-      startingLocationName: setupLocationName,
-      description: setupSetting,
-      worldName: setupWorldName,
-      rules: setupContext.rules,
-    };
-    const suggestionCount = (Object.keys(setting) as (keyof FoundingSetting)[]).filter((key) => {
-      const proposal = setupWorkspace.settingDraft?.[key];
-      return proposal && proposal !== setting[key];
-    }).length;
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);
     const setupIssues = foundingVenueIssues(setupVenues, false);
@@ -606,24 +570,6 @@ export function FoundingScreen({
             </footer>
           </FoundingDialog>
         ) : null}
-        {setupStep === 0 && settingSuggestionsOpen && suggestionCount > 0 ? (
-          <FoundingDialog title="Mari’s suggestions" onClose={() => setSettingSuggestionsOpen(false)}>
-            <div className="villages-founding-editor-body">
-              {proposeSetting("name", "Village name", setupName, setSetupName)}
-              {proposeSetting("startingLocationName", "Starting location", setupLocationName, setSetupLocationName)}
-              {proposeSetting("description", "Location description", setupSetting, setSetupSetting)}
-              {proposeSetting("worldName", "World name", setupWorldName, setSetupWorldName)}
-              {proposeSetting("rules", "World rules", setupContext.rules, (rules) =>
-                setSetupContext((context) => ({ ...context, rules })),
-              )}
-            </div>
-            <footer>
-              <button type="button" onClick={() => setSettingSuggestionsOpen(false)}>
-                Done
-              </button>
-            </footer>
-          </FoundingDialog>
-        ) : null}
         <main className="villages-forging-body" data-step={setupStep} ref={bodyRef}>
           <div hidden={setupStep !== 1}>
             <div className="villages-forging-columns villages-people-columns">
@@ -737,17 +683,6 @@ export function FoundingScreen({
                     : "Start with a name and a place to meet the locals. A working name will do."}
                 </FoundingGuide>
               </div>
-              {suggestionCount > 0 ? (
-                <div className="villages-setting-instruction">
-                  <button
-                    type="button"
-                    className="villages-setting-suggestions"
-                    onClick={() => setSettingSuggestionsOpen(true)}
-                  >
-                    Review Mari’s suggestions <span aria-hidden="true">· {suggestionCount}</span>
-                  </button>
-                </div>
-              ) : null}
               <FoundingField
                 title="Village name"
                 error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
@@ -760,7 +695,6 @@ export function FoundingScreen({
                   disabled={busy}
                   onChange={(event) => {
                     setSetupName(event.target.value);
-                    dismissSetting("name");
                     clearFieldValidation("place-name");
                   }}
                 />
@@ -781,7 +715,6 @@ export function FoundingScreen({
                   disabled={busy}
                   onChange={(event) => {
                     setSetupLocationName(event.target.value);
-                    dismissSetting("startingLocationName");
                     clearFieldValidation("location-name");
                   }}
                 />
@@ -799,7 +732,6 @@ export function FoundingScreen({
                   disabled={busy}
                   onChange={(event) => {
                     setSetupSetting(event.target.value);
-                    dismissSetting("description");
                     clearFieldValidation("place-setting");
                   }}
                 />
@@ -836,10 +768,7 @@ export function FoundingScreen({
                           maxLength={120}
                           value={setupWorldName}
                           disabled={busy}
-                          onChange={(event) => {
-                            setSetupWorldName(event.target.value);
-                            dismissSetting("worldName");
-                          }}
+                          onChange={(event) => setSetupWorldName(event.target.value)}
                         />
                       </FoundingField>
                       <FoundingField title="World rules" optional>
@@ -853,7 +782,6 @@ export function FoundingScreen({
                           onChange={(event) => {
                             const rules = event.currentTarget.value;
                             setSetupContext((context) => ({ ...context, rules }));
-                            dismissSetting("rules");
                           }}
                         />
                       </FoundingField>
