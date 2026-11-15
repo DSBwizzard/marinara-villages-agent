@@ -12,6 +12,7 @@ import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { useContext } from "react";
 import { DeskLeaveGuard } from "../../shared/DeskWorkspace.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
+import { VisitorProfileControls } from "./VisitorControls.js";
 
 export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
   const navigationLifetime = useVillageMutationLifetime(controller.snapshot?.isFounded);
@@ -63,7 +64,8 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
   // RENDERED. It is the same promise the places list already makes about pictures:
   // nothing in this village happens because the player looked at it.
   if (screen === "person" && personProfile) {
-    const person = snapshot?.villagers.find((entry) => entry.characterId === personProfile.actorId);
+    const visitor = snapshot?.visitors?.find((entry) => entry.characterId === personProfile.actorId);
+    const person = visitor ?? snapshot?.villagers.find((entry) => entry.characterId === personProfile.actorId);
     const selectedAgendas = (agendas ?? []).filter((entry) => entry.characterId === personProfile.actorId);
     const relevantVenues: DossierVenue[] = (snapshot?.settings.venues ?? []).map((venue) => {
       const connections: string[] = [];
@@ -339,6 +341,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
           navigation={personProfile}
           villageDate={snapshot?.village.dateLabel}
           villager={person}
+          visitor={visitor}
           portrait={
             <AvatarFace
               portrait={portraits[personProfile.actorId]}
@@ -405,7 +408,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
           }}
           controls={
             <>
-              {person ? (
+              {person && !visitor ? (
                 <IdentityDescriptionEditor key={person.characterId} villager={person} onSave={setSnapshot} />
               ) : null}
               <button
@@ -422,14 +425,18 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
               >
                 Appearance
               </button>
-              <button
-                type="button"
-                disabled={busy || !!refreshBusyId}
-                onClick={() => void previewVillagerRefresh(personProfile.actorId)}
-              >
-                Compare card
-              </button>
-              {refreshPreviews[personProfile.actorId] ? (
+              {visitor ? (
+                <VisitorProfileControls person={visitor} snapshot={snapshot} setSnapshot={setSnapshot} />
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy || !!refreshBusyId}
+                  onClick={() => void previewVillagerRefresh(personProfile.actorId)}
+                >
+                  Compare card
+                </button>
+              )}
+              {!visitor && refreshPreviews[personProfile.actorId] ? (
                 <div className={`${ELEMENT_TAG}-dossier-refresh`}>
                   <p>
                     {refreshPreviews[personProfile.actorId].changed

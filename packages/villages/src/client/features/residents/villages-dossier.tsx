@@ -123,6 +123,7 @@ export function VillagerDossier({
   navigation,
   villageDate,
   villager,
+  visitor,
   portrait,
   request,
   venues,
@@ -145,6 +146,7 @@ export function VillagerDossier({
     signature?: ResidentSignatureImage;
     sprite?: ResidentSprite | null;
   };
+  visitor?: { met: boolean; visitsEnabled: boolean };
   portrait: ReactNode;
   request: Request;
   venues: DossierVenue[];
@@ -159,6 +161,10 @@ export function VillagerDossier({
   const { visible, backgroundRevision, viewing } = useVillageActivity();
   const focusRevision = useFocusRevision(visible);
   const showingSprites = !!spriteManager;
+  const canReadProfile = !visitor || visitor.met;
+  const visibleSections = visitor
+    ? sections.filter((tab) => tab !== "wishes" && (canReadProfile || tab === "overview"))
+    : sections;
   const [section, setSection] = useState<ProfileSection>(
     navigation.section ?? (navigation.wishId ? "wishes" : "overview"),
   );
@@ -187,7 +193,7 @@ export function VillagerDossier({
     images.find((image) => image.view === "front") ??
     images[0];
   useEffect(() => {
-    if (!visible || showingSprites) return;
+    if (!visible || showingSprites || !canReadProfile) return;
     const controller = new AbortController();
     const epoch = relationshipEpoch.current;
     const refresh = async () => {
@@ -211,7 +217,16 @@ export function VillagerDossier({
     return () => {
       controller.abort();
     };
-  }, [request, navigation.actorId, revision, visible, showingSprites, backgroundRevision, focusRevision]);
+  }, [
+    request,
+    navigation.actorId,
+    revision,
+    visible,
+    showingSprites,
+    canReadProfile,
+    backgroundRevision,
+    focusRevision,
+  ]);
   useEffect(() => {
     const denied = (event: Event) => {
       relationshipEpoch.current++;
@@ -325,9 +340,12 @@ export function VillagerDossier({
               </article>
             </div>
             <main className={`${P}-dossier-workspace`}>
-              <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
+              <nav
+                className={`${P}-dossier-tabs`}
+                aria-label={visitor ? "Visitor profile sections" : "Villager profile sections"}
+              >
                 <div>
-                  {sections.map((tab) => (
+                  {visibleSections.map((tab) => (
                     <button type="button" key={tab} aria-pressed={section === tab} onClick={() => choose(tab)}>
                       {titles[tab]}
                     </button>
@@ -336,10 +354,10 @@ export function VillagerDossier({
                 <label className={`${P}-dossier-section-picker`}>
                   <span className={`${P}-sr-only`}>Section</span>
                   <select value={section} onChange={(event) => choose(event.target.value as ProfileSection)}>
-                    {section === "tools" || !sections.includes(section) ? (
+                    {section === "tools" || !visibleSections.includes(section as DossierSection) ? (
                       <option value={section}>{titles[section]}</option>
                     ) : null}
-                    {sections.map((tab) => (
+                    {visibleSections.map((tab) => (
                       <option key={tab} value={tab}>
                         {titles[tab]}
                       </option>
@@ -387,23 +405,29 @@ export function VillagerDossier({
                     <section className={`${P}-dossier-sheet`} aria-label={titles.tools} hidden={section !== "tools"}>
                       <h2>{titles.tools}</h2>
                       <div className={`${P}-dossier-controls`}>
-                        <div role="group" aria-label="Profile actions">
-                          <button
-                            type="button"
-                            className={`${P}-dossier-inspect`}
-                            aria-pressed={inspect}
-                            onClick={() => choose(toolsOrigin.current, !inspect)}
-                          >
-                            <DossierIcon name="inspect" />
-                            {inspect ? "Leave Inspect" : "Inspect"}
+                        {canReadProfile ? (
+                          <div role="group" aria-label="Profile actions">
+                            <button
+                              type="button"
+                              className={`${P}-dossier-inspect`}
+                              aria-pressed={inspect}
+                              onClick={() => choose(toolsOrigin.current, !inspect)}
+                            >
+                              <DossierIcon name="inspect" />
+                              {inspect ? "Leave Inspect" : "Inspect"}
+                            </button>
+                          </div>
+                        ) : null}
+                        {!visitor ? (
+                          <button type="button" onClick={() => choose("agenda")}>
+                            Agenda records
                           </button>
-                        </div>
-                        <button type="button" onClick={() => choose("agenda")}>
-                          Agenda records
-                        </button>
-                        <button type="button" onClick={() => choose("venues")}>
-                          Venue connections
-                        </button>
+                        ) : null}
+                        {canReadProfile ? (
+                          <button type="button" onClick={() => choose("venues")}>
+                            Venue connections
+                          </button>
+                        ) : null}
                         {controls}
                         <div className={`${P}-dossier-signature-tools`} ref={setSignatureTools} />
                       </div>
@@ -411,7 +435,7 @@ export function VillagerDossier({
                     {visited.includes("overview") ? (
                       <RetainedView active={section === "overview"} label="Overview content">
                         <div className={`${P}-dossier-overview`}>
-                          {!relationships ? (
+                          {!canReadProfile ? null : !relationships ? (
                             <p role="status">Reading profile…</p>
                           ) : !profile ? (
                             <p role="status">
@@ -421,7 +445,7 @@ export function VillagerDossier({
                             </p>
                           ) : villager || knownInformation.length ? (
                             <div className={`${P}-dossier-sheet`}>
-                              {villager ? (
+                              {!visitor ? (
                                 <WeeklyAgenda
                                   key={inspect && viewing !== false ? "inspect" : "player"}
                                   actorId={navigation.actorId}
@@ -436,21 +460,33 @@ export function VillagerDossier({
                             </div>
                           ) : null}
                           <div ref={setSignatureSurface} />
-                          <Sheet title="Home and work" icon="venues">
-                            {venues.some((venue) => venue.publicConnections.length) ? (
-                              <ul>
-                                {venues.flatMap((venue) =>
-                                  venue.publicConnections.map((role) => (
-                                    <li key={`${venue.id}:${role}`}>
-                                      {role} · {venue.name}
-                                    </li>
-                                  )),
-                                )}
-                              </ul>
-                            ) : (
-                              <p>No home or workplace assigned.</p>
-                            )}
-                          </Sheet>
+                          {visitor ? (
+                            <Sheet title="Visits">
+                              <p>
+                                {!visitor.visitsEnabled
+                                  ? "Visits off"
+                                  : visitor.met
+                                    ? "Visits enabled"
+                                    : "Awaiting first meeting"}
+                              </p>
+                            </Sheet>
+                          ) : (
+                            <Sheet title="Home and work" icon="venues">
+                              {venues.some((venue) => venue.publicConnections.length) ? (
+                                <ul>
+                                  {venues.flatMap((venue) =>
+                                    venue.publicConnections.map((role) => (
+                                      <li key={`${venue.id}:${role}`}>
+                                        {role} · {venue.name}
+                                      </li>
+                                    )),
+                                  )}
+                                </ul>
+                              ) : (
+                                <p>No home or workplace assigned.</p>
+                              )}
+                            </Sheet>
+                          )}
                           {inspectedSection("overview") ? inspectors.overview : null}
                         </div>
                       </RetainedView>
@@ -532,7 +568,7 @@ export function VillagerDossier({
                           <Sheet title="Relevant Venues" icon="venues">
                             {venueCards()}
                           </Sheet>
-                          <Sheet title="Projects and Venue Requests">{related}</Sheet>
+                          {!visitor ? <Sheet title="Projects and Venue Requests">{related}</Sheet> : null}
                         </>
                       </RetainedView>
                     ) : null}
@@ -555,7 +591,7 @@ export function VillagerDossier({
             )}
           </aside>
 
-          {villager ? (
+          {villager && !visitor ? (
             <VillagerSignature
               key={navigation.actorId}
               actorId={navigation.actorId}

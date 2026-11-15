@@ -49,6 +49,18 @@ await withBrowser(browser, async () => {
     };
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
+    if (exerciseActions) {
+      village.visitors = [
+        {
+          ...village.villagers[0],
+          characterId: "river-visitor",
+          name: "River Visitor",
+          met: false,
+          visitsEnabled: true,
+        },
+      ];
+      village.visitorNotice = { venueId: village.settings.venues[0].id, venueName: village.settings.venues[0].name };
+    }
     village.villagers[0].letterFontId = "caveat";
     village.villagers[1].letterFontId = "caveat";
     await page.route("**/api/capability-packages/villages/assets/letter-fonts/caveat.json", (route) =>
@@ -624,6 +636,35 @@ await withBrowser(browser, async () => {
     const selector = page.getByRole("main", { name: "Villagers directory" });
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     const bookBox = await page.locator(`.${P}-people-layout`).boundingBox();
+    if (exerciseActions) {
+      const villagerTile = await selector.getByRole("button", { name: "Open Mara profile" }).boundingBox();
+      await selector.getByRole("button", { name: "Visitors", exact: true }).click();
+      const visitors = page.getByRole("main", { name: "Visitors directory" });
+      const visitorTile = visitors.getByRole("button", { name: "Open River Visitor profile" });
+      await expect(visitorTile).toBeVisible();
+      const visitorBox = await visitorTile.boundingBox();
+      assert.deepEqual(visitorBox, villagerTile, "Visitors use the same tile geometry as Villagers.");
+      await visitors.getByRole("searchbox", { name: "Find a person" }).fill("missing");
+      await expect(visitorTile).toHaveCount(0);
+      await visitors.getByRole("searchbox", { name: "Find a person" }).fill("");
+      await visitors.getByRole("button", { name: "Add Visitor", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Add Visitor", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await visitorTile.click();
+      await expect(page.getByRole("heading", { name: "River Visitor", exact: true })).toBeVisible();
+      await expect(page.getByText("Awaiting first meeting", { exact: true })).toBeVisible();
+      await openCharacterTools(page);
+      await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Turn visits off", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Agenda records", exact: true })).toHaveCount(0);
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "People", exact: true })
+        .click();
+      await expect(visitorTile).toBeFocused();
+      await visitors.getByRole("button", { name: "Villagers", exact: true }).click();
+      await expect(selector).toBeVisible();
+    }
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     const search = selector.getByRole("searchbox", { name: "Find a person" });
     await search.fill("Mara");

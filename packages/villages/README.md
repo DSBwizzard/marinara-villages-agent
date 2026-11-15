@@ -152,11 +152,11 @@ Residents follow routines, and their availability changes through the day. Found
 
 ### Visitors
 
-Open **People → Visitors** and choose an unused Character Card. **Appearance** lets you use their portrait or set up Scene sprites. Visitors sometimes spend time at an open Village Venue. **In town** points to the public visit location.
+Open **People → Visitors** to browse profiles or choose **Add Visitor** and select an unused Character Card. **Character Tools → Appearance** lets you use their portrait or set up Scene sprites. When someone visits an open Village Venue, **Find visitor** opens the public location.
 
 After you hear a Visitor speak in a Scene, you can write to them in **Mailbox**, including while they’re away. Scenes and letters can develop the same relationship scores as with a Villager. A Visitor who agrees to return in a letter has a better chance of visiting in the next few Village days. They may also agree to give you space. **Turn visits off** stops appearances and keeps the correspondence available.
 
-After meeting someone, **Move in** adds them to the Villagers with their existing relationship, Memories, letters and artwork. Visitors gain Villager Agendas, Wishes, and Project roles after they move in.
+After meeting someone, **Character Tools → Move in** adds them to the Villagers with their existing relationship, Memories, letters and artwork. Visitors gain Villager Agendas, Wishes, and Project roles after they move in.
 
 Moving into an occupied home requires your incoming resident and every current housemate to agree to the exact destination and sleeping space. Private rooms retain their individual control; shared rooms use household control. Resident moves take 24 Village hours after approval; your own move applies immediately once the required people agree. Changed membership or room availability holds a scheduled move for renewed review. Cancelling releases its reservation.
 
