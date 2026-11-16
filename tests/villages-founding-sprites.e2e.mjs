@@ -160,18 +160,20 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ content: bundle });
       const root = page.locator(".villages-forging-v2"),
         next = root.getByRole("button", { name: "Let’s set up their homes", exact: true });
-      for (const reply of ["START", "Draft with Mari", "I only know the village so far", "Skip for now"])
+      const phone = viewport.width <= 727;
+      for (const reply of [
+        "START",
+        "Draft with Mari",
+        phone ? "Skip for now" : "I only know the village so far",
+        "Skip for now",
+      ])
         await root.getByRole("button", { name: reply, exact: true }).click();
-      if (viewport.width <= 727) await root.getByRole("button", { name: "Edit setting", exact: true }).click();
+      if (phone) await root.getByRole("button", { name: "Edit setting", exact: true }).click();
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
       await root.getByLabel("Location name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      if (viewport.width <= 727)
-        await root
-          .getByRole("region", { name: "Your setting" })
-          .getByRole("button", { name: "Done", exact: true })
-          .click();
       await root.getByRole("button", { name: "Let’s meet the villagers", exact: true }).click();
+      if (phone) await root.getByRole("button", { name: "Choose villagers", exact: true }).click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
         await page

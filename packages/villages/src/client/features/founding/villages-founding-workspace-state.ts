@@ -13,6 +13,7 @@ export type FoundingWorkspaceState = {
   settingWorldBrief?: string;
   settingDraft?: Partial<FoundingSetting>;
   settingEditorOpen?: boolean;
+  mobileMenu?: "world" | "brief" | "people" | "venues" | "review";
   settingProblem?: string;
   suggestionRequest?: {
     id: string;

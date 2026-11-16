@@ -309,6 +309,19 @@ export async function verifyFoundingLayout(group) {
         await page.addScriptTag({ content: foundingBundle });
         const root = page.locator(".villages-forging-v2"),
           button = (name) => root.getByRole("button", { name, exact: true });
+        const phone = view.width <= 727;
+        const work = root.locator(".villages-forging-body");
+        const enterChapter = async (name) => {
+          if (!phone || !(await button(name).count())) return;
+          const guide = root.locator(".villages-chapter-guide");
+          await expect(work).toBeHidden();
+          await expect(guide.getByText("Professor Mari", { exact: true })).toBeVisible();
+          await expect(button(name)).toBeInViewport({ ratio: 1 });
+          await button(name).click();
+          await expect(guide).toHaveCount(0);
+          await expect(work).toBeVisible();
+        };
+        const settingNext = () => button(phone && draftWithLore ? "Keep this setting" : "Let’s meet the villagers");
         const frame = await root.boundingBox();
         const sheet = page.locator(".villages-quick-dialog");
         const showVenue = async (id) => {
@@ -335,7 +348,7 @@ export async function verifyFoundingLayout(group) {
             true,
             "No horizontal overflow on " + phase,
           );
-          if (phase !== "setting") {
+          if (phase !== "setting" && !phone) {
             const guide = root.locator(".villages-chapter-guide");
             const sprite = guide.locator(".villages-setting-stage img");
             await expect.poll(() => sprite.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
@@ -344,25 +357,22 @@ export async function verifyFoundingLayout(group) {
             const spriteBox = await sprite.boundingBox();
             const dialogueBox = await guide.locator(".villages-setting-dialogue").boundingBox();
             assert.ok(spriteBox.x + spriteBox.width <= dialogueBox.x + 1, "Mari stands beside her dialogue");
-            assert.ok(
-              view.width <= 727
-                ? guideBox.y + guideBox.height <= workBox.y + 1
-                : guideBox.x + guideBox.width <= workBox.x + 1,
-              "The workspace follows Mari on phones and sits to her right on wider screens",
-            );
+            assert.ok(guideBox.x + guideBox.width <= workBox.x + 1, "The workspace sits to Mari’s right on desktop");
             if (process.env.VILLAGES_SCREENSHOT_DIR)
               await page.screenshot({
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${phase}-mari-${view.width}.png`),
               });
           }
-          await button(
+          await (
             phase === "setting"
-              ? "Let’s meet the villagers"
-              : phase === "people"
-                ? "Let’s set up their homes"
-                : phase === "venues"
-                  ? "Let’s look it over"
-                  : "Found village",
+              ? settingNext()
+              : button(
+                  phase === "people"
+                    ? "Let’s set up their homes"
+                    : phase === "venues"
+                      ? "Let’s look it over"
+                      : "Found village",
+                )
           ).scrollIntoViewIfNeeded();
           if (phase === "venues") {
             const widths = await root.locator(".villages-forging-body").evaluate((body) => {
@@ -480,7 +490,6 @@ export async function verifyFoundingLayout(group) {
         await expect(frontPose).toHaveCSS("opacity", "1");
         await expect(frontPose).toHaveCSS("animation-name", "none");
         assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns without moving to a different spot");
-        const phone = view.width <= 727;
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
         await expect(scene.locator('p[aria-live="polite"]')).toBeFocused();
         await expect(scene).toContainText("Oh, hey!");
@@ -524,12 +533,27 @@ export async function verifyFoundingLayout(group) {
           await expect(root.getByLabel("The larger world")).toHaveCount(0);
           assert.equal(settingCalls, 0, "Manual setup never dispatches a Mari draft");
           await name.fill("");
-          await (phone ? manual : scene).getByRole("button", { name: "Back", exact: true }).click();
+          await (phone ? manual : scene)
+            .getByRole("button", { name: phone ? "Back to Mari" : "Back", exact: true })
+            .click();
         }
         await button("Draft with Mari").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
+        const worldField = root.getByLabel(phone ? "World description" : "The larger world");
         if (draftWithLore) {
-          await scene.getByLabel("The larger world").fill(worldBrief);
+          if (phone) {
+            await expect(worldField).toHaveCount(0);
+            await expect(scene).toContainText("What’s the wider world like?");
+            await button("Describe the world").click();
+            await expect(scene).toHaveCount(0);
+            await expect(root.getByRole("heading", { name: "The wider world" })).toBeFocused();
+            if (process.env.VILLAGES_SCREENSHOT_DIR)
+              await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-wider-world.png") });
+            await button("Back to Mari").click();
+            await expect(scene).toBeVisible();
+            await button("Describe the world").click();
+          }
+          await worldField.fill(worldBrief);
           await expect
             .poll(() =>
               page.evaluate(() => {
@@ -542,19 +566,19 @@ export async function verifyFoundingLayout(group) {
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await expect(currentStar).toHaveAttribute("aria-label", "Setting");
-          await expect(scene.getByLabel("The larger world")).toHaveValue(worldBrief);
+          await expect(worldField).toHaveValue(worldBrief);
           await button("Use this world").click();
           await expect
             .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.revision))
             .toBe(revision + 1);
-        } else await button("I only know the village so far").click();
+        } else await button(phone ? "Skip for now" : "I only know the village so far").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         if (draftWithLore) {
           await button("Choose lorebooks").click();
           const picker = page.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
           await picker.getByRole("checkbox", { name: "Relay Belt" }).check();
           await picker.getByRole("button", { name: "Done", exact: true }).click();
-          await expect(scene).toContainText("1 lorebook selected for drafting");
+          if (!phone) await expect(scene).toContainText("1 lorebook selected for drafting");
         } else await button("Skip for now").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
@@ -569,34 +593,37 @@ export async function verifyFoundingLayout(group) {
           if (phone) await scene.getByRole("button", { name: /^(Edit|Review) setting$/u }).click();
         };
         const returnToMari = async () => {
-          if (phone) await settingPanel.getByRole("button", { name: /^(Done|Back to Mari)$/u }).click();
+          if (phone) await settingPanel.getByRole("button", { name: "Back to Mari", exact: true }).click();
         };
+        const villageBrief = root.getByLabel(phone ? "Village description" : "Tell Mari about your village", {
+          exact: true,
+        });
         if (phone) {
           await expect(settingPanel).toBeHidden();
           await expect(button("Let’s meet the villagers")).toBeHidden();
-          await expect(button("Draft with Mari")).toBeVisible();
+          await expect(button("Describe your village")).toBeVisible();
           await expect(button("Edit setting")).toBeVisible();
-          const portrait = await stage.locator("img").boundingBox();
-          const visibleStage = await stage.boundingBox();
           const pane = await scene.locator(".villages-setting-dialogue").boundingBox();
-          assert.ok(visibleStage.height >= portrait.height * 0.44, "Mari’s head and upper body fit the phone stage");
-          assert.ok(pane.y >= visibleStage.y + visibleStage.height - 1, "The reply pane does not cover Mari");
+          assert.ok(pane.width >= view.width * 0.88, "Scene dialogue uses the whole phone width");
+          await expect(villageBrief).toHaveCount(0);
           if (view.width === 390 && view.height === 844) {
-            const brief = scene.getByRole("textbox");
-            await brief.focus();
+            await button("Describe your village").click();
+            await expect(root.getByText("1 lorebook selected for drafting")).toBeVisible();
+            await villageBrief.focus();
             await page.evaluate(() => {
               window.visualViewport.height = innerHeight - 300;
               window.visualViewport.dispatchEvent(new Event("resize"));
             });
             await expect(root).toHaveAttribute("data-founding-keyboard", "true");
-            const composer = await brief.boundingBox();
-            assert.ok(composer.y + composer.height < view.height - 300, "Mari’s reply field clears the keyboard");
-            await brief.blur();
+            const description = await villageBrief.boundingBox();
+            assert.ok(description.y + description.height < view.height - 300, "The village field clears the keyboard");
+            await villageBrief.blur();
             await page.evaluate(() => {
               window.visualViewport.height = innerHeight;
               window.visualViewport.dispatchEvent(new Event("resize"));
             });
             await expect(root).not.toHaveAttribute("data-founding-keyboard", "true");
+            await button("Back to Mari").click();
           }
           await openSetting();
           await expect(scene).toBeHidden();
@@ -615,12 +642,14 @@ export async function verifyFoundingLayout(group) {
           await returnToMari();
           if (phone) await expect(button("Edit setting")).toBeFocused();
           const originalStage = await stage.boundingBox();
-          await root.getByLabel("Tell Mari about your village").fill("Our village is a converted cargo ship.");
+          if (phone) await button("Describe your village").click();
+          await villageBrief.fill("Our village is a converted cargo ship.");
           await button("Draft with Mari").click();
           await expect(scene).toContainText("I’ll replace what’s in your setting");
           assert.equal(settingCalls, 0, "Mari asks before sending a replacement request");
           await button("Keep my setting").click();
-          await expect(button("Draft with Mari")).toBeFocused();
+          if (phone) await expect(root.getByRole("heading", { name: "Tell Mari about your village" })).toBeFocused();
+          else await expect(button("Draft with Mari")).toBeFocused();
           if (!phone) await expect(root.getByLabel("Village Name", { exact: true })).toHaveValue("Coastal Community");
           assert.equal(settingCalls, 0, "Keeping the setting does not send a request");
           await button("Draft with Mari").click();
@@ -631,7 +660,7 @@ export async function verifyFoundingLayout(group) {
           settingReady = true;
           if (phone) {
             await expect(settingPanel.getByRole("heading")).toBeFocused();
-            await expect(settingPanel.getByRole("complementary", { name: "Professor Mari" })).toBeVisible();
+            await expect(scene).toBeHidden();
             await expect(settingPanel.getByLabel("Village Name", { exact: true })).toBeInViewport();
             if (process.env.VILLAGES_SCREENSHOT_DIR)
               await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-draft-handoff.png") });
@@ -652,7 +681,8 @@ export async function verifyFoundingLayout(group) {
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
           await returnToMari();
           const draftedStageHeight = (await stage.boundingBox()).height;
-          await root.getByLabel("Tell Mari about your village").fill("Our village is inside a dumpster.");
+          if (phone) await button("Draft again").click();
+          await villageBrief.fill("Our village is inside a dumpster.");
           await button("Draft again with Mari").click();
           await expect(scene).toContainText("I’ll replace what’s in your setting");
           await button("Replace and draft").click();
@@ -661,7 +691,7 @@ export async function verifyFoundingLayout(group) {
             await expect(settingPanel.getByRole("heading")).toBeFocused();
             await returnToMari();
           }
-          await expect(button("Draft again with Mari")).toBeEnabled();
+          await expect(button(phone ? "Draft again" : "Draft again with Mari")).toBeEnabled();
           assert.equal(
             (await stage.boundingBox()).height,
             phone ? draftedStageHeight : originalStage.height,
@@ -742,8 +772,7 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(() => connectionReadHeld).toBe(true);
         await expect(systemPicker.getByRole("status")).toHaveText("Checking model connections…");
         await page.keyboard.press("Escape");
-        await returnToMari();
-        await button("Let’s meet the villagers").click();
+        await settingNext().click();
         await expect(root).toHaveAttribute("data-step", "0");
         await expect(models.getByRole("status")).toBeFocused();
         await page.evaluate(() => window.expireConnectionRead());
@@ -789,8 +818,17 @@ export async function verifyFoundingLayout(group) {
         );
         await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
         await bounds("setting");
-        await button("Let’s meet the villagers").click();
+        await settingNext().click();
         await expect(root).toHaveAttribute("data-step", "1");
+        await enterChapter("Choose villagers");
+        if (view.width === 390 && view.height === 844) {
+          await expect
+            .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.mobileMenu))
+            .toBe("people");
+          await page.reload();
+          await page.addScriptTag({ content: foundingBundle });
+          await expect(root.getByRole("heading", { name: "People", exact: true })).toBeFocused();
+        }
         for (const person of characters.slice(0, view.count)) {
           await button("+ Add villager").click();
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
@@ -809,6 +847,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("people");
         await button("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");
+        await enterChapter("Open Venues and Map");
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
@@ -911,10 +950,13 @@ export async function verifyFoundingLayout(group) {
         await expect(mapWarning).toBeVisible();
         assert.deepEqual(await root.boundingBox(), frame, "Validation does not resize the Founding window");
         assert.equal(await mapWarning.evaluate((node) => getComputedStyle(node).color), "rgb(255, 155, 165)");
+        if (phone) await button("Back to Mari").click();
         await button("Back").click();
         await expect(root).toHaveAttribute("data-step", "1");
+        await enterChapter("Choose villagers");
         await button("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");
+        await enterChapter("Open Venues and Map");
         await expect(mapWarning).toHaveCount(0);
 
         await expect(root.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
@@ -1079,10 +1121,12 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-step", "0");
         await expect(models).toBeVisible();
         await expect(root.getByLabel("Location name", { exact: true })).toHaveValue("Old Harbour");
-        await returnToMari();
-        await button("Let’s meet the villagers").click();
+        await settingNext().click();
+        await expect(root).toHaveAttribute("data-step", "1");
+        await enterChapter("Choose villagers");
         await button("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");
+        await enterChapter("Open Venues and Map");
         assert.equal(suggestions, 1, "checking connections never retries generation");
         failVenueConnection = false;
         await button("Retry").click();
@@ -1148,6 +1192,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("venues");
         await button("Let’s look it over").click();
         await expect(root).toHaveAttribute("data-step", "3");
+        await enterChapter("Review village");
         await expect(root.getByText("World rules: The sun never sets.", { exact: true })).toBeVisible();
 
         await root
