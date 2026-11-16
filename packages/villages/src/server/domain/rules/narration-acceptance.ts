@@ -61,6 +61,49 @@ export type NarrationPublication = {
 };
 
 type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
+function optionalLodgingOffer(
+  note: Record<string, unknown>,
+  source: NarrationSourceContext,
+  readset: NarrationReadset,
+) {
+  if (
+    !note.lodging ||
+    note.class !== "commitment" ||
+    !Object.keys(note).every((key) =>
+      ["id", "for", "class", "text", "source", "about", "current", "offer", "lodging", "independent"].includes(key),
+    ) ||
+    !Array.isArray(note.source) ||
+    note.source.length !== 1
+  )
+    return false;
+  const offer = asRecord(note.offer);
+  const { guest, venue, zone } = asRecord(note.lodging);
+  const { segment, act } = asRecord(note.source[0]);
+  if (
+    typeof offer.proposer !== "string" ||
+    typeof guest !== "string" ||
+    guest === offer.proposer ||
+    !Array.isArray(offer.participants) ||
+    offer.participants.length !== 2 ||
+    !offer.participants.includes(offer.proposer) ||
+    !offer.participants.includes(guest) ||
+    !Object.keys(offer).every((key) => ["proposer", "participants", "state"].includes(key)) ||
+    (offer.state !== undefined && offer.state !== "offered") ||
+    typeof segment !== "string" ||
+    act !== "offer" ||
+    !readset.lodging?.some((option) => option.host === offer.proposer && option.venue === venue && option.zone === zone)
+  )
+    return false;
+  const line = source.lines.find((row) => row.id === source.labels[segment]);
+  return (
+    line?.role === "assistant" &&
+    line.kind === "dialogue" &&
+    line.speakerId === offer.proposer &&
+    !line.contactReport &&
+    !!line.heardBy?.includes(guest)
+  );
+}
+
 const abandonmentKey = (publication: SavedNarration) => "narration-abandoned:" + publication.readset.source.episodeId;
 const abandonmentFingerprint = (publication: SavedNarration, submissionId: string) =>
   memoryHash([submissionId, publication.responseDigest, publication.raw, publication.readset]);
@@ -479,7 +522,12 @@ export function acceptNarrationContinuity(
       );
     const effect: SceneEffectResult = {
       ...header,
-      independent: openingOfferEcho || optionalNote || optionalAnswer || header.independent,
+      independent:
+        openingOfferEcho ||
+        optionalNote ||
+        optionalAnswer ||
+        optionalLodgingOffer(note, source, readset) ||
+        header.independent,
     };
     try {
       const keep = prepareNarrationKeep(

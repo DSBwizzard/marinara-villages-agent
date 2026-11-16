@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/spoken-stay, narration-acceptance/conditional-stay, narration-acceptance/shared-offer-head
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/spoken-stay, narration-acceptance/conditional-stay, narration-acceptance/shared-offer-head, narration-acceptance/unconfirmed-stay-offer
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -55,6 +55,49 @@ import { playerAccess } from "../packages/villages/src/server/domain/rules/playe
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
+await runCase("narration-acceptance/unconfirmed-stay-offer", () => {
+  for (const { malformed, required, claimsAcceptance, held } of [
+    { malformed: false, required: false, claimsAcceptance: false, held: false },
+    { malformed: true, required: false, claimsAcceptance: false, held: false },
+    { malformed: true, required: true, claimsAcceptance: false, held: true },
+    { malformed: true, required: false, claimsAcceptance: true, held: true },
+  ]) {
+    const f = fixture("Can I crash on your couch for a while?");
+    const text = "The couch is yours, for as long as the rain wants to keep this up.";
+    const publication = f.publication({
+      segments: [{ ...f.response()[0], text, ...(required ? { requires: ["stay"] } : {}) }],
+      keep: [
+        {
+          id: "stay",
+          for: [f.id, "player"],
+          class: "commitment",
+          current: true,
+          text: "Mara offered their couch for as long as the rain lasts.",
+          offer: {
+            proposer: f.id,
+            participants: [f.id, "player"],
+            ...(malformed ? { state: "offered", contributions: [{ by: f.id, act: "offer" }] } : {}),
+          },
+          ...(claimsAcceptance ? { accept: "player" } : {}),
+          lodging: { guest: "player", venue: f.scene.placeId, zone: "parlor" },
+          source: [{ speakerId: f.id, quote: text }],
+        },
+      ],
+    });
+    publication.readset.lodging = sceneLodgingOptions(f.state, ["player", f.id], f.scene.placeId);
+    publication.readset.quotedSceneSources = true;
+    publication.readset.positionedSceneSources = true;
+    publication.readset.recognizeDirectOfferSpeech = 5;
+    publication.readset.stripOfferContributionEcho = true;
+    const result = acceptNarrationContinuity(f.state, publication, "offer", later);
+    assert.equal(result.held, held, JSON.stringify(result.rejected));
+    assert.equal(result.rejected.length, 1);
+    assert.equal(result.episode?.segments[0]?.content, held ? undefined : text);
+    assert.equal(activeLodging(f.state, "player", new Date(later)), undefined);
+    assert.equal(pendingLodging(f.state, "player", new Date(later)), undefined);
+  }
+});
+
 await runCase("narration-acceptance/spoken-stay", () => {
   for (const [words, answer, revoked, held] of [
     ["Mara, could I sleep in the Parlor?", "Yes, you can sleep in the Parlor.", false, false],
