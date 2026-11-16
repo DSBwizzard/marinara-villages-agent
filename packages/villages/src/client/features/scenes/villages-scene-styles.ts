@@ -12,6 +12,8 @@ ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !imp
   position: absolute; inset: 0; width: 100%; height: 100%; padding: 3rem .75rem 0;
   flex: none; transform: translateY(var(--villages-scene-stage-offset, 0px));
 }
+/* Crowded slots set the centers, while full-body art can extend beyond them. */
+.${tag}-room-screen:not([data-mobile="true"]) .${tag}-chat-cast-person > img:not([data-framing="half"]) { min-width: 25cqw; }
 .${tag}-room-screen .${tag}-chat-scene { transform: translateY(var(--villages-scene-stage-offset, 0px)); }
 .${tag}-room-screen .${tag}-chat-vn {
   position: absolute; z-index: 10; left: 50%; bottom: var(--villages-scene-dock-bottom, 0px);

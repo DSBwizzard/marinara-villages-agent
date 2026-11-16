@@ -197,6 +197,16 @@ await withBrowser(browser, async () => {
           return sprite.height - (dialogue.y - asides.y - asides.height);
         })
         .toBeGreaterThan(0);
+      await expect
+        .poll(() =>
+          npc.evaluate((image) => {
+            const sprite = image.getBoundingClientRect();
+            const slot = image.parentElement.getBoundingClientRect();
+            const aspect = image.naturalHeight / image.naturalWidth;
+            return Math.min(sprite.height, sprite.width * aspect) - slot.width * aspect;
+          }),
+        )
+        .toBeGreaterThan(0);
     }
     await expect(band.locator(`.${tag}-aside-slot[data-side="left"]`)).toHaveCount(2);
     await page.screenshot({ path: resolve(output, `asides-${width}x${height}.png`) });
