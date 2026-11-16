@@ -127,6 +127,7 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
   assert.equal(completions, 2, "Unavailable lore does not dispatch a paid completion");
   assert.deepEqual(await writer.suggestStartingVenues(withLore), { venues: [], setting });
   assert.match(prompt[0]!.content, /follow the player's description whenever they differ/u);
+  assert.match(prompt[0]!.content, /choose one locally meaningful district, deck, or equivalent/u);
   assert.deepEqual(
     prompt.slice(1).map((row) => JSON.parse(row.content)),
     [{ lorebookReferences: [lorebookReference] }, { world: worldBrief, village: brief }],

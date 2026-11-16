@@ -246,7 +246,6 @@ export function FoundingScreen({
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
   const settingTitle = useRef<HTMLHeadingElement>(null);
-  const editSettingButton = useRef<HTMLButtonElement>(null);
   const chapterLine = useRef<HTMLParagraphElement>(null);
   const chapterTitle = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -547,8 +546,8 @@ export function FoundingScreen({
       >
         {busy
           ? "Saving village…"
-          : phone && setupStep === 0 && hasSettingDraft
-            ? "Keep this setting"
+          : phone && setupStep < 3
+            ? "Next"
             : ["Let’s meet the villagers", "Let’s set up their homes", "Let’s look it over", "Found village"][
                 setupStep
               ]}
@@ -577,7 +576,7 @@ export function FoundingScreen({
                   className="villages-forging-primary"
                   onClick={() => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }))}
                 >
-                  {["", "Choose villagers", "Open Venues and Map", "Review village"][setupStep]}
+                  Next
                 </button>
               ) : (
                 nextReply
@@ -746,7 +745,7 @@ export function FoundingScreen({
             data-editing={settingEditorOpen || undefined}
             data-intro={(beat !== "village" && !manualSetting) || undefined}
           >
-            {setupStep === 0 ? (
+            {setupStep === 0 && (!phone || !settingEditorOpen) ? (
               <FoundingSettingScene
                 controller={controller}
                 phone={phone}
@@ -758,7 +757,6 @@ export function FoundingScreen({
                   setArrival(undefined);
                   bodyRef.current?.scrollTo({ top: 0 });
                 }}
-                editSettingButton={editSettingButton}
                 next={nextReply}
               />
             ) : null}
@@ -784,7 +782,7 @@ export function FoundingScreen({
                 />
               </FoundingField>
               <FoundingField
-                title="Starting location"
+                title="First map name"
                 error={
                   validatedFields.includes("location-name") && !setupLocationName.trim()
                     ? PLACE_ERRORS.locationName
@@ -793,7 +791,7 @@ export function FoundingScreen({
               >
                 <input
                   autoComplete="off"
-                  aria-label="Location name"
+                  placeholder="e.g. The market district"
                   maxLength={80}
                   value={setupLocationName}
                   disabled={busy}
@@ -804,7 +802,7 @@ export function FoundingScreen({
                 />
               </FoundingField>
               <FoundingField
-                title="What’s it like there?"
+                title="What’s the first map area like?"
                 error={validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""}
               >
                 <textarea
@@ -919,11 +917,10 @@ export function FoundingScreen({
                       requestAnimationFrame(() => {
                         if (manualSetting)
                           bodyRef.current?.querySelector<HTMLButtonElement>(".villages-setting-guide button")?.focus();
-                        else editSettingButton.current?.focus();
                       });
                     }}
                   >
-                    Back to Mari
+                    Back
                   </button>
                   {nextReply}
                 </div>
@@ -1081,7 +1078,7 @@ export function FoundingScreen({
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>Starting location · {setupLocationName}</h3>
+                      <h3>Setting</h3>
                       <button type="button" onClick={() => changeStep(0, true)}>
                         Change setting
                       </button>
@@ -1093,7 +1090,7 @@ export function FoundingScreen({
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>Map · {setupLocationName}</h3>
+                      <h3>First map · {setupLocationName}</h3>
                       <button type="button" onClick={() => changeStep(2, true)}>
                         Change map
                       </button>
@@ -1228,7 +1225,7 @@ export function FoundingScreen({
                 disabled={busy || spriteBusy || setupEditorOpen}
                 onClick={() => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }))}
               >
-                Back to Mari
+                Back
               </button>
               {nextReply}
             </div>

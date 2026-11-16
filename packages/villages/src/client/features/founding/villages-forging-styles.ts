@@ -618,7 +618,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-setting-dialogue .villages-founding-field { margin:.5rem 0; }
 .villages-setting-lore-notice { color:#e8b9c2; font-size:.85rem; }
 .villages-setting-dialogue-actions .villages-founding-next-reply { margin-inline-start:auto; }
-.villages-forging-v2 :is(.villages-setting-edit-link,.villages-founding-menu-title,.villages-founding-speaker>span) { display:none; }
+.villages-forging-v2 :is(.villages-founding-menu-title,.villages-founding-speaker>span) { display:none; }
 .villages-setting-dialogue-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
 .villages-forging-v2 .villages-place-panels>.villages-founding-setting { height:auto; min-height:0; overflow:visible; margin:clamp(.35rem,5dvh,3rem) 0 0; }
 .villages-founding-setting h2 { font:500 clamp(1.45rem,3vw,2rem)/1.15 "village-letter-lora",Georgia,serif; color:#f4e5c8; margin:0; letter-spacing:-.035em; }
@@ -755,7 +755,19 @@ export const VILLAGES_FORGING_STYLES = `
   .villages-forging-v2 .villages-place-panels>.villages-founding-setting,
   .villages-forging-v2 .villages-founding-mobile-menu { margin:0; padding:.9rem; background:#292438; border-color:#a6809199; }
   .villages-founding-mobile-menu h2 { margin:0 0 .8rem; }
+  .villages-founding-mobile-menu>p { margin:0 0 .8rem; }
   .villages-founding-mobile-menu .villages-founding-field textarea { resize:vertical; }
+  .villages-founding-mobile-menu .villages-lorebook-search {
+    width:100%; min-height:44px; padding:.45rem .65rem; font:inherit;
+    color:#f0dfbc; background:#3c3049; border:1px solid #a6809199; border-radius:.55rem;
+  }
+  .villages-founding-mobile-menu .villages-lorebook-results { max-height:min(40dvh,18rem); }
+  .villages-founding-mobile-menu .villages-lorebook-option {
+    display:flex; align-items:center; gap:.65rem; min-height:44px; margin-bottom:.4rem;
+    padding:.55rem .65rem; border:1px solid #a6809199; border-radius:.55rem; background:#3c3049;
+  }
+  .villages-founding-mobile-menu .villages-lorebook-option[data-selected=true] { background:#514157; border-color:#d29399; }
+  .villages-founding-mobile-menu .villages-lorebook-option input { flex:none; width:1.15rem; height:1.15rem; min-height:0; margin:0; accent-color:#a5ac8b; }
   .villages-founding-menu-actions {
     display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem;
     margin-top:.9rem; padding-top:.7rem; border-top:1px solid #ad839b62;

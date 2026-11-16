@@ -1,5 +1,5 @@
 import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding.js";
-import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingSpeaker, foundingMariSprite } from "./FoundingGuide.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
@@ -7,7 +7,7 @@ import type { FoundingScreenController } from "./screen-contracts.js";
 
 type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]> | "manual";
 const manualSettingLine =
-  "All yours. Give the village a name, pick where we’ll first meet the locals, and tell me what it’s like there. A working name is fine. The sign painter can wait.";
+  "All yours. Name the village, then pick which part we’ll map first. Tell me what daily life looks like there. The sign painter can wait.";
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
   if (
     workspace.settingBeat === "village" &&
@@ -26,7 +26,6 @@ export function FoundingSettingScene({
   onConnections,
   onEditSetting,
   onBeatChange,
-  editSettingButton,
   next,
 }: {
   controller: FoundingScreenController;
@@ -36,7 +35,6 @@ export function FoundingSettingScene({
   onConnections(): void;
   onEditSetting(): void;
   onBeatChange(): void;
-  editSettingButton: Ref<HTMLButtonElement>;
   next: ReactNode;
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
@@ -54,7 +52,8 @@ export function FoundingSettingScene({
   const moveTo = (settingBeat: SettingBeat) => {
     const openEditor =
       settingBeat === "manual" ||
-      (settingBeat === "village" &&
+      (!phone &&
+        settingBeat === "village" &&
         !!setupWorkspace.settingDraft &&
         !setupWorkspace.settingProblem &&
         !setupWorkspace.suggestionRequest?.draftSetting);
@@ -80,16 +79,11 @@ export function FoundingSettingScene({
   const pickedBooks = controller.setupLorebookDraft.length;
   const mobilePrompt =
     phone &&
-    (beat === "world" && setupWorkspace.mobileMenu === "world"
-      ? "world"
-      : beat === "village" && setupWorkspace.mobileMenu === "brief" && !confirmReplace && !waitingForMari
-        ? "brief"
-        : undefined);
-  const openPrompt = (mobileMenu?: "world" | "brief") => {
-    setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu }));
-    onBeatChange();
-    if (!mobileMenu) requestAnimationFrame(() => lineRef.current?.focus({ preventScroll: true }));
-  };
+    (beat === "world" ||
+      beat === "lorebooks" ||
+      (beat === "village" && !confirmReplace && !waitingForMari && !setupSuggestionsBusy))
+      ? beat
+      : undefined;
   useEffect(() => {
     if (mobilePrompt) promptTitle.current?.focus({ preventScroll: true });
   }, [mobilePrompt]);
@@ -104,9 +98,8 @@ export function FoundingSettingScene({
       ? "Oh, hey! I’m Mari. In Villages, you make a life with a community. A ship’s crew counts. So does one alarmingly dramatic apartment building. Want to draft together?"
       : "Oh, hey! I’m Mari. In Villages, you make a life with a community. A ship’s crew counts. So does one alarmingly dramatic apartment building. Want to draft a village with me, or set it up yourself?",
     manual: manualSettingLine,
-    world: phone
-      ? "It helps to know what’s beyond your village. A port on a trade route lives differently from a lonely moon outpost. What’s the wider world like?"
-      : "Knowing what’s beyond the village helps me draft a home that fits. A stop on a busy trade route feels different from an outpost on an isolated moon. What’s the wider world like? A sentence will do. If you’re still figuring it out, we can skip ahead.",
+    world:
+      "Knowing what’s beyond the village helps me draft a home that fits. A stop on a busy trade route feels different from an outpost on an isolated moon. What’s the wider world like? A sentence will do. If you’re still figuring it out, we can skip ahead.",
     lorebooks:
       "Lorebooks can fill in details for the draft, like local customs or who already lives there. Do you have any you’d like me to read? Homework is optional, I promise.",
     village: confirmReplace
@@ -121,7 +114,6 @@ export function FoundingSettingScene({
   }[beat];
   const submitBrief = () => {
     if (!canDraft) return;
-    if (phone) openPrompt();
     const { setupName, setupLocationName, setupSetting, setupWorldName, setupContext } = controller;
     if (
       !waitingForMari &&
@@ -131,7 +123,7 @@ export function FoundingSettingScene({
     else void draftSetupSetting("request");
   };
   const worldField = (
-    <FoundingField title={phone ? "World description" : "The larger world"} optional={!phone}>
+    <FoundingField title={phone ? "World description" : "The larger world"} optional>
       <textarea
         autoComplete="off"
         rows={phone ? 4 : 2}
@@ -191,7 +183,16 @@ export function FoundingSettingScene({
       </button>
     ) : null;
   if (mobilePrompt) {
-    const describingWorld = mobilePrompt === "world";
+    const title = { world: "The wider world", lorebooks: "Lorebooks", village: "Tell Mari about your village" }[
+      mobilePrompt
+    ];
+    const context = {
+      world:
+        "What’s beyond your village? A busy trade route makes for a different home than a lonely moon. A line is plenty, or leave it blank.",
+      lorebooks: "Pick any lorebooks that help me picture life there. Homework is optional, I promise.",
+      village:
+        "Where do your people live, and which part should we map first? If you give me a whole city, I can pick a district. Next, I’ll draft from your notes and the lorebooks you picked.",
+    }[mobilePrompt];
     return (
       <form
         className="villages-founding-mobile-menu villages-forging-card"
@@ -199,31 +200,54 @@ export function FoundingSettingScene({
         autoComplete="off"
         onSubmit={(event) => {
           event.preventDefault();
-          if (describingWorld) moveTo("lorebooks");
+          if (mobilePrompt === "world") moveTo("lorebooks");
+          else if (mobilePrompt === "lorebooks") moveTo("village");
           else submitBrief();
         }}
       >
         <h2 id="founding-prompt-title" tabIndex={-1} ref={promptTitle}>
-          {describingWorld ? "The wider world" : "Tell Mari about your village"}
+          {title}
         </h2>
-        {describingWorld ? (
+        <p>{context}</p>
+        {mobilePrompt === "world" ? (
           worldField
+        ) : mobilePrompt === "lorebooks" ? (
+          <VillageLorebookPicker
+            inline
+            books={controller.lorebooks}
+            error={controller.lorebooksError}
+            selected={controller.setupLorebookDraft}
+            onChange={controller.setSetupLorebookDraft}
+            disabled={controller.busy || setupSuggestionsBusy}
+          />
         ) : (
           <>
             {briefField}
             {loreNotice}
+            {errorNotice}
+            {connectionError ? (
+              <button type="button" onClick={onConnections}>
+                Model Connections
+              </button>
+            ) : null}
+            {error ? (
+              <button type="button" onClick={onEditSetting}>
+                Edit setting
+              </button>
+            ) : null}
           </>
         )}
         <div className="villages-founding-menu-actions">
-          <button type="button" onClick={() => openPrompt()}>
-            Back to Mari
-          </button>
           <button
-            type="submit"
-            className="villages-forging-primary"
-            disabled={describingWorld ? !world.trim() : !canDraft}
+            type="button"
+            onClick={() =>
+              moveTo(mobilePrompt === "world" ? "welcome" : mobilePrompt === "lorebooks" ? "world" : "lorebooks")
+            }
           >
-            {describingWorld ? "Use this world" : drafted ? "Draft again with Mari" : "Draft with Mari"}
+            Back
+          </button>
+          <button type="submit" className="villages-forging-primary" disabled={mobilePrompt === "village" && !canDraft}>
+            Next
           </button>
         </div>
       </form>
@@ -259,19 +283,7 @@ export function FoundingSettingScene({
             {next}
           </div>
         ) : null}
-        {beat === "world" && phone ? (
-          <div className="villages-founding-replies">
-            <button type="button" className="villages-forging-primary" onClick={() => openPrompt("world")}>
-              Describe the world
-            </button>
-            <button type="button" onClick={() => moveTo("lorebooks")}>
-              {world.trim() ? "Use this world" : "Skip for now"}
-            </button>
-            <button type="button" onClick={() => moveTo("welcome")}>
-              Back
-            </button>
-          </div>
-        ) : beat === "world" ? (
+        {beat === "world" ? (
           <>
             {worldField}
             <div className="villages-founding-replies">
@@ -311,7 +323,7 @@ export function FoundingSettingScene({
               type="button"
               onClick={() => {
                 setConfirmReplace(false);
-                if (phone) openPrompt("brief");
+                if (phone) onEditSetting();
                 else requestAnimationFrame(() => draftButton.current?.focus());
               }}
             >
@@ -338,22 +350,9 @@ export function FoundingSettingScene({
                 <button type="button" className="villages-forging-primary" onClick={submitBrief} disabled={!canDraft}>
                   {setupSuggestionsBusy ? "Drafting…" : "Resume draft with Mari"}
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  className="villages-forging-primary"
-                  ref={drafted ? editSettingButton : undefined}
-                  onClick={() => (drafted ? onEditSetting() : openPrompt("brief"))}
-                >
-                  {drafted ? "Review setting" : "Describe your village"}
-                </button>
-              )}
-              <button
-                type="button"
-                ref={drafted ? undefined : editSettingButton}
-                onClick={() => (drafted ? openPrompt("brief") : onEditSetting())}
-              >
-                {drafted ? "Draft again" : "Edit setting"}
+              ) : null}
+              <button type="button" onClick={onEditSetting}>
+                Edit setting
               </button>
               {connectionError ? (
                 <button type="button" onClick={onConnections}>
@@ -361,11 +360,6 @@ export function FoundingSettingScene({
                 </button>
               ) : null}
               {dismiss}
-              {!waitingForMari && !setupSuggestionsBusy ? (
-                <button type="button" onClick={() => moveTo("lorebooks")}>
-                  Back
-                </button>
-              ) : null}
             </div>
           </>
         ) : beat === "village" && !confirmReplace ? (
@@ -401,14 +395,6 @@ export function FoundingSettingScene({
                   Model Connections
                 </button>
               ) : null}
-              <button
-                type="button"
-                ref={editSettingButton}
-                className="villages-setting-edit-link"
-                onClick={onEditSetting}
-              >
-                {drafted ? "Review setting" : "Edit setting"}
-              </button>
               {dismiss}
               {next}
             </div>
