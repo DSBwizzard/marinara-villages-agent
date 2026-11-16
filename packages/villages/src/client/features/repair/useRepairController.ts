@@ -16,6 +16,7 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string; agendaToken?: string };
 type Section = "memories" | "agenda" | "details";
 type RecordTopic = RepairTopic | "all";
+type AgendaPick = { index: number; token?: string };
 type View = "hub" | "list" | "edit" | "review" | "done" | "history" | "checkpoints";
 export function useRepairController(
   active: boolean,
@@ -26,6 +27,7 @@ export function useRepairController(
     [view, setView] = useState<View>("hub");
   const [person, setPerson] = useState<RepairPerson | null>(null),
     [section, setSection] = useState<Section>("memories");
+  const [agendaPick, setAgendaPick] = useState<AgendaPick>();
   const [records, setRecords] = useState<RepairRecord[]>([]),
     [creation, setCreation] = useState<RepairRecord | null>(null),
     [selected, setSelected] = useState<RepairRecord | null>(null);
@@ -56,10 +58,14 @@ export function useRepairController(
     pending.current = null;
     setReview(null);
   };
-  const draftKey = (id: string) => JSON.stringify([world.current, person?.id ?? "", id]);
+  const draftKey = (id: string, pick: AgendaPick | undefined) =>
+    JSON.stringify([world.current, person?.id ?? "", id, pick?.index]);
+  const editorFields = (record: RepairRecord, pick: AgendaPick | undefined) =>
+    record.agendaDay ? record.fields.filter((field) => field.key.endsWith(`:${pick?.index}`)) : record.fields;
   const current = (ticket: number) => epoch.current === ticket;
   const invalidate = () => {
     abandonReview();
+    setAgendaPick(undefined);
     epoch.current++;
     setSelected(null);
     setRecords([]);
@@ -187,17 +193,17 @@ export function useRepairController(
       await fetchRecords(nextTopic, 0, search, null, "memories", ticket);
     });
   };
-  const choosePerson = (who: RepairPerson) => {
+  const choosePerson = (who: RepairPerson, part: Section = "memories") => {
     invalidate();
     setPerson(who);
     setTopic("people");
-    setSection("memories");
+    setSection(part);
     setQuery("");
     collection.current = "list";
     setView("list");
     return act(async (ticket) => {
       await readIndex();
-      await fetchRecords("people", 0, "", who, "memories", ticket);
+      await fetchRecords("people", 0, "", who, part, ticket);
     });
   };
   const chooseSection = (part: Section) => {
@@ -225,17 +231,19 @@ export function useRepairController(
     setView("history");
     return act(() => readIndex());
   };
-  const fetchRecord = async (id: string, ticket: number) => {
+  const fetchRecord = async (id: string, ticket: number, pick: AgendaPick | undefined) => {
     if (!current(ticket)) return;
     const record = await request<RepairRecord>(
       `/repair/record?id=${encodeURIComponent(id)}${person ? `&personId=${encodeURIComponent(person.id)}` : ""}`,
     );
     if (!current(ticket)) return;
+    if (pick && record.token !== pick.token)
+      throw new Error("This activity changed. Return to the Agenda and reopen it.");
     setSelected(record);
     setView("edit");
-    const key = draftKey(id),
+    const key = draftKey(id, pick),
       focus = record.people?.find((p) => p.id === person?.id),
-      values = Object.fromEntries(record.fields.map((f) => [f.key, f.value]));
+      values = Object.fromEntries(editorFields(record, pick).map((f) => [f.key, f.value]));
     setDrafts((prior) =>
       prior[key]
         ? prior
@@ -250,15 +258,16 @@ export function useRepairController(
           },
     );
   };
-  const open = (id: string) => {
+  const open = (id: string, pick?: AgendaPick) => {
     invalidate();
+    setAgendaPick(pick);
     setView("edit");
-    return act((ticket) => fetchRecord(id, ticket));
+    return act((ticket) => fetchRecord(id, ticket, pick));
   };
-  const draft = selected ? drafts[draftKey(selected.id)] : undefined;
+  const draft = selected ? drafts[draftKey(selected.id, agendaPick)] : undefined;
   const update = (change: Partial<Draft>) => {
     if (!selected) return;
-    const key = draftKey(selected.id);
+    const key = draftKey(selected.id, agendaPick);
     setDrafts((prior) => ({ ...prior, [key]: { ...prior[key], ...change } }));
     abandonReview();
     epoch.current++;
@@ -301,7 +310,7 @@ export function useRepairController(
         if (!current(ticket)) return;
         reviewRef.current = null;
         if (selected && review.kind === "repair") {
-          const key = draftKey(selected.id);
+          const key = draftKey(selected.id, agendaPick);
           setDrafts((prior) => {
             const next = { ...prior };
             delete next[key];
@@ -378,6 +387,7 @@ export function useRepairController(
     setPlacePath,
     creation,
     selected,
+    editorFields: selected ? editorFields(selected, agendaPick) : [],
     draft,
     review,
     error,

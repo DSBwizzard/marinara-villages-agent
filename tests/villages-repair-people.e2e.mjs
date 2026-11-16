@@ -35,11 +35,24 @@ const agendaDay = {
   token: "agenda-day",
   title: "Nora · Agenda · Tuesday, Nov 17",
   agendaDay: "Tuesday, Nov 17",
+  agenda: {
+    residentId: "a",
+    date: "2026-11-17",
+    weekday: "Tuesday",
+    blocks: [
+      { startMinute: 540, endMinute: 600, activity: "Tending herbs", place: "Garden", repairIndex: 0 },
+      { startMinute: 600, endMinute: 660, activity: "Meet at the gate", source: "agreed" },
+      { startMinute: 720, endMinute: 780, activity: "Binding notebooks", repairIndex: 1 },
+    ],
+  },
   summary: "Edit this date",
   fields: [
     { key: "activity:0", label: "Activity 1", type: "text", value: "Tending herbs" },
     { key: "start:0", label: "Activity 1 start", type: "clock", value: "09:00" },
-    { key: "end:0", label: "Activity 1 end", type: "clock", value: "24:00" },
+    { key: "end:0", label: "Activity 1 end", type: "clock", value: "10:00" },
+    { key: "activity:1", label: "Activity 2", type: "text", value: "Binding notebooks" },
+    { key: "start:1", label: "Activity 2 start", type: "clock", value: "12:00" },
+    { key: "end:1", label: "Activity 2 end", type: "clock", value: "13:00" },
   ],
   source: ["09:00–24:00 · Tending herbs · Garden", "10:00–11:00 · Meet at the gate · Agreed plan"],
   actions: [{ id: "correct", label: "Modify" }],
@@ -50,6 +63,12 @@ const today = {
   id: '["agenda","a","2026-11-16"]',
   title: "Nora · Agenda · Monday, Nov 16",
   agendaDay: "Monday, Nov 16",
+  agenda: {
+    residentId: "a",
+    date: "2026-11-16",
+    weekday: "Monday",
+    blocks: [{ startMinute: 480, endMinute: 540, activity: "Sorting tools" }],
+  },
   summary: "Today · View schedule",
   fields: [],
   actions: [],
@@ -304,30 +323,40 @@ await withBrowser(browser, async () => {
       await goNora(page);
       await page.getByRole("button", { name: "Agenda", exact: true }).click();
       await expect(root.getByRole("heading", { name: "Nora · Agenda", exact: true })).toBeVisible();
-      await root.getByRole("button", { name: /Monday, Nov 16 Today/ }).click();
-      await expect(root.getByRole("heading", { name: "Scheduled that day" })).toBeVisible();
-      await expect(root.getByRole("button", { name: "Review changes" })).toHaveCount(0);
-      await root.getByRole("button", { name: "Back to records" }).click();
+      await root.getByRole("button", { name: /Sorting tools/ }).click();
+      await expect(root.getByRole("button", { name: "Repair activity" })).toHaveCount(0);
       await root.getByRole("button", { name: /Tuesday, Nov 17/ }).click();
-      await expect(root.getByText(/Meet at the gate · Agreed plan/)).toBeVisible();
-      await expect(root.getByRole("textbox", { name: "Activity 1 end" })).toHaveValue("24:00");
-      await root.getByRole("textbox", { name: "Activity 1 start" }).fill("09:30");
+      await root.getByRole("button", { name: /Meet at the gate/ }).click();
+      await expect(root.getByRole("status")).toContainText("Agreed with you");
+      await expect(root.getByRole("button", { name: "Repair activity" })).toHaveCount(0);
+      const openHerbs = async () => {
+        await root.getByRole("button", { name: /Tending herbs/ }).click();
+        await root.getByRole("button", { name: "Repair activity" }).click();
+      };
+      await openHerbs();
+      await expect(root.getByRole("textbox")).toHaveCount(3);
+      await expect(root.getByRole("textbox", { name: "End" })).toHaveValue("10:00");
+      await root.getByRole("textbox", { name: "Start" }).fill("09:30");
       await root.getByRole("button", { name: "Review changes" }).click();
       const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
       assert.equal(sent.recordId, agendaDay.id);
       assert.equal(sent.values["start:0"], "09:30");
+      assert.deepEqual(Object.keys(sent.values).sort(), ["activity:0", "end:0", "start:0"]);
       await expect(root.getByText(agendaDay.title, { exact: true })).toBeVisible();
       assert.equal(await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true);
       await root.getByRole("button", { name: "Back", exact: true }).click();
-      await root.getByRole("button", { name: "Back to records", exact: true }).click();
+      const refreshedList = f.hold("list", { records: [today, { ...agendaDay, token: "new-plan" }] });
+      await root.getByRole("button", { name: "Back to Agenda", exact: true }).click();
+      await refreshedList.started;
+      refreshedList.release();
       const refreshed = f.hold(`record:${agendaDay.id}`, { token: "new-plan" });
-      await root.getByRole("button", { name: /Tuesday, Nov 17/ }).click();
+      await openHerbs();
       await refreshed.started;
       refreshed.release();
       await expect(root.getByRole("status")).toContainText("This date changed");
       await expect(root.getByRole("button", { name: "Review changes" })).toHaveCount(0);
       await root.getByRole("button", { name: "Discard draft and load this date" }).click();
-      await expect(root.getByRole("textbox", { name: "Activity 1 start" })).toHaveValue("09:00");
+      await expect(root.getByRole("textbox", { name: "Start" })).toHaveValue("09:00");
       await f.close();
     }
   });

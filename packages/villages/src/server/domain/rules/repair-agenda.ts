@@ -2,6 +2,7 @@ import type { RepairField, RepairRecord, RepairValue } from "../../../shared/con
 import { calendarAt, calendarDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
 import { composeAgenda } from "./agenda-composition.js";
+import { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import {
   agendaBlocksFor,
   agendaDateKey,
@@ -14,6 +15,7 @@ import { memoryHash } from "./memory-integrity.js";
 import { validateRoutineDay } from "./owned-routine.js";
 import { findLocation } from "./places.js";
 import { resolveVenueZone } from "./venue-zones.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 const villageCalendar = (state: VillageState, at: string) =>
   new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -42,9 +44,10 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
     const date = agendaDateKey(day);
     const label = dateLabel.format(new Date(`${date}T12:00:00Z`));
     const scheduled = agendaBlocksFor(agenda, day);
+    const ordinary = ordinaryAgendaBlocksFor(agenda, day);
     const editable = offset > 0 && agenda.activeDay?.dateKey !== date;
     const fields = editable
-      ? ordinaryAgendaBlocksFor(agenda, day).flatMap<RepairField>((block, index) => {
+      ? ordinary.flatMap<RepairField>((block, index) => {
           if (
             block.commitmentId ||
             !scheduled.some(
@@ -60,35 +63,51 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
           ];
         })
       : [];
+    const blocks = scheduled.map((block) => {
+      const place = findLocation(state, block.venueId);
+      const zone = place && block.zoneId ? resolveVenueZone(place, block.zoneId) : null;
+      const booking = agenda.reservations?.find((entry) => entry.dateKey === date && entry.id === block.commitmentId);
+      const index = block.commitmentId
+        ? -1
+        : ordinary.findIndex((part) => part.startMinute <= block.startMinute && part.endMinute >= block.endMinute);
+      return {
+        startMinute: block.startMinute,
+        endMinute: block.endMinute,
+        activity: block.activity,
+        place: [place?.name, zone?.name].filter(Boolean).join(" · "),
+        ...(restingAgendaBlock(block) ? { resting: true as const } : {}),
+        ...(booking?.source === "appointment" ? { source: "agreed" as const } : {}),
+        ...(booking?.source === "project"
+          ? { note: "Project reservation" }
+          : block.commitmentId && !booking
+            ? { note: "Commitment" }
+            : {}),
+        ...(editable && index >= 0 ? { repairIndex: index } : {}),
+      };
+    });
     return {
       id: JSON.stringify(["agenda", resident.characterId, date]),
       topic: "people",
       title: `${resident.cardSnapshot.name} · Agenda · ${label}`,
       agendaDay: label,
-      summary: fields.length ? "Edit this date" : offset === 0 ? "Today · View schedule" : "View schedule",
+      agenda: {
+        residentId: resident.characterId,
+        date,
+        weekday: VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7]!,
+        blocks: blocks.filter((_, index) => scheduledAgendaActivity(scheduled[index]!)),
+      },
+      summary: offset === 0 ? "Today · View schedule" : "View schedule",
       fields,
-      source: scheduled.map((block) => {
-        const place = findLocation(state, block.venueId);
-        const zone = place && block.zoneId ? resolveVenueZone(place, block.zoneId) : null;
-        const booking = agenda.reservations?.find((entry) => entry.dateKey === date && entry.id === block.commitmentId);
-        const source =
-          booking?.source === "project"
-            ? "Project reservation"
-            : booking?.source === "appointment"
-              ? "Agreed plan"
-              : block.commitmentId
-                ? "Commitment"
-                : "";
-        return [
+      source: blocks.map((block) =>
+        [
           `${clock(block.startMinute)}–${clock(block.endMinute)}`,
           block.activity,
-          place?.name,
-          zone?.name,
-          source,
+          block.place,
+          block.source === "agreed" ? "Agreed plan" : block.note,
         ]
           .filter(Boolean)
-          .join(" · ");
-      }),
+          .join(" · "),
+      ),
       actions: fields.length ? [{ id: "correct", label: "Modify" }] : [],
       related: [],
     };

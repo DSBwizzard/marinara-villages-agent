@@ -40,7 +40,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-console-nav{display:flex;flex-direction:column;align-items:stretch;background:var(--repair-paper);padding:24px 12px;}
 .villages-repair .repair-console-nav button{border:0;border-inline-start:2px solid transparent;border-radius:0;text-align:start;}
 .villages-repair .repair-console-nav button[aria-current=page]{border-inline-start-color:var(--repair-primary);font-weight:600;}
-.villages-repair main{width:100%;min-width:0;max-width:930px;padding:32px 36px;}
+.villages-repair main{width:100%;min-width:0;max-width:930px;padding:32px 36px;container:village-desk/inline-size;}
 .villages-repair .repair-links{display:flex;align-items:center;gap:4px 22px;flex-wrap:wrap;margin-bottom:10px;}
 .villages-repair .repair-links button{border:0;padding:0;text-decoration:underline;text-underline-offset:4px;}
 .villages-repair .repair-links button:hover:not(:disabled){background:transparent;color:var(--repair-primary);}

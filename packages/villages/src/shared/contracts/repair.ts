@@ -1,3 +1,9 @@
+import type { AgendaWeek } from "./agenda.js";
+
+export type RepairAgendaDay = Omit<AgendaWeek["days"][number], "blocks"> & {
+  residentId: string;
+  blocks: (AgendaWeek["days"][number]["blocks"][number] & { repairIndex?: number; note?: string })[];
+};
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";
 export type RepairValue = string | number | boolean;
 export type RepairPerson = { id: string; name: string; hasAgenda?: boolean };
@@ -32,6 +38,7 @@ export type RepairRecord = {
   token?: string;
   creating?: boolean;
   agendaDay?: string;
+  agenda?: RepairAgendaDay;
   subjects?: string[];
   target?: import("./village.js").MemoryInspection["target"];
 };

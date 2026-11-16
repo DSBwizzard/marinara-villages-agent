@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { AgendaPlanner } from "../../shared/AgendaPlanner.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import { VillageIcon, type VillageIconName } from "../../shared/VillageIcon.js";
 import type { RepairRecord, RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
@@ -102,7 +104,7 @@ export function RepairPage({
   const source = [...new Set(c.selected?.source ?? [])].filter(
     (excerpt) => !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
   );
-  const hasSource = !!source.length || !!c.selected?.related.length;
+  const hasSource = !c.selected?.agendaDay && (!!source.length || !!c.selected?.related.length);
   const editorTitle = memoryRecord
     ? c.selected?.creating
       ? "Add memory"
@@ -114,6 +116,7 @@ export function RepairPage({
     : c.selected?.title;
   const directory = c.view === "list" && c.topic === "people" && !c.person;
   const browsingAgenda = c.topic === "people" && c.section === "agenda";
+  const [agendaDate, setAgendaDate] = useState<string>();
   const agendaDraftStale = c.selected?.agendaDay && c.draft?.agendaToken !== c.selected.token;
   const browsingPlaces = c.view !== "hub" && c.topic === "places" && c.collection === "list";
   let placeItems = c.placeDirectory;
@@ -455,18 +458,46 @@ export function RepairPage({
                     onClick={() => void c.open(c.creation!.id)}
                   />
                 ) : null}
-                <div className={browsingAgenda ? "repair-tiles" : "repair-records"}>
-                  {c.records.map((r) => (
-                    <RepairTile
-                      key={r.id}
-                      title={browsingAgenda ? (r.agendaDay ?? r.title) : r.title}
-                      icon={r.agendaDay ? "calendar" : topicIcons[r.topic]}
-                      summary={c.topic === "all" ? searchSummary(r) : r.summary}
-                      disabled={c.busy}
-                      onClick={() => void c.open(r.id)}
-                    />
-                  ))}
-                </div>
+                {browsingAgenda && c.records.length ? (
+                  <AgendaPlanner
+                    days={c.records.flatMap((record) => (record.agenda ? [record.agenda] : []))}
+                    date={agendaDate}
+                    onDate={setAgendaDate}
+                    renderAction={(day, block) => {
+                      const record = c.records.find((row) => row.agenda?.date === day.date);
+                      return record && block.repairIndex !== undefined ? (
+                        <button
+                          type="button"
+                          disabled={c.busy}
+                          onClick={() => void c.open(record.id, { index: block.repairIndex!, token: record.token })}
+                        >
+                          Repair activity
+                        </button>
+                      ) : null;
+                    }}
+                  />
+                ) : (
+                  <div className="repair-records">
+                    {c.records.map((r) => (
+                      <RepairTile
+                        key={r.id}
+                        title={r.title}
+                        icon={r.agendaDay ? "calendar" : topicIcons[r.topic]}
+                        summary={c.topic === "all" ? searchSummary(r) : r.summary}
+                        disabled={c.busy}
+                        onClick={() => {
+                          if (r.agenda) {
+                            const resident = c.index?.people.find((person) => person.id === r.agenda!.residentId);
+                            if (resident) {
+                              setAgendaDate(r.agenda.date);
+                              void c.choosePerson(resident, "agenda");
+                            }
+                          } else void c.open(r.id);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
                 {!c.busy && !c.records.length ? <p>No records match.</p> : null}
                 {c.total > 50 ? (
                   <footer>
@@ -521,7 +552,7 @@ export function RepairPage({
                       c.update({
                         action: c.selected!.actions[0]!.id,
                         agendaToken: c.selected!.token,
-                        values: Object.fromEntries(c.selected!.fields.map((field) => [field.key, field.value])),
+                        values: Object.fromEntries(c.editorFields.map((field) => [field.key, field.value])),
                       })
                     }
                   >
@@ -530,9 +561,20 @@ export function RepairPage({
                 </div>
               ) : null}
               {!agendaDraftStale &&
-                c.selected.fields.map((f) => (
+                c.editorFields.map((f) => (
                   <div className="repair-field" key={f.key}>
-                    {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
+                    {memoryReadOnly ? (
+                      <h2>{f.label}</h2>
+                    ) : (
+                      <label htmlFor={`repair-${f.key}`}>
+                        {c.selected!.agendaDay
+                          ? f.label
+                              .replace(/ \d+/, "")
+                              .replace("Activity start", "Start")
+                              .replace("Activity end", "End")
+                          : f.label}
+                      </label>
+                    )}
                     {f.key === "letterFontId" ? (
                       <div>
                         <p
@@ -646,7 +688,7 @@ export function RepairPage({
               ) : null}
               <div className="repair-buttons">
                 <button type="button" disabled={c.busy} onClick={() => void c.load(c.topic)}>
-                  Back to records
+                  {c.selected.agendaDay ? "Back to Agenda" : "Back to records"}
                 </button>
                 {c.selected.actions.length && !agendaDraftStale ? (
                   <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
@@ -659,7 +701,7 @@ export function RepairPage({
               <aside className="repair-source">
                 {source.length ? (
                   <section className="repair-panel">
-                    <h2>{c.selected.agendaDay ? "Scheduled that day" : "Source"}</h2>
+                    <h2>Source</h2>
                     {source.map((s, i) => (
                       <blockquote key={i}>{s}</blockquote>
                     ))}
