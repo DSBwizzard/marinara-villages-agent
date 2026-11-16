@@ -962,6 +962,7 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettingsView["venues"][number] };
+  myAccess: import("../../../shared/helpers/venue-access.js").PlayerAccessEntry[];
   opening?: import("../../../shared/contracts/opening.js").OpeningView;
   clock?: import("../../../shared/contracts/clock.js").VillageClockView;
   backgroundWork: import("./background-model.js").BackgroundSummary[];

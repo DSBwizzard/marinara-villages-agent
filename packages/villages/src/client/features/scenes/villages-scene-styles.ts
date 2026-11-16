@@ -88,6 +88,9 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-notice-chips > * { pointer-events: auto; }
 .${tag}-room-screen .${tag}-scene-notice-chips .${tag}-room-notices { position: static; }
 .${tag}-room-screen .${tag}-scene-notice-chips .${tag}-room-stars { top: calc(100% + .5rem); left: 0; right: auto; }
+.${tag}-room-screen .${tag}-scene-notice-chips .${tag}-access-details { padding: .65rem; box-sizing: border-box; border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: .65rem; background: var(--marinara-chat-chrome-panel-bg, var(--surface)); color: var(--text); overflow-wrap: anywhere; }
+.${tag}-access-details ul { margin: 0; padding: 0; list-style: none; display: grid; gap: .55rem; font-size: .85rem; }
+.${tag}-access-details > button { justify-self: start; }
 .${tag}-scene-error-trigger { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; min-width: 3.5rem; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 1.5rem; background: var(--popover); color: var(--foreground); font: inherit; font-size: .75rem; cursor: pointer; }
 .${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #ed6689; }
 .${tag}-scene-error-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #ed6689; color: #2c101a; font-weight: 750; font-size: .875rem; line-height: 1; }

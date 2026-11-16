@@ -578,13 +578,14 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             requires: proposal.requires,
             commands: proposal.commands,
           },
-          accepted = acceptResidentNarration(target, capture, fiction, saved.responseDigest, at);
+          accepted = acceptResidentNarration(target, capture, fiction, saved.responseDigest, at, next);
         memoryRequire(
           !accepted.held,
           "Resident activity held: " + accepted.rejected.map((row) => row.id + ": " + row.reason).join("; "),
         );
         next.continuity = target.continuity;
         next.episodes = target.episodes;
+        if ("lodging" in accepted && accepted.lodging) Object.assign(next, accepted.lodging);
       }
       if (replayed) return;
       const now = new ZonedDate(villageNow(), state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);

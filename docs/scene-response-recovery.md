@@ -18,7 +18,7 @@ A failed browser connection can outlive the request while the server finishes a 
 
 A visible playback page is not the submission ledger. The latest saved submission provides committed/publication proof even when its reply falls outside the current page or a later close replaced the operation. Unpublished consequential effects remain held. Clarifications must match both submitted text and submission identity; reconciliation never sends a duplicate turn.
 
-Late replies preserve newer composer edits, including edits with identical text, and retain the reading position. Pending reconciliation allows draft editing while preventing another submission until the outcome is known. Confirmed failure preserves the draft and explicit recovery controls.
+Late replies preserve newer composer edits, including edits with identical text, and retain the reading position. Pending reconciliation allows draft editing while preventing another submission until the outcome is known. Once a failure is confirmed, the composer keeps the draft and accepts Send with the original or edited text. Sending again after a held reply explicitly replaces the failed turn and can make a new request. Replay in the error popup rechecks the saved reply locally.
 
 ## Hearing evidence and citations
 

@@ -605,7 +605,11 @@ export function narrationContinuityContext(
     };
     if (!required && group.length === 1 && entries.length === 1 && !entries[0].parent) {
       const { for: actor, id: source, ...meaning } = entries[0];
-      const meaningKey = JSON.stringify([entry.id, meaning]);
+      // Compare what is shown to the narrator. Each holder still keeps its own source and revision.
+      const meaningKey = JSON.stringify([
+        entry.id,
+        meaning.offer?.state === "offered" ? modelMemory(meaning) : meaning,
+      ]);
       const knower = { for: actor, source };
       const prior = sharedPrivate.get(meaningKey);
       if (prior) {

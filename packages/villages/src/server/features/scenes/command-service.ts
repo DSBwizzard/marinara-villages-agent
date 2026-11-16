@@ -324,18 +324,22 @@ export function createSceneCommands({
         sceneAttendance: session.sceneAttendance ? { ...session.sceneAttendance, layout: undefined } : undefined,
         accompanying,
       };
-      if (!contactPath(state, current, requireSceneZoneId(session), target.id, "player", liveScene, accessAt))
+      const liveAt = new ZonedDate(
+        villageNow(state.clock?.advanceMs ?? 0).getTime(),
+        state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      );
+      if (!contactPath(state, current, requireSceneZoneId(session), target.id, "player", liveScene, liveAt))
         throw conflict("That route is no longer permitted.");
       for (const companion of accompanying ?? []) {
         const origin = contactPosition(session, companion.characterId);
         if (
           origin !== companion.zoneId &&
-          !contactPath(state, current, origin, companion.zoneId, companion.characterId, liveScene, accessAt)
+          !contactPath(state, current, origin, companion.zoneId, companion.characterId, liveScene, liveAt)
         )
           throw conflict("Your escort can no longer take that route.");
       }
       const currentDecision = evaluateZoneAccess(current, target, "player", {
-        ...sceneAccessContext({ ...session, accompanying }, accessAt),
+        ...sceneAccessContext({ ...session, accompanying }, liveAt),
         accepting: true,
         unavailable: zoneClosed(state, current, target),
         environment: state.narrative,

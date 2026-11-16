@@ -2,6 +2,7 @@ import type { ContinuityCollection, ContinuityEvidence, ContinuityHolder } from 
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor, relationshipActors, relationshipCalendar } from "./continuity-actors.js";
 import {
@@ -36,6 +37,8 @@ import type { ContactMove } from "./venue-contact.js";
 import { contactPosition } from "./venue-contact.js";
 import { episodeContextActors, episodeContextRooms, sceneEpisodeId } from "./episode-sources.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
+import { lodgingReady, lodgingSettlement, lodgingWrite } from "./lodging.js";
+import { playerAccess, playerAccessChanges } from "./player-access.js";
 import { applySceneAppointment, cloneAppointmentState, sceneAgendaEvidence } from "./agenda-overview.js";
 
 export type NarrationPublication = {
@@ -57,6 +60,49 @@ export type NarrationPublication = {
 };
 
 type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
+function optionalLodgingOffer(
+  note: Record<string, unknown>,
+  source: NarrationSourceContext,
+  readset: NarrationReadset,
+) {
+  if (
+    !note.lodging ||
+    note.class !== "commitment" ||
+    !Object.keys(note).every((key) =>
+      ["id", "for", "class", "text", "source", "about", "current", "offer", "lodging", "independent"].includes(key),
+    ) ||
+    !Array.isArray(note.source) ||
+    note.source.length !== 1
+  )
+    return false;
+  const offer = asRecord(note.offer);
+  const { guest, venue, zone } = asRecord(note.lodging);
+  const { segment, act } = asRecord(note.source[0]);
+  if (
+    typeof offer.proposer !== "string" ||
+    typeof guest !== "string" ||
+    guest === offer.proposer ||
+    !Array.isArray(offer.participants) ||
+    offer.participants.length !== 2 ||
+    !offer.participants.includes(offer.proposer) ||
+    !offer.participants.includes(guest) ||
+    !Object.keys(offer).every((key) => ["proposer", "participants", "state"].includes(key)) ||
+    (offer.state !== undefined && offer.state !== "offered") ||
+    typeof segment !== "string" ||
+    act !== "offer" ||
+    !readset.lodging?.some((option) => option.host === offer.proposer && option.venue === venue && option.zone === zone)
+  )
+    return false;
+  const line = source.lines.find((row) => row.id === source.labels[segment]);
+  return (
+    line?.role === "assistant" &&
+    line.kind === "dialogue" &&
+    line.speakerId === offer.proposer &&
+    !line.contactReport &&
+    !!line.heardBy?.includes(guest)
+  );
+}
+
 const abandonmentKey = (publication: SavedNarration) => "narration-abandoned:" + publication.readset.source.episodeId;
 const abandonmentFingerprint = (publication: SavedNarration, submissionId: string) =>
   memoryHash([submissionId, publication.responseDigest, publication.raw, publication.readset]);
@@ -120,6 +166,7 @@ export function acceptNarrationContinuity(
   publication: NarrationPublication,
   submissionId: string,
   acceptedAt: string,
+  previousAuthority = state,
 ) {
   const { readset, native } = publication;
   const digest = memoryHash([publication.responseDigest, publication.raw, readset]);
@@ -298,7 +345,8 @@ export function acceptNarrationContinuity(
   }
   const prepared = new Map<string, ReturnType<typeof prepareNarrationKeep>>();
   const repeatedOfferDecisions = new Set<string>();
-  const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
+  const hasOtherCommands = reply.commands.some((command) => asRecord(command).type !== "guest.invite");
+  const allowTranscriptNotes = readset.ordinaryDialogue && !hasOtherCommands && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
   const memoryFallback = readset.optionalActorMemories;
   const optionalActorMemories =
@@ -316,7 +364,7 @@ export function acceptNarrationContinuity(
   const keeps = reply.keep.slice();
   if (readset.codeRequestedMemory) {
     memoryRequire(
-      requestedMemory?.recipientId && !admission.protectedRoots.length && !reply.commands.length,
+      requestedMemory?.recipientId && !admission.protectedRoots.length && !hasOtherCommands,
       "the automatic memory lost its captured scope",
     );
     const { start, end, recipientId } = requestedMemory;
@@ -380,7 +428,7 @@ export function acceptNarrationContinuity(
     const openingOfferEcho =
       submissionId === "greeting" &&
       !readset.source.input &&
-      !reply.commands.length &&
+      !hasOtherCommands &&
       !Object.hasOwn(note, "source") &&
       typeof offer.proposer === "string" &&
       Array.isArray(offer.participants) &&
@@ -470,7 +518,12 @@ export function acceptNarrationContinuity(
       );
     const effect: SceneEffectResult = {
       ...header,
-      independent: openingOfferEcho || optionalNote || optionalAnswer || header.independent,
+      independent:
+        openingOfferEcho ||
+        optionalNote ||
+        optionalAnswer ||
+        optionalLodgingOffer(note, source, readset) ||
+        header.independent,
     };
     try {
       const keep = prepareNarrationKeep(
@@ -486,7 +539,7 @@ export function acceptNarrationContinuity(
       const write = keep.write;
       if (
         readset.coalesceOfferDecisions === true &&
-        !reply.commands.length &&
+        !hasOtherCommands &&
         write.target &&
         (write.accept || write.closeOffer) &&
         !Object.hasOwn(note, "id") &&
@@ -699,6 +752,17 @@ export function acceptNarrationContinuity(
       try {
         if (keep) {
           let write = keep.write;
+          if (keep.lodging) {
+            memoryRequire(!readset.npcLodgingOnly || keep.lodging.guest !== "player", "the player uses guest access");
+            write = lodgingWrite(
+              write,
+              keep.lodging,
+              keep.sources,
+              readset.lodging ?? [],
+              readset.calendar,
+              scene.placeId,
+            );
+          }
           if (keep.agenda) {
             const evidence = { ...keep.agenda, activity: keep.agenda.activity ?? "" };
             write = { ...write, agenda: evidence };
@@ -725,6 +789,25 @@ export function acceptNarrationContinuity(
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
+          const lodging = keep.stayReady
+            ? lodgingReady(
+                scheduledWorld,
+                keep.stayReady,
+                readset.lodging ?? [],
+                write,
+                keep.sources,
+                { id: keep.admission.episodeId, capturedAt: readset.capturedAt },
+                scene.placeId,
+                new Date(acceptedAt),
+              )
+            : lodgingSettlement(
+                scheduledWorld,
+                next,
+                write,
+                keep.admission.operationId + ":" + id,
+                new Date(acceptedAt),
+              );
+          if (lodging) scheduledWorld = { ...scheduledWorld, ...lodging };
           if (write.agenda?.kind === "offer" || write.accept || write.closeOffer) {
             const candidate = cloneAppointmentState(scheduledWorld);
             if (applySceneAppointment(candidate, next, write, keep.admission.operationId + ":" + id, acceptedAt))
@@ -899,6 +982,21 @@ export function acceptNarrationContinuity(
       .filter((id) => native.receipts[id])
       .map((id) => ["native:" + native.receipts[id].id, (native.sources[id] ?? []).map(continuitySourceUnit)]),
   );
+  const authorityChanged =
+    scheduledWorld.venues !== previousAuthority.venues || scheduledWorld.worldPlaces !== previousAuthority.worldPlaces;
+  const accessAt = new ZonedDate(acceptedAt, readset.calendar.timeZone);
+  const accessChanges =
+    authorityChanged &&
+    (scheduledWorld.venues !== state.venues ||
+      scheduledWorld.worldPlaces !== state.worldPlaces ||
+      commandReceipts.some(({ kind }) =>
+        ["access", "residence", "establishment", "project", "structure"].includes(kind),
+      ))
+      ? playerAccessChanges(
+          playerAccess(previousAuthority, accessAt, scene),
+          playerAccess(scheduledWorld, accessAt, scene),
+        )
+      : [];
   const episode: AcceptedEpisode = {
     format: 1,
     id: source.episodeId,
@@ -920,6 +1018,7 @@ export function acceptNarrationContinuity(
     segments: source.lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((row) => row.id),
+    ...(accessChanges.length && { playerAccessChanges: accessChanges }),
     ...(selection.rejected.length ? { rejectedEffects: selection.rejected } : {}),
     offered: [
       ...readset.offered,
@@ -948,5 +1047,7 @@ export function acceptNarrationContinuity(
   state.episodes = episodes;
   state.residentPlans = scheduledWorld.residentPlans;
   state.villagers = scheduledWorld.villagers;
+  state.venues = scheduledWorld.venues;
+  state.worldPlaces = scheduledWorld.worldPlaces;
   return { ...selection, episode: episodes.records.at(-1)! };
 }

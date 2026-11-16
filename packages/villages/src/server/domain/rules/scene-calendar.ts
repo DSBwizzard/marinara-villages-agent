@@ -82,3 +82,17 @@ export function readSceneCalendar(raw: unknown) {
   );
   return value;
 }
+
+export function mentionsMinute(text: string, minute: number) {
+  const hour = Math.floor(minute / 60),
+    rest = minute % 60;
+  const twelve = hour % 12 || 12;
+  const words = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"];
+  const spoken =
+    rest === 0 ? `|${words[hour % 12]}|${twelve}${hour === 12 ? "|noon|midday" : hour === 0 ? "|midnight" : ""}` : "";
+  const suffix = hour < 12 ? "a\\.?m\\.?" : "p\\.?m\\.?";
+  const clock = `:${String(rest).padStart(2, "0")}`;
+  const exact = `0?${twelve}${rest ? clock : `(?:${clock})?`}\\s*${suffix}`;
+  const bare = `(?:0?${hour}${clock}|0?${twelve}${clock}${spoken})(?![\\d:]|\\s*[ap]\\.?m)`;
+  return new RegExp(`\\b(?:${exact}|${bare})\\b`, "iu").test(text);
+}

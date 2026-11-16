@@ -35,7 +35,12 @@ import { findLocation } from "./places.js";
 import { applyNarrationCircumstance, applyNarrationRepair } from "./narration-circumstance.js";
 import { nativeCommand, readNarrationNativeCommand } from "./narration-command-contract.js";
 import { projectSpeechContext } from "./project-interpretation.js";
-import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
+import {
+  applyNarrationAccess,
+  assertNarrationDecision,
+  narrationAccessScopes,
+  guestInvitation,
+} from "./narration-access.js";
 import { asRecord } from "./coerce.js";
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
@@ -141,6 +146,7 @@ export function prepareNarrationNative(
       const header = readNarrationEffectHeader(raw, "command-" + index);
       const effect = { ...header, failure: excluded.get(header.id) };
       const proposed = asRecord(raw);
+      if (proposed.type === "guest.invite") effect.independent = true;
       if (
         proposed.type === "circumstance" &&
         effect.independent &&
@@ -214,7 +220,20 @@ export function prepareNarrationNative(
   }
   function apply(candidate: VillageState, row: (typeof commands)[number]) {
     const { command, effect } = row;
-    const sources = command.source.map((ref) => bindNarrationSource(ref, context));
+    const sources =
+      command.type === "guest.invite"
+        ? [
+            bindNarrationSource(
+              {
+                segment: command.at,
+                ...(reply.segments[row.segment].kind === "narration"
+                  ? { perceive: { kind: "seen", by: ["player"] } }
+                  : {}),
+              },
+              context,
+            ),
+          ]
+        : command.source.map((ref) => bindNarrationSource(ref, context));
     memoryRequire(
       sources.every(
         (source) =>
@@ -344,7 +363,8 @@ export function prepareNarrationNative(
         sources,
       };
     }
-    assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
+    if (command.type !== "guest.invite")
+      assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
     if (command.type === "residence.request" || command.type === "residence.decide" || command.type === "venue.request")
       return {
         receipt: applyNarrationResidence(
@@ -391,12 +411,14 @@ export function prepareNarrationNative(
         before,
       );
     } else {
-      const before = accessBefore.get(command.venue);
-      memoryRequire(before, "native access scope is missing");
       const decision =
-        command.type === "access.decide"
-          ? { type: command.type, by: command.by, venue: command.venue, zone: command.zone, ...command.decision }
-          : command;
+        command.type === "guest.invite"
+          ? guestInvitation(candidate, context, readset, command, sources[0], receiptId, at)
+          : command.type === "access.decide"
+            ? { type: command.type, by: command.by, venue: command.venue, zone: command.zone, ...command.decision }
+            : command;
+      const before = accessBefore.get(decision.venue);
+      memoryRequire(before, "native access scope is missing");
       receipt = applyNarrationAccess(
         candidate,
         decision,
@@ -480,7 +502,13 @@ export function acceptNarration(
           usableIds: [],
           episode: undefined,
         }
-      : acceptNarrationContinuity(prepared.candidate, { ...publication, native: prepared.native }, submissionId, at);
+      : acceptNarrationContinuity(
+          prepared.candidate,
+          { ...publication, native: prepared.native },
+          submissionId,
+          at,
+          state,
+        );
   const selected = resolveNarrationEffects((excluded) => {
     const prepared = prepareNarrationNative(state, publication.readset, publication.raw, submissionId, at, excluded);
     const result = evaluate(prepared);

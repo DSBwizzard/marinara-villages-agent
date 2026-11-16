@@ -310,7 +310,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             setRoomDraft(value);
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
-          onSend={() => void sendRoom()}
+          onSend={() => void sendRoom(contactRecovery?.sceneId === room.id ? contactRecovery : undefined)}
           onConclude={() => void leaveRoom()}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
@@ -320,6 +320,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           onEnd={() => void closeRoom()}
           notices={roomNotices}
+          onOpenAccess={() => {
+            void loadSnapshot();
+            void openMenu("myAccess");
+          }}
+          timeZone={snapshot?.village.timeZone}
           onDismissNotice={dismissRoomNotice}
           onOpenWish={(actorId, wishId) => {
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });

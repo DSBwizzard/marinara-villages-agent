@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { lodgingOptions } from "./lodging-codec.js";
 import { agendaOptions, agendaVenues } from "./agenda-codec.js";
+import { playerAccessChangesSchema } from "./player-access-codec.js";
 import type { VenueSubmission } from "../models/scene-model.js";
 import { memoryRequire } from "../rules/memory-integrity.js";
 import { sceneEpisodeId } from "../rules/episode-sources.js";
@@ -11,16 +13,23 @@ const id = z.string().min(1).max(200),
 export const sceneNoticeSchema = z
   .object({
     id,
-    kind: z.enum(["memory", "wish", "venue", "request", "project", "relationship-up", "relationship-down"]),
+    kind: z.enum(["memory", "wish", "venue", "request", "project", "relationship-up", "relationship-down", "access"]),
     text: z.string().min(1).max(4000),
     detail: z.string().max(4000).optional(),
+    accessChanges: playerAccessChangesSchema.optional(),
+    accessAt: at.optional(),
     wishUpdate: z
       .object({ actorId: id, wishId: id, state: z.enum(["revealed", "progress", "fulfilled"]) })
       .strict()
       .optional(),
   })
   .strict()
-  .refine((row) => (row.kind === "wish") === (row.wishUpdate !== undefined));
+  .refine(
+    (row) =>
+      (row.kind === "wish") === (row.wishUpdate !== undefined) &&
+      (row.kind === "access") === (row.accessChanges !== undefined) &&
+      (row.kind === "access") === (row.accessAt !== undefined),
+  );
 const subjects = z
   .array(z.object({ id: z.string().min(1).max(160), incarnation: z.string().min(1).max(160) }).strict())
   .max(256)
@@ -118,6 +127,7 @@ const saved = z
             presentation.safeParse(row.presentation).success &&
             Array.isArray(row.projects) &&
             Array.isArray(row.access) &&
+            (row.lodging === undefined || lodgingOptions.safeParse(row.lodging).success) &&
             Array.isArray(row.places) &&
             Array.isArray(row.residence?.homes) &&
             Array.isArray(row.residence?.requests) &&

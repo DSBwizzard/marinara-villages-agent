@@ -142,6 +142,12 @@ Starting history honors the resident cards, your backstory, and selected lore, i
 
 **Mailbox** keeps personal correspondence as individual letters in Inbox and Sent. Opening one letter marks only that letter read. Sent letters remain in Sent; failure recovery is offered only when processing needs attention. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. Each villager receives a randomly chosen letter style when they join. **Simple text** switches the letter body to a neutral font and is remembered on that browser or device; signatures stay visible. Missing characters fall back to a device font. Letters can influence relationships and memories, but do not grant access, create commitments, or perform actions. Failed processing retains recovery controls even when the original message was already delivered.
 
+Welcome a visitor or ask to stay in ordinary Scene dialogue. A welcome opens the invited room for that visit. An agreed overnight stay gives the player temporary access to the room and its permitted route until checkout. A stay through morning ends at 8 am Village time unless the conversation sets another checkout. Use **Move** when you want to enter.
+
+Villagers follow their own rest hours and locations in their agendas. A villager can agree to rest elsewhere through a Scene or an encounter with another villager. Their rest location follows that agreement during their usual rest hours.
+
+**ⓘ Access updated** in a Scene shows the permissions that took effect in that exchange. Open **My access** in the Village menu to check your home, active stays, visit invitations, standing permissions, and restrictions by Place. Temporary permissions show when they end.
+
 Residents follow routines, and their availability changes through the day. Founding admits the chosen characters; accepted sprite copies and your original library cards stay separate.
 
 Moving into an occupied home requires your incoming resident and every current housemate to agree to the exact destination and sleeping space. Private rooms retain their individual control; shared rooms use household control. Resident moves take 24 Village hours after approval; your own move applies immediately once the required people agree. Changed membership or room availability holds a scheduled move for renewed review. Cancelling releases its reservation.

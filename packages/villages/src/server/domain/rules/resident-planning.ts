@@ -1,6 +1,7 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { VILLAGE_ACTIVITY_POLICY } from "../../../shared/helpers/activity-policy.js";
 import { z } from "zod";
+import { LODGING_COMPLETION, LODGING_SPEECH } from "./lodging.js";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
 import { socialPlanSchema } from "../decoding/resident-plans-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
@@ -276,6 +277,13 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
           "A followThrough plan needs an encounter where both residents speak their agreement to that plan's time and place. Write the time and place in the proposal. If the second resident declines, omit planId. If the plan pursues a supplied current Wish of either resident, include its ID as planWishId. Attendance does not fulfill the Wish.",
         ]
       : []),
+    ...(capture.lodging?.length
+      ? [
+          "In an actual encounter, a mutually agreed stay is the one lodging effect admitted through a keep, including a past encounter if the agreed stay is still available. " +
+            LODGING_SPEECH +
+            (capture.lodging.some((row) => row.pending) ? " " + LODGING_COMPLETION : ""),
+        ]
+      : []),
     "Village: " + context.village + ". Setting: " + context.setting,
     renderPlayerBackgroundContext(context),
   ].join("\n\n");
@@ -293,6 +301,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
         nativeCalendar: capture.calendar,
         access: narrationAccessPrompt(capture.access),
         residences: narrationResidencePrompt(capture.residence),
+        ...(capture.lodging?.length && { lodging: capture.lodging }),
         plans: context.plans,
         housing: context.housing,
       }),

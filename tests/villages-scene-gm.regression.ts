@@ -1,4 +1,4 @@
-// Test cases: packaged-scene/ordinary, packaged-scene/invitation, packaged-scene/revoked, packaged-scene/refused, packaged-scene/banned, packaged-scene/escort-ban, packaged-scene/strict-reply
+// Test cases: packaged-scene/ordinary, packaged-scene/invitation, packaged-scene/revoked, packaged-scene/refused, packaged-scene/banned, packaged-scene/escort-ban, packaged-scene/strict-reply, packaged-scene/spoken-visit, packaged-scene/retry-held-agreement
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
@@ -10,6 +10,171 @@ import {
 } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { actorEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
+import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { sceneResend } from "../packages/villages/src/client/features/scenes/villages-venue-send.js";
+
+await runCase("packaged-scene/retry-held-agreement", async () => {
+  const host = await packagedSceneServer();
+  let calls = 0;
+  const text = "You can stay on the couch tonight.";
+  host.model.chatComplete = async () => ({
+    finishReason: "stop",
+    content: JSON.stringify({
+      segments: [{ id: "reply", kind: "dialogue", speakerId: "mara", text: ++calls === 1 ? text : "Let's talk." }],
+      ...(calls === 1 && {
+        keep: [
+          {
+            id: "agreement",
+            for: ["player", "mara"],
+            class: "commitment",
+            text,
+            source: [{ segment: "reply", act: "offer" }],
+            offer: { proposer: "mara", participants: ["mara", "player"], contributions: [] },
+          },
+        ],
+      }),
+    }),
+  });
+  try {
+    const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(active.statusCode, 200, active.body);
+    const payload = {
+      sessionId: "browser",
+      submissionId: "a4444444-4444-4444-8444-444444444444",
+      message: "Can I stay tonight?",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: host.scene().sceneRevision,
+    };
+    const post = (body: typeof payload) =>
+      host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: body });
+    const failed = await post(payload);
+    assert(failed.statusCode >= 400, failed.body);
+    assert.equal(host.scene().submissions[0].acceptance.status, "held");
+    assert.equal(calls, 1);
+    const details = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/operation" });
+    assert.equal(details.statusCode, 200, details.body);
+    const { operation } = details.json();
+    assert.equal(operation.acceptance, "held");
+    const resend = sceneResend(operation, payload, payload.submissionId);
+    assert.notEqual(resend.submissionId, payload.submissionId);
+    const sent = await post({ ...payload, ...resend });
+    assert.equal(sent.statusCode, 200, sent.body);
+    assert.equal(calls, 2, "the unchanged Send makes exactly one new attempt");
+    assert.deepEqual(
+      host.scene().submissions.map(({ acceptance }) => acceptance.status),
+      ["abandoned", "applied"],
+    );
+    assert(
+      !host.scene().lines.some((line) => line.content === text),
+      "the invalid agreement never becomes Scene dialogue",
+    );
+  } finally {
+    await host.stop();
+  }
+});
+
+await runCase("packaged-scene/spoken-visit", async () => {
+  const host = await packagedSceneServer({
+    configure(world, now) {
+      const venue = world.venues[0];
+      const room = venue.zones!.find((zone) => zone.id === "common")!;
+      room.kind = "shared-residence";
+      room.name = "Living Room";
+      initializeVenueAccess(venue);
+      room.access = {
+        mode: "permission-required",
+        managerIds: ["mara"],
+        memberIds: ["mara"],
+        memberRoles: [],
+        inviterIds: [],
+        visitorHours: "always",
+        accompanied: false,
+      };
+      world.villagers[0].agenda = agendaFixture({
+        generatedAt: now,
+        activeDay: {
+          dateKey: now.slice(0, 10),
+          weekday: new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(new Date(now)),
+          scheduleInformed: false,
+          blocks: [{ startMinute: 0, endMinute: 1440, venueId: venue.id, zoneId: "exterior", activity: "Free time" }],
+        },
+      });
+    },
+    configureScene(scene) {
+      scene.zoneId = "exterior";
+      scene.area = "outside";
+      scene.accompanying![0].zoneId = "exterior";
+      scene.sceneAttendance!.occupants[0].zoneId = "exterior";
+    },
+  });
+  let calls = 0;
+  host.model.chatComplete = async () => {
+    calls++;
+    return {
+      finishReason: "stop",
+      content: JSON.stringify({
+        segments: [
+          {
+            kind: "dialogue",
+            id: "welcome",
+            speakerId: "mara",
+            text: "Come on. I'll hold the door for you.",
+          },
+          { kind: "dialogue", speakerId: "mara", text: "What did you want to talk about?" },
+        ],
+        commands: [{ type: "guest.invite", at: "welcome" }],
+      }),
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  try {
+    const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(active.statusCode, 200, active.body);
+    const turn = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId: "a3333333-3333-4333-8333-333333333333",
+        message: '"Thanks. Can I actually come inside? Could we talk?"',
+        mode: "chat",
+        targetId: "",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+    assert.equal(turn.statusCode, 200, turn.body);
+    const view = await host.app.inject({ method: "GET", url: "/api/villages" });
+    assert.equal(view.statusCode, 200, view.body);
+    const access = view.json().sceneVenue.venue.zones.find((zone: { id: string }) => zone.id === "common").accessView;
+    assert.equal(access.decision.allowed, true);
+    const changes = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/changes" });
+    assert.equal(changes.statusCode, 200, changes.body);
+    assert.deepEqual(
+      changes
+        .json()
+        .notices.flatMap((notice: { accessChanges?: { entry: { room: string; kind: string } }[] }) =>
+          (notice.accessChanges ?? []).map(({ entry }) => [entry.room, entry.kind]),
+        ),
+      [["Living Room", "visit"]],
+    );
+    const move = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/zone",
+      payload: {
+        sessionId: "browser",
+        zoneId: "common",
+        expectedSceneRevision: host.scene().sceneRevision,
+        operationId: "c3333333-3333-4333-8333-333333333333",
+      },
+    });
+    assert.equal(move.statusCode, 200, move.body);
+    assert.equal(host.scene().zoneId, "common");
+    assert.equal(calls, 1, "moving after a spoken invite uses only the original GM reply");
+  } finally {
+    await host.app.close();
+  }
+});
 
 for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned", "escort-ban"])
   await runCase("packaged-scene/" + scenario, async () => {
@@ -66,7 +231,7 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
       assert.equal(messages.at(-1).content, calls === 1 ? message : "Why?");
       const prompt = messages.map((row) => row.content).join("\n");
       assert.equal(prompt.includes("Scoped native access authority"), invited);
-      assert.doesNotMatch(prompt, /Access commands use supplied venue and zone IDs/u);
+      assert.equal(prompt.includes("Access commands use supplied venue and zone IDs"), invited);
       if (calls === 2)
         assert(
           messages.some(
@@ -128,6 +293,20 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
         turn = saved.submissions.at(-1)!;
       assert.equal(turn.message, message);
       assert.equal(turn.acceptance.status, "applied");
+      const access = turn.recordEvents?.filter((notice) => notice.kind === "access") ?? [];
+      assert.equal(access.length, invited ? 1 : 0);
+      if (invited) {
+        assert.equal(access[0].accessChanges?.length, 1);
+        assert.equal(access[0].accessChanges?.[0].entry.room, "Workshop");
+        assert.equal(access[0].accessChanges?.[0].entry.thisVisit, true);
+        const changes = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/changes" });
+        assert.equal(changes.statusCode, 200, changes.body);
+        assert.deepEqual(
+          changes.json().notices.find((notice: { id: string }) => notice.id === access[0].id).accessChanges,
+          access[0].accessChanges,
+          "reload retains the chip details",
+        );
+      }
       const input = saved.lines.find((line) => line.inputOf === turn.id)!;
       assert.equal(input.content, message);
       assert.equal(input.kind, "input");
@@ -154,6 +333,11 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
         assert.equal(view.statusCode, 200, view.body);
         const entry = view.json().sceneVenue.venue.zones.find((zone: any) => zone.id === "workshop").accessView;
         assert(entry.decision.allowed, JSON.stringify(entry));
+        assert(
+          view
+            .json()
+            .myAccess.some((row: { room?: string; thisVisit?: true }) => row.room === "Workshop" && row.thisVisit),
+        );
         assert.equal(
           host.scene().accompanying?.find((row) => row.characterId === "mara")?.zoneId,
           "common",

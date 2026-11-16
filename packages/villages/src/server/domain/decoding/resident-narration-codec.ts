@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { lodgingOptions } from "./lodging-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
 import { continuityCaptureSchema, continuityTargetSchema } from "./continuity-context-codec.js";
 import { continuityHolderKey } from "../rules/continuity.js";
@@ -44,6 +45,7 @@ const capture = z
     }),
     access: z.array(narrationAccessScopeSchema).max(256),
     residence: narrationResidenceContextSchema,
+    lodging: lodgingOptions.optional(),
     room: z
       .object({
         holder: z.object({ kind: z.literal("room"), placeId: id, zoneId: id }).strict(),

@@ -15,6 +15,7 @@ import { readNpc } from "../rules/places.js";
 import type { NpcIdentity } from "../models/places.js";
 import { assertMailReceipt, assertMailHistory, mailEvidence, episodeMailEvidence } from "../rules/mail-evidence.js";
 import { MAX_SCENE_REJECTIONS } from "../rules/scene-acceptance.js";
+import { playerAccessChangesSchema } from "./player-access-codec.js";
 
 const id = z.string().min(1).max(160),
   ids = z.array(id).refine((rows) => new Set(rows).size === rows.length);
@@ -49,6 +50,7 @@ const episode = z
     segments: z.array(z.unknown()).max(24),
     grounding: z.array(continuityEvidenceSchema).max(1024),
     continuityVersionIds: ids,
+    playerAccessChanges: playerAccessChangesSchema.optional(),
     rejectedEffects: z
       .array(z.object({ id, reason: z.string().max(2000) }).strict())
       .min(1)

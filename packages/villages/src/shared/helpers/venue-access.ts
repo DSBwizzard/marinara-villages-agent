@@ -17,7 +17,10 @@ export type AccessPermission = {
   zoneId: string;
   visitorId: string;
   issuerId: string;
-  duration: "visit" | "standing";
+  duration: "visit" | "standing" | "stay" | "timed";
+  expiresAt?: string;
+  route?: string[];
+  pendingStay?: { condition: string; hostIncarnation: string; guestIncarnation: string };
   /** Unclaimed future invitations bind to exactly one Scene on acceptance. */
   sceneId: string | null;
   accompaniedBy: string | null;
@@ -86,6 +89,18 @@ export type ZoneAccessDecision = {
   permissionId?: string;
   accompaniedBy?: string;
 };
+export type PlayerAccessEntry = {
+  id: string;
+  placeId: string;
+  place: string;
+  room?: string;
+  kind: "home" | "member" | "visit" | "standing" | "stay" | "ban" | "refused";
+  endsAt?: string;
+  thisVisit?: true;
+  escorted?: true;
+  visitorHours?: true;
+};
+export type PlayerAccessChange = { action: "added" | "changed" | "removed"; entry: PlayerAccessEntry };
 /** Explicit player projections. Never serialize the authoritative ledger. */
 export type ZoneAccessView = {
   decision: ZoneAccessDecision;
@@ -117,7 +132,9 @@ export type AccessCommand = {
   | {
       action: "invite";
       visitorId: string;
-      duration: "visit" | "standing";
+      duration: "visit" | "standing" | "timed";
+      expiresAt?: string;
+      route?: string[];
       accompanied: boolean;
       outsideHours: boolean;
       sceneId?: string;

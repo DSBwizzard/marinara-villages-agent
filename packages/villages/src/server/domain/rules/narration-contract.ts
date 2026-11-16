@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { agendaEvidence } from "../decoding/agenda-codec.js";
+import { lodgingProposal } from "../decoding/lodging-codec.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import { memoryRequire } from "./memory-integrity.js";
 import {
@@ -157,6 +158,8 @@ const proposal = z
       .nullable()
       .optional(),
     source: sources,
+    lodging: lodgingProposal.optional(),
+    stayReady: id.optional(),
     agenda: agendaEvidence
       .omit({ activity: true })
       .extend({ activity: agendaEvidence.shape.activity.optional() })

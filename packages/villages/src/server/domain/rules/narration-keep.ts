@@ -6,7 +6,12 @@ import type {
   ContinuityWrite,
 } from "../models/continuity-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
-import { continuityHolderKey, ownedContinuityClass } from "./continuity.js";
+import {
+  continuityHolderKey,
+  continuitySourceUnit,
+  continuityVersionUnit,
+  ownedContinuityClass,
+} from "./continuity.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { asRecord } from "./coerce.js";
 import { readContinuityProposal, readNarrationEffectHeader } from "./narration-contract.js";
@@ -91,14 +96,59 @@ export function prepareContinuityKeep(
   memoryRequire(!proposal.replace || target, "continuity target was not fitted");
   const record = target && collection.records.find((row) => row.id === target.id);
   memoryRequire(!target || record, "fitted continuity root is missing");
-  for (const holder of holders)
-    if (target && !Object.hasOwn(target.heads, continuityHolderKey(holder))) {
-      memoryRequire(
-        holder.kind === "actor" && !record!.heads[continuityHolderKey(holder)],
-        "existing continuity head was not fitted",
-      );
-      target.heads[continuityHolderKey(holder)] = 0;
-    }
+  const missing = target ? holders.filter((holder) => !Object.hasOwn(target.heads, continuityHolderKey(holder))) : [];
+  const offer = record?.offer;
+  const original = offer?.events[0];
+  const terms =
+    missing.length &&
+    sourceContext.ordinaryDialogue &&
+    record?.revision === target?.recordRevision &&
+    original?.act === "offer" &&
+    offer?.events.length === 1 &&
+    (proposal.accept || proposal.closeOffer) &&
+    Object.keys(proposal).every((key) =>
+      ["id", "for", "replace", "accept", "closeOffer", "source", "requires", "independent", "protection"].includes(key),
+    )
+      ? collection.versions.find((version) => version.id === offer.termsVersionId)
+      : undefined;
+  const termsHash = terms && memoryHash({ ...terms, id: undefined });
+  const mirrorsTerms = (holder: ContinuityHolder) => {
+    if (
+      !termsHash ||
+      holder.kind !== "actor" ||
+      !offer!.participants.some((party) => party.id === holder.id && party.incarnation === holder.incarnation)
+    )
+      return false;
+    const key = continuityHolderKey(holder);
+    const head = record!.heads[key];
+    if (!head?.current || record!.protection[key]) return false;
+    const version = collection.versions.find((row) => row.id === head.versionId);
+    const blocked = admission.blockedSources?.[key] ?? [];
+    return (
+      version &&
+      !version.closed &&
+      version.offerEvents?.includes(original!.id) &&
+      !blocked.includes(continuityVersionUnit(version.id)) &&
+      original!.sources.every((source) => !blocked.includes(continuitySourceUnit(source))) &&
+      memoryHash({ ...version, id: undefined }) === termsHash
+    );
+  };
+  const fittedCopy =
+    terms &&
+    holders.some((holder) => {
+      const key = continuityHolderKey(holder);
+      return target!.heads[key] === record!.heads[key]?.revision && mirrorsTerms(holder);
+    });
+  for (const holder of missing) {
+    const key = continuityHolderKey(holder);
+    const head = record!.heads[key];
+    // The original offer already proved who heard the identical terms. The decision still needs current witnessed words.
+    memoryRequire(
+      holder.kind === "actor" && (!head || (fittedCopy && mirrorsTerms(holder))),
+      "existing continuity head was not fitted",
+    );
+    target!.heads[key] = head?.revision ?? 0;
+  }
   const prior =
     record &&
     collection.versions.find((version) => version.id === record.heads[continuityHolderKey(holders[0])]?.versionId);
@@ -306,6 +356,8 @@ export function prepareContinuityKeep(
     },
     sources,
     agenda: proposal.agenda,
+    lodging: proposal.lodging,
+    stayReady: proposal.stayReady,
   };
 }
 

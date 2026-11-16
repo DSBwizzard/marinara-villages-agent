@@ -8,10 +8,10 @@ export function venueDisplayZones(place: VillageVenue) {
     const restricted = !exterior && zone.accessView?.decision.mode === "permission-required";
     const accessLabel = zone.closed
       ? "Closed for renovation"
-      : restricted || zone.kind === "private-residence"
-        ? "Permission required"
-        : allowed
-          ? "Open to you"
+      : allowed
+        ? "Open to you"
+        : restricted || zone.kind === "private-residence"
+          ? "Permission required"
           : "Currently unavailable";
     return {
       ...zone,

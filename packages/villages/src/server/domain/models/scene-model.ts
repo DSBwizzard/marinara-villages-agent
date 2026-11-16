@@ -64,11 +64,13 @@ export type VenueSubmission = {
 };
 export type VenueRecordEvent = {
   id: string;
-  kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
+  kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down" | "access";
   text: string;
   wishUpdate?: { actorId?: string; wishId: string; state: "revealed" | "progress" | "fulfilled" };
   /** Player-visible saved details; formatting never makes a model request. */
   detail?: string;
+  accessChanges?: import("../../../shared/helpers/venue-access.js").PlayerAccessChange[];
+  accessAt?: string;
 };
 export type VenueScene = {
   /** Provisional writer cast, validated before publication; never persisted as Scene authority. */

@@ -31,6 +31,22 @@ const saved = {
   input: { message: "Hello", mode: "chat", targetId: "" },
 };
 assert.deepEqual(sceneResend(saved, saved.input, "new"), { submissionId: "original", retryOfAttemptId: "attempt" });
+assert.deepEqual(sceneResend({ ...saved, acceptance: "held" }, saved.input, "new"), {
+  submissionId: "new",
+  retryOfAttemptId: "attempt",
+  replaceOfOperationId: "original",
+});
+const identicalHeld = sceneResend({ ...saved, acceptance: "held" }, saved.input, saved.id);
+assert.notEqual(
+  identicalHeld.submissionId,
+  saved.id,
+  "a failed saved reply needs a fresh submission even for identical text",
+);
+assert.equal(identicalHeld.replaceOfOperationId, saved.id);
+assert.deepEqual(sceneResend({ ...saved, acceptance: "pending" }, saved.input, "new"), {
+  submissionId: "original",
+  retryOfAttemptId: "attempt",
+});
 assert.deepEqual(sceneResend(saved, { ...saved.input, message: "Hello again" }, "new"), {
   submissionId: "new",
   retryOfAttemptId: "attempt",

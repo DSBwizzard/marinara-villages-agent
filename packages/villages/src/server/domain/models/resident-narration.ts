@@ -14,6 +14,7 @@ export type ResidentNarrationCapture = {
   calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
   relationshipAnswerIds?: string[];
   access: ReturnType<typeof import("../rules/narration-access.js").narrationAccessScopes>;
+  lodging?: import("./narration-model.js").NarrationReadset["lodging"];
   residence: ReturnType<typeof import("../rules/narration-residence.js").narrationResidenceContext>;
   room?: {
     holder: Extract<ContinuityHolder, { kind: "room" }>;

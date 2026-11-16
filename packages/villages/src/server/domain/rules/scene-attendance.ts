@@ -2,7 +2,8 @@ import { findLocation } from "./places.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
-import { agendaAt } from "./agenda-plan.js";
+import { agendaAt, restingAgendaBlock } from "./agenda-plan.js";
+import { activeLodging } from "./lodging-presence.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
@@ -80,14 +81,17 @@ export function captureSceneAttendance(
         chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
           at: now,
         });
+      const stay = restingAgendaBlock(block) && activeLodging(village, villager.characterId, now);
       return [
         {
           characterId: villager.characterId,
           name: villager.cardSnapshot.name,
           doing:
-            (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
-              ? "Taking care of their own affairs"
-              : (block?.activity ?? ""),
+            stay && stay.venue.id === placeId && stay.zone.id === zone.id
+              ? (block?.activity ?? "Sleeping")
+              : (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
+                ? "Taking care of their own affairs"
+                : (block?.activity ?? ""),
           zoneId: zone.id,
         },
       ];

@@ -754,6 +754,16 @@ export function useSendRoom(ports: {
           throw new Error("Review the saved action before sending a new message.");
         if (replacement && (replacement.sceneId !== room.id || !sameSavedOperation(replacement.operation, operation)))
           throw new Error("The saved action changed. Review it before replacing it.");
+        if (
+          operation?.acceptance === "held" &&
+          (!room.operation || !sameSavedOperation(room.operation, operation, false))
+        ) {
+          const latest = await refreshSceneAfterFailure(room.id, operation.id, owns);
+          if (owns() && latest) setRoom(currentRoom(latest));
+          throw new Error(
+            "The saved message changed. Review the current Scene and send again. Your draft is preserved.",
+          );
+        }
         resend = sceneResend(
           operation,
           {
@@ -879,6 +889,12 @@ export function useSendRoom(ports: {
           latest && authoritative && (latest.sceneRevision ?? 0) > (authoritative.sceneRevision ?? 0)
             ? latest
             : (authoritative ?? latest);
+        if (
+          replacement &&
+          resend.replaceOfOperationId === replacement.operation.id &&
+          (operation?.id === submissionId || newest?.operation?.id === submissionId)
+        )
+          setContactRecovery((current) => (current === replacement ? null : current));
         if (newest) setRoom(currentRoom(newest));
         else setRoom(before);
         if (cause instanceof VillageApiError && (cause.code === "SCENE_BUSY" || cause.code === "SCENE_STALE"))
@@ -1090,6 +1106,7 @@ export function useRetrySavedScene(ports: {
       claim.busy = true;
       setRoomBusy(true);
       const editVersion = composerEditVersionRef?.current;
+      let replacementSubmissionId: string | undefined;
       try {
         const { operation } = await request<{ operation: RoomOperation }>(
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
@@ -1098,7 +1115,7 @@ export function useRetrySavedScene(ports: {
         if (!expected && operation?.kind === "turn" && operation.input?.mode === "contact")
           throw new Error("Review the saved action before retrying.");
         if (
-          (room.operation.kind === "greet" || !!expected) &&
+          (room.operation.kind === "greet" || room.operation.kind === "turn" || !!expected) &&
           (!operation ||
             operation.id !== room.operation.id ||
             operation.kind !== room.operation.kind ||
@@ -1122,6 +1139,9 @@ export function useRetrySavedScene(ports: {
                   ? "/rooms/leave"
                   : "/rooms/turn"
                 : "/rooms/end";
+        const resend =
+          operation.kind === "turn" ? sceneResend(operation, operation.input ?? {}, operation.id) : undefined;
+        if (resend?.replaceOfOperationId) replacementSubmissionId = resend.submissionId;
         const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
           method: "POST",
           body: JSON.stringify({
@@ -1133,6 +1153,7 @@ export function useRetrySavedScene(ports: {
             ...(operation.kind === "greet" && operation.recoverable
               ? { recovery: true }
               : { retryOfAttemptId: operation.attemptId }),
+            ...resend,
           }),
         });
         if (!lifetime.owns(claim)) return;
@@ -1166,6 +1187,8 @@ export function useRetrySavedScene(ports: {
         if (!lifetime.owns(claim)) return;
         const latest = await refreshSceneAfterFailure(room.id, undefined, () => lifetime.owns(claim));
         if (!lifetime.owns(claim)) return;
+        if (expected && replacementSubmissionId && latest?.operation?.id === replacementSubmissionId)
+          setContactRecovery((current) => (current === expected ? null : current));
         if (latest) setRoom(currentRoom(latest));
         setRoomError(messageFrom(cause, "The saved request could not be recovered."));
       } finally {

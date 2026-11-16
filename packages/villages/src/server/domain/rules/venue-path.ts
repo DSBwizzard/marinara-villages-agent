@@ -4,7 +4,6 @@ import { evaluateZoneAccess } from "./venue-access.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 
-/** Every traversed Zone must admit this actor; physical connectivity alone is insufficient. */
 export function accessibleVenueRoute(
   state: Pick<VillageState, "projects" | "narrative">,
   venue: VillageVenue,
@@ -14,8 +13,21 @@ export function accessibleVenueRoute(
   preparing = false,
   ordinary = true,
 ): boolean {
+  return !!permittedVenuePath(state, venue, actor, targetId, at, preparing, ordinary);
+}
+
+/** Every traversed Zone must admit this actor; physical connectivity alone is insufficient. */
+export function permittedVenuePath(
+  state: Pick<VillageState, "projects" | "narrative">,
+  venue: VillageVenue,
+  actor: string,
+  targetId: string,
+  at: Date,
+  preparing = false,
+  ordinary = true,
+): string[] | undefined {
   const zones = venueZones(venue),
-    reachable = new Set(["exterior"]),
+    reachable = new Map([["exterior", ["exterior"]]]),
     queue = ["exterior"];
   for (const id of queue)
     for (const next of contactNeighborIds(zones, id)) {
@@ -30,8 +42,8 @@ export function accessibleVenueRoute(
         }).allowed
       )
         continue;
-      reachable.add(next);
+      reachable.set(next, [...reachable.get(id)!, next]);
       queue.push(next);
     }
-  return reachable.has(targetId);
+  return reachable.get(targetId);
 }

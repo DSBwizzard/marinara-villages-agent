@@ -193,11 +193,13 @@ await withBrowser(browser, async () => {
           const message =
             failure === "native-hold"
               ? "The reply would overcrowd a Zone. Your draft is preserved."
-              : failure === "halt"
-                ? "Village time cannot be skipped through narration."
-                : failure === "sound"
-                  ? "The reply used an invalid narrated sound. Your draft is preserved."
-                  : "Invalid request details";
+              : failure === "agreement"
+                ? "The saved narration needs recovery."
+                : failure === "halt"
+                  ? "Village time cannot be skipped through narration."
+                  : failure === "sound"
+                    ? "The reply used an invalid narrated sound. Your draft is preserved."
+                    : "Invalid request details";
           session.operation = {
             id: input.submissionId,
             kind: "turn",
@@ -205,6 +207,7 @@ await withBrowser(browser, async () => {
             attemptId: "failed-attempt",
             stage: "turn-reply",
             error: message,
+            ...(failure === "agreement" ? { acceptance: "held", committed: false, replyReady: false } : {}),
             input: {
               message: input.message,
               mode: input.mode,
@@ -214,6 +217,13 @@ await withBrowser(browser, async () => {
           };
           const detail = failure;
           failure = null;
+          if (detail === "agreement")
+            savedChangeRecovery = {
+              submissionId: input.submissionId,
+              status: "held",
+              at: now,
+              reason: "The saved reply needs review.",
+            };
           if (detail === "reads") {
             hideReads = true;
             setTimeout(() => {
@@ -223,6 +233,7 @@ await withBrowser(browser, async () => {
           return fulfill(route, { status: detail === "halt" ? 409 : 400, json: { error: message } });
         }
         const beforeSuccess = structuredClone(session);
+        if (input.replaceOfOperationId === savedChangeRecovery?.submissionId) savedChangeRecovery = null;
         session.lines.push(
           {
             id: "player-" + input.submissionId,
@@ -319,10 +330,9 @@ await withBrowser(browser, async () => {
           await expect(page.getByText(/Saved Contact action/)).toBeVisible();
           assert.equal(turns.length, before, "restoration never sends a request");
           if (edit) await composer.fill(message + " changed");
-          await expect(send).toBeDisabled();
-          await page
-            .getByRole("button", { name: edit ? "Replace with draft" : "Retry original action", exact: true })
-            .click();
+          await expect(send).toBeEnabled();
+          if (edit) await send.click();
+          else await page.getByRole("button", { name: "Retry original action", exact: true }).click();
           await expect.poll(() => turns.length).toBe(before + 1);
           const sent = turns.at(-1);
           assert.equal(sent.retryOfAttemptId, "old-attempt");
@@ -658,6 +668,26 @@ await withBrowser(browser, async () => {
     await expect(send).toBeEnabled();
     await expect(composer).toHaveValue("Keep this draft during recovery");
     assert.equal(replays, 1, "Replay is an explicit local request, never an automatic model retry");
+    for (const edit of [false, true]) {
+      failure = "agreement";
+      await composer.fill("Can I stay on the couch?");
+      const before = turns.length;
+      await send.click();
+      await expectSceneError(page, "The game couldn’t finish saving an action.");
+      await expect(composer).toHaveValue("Can I stay on the couch?");
+      if (edit) await composer.fill("Could I sleep on the couch tonight?");
+      await expect(send).toBeEnabled();
+      assert.equal(turns.length, before + 1, "a failed agreement never sends automatically");
+      const prior = turns.at(-1);
+      await send.click();
+      await expect(composer).toHaveValue("");
+      await expect.poll(() => turns.length).toBe(before + 2);
+      const retried = turns.at(-1);
+      assert.equal(retried.message, edit ? "Could I sleep on the couch tonight?" : prior.message);
+      assert.equal(retried.replaceOfOperationId, prior.submissionId);
+      assert.equal(retried.retryOfAttemptId, "failed-attempt");
+      assert.notEqual(retried.submissionId, prior.submissionId);
+    }
     session.operation = null;
     session.currentTime = "Monday, 2 November · 09:57";
     await load();
