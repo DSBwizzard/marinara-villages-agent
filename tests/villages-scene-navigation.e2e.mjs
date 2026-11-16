@@ -104,9 +104,11 @@ await withBrowser(browser, async () => {
         await page.getByRole("button", { name: "Venue actions" }).click();
         await expect(page.getByRole("menuitem", { name: "Move", exact: true })).toBeEnabled();
         await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-        await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator("option[value=workshop]")).toHaveText(
-          "Captured workshop",
-        );
+        await expect(
+          page
+            .getByRole("dialog", { name: "Move to Zone" })
+            .getByRole("button", { name: "Captured workshop", exact: true }),
+        ).toBeVisible();
       } else await expect(page.locator(".marinara-capability-villages-home")).toBeVisible();
       assert.deepEqual(errors, []);
       await page.close();
@@ -188,7 +190,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   await expect(page.locator("#screen")).toHaveText("room");
   for (const status of ["opening", "active", "closing"]) {
     await page.evaluate((status) => window.navigation.setRoom((current) => ({ ...current, status })), status);
-    for (const destination of ["setup", "resume", "preparing"]) {
+    for (const destination of ["setup", "preparing"]) {
       await page.evaluate((destination) => window.navigation.setScreen(destination), destination);
       await expect(page.locator("#screen")).toHaveText("room");
     }

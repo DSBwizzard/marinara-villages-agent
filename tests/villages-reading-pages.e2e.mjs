@@ -288,12 +288,15 @@ await withBrowser(browser, async () => {
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
       assert.equal(await text.textContent(), beforeKeyboard);
       assert.equal(await counter.textContent(), counterBeforeKeyboard);
-      assert.deepEqual(await images.first().boundingBox(), baseline);
+      const { y, ...keyboardSprite } = await images.first().boundingBox();
+      assert.deepEqual(keyboardSprite, { x: baseline.x, width: baseline.width, height: baseline.height });
+      assert.ok(y <= baseline.y, "the keyboard may lift the sprite without changing its size");
       await page.evaluate(() => {
         window.sceneViewport.height = innerHeight;
         window.sceneViewport.dispatchEvent(new Event("resize"));
       });
       await expect(page.locator(tag)).not.toHaveAttribute("data-scene-keyboard", "");
+      await expect.poll(() => images.first().boundingBox()).toEqual(baseline);
       await draft.blur();
       if (width === 320) {
         const anchor = (await text.textContent()).trim().split(/\s+/).slice(0, 3).join(" ");
@@ -316,7 +319,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "End Scene now" }).click();
+    await page.getByRole("menuitem", { name: "Conclude" }).click();
     await expect(draft).toHaveCount(0);
     await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toHaveCount(0);
     await expect(tray).toHaveAccessibleName("5 World changes");

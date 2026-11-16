@@ -28,11 +28,12 @@ import {
   contactNeighbors,
   contactPath,
   contactPosition,
+  liveSceneMovePermission,
   sceneAccessContext,
   sceneMoveAccompanying,
   type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
-import { venueClasses } from "../../domain/rules/venue-model.js";
+import { MAX_ZONE_VILLAGERS, venueClasses } from "../../domain/rules/venue-model.js";
 import { defaultVenueZoneId, resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { metadataFailure } from "../../domain/rules/work-failure.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
@@ -305,7 +306,7 @@ export function createSceneCommands({
         "There is no permitted connection route to that space; its controller may need to grant an invitation.",
       );
     const people = sceneZoneOccupants({ ...session, accompanying }, venue, zone.id);
-    if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
+    if (people.filter((person) => !person.characterId.startsWith("npc:")).length > MAX_ZONE_VILLAGERS)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     const decision = evaluateZoneAccess(venue, zone, "player", {
       ...sceneAccessContext({ ...session, accompanying }, accessAt),
@@ -316,34 +317,17 @@ export function createSceneCommands({
     if (!decision.allowed) throw conflict(decision.explanation);
     await mutateVillageState((state) => {
       const current = findLocation(state, venue.id);
-      const target = current && resolveVenueZone(current, zone.id);
-      if (!current || !target) throw conflict("That Zone is no longer available.");
-      const liveScene = {
-        ...session,
-        continuity: undefined,
-        sceneAttendance: session.sceneAttendance ? { ...session.sceneAttendance, layout: undefined } : undefined,
+      if (!current) throw conflict("That Zone is no longer available.");
+      const permission = liveSceneMovePermission(
+        state,
+        current,
+        zone.id,
+        session,
         accompanying,
-      };
-      if (!contactPath(state, current, requireSceneZoneId(session), target.id, "player", liveScene, accessAt))
-        throw conflict("That route is no longer permitted.");
-      for (const companion of accompanying ?? []) {
-        const origin = contactPosition(session, companion.characterId);
-        if (
-          origin !== companion.zoneId &&
-          !contactPath(state, current, origin, companion.zoneId, companion.characterId, liveScene, accessAt)
-        )
-          throw conflict("Your escort can no longer take that route.");
-      }
-      const currentDecision = evaluateZoneAccess(current, target, "player", {
-        ...sceneAccessContext({ ...session, accompanying }, accessAt),
-        accepting: true,
-        unavailable: zoneClosed(state, current, target),
-        environment: state.narrative,
-      });
-      if (!currentDecision.allowed) throw conflict(currentDecision.explanation);
-      if (decision.permissionId && currentDecision.permissionId !== decision.permissionId)
-        throw conflict("That invitation changed. Refresh the Scene before moving.");
-      claimVisitPermission(current, currentDecision.permissionId, session.id);
+        accessAt,
+        decision.permissionId,
+      );
+      claimVisitPermission(current, permission, session.id);
     });
     await changeSceneVenues(session, (state) => {
       const captured = findLocation(state, venue.id)!;

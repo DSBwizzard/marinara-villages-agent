@@ -35,6 +35,7 @@ export type SpriteManagerState = {
   expressions: SpriteExpression[];
   assignments: SpriteAssignment[];
   defaultExpressionId?: string;
+  defaultView?: SpriteView;
   useSprites?: boolean;
   folders?: SpriteFolders;
   excluded?: Record<SpriteView, string[]>;

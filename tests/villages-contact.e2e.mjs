@@ -217,10 +217,9 @@ await withBrowser(browser, async () => {
     await readUntil(/still listening through the doorway/);
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-    await expect(page.getByLabel("Move to Zone").getByRole("option", { name: /invited/ })).toHaveText(
-      "Interior entrance (invited)",
-    );
-    await page.getByLabel("Move to Zone").selectOption("common");
+    const picker = page.getByRole("dialog", { name: "Move to Zone" });
+    await expect(picker.getByRole("button", { name: "Secret bedroom" })).toHaveCount(0);
+    await picker.getByRole("button", { name: "Common Space (invited)", exact: true }).click();
     await expect.poll(() => entered?.zoneId).toBe("common");
     assert.equal(entered.expectedSceneRevision, 3);
     await expect(page.getByRole("button", { name: "Venue actions", exact: true })).toBeVisible();

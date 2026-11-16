@@ -260,6 +260,7 @@ export function createSpriteManager({
         if (!manager.assignments.some((item) => item.expressionId === expressionId))
           throw badRequest("Choose an expression with assigned artwork.");
         manager.defaultExpressionId = expressionId;
+        delete manager.defaultView;
       });
       return result(id);
     });
