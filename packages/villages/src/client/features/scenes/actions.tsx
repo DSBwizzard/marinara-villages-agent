@@ -112,9 +112,7 @@ export function useCloseRoom(ports: {
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
 }) {
   const {
     isFounded,
@@ -275,9 +273,7 @@ export function useDiscardRoomDebug(ports: {
   setRoomError: React.Dispatch<SetStateAction<string>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
 }) {
   const confirmVillages = useConfirmation(ports.room?.id);
   const {
@@ -489,9 +485,7 @@ export function useSendRoom(ports: {
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
   snapshot: VillageSnapshot;
 }) {
   const { composerEditVersionRef } = ports;
@@ -1097,9 +1091,7 @@ export function useOpenRoom(ports: {
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
 }) {
   const {
     greetRoom,

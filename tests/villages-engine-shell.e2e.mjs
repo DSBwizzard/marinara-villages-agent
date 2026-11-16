@@ -72,6 +72,34 @@ await withBrowser(browser, async () => {
     await openVillages.click();
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toBeVisible({ timeout: 20000 });
+    const villageHost = page.locator("marinara-capability-villages");
+    const colors = () =>
+      villageHost.evaluate((element) => {
+        const palette = getComputedStyle(element);
+        return {
+          surface: palette.backgroundColor,
+          ink: palette.color,
+          primary: palette.getPropertyValue("--primary"),
+          panel: palette.getPropertyValue("--marinara-chat-chrome-panel-bg"),
+          scrollbar: getComputedStyle(element.querySelector(".marinara-capability-villages-home-full")).scrollbarColor,
+          icons: [...element.querySelectorAll("svg")].map((icon) => {
+            const { color, fill, stroke } = getComputedStyle(icon);
+            return { color, fill, stroke };
+          }),
+        };
+      });
+    const original = await colors();
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      root.dataset.marinaraAccentAnimation = "true";
+      root.style.setProperty("--primary", "#ff00ff");
+      root.style.setProperty("--foreground", "#ff0000");
+      root.style.setProperty("--background", "#00ffff");
+      root.style.setProperty("--y2k-pink", "#ff0000");
+      root.style.setProperty("--marinara-chat-chrome-panel-bg", "#00ff00");
+      root.style.setProperty("--marinara-chat-chrome-button-text-active", "#ff00ff");
+    });
+    await expect.poll(colors).toEqual(original);
     await expect(home).toHaveAttribute("data-mobile", String(viewport.width < 705));
     await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(
       viewport.width < 705 ? 0 : 3,

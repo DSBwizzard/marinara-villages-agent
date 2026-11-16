@@ -16,7 +16,7 @@ export function StorybookHeading({
     <Heading className={`${P}-storybook-heading`} ref={ref} tabIndex={tabIndex}>
       {children}
       <svg
-        className={`${P}-directory-flourish`}
+        className={`${P}-directory-flourish mari-rgb-static-icon`}
         viewBox="0 0 64 36"
         width="56"
         height="35"
@@ -33,7 +33,12 @@ export function StorybookHeading({
 
 export function StorybookSearchIcon() {
   return (
-    <svg className={`${P}-storybook-search-icon`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <svg
+      className={`${P}-storybook-search-icon mari-rgb-static-icon`}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      focusable="false"
+    >
       <circle cx="10" cy="10" r="7" />
       <path d="m15 15 6 6" />
     </svg>

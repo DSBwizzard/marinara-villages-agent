@@ -110,7 +110,7 @@ export function DeskWorkspace({
         <header className={`${P}-desk-header`} hidden={!active}>
           <div className={`${P}-menu-brand`} aria-hidden="true">
             VILLAGES
-            <svg viewBox="0 0 260 52" aria-hidden="true">
+            <svg className="mari-rgb-static-icon" viewBox="0 0 260 52" aria-hidden="true">
               <path d="M1 44Q18 41 25 38V31L32 25L39 32V37H46V25L53 19L61 26V34H67V21L74 13L82 21V30H88V19H93V13H96V19L103 25V32H112V17L119 9L126 17V30H134V15H139V6L143 1L147 6V15H152V30H163V20L172 12L181 21V35H188V28L194 22L201 29V37H210Q208 30 216 29Q222 28 223 35L227 39H234V33L241 27L248 34V41L259 44Q204 38 167 44Q130 54 91 46Q46 36 1 44Z" />
             </svg>
           </div>

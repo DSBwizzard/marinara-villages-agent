@@ -90,6 +90,7 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "visit" }) 
   };
   return (
     <svg
+      className="mari-rgb-static-icon"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

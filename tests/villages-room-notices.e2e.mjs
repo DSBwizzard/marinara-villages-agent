@@ -253,7 +253,7 @@ await withBrowser(browser, async () => {
   await expect(tray.locator('[data-icon="presence"]')).toHaveCount(1);
   await expect(stack.locator('[data-icon="presence"]')).toHaveCount(1);
   await expect(tray.locator('[data-icon="presence"] path')).toHaveCSS("stroke", "none");
-  await expect(tray.locator('[data-icon="presence"]')).toHaveCSS("color", "rgb(217, 70, 168)");
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCSS("color", "rgb(229, 177, 62)");
   const countAlignment = await tray.evaluate((button) => {
     const icon = button.querySelector("svg").getBoundingClientRect();
     const count = document.createRange();

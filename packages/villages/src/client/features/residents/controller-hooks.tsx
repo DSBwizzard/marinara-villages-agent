@@ -7,7 +7,7 @@ export function useResidentInspection(ports: {
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
   personProfile: import("./villages-dossier.js").DossierNavigation;
   profileInspection: import("./villages-dossier.js").DossierSection;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
 }) {
   const { loadAgendas, personProfile, profileInspection, screen, visible } = ports;
   const focusRevision = useFocusRevision(
@@ -29,7 +29,7 @@ export function useResidentAgendaPolling(ports: {
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
   personProfile: import("./villages-dossier.js").DossierNavigation;
   profileInspection: import("./villages-dossier.js").DossierSection;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
 }) {
   const { agendas, loadAgendas, personProfile, profileInspection, screen } = ports;
   const pending =

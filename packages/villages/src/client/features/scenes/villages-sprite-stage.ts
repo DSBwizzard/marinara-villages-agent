@@ -10,10 +10,13 @@ export function selectSpriteImage(
   facing: SpriteFacing,
   sideExpression?: string,
   named = false,
+  defaultView?: SpriteImage["view"],
 ): { image: SpriteImage; mirrored: boolean } | null {
   const view = facing === "front" ? "front" : "side";
   const matches = (item: SpriteImage) => (item.expressionId ?? item.label) === expression;
-  const defaultEntry = images.find((item) => item.isDefault) ?? images[0];
+  const marked = images.find((item) => item.isDefault);
+  const exactDefault = marked && marked.view === defaultView ? marked : undefined;
+  const defaultEntry = marked ?? images[0];
   const defaultId = defaultEntry?.expressionId ?? defaultEntry?.label;
   const defaults = (item: SpriteImage) => (item.expressionId ?? item.label) === defaultId;
   const current = images.find(matches);
@@ -27,6 +30,7 @@ export function selectSpriteImage(
     images.find((item) => item.view === view && matches(item)) ??
     (named && current?.view === "side" ? current : undefined) ??
     (view === "side" ? current : variantView("front")) ??
+    exactDefault ??
     images.find((item) => item.view === view && defaults(item)) ??
     (named && !expression ? variantView(view) : undefined) ??
     images.find(matches) ??

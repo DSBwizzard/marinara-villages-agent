@@ -105,7 +105,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
         </div>
       ) : null}
       <div className="villages-zone-map-canvas">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <svg className="mari-rgb-static-icon" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           {pairs.map(([a, b]) => (
             <line
               key={JSON.stringify([a, b])}
