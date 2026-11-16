@@ -23,7 +23,7 @@ function scene(id,status='active',revision=0){return authorSceneView({id,version
 function Restore(ports){const restoration=useActiveSceneRestoration(ports);window.retryScene=restoration.retry;
  return <pre id='restoration'>{JSON.stringify({status:restoration.status,error:restoration.error})}</pre>}
 function Harness(){
- const [room,writeRoom]=useSceneRecord(),[ready,setReady]=useState(false),[founded,setFounded]=useState(window.options.hydrate?undefined:true),
+ const [room,writeRoom]=useSceneRecord(),[ready,setReady]=useState(false),[founded,setFounded]=useState(window.options.hydrate?undefined:!window.options.unfounded),
  [screen,setScreen]=useState('home'),[debug,setDebug]=useState(false);
  const state=useScenesState(founded),noop=()=>{};
  const setRoom=useCallback(next=>{window.publications.push('room');writeRoom(next)},[]),
@@ -41,6 +41,7 @@ function Harness(){
  blank:()=>{writeRoom(scene('','opening'));state.setRoomEnded(false)},revise:()=>writeRoom(current=>({...current,sceneRevision:10})),
  reset:()=>{setFounded(false);writeRoom(null);state.setRoomBusy(false);state.setRoomError('reset error');setScreen('home')},
  refound:(id='B')=>{setFounded(true);writeRoom(scene(id));state.setRoomEnded(false)},hydrate:()=>setFounded(true),
+ loseSnapshot:()=>setFounded(undefined),
  end:()=>state.setRoomEnded(true),closed:()=>writeRoom(current=>({...current,status:'closed'})),
  run:kind=>{const fn=kind==='close'?close:kind==='open'?()=>open({id:'other',name:'Other'}):()=>next(room.id);
   window.pending.push(fn());return window.pending.length-1},
@@ -347,12 +348,39 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       assert.deepEqual(await recovery.state(), recoveryBefore);
       await recovery.finish();
       const hydrate = await mount(strict, width, { hydrate: true, holdRead: true });
-      await expect.poll(() => hydrate.held.length).toBeGreaterThan(0);
+      await expect.poll(async () => (await hydrate.restoration()).status).toBe("checking");
+      assert.equal(hydrate.requests.length, 0, "Startup waits for a founded snapshot");
       await hydrate.page.evaluate(() => window.h.hydrate());
+      await expect.poll(() => hydrate.held.length).toBe(1);
       await hydrate.releaseReads();
       await expect.poll(async () => (await hydrate.state()).status).toBe("active");
       await expect.poll(async () => (await hydrate.state()).busy).toBe(false);
       await hydrate.finish();
+      const newlyFounded = await mount(strict, width, { unfounded: true, initial: null });
+      await expect.poll(async () => (await newlyFounded.restoration()).status).toBe("checking");
+      assert.equal(newlyFounded.requests.length, 0);
+      await newlyFounded.page.evaluate(() => window.h.hydrate());
+      await expect.poll(async () => (await newlyFounded.state()).status).toBe("opening");
+      assert.deepEqual(
+        newlyFounded.requests.map((request) => request.method),
+        ["GET"],
+      );
+      await newlyFounded.finish();
+      const reacquire = await mount(strict, width, { hydrate: true, holdRead: true, initial: null });
+      await expect.poll(async () => (await reacquire.restoration()).status).toBe("checking");
+      await reacquire.page.evaluate(() => window.h.hydrate());
+      await expect.poll(() => reacquire.held.length).toBe(1);
+      await reacquire.page.evaluate(() => window.h.loseSnapshot());
+      await expect.poll(async () => (await reacquire.state()).founded).toBeUndefined();
+      await reacquire.page.evaluate(() => window.h.hydrate());
+      await expect.poll(() => reacquire.held.length).toBe(2);
+      await reacquire.releaseReads();
+      await expect.poll(async () => (await reacquire.state()).status).toBe("opening");
+      assert.deepEqual(
+        reacquire.requests.map((request) => request.method),
+        ["GET", "GET"],
+      );
+      await reacquire.finish();
       for (const stage of ["read", "greet"]) {
         const f = await mount(strict, width, { holdRead: stage === "read", holdPosts: stage === "greet" });
         await expect.poll(() => f.held.length).toBeGreaterThan(0);

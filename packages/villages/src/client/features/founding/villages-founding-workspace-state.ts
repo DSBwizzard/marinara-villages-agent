@@ -8,10 +8,12 @@ export type FoundingWorkspaceState = {
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   settingBrief?: string;
   settingBeat?: "welcome" | "world" | "lorebooks" | "village";
-  settingIntroPending?: true;
+  settingManual?: true;
+  settingIntroPending?: true | "connections";
   settingWorldBrief?: string;
   settingDraft?: Partial<FoundingSetting>;
   settingEditorOpen?: boolean;
+  mobileMenu?: "people" | "venues" | "review";
   settingProblem?: string;
   suggestionRequest?: {
     id: string;
