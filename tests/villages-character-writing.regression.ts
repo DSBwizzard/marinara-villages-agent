@@ -86,8 +86,8 @@ const next = await prepareScenePrompt(state, card, "chat", "A different question
   startedAt: "2026-10-07T12:01:00.000Z",
 });
 const prefix = (value: typeof prepared) =>
-  value.fitted.messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
-assert.equal(prefix(prepared).length, 2);
+  value.fitted.messages.slice(0, value.fitted.messages.findIndex((message) => message.cacheBreakpoint) + 1);
+assert.equal(prepared.fitted.messages.filter((message) => message.cacheBreakpoint).length, 1);
 assert.deepEqual(
   prefix(next),
   prefix(prepared),
@@ -101,7 +101,10 @@ for (const tail of [
   "WORLD RULES TAIL",
   "WORLD NAME TAIL",
 ]) {
-  assert(prefix(next)[1].content.includes(tail), tail);
+  assert(
+    prefix(next).some(({ content }) => content.includes(tail)),
+    tail,
+  );
   assert.equal(prepared.prompt.split(tail).length - 1, 1);
 }
 for (const fragment of [

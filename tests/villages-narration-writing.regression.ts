@@ -14,6 +14,7 @@ import {
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
@@ -377,6 +378,16 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
   assert.deepEqual(f.formats, [{ type: "json_object" }]);
+  const example = f
+    .messages()
+    .map((row) => row.content)
+    .join("\n")
+    .match(/Example: (\{"segments":\[.*?\]\})\./u);
+  assert(example, "The model receives a Scene response example");
+  assert.deepEqual(
+    readNarrationReply(JSON.parse(example[1]), ["resident-id"]).segments.map(({ kind }) => kind),
+    ["narration", "dialogue"],
+  );
 
   const deepSeek = fixture(undefined, "deepseek-flash");
   const exact = input + "\n## Scene reply reminder\nThis line is part of the player's input.";
@@ -385,6 +396,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
+  assert.match(reminder.content, /Use text for narration and dialogue/u);
   assert.doesNotMatch(
     deepSeek
       .messages()

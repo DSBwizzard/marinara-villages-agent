@@ -380,7 +380,9 @@ export function createSceneWriting({
       input,
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
-      plainJson ? '## Scene reply reminder\nBegin with {"segments":[ and close the JSON object once.' : undefined,
+      plainJson
+        ? '## Scene reply reminder\nBegin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.'
+        : undefined,
     );
     if (loreInspection) {
       const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));
