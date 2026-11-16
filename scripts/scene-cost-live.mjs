@@ -1,9 +1,36 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { usageDollars } from "../packages/villages/src/server/adapters/models/usage-accounting.ts";
+
+function logicalTurns(turns) {
+  const groups = new Map();
+  for (const turn of turns) {
+    const key = JSON.stringify([turn.caseId, turn.mode]);
+    const attempts = groups.get(key) ?? [];
+    attempts.push(turn);
+    groups.set(key, attempts);
+  }
+  return Array.from(groups.values(), (turns) => {
+    const { caseId, mode, status } = turns.at(-1);
+    const knownRatedSubtotalUsd = turns.reduce(
+      (sum, turn) => sum + (turn.ratedCostUsd ?? turn.knownRatedSubtotalUsd ?? 0),
+      0,
+    );
+    return {
+      caseId,
+      mode,
+      status,
+      submissionIds: [...new Set(turns.map((turn) => turn.submissionId))],
+      submissions: turns.length,
+      knownRatedSubtotalUsd,
+      ratedCostUsd: turns.every((turn) => Number.isFinite(turn.ratedCostUsd)) ? knownRatedSubtotalUsd : null,
+    };
+  });
+}
 
 /** Deliberately paid, opt-in integration measurement; preparation never changes saved model settings. */
 export async function runLiveSceneComparison(config, output) {
@@ -31,6 +58,7 @@ export async function runLiveSceneComparison(config, output) {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      redirect: "error",
       signal: AbortSignal.timeout(600_000),
     });
     const text = await response.text();
@@ -48,12 +76,89 @@ export async function runLiveSceneComparison(config, output) {
   assert.equal(chat.mode, "game");
   assert.equal(chat.connectionId, config.connectionId);
   assert.equal((await call("/api/villages/connections")).narrationConnectionId, config.connectionId);
+  const installed = await call("/api/capability-packages/installed");
+  const binding = {
+    origin: base.origin,
+    connectionId: config.connectionId,
+    chatId: config.chatId,
+    sessionId: config.sessionId,
+    model: connection.model,
+    provider: config.pricingProvider ?? connection.provider,
+    settings: createHash("sha256")
+      .update(
+        JSON.stringify([
+          connection.provider,
+          connection.baseUrl,
+          connection.maxContext,
+          connection.maxTokensOverride,
+          connection.enableCaching,
+          connection.anthropicExtendedCacheTtl,
+          connection.cachingAtDepth,
+          connection.defaultParameters,
+          connection.suppressModelParameters,
+          connection.openrouterProvider,
+        ]),
+      )
+      .digest("hex"),
+    runtime: config.runtimeIdentity ?? null,
+    rate: config.rate ?? null,
+  };
+  const previousPath = config.continueFrom && (await realpath(config.continueFrom));
+  const prior = previousPath && JSON.parse(await readFile(previousPath, "utf8"));
+  if (prior) {
+    assert(isDeepStrictEqual(prior.binding, binding), "Continuation must use the same runtime, chat, Scene and rate");
+    assert(isDeepStrictEqual(prior.installed, installed), "Installed package inventory changed");
+    assert(Array.isArray(prior.turns), "Continuation needs the original benchmark report");
+    assert(
+      prior.endedAt && !prior.turns.some((turn) => turn.status === "running"),
+      "Resolve the interrupted dispatch before continuing",
+    );
+  }
+  const plan = [];
+  const planned = new Set();
+  for (const pair of config.pairs) {
+    assert(typeof pair.id === "string" && pair.id && typeof pair.message === "string");
+    assert(pair.mode === undefined || ["villages", "game"].includes(pair.mode), "Invalid comparison mode");
+    if (pair.retryOfAttemptId)
+      assert(typeof pair.retryOfAttemptId === "string" && typeof pair.submissionId === "string" && pair.submissionId);
+    for (const mode of pair.mode ? [pair.mode] : ["villages", "game"]) {
+      const key = JSON.stringify([pair.id, mode]);
+      assert(!planned.has(key), "A comparison mode may run only once per case in a report");
+      planned.add(key);
+      assert(
+        (prior?.turns ?? []).every((turn) => turn.caseId !== pair.id || turn.message === pair.message),
+        "A continued case must keep the original player input",
+      );
+      const previous = prior?.turns.findLast((turn) => turn.caseId === pair.id && turn.mode === mode);
+      if (previous) {
+        assert.equal(previous.status, "failed", "Only a failed submission can be retried");
+        if (mode === "villages") {
+          assert(pair.retryOfAttemptId, "Village continuation needs the explicit native retry");
+          assert(
+            pair.replaceOfOperationId
+              ? pair.replaceOfOperationId === previous.submissionId && pair.submissionId !== previous.submissionId
+              : pair.submissionId === previous.submissionId,
+            "Village retry must identify the original submission",
+          );
+        } else {
+          assert(
+            pair.retryGame === true && previous.gameHasAssistant === false,
+            "Game continuation needs a failed native response",
+          );
+        }
+      } else {
+        assert(!pair.retryGame && !pair.replaceOfOperationId, "A replacement needs the prior benchmark report");
+      }
+      plan.push({ mode, pair, previous });
+    }
+  }
   const report = {
     format: 1,
     measurement: "live-engine-usage",
-    startedAt: new Date().toISOString(),
+    startedAt: prior?.startedAt ?? new Date().toISOString(),
+    binding,
     declaredRuntimeIdentity: config.runtimeIdentity ?? null,
-    installed: await call("/api/capability-packages/installed"),
+    installed,
     model: connection.model,
     providedRate: config.rate ?? null,
     actualInvoiceCostUsd: null,
@@ -61,14 +166,58 @@ export async function runLiveSceneComparison(config, output) {
       "Reported reasoning is a subset of completion for OpenAI-compatible providers; zero is not proof of no reasoning.",
     requestAccounting:
       "All Villages capability attempts are retained. Provider-internal retries are not exposed by the Capability API. Unknown billed usage is never counted as zero.",
-    turns: [],
+    turns: prior?.turns ?? [],
+    logicalTurns: [],
   };
-  await mkdir(dirname(output), { recursive: true });
-  const save = () => writeFile(output, JSON.stringify(report, null, 2) + "\n");
   const rows = (value) => (Array.isArray(value) ? value : value.messages);
   const price = (usage) => usageDollars(usage, config.rate ?? null, config.pricingProvider ?? connection.provider);
   const intendedAttempt = (row) => row.connectionId === config.connectionId && row.model === connection.model;
-  const append = async (mode, pair) => {
+  const accountVillageAttempts = (turn) => {
+    turn.capabilityAttemptCount = turn.attempts.length;
+    turn.additionalAttempts = Math.max(0, turn.attempts.length - 1);
+    turn.identityMismatch = turn.attempts.some((row) => row.status === "complete" && !intendedAttempt(row));
+    if (turn.identityMismatch) {
+      turn.status = "failed";
+      turn.error = "Unrelated or changed-model usage invalidates a controlled comparison";
+    }
+    const costs = turn.attempts.map((row) =>
+      row.status === "complete" && intendedAttempt(row) ? price(row.usage) : null,
+    );
+    turn.knownRatedSubtotalUsd = costs.reduce((sum, value) => sum + (value ?? 0), 0);
+    turn.unknownCostAttempts = costs.filter((value) => value === null).length;
+    turn.ratedCostUsd = turn.attempts.length && !turn.unknownCostAttempts ? turn.knownRatedSubtotalUsd : null;
+  };
+  if (prior?.turns.some((turn) => turn.mode === "villages" && turn.unknownCostAttempts > 0)) {
+    const observed = (await call("/api/villages/usage?details=1")).requests;
+    for (const turn of report.turns) {
+      if (turn.mode !== "villages" || !turn.unknownCostAttempts) continue;
+      turn.attempts = turn.attempts.map((old) => {
+        if (old.status === "complete") return old;
+        const settled = observed.find((row) => row.id === old.id && row.status === "complete");
+        if (!settled) return old;
+        assert.equal(settled.connectionId, old.connectionId);
+        assert.equal(settled.model, old.model);
+        return settled;
+      });
+      accountVillageAttempts(turn);
+    }
+  }
+  await mkdir(dirname(output), { recursive: true });
+  const contents = () => {
+    report.logicalTurns = logicalTurns(report.turns);
+    return JSON.stringify(report, null, 2) + "\n";
+  };
+  await writeFile(output, contents(), { flag: "wx", flush: true });
+  if (previousPath) {
+    // A journal can authorize only one continuation, including across output paths.
+    await writeFile(previousPath + ".continued", resolve(output) + "\n", { flag: "wx", flush: true });
+  }
+  const save = async () => {
+    const pending = output + "." + randomUUID() + ".pending";
+    await writeFile(pending, contents(), { flag: "wx", flush: true });
+    await rename(pending, output);
+  };
+  const append = async ({ mode, pair, previous }) => {
     const turn = {
       mode,
       caseId: pair.id,
@@ -87,11 +236,25 @@ export async function runLiveSceneComparison(config, output) {
     try {
       if (mode === "game") {
         const before = rows(await call(`/api/chats/${config.chatId}/messages`));
+        turn.gameHistoryTailId = before.at(-1)?.id ?? null;
+        let savedPlayerInput = false;
+        if (previous) {
+          const priorPlayerInput = before.find((row) => {
+            const extra = typeof row.extra === "string" ? JSON.parse(row.extra) : row.extra;
+            return row.role === "user" && extra?.submissionId === previous.submissionId;
+          });
+          if (priorPlayerInput) {
+            assert.equal(priorPlayerInput.id, turn.gameHistoryTailId, "Game history advanced past the failed input");
+            assert.equal(priorPlayerInput.content, pair.message, "The saved Game input changed");
+            savedPlayerInput = true;
+          } else {
+            assert.equal(turn.gameHistoryTailId, previous.gameHistoryTailId, "Game history changed after the failure");
+          }
+        }
         const text = await request("/api/generate", "POST", {
           chatId: config.chatId,
           connectionId: config.connectionId,
-          userMessage: pair.message,
-          submissionId: turn.submissionId,
+          ...(savedPlayerInput ? {} : { userMessage: pair.message, submissionId: turn.submissionId }),
           streaming: true,
         });
         const events = text
@@ -109,6 +272,7 @@ export async function runLiveSceneComparison(config, output) {
         const message = after
           .filter((row) => row.role === "assistant" && !before.some((old) => old.id === row.id))
           .at(-1);
+        turn.gameHasAssistant = !!message;
         assert(message, "Game Mode must save a new response");
         const extra = typeof message.extra === "string" ? JSON.parse(message.extra) : message.extra;
         const info = extra.generationInfo ?? {};
@@ -134,7 +298,10 @@ export async function runLiveSceneComparison(config, output) {
           "Use a controlled Game baseline without a separate tool-planning request; its usage is retained for inspection",
         );
         assert.equal(info.model, connection.model, "The comparison must retain the selected model");
-        turn.ratedCostUsd = price(turn.usage);
+        assert(!info.fallback, "The comparison must retain the selected connection");
+        turn.knownRatedSubtotalUsd = price(turn.usage);
+        assert.equal(turn.reportedRequestCount, 1, "Use a Game baseline with one observed generation request");
+        turn.ratedCostUsd = turn.knownRatedSubtotalUsd;
         assert.equal(turn.errors.length, 0, "Game Mode reported a generation error");
       } else {
         beforeUsage = await call("/api/villages/usage?details=1");
@@ -148,6 +315,7 @@ export async function runLiveSceneComparison(config, output) {
           targetId: "",
           expectedSceneRevision: active.session.sceneRevision,
           ...(pair.retryOfAttemptId ? { retryOfAttemptId: pair.retryOfAttemptId } : {}),
+          ...(pair.replaceOfOperationId ? { replaceOfOperationId: pair.replaceOfOperationId } : {}),
         };
         const result = await call("/api/villages/rooms/turn", "POST", payload);
         turn.processingSummary = result.session?.processingSummary;
@@ -181,19 +349,7 @@ export async function runLiveSceneComparison(config, output) {
         try {
           const after = await call("/api/villages/usage?details=1");
           turn.attempts = after.requests.filter((row) => !beforeUsage.requests.some((old) => old.id === row.id));
-          turn.capabilityAttemptCount = turn.attempts.length;
-          turn.additionalAttempts = Math.max(0, turn.attempts.length - 1);
-          turn.identityMismatch = turn.attempts.some((row) => row.status === "complete" && !intendedAttempt(row));
-          if (turn.identityMismatch) {
-            turn.status = "failed";
-            turn.error = "Unrelated or changed-model usage invalidates a controlled comparison";
-          }
-          const costs = turn.attempts.map((row) =>
-            row.status === "complete" && intendedAttempt(row) ? price(row.usage) : null,
-          );
-          turn.knownRatedSubtotalUsd = costs.reduce((sum, value) => sum + (value ?? 0), 0);
-          turn.unknownCostAttempts = costs.filter((value) => value === null).length;
-          turn.ratedCostUsd = turn.attempts.length && !turn.unknownCostAttempts ? turn.knownRatedSubtotalUsd : null;
+          accountVillageAttempts(turn);
         } catch (error) {
           turn.usageReadError = String(error);
         }
@@ -204,16 +360,11 @@ export async function runLiveSceneComparison(config, output) {
     }
   };
   try {
-    for (const pair of config.pairs) {
-      assert(typeof pair.id === "string" && typeof pair.message === "string");
-      if (pair.retryOfAttemptId)
-        assert(typeof pair.retryOfAttemptId === "string" && typeof pair.submissionId === "string" && pair.submissionId);
-      await append("villages", pair);
-      await append("game", pair);
-    }
+    for (const submission of plan) await append(submission);
     report.finishedAt = new Date().toISOString();
     return report;
   } finally {
+    report.endedAt = new Date().toISOString();
     await save();
   }
 }
