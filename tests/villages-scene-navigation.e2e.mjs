@@ -83,9 +83,8 @@ await withBrowser(browser, async () => {
       });
       await page.goto("http://scene-navigation.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await expect(page.getByRole("status")).toContainText("Checking Scene");
-      await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
       await expect.poll(() => !!held).toBe(true);
+      await expect(page.locator(".marinara-capability-villages-root")).toHaveCount(0);
       await fulfill(held, {
         status: 503,
         contentType: "application/json",

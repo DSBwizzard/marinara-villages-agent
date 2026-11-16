@@ -454,38 +454,36 @@ function VillageScreen(props: VillageScreenProps) {
   const { controller } = props;
   const { room, sceneRestoration, snapshot, screen, error, loadSnapshot } = controller;
 
-  if (!snapshot || (!snapshot.isFounded && screen === "home"))
+  if (!snapshot || (!snapshot.isFounded && screen === "home")) {
+    if (!error) return null;
     return (
       <div className={ELEMENT_TAG + "-root"}>
-        <section className={ELEMENT_TAG + "-panel"} role={error ? "alert" : "status"}>
-          <p>{error || "Opening Villages…"}</p>
-          {error ? (
-            <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => void loadSnapshot()}>
-              Try again
-            </button>
-          ) : null}
+        <section className={ELEMENT_TAG + "-panel"} role="alert">
+          <p>{error}</p>
+          <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => void loadSnapshot()}>
+            Try again
+          </button>
         </section>
       </div>
     );
+  }
 
-  if (snapshot.isFounded && !room && sceneRestoration.status !== "ready")
+  if (snapshot.isFounded && !room && sceneRestoration.status !== "ready") {
+    if (sceneRestoration.status !== "error") return null;
     return (
       <div className={ELEMENT_TAG + "-root"}>
-        <section className={ELEMENT_TAG + "-panel"} role={sceneRestoration.status === "error" ? "alert" : "status"}>
-          <p>{sceneRestoration.status === "error" ? "Could not check your Scene." : "Checking Scene…"}</p>
-          {sceneRestoration.status === "error" ? (
-            <>
-              <p className={ELEMENT_TAG + "-error"} style={{ overflowWrap: "anywhere" }}>
-                {sceneRestoration.error}
-              </p>
-              <button type="button" className={ELEMENT_TAG + "-button"} onClick={sceneRestoration.retry}>
-                Retry Scene check
-              </button>
-            </>
-          ) : null}
+        <section className={ELEMENT_TAG + "-panel"} role="alert">
+          <p>Could not check your Scene.</p>
+          <p className={ELEMENT_TAG + "-error"} style={{ overflowWrap: "anywhere" }}>
+            {sceneRestoration.error}
+          </p>
+          <button type="button" className={ELEMENT_TAG + "-button"} onClick={sceneRestoration.retry}>
+            Retry Scene check
+          </button>
         </section>
       </div>
     );
+  }
 
   return <VillageDestinations {...props} />;
 }

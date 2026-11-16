@@ -20,6 +20,8 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     let founding = false;
     let foundingSceneChecks = 0;
+    let holdSnapshot = false;
+    let heldSnapshot;
     let serverInstant = "2026-10-15T02:30:00Z";
     const state = () => {
       const value = structuredClone(base);
@@ -43,6 +45,10 @@ await withBrowser(browser, async () => {
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (holdSnapshot && path === "/api/villages") {
+        heldSnapshot = route;
+        return;
+      }
       if (path.endsWith("/background/presence"))
         return fulfill(route, { json: { status: "ready", snapshot: state() } });
       let value = state();
@@ -126,6 +132,7 @@ await withBrowser(browser, async () => {
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook\.webp/);
       await expect(world).toHaveValue("A string of settlements along the coast");
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-night-" + width + ".png" });
+      holdSnapshot = true;
       await page.evaluate(async () => {
         const villages = document.querySelector("marinara-capability-villages");
         const parent = villages.parentElement;
@@ -133,8 +140,13 @@ await withBrowser(browser, async () => {
         await Promise.resolve();
         parent.append(villages);
       });
+      await expect.poll(() => !!heldSnapshot).toBe(true);
+      await expect(page.locator(".marinara-capability-villages-root")).toHaveCount(0);
+      holdSnapshot = false;
+      await fulfill(heldSnapshot, { status: 503, json: { error: "Village snapshot unavailable" } });
+      await expect(page.getByRole("alert")).toContainText("Village snapshot unavailable");
+      await page.getByRole("button", { name: "Try again", exact: true }).click();
       await expect(world).toHaveValue("A string of settlements along the coast");
-      await expect(page.getByText("Checking Scene…", { exact: true })).toHaveCount(0);
       assert.equal(foundingSceneChecks, 0, "Founding remounts never ask for an active Scene");
     });
     assert.deepEqual(errors, []);
