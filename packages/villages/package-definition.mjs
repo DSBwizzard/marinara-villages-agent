@@ -7,6 +7,11 @@ const menuArtAssets = [
   "storybook-scenery-matte.webp",
   "venue-fallback.webp",
   "venue-fallback-day.webp",
+  "mari-founding-overlook.webp",
+  "mari-founding-overlook-day.webp",
+  "mari-founding-neutral.webp",
+  "mari-founding-happy.webp",
+  "mari-founding-playful.webp",
 ];
 
 // Authoritative Villages package metadata; generated payloads are built from this definition.

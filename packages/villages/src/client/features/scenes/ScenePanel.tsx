@@ -60,6 +60,7 @@ function roomNoticeIcon(notice: RoomRecordEvent): ReactNode {
   if (notice.id.startsWith("presence:"))
     return (
       <svg
+        className="mari-rgb-static-icon"
         viewBox="0 0 24 24"
         width="20"
         height="20"
@@ -164,7 +165,7 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "up" | "down" |
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      className={name === "sending" ? ELEMENT_TAG + "-spin" : undefined}
+      className={name === "sending" ? ELEMENT_TAG + "-spin mari-rgb-static-icon" : "mari-rgb-static-icon"}
     >
       {name === "send" ? (
         <>
@@ -217,7 +218,6 @@ export function RoomPanel({
   sprites,
   onDraft,
   onSend,
-  onConclude,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
@@ -270,7 +270,6 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onSend: () => void;
-  onConclude: () => void;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
@@ -754,33 +753,17 @@ export function RoomPanel({
           {actionsView === "menu" ? (
             <span className={`${ELEMENT_TAG}-room-actions-menu`} role="menu" aria-label="Venue actions">
               {canDraft ? (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={busy || !!contactRecovery || !movementZones.length}
-                    onClick={() => {
-                      actionsRef.current?.querySelector("button")?.focus();
-                      setActionsView("move");
-                    }}
-                  >
-                    Move
-                  </button>
-                  {canCompose ? (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={!canSend}
-                      onClick={() => {
-                        setActionsView(null);
-                        actionsRef.current?.querySelector("button")?.focus();
-                        onConclude();
-                      }}
-                    >
-                      Conclude
-                    </button>
-                  ) : null}
-                </>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy || !!contactRecovery || !movementZones.length}
+                  onClick={() => {
+                    actionsRef.current?.querySelector("button")?.focus();
+                    setActionsView("move");
+                  }}
+                >
+                  Move
+                </button>
               ) : null}
               <LoreActivityButton
                 query={`Scene · ${room.placeName}`}
@@ -864,11 +847,12 @@ export function RoomPanel({
                 role="menuitem"
                 onClick={() => {
                   setActionsView(null);
+                  actionsRef.current?.querySelector("button")?.focus();
                   onEnd();
                 }}
                 disabled={busy}
               >
-                {ended ? "Return to map" : "End Scene now"}
+                {ended ? "Return to map" : "Conclude"}
               </button>
 
               {debugDiscardEnabled && room.status !== "closed" ? (
@@ -1147,6 +1131,7 @@ export function RoomPanel({
               facing,
               staged?.sideExpression,
               sprite?.named,
+              sprite?.defaultView,
             );
             return (
               <div

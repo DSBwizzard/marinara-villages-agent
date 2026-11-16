@@ -169,6 +169,11 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
     defaultExpressionId: assignments.some((entry) => entry.expressionId === state.defaultExpressionId)
       ? state.defaultExpressionId
       : assignments[0]?.expressionId,
+    ...(assignments.some(
+      (entry) => entry.expressionId === state.defaultExpressionId && entry.view === state.defaultView,
+    )
+      ? { defaultView: state.defaultView }
+      : {}),
     framing: {
       mode: framing?.mode === "half" ? "half" : "full",
     },
@@ -203,6 +208,7 @@ export function managerResidentSprite(state: SpriteManagerState | null | undefin
           : {}),
         expressions,
         defaultExpressionId: state.defaultExpressionId,
+        ...(state.defaultView ? { defaultView: state.defaultView } : {}),
         framing: state.framing,
       }
     : null;

@@ -87,7 +87,10 @@ export function projectVillager(
             label,
             expressionId,
             variantGroup: variantGroups.get(expressionId),
-            isDefault: Boolean(expressionId) && expressionId === sprite.defaultExpressionId,
+            isDefault:
+              Boolean(expressionId) &&
+              expressionId === sprite.defaultExpressionId &&
+              (!sprite.defaultView || view === sprite.defaultView),
             url: engineSpriteUrl(assetId, filename, version),
           })),
         }

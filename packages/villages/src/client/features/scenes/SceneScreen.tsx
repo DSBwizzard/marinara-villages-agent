@@ -69,7 +69,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     dismissRoomNotice,
     goHome,
     greetRoom,
-    leaveRoom,
     loadSnapshot,
     mobile,
     moveRoom,
@@ -88,7 +87,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomError,
     roomGreetingError,
     roomGreetingNotice,
-    roomLeaveSubmissionIdRef,
     contactRecovery,
     setContactRecovery,
     roomNotices,
@@ -305,12 +303,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onDraft={(value) => {
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
-            roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void sendRoom()}
-          onConclude={() => void leaveRoom()}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);

@@ -3,7 +3,6 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ExplorationScreen } from "../features/exploration/ExplorationScreen.js";
 import { FoundingScreen } from "../features/founding/FoundingScreen.js";
 import { PreparationScreen } from "../features/founding/PreparationScreen.js";
-import { ResumeScreen } from "../features/founding/ResumeScreen.js";
 import { Mailbox } from "../features/residents/Mailbox.js";
 import { ResidentsScreen } from "../features/residents/ResidentsScreen.js";
 import { RosterScreen } from "../features/residents/RosterScreen.js";
@@ -48,8 +47,8 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   const [mailRecipient, setMailRecipient] = useState("");
   const [phase, setPhase] = useState<"open" | "preparing" | "opening" | "closing">("open");
   const [artworkError, setArtworkError] = useState("");
-  const [mapArrival, setMapArrival] = useState<{ id: string; origin: string } | null>(null);
-  const arriving = controller.screen === "venue" && mapArrival?.id === controller.venueId;
+  const [mapArrival, setMapArrival] = useState<string | null>(null);
+  const arriving = controller.screen === "venue" && mapArrival === controller.venueId;
   const bookVisible =
     controller.screen === "person" || (controller.screen === "menu" && controller.menuPage === "villagers");
   const destination = (screen: Controller["screen"], page = controller.menuPage): DeskDestination | null => {
@@ -60,9 +59,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     return null;
   };
   const active = controller.mailboxOpen ? "mailbox" : destination(controller.screen);
-  const daylight =
-    useVillageLighting(controller.snapshot?.isFounded ? controller.snapshot.village : undefined, "storybook") !==
-    "night";
+  const daylight = useVillageLighting(controller.snapshot?.village, "storybook") !== "night";
   const currentDestination = useRef(active);
   currentDestination.current = active;
   const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -423,13 +420,13 @@ function VillagesContent({ element }: { element: HTMLElement }) {
             <VillageScreen
               controller={navigation}
               daylight={daylight}
-              openMapVenue={(place, origin) => {
-                setMapArrival({ id: place.id, origin });
+              openMapVenue={(place) => {
+                setMapArrival(place.id);
                 controller.explorationReturnTab.current = "map";
                 controller.openPlace(place);
                 controller.setVenueSection("about");
               }}
-              arrivalOrigin={arriving ? mapArrival.origin : undefined}
+              arriving={arriving}
               people={
                 <div hidden={!bookVisible} inert={!bookVisible} className={`${ELEMENT_TAG}-people-session`}>
                   <PeoplePages controller={navigation} active={bookVisible && !controller.mailboxOpen} />
@@ -449,8 +446,8 @@ type VillageScreenProps = {
   controller: Controller;
   daylight: boolean;
   people: import("react").ReactNode;
-  openMapVenue: (place: import("../../shared/contracts/village.js").VillageVenue, origin: string) => void;
-  arrivalOrigin?: string;
+  openMapVenue: (place: import("../../shared/contracts/village.js").VillageVenue) => void;
+  arriving: boolean;
 };
 
 function VillageScreen(props: VillageScreenProps) {
@@ -503,22 +500,16 @@ function PeoplePages({ controller, active }: { controller: Controller; active: b
 }
 
 /** One map, one Venue, and the fixed menu pages; never a history of resident/world data. */
-function VillageDestinations({ controller, daylight, people, openMapVenue, arrivalOrigin }: VillageScreenProps) {
+function VillageDestinations({ controller, daylight, people, openMapVenue, arriving }: VillageScreenProps) {
   const { screen, menuPage, room, venueId } = controller;
   const [home, setHome] = useState(false);
   const [venue, setVenue] = useState<string | null>(null);
   const [menus, setMenus] = useState<MenuPage[]>([]);
   const page = menuPage === "index" ? "general" : menuPage;
   if (screen === "home" && !home) setHome(true);
-  if (screen === "venue" && !arrivalOrigin && venueId && venue !== venueId) setVenue(venueId);
+  if (screen === "venue" && !arriving && venueId && venue !== venueId) setVenue(venueId);
   if (screen === "menu" && page !== "villagers" && !menus.includes(page)) setMenus([...menus, page]);
-  const arrival =
-    arrivalOrigin && venueId
-      ? {
-          origin: arrivalOrigin,
-          content: <VenueScreen key={venueId} controller={controller} fromMap />,
-        }
-      : undefined;
+  const arrival = arriving && venueId ? <VenueScreen key={venueId} controller={controller} fromMap /> : undefined;
   return (
     <>
       {home ? (
@@ -545,8 +536,9 @@ function VillageDestinations({ controller, daylight, people, openMapVenue, arriv
       ))}
       {people}
       {screen === "preparing" ? <PreparationScreen controller={controller} /> : null}
-      {screen === "resume" ? <ResumeScreen controller={controller} /> : null}
-      {screen === "setup" ? <FoundingScreen controller={controller} host={controller.element} /> : null}
+      {screen === "setup" ? (
+        <FoundingScreen controller={controller} host={controller.element} storybookDaylight={daylight} />
+      ) : null}
     </>
   );
 }

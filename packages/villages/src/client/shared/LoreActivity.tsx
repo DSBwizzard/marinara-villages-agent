@@ -62,7 +62,7 @@ export function LoreActivityButton({
         activity.show(query);
       }}
     >
-      <svg viewBox="0 0 24 24" aria-hidden="true">
+      <svg className="mari-rgb-static-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 7v14m0-14C9 4 5 4 2 5v15c3-1 7-1 10 1m0-14c3-3 7-3 10-2v15c-3-1-7-1-10 1" />
       </svg>
       Lore activity{activity.unread ? <span className="villages-lore-dot" aria-hidden="true" /> : null}

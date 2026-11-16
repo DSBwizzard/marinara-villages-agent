@@ -119,6 +119,7 @@ export const serverFeatureInterfaces = Object.freeze({
   "venues/zone-edits.ts": ["updateVillageZone", "proposeResidenceSpaceEdit", "applyResidenceEditApproval"],
   "world/snapshot.ts": ["buildVillageSnapshot"],
   "world/village-store.ts": [
+    "peekVillageAuthority",
     "readVillageAuthority",
     "readVillageSnapshot",
     "readVillageState",

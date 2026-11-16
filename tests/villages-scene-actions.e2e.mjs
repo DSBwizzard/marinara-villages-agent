@@ -54,7 +54,7 @@ await withBrowser(browser, async () => {
     let releaseContact,
       heldContact,
       lastContact,
-      lastLeave,
+      lastClose,
       moves = 0;
     let staleMove = true;
     const navigation = new Map();
@@ -100,8 +100,8 @@ await withBrowser(browser, async () => {
         value = { operation: navigation.get(decodeURIComponent(path.split("/").at(-1))) ?? null };
       } else if (path.endsWith("/operation")) {
         value = { operation: scene.operation ?? null };
-      } else if (path.endsWith("/rooms/leave")) {
-        lastLeave = route.request().postDataJSON();
+      } else if (path.endsWith("/rooms/end")) {
+        lastClose = route.request().postDataJSON();
         scene = { ...scene, status: "closed" };
         value = { session: scene, recordEvents: [] };
       } else if (path.endsWith("/rooms/turn")) {
@@ -251,15 +251,15 @@ await withBrowser(browser, async () => {
     const finalMessage = width === 1366 ? "Goodbye." : "";
     await composer.fill(finalMessage);
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    assert.equal(lastLeave, undefined, "opening Venue actions does not end the Scene");
+    assert.equal(lastClose, undefined, "opening Venue actions does not end the Scene");
     await expect(composer).toHaveValue(finalMessage);
     await page.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await expect(page.getByRole("button", { name: "Return to map", exact: true }).first()).toBeVisible();
-    assert.equal(lastLeave.message, finalMessage, "Conclude keeps its optional final message");
+    assert.equal(lastClose.message, undefined, "Conclude closes without sending the unfinished draft");
     assert.deepEqual(errors, []);
     await context.close();
   }
   console.log(
-    "Scene actions browser: freeform input, immediate movement, final-paragraph readiness, busy and stale navigation, draft preservation and optional concluding messages passed",
+    "Scene actions browser: freeform input, immediate movement, final-paragraph readiness, busy and stale navigation, draft preservation and provider-free conclusion passed",
   );
 });
