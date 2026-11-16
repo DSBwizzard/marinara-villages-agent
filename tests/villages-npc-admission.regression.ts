@@ -1,4 +1,4 @@
-// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context
+// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -610,4 +610,63 @@ await runCase("npc-admission/fences", () => {
   assert.deepEqual(lines[1].physicalIdsAfter, [id]);
   lines[0].speakerId = id;
   assert.throws(() => fenceIntroductionWitnesses(lines, [admission]), /before their introduction/);
+});
+
+await runCase("npc-admission/name", () => {
+  const f = fixture(),
+    raw = rawArrival();
+  raw.segments[1].text = "My name is Rasha Dunmore.";
+  const reveal = {
+    type: "npc.introduce",
+    who: "new:visitor",
+    at: "hello",
+    source: ["hello"],
+    name: "Rasha Dunmore",
+    independent: true,
+  };
+  raw.commands.push(reveal);
+  const result = acceptNarration(f.state, f.publication(raw), "introduced", at);
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  const episode = readAcceptedEpisode(result.episode!, f.state.seed),
+    id = episode.commandReceipts[0].targetId;
+  assert.equal(episode.segments[1].name, "Traveler");
+  assert.equal(f.state.worldPlaces.npcs[id].label, "Rasha Dunmore");
+  applyAcceptedSceneDelta(f.scene, episode);
+  assert.equal(f.scene.participants[0].name, "Rasha Dunmore");
+  assert.equal(f.scene.sceneAttendance!.occupants[0].name, "Rasha Dunmore");
+  assert.equal(f.existing.label, "Mara");
+  const forged = structuredClone(episode);
+  forged.commandReceipts[1].text = "Someone else";
+  assert.throws(() => readAcceptedEpisode(forged, f.state.seed), /Player-heard name/);
+
+  const returning = fixture(),
+    returned = rawArrival(returning.existing.id);
+  returned.segments[1] = raw.segments[1];
+  returned.commands.push(reveal);
+  const returningPublication = returning.publication(returned);
+  const recognized = acceptNarration(returning.state, returningPublication, "returned", at);
+  assert.equal(recognized.held, false, JSON.stringify(recognized.rejected));
+  assert.equal(returning.state.worldPlaces.npcs[returning.existing.id].label, "Rasha Dunmore");
+  assert(acceptNarration(returning.state, returningPublication, "returned", at).replayed);
+
+  const other = fixture(),
+    whispered = rawArrival(other.existing.id);
+  whispered.segments.push({ ...raw.segments[0], id: "second", requires: ["second-admission"] });
+  whispered.segments[1] = raw.segments[1];
+  [whispered.segments[1], whispered.segments[2]] = [whispered.segments[2], whispered.segments[1]];
+  whispered.segments[2] = { ...whispered.segments[2], delivery: "whisper", targetId: "new:second" };
+  whispered.commands.push(
+    {
+      ...rawArrival().commands[0],
+      id: "second-admission",
+      at: "second",
+      localKey: "new:second",
+      source: [{ segment: "second", perceive: { kind: "seen", by: ["player"] } }],
+    },
+    reveal,
+  );
+  const privateResult = acceptNarration(other.state, other.publication(whispered), "unheard", at);
+  assert.equal(privateResult.held, false, JSON.stringify(privateResult.rejected));
+  assert(privateResult.rejected.some((row) => row.reason.includes("heard by the Player")));
+  assert.equal(other.state.worldPlaces.npcs[other.existing.id].label, "Mara");
 });

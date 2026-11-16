@@ -218,7 +218,10 @@ await withBrowser(browser, async () => {
       await expect(pane.getByRole("heading", { name: "Side · 1" })).toBeVisible();
       await expect(pane.getByRole("img", { name: "Happy_01 · Front" })).toBeVisible();
       await expect(pane.getByRole("img", { name: "Happy_blush · Side" })).toBeVisible();
-      await pane.getByRole("button", { name: "Set as default" }).click();
+      await pane
+        .getByRole("region", { name: "Front", exact: true })
+        .getByRole("button", { name: "Set as default" })
+        .click();
       await expect(next).toBeDisabled();
       assert.equal(writes.length, 0);
       await pane.getByRole("button", { name: "Save", exact: true }).click();

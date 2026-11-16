@@ -1,5 +1,6 @@
 export type SpeechDelivery = "ordinary" | "whisper" | "shout";
 export type SpeechPresentation = "main" | "aside";
+export const MAX_SCENE_ASIDES = 2;
 
 type SpeechLine = { kind?: string; delivery?: SpeechDelivery; presentation?: SpeechPresentation };
 

@@ -18,7 +18,6 @@ import { safeFailureMessage } from "../domain/rules/errors.js";
 import { extractModelJsonObject } from "../domain/rules/json-reply.js";
 import { RESIDENT_CONTINUITY_RULE } from "../domain/rules/resident-admission.js";
 import { venueZones } from "../domain/rules/venue-zones.js";
-import { observedZone } from "../domain/rules/zone-observation.js";
 import {
   capturePrivateInterior,
   isPrivateInterior,
@@ -447,7 +446,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         const detail = signal?.aborted
           ? "Preparation was interrupted. Retry deliberately; the previous request may have been charged."
           : safeFailureMessage(cause);
-        const error = `${observedZone(zone, !village.foundedAt).name.slice(0, 80)}: ${detail}`.slice(0, 300);
+        const error = `${zone.name.slice(0, 80)}: ${detail}`.slice(0, 300);
         await mutateVillageState(
           (state) => {
             if (state.seed !== seed) return;

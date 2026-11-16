@@ -1,115 +1,117 @@
-import { groupSceneAsides, sceneAsideAvailableHeight } from "./villages-aside-layout.js";
-import { type CSSProperties, type ReactNode, useLayoutEffect, useRef } from "react";
+import { MAX_SCENE_ASIDES } from "../../../shared/helpers/scene-speech.js";
+import { sceneAsideAvailableHeight } from "./villages-aside-layout.js";
+import { type ReactNode, useLayoutEffect, useRef } from "react";
 
 const tag = "marinara-capability-villages";
 
 export const SCENE_ASIDE_STYLES = `
 .${tag}-chat-vn-card[data-delivery="whisper"] .${tag}-chat-vn-text { font-style: italic; }
 .${tag}-chat-vn-aside[data-register="shout"] .${tag}-chat-vn-aside-text { font-weight: 600; }
-/* Anchor phone asides above the dialogue dock without affecting its height. */
-.${tag}-room-screen .${tag}-chat-vn-asides[data-mobile] {
-  bottom: calc(100% + .375rem); z-index: 1; padding: 0; pointer-events: none;
-  max-height: min(14rem, var(--villages-aside-available-height, 20cqh));
+.${tag}-scene-asides {
+  position: absolute; z-index: 4; inset: var(--aside-top, 4rem) .75rem auto;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense;
+  align-items: start; gap: .65rem;
+  max-height: var(--aside-height, 40%); overflow: auto; overscroll-behavior: contain;
+  box-sizing: border-box; pointer-events: none;
 }
-.${tag}-scene-aside-stack { display: flex; flex-direction: column; align-items: flex-end; gap: .375rem; min-height: 0; max-height: inherit; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-asides[data-mobile="true"][data-side] {
-  position: absolute; bottom: calc(100% + .375rem); left: .375rem; right: .375rem; width: auto; margin: 0;
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
-  gap: 6.5rem; overflow: hidden;
-  max-height: min(14rem, var(--villages-aside-available-height, 20cqh));
+.${tag}-scene-asides > .${tag}-aside-slot { min-width: 0; width: min(100%, 22rem); pointer-events: auto; }
+.${tag}-scene-asides > [data-side="left"] { grid-column: 1; justify-self: start; }
+.${tag}-scene-asides > [data-side="right"] { grid-column: 2; justify-self: end; }
+.${tag}-scene-asides .${tag}-chat-vn-aside {
+  max-width: none; box-sizing: border-box;
+  background: var(--marinara-chat-chrome-panel-bg, var(--popover));
 }
-.${tag}-room-screen[data-mobile="true"] .${tag}-scene-aside-stack { max-width: 13rem; width: 100%; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-scene-aside-stack[data-side="left"] { grid-column: 1; align-items: flex-start; justify-self: start; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-scene-aside-stack[data-side="right"] { grid-column: 2; align-items: flex-end; justify-self: end; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-scene-aside-stack .${tag}-chat-vn-aside {
-  box-sizing: border-box; width: 100%; max-width: 100%; flex: 0 1 auto; min-height: 2.5rem;
-  max-height: max(2.5rem, calc((min(14rem, var(--villages-aside-available-height, 20cqh)) - .375rem * (var(--villages-aside-count, 1) - 1)) / var(--villages-aside-count, 1)));
-  padding: .375rem .45rem; gap: .3rem; overflow: hidden;
+.${tag}-scene-asides .${tag}-chat-vn-aside-head { flex-wrap: wrap; row-gap: .125rem; }
+.${tag}-scene-asides :is(.${tag}-chat-vn-aside-name, .${tag}-chat-vn-aside-target) {
+  flex: 0 1 auto; white-space: normal; overflow-wrap: anywhere;
 }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-aside-face { width: 1.25rem; height: 1.25rem; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-aside-column { min-height: 0; align-self: stretch; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-aside-head { flex: 0 0 auto; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-aside-text {
-  font-size: .75rem; line-height: 1.4; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-}
-/* Keep the existing hide control and history chevron usable in the central gap. */
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn:has(.${tag}-chat-vn-asides) .${tag}-dialogue-hide {
-  left: 50%; transform: translateX(-50%); bottom: calc(100% + 1.5rem); width: 6.25rem; padding-inline: .25rem;
-}
+.${tag}-scene-asides .${tag}-chat-vn-aside-text { overflow-wrap: anywhere; }
+.${tag}-scene-asides[data-mobile="true"] { grid-template-columns: minmax(0, 1fr); inset-inline: .5rem; }
+.${tag}-scene-asides[data-mobile="true"] > .${tag}-aside-slot { grid-column: 1; width: min(92%, 21rem); }
+.${tag}-scene-asides[data-mobile="true"] .${tag}-chat-vn-aside { padding: .4rem .55rem; }
+.${tag}-scene-asides[data-mobile="true"] .${tag}-chat-vn-aside-face { width: 1.25rem; height: 1.25rem; }
+.${tag}-scene-asides[data-mobile="true"] .${tag}-chat-vn-aside-text { font-size: .75rem; }
+${tag}[data-scene-keyboard] .${tag}-scene-asides[data-mobile="true"] { display: none; }
 `;
 
-/** Floating speech stays outside the dock's sizing and follows the visible viewport. */
 export function SceneAsides<T extends { speakerId?: string }>({
   asides,
   mobile,
   positions,
-  mainSpeakerId,
-  desktopSide,
   renderAside,
 }: {
   asides: readonly T[];
   mobile: boolean;
   positions: Readonly<Record<string, { x: number }>>;
-  mainSpeakerId: string;
-  desktopSide: "left" | "right";
   renderAside: (aside: T, index: number) => ReactNode;
 }) {
   const root = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = root.current;
-    const dock = element?.parentElement;
-    const scene = dock?.closest(`.${tag}-chat`);
-    if (!element || !dock || !scene) return;
+    const scene = element?.closest<HTMLElement>(`.${tag}-chat`);
+    const head = scene?.querySelector(`.${tag}-chat-head`);
+    const notices = scene?.querySelector(`.${tag}-scene-notice-chips`);
+    const dock = scene?.querySelector(`.${tag}-chat-vn`);
+    if (!element || !scene || !head || !notices || !dock) return;
     let frame = 0;
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const fontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-        const available = sceneAsideAvailableHeight(
-          dock.getBoundingClientRect().top,
-          scene.getBoundingClientRect().top,
-          window.visualViewport?.offsetTop ?? 0,
-          fontSize * 3,
+        if (!element.getClientRects().length) return;
+        const sceneBounds = scene.getBoundingClientRect();
+        const controlsBottom = Math.max(
+          head.getBoundingClientRect().bottom,
+          notices.getBoundingClientRect().bottom,
+          ...Array.from(
+            notices.querySelectorAll(`.${tag}-room-stars, .${tag}-scene-error-panel`),
+            (panel) => panel.getBoundingClientRect().bottom,
+          ),
         );
-        element.style.setProperty("--villages-aside-available-height", `${available}px`);
+        const dockTop = dock.getBoundingClientRect().top;
+        const top = Math.max(0, controlsBottom - sceneBounds.top) + 8;
+        const available = sceneAsideAvailableHeight(
+          dockTop,
+          sceneBounds.top,
+          window.visualViewport?.offsetTop ?? 0,
+          top,
+        );
+        element.style.setProperty("--aside-top", `${top}px`);
+        element.style.setProperty("--aside-height", `${Math.min(available, Math.max(112, available * 0.6))}px`);
       });
     };
     const observer = new ResizeObserver(update);
-    observer.observe(dock);
-    observer.observe(scene);
-    window.addEventListener("resize", update);
+    for (const node of [head, notices, dock, scene]) observer.observe(node);
+    const noticeUpdates = new MutationObserver(update);
+    noticeUpdates.observe(notices, { childList: true, characterData: true, subtree: true });
     window.visualViewport?.addEventListener("resize", update);
     window.visualViewport?.addEventListener("scroll", update);
-    // The dock's keyboard transform can change without changing its dimensions.
-    const host = scene.closest(tag);
-    const mutations = new MutationObserver(update);
-    if (host) mutations.observe(host, { attributes: true, attributeFilter: ["style"] });
     update();
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      mutations.disconnect();
-      window.removeEventListener("resize", update);
+      noticeUpdates.disconnect();
       window.visualViewport?.removeEventListener("resize", update);
       window.visualViewport?.removeEventListener("scroll", update);
     };
-  }, [mobile]);
-
-  const groups: Record<string, readonly T[]> = mobile
-    ? groupSceneAsides(asides, positions, mainSpeakerId)
-    : { [desktopSide]: asides };
+  }, []);
   return (
-    <div ref={root} className={`${tag}-chat-vn-asides`} data-side={desktopSide} data-mobile={mobile} aria-live="polite">
-      {Object.entries(groups).map(([side, items]) => (
-        <div
-          key={side}
-          className={`${tag}-scene-aside-stack`}
-          data-side={side}
-          style={{ "--villages-aside-count": items.length || 1 } as CSSProperties}
-        >
-          {items.map((aside) => renderAside(aside, asides.indexOf(aside)))}
-        </div>
-      ))}
+    <div
+      ref={root}
+      className={`${tag}-scene-asides`}
+      data-mobile={mobile}
+      aria-live="polite"
+      tabIndex={0}
+      role="region"
+      aria-label="Asides"
+    >
+      {asides.slice(0, MAX_SCENE_ASIDES).map((aside, index) => {
+        const x = positions[aside.speakerId ?? ""]?.x;
+        return (
+          <div key={index} className={`${tag}-aside-slot`} data-side={(x ?? 0.5) < 0.5 ? "left" : "right"}>
+            {renderAside(aside, index)}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -104,11 +104,13 @@ Scenes use one GM response for dialogue and gameplay updates. This build require
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
-Write dialogue, actions, thoughts, or a mixture in the message box and choose **Send**. Open **Venue actions** for **Move** or **Conclude**. Move goes to a permitted Zone without a generated arrival reply. Conclude ends the Scene using your draft as an optional final message. You can knock, call, or speak toward an adjacent Zone in your own words.
+Write dialogue, actions, thoughts, or a mixture in the message box and choose **Send**. Open **Venue actions** for **Move** or **Conclude**. Move goes to a permitted Zone without a generated arrival reply. Conclude archives the Scene without generating a reply. Send any farewell or departure as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
 Ordinary speech reaches everyone in the same Zone. A whisper reaches its one local recipient. A deliberate shout can carry through a directly connected doorway. Hearing someone in another Zone leaves them where they are. Exchanging an object requires being together. Saved exchanges retain their original witnesses.
+
+An aside appears beside the main Scene paragraph. It follows the same hearing rules as ordinary dialogue, whispers, and shouts. A card marked **Whisper** names its recipient.
 
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 

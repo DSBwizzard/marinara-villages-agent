@@ -12,6 +12,8 @@ ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !imp
   position: absolute; inset: 0; width: 100%; height: 100%; padding: 3rem .75rem 0;
   flex: none; transform: translateY(var(--villages-scene-stage-offset, 0px));
 }
+/* Crowded slots set the centers, while full-body art can extend beyond them. */
+.${tag}-room-screen:not([data-mobile="true"]) .${tag}-chat-cast-person > img:not([data-framing="half"]) { min-width: 25cqw; }
 .${tag}-room-screen .${tag}-chat-scene { transform: translateY(var(--villages-scene-stage-offset, 0px)); }
 .${tag}-room-screen .${tag}-chat-vn {
   position: absolute; z-index: 10; left: 50%; bottom: var(--villages-scene-dock-bottom, 0px);
@@ -39,6 +41,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
   border: 1px solid var(--border); background: var(--secondary); display: grid; place-items: center; align-self: start;
 }
 .${tag}-chat-vn-portrait svg { width: 1.75rem; height: 1.75rem; color: var(--muted-foreground); }
+.${tag}-room-screen img[data-npc-sprite] { object-fit: contain; opacity: .78; filter: none; background: transparent; border: 0; border-radius: 0; box-shadow: none; }
 .${tag}-room-screen .${tag}-chat-vn-column { gap: .5rem; }
 .${tag}-room-screen .${tag}-chat-vn-name,
 .${tag}-room-screen .${tag}-chat-vn-label { font-size: .875rem; font-weight: 600; }
@@ -74,9 +77,12 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-send svg { width: .9375rem; height: .9375rem; }
 .${tag}-room-screen .${tag}-chat-send:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
 .${tag}-room-screen .${tag}-room-actions-menu { max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 4rem)); overflow-y: auto; }
-.${tag}-room-screen .${tag}-room-actions-menu > select { width: 100%; min-width: 0; }
+.villages-founding-dialog.villages-scene-move { width:min(24rem,calc(100vw - 2rem)); height:fit-content; padding:.5rem; }
+.villages-scene-move > header { margin:0; padding:.3rem .5rem; }
+.villages-scene-move .villages-founding-editor-body { display:grid; gap:.45rem; padding:.75rem; }
+.villages-scene-move .villages-founding-editor-body p { margin:0 0 .2rem; }
+.villages-scene-move .villages-founding-editor-body button { width:100%; text-align:left; min-height:44px; }
 .${tag}-room-screen .${tag}-chat-head:has(.${tag}-room-actions-menu) { z-index: 25; }
-.${tag}-room-screen .${tag}-chat-vn-asides { z-index: 1; max-height: min(20cqh, max(2rem, calc(var(--villages-scene-visible-height, 100cqh) - 18rem))); }
 .${tag}-scene-settings-backdrop { position: absolute; z-index: 30; inset: 0; height: var(--villages-scene-visible-height, 100%); display: grid; place-items: center; padding: .75rem; box-sizing: border-box; background: #0008; }
 .${tag}-scene-settings { width: min(36rem, 100%); max-height: 100%; overflow-y: auto; padding: .75rem; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); }
 .${tag}-scene-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -123,9 +129,16 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
   position: fixed !important; top: 0; left: -100000px; visibility: hidden; pointer-events: none;
   height: auto !important; max-height: none !important; margin: 0; overflow: visible;
 }
-.${tag}-dialogue-hide, .${tag}-dialogue-restore { display: none; }
+.${tag}-dialogue-hide, .${tag}-dialogue-restore, .${tag}-chat-keyboard-done { display: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem; gap: .25rem; }
-${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding-bottom: 0; }
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn:has(.${tag}-composer)
+  > :is(.${tag}-dialogue-hide, .${tag}-chat-tab, .${tag}-chat-log, .${tag}-chat-vn-card) { display: none; }
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-composer-row { flex-wrap: nowrap; gap: .375rem; }
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-keyboard-done {
+  display: block; flex: 0 0 auto; min-height: 44px; min-width: 44px; padding: 0 .625rem;
+  border: 1px solid var(--border); border-radius: .75rem; font: inherit; font-size: .8125rem;
+  color: var(--foreground); background: var(--popover); cursor: pointer;
+}
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-tab { position: absolute; bottom: 100%; left: calc(50% - 22px); margin: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-history-toggle { width: 44px; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr); align-items: center; padding: .5rem .625rem; gap: .375rem .5rem; }
@@ -151,10 +164,14 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
 /* Large artwork overlaps inside stable left/right groups, with a shared raised floor. */
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage { padding-left: 0; padding-right: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-character-id] {
-  --cast-image-height: min(105cqw, 100cqh);
-  --cast-lift: min(max(0px, calc(var(--villages-scene-resting-dock-height, 13.25rem) - min(26.25cqw, 25cqh) + var(--cast-depth, 0px))), max(0px, calc(100cqh - var(--cast-image-height))));
+  --cast-image-height: min(120cqw, 68cqh);
+  --cast-lift: clamp(0px, calc(var(--villages-scene-resting-dock-height, 13.25rem) - min(48cqw, 42cqh) + var(--cast-depth, 0px)), 4cqh);
   left: calc(var(--cast-center) - var(--cast-display-width) / 2);
   bottom: var(--cast-lift); height: var(--cast-image-height); opacity: .72; z-index: 1;
+}
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-sprite="true"] {
+  /* Keep faces in the visible strip while preserving the art and background scale. */
+  bottom: max(var(--cast-lift), calc(var(--villages-scene-dock-bottom, 0px) + var(--villages-scene-stage-offset, 0px) - var(--cast-image-height) + 8rem));
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-active="true"] { opacity: 1; z-index: 3; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="true"] > span:not(.${tag}-avatar) { display: none; }
