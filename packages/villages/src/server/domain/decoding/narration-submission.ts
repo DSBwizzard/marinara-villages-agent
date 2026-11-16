@@ -14,6 +14,10 @@ export const sceneNoticeSchema = z
     kind: z.enum(["memory", "wish", "venue", "request", "project", "relationship-up", "relationship-down"]),
     text: z.string().min(1).max(4000),
     detail: z.string().max(4000).optional(),
+    travel: z
+      .object({ venueId: id, zoneId: id, grantId: id, label: z.string().min(1).max(400) })
+      .strict()
+      .optional(),
     wishUpdate: z
       .object({ actorId: id, wishId: id, state: z.enum(["revealed", "progress", "fulfilled"]) })
       .strict()

@@ -20,6 +20,7 @@ import {
 import { exactInputSpan } from "./source-span.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
+import { sceneVisitCommand } from "./scene-visit-speech.js";
 
 /** A complete native outcome is known only to holders who perceived every material proof. */
 export function narrationWitnesses(
@@ -212,6 +213,46 @@ export function readSceneNarrationReply(
   readset: NarrationReadset,
   continuity: ContinuityCollection,
 ) {
+  const visit = raw.visit;
+  const readReply = (payload: Record<string, unknown>) => {
+    const movements: Record<string, unknown>[] = [];
+    const segments =
+      readset.sceneResidentMovement && Array.isArray(payload.segments)
+        ? payload.segments.map((value, index) => {
+            const row = asRecord(value);
+            if (row.kind !== "crossing" && row.kind !== "departure") return value;
+            const { kind, who, to, ...line } = row;
+            memoryRequire(kind === "crossing" || !Object.hasOwn(row, "to"), "a Scene departure has no destination");
+            const at = line.id ?? "segment-" + index;
+            movements.push({
+              type: kind === "crossing" ? "move" : "depart",
+              who,
+              ...(kind === "crossing" ? { to } : {}),
+              at,
+              source: [{ segment: at, perceive: { kind: "seen", by: ["player"] } }],
+            });
+            return { ...line, kind: "narration" };
+          })
+        : undefined;
+    const parsed = readNarrationReply(segments ? { ...payload, segments } : payload, speakers);
+    const command = sceneVisitCommand(parsed, readset, visit);
+    const commands = [...parsed.commands, ...(command ? [command] : [])];
+    memoryRequire(commands.length + movements.length <= 16, "too many native Scene actions");
+    if (movements.length) {
+      memoryRequire(!parsed.halt, "halt cannot assert resident movement");
+      const ids = new Set([...parsed.keep, ...commands].map((row) => asRecord(row).id));
+      let next = 0;
+      for (const move of movements) {
+        while (ids.has("resident-move-" + next)) next++;
+        commands.push({ ...move, id: "resident-move-" + next++ });
+      }
+    }
+    return { ...parsed, commands, visitCommandId: command?.id };
+  };
+  if (readset.sceneVisitOptions && Object.hasOwn(raw, "visit")) {
+    const { visit: _visit, ...rest } = raw;
+    raw = rest;
+  }
   const positions = readset.positionedSceneSources === true;
   const quotes = readset.quotedSceneSources === true;
   const format = readset.ordinaryFormatRecovery;
@@ -324,7 +365,7 @@ export function readSceneNarrationReply(
       }),
     };
   }
-  if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
+  if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readReply(raw);
   const {
     source: { historical, seed },
     admission,
@@ -417,7 +458,7 @@ export function readSceneNarrationReply(
     const { source: _citation, ...prose } = line;
     return prose;
   });
-  return readNarrationReply({ segments }, speakers);
+  return readReply({ segments });
 }
 export type NarrationCommunication = Pick<
   NarrationSourceContext,

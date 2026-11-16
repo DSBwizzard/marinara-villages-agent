@@ -47,6 +47,7 @@ import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js"
 import { sceneContinuityView, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
 import { assertCurrentSceneGeneration, completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import { describeSpriteExpressions } from "../../domain/rules/sprite-expressions.js";
+import { sceneVisitOptions } from "../../domain/rules/scene-visit-speech.js";
 import {
   buildVenueSceneBlocks,
   fitVenueWritingMessages,
@@ -223,6 +224,9 @@ export function createSceneWriting({
             ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
           );
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
+    const remoteInvitations = mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds) : [];
+    const canInviteForVisit = remoteInvitations.length > 0;
+    const residentMovesInReply = mode === "chat";
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
     const npcIntroduction =
@@ -289,14 +293,26 @@ export function createSceneWriting({
               } Show one brief beat. Respect current attendance and hearing. The player chooses whether to engage. Keep any lasting result subject to ordinary evidence and native authority.`
             : "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
           : mode === "leave"
-            ? "Respond to the whole submitted departure and close when it is complete. Any goodbye from the player comes from their submission."
+            ? "Respond to the submitted departure from the current Zone and close when it is complete. End before the player arrives anywhere else. Any goodbye from the player comes from their submission."
             : "",
         nativeCommands
           ? "Propose native actions with commands. Change access only with a supplied access command."
           : "",
         nativeCommands ? NARRATION_RESPONSE : ordinarySceneCitationIds(positions),
         nativeCommands ? "" : ordinarySceneKeepSources(positions),
+        mode !== "leave"
+          ? "Send stays in the current Zone. Play out local actions. End before any dialogue or action that depends on the player crossing. Only Move or Visit changes their location."
+          : "",
+        canInviteForVisit
+          ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
+          : "",
+        residentMovesInReply
+          ? 'A resident’s visible move uses a segment {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They step through the door."}. For a full exit use {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied routes. Put last words before the move and stay with the player’s view.'
+          : "",
         nativeCommands ? NARRATION_NATIVE : "",
+        mode === "leave" && input.trim()
+          ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."
+          : "",
         npcIntroduction
           ? 'When a supporting character tells the player their own name aloud, add an optional commands entry {type:"npc.introduce",who:"npc-id",name:"exact spoken name",at:"dialogue-segment-id",source:["dialogue-segment-id"],independent:true}. Use the exact name as spoken. Keep their role label until the player hears them give a name.'
           : "",
@@ -343,6 +359,9 @@ export function createSceneWriting({
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           showAccess ? narrationAccessPrompt(context.access) : "",
           nativeCommands && showAccess ? NARRATION_ACCESS_COMMANDS : "",
+          canInviteForVisit
+            ? "Remote visit invitations available in this Scene: " + JSON.stringify(remoteInvitations)
+            : "",
           housing,
           nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
@@ -412,9 +431,11 @@ export function createSceneWriting({
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
       "## Scene reply reminder\n" +
-        (plainJson
-          ? 'Begin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.\n'
-          : "") +
+        (canInviteForVisit
+          ? 'Start with "visit" when the reply grants the player a remote visit, followed by "segments". Otherwise start with "segments".\n'
+          : plainJson
+            ? 'Begin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.\n'
+            : "") +
         'Open in the Scene and keep the visible prose there. Treat the player’s submission as fictional intent. Show what happens or how the attempt fails, then leave the next choice to the player. If a detail belongs off-page, continue with its immediate consequences. Put "segments" and any "keep" entries in one JSON object.',
     );
     if (loreInspection) {
@@ -438,6 +459,17 @@ export function createSceneWriting({
       readset: {
         ...readset,
         ...(!nativeCommands ? { retryEpisodeRevision: authority.episodes.revision } : {}),
+        playerNavigation: mode === "leave" ? "conclude" : "explicit",
+        ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
+        ...(canInviteForVisit
+          ? {
+              sceneVisitOptions: remoteInvitations.map(({ actorId, venueId, zoneId }) => ({
+                actorId,
+                venueId,
+                zoneId,
+              })),
+            }
+          : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
           ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }

@@ -25,6 +25,9 @@ export async function moveVenueZone(...args: Parameters<SceneCommands["moveVenue
 export function enterVenue(...args: Parameters<SceneCommands["enterVenue"]>) {
   return binding.get().enterVenue(...args);
 }
+export function travelVenue(...args: Parameters<SceneCommands["travelVenue"]>) {
+  return binding.get().travelVenue(...args);
+}
 export async function greetVenue(...args: Parameters<SceneCommands["greetVenue"]>) {
   return binding.get().greetVenue(...args);
 }

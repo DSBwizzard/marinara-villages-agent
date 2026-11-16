@@ -212,7 +212,7 @@ export function createSceneProgress({
           );
           return publish(
             committed.continuityVersionIds.length || committed.commandReceipts.length
-              ? narrationSceneNotices(state, committed)
+              ? narrationSceneNotices(state, committed, scene.placeId)
               : [],
           );
         });

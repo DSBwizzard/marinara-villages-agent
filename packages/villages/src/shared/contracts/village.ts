@@ -756,6 +756,7 @@ export type SceneView = {
   latestTurn?: { id: string; at: string; published: boolean };
   retryReply?: { token: string };
   retryStart?: Pick<import("./scene-playback.js").ScenePlaybackMoment, "id" | "index" | "anchorCursor">;
+  travel?: { id: string; label: string };
 };
 
 export type RoomRecordEvent = {

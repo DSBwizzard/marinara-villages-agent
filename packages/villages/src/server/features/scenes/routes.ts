@@ -24,6 +24,7 @@ import {
   moveVenueZone,
   retryReply,
   sendVenueTurn,
+  travelVenue,
 } from "./venue-session.js";
 import { dismissSceneNotice, readSceneChanges, readSceneErrorDetails, replaySceneChanges } from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
@@ -64,10 +65,19 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       venueId?: unknown;
       zoneId?: unknown;
       expectedSceneRevision?: unknown;
+      travel?: { sourceId?: unknown; offerId?: unknown };
     };
   }>("/rooms", async (request, reply) => {
     try {
       await assertFoundedVillageReady();
+      if (request.body?.travel)
+        return {
+          session: await travelVenue(
+            readChatId(request.body.travel.sourceId),
+            readSubmissionId(request.body.travel.offerId),
+            readSceneRevision(request.body.expectedSceneRevision),
+          ),
+        };
       return {
         session: await enterVenue(
           readPlaceId(request.body?.venueId),

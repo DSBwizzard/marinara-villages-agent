@@ -256,6 +256,7 @@ export function RoomPanel({
   sceneSettings,
   movementZones,
   onMovementTarget,
+  onTravel,
   currentZoneLabel,
 }: {
   room: SceneView;
@@ -307,6 +308,7 @@ export function RoomPanel({
   sceneSettings: ReactNode;
   movementZones: { id: string; label: string }[];
   onMovementTarget: (id: string) => void;
+  onTravel?: () => void;
   currentZoneLabel: string;
 }) {
   /** The current paragraph in this Scene's ordered reading. */
@@ -320,6 +322,7 @@ export function RoomPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [dismissedTravelId, setDismissedTravelId] = useState<string>();
   const [errorsOpen, setErrorsOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -637,6 +640,7 @@ export function RoomPanel({
   const canSend = canCompose && !busy && !playback.busy && !contactRecovery;
   const resend = !draft.trim() && !!turnRecovery;
   const sendLabel = busy ? "Sending" : resend ? "Resend" : "Send";
+  const travel = room.travel;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -1296,6 +1300,28 @@ export function RoomPanel({
         ) : null}
       </div>
 
+      {canCompose &&
+      !canReadNext &&
+      !turnRecovery &&
+      !settingsOpen &&
+      !openMemory &&
+      travel &&
+      onTravel &&
+      dismissedTravelId !== travel.id ? (
+        <div
+          className={`${ELEMENT_TAG}-room-star ${ELEMENT_TAG}-scene-travel-card`}
+          aria-label="Travel offer"
+          role="group"
+        >
+          <strong aria-live="polite">{travel.label}</strong>
+          <button type="button" className={`${ELEMENT_TAG}-scene-visit`} disabled={!canSend} onClick={onTravel}>
+            Visit <span aria-hidden="true">›</span>
+          </button>
+          <button type="button" aria-label="Dismiss travel offer" onClick={() => setDismissedTravelId(travel.id)}>
+            ×
+          </button>
+        </div>
+      ) : null}
       <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
         {historyOpen ? (
           <div

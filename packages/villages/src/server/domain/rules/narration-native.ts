@@ -70,7 +70,7 @@ export function prepareNarrationNative(
         !admissions.some((row) => row.localKey === command.localKey),
       "NPC admission needs one unique current introduction",
     );
-    const crossings = (Array.isArray(raw.commands) ? raw.commands : [])
+    const crossings = (readset.playerNavigation || !Array.isArray(raw.commands) ? [] : raw.commands)
       .flatMap((value, commandIndex) => {
         const parsed = nativeCommand.safeParse(value);
         if (!parsed.success || parsed.data.type !== "move" || parsed.data.who !== "player") return [];
@@ -155,6 +155,14 @@ export function prepareNarrationNative(
       native.effects.push(effect);
       try {
         const command = readNarrationNativeCommand(raw);
+        if (
+          (readset.playerNavigation && command.type === "move" && command.who === "player") ||
+          (readset.playerNavigation === "explicit" && command.type === "scene.end")
+        ) {
+          delete effect.independent;
+          effect.failure = "Use Move or Visit to change location, or Conclude to end the Scene.";
+          return undefined;
+        }
         const segment = reply.segments.findIndex((line) => line.id === command.at);
         memoryRequire(segment >= 0, "native command needs its actual supplied segment");
         if (command.type === "circumstance" && command.situation) {
@@ -216,6 +224,8 @@ export function prepareNarrationNative(
   function apply(candidate: VillageState, row: (typeof commands)[number]) {
     const { command, effect } = row;
     const sources = command.source.map((ref) => bindNarrationSource(ref, context));
+    if (effect.id === reply.visitCommandId)
+      memoryRequire(narrationWitnesses(sources).includes("player"), "the Player must hear the visit invitation");
     memoryRequire(
       sources.every(
         (source) =>
