@@ -10,11 +10,12 @@ export function settingBeat(workspace: FoundingScreenController["setupWorkspace"
 }
 
 const art = "/api/capability-packages/villages/assets/mari-founding-";
-export const foundingMariSprite = (pose: "neutral" | "happy" | "playful") => art + pose + ".webp";
+export const foundingMariSprite = (pose: "neutral" | "happy" | "playful" | "looking-up") => art + pose + ".webp";
 
 export function FoundingSettingScene({
   controller,
   enteringScene,
+  title,
   onConnections,
   onEditSetting,
   onBeatChange,
@@ -23,6 +24,7 @@ export function FoundingSettingScene({
 }: {
   controller: FoundingScreenController;
   enteringScene: boolean;
+  title: ReactNode;
   onConnections(): void;
   onEditSetting(): void;
   onBeatChange(): void;
@@ -83,11 +85,17 @@ export function FoundingSettingScene({
           : "Where do these people call home? Give me the messy version. I’ll draft the name, starting location, and description.",
   }[beat];
   return (
-    <section className="villages-setting-guide" aria-label="Professor Mari">
+    <section
+      className="villages-setting-guide"
+      data-welcome={beat === "welcome" || undefined}
+      aria-label={title ? undefined : "Professor Mari"}
+    >
       <div className="villages-setting-stage" aria-hidden="true">
         <img key={pose} src={foundingMariSprite(pose)} alt="" />
+        {title ? <img className="villages-mari-looking-up" src={foundingMariSprite("looking-up")} alt="" /> : null}
       </div>
-      <div className="villages-setting-dialogue">
+      {title}
+      <div className="villages-setting-dialogue" hidden={!!title}>
         <strong>Professor Mari</strong>
         <p aria-live="polite" tabIndex={-1} ref={lineRef}>
           {dialogue}

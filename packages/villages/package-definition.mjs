@@ -11,6 +11,7 @@ const menuArtAssets = [
   "mari-founding-overlook-day.webp",
   "mari-founding-neutral.webp",
   "mari-founding-happy.webp",
+  "mari-founding-looking-up.webp",
   "mari-founding-playful.webp",
 ];
 

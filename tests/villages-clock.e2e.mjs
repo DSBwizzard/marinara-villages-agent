@@ -98,12 +98,14 @@ await withBrowser(browser, async () => {
       const phases = page.getByRole("list", { name: "Founding phases" });
       const mari = scene.getByRole("region", { name: "Professor Mari", exact: true });
       await expect(scene).toHaveAttribute("aria-busy", "true");
-      await expect(scene.locator(".villages-founding-title")).toHaveCount(0);
+      await expect(scene.locator(".villages-founding-title")).toHaveJSProperty("inert", true);
+      await expect(scene.locator('.villages-setting-stage img[src$="mari-founding-looking-up.webp"]')).toHaveCount(1);
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
       await page.clock.fastForward(1999);
       await expect(phases).toHaveCount(0);
       await expect(mari).toHaveCount(0);
       await page.clock.fastForward(1);
+      await expect(scene.locator(".villages-founding-title")).toHaveCount(0);
       await expect(phases).toBeVisible();
       await expect(mari.getByText("Professor Mari", { exact: true })).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);

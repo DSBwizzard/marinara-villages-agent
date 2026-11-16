@@ -391,6 +391,16 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Professor Mari", exact: true })).toHaveCount(0);
         await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
         const title = root.locator(".villages-founding-title");
+        const stage = root.locator(".villages-setting-stage");
+        const sidePose = stage.locator('img[src$="mari-founding-looking-up.webp"]');
+        const frontPose = stage.locator('img[src$="mari-founding-happy.webp"]');
+        await expect(sidePose).toBeInViewport({ ratio: 1 });
+        await expect.poll(() => sidePose.evaluate((sprite) => sprite.naturalWidth)).toBeGreaterThan(0);
+        await expect(frontPose).toHaveCSS("opacity", "0");
+        const sideBounds = await sidePose.boundingBox();
+        const titleBounds = await title.boundingBox();
+        const stageBounds = await stage.boundingBox();
+        assert.ok(sideBounds.x + sideBounds.width <= titleBounds.x, "Mari stands left of the title");
         const titleBackdrop = await root.evaluate((element) => getComputedStyle(element).backgroundImage);
         assert.match(titleBackdrop, /mari-founding-overlook(?:-day)?\.webp/u);
         await expect(title.locator("h1")).toHaveCSS("text-transform", "uppercase");
@@ -417,7 +427,15 @@ export async function verifyFoundingLayout(group) {
           await expect(start).toBeVisible();
         }
         await start.click();
+        const reduceMotion = view.height === 650;
         await expect(start).toHaveCount(0);
+        if (!reduceMotion) {
+          await expect(root).toHaveAttribute("data-mari-turning", "true");
+          await expect(title).toHaveCSS("animation-name", "villages-title-fade");
+          await expect(sidePose).toHaveCSS("animation-name", "villages-mari-turn-away");
+          await expect(frontPose).toHaveCSS("animation-name", "villages-mari-turn-forward");
+          await expect(title).toHaveCSS("opacity", "0");
+        }
         await expect(root).toHaveCSS("background-image", titleBackdrop);
         await expect.poll(() => root.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
         await expect(
@@ -435,10 +453,11 @@ export async function verifyFoundingLayout(group) {
           ["Setting", "People", "Venues and Map", "Review"],
         );
         const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
-        const stage = root.locator(".villages-setting-stage");
-        const reduceMotion = view.height === 650;
-        await expect(stage.locator("img")).toHaveCSS("animation-name", reduceMotion ? "none" : "villages-mari-enter");
-        await expect(stage.locator("img")).toHaveCSS("animation-delay", "0s");
+        await expect(title).toHaveCount(0);
+        await expect(sidePose).toHaveCount(0);
+        await expect(frontPose).toHaveCSS("opacity", "1");
+        await expect(frontPose).toHaveCSS("animation-name", "none");
+        assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns without moving to a different spot");
         const phone = view.width <= 727;
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
         await expect(scene.locator('p[aria-live="polite"]')).toBeFocused();
@@ -456,12 +475,12 @@ export async function verifyFoundingLayout(group) {
             "Mari stands on the terrace",
           );
           assert.ok(dialogue.x >= portrait.x + portrait.width, "Dialogue sits beside Mari");
-          await expect(button("Let’s talk about the world")).toBeInViewport({ ratio: 1 });
-          if (process.env.VILLAGES_SCREENSHOT_DIR)
-            await page.screenshot({
-              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "desktop-welcome-" + view.width + ".png"),
-            });
         }
+        await expect(button("Let’s talk about the world")).toBeInViewport({ ratio: 1 });
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-welcome-" + view.width + ".png"),
+          });
         await button("Let’s talk about the world").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         if (draftWithLore) {

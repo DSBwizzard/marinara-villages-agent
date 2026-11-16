@@ -139,19 +139,21 @@ export function FoundingScreen({
     : rawSetupProblem;
   const [contextView, setContextView] = useState("");
   const beat = settingBeat(setupWorkspace);
+  const [arrival, setArrival] = useState<"turning" | "greeting">();
+  const turning = arrival === "turning";
+  const enteringScene = arrival === "greeting" && setupStep === 0 && beat === "welcome";
   const showTitle =
-    setupStep === 0 &&
-    beat === "welcome" &&
-    setupWorkspace.settingBeat === undefined &&
-    setupWorkspace.settingIntroPending === true &&
-    !draftSaveError;
-  const [arrival, setArrival] = useState<"waiting" | "entering">();
-  const enteringScene = arrival === "entering";
+    turning ||
+    (setupStep === 0 &&
+      beat === "welcome" &&
+      setupWorkspace.settingBeat === undefined &&
+      setupWorkspace.settingIntroPending === true &&
+      !draftSaveError);
   useEffect(() => {
-    if (arrival !== "waiting") return;
-    const timer = window.setTimeout(() => setArrival("entering"), 2000);
+    if (!turning) return;
+    const timer = window.setTimeout(() => setArrival("greeting"), 2000);
     return () => window.clearTimeout(timer);
-  }, [arrival]);
+  }, [turning]);
   const hasSettingDraft = !!setupWorkspace.settingDraft;
   const settingEditorOpen =
     setupWorkspace.settingEditorOpen ??
@@ -280,23 +282,14 @@ export function FoundingScreen({
     setSettingEditorOpen,
   ]);
   if (screen === "setup") {
-    if (showTitle || arrival === "waiting") {
-      return (
-        <div
-          className={FOUNDING_ROOT}
-          data-step={0}
-          data-lighting={storybookDaylight ? "day" : "night"}
-          aria-busy={arrival === "waiting" || undefined}
-          ref={rootRef}
-        >
-          {arrival !== "waiting" && (
-            <main className="villages-founding-title">
-              <div className="villages-founding-logo">
-                <h1>Villages</h1>
-                <svg className="mari-rgb-static-icon" viewBox="0 15 600 104" aria-hidden="true" focusable="false">
-                  <path
-                    fill="currentColor"
-                    d="M8 102
+    const title = showTitle ? (
+      <div className="villages-founding-title" inert={turning}>
+        <div className="villages-founding-logo">
+          <h1>Villages</h1>
+          <svg className="mari-rgb-static-icon" viewBox="0 15 600 104" aria-hidden="true" focusable="false">
+            <path
+              fill="currentColor"
+              d="M8 102
                     Q30 98 57 96 V85 L73 72 L90 86 V94 H106 V77 L126 60 L146 75 V91
                     H160 V66 L182 48 L203 66 V89 H217 V76 L233 64 H238 V55 H245 V67 L257 78 V88
                     H269 V65 L291 42 L310 62 V87 H328 V59 H340 V38 L350 25 L360 38 V59 H373 V87
@@ -304,27 +297,24 @@ export function FoundingScreen({
                     C502 87 508 83 515 83 C522 83 528 88 529 95 H545 V85 L560 73 L576 86 V98
                     Q587 99 594 103 Q561 98 529 100 C487 101 445 108 399 112
                     C334 118 283 119 230 110 C152 97 81 94 8 102 Z"
-                  />
-                </svg>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setArrival("waiting");
-                  setSetupWorkspace((workspace) => ({
-                    ...workspace,
-                    settingIntroPending: undefined,
-                    settingBeat: "welcome",
-                  }));
-                }}
-              >
-                START
-              </button>
-            </main>
-          )}
+            />
+          </svg>
         </div>
-      );
-    }
+        <button
+          type="button"
+          onClick={() => {
+            setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
+            setSetupWorkspace((workspace) => ({
+              ...workspace,
+              settingIntroPending: undefined,
+              settingBeat: "welcome",
+            }));
+          }}
+        >
+          START
+        </button>
+      </div>
+    ) : null;
     const openSettingEditor = (view?: "Connections") => {
       if (view) setContextView(view);
       setSettingEditorOpen(true);
@@ -506,7 +496,10 @@ export function FoundingScreen({
         className={FOUNDING_ROOT}
         data-step={setupStep}
         data-lighting={storybookDaylight ? "day" : "night"}
-        data-scene-arrival={enteringScene && setupStep === 0 && beat === "welcome" ? true : undefined}
+        data-scene-arrival={enteringScene || undefined}
+        data-title={showTitle || undefined}
+        data-mari-turning={turning || undefined}
+        aria-busy={turning || undefined}
         ref={rootRef}
       >
         <ol className="villages-forging-steps" aria-label="Founding phases" role="list">
@@ -676,6 +669,7 @@ export function FoundingScreen({
               <FoundingSettingScene
                 controller={controller}
                 enteringScene={enteringScene}
+                title={title}
                 onConnections={() => openSettingEditor("Connections")}
                 onEditSetting={() => openSettingEditor()}
                 onBeatChange={() => {
