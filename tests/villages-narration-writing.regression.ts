@@ -335,6 +335,10 @@ await runCase("narration-writing/learned-wish-initiative", () => {
 await runCase("narration-writing/single-request", async () => {
   const f = fixture(),
     input = "I privately fear she will leave. I ask, “Why?”\n  Keep my spacing. 🪑";
+  f.state.playerBackground = "The player came from the salt marsh.";
+  f.state.setting = "A port under the ice.";
+  f.state.worldRules = "The harbor stays below the glacier.";
+  f.state.worldName = "Fallow";
   const reply = await f.writing.generate(f.scene, input, "chat");
   assert.equal(f.calls.purchases, 1);
   assert.equal(f.messages().at(-1).content, input);
@@ -371,7 +375,16 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(messages[cut].content, /Omit delivery and targetId for ordinary speech/u);
   assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
   assert.match(system, /A direct answer can be one line/u);
-  assert(messages.slice(0, cut).some((row) => row.content.includes("AUTHORED IDENTITY")));
+  const identity = messages.slice(0, cut).find((row) => row.content.includes("AUTHORED IDENTITY"));
+  assert(identity);
+  const facts = JSON.parse(identity.content.split("\n").find((line: string) => line.startsWith('{"player":'))!);
+  assert.equal(facts.startingBackground, f.state.playerBackground);
+  assert.deepEqual(facts.setting, {
+    geography: f.state.setting,
+    worldRules: f.state.worldRules,
+    world: f.state.worldName,
+  });
+  assert(Buffer.byteLength(JSON.stringify(messages)) < 9_000, "the ordinary fixture stays below 9 KB");
   assert(!f.messages().some((row) => row.content.includes("input:[")));
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);
@@ -424,12 +437,9 @@ await runCase("narration-writing/single-request", async () => {
     "chat",
   );
   const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
-  assert.match(casualPrompt, /a request to remember or a lasting change/u);
-  assert.match(casualPrompt, /A commitment requires a specific future action someone explicitly promises to do/u);
-  assert.match(casualPrompt, /Keep each speaker’s proposal separate/u);
-  assert.match(casualPrompt, /Use only people in about/u);
-  assert.match(casualPrompt, /a single quote from the proposer heard by every party supplies the offer evidence/u);
-  assert.match(casualPrompt, /Other offer citations put act:"offer" inside the source entry/u);
+  assert.match(casualPrompt, /Use keep only for requested memories or lasting changes/u);
+  assert.match(casualPrompt, /offer:\{proposer,participants\}/u);
+  assert.match(casualPrompt, /act:"offer"/u);
   assert.doesNotMatch(
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,

@@ -256,6 +256,8 @@ function response(id: SceneCostCase, messages: any[]) {
       source: [{ segment: "seen", perceive: { kind: "seen", by: [actor, "player"] } }],
     };
   switch (id) {
+    case "ordinary":
+      return { segments: [{ kind: "dialogue", speakerId: actor, text: "I prefer ginger tea when it is hot." }] };
     case "multi-resident":
       return {
         segments: [
@@ -279,15 +281,19 @@ function response(id: SceneCostCase, messages: any[]) {
         .flatMap((packet: any) => packet.privateContinuity)
         .find((row: any) => row.class === "desire");
       assert(desire, "the native current desire must actually be fitted before replacement");
+      if (id === "wish-fulfilled")
+        return {
+          segments: [
+            {
+              kind: "dialogue",
+              speakerId: actor,
+              text: "My leek soup uses leeks, potatoes and broth, simmered until tender. That’s the whole recipe.",
+            },
+          ],
+          keep: [{ for: [actor], replace: desire.id, retire: "fulfilled", source: [{ segment: 1 }] }],
+        };
       return {
-        segments: [
-          dialogue(
-            actor,
-            id === "wish-fulfilled"
-              ? "My leek soup uses leeks, potatoes and broth, simmered until tender. That's the whole recipe."
-              : "For my leek soup, start by slicing the leeks. I'll explain the rest next.",
-          ),
-        ],
+        segments: [dialogue(actor, "For my leek soup, start by slicing the leeks. I'll explain the rest next.")],
         keep: [
           {
             id: "recipe",
@@ -295,11 +301,8 @@ function response(id: SceneCostCase, messages: any[]) {
             owner: actor,
             class: "desire",
             replace: desire.id,
-            text:
-              id === "wish-fulfilled"
-                ? "I shared my complete leek-soup recipe."
-                : "I still want to finish sharing my leek-soup recipe, after explaining how to slice the leeks.",
-            ...(id === "wish-fulfilled" ? { retire: "fulfilled" } : { current: true }),
+            text: "I still want to finish sharing my leek-soup recipe, after explaining how to slice the leeks.",
+            current: true,
             source: ["said"],
           },
         ],
@@ -546,6 +549,8 @@ export async function runSceneCostFixtures(selected: readonly SceneCostCase[] = 
           assert(desire);
           assert.equal(desire.version.closed?.reason, id === "wish-fulfilled" ? "fulfilled" : undefined);
           assert.equal(desire.current, id !== "wish-fulfilled");
+          if (id === "wish-fulfilled")
+            assert.equal(desire.version.text, "I want to share my complete leek-soup recipe in conversation.");
         }
         if (id.startsWith("project-")) {
           const flow = world.projects[0].lifecycle!;
