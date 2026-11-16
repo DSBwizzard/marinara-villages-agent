@@ -18,6 +18,7 @@ import {
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { requireSceneZoneId, captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { expirePlayerVisitsOnReturn, playerVisitAbsenceElapsed } from "../../domain/rules/return-catchup-state.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
@@ -291,10 +292,12 @@ export function createLiveScenes({
     )
       throw conflict("The saved invitation changed. Refresh the Scene.");
     let claimed = false;
+    const wallTime = Date.now();
     const authority = await mutateVillageState((state) => {
       claimed = false;
       if (state.seed !== scene.villageSeed || (scene.continuity && state.setupAt !== scene.continuity.setupAt))
         throw conflict("That Village changed. Its saved Scene is preserved.");
+      expirePlayerVisitsOnReturn(state, wallTime);
       const venue = findLocation(state, scene.placeId);
       const target = venue && resolveVenueZone(venue, requireSceneZoneId(scene));
       if (!venue) throw conflict("That Place is no longer available.");
@@ -395,7 +398,15 @@ export function createLiveScenes({
 
   async function refreshLiveScene(session: VenueScene): Promise<VenueScene> {
     if (session.status === "closed") return session;
-    const village = await readVillageState({ memories: true });
+    let village = await readVillageState({ memories: true });
+    const wallTime = Date.now();
+    if (playerVisitAbsenceElapsed(village, wallTime)) {
+      await mutateVillageState((state) => {
+        if (state.seed !== session.villageSeed || state.setupAt !== village.setupAt) return false;
+        return expirePlayerVisitsOnReturn(state, wallTime);
+      });
+      village = await readVillageState({ memories: true });
+    }
     if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
     const venue = findLocation(village, session.placeId);
     if (!venue) return session;
@@ -465,6 +476,8 @@ export function createLiveScenes({
         Object.entries(state.departureDestinations ?? {}).filter(([id]) => departedIds.includes(id)),
       );
       state.doorwayContacts = (state.doorwayContacts ?? []).filter((row) => sameRoutine(row.characterId));
+      // Let the access-exit path move the player before publishing any new occupancy.
+      if (accessExits(state, village, venue).some((exit) => exit.actor === "player")) return;
       const people = sceneZoneOccupants(state, venue, requireSceneZoneId(state));
       if (
         people.filter((person) => village.villagers.some((resident) => resident.characterId === person.characterId))

@@ -574,6 +574,7 @@ export type VillageState = {
   /** Current work remains separate from the recent, terminal debug history. */
   returnCatchup?: {
     capture?: ReturnCatchupCapture;
+    lastPresenceWallTime?: number;
     batch?: ReturnCatchupBatch;
     history?: ReturnCatchupBatch[];
   };
