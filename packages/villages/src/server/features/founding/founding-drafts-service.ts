@@ -129,7 +129,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
-    const requested = Math.min(model.maxOutputTokens ?? 1536, 1536);
+    const requested = model.maxOutputTokens ?? 4096;
     const sources = inspectedLoreUse(inspection, "Mari’s setting draft");
     const fitted = fitVenueWritingMessages(
       model,
@@ -160,6 +160,10 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       usagePurpose: "other",
       debugMode: false,
     });
+    if (["length", "max_tokens"].includes(completion.finishReason))
+      throw badRequest(
+        "I ran out of room before I could finish your setting. Try again or check the System output limit.",
+      );
     const reply = extractModelJsonObject(completion);
     if (reply) {
       const worldName = authoredWorldName || readWorldName(reply.worldName ?? "");

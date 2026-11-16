@@ -74,6 +74,9 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
   let completions = 0;
   let lookups = 0;
   let finishReason = "stop";
+  let connectionLimit: number | null = 8192;
+  let requestedTokens: number | undefined;
+  let dispatchedTokens: number | undefined;
   let prompt: { role: string; content: string }[] = [];
   const writer = createFoundingDrafts({
     readVillageLore: async (
@@ -98,12 +101,18 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     villagesLanguageModels: () => ({
       resolveForRequest: async ({ connectionId }: { connectionId: string }) => {
         assert.equal(connectionId, "test-system");
-        return { fitContext: (messages: unknown[]) => ({ messages }) };
+        return {
+          maxOutputTokens: connectionLimit,
+          fitContext(messages: unknown[], { maxTokens }: { maxTokens: number }) {
+            requestedTokens ??= maxTokens;
+            return { messages, maxTokens: Math.min(maxTokens, 6144) };
+          },
+        };
       },
     }),
     completeWithRoom: async (_model: unknown, messages: typeof prompt, maxTokens: number, options: any) => {
       prompt = messages;
-      assert.ok(maxTokens <= 1536);
+      dispatchedTokens = maxTokens;
       assert.equal(options.reasoningEffort, undefined);
       completions++;
       return { content: JSON.stringify(setting), finishReason };
@@ -113,12 +122,14 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
   await assert.rejects(writer.suggestStartingVenues({ ...draftInput, brief: " " }), /Tell Mari/);
   assert.equal(completions, 0);
   assert.deepEqual(await writer.suggestStartingVenues(draftInput), { venues: [], setting });
+  assert.equal(requestedTokens, 8192, "Use the selected System connection's output limit when fitting the prompt");
+  assert.equal(dispatchedTokens, 6144, "Dispatch with the output room Engine found in context");
   assert.deepEqual(prompt.slice(1), [{ role: "user", content: brief }]);
   assert.equal(lookups, 0, "Old or skipped lore selection never reads books");
   assert.equal(completions, 1);
   finishReason = "length";
-  await assert.rejects(writer.suggestStartingVenues(draftInput), /complete setting/);
-  assert.equal(completions, 2);
+  await assert.rejects(writer.suggestStartingVenues(draftInput), /I ran out of room/);
+  assert.equal(completions, 2, "A truncated result never starts another request on its own");
   finishReason = "stop";
   const withLore = { ...draftInput, worldBrief, selectedLorebookIds: ["relay-belt"], loreTokenBudget: 900 };
   await assert.rejects(writer.suggestStartingVenues({ ...withLore, loreTokenBudget: -1 }), /token budget/);
@@ -134,7 +145,10 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
   );
   assert.equal(completions, 3);
   const authoredWorld = { worldName: "Relay Belt", worldRules: "The gates only open at noon." };
+  connectionLimit = null;
+  requestedTokens = undefined;
   const authoredDraft = await writer.suggestStartingVenues({ ...draftInput, ...authoredWorld });
+  assert.equal(requestedTokens, 4096, "Use the bounded fallback when the connection supplies no output limit");
   assert.equal(authoredDraft.setting?.worldName, authoredWorld.worldName);
   assert.equal(authoredDraft.setting?.rules, authoredWorld.worldRules);
   assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredWorld, village: brief });
