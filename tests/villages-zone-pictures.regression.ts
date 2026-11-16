@@ -25,6 +25,7 @@ import { continuityHolderKey } from "../packages/villages/src/server/domain/rule
 import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { AutomaticArtworkPaused } from "../packages/villages/src/server/features/media/image-generation-service.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -214,6 +215,29 @@ const connection = (imageService: string, model = "") => ({
   imageService,
   model,
 });
+{
+  const f = fixture();
+  f.dirty("A new oak workbench");
+  f.world().backgroundPace = "off";
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+  f.world().backgroundPace = "balanced";
+  const generate = f.ports.generateVillageImage;
+  f.ports.generateVillageImage = async (input) => {
+    assert.equal(input.automaticZoneArtwork, true);
+    f.world().backgroundPace = "off";
+    throw new AutomaticArtworkPaused();
+  };
+  await f.enter();
+  assert.equal(f.world().zonePictureBudget?.used, 0);
+  assert.equal(f.zone().picture?.claim, undefined);
+  assert.equal(f.zone().picture?.dirty, true);
+  assert.equal(f.zone().picture?.failed, false);
+  assert.equal(f.calls.length, 0);
+  f.ports.generateVillageImage = generate;
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 1, "Explicit artwork remains available during Pace Off");
+}
 {
   const f = fixture();
   f.zone().kind = "private-residence";

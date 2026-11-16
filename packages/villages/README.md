@@ -220,7 +220,7 @@ Use **Remove** below a sprite to remove its assignment. Reopen the picker to add
 
 Time, schedules, construction, approved moves, and expiry can advance without model requests. Recurring creative activity runs while Villages is visible and pauses before its next request after you leave. Work you already requested can finish while you are away.
 
-Set **Pace → Off** to pause automatic resident and world reviews. Local time, construction, approved moves and established environmental expiry continue. Retained Wishes do not expire.
+Set **Pace → Off** to pause automatic resident and world reviews and automatic Zone artwork. Local time, construction, approved moves and established environmental expiry continue. Retained Wishes do not expire.
 
 A resident encounter can establish a meetup when both participants speak. The GM chooses from feasible times and places, and the game reserves that free time. If both attend, each can remember being there even with Pace Off. Attendance alone never settles a Wish or gives the player knowledge of a private meetup.
 
