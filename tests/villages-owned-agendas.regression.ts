@@ -1,6 +1,8 @@
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { applyWorldRepair, worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
+import { sameSceneRoutine } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -292,7 +294,7 @@ async function main() {
   const ordinary = repairAgenda.day[0]!;
   repairAgenda.plannedDays = {
     [chosenDate]: [
-      { ...ordinary, endMinute: 540, activity: "Dawn walk", flexible: true },
+      { ...ordinary, endMinute: 540, activity: "Dawn walk", flexible: true, essential: true },
       { ...ordinary, startMinute: 540, activity: "Reading", flexible: true },
     ],
     [agendaDateKey(followingDay)]: [{ ...ordinary, activity: "Painting", flexible: true }],
@@ -313,10 +315,11 @@ async function main() {
   const original = structuredClone(repairAgenda);
   const rows = worldRepairRecords(repairedWorld, false, "a", today.toISOString()).filter((row) => row.agendaDay);
   assert.equal(rows.length, 7);
-  assert.equal(rows[0]!.actions.length, 0, "Today's admitted Agenda is available for inspection");
+  assert.equal(rows[0]!.agenda?.today, true);
+  assert.ok(rows[0]!.actions.some((action) => action.id === "correct"));
   const repairRecord = rows.find((row) => row.id === JSON.stringify(["agenda", "a", chosenDate]))!;
   assert.ok(repairRecord.source.some((text) => text.includes("10:00–11:00 · Meet at the gate")));
-  const request = (values: Record<string, string>) => ({ action: "correct", values }) as any;
+  const request = (values: Record<string, string>, action = "correct") => ({ action, values }) as any;
   assert.throws(
     () => applyWorldRepair(repairedWorld, repairRecord, request({ "start:1": "08:00" }), today.toISOString()),
     /overlap/,
@@ -326,10 +329,30 @@ async function main() {
     /24-hour/,
   );
   assert.throws(
-    () =>
-      applyWorldRepair(repairedWorld, repairRecord, request({ "activity:1": "Quiet crafting" }), nextDay.toISOString()),
-    /already started/,
+    () => applyWorldRepair(repairedWorld, rows[0]!, request({ "activity:0": "Quiet crafting" }), nextDay.toISOString()),
+    /rolled over/,
   );
+  for (const [start, end, message] of [
+    ["10:15", "10:45", /overlaps reserved time/],
+    ["07:30", "08:00", /essential activity/],
+  ] as const)
+    assert.throws(
+      () =>
+        applyWorldRepair(
+          repairedWorld,
+          repairRecord,
+          request(
+            {
+              "activity:new": "Water the plants",
+              "start:new": start,
+              "end:new": end,
+            },
+            "add-activity",
+          ),
+          today.toISOString(),
+        ),
+      message,
+    );
   assert.deepEqual(repairAgenda, original, "Rejected agenda repairs leave the saved plan intact");
   applyWorldRepair(
     repairedWorld,
@@ -360,6 +383,60 @@ async function main() {
   assert.deepEqual(
     agendaBlocksFor(repairAgenda, nextDay).filter((block) => block.commitmentId),
     agendaBlocksFor(original, nextDay).filter((block) => block.commitmentId),
+  );
+  const noon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+  const captured = {
+    startedAt: noon.toISOString(),
+    continuity: {
+      facts: {
+        villagers: structuredClone(repairedWorld.villagers),
+      },
+    },
+  } as VenueScene;
+  applyWorldRepair(
+    repairedWorld,
+    rows[0]!,
+    request(
+      {
+        "activity:new": "Water the plants",
+        "start:new": "13:00",
+        "end:new": "14:00",
+      },
+      "add-activity",
+    ),
+    noon.toISOString(),
+  );
+  assert.equal(
+    sameSceneRoutine(repairedWorld, captured, "a", noon),
+    true,
+    "A later insertion keeps the recorded movement during the ongoing ordinary activity",
+  );
+  assert.equal(
+    sameSceneRoutine(repairedWorld, captured, "a", new Date(+noon + 90 * 60000)),
+    false,
+    "The resident takes up the inserted activity when it starts",
+  );
+  assert.equal(
+    sameSceneRoutine(repairedWorld, captured, "a", new Date(+noon + 150 * 60000)),
+    false,
+    "Returning to the ordinary activity after an interruption does not retain old movement",
+  );
+  const capturedAfterAdd = {
+    ...captured,
+    continuity: {
+      facts: {
+        villagers: structuredClone(repairedWorld.villagers),
+      },
+    },
+  } as VenueScene;
+  const beforeAdd = coerceVillageState({
+    ...repairedWorld,
+    villagers: [{ ...repairedWorld.villagers[0], agenda: original }],
+  });
+  assert.equal(
+    sameSceneRoutine(beforeAdd, capturedAfterAdd, "a", noon),
+    true,
+    "Undo keeps recorded movement within the surviving activity",
   );
   assert.equal(calls, 0, "Manual Agenda repair never purchases generation");
 
@@ -646,8 +723,9 @@ async function main() {
     assert.deepEqual(pendingInfluence.entities, [], "Uninterpreted imported prose cannot nominate a place");
     assert.deepEqual(pendingInfluence.unresolved, ["Schedule interpretation pending"]);
     const destination = { ...block, venueId: "library", zoneId: "exterior" };
+    const libraryActivity = validateRoutineDay([{ ...destination, zoneId: undefined }], resident, access)[0]!;
     assert.notEqual(
-      validateRoutineDay([{ ...destination, zoneId: undefined }], resident, access)[0]!.zoneId,
+      libraryActivity.zoneId,
       "exterior",
       "unspecified routine destinations resolve to an appropriate accessible Zone",
     );
@@ -666,9 +744,9 @@ async function main() {
         agenda: {
           ...raw.villagers[0]!.agenda,
           activeDay: undefined,
-          week: Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [destination]])),
+          week: Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [libraryActivity]])),
           routineProfile: routineProfileFromWeek(
-            Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [destination]])),
+            Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [libraryActivity]])),
           ),
         },
       })),
@@ -676,6 +754,31 @@ async function main() {
     records.set("villages-village", { ...records.get("villages-village"), data: crowd });
     await rollActiveAgendas(today);
     const capacity = await readVillageState({ memories: true });
+    const withoutLibrary = structuredClone(capacity);
+    const outside = withoutLibrary.villagers.at(-1)!;
+    delete outside.agenda!.plannedDays?.[dateKey];
+    outside.agenda!.activeDay!.blocks = [block];
+    const outsideDay = worldRepairRecords(withoutLibrary, false, outside.characterId, today.toISOString()).find(
+      (row) => row.agenda?.today,
+    )!;
+    assert.throws(
+      () =>
+        applyWorldRepair(
+          withoutLibrary,
+          outsideDay,
+          request(
+            {
+              "activity:new": "Read at the Library",
+              "start:new": "12:00",
+              "end:new": "13:00",
+              "venue:new": "library",
+            },
+            "add-activity",
+          ),
+          today.toISOString(),
+        ),
+      /location is full/,
+    );
     for (let minute = 0; minute < 1440; minute += 30) {
       const positions = [...villagePresence(capacity, minute, today).values()];
       assert.equal(positions.length, 6);

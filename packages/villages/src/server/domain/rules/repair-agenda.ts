@@ -14,7 +14,9 @@ import { badRequest, conflict } from "./errors.js";
 import { memoryHash } from "./memory-integrity.js";
 import { validateRoutineDay } from "./owned-routine.js";
 import { findLocation } from "./places.js";
-import { resolveVenueZone } from "./venue-zones.js";
+import { zoneActivityFits } from "./venue-presence.js";
+import { chooseAgendaZone, resolveVenueZone } from "./venue-zones.js";
+import { venueResidentIds } from "./venue-model.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 const villageCalendar = (state: VillageState, at: string) =>
@@ -29,9 +31,11 @@ function minutes(value: RepairValue) {
   return minute;
 }
 
-export function requireFutureAgendaDay(state: VillageState, date: string, at: string) {
+export function requireAgendaDay(state: VillageState, date: string, at: string, wasToday?: boolean) {
   const today = villageCalendar(state, at);
-  if (date <= agendaDateKey(today)) throw conflict("This Agenda day has already started. Choose an upcoming date.");
+  const key = agendaDateKey(today);
+  if (date < key || (wasToday !== undefined && wasToday !== (date === key)))
+    throw conflict("The Agenda date rolled over. Open the current schedule and review again.");
   return calendarAt(today, date);
 }
 
@@ -39,30 +43,33 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
   const agenda = resident.agenda;
   if (!agenda) return [];
   const today = villageCalendar(state, at);
+  const locations = [
+    { value: "", label: "No location" },
+    ...state.venues
+      .filter((venue) => venue.constructionStatus !== "worksite")
+      .map((venue) => ({ value: venue.id, label: venue.name })),
+  ];
   return Array.from({ length: 7 }, (_, offset) => {
     const day = calendarDate(today, today.getFullYear(), today.getMonth(), today.getDate() + offset, 12);
     const date = agendaDateKey(day);
     const label = dateLabel.format(new Date(`${date}T12:00:00Z`));
     const scheduled = agendaBlocksFor(agenda, day);
     const ordinary = ordinaryAgendaBlocksFor(agenda, day);
-    const editable = offset > 0 && agenda.activeDay?.dateKey !== date;
-    const fields = editable
-      ? ordinary.flatMap<RepairField>((block, index) => {
-          if (
-            block.commitmentId ||
-            !scheduled.some(
-              (part) => !part.commitmentId && part.startMinute < block.endMinute && part.endMinute > block.startMinute,
-            )
-          )
-            return [];
-          const activity = `Activity ${index + 1}`;
-          return [
-            { key: `activity:${index}`, label: activity, type: "text", value: block.activity },
-            { key: `start:${index}`, label: `${activity} start`, type: "clock", value: clock(block.startMinute) },
-            { key: `end:${index}`, label: `${activity} end`, type: "clock", value: clock(block.endMinute) },
-          ];
-        })
-      : [];
+    const fields = ordinary.flatMap<RepairField>((block, index) => {
+      if (
+        block.commitmentId ||
+        !scheduled.some(
+          (part) => !part.commitmentId && part.startMinute < block.endMinute && part.endMinute > block.startMinute,
+        )
+      )
+        return [];
+      const activity = `Activity ${index + 1}`;
+      return [
+        { key: `activity:${index}`, label: activity, type: "text", value: block.activity },
+        { key: `start:${index}`, label: `${activity} start`, type: "clock", value: clock(block.startMinute) },
+        { key: `end:${index}`, label: `${activity} end`, type: "clock", value: clock(block.endMinute) },
+      ];
+    });
     const blocks = scheduled.map((block) => {
       const place = findLocation(state, block.venueId);
       const zone = place && block.zoneId ? resolveVenueZone(place, block.zoneId) : null;
@@ -82,7 +89,7 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
           : block.commitmentId && !booking
             ? { note: "Commitment" }
             : {}),
-        ...(editable && index >= 0 ? { repairIndex: index } : {}),
+        ...(index >= 0 ? { repairIndex: index } : {}),
       };
     });
     return {
@@ -92,12 +99,19 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
       agendaDay: label,
       agenda: {
         residentId: resident.characterId,
+        today: offset === 0,
         date,
         weekday: VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7]!,
         blocks: blocks.filter((_, index) => scheduledAgendaActivity(scheduled[index]!)),
       },
-      summary: offset === 0 ? "Today · View schedule" : "View schedule",
-      fields,
+      summary: offset === 0 ? "Today · Agenda" : "Agenda",
+      fields: [
+        ...fields,
+        { key: "activity:new", label: "Activity", type: "text", value: "" },
+        { key: "start:new", label: "Start", type: "clock", value: "" },
+        { key: "end:new", label: "End", type: "clock", value: "" },
+        { key: "venue:new", label: "Location", type: "choice", value: "", options: locations },
+      ],
       source: blocks.map((block) =>
         [
           `${clock(block.startMinute)}–${clock(block.endMinute)}`,
@@ -108,7 +122,10 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
           .filter(Boolean)
           .join(" · "),
       ),
-      actions: fields.length ? [{ id: "correct", label: "Modify" }] : [],
+      actions: [
+        ...(fields.length ? [{ id: "correct", label: "Modify" }] : []),
+        { id: "add-activity", label: "Add activity" },
+      ],
       related: [],
     };
   });
@@ -120,36 +137,62 @@ export function applyAgendaRepair(
   date: string,
   values: Record<string, RepairValue>,
   at: string,
+  add: boolean,
 ) {
-  const day = requireFutureAgendaDay(state, date, at);
+  const day = requireAgendaDay(state, date, at);
   const resident = state.villagers.find((entry) => entry.characterId === residentId);
   const agenda = resident?.agenda;
-  if (!agenda || agenda.activeDay?.dateKey === date) throw conflict("This Agenda day is no longer editable.");
+  if (!agenda) throw conflict("This Agenda day is no longer editable.");
   const before = ordinaryAgendaBlocksFor(agenda, day);
-  const blocks = before
-    .map((block, index) => {
-      const value = values[`activity:${index}`];
-      if (value === undefined) return block;
-      const activity = String(value).trim(),
-        startMinute = minutes(values[`start:${index}`]!),
-        endMinute = minutes(values[`end:${index}`]!);
-      if (!activity || activity.length > 240) throw badRequest("Enter a short activity description.");
-      if (endMinute <= startMinute) throw badRequest("Each activity must end after it starts.");
-      if (activity === block.activity && startMinute === block.startMinute && endMinute === block.endMinute)
-        return block;
-      const edited = { ...block, activity, startMinute, endMinute };
-      const checked = validateRoutineDay([edited], resident, state, day)[0]!;
-      if (checked.venueId !== edited.venueId) throw conflict("The activity's location is unavailable at that time.");
-      return checked;
-    })
-    .sort((a, b) => a.startMinute - b.startMinute);
+  const reservations = (agenda.reservations ?? []).filter((entry) => entry.dateKey === date);
+  const activityFor = (index: number | "new", block?: VillageAgendaBlock) => {
+    const activity = String(values[`activity:${index}`] ?? "").trim(),
+      startMinute = minutes(values[`start:${index}`]!),
+      endMinute = minutes(values[`end:${index}`]!);
+    if (!activity || activity.length > 240) throw badRequest("Enter a short activity description.");
+    if (endMinute <= startMinute) throw badRequest("Each activity must end after it starts.");
+    if (block && activity === block.activity && startMinute === block.startMinute && endMinute === block.endMinute)
+      return block;
+    const edited = {
+      ...(block ?? { venueId: String(values["venue:new"] ?? ""), flexible: false }),
+      activity,
+      startMinute,
+      endMinute,
+    };
+    const checked = validateRoutineDay([edited], resident, state, day)[0]!;
+    if (checked.venueId !== edited.venueId) throw conflict("The activity's location is unavailable at that time.");
+    return checked;
+  };
+  let blocks;
+  if (add) {
+    const item = activityFor("new");
+    const overlaps = (block: { startMinute: number; endMinute: number }) =>
+      block.startMinute < item.endMinute && block.endMinute > item.startMinute;
+    if (reservations.some(overlaps) || before.some((block) => block.commitmentId && overlaps(block)))
+      throw conflict("That time overlaps reserved time. Choose another time for this activity.");
+    if (before.some((block) => block.essential && overlaps(block)))
+      throw conflict("That time overlaps an essential activity. Choose another time.");
+    blocks = before.flatMap((block) =>
+      !overlaps(block)
+        ? [block]
+        : [
+            ...(block.startMinute < item.startMinute ? [{ ...block, endMinute: item.startMinute }] : []),
+            ...(block.endMinute > item.endMinute ? [{ ...block, startMinute: item.endMinute }] : []),
+          ],
+    );
+    blocks.push(item);
+  } else {
+    blocks = before.map((block, index) =>
+      values[`activity:${index}`] === undefined ? block : activityFor(index, block),
+    );
+  }
+  blocks.sort((a, b) => a.startMinute - b.startMinute);
   if (blocks.some((block, index) => index > 0 && block.startMinute < blocks[index - 1]!.endMinute))
     throw badRequest("Agenda activities cannot overlap.");
   const corrected = completeAgendaWeek({ Monday: blocks }, workingAgendaWeek()).Monday!;
-  const reservations = (agenda.reservations ?? []).filter((entry) => entry.dateKey === date);
   const commitments = (rows: VillageAgendaBlock[]) => {
     const intervals: VillageAgendaBlock[] = [];
-    for (const block of composeAgenda(rows, reservations)) {
+    for (const block of rows) {
       if (!block.commitmentId) continue;
       const previous = intervals.at(-1);
       if (
@@ -164,9 +207,54 @@ export function applyAgendaRepair(
     }
     return intervals;
   };
-  if (memoryHash(commitments(before)) !== memoryHash(commitments(corrected)))
+  const scheduledBefore = composeAgenda(before, reservations);
+  const scheduledAfter = composeAgenda(corrected, reservations);
+  if (memoryHash(commitments(scheduledBefore)) !== memoryHash(commitments(scheduledAfter)))
     throw conflict("This change would move or displace reserved time. Keep the existing commitments in place.");
   if (memoryHash(corrected) === memoryHash(before)) return;
+  const home = state.venues.find((entry) => venueResidentIds(entry).includes(residentId));
+  const locationFor = (item: VillageAgendaBlock) => findLocation(state, item.venueId) ?? home;
+  for (const block of scheduledAfter) {
+    if (
+      block.commitmentId ||
+      scheduledBefore.some(
+        (prior) =>
+          prior.startMinute <= block.startMinute &&
+          prior.endMinute >= block.endMinute &&
+          prior.venueId === block.venueId &&
+          prior.zoneId === block.zoneId &&
+          prior.activity === block.activity,
+      )
+    )
+      continue;
+    const venue = locationFor(block);
+    if (!venue) continue;
+    const zoneFor = (item: VillageAgendaBlock, at: Date) =>
+      chooseAgendaZone(venue, residentId, item.activity, item.zoneId, state, { at }).id;
+    const available = zoneActivityFits(
+      state,
+      [residentId],
+      venue.id,
+      (at, minute) => {
+        const zone = zoneFor(block, at);
+        const prior = scheduledBefore.find((item) => minute >= item.startMinute && minute < item.endMinute);
+        const samePlacement = prior && locationFor(prior)?.id === venue.id && zone === zoneFor(prior, at);
+        return samePlacement ? undefined : zone;
+      },
+      block.startMinute,
+      block.endMinute,
+      day,
+    );
+    if (!available) throw conflict("That location is full at this time. Choose another time or location.");
+  }
   (agenda.plannedDays ??= {})[date] = corrected;
+  if (date === agendaDateKey(villageCalendar(state, at))) {
+    agenda.activeDay = {
+      dateKey: date,
+      weekday: VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7]!,
+      blocks: corrected,
+      scheduleInformed: agenda.activeDay?.dateKey === date && agenda.activeDay.scheduleInformed,
+    };
+  }
   if (!(agenda.repairedDays ??= []).includes(date)) agenda.repairedDays.push(date);
 }

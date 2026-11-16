@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AgendaPlanner } from "../../shared/AgendaPlanner.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import { VillageIcon, type VillageIconName } from "../../shared/VillageIcon.js";
@@ -117,6 +117,17 @@ export function RepairPage({
   const directory = c.view === "list" && c.topic === "people" && !c.person;
   const browsingAgenda = c.topic === "people" && c.section === "agenda";
   const [agendaDate, setAgendaDate] = useState<string>();
+  const agendaEditorHeading = useRef<HTMLHeadingElement>(null);
+  const editingAgenda = browsingAgenda && c.view === "list" && Boolean(c.selected?.agendaDay);
+  useEffect(() => {
+    if (!editingAgenda || !c.selected) return;
+    agendaEditorHeading.current?.focus({ preventScroll: true });
+    agendaEditorHeading.current?.scrollIntoView({ block: "nearest" });
+  }, [editingAgenda, c.selected]);
+  const openAgendaActivity = (date: string, index: number | "new") => {
+    const record = c.records.find((row) => row.agenda?.date === date);
+    if (record) void c.open(record.id, { index, token: record.token });
+  };
   const agendaDraftStale = c.selected?.agendaDay && c.draft?.agendaToken !== c.selected.token;
   const browsingPlaces = c.view !== "hub" && c.topic === "places" && c.collection === "list";
   let placeItems = c.placeDirectory;
@@ -462,19 +473,20 @@ export function RepairPage({
                   <AgendaPlanner
                     days={c.records.flatMap((record) => (record.agenda ? [record.agenda] : []))}
                     date={agendaDate}
-                    onDate={setAgendaDate}
-                    renderAction={(day, block) => {
-                      const record = c.records.find((row) => row.agenda?.date === day.date);
-                      return record && block.repairIndex !== undefined ? (
-                        <button
-                          type="button"
-                          disabled={c.busy}
-                          onClick={() => void c.open(record.id, { index: block.repairIndex!, token: record.token })}
-                        >
-                          Repair activity
-                        </button>
-                      ) : null;
+                    disabled={c.busy}
+                    onDate={(date) => {
+                      setAgendaDate(date);
+                      c.closeAgendaEditor();
                     }}
+                    onActivity={(day, block) => {
+                      if (block.repairIndex === undefined) c.closeAgendaEditor();
+                      else openAgendaActivity(day.date, block.repairIndex);
+                    }}
+                    renderDayAction={(day) => (
+                      <button type="button" disabled={c.busy} onClick={() => openAgendaActivity(day.date, "new")}>
+                        Add activity
+                      </button>
+                    )}
                   />
                 ) : (
                   <div className="repair-records">
@@ -524,10 +536,15 @@ export function RepairPage({
             )}
           </>
         ) : null}
-        {c.view === "edit" && c.selected && c.draft ? (
+        {(c.view === "edit" || editingAgenda) && c.selected && c.draft ? (
           <div className="repair-layout" data-single={!hasSource}>
             <section className="repair-panel repair-editor" data-agenda={!!c.selected.agendaDay}>
-              {c.selected.actions.length > 1 ? (
+              {editingAgenda ? (
+                <h2 tabIndex={-1} ref={agendaEditorHeading}>
+                  {c.draft.action === "add-activity" ? "Add activity" : "Edit activity"}
+                </h2>
+              ) : null}
+              {!editingAgenda && c.selected.actions.length > 1 ? (
                 <div className="repair-actions" role="group" aria-label="Repair action">
                   {c.selected.actions.map((a) => (
                     <button
@@ -550,7 +567,6 @@ export function RepairPage({
                     disabled={c.busy}
                     onClick={() =>
                       c.update({
-                        action: c.selected!.actions[0]!.id,
                         agendaToken: c.selected!.token,
                         values: Object.fromEntries(c.editorFields.map((field) => [field.key, field.value])),
                       })
@@ -687,8 +703,12 @@ export function RepairPage({
                 </fieldset>
               ) : null}
               <div className="repair-buttons">
-                <button type="button" disabled={c.busy} onClick={() => void c.load(c.topic)}>
-                  {c.selected.agendaDay ? "Back to Agenda" : "Back to records"}
+                <button
+                  type="button"
+                  disabled={c.busy}
+                  onClick={() => (editingAgenda ? c.closeAgendaEditor() : void c.load(c.topic))}
+                >
+                  {editingAgenda ? "Close" : "Back to records"}
                 </button>
                 {c.selected.actions.length && !agendaDraftStale ? (
                   <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
@@ -834,8 +854,18 @@ export function RepairPage({
               <button type="button" disabled={c.busy} onClick={() => void c.showHistory()}>
                 View repair history
               </button>
-              <button type="button" className="repair-primary" disabled={c.busy} onClick={c.showHub}>
-                Back to REPAIR
+              <button
+                type="button"
+                className="repair-primary"
+                disabled={c.busy}
+                onClick={() => {
+                  if (browsingAgenda) {
+                    c.closeAgendaEditor();
+                    void c.load();
+                  } else c.showHub();
+                }}
+              >
+                {browsingAgenda ? "Back to Agenda" : "Back to REPAIR"}
               </button>
             </div>
           </section>

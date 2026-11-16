@@ -161,7 +161,8 @@ await runCase("repair/agenda", async () => {
   const dates = (await f.api.list("people", "", 0, person.id, "agenda")).records;
   assert.equal(person.hasAgenda, true);
   assert.equal(dates.length, 7);
-  assert.equal(dates[0]!.actions.length, 0);
+  assert.equal(dates[0]!.agenda?.today, true);
+  assert.ok(dates[0]!.actions.some((action) => action.id === "add-activity"));
   assert.ok((await f.api.list("people", "", 0, person.id, "details")).records.every((row) => !row.agendaDay));
   assert.ok((await f.api.list("all", "Aqua Agenda")).records.some((row) => row.id === dates[1]!.id));
   const [record, neighbor] = dates.slice(1, 3);
@@ -170,7 +171,7 @@ await runCase("repair/agenda", async () => {
     ...edit(record!.id, { "activity:0": "Arranging tools" }, "edit-day"),
     personId: person.id,
   });
-  assert.ok(plan.changes.some((row) => row.after === "Arranging tools"));
+  assert.ok(plan.changes.some((row) => row.after.includes("Arranging tools")));
   assert.deepEqual(plan.affected, [record!.title]);
   await f.api.apply(plan.id, plan.token);
   f.reopen();
@@ -179,6 +180,40 @@ await runCase("repair/agenda", async () => {
   const undo = await f.api.undo(plan.id, "undo-day");
   await f.api.apply(undo.id, undo.token);
   assert.deepEqual((await f.read()).villagers[0]!.agenda, start);
+  const todayRecord = dates[0]!;
+  const todayEdit = await f.prepare(edit(todayRecord.id, { "activity:0": "Count the lanterns" }, "edit-today"));
+  await f.api.apply(todayEdit.id, todayEdit.token);
+  assert.equal((await f.read()).villagers[0]!.agenda!.activeDay!.blocks[0]!.activity, "Count the lanterns");
+  const addToday = await f.prepare({
+    ...edit(
+      todayRecord.id,
+      { "activity:new": "Refill the lanterns", "start:new": "13:00", "end:new": "14:00" },
+      "add-today",
+    ),
+    action: "add-activity",
+  });
+  assert.ok(
+    addToday.changes.some(
+      (change) =>
+        change.before.includes("00:00–24:00 · Count the lanterns") &&
+        change.after.includes("13:00–14:00 · Refill the lanterns"),
+    ),
+  );
+  await f.api.apply(addToday.id, addToday.token);
+  f.reopen();
+  const savedToday = (await f.read()).villagers[0]!.agenda!;
+  assert.deepEqual(savedToday.activeDay!.blocks, savedToday.plannedDays![todayRecord.agenda!.date]);
+  assert.ok(
+    savedToday.activeDay!.blocks.some(
+      (block) => block.startMinute === 780 && block.endMinute === 840 && block.activity === "Refill the lanterns",
+    ),
+  );
+  assert.deepEqual((await f.api.inspect(neighbor!.id, person.id)).source, neighbor!.source);
+  const undoAdd = await f.api.undo(addToday.id, "undo-add");
+  await f.api.apply(undoAdd.id, undoAdd.token);
+  assert.ok(
+    (await f.read()).villagers[0]!.agenda!.activeDay!.blocks.every((block) => block.activity !== "Refill the lanterns"),
+  );
 
   {
     let clock = new Date("2026-05-20T12:00:00Z");
@@ -198,7 +233,7 @@ await runCase("repair/agenda", async () => {
         edit(repairId("agenda", "aqua", "2026-05-21"), { "activity:0": "Too late" }, "before-rollover"),
       );
       clock = new Date("2026-05-21T00:00:00Z");
-      await assert.rejects(timed.api.apply(review.id, review.token), /already started/);
+      await assert.rejects(timed.api.apply(review.id, review.token), /rolled over/);
       assert.equal((await timed.api.index()).history.length, 0);
       assert.equal((await timed.read()).villagers[0]!.agenda!.repairedDays, undefined);
     } finally {

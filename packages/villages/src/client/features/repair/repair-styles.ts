@@ -64,7 +64,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-actions{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:20px;}
 .villages-repair .repair-field{margin-bottom:20px;}
 .villages-repair .repair-editor[data-agenda=true]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;}
-.villages-repair .repair-editor[data-agenda=true]>:is(.repair-notice,.repair-buttons,.repair-field:has(textarea)){grid-column:1/-1;}
+.villages-repair .repair-editor[data-agenda=true]>:is(h2,.repair-notice,.repair-buttons,.repair-field:has(textarea,select)){grid-column:1/-1;}
 .villages-repair .repair-editor[data-agenda=true] textarea{min-height:68px;}
 .villages-repair .repair-field>label{display:block;font-weight:500;margin-bottom:7px;}
 .villages-repair fieldset{border:0;padding:0;margin:15px 0;}

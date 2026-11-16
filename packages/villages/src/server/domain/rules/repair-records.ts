@@ -595,7 +595,7 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
     [kind, id, sub, actor] = repairParts(record.id);
   const str = (key: string) => String(values[key] ?? "");
   if (kind === "agenda") {
-    applyAgendaRepair(state, id, sub!, values, at);
+    applyAgendaRepair(state, id, sub!, values, at, request.action === "add-activity");
     return;
   }
   if (kind === "npc" || kind === "place") {

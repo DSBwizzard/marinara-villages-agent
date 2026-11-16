@@ -26,12 +26,16 @@ export function AgendaPlanner<T extends Block>({
   days,
   date,
   onDate,
-  renderAction,
+  onActivity,
+  renderDayAction,
+  disabled,
 }: {
   days: { date: string; weekday: string; blocks: T[] }[];
   date: string | undefined;
   onDate(date: string): void;
-  renderAction?: (day: { date: string }, block: T) => ReactNode;
+  onActivity?: (day: { date: string }, block: T) => void;
+  renderDayAction?: (day: { date: string }) => ReactNode;
+  disabled?: boolean;
 }) {
   const [selection, setSelection] = useState<{ date: string; block: T }>();
   if (!days.length) return null;
@@ -42,13 +46,14 @@ export function AgendaPlanner<T extends Block>({
       (block) => block.startMinute === selection.block.startMinute && block.activity === selection.block.activity,
     );
   return (
-    <div className={P + "-day-planner"} role="group" aria-label="Day planner" data-repair={!!renderAction}>
+    <div className={P + "-day-planner"} role="group" aria-label="Day planner" data-repair={!!onActivity}>
       <style>{agendaStyles}</style>
       <div className={P + "-planner-dates"} role="group" aria-label="Days">
         {days.map((entry) => (
           <button
             key={entry.date}
             type="button"
+            disabled={disabled}
             aria-label={entry.weekday + ", " + dayLabel(entry.date)}
             aria-pressed={entry.date === day.date}
             onClick={() => {
@@ -60,6 +65,7 @@ export function AgendaPlanner<T extends Block>({
           </button>
         ))}
       </div>
+      {renderDayAction ? <div className={P + "-planner-actions"}>{renderDayAction(day)}</div> : null}
       <div className={P + "-planner-day"} role="group" aria-label={day.weekday + " Agenda"}>
         {periods.map((period) => (
           <div key={period} className={P + "-planner-period"} role="group" aria-label={period}>
@@ -71,6 +77,7 @@ export function AgendaPlanner<T extends Block>({
               .map((block, index) => (
                 <button
                   type="button"
+                  disabled={disabled}
                   key={index}
                   className={P + "-planner-block"}
                   data-source={block.source}
@@ -86,7 +93,10 @@ export function AgendaPlanner<T extends Block>({
                     .filter(Boolean)
                     .join(" · ")}
                   aria-pressed={visibleSelection === block}
-                  onClick={() => setSelection(visibleSelection === block ? undefined : { date: day.date, block })}
+                  onClick={() => {
+                    setSelection(!onActivity && visibleSelection === block ? undefined : { date: day.date, block });
+                    onActivity?.(day, block);
+                  }}
                 >
                   <span className={P + "-planner-time"}>{blockTime(block)}</span>
                   <span>{block.activity}</span>
@@ -108,8 +118,7 @@ export function AgendaPlanner<T extends Block>({
             .join(" · ")}
         </p>
       ) : null}
-      {visibleSelection && renderAction?.(day, visibleSelection)}
-      {renderAction && !day.blocks.length ? <p>No scheduled activities.</p> : null}
+      {onActivity && !day.blocks.length ? <p>No scheduled activities.</p> : null}
     </div>
   );
 }
@@ -127,6 +136,7 @@ const agendaStyles = `
  margin-block:16px;
 }
 .${P}-day-planner[data-repair=true] .${P}-planner-detail{margin-block:12px}
+.${P}-planner-actions{display:flex;justify-content:flex-end;margin-block-end:8px}
 .${P}-desk-workspace[data-theme=day] .${P}-day-planner{
  --planner-paper:#edf4ee;--planner-line:#a0b6ab;
  --event-fill:#c9e4d9;--event-edge:#347963;--rest-fill:#d9dfef;--rest-edge:#5873a2;

@@ -2,6 +2,7 @@ import type { AgendaWeek } from "./agenda.js";
 
 export type RepairAgendaDay = Omit<AgendaWeek["days"][number], "blocks"> & {
   residentId: string;
+  today?: boolean;
   blocks: (AgendaWeek["days"][number]["blocks"][number] & { repairIndex?: number; note?: string })[];
 };
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";

@@ -16,7 +16,7 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string; agendaToken?: string };
 type Section = "memories" | "agenda" | "details";
 type RecordTopic = RepairTopic | "all";
-type AgendaPick = { index: number; token?: string };
+type AgendaPick = { index: number | "new"; token?: string };
 type View = "hub" | "list" | "edit" | "review" | "done" | "history" | "checkpoints";
 export function useRepairController(
   active: boolean,
@@ -237,10 +237,12 @@ export function useRepairController(
       `/repair/record?id=${encodeURIComponent(id)}${person ? `&personId=${encodeURIComponent(person.id)}` : ""}`,
     );
     if (!current(ticket)) return;
-    if (pick && record.token !== pick.token)
-      throw new Error("This activity changed. Return to the Agenda and reopen it.");
+    if (pick && record.token !== pick.token) {
+      await fetchRecords(topic, 0, "", person, section, ticket);
+      throw new Error("This date changed. Select the activity again.");
+    }
     setSelected(record);
-    setView("edit");
+    setView(pick ? "list" : "edit");
     const key = draftKey(id, pick),
       focus = record.people?.find((p) => p.id === person?.id),
       values = Object.fromEntries(editorFields(record, pick).map((f) => [f.key, f.value]));
@@ -252,16 +254,27 @@ export function useRepairController(
             [key]: {
               values,
               knowers: focus ? [focus.id] : (record.people?.slice(0, 1).map((p) => p.id) ?? []),
-              action: record.actions[0]?.id ?? "",
+              action: pick?.index === "new" ? "add-activity" : (record.actions[0]?.id ?? ""),
               ...(record.agendaDay ? { agendaToken: record.token } : {}),
             },
           },
     );
   };
+  const closeAgendaEditor = () => {
+    abandonReview();
+    epoch.current++;
+    setSelected(null);
+    setAgendaPick(undefined);
+    setError("");
+  };
   const open = (id: string, pick?: AgendaPick) => {
-    invalidate();
-    setAgendaPick(pick);
-    setView("edit");
+    if (pick) {
+      closeAgendaEditor();
+      setAgendaPick(pick);
+    } else {
+      invalidate();
+      setView("edit");
+    }
     return act((ticket) => fetchRecord(id, ticket, pick));
   };
   const draft = selected ? drafts[draftKey(selected.id, agendaPick)] : undefined;
@@ -409,6 +422,7 @@ export function useRepairController(
     showHub,
     showHistory,
     open,
+    closeAgendaEditor,
     update,
     prepare,
     apply,
@@ -420,13 +434,13 @@ export function useRepairController(
     backFromReview: () => {
       abandonReview();
       epoch.current++;
-      setView(selected ? "edit" : collection.current);
+      setView(selected && !agendaPick ? "edit" : collection.current);
     },
     leave: () => {
       epoch.current++;
       if (reviewRef.current) {
         abandonReview();
-        setView(selected ? "edit" : collection.current);
+        setView(selected && !agendaPick ? "edit" : collection.current);
       }
     },
     historyPage: (start: number) => act(() => readIndex(start, index?.checkpointOffset ?? 0)),

@@ -52,7 +52,7 @@ import {
   worldRepairRecords,
 } from "../../domain/rules/repair-records.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
-import { requireFutureAgendaDay } from "../../domain/rules/repair-agenda.js";
+import { requireAgendaDay } from "../../domain/rules/repair-agenda.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
 import {
   createRepairStorage,
@@ -152,6 +152,13 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
     prior.delete(row.id);
     if (old?.token === row.token) continue;
     affected.push(row.title);
+    if (row.agendaDay && old) {
+      const before = old.source.filter((entry) => !row.source.includes(entry));
+      const after = row.source.filter((entry) => !old.source.includes(entry));
+      if (before.length || after.length)
+        changes.push({ label: "Schedule", before: before.join("\n"), after: after.join("\n") });
+      continue;
+    }
     for (const field of row.fields) {
       // Per-person wording below is the authoritative memory comparison.
       if (row.topic === "memories" && field.key === "text" && row.people?.some((p) => p.text !== undefined)) continue;
@@ -723,7 +730,7 @@ export function createRepairService(ports: RepairPorts) {
     const diff = recordChanges(simulation.value.beforeRecords, simulation.value.afterRecords, record.id),
       changedFields = diff.changes,
       affectedRecords = diff.affected;
-    if (request.action !== "correct" && kind !== "memory")
+    if (request.action !== "correct" && kind !== "memory" && kind !== "agenda")
       changedFields.push({
         label: "Action",
         before: record.summary,
@@ -743,6 +750,7 @@ export function createRepairService(ports: RepairPorts) {
       affected.push("Remembered knowledge only; physical state and completion records stay separate.");
     if (kind === "room") affected.push("Future Scene room context.");
     if (kind === "access") affected.push("Future entry and management checks.");
+    if (kind === "agenda" && record.agenda?.today) affected.push("Today's availability follows the revised schedule.");
     if (kind === "scene") affected.push("Historical annotation; mechanical outcomes are retained.");
     if (kind === "saved-scene")
       affected.push("Retained Scene effects change. A previously requested conclusion may finish after recovery.");
@@ -838,7 +846,12 @@ export function createRepairService(ports: RepairPorts) {
     await gate.commit(id, publication.transaction, async () => {
       if (kind === "agenda") {
         const current = await repository.readAuthority();
-        requireFutureAgendaDay(current, date!, villageNow(current.clock?.advanceMs ?? 0).toISOString());
+        requireAgendaDay(
+          current,
+          date!,
+          villageNow(current.clock?.advanceMs ?? 0).toISOString(),
+          plan.history.record?.agenda?.today ?? false,
+        );
       }
       if (kind === "room" && plan.review.kind === "repair") await inspect(plan.request.recordId, plan.request.personId);
     });
@@ -870,7 +883,13 @@ export function createRepairService(ports: RepairPorts) {
     const state = await read();
     if (state.seed !== saved.seed || state.setupAt !== saved.setupAt) throw conflict("The Village changed.");
     const [kind, , date] = repairParts(saved.request.recordId);
-    if (kind === "agenda") requireFutureAgendaDay(state, date!, villageNow(state.clock?.advanceMs ?? 0).toISOString());
+    if (kind === "agenda")
+      requireAgendaDay(
+        state,
+        date!,
+        villageNow(state.clock?.advanceMs ?? 0).toISOString(),
+        saved.record?.agenda?.today ?? false,
+      );
     const record =
       saved.memoryBefore || saved.undoWrites
         ? saved.record!
@@ -992,7 +1011,9 @@ export function createRepairService(ports: RepairPorts) {
       token: randomUUID(),
       title: `Undo ${saved.title}`,
       changes: result.value.changes,
-      affected: result.value.affected,
+      affected: saved.record?.agenda?.today
+        ? [...result.value.affected, "Today's availability follows the revised schedule."]
+        : result.value.affected,
       ...(saved.memoryBefore && repairParts(saved.request.recordId)[0] === "memory"
         ? {
             memory: {
