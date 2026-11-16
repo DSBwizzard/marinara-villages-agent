@@ -1,6 +1,6 @@
 export function calculatePortraitWanted(ports: {
   catalog: import("../../../shared/contracts/village").CatalogEntry[];
-  screen: "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "room" | "person";
+  screen: "venue" | "home" | "menu" | "setup" | "preparing" | "room" | "person";
   setupStep: number;
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {

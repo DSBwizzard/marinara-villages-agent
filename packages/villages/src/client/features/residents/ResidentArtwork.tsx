@@ -58,7 +58,7 @@ export function ResidentArtwork({ url, name, fallback }: { url: string; name: st
   if (failed) return fallback;
   return (
     <svg
-      className="marinara-capability-villages-dossier-sprite"
+      className="marinara-capability-villages-dossier-sprite mari-rgb-static-icon"
       viewBox={frame?.viewBox ?? "0 0 1024 1536"}
       preserveAspectRatio="xMidYMax meet"
       role="img"

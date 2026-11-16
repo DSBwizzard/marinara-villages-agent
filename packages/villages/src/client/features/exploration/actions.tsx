@@ -37,9 +37,7 @@ export function useOpenPlace(ports: {
   setVenueEditNotice?: (notice: string) => void;
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
   setOpenPlaceId: React.Dispatch<SetStateAction<string>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
   setVenueEditDraft: React.Dispatch<SetStateAction<VillageVenue>>;
   setVenueId: React.Dispatch<SetStateAction<string>>;
   setVenuePage: React.Dispatch<SetStateAction<"view" | "edit" | "proposal">>;

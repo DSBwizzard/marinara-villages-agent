@@ -12,7 +12,7 @@ export function useNavigationOpenPerson(ports: {
   readonly setPersonProfile: ResidentsState["setPersonProfile"];
   readonly setProfileInspection: ResidentsState["setProfileInspection"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"menu" | "home" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
   readonly setSpriteManagerId: ResidentsState["setSpriteManagerId"];
   readonly spriteLeaveGuard: ResidentsState["spriteLeaveGuard"];
@@ -73,7 +73,7 @@ export function useNavigationGoHome(ports: {
   readonly setOpenPlaceId: ExplorationState["setOpenPlaceId"];
   readonly setPickerOpen: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"menu" | "home" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
   readonly setSettingsError: SettingsState["setSettingsError"];
   readonly setSpriteManagerId: ResidentsState["setSpriteManagerId"];

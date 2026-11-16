@@ -32,6 +32,17 @@ export type FoundingVenueSuggestion = {
 export type FoundingSuggestionsResult = {
   lore?: import("./lore.js").LoreUse[];
   venues: FoundingVenueSuggestion[];
+  setting?: FoundingSetting;
   entranceImage?: VillageVenueImage;
   imageError?: string;
 };
+
+export type FoundingSetting = {
+  name: string;
+  startingLocationName: string;
+  description: string;
+  worldName: string;
+  rules: string;
+};
+
+export const FOUNDING_SETTING_BRIEF_LIMIT = 4096;

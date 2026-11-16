@@ -4,7 +4,7 @@ export function useVenueRequestFocus(ports: {
   element: HTMLElement;
   focusedRequestId: string;
   menuPage: import("../../shared/types.js").MenuPage;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
 }) {
   const { element, focusedRequestId, menuPage, screen } = ports;
   useEffect(() => {

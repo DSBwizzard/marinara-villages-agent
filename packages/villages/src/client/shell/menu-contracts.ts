@@ -76,7 +76,7 @@ export type MenuScreenController = {
   readonly saveBackgroundPace: ReturnType<typeof useSaveBackgroundPace>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
+  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly setBusy: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setFocusedProjectId: ProjectsState["setFocusedProjectId"];
   readonly setLoreTokenBudgetDraft: SettingsState["setLoreTokenBudgetDraft"];
@@ -90,7 +90,7 @@ export type MenuScreenController = {
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
   readonly setSceneryStyleProfileId: FoundingState["setSceneryStyleProfileId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setSettingsError: SettingsState["setSettingsError"];
   readonly setSiteProjectId: ProjectsState["setSiteProjectId"];

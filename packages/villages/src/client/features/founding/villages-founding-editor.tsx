@@ -10,9 +10,11 @@ export function SceneryStyleFields({
   onCommit,
   disabled,
   hint,
+  asButtons,
 }: {
   disabled?: boolean;
   hint?: string;
+  asButtons?: boolean;
   value: string;
   profileId: string | null;
   onChange(value: string): void;
@@ -28,17 +30,15 @@ export function SceneryStyleFields({
           {hint}
         </small>
       ) : null}
-      <label>
-        Style preset
-        <SceneryStylePicker
-          profileId={profileId}
-          onChange={(id) => {
-            onProfileChange(id);
-            if (id !== null) onChange("");
-            onCommit?.({ value: id === null ? value : "", profileId: id }, false);
-          }}
-        />
-      </label>
+      <SceneryStylePicker
+        asButtons={asButtons}
+        profileId={profileId}
+        onChange={(id) => {
+          onProfileChange(id);
+          if (id !== null) onChange("");
+          onCommit?.({ value: id === null ? value : "", profileId: id }, false);
+        }}
+      />
       {profileId === null ? (
         <label>
           Style description

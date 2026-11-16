@@ -162,7 +162,7 @@ export function SignatureArt({
       aria-label={`${url && broken !== url ? saved?.name : local.name}'s signature`}
     >
       {ink ? (
-        <svg width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
+        <svg className="mari-rgb-static-icon" width="0" height="0" aria-hidden="true" style={{ position: "absolute" }}>
           <defs>
             <filter id={inkId} colorInterpolationFilters="sRGB">
               <feColorMatrix type="luminanceToAlpha" />
@@ -195,7 +195,7 @@ export function SignatureArt({
           >
             {local.name}
           </span>
-          <svg className={`${P}-signature-flourish`} viewBox="0 0 220 32" aria-hidden="true">
+          <svg className={`${P}-signature-flourish mari-rgb-static-icon`} viewBox="0 0 220 32" aria-hidden="true">
             <path d={flourishes[local.flourish] ?? flourishes[0]} />
           </svg>
         </>

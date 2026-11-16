@@ -188,7 +188,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   await expect(page.locator("#screen")).toHaveText("room");
   for (const status of ["opening", "active", "closing"]) {
     await page.evaluate((status) => window.navigation.setRoom((current) => ({ ...current, status })), status);
-    for (const destination of ["setup", "resume", "preparing"]) {
+    for (const destination of ["setup", "preparing"]) {
       await page.evaluate((destination) => window.navigation.setScreen(destination), destination);
       await expect(page.locator("#screen")).toHaveText("room");
     }
