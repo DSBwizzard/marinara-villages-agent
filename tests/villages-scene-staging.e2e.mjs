@@ -289,18 +289,13 @@ await withBrowser(browser, async () => {
               box.x < floor.right && box.right > floor.x,
               "large sprites can clip at screen edges while staying on stage",
             );
-            assert.ok(box.y >= floor.y - 1 && box.bottom <= floor.bottom + 1, "artwork stays above the reading dock");
-            assert.ok(
-              Math.abs(box.width - Math.min(floor.width * 0.7, (floor.height * 2) / 3)) < 1,
-              "mobile artwork is independent of slot width",
-            );
-            assert.ok(
-              Math.abs(box.height - Math.min(floor.height, floor.width * 0.7 * 1.5)) < 1,
-              "mobile image box keeps its 2:3 framing",
-            );
+            assert.ok(box.y >= floor.y - 1 && box.bottom <= floor.bottom + 1, "artwork stays inside the stage");
+            assert.ok(Math.abs(box.width - floor.width * 0.8) < 1, "mobile artwork is independent of slot width");
+            const intendedHeight = Math.min(floor.width * 1.2, floor.height * 0.68);
+            assert.ok(Math.abs(box.height - intendedHeight) < 1, "mobile image box is sized to the stage");
             if (framing === "full")
               assert.ok(
-                Math.abs(renderedHeight - Math.min(floor.height, floor.width * 0.7 * 1.5)) < 1,
+                Math.abs(renderedHeight - intendedHeight) < 1,
                 "full-body art reaches its intended visible size",
               );
           }
