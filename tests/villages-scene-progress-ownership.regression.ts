@@ -1294,6 +1294,23 @@ await runCase("scene-narration/validation-hold", async () => {
     saved,
     "startup checks durable disposition without rerunning or modifying a held purchase",
   );
+  const malformed = fixture();
+  const publication = malformed.turn().narration!;
+  const [segment] = publication.raw.segments as Record<string, unknown>[];
+  segment.delivery = "main";
+  segment["private detail used as unknown key"] = true;
+  await assert.rejects(malformed.service.processSavedExchange("scene", "turn"), {
+    message: "The Scene reply used invalid fields. Your input and purchased response are retained.",
+    failure: {
+      cause: "invalid_schema",
+      stage: "scene-reply-schema",
+      message: "The Scene reply used invalid fields. Your input and purchased response are retained.",
+      detail: "invalid_value at segments.0.delivery\nunrecognized_keys at segments.0",
+    },
+  } as Partial<Error>);
+  assert.equal(malformed.turn().acceptance.status, "held");
+  assert.equal(malformed.world.episodes.records.length, 0);
+  assert.deepEqual(malformed.turn().narration?.raw, publication.raw);
 });
 
 await runCase("scene-narration/cancellation", async () => {

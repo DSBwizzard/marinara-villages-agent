@@ -1,3 +1,4 @@
+import { ZodError } from "zod";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import { applyAcceptedSceneDelta } from "../../domain/rules/scene-delta.js";
@@ -10,6 +11,8 @@ import { acceptNarration } from "../../domain/rules/narration-native.js";
 import { narrationSceneNotices } from "../../domain/rules/narration-notices.js";
 import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { badGateway } from "../../domain/rules/errors.js";
+import type { WorkFailure } from "../../domain/rules/work-failure.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 
@@ -96,8 +99,16 @@ export function createSceneProgress({
                 villageNow(state.clock?.advanceMs ?? 0).toISOString(),
               );
             } catch (error) {
-              validationFailure = error;
-              throw error;
+              if (error instanceof ZodError) {
+                const failure: WorkFailure = {
+                  cause: "invalid_schema",
+                  stage: "scene-reply-schema",
+                  message: "The Scene reply used invalid fields. Your input and purchased response are retained.",
+                  detail: error.issues.map(({ code, path }) => code + " at " + path.join(".")).join("\n"),
+                };
+                validationFailure = Object.assign(badGateway(failure.message), { failure });
+              } else validationFailure = error;
+              throw validationFailure;
             }
           },
           { memories: true },

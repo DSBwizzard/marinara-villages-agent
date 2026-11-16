@@ -29,6 +29,8 @@ export function sceneErrorDetails(scene: VenueScene) {
       sceneRevision: operation.sceneRevision,
       error: operation.error,
       cause: operation.failure?.cause,
+      failureStage: operation.failure?.stage,
+      ...(operation.failure?.cause === "invalid_schema" ? { detail: operation.failure.detail } : {}),
     });
   const rejected = scene.submissions.filter(
     (turn) => turn.acceptance.status === "held" || turn.acceptance.rejected.length,

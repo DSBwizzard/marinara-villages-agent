@@ -21,6 +21,8 @@ import { changeSession, readSession } from "../packages/villages/src/server/adap
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
+import { completeSceneObject } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
+import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
 import type { LocationImageService } from "../packages/villages/src/server/features/media/location-image-service.js";
 import { configureLocationImages } from "../packages/villages/src/server/features/media/location-image.js";
@@ -46,6 +48,7 @@ import {
   rejectVenueCompletion,
   stopVenueCoordinator,
   venueCheckpoint,
+  venueSavedCheckpoint,
 } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 
 const records = new Map<string, any>();
@@ -1416,6 +1419,66 @@ async function main() {
       ),
       "Targeted GM rejection retains raw response diagnostics",
     );
+    {
+      const id = "old-envelope-rejection";
+      const stage = "writing-completion:fixture";
+      const input = { message: "Tea?" };
+      const raw = { segments: [{ kind: "narration", text: "The kettle sings." }] };
+      const response = { content: "\u200B" + JSON.stringify(raw), finishReason: "stop" };
+      seed(id);
+      const before = calls;
+      await assert.rejects(
+        coordinateVenue(id, "turn", "turn", input, 0, undefined, async () => {
+          await venueCheckpoint("writing-request:fixture", async () => ({ input }));
+          await venueCheckpoint(stage, () =>
+            coordinatedCompletion("fixture", async () => {
+              calls++;
+              return response;
+            }),
+          );
+          await rejectVenueCompletion(undefined, { stages: [stage] });
+          throw new WorkFailureError({
+            cause: "invalid_json",
+            stage: "scene-response",
+            message: "Previously rejected wrapper",
+          });
+        }),
+        /Previously rejected wrapper/,
+      );
+      const operation = (await readSession(id)).operation!;
+      assert.equal(operation.status, "interrupted");
+      assert.equal(operation.failure?.cause, "invalid_json");
+      let autoRecoveries = 0;
+      await recoverVenueOperations(async (sceneId) => {
+        if (sceneId === id) autoRecoveries++;
+      });
+      assert.equal(autoRecoveries, 0, "A rejected completed response waits for explicit Retry on startup");
+      assert.equal((await readSession(id)).operation?.failure?.cause, "invalid_json");
+      const replacementKey = stage + ":1:replacement";
+      row(id).data.operation.attempts[replacementKey] = { status: "dispatching" };
+      await recoverVenueOperations(async (sceneId) => {
+        if (sceneId === id) autoRecoveries++;
+      });
+      assert.equal(autoRecoveries, 1, "An interrupted replacement still enters normal startup reconciliation");
+      delete row(id).data.operation.attempts[replacementKey];
+      const recovered = await coordinateVenue(id, "turn", "turn", input, 0, operation.attemptId, async () => {
+        assert.equal(venueSavedCheckpoint(stage), undefined);
+        assert.equal(
+          venueSavedCheckpoint(stage + "-different", () => true),
+          undefined,
+        );
+        assert.equal(
+          venueSavedCheckpoint(stage, () => false),
+          undefined,
+        );
+        return venueSavedCheckpoint<typeof response>(
+          stage,
+          (saved) => !!completeSceneObject(saved.content, saved.finishReason),
+        );
+      });
+      assert.deepEqual(recovered, response);
+      assert.equal(calls, before + 1, "Recovery from persisted rejection uses the original purchase");
+    }
     {
       seed("artwork-settled");
       Object.assign(row("artwork-settled").data, { placeId: "artwork-place", zoneId: "studio" });
