@@ -4,7 +4,7 @@ import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { observableRoomDescription } from "../../domain/rules/zone-picture.js";
-import { findLocation } from "../../domain/rules/places.js";
+import { findLocation, hasAssociatedNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
@@ -590,7 +590,7 @@ export function createSceneCommands({
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
       endReason: "",
-      status: participants.length === 0 && !discovery ? "active" : "opening",
+      status: participants.length || discovery || hasAssociatedNpc(village, placeId) ? "opening" : "active",
       // Pending entry cannot put the private cast into the playback index.
       participants: initialPermissionId ? [] : participants,
       sceneAttendance,

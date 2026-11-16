@@ -24,6 +24,12 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
     scene,
     episode.commandReceipts.flatMap((receipt) => (receipt.admission ? [receipt.admission] : [])),
   );
+  for (const receipt of episode.commandReceipts) {
+    if (receipt.kind !== "npc-introduction") continue;
+    for (const person of [...scene.participants, ...(scene.sceneAttendance?.occupants ?? [])]) {
+      if (person.characterId === receipt.targetId) person.name = receipt.text;
+    }
+  }
   for (const move of moves) {
     const from = move.actorId === "player" ? scene.zoneId : contactPosition(scene, move.actorId);
     memoryRequire(from === move.from, "accepted movement needs its admitted prior position");

@@ -12,6 +12,7 @@ import {
 } from "../rules/episode-sources.js";
 import { immutableMemoryValue, isImmutableMemoryValue, memoryHash, memoryRequire } from "../rules/memory-integrity.js";
 import { readNpc } from "../rules/places.js";
+import { witnessedNpcName } from "../rules/npc-participation.js";
 import type { NpcIdentity } from "../models/places.js";
 import { assertMailReceipt, assertMailHistory, mailEvidence, episodeMailEvidence } from "../rules/mail-evidence.js";
 import { MAX_SCENE_REJECTIONS } from "../rules/scene-acceptance.js";
@@ -73,6 +74,7 @@ const episode = z
               "room",
               "discovery",
               "npc",
+              "npc-introduction",
               "establishment",
               "circumstance",
               "condition-repair",
@@ -245,7 +247,8 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         delta.receiptIds.every((id) =>
           value.commandReceipts.some(
             (receipt) =>
-              receipt.id === id && ["contact", "scene", "movement", "departure", "npc"].includes(receipt.kind),
+              receipt.id === id &&
+              ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(receipt.kind),
           ),
         ),
       "Scene transition lost its native receipt or actor",
@@ -264,7 +267,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "Scene closure lost Player authority",
     );
     const controls = value.commandReceipts.filter((receipt) =>
-      ["contact", "scene", "movement", "departure", "npc"].includes(receipt.kind),
+      ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(receipt.kind),
     );
     memoryRequire(
       memoryHash(delta.receiptIds.toSorted()) === memoryHash(controls.map((receipt) => receipt.id).toSorted()) &&
@@ -280,7 +283,7 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   }
   memoryRequire(
     !value.commandReceipts.some((receipt) =>
-      ["contact", "scene", "movement", "departure", "npc"].includes(receipt.kind),
+      ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(receipt.kind),
     ) || value.sceneDelta,
     "Scene control receipt lost its retained transition",
   );
@@ -367,6 +370,23 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
         "condition repair lost its local Player-seen evidence",
       );
     } else memoryRequire(!receipt.repairEntries, "Room repair targets belong only to the native repair receipt");
+    if (receipt.kind === "npc-introduction") {
+      const units = value.dependencies["native:" + receipt.id] ?? [];
+      memoryRequire(
+        receipt.targetId.startsWith("npc:") &&
+          cast.has(receipt.targetId) &&
+          receipt.witnesses.includes("player") &&
+          units.length === 1 &&
+          value.grounding.some(
+            (source) =>
+              units.includes(continuitySourceUnit(source)) &&
+              source.episodeId === value.id &&
+              value.segments.some((line) => line.id === source.unitId && line.heardBy.includes("player")) &&
+              witnessedNpcName(source, receipt.targetId, receipt.text),
+          ),
+        "NPC introduction lost its Player-heard name",
+      );
+    }
     const arrival = receipt.admission;
     memoryRequire(
       receipt.kind === "npc"

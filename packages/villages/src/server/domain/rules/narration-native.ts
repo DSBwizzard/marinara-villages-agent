@@ -27,11 +27,12 @@ import {
   prepareNpcAdmission,
   bindNpcReferences,
   admitNpcParticipants,
+  witnessedNpcName,
   type NpcAdmission,
 } from "./npc-participation.js";
 import { narrationWitnesses, narrationPositions, narrationCommunication } from "./narration-sources.js";
 import { captureSceneLayout } from "./scene-layout.js";
-import { findLocation } from "./places.js";
+import { findLocation, findNpc } from "./places.js";
 import { applyNarrationCircumstance, applyNarrationRepair } from "./narration-circumstance.js";
 import { nativeCommand, readNarrationNativeCommand } from "./narration-command-contract.js";
 import { projectSpeechContext } from "./project-interpretation.js";
@@ -296,6 +297,32 @@ export function prepareNarrationNative(
         admission: arrival,
       };
     }
+    if (command.type === "npc.introduce") {
+      const npc = findNpc(candidate, command.who);
+      memoryRequire(
+        npc &&
+          context.actors.some((actor) => actor.id === npc.id) &&
+          sources.length === 1 &&
+          sources[0].unitId === context.lines[row.segment]?.id &&
+          witnessedNpcName(sources[0], npc.id, command.name) &&
+          !Object.values(native.receipts).some(
+            (receipt) => receipt.kind === "npc-introduction" && receipt.targetId === npc.id,
+          ),
+        "NPC name needs their current self-introduction heard by the Player",
+      );
+      return {
+        receipt: {
+          id: receiptId,
+          kind: "npc-introduction" as const,
+          targetId: npc.id,
+          revision: readset.sceneRevision,
+          text: command.name,
+          witnesses: narrationWitnesses(sources, ["words"]),
+        },
+        sources,
+        sceneEffect: { contactEndedIds: [] },
+      };
+    }
     if (command.type === "move.request")
       return {
         receipt: applyNarrationMoveRequest(candidate, command, readset, context, sources, receiptId),
@@ -494,6 +521,18 @@ export function acceptNarration(
         .map((effect) => ({ effect, sources: prepared.native.sources[effect.id] ?? [] })),
     };
   });
-  if (!selected.result.held) Object.assign(state, selected.candidate);
+  if (!selected.result.held) {
+    for (const receipt of selected.result.episode?.commandReceipts ?? []) {
+      if (receipt.kind !== "npc-introduction") continue;
+      const npc = findNpc(selected.candidate, receipt.targetId);
+      memoryRequire(npc, "accepted supporting character changed");
+      if (npc.label === receipt.text) continue;
+      npc.label = receipt.text;
+      npc.revision++;
+      npc.updatedAt = at;
+      selected.candidate.worldPlaces.revision++;
+    }
+    Object.assign(state, selected.candidate);
+  }
   return selected.result;
 }
