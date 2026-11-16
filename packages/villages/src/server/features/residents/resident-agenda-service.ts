@@ -231,6 +231,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           context,
         },
       },
+      undefined,
       origin === "idle",
     );
   }

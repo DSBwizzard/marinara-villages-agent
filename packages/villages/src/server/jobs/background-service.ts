@@ -659,11 +659,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     )
       throw new Obsolete("This work is no longer needed.");
   }
-  function checkPurchase(job: Job, state: VillageState): void {
+  function explicitlyAdmitted(job: Job): boolean {
     const explicit = explicitPurchases.get(slotId(job));
-    const explicitAttempt = explicit?.instanceId === job.instanceId && explicit.attempt === job.attempt;
+    return explicit?.instanceId === job.instanceId && explicit.attempt === job.attempt;
+  }
+  function checkPurchase(job: Job, state: VillageState): void {
     const finiteAction = job.finite && (job.kind !== "agenda" || asRecord(job.input).foundingContract === 1);
-    if (state.backgroundPace === "off" && ((!finiteAction && !explicitAttempt) || catchupBatchId(job)))
+    if (state.backgroundPace === "off" && ((!finiteAction && !explicitlyAdmitted(job)) || catchupBatchId(job)))
       throw new Paused("Pace is Off. The admitted background work is preserved.");
   }
   function launch(id: string, documents = villagesDocuments()): void {
@@ -1301,8 +1303,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (canAutomaticallyRetryBackgroundJob(job) && !pausedConnections.has(job.connectionId)) {
         try {
           const state = await readForJob(job);
-          if (state.backgroundPace === "off") throw new Paused("Pace is Off.");
+          checkPurchase(job, state);
           checkCurrent(job, state);
+          const explicit = explicitlyAdmitted(job);
           const recovered = recoverSavedResult(job);
           job = await updateJob((current) => {
             automaticallyRetried = false;
@@ -1322,7 +1325,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             automaticallyRetried = true;
             return current;
           });
-          if (automaticallyRetried) relaunch.add(id);
+          if (automaticallyRetried) {
+            if (explicit && !stopped && owner === runOwner)
+              explicitPurchases.set(id, { instanceId: job.instanceId, attempt: job.attempt });
+            relaunch.add(id);
+          }
         } catch (retryError) {
           if (!(retryError instanceof Paused || retryError instanceof Obsolete)) throw retryError;
         }

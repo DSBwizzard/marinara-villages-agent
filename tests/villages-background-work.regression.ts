@@ -417,7 +417,7 @@ async function main() {
     assert.deepEqual(calls, ["guarded-live"]);
     holdUsageClaim = true;
     releaseUsageClaim = null;
-    await queueBackgroundJob(work("pace-race", ["unused"], true), true);
+    await queueBackgroundJob(work("pace-race", ["unused"], true), undefined, true);
     await until(() => !!releaseUsageClaim);
     await mutateVillageState((state) => {
       state.backgroundPace = "off";
