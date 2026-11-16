@@ -32,6 +32,7 @@ await withBrowser(browser, async () => {
       window.sceneViewport = viewport;
     });
     const fixture = structuredClone(snapshot);
+    const cast = residents.map((person, index) => (index === 1 ? { ...person, characterId: "npc:eli" } : person));
     fixture.settings.playerPersonaName = "Riley";
     const main = {
       id: "main",
@@ -55,8 +56,8 @@ await withBrowser(browser, async () => {
       endedAt: "",
       status: "active",
       sceneRevision: 0,
-      activeIds: residents.map((person) => person.characterId),
-      participants: residents.map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
+      activeIds: cast.map((person) => person.characterId),
+      participants: cast.map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
       lines: [
         {
           id: "intro",
@@ -71,7 +72,7 @@ await withBrowser(browser, async () => {
       ],
       submissions: [],
     };
-    const asides = residents.map((person, index) => ({
+    const asides = cast.map((person, index) => ({
       id: `aside-${index}`,
       role: "assistant",
       speakerId: person.characterId,
@@ -88,6 +89,7 @@ await withBrowser(browser, async () => {
       heardBy: [person.characterId],
       at: now,
     }));
+    let showNotice = false;
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = fixture;
@@ -98,7 +100,9 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/changes"))
         value = {
           changes: [],
-          notices: [],
+          notices: showNotice
+            ? [{ id: "presence:fixture", kind: "venue", text: "Eli is no longer here.", at: now }]
+            : [],
           dismissedNoticeIds: [],
           nextCursor: "",
           processingSummary: { pending: 0, failed: 0, rejected: 0 },
@@ -124,30 +128,41 @@ await withBrowser(browser, async () => {
     await load();
     const dock = page.locator(`.${tag}-chat-vn`);
     const reading = page.getByRole("region", { name: "Current paragraph" });
+    const npc = page.locator('[data-character-id="npc:eli"][data-sprite="true"] > img[data-npc-sprite]');
+    const spriteHeight = () => npc.evaluate((image) => image.getBoundingClientRect().height);
     const before = {
       dock: await dock.boundingBox(),
       reading: await reading.boundingBox(),
       text: await reading.textContent(),
     };
+    const originalSpriteHeight = await spriteHeight();
     session.lines.push(...asides);
     await load();
-    const band = page.locator(`.${tag}-chat-vn-asides`);
+    const band = page.locator(`.${tag}-scene-asides`);
     await expect(band).toContainText("Save me the good chair.");
-    await expect(band).toContainText("→ Riley");
-    await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(4);
+    await expect(band).toContainText("to you");
+    await expect(band.getByText("Whisper", { exact: true })).toHaveCount(0);
+    await expect(npc).toBeVisible();
+    await expect.poll(() => npc.evaluate((image) => image.naturalHeight)).toBe(768);
+    await expect(npc).toHaveCSS("opacity", "0.78");
+    await expect(band.locator('[data-register="whisper"] img[data-npc-sprite]')).toHaveAttribute(
+      "src",
+      /npc-silhouette\.webp$/,
+    );
+    await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(2);
     const after = {
       dock: await dock.boundingBox(),
       reading: await reading.boundingBox(),
       text: await reading.textContent(),
     };
-    assert.deepEqual(after, before, "four asides never change the main reading, paging or dock geometry");
+    assert.deepEqual(after, before, "aside bubbles leave the reading and dock geometry stable");
     async function checkGeometry(label) {
       const geometry = await page.evaluate((tag) => {
         const rect = (node) => {
           const r = node.getBoundingClientRect();
           return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom };
         };
-        const band = document.querySelector(`.${tag}-chat-vn-asides`);
+        const band = document.querySelector(`.${tag}-scene-asides`);
         return {
           band: rect(band),
           dock: rect(document.querySelector(`.${tag}-chat-vn`)),
@@ -157,9 +172,7 @@ await withBrowser(browser, async () => {
           asideSize: parseFloat(getComputedStyle(band.querySelector(`.${tag}-chat-vn-aside-text`)).fontSize),
         };
       }, tag);
-      const available = await band.evaluate((node) =>
-        parseFloat(node.style.getPropertyValue("--villages-aside-available-height")),
-      );
+      const available = await band.evaluate((node) => parseFloat(node.style.getPropertyValue("--aside-height")));
       assert.ok(
         geometry.band.height > 0 || available === 0,
         `${label}: available stage space is used: ${JSON.stringify(geometry)}`,
@@ -167,17 +180,56 @@ await withBrowser(browser, async () => {
       assert.ok(geometry.band.y >= geometry.scene.y - 1, `${label}: no top clipping: ${JSON.stringify(geometry)}`);
       assert.ok(geometry.band.bottom <= geometry.dock.y + 1, `${label}: no dialogue overlap`);
       assert.ok(geometry.band.x >= 0 && geometry.band.right <= width, `${label}: no side clipping`);
-      if (mobile) assert.ok(geometry.asideSize < geometry.mainSize, "Aside text is smaller than main dialogue");
+      if (mobile) {
+        assert.ok(geometry.asideSize < geometry.mainSize, "Aside text is smaller than main dialogue");
+        assert.ok(geometry.bubbles[1].y >= geometry.bubbles[0].bottom, "phone bubbles are stacked");
+      }
       return geometry;
     }
     await checkGeometry("normal viewport");
-    if (mobile) {
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="left"]`)).toContainText("Mara");
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="left"]`)).toContainText("Eli");
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="right"]`)).toContainText("Lina");
-      await expect(band.locator(`.${tag}-scene-aside-stack[data-side="right"]`)).toContainText("Taro");
+    assert.equal(await spriteHeight(), originalSpriteHeight, "asides leave sprite scale unchanged");
+    if (!mobile) {
+      await expect
+        .poll(async () => {
+          const [sprite, asides, dialogue] = await Promise.all([
+            npc.boundingBox(),
+            band.boundingBox(),
+            dock.boundingBox(),
+          ]);
+          return sprite.height - (dialogue.y - asides.y - asides.height);
+        })
+        .toBeGreaterThan(0);
+      await expect
+        .poll(() =>
+          npc.evaluate((image) => {
+            const sprite = image.getBoundingClientRect();
+            const slot = image.parentElement.getBoundingClientRect();
+            const aspect = image.naturalHeight / image.naturalWidth;
+            return Math.min(sprite.height, sprite.width * aspect) - slot.width * aspect;
+          }),
+        )
+        .toBeGreaterThan(0);
     }
+    await expect(band.locator(`.${tag}-aside-slot[data-side="left"]`)).toHaveCount(2);
     await page.screenshot({ path: resolve(output, `asides-${width}x${height}.png`) });
+    showNotice = true;
+    await load();
+    const noticePanel = page.locator(`.${tag}-room-stars`);
+    await expect(noticePanel).toContainText("Eli is no longer here.");
+    await expect
+      .poll(() =>
+        band.evaluate((element, tag) => {
+          const notice = element.closest(`.${tag}-chat`).querySelector(`.${tag}-room-stars`);
+          return element.getBoundingClientRect().top - notice.getBoundingClientRect().bottom;
+        }, tag),
+      )
+      .toBeGreaterThanOrEqual(0);
+    const belowNotice = (await band.boundingBox()).y;
+    await checkGeometry("with the attendance notice open");
+    await page.getByRole("button", { name: "1 World change", exact: true }).click();
+    await expect(noticePanel).toBeHidden();
+    await expect.poll(async () => (await band.boundingBox()).y).toBeLessThan(belowNotice);
+    showNotice = false;
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     if (mobile) {
       await composer.fill("A draft to keep.");
@@ -188,14 +240,12 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       }, visible);
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
-      await expect
-        .poll(async () => {
-          const bandBox = await band.boundingBox();
-          const sceneBox = await page.locator(`.${tag}-chat`).boundingBox();
-          return bandBox.y - sceneBox.y;
-        })
-        .toBeGreaterThanOrEqual(0);
-      await checkGeometry("keyboard viewport");
+      await expect(band).toBeHidden();
+      const composerBox = await composer.boundingBox();
+      assert.ok(composerBox.y >= 0 && composerBox.y + composerBox.height <= visible);
+      const spriteBox = await npc.boundingBox();
+      assert.equal(spriteBox.height, originalSpriteHeight, "keyboard leaves sprite scale unchanged");
+      assert.ok(spriteBox.y + 24 < composerBox.y, "the keyboard posture keeps the cast above the composer");
       await expect(composer).toHaveValue("A draft to keep.");
       await page.screenshot({ path: resolve(output, `asides-keyboard-${width}x${height}.png`) });
       await page.evaluate((height) => {
@@ -223,21 +273,20 @@ await withBrowser(browser, async () => {
     session.lines[2] = asides[0];
     await load();
     await expect(band).toContainText("A long aside with every word preserved.");
+    assert.equal(await spriteHeight(), originalSpriteHeight, "wrapping only changes the aside region");
     if (mobile) {
       const text = band.locator(`.${tag}-chat-vn-aside-text`).first();
-      await expect.poll(() => text.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
-      const scrolled = await text.evaluate((node) => {
+      await expect.poll(() => band.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+      const scrolled = await band.evaluate((node) => {
         node.scrollTop = node.scrollHeight;
         return node.scrollTop;
       });
-      assert.ok(scrolled > 0, "long Aside text can be scrolled independently");
+      assert.ok(scrolled > 0, "the bubble pair can be scrolled without moving the dock");
       assert.equal(await text.locator("strong").count(), 35, "all Markdown and content survive");
     }
     assert.deepEqual(await dock.boundingBox(), before.dock);
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log(
-    "Scene asides: four speaker bubbles, full dock preservation, keyboard bounds, smaller text, paging, history, hide/restore and long-text scrolling passed.",
-  );
+  console.log("Scene asides: two speaker bubbles, mobile stacking, editing, history and long-text scrolling passed.");
 });

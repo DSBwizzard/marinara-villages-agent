@@ -3,7 +3,7 @@ import type { VillageVenue } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badGateway, VillagesRequestError } from "./errors.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
-import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
+import { isSceneAside, MAX_SCENE_ASIDES, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -281,13 +281,20 @@ export function routeZoneEvents(
   const visible = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => !line.contactHidden || line.soundOnly?.player);
-  let main = visible.filter(({ line }) => !isSceneAside(line));
-  if (!main.length && visible.length) {
-    visible[0]!.line.presentation = "main";
-    main = [visible[0]!];
-  }
+  const first = visible.find(({ line }) => !isSceneAside(line)) ?? visible[0];
+  if (!first) return;
+  if (isSceneAside(first.line)) first.line.presentation = "main";
+  let anchor = first.index;
+  const asideCounts = new Map<number, number>();
   for (const { line, index } of visible) {
     delete line.anchorIndex;
-    if (isSceneAside(line)) line.anchorIndex = (main.findLast((entry) => entry.index < index) ?? main[0])?.index;
+    const asideCount = asideCounts.get(anchor) ?? 0;
+    if (isSceneAside(line) && asideCount < MAX_SCENE_ASIDES) {
+      line.anchorIndex = anchor;
+      asideCounts.set(anchor, asideCount + 1);
+    } else {
+      if (isSceneAside(line)) line.presentation = "main";
+      anchor = index;
+    }
   }
 }

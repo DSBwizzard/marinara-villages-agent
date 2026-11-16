@@ -22,6 +22,7 @@ const deskAssets = {
   "storybook-scenery-matte.webp": "image/webp",
   "venue-fallback.webp": "image/webp",
   "venue-fallback-day.webp": "image/webp",
+  "npc-silhouette.webp": "image/webp",
   "mari-founding-overlook.webp": "image/webp",
   "mari-founding-overlook-day.webp": "image/webp",
   "mari-founding-neutral.webp": "image/webp",

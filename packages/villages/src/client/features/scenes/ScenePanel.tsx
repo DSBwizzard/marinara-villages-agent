@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -41,6 +42,21 @@ import { ModalDialog } from "../../shared/ModalDialog.js";
 
 export function sceneZoneLabel(zone?: { name: string }): string {
   return zone?.name || "Zone";
+}
+
+function NpcSprite({ className }: { className?: string }) {
+  return (
+    <img
+      src="/api/capability-packages/villages/assets/npc-silhouette.webp"
+      alt=""
+      className={className}
+      data-npc-sprite=""
+    />
+  );
+}
+
+function SceneFace({ actorId, ...face }: ComponentProps<typeof AvatarFace> & { actorId?: string }) {
+  return actorId?.startsWith("npc:") ? <NpcSprite className={face.className} /> : <AvatarFace {...face} />;
 }
 
 function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
@@ -678,7 +694,6 @@ export function RoomPanel({
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
   const mobileLayout = stagingFrame.mobile;
   const stageLayout = stagingFrame.desktop;
-  const asideSide = (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5 ? "left" : "right";
 
   const waiting = (
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
@@ -1112,6 +1127,48 @@ export function RoomPanel({
           ))}
         </div>
       ) : null}
+      {!dialogueHidden && !historyOpen && step && step.asides.length > 0 ? (
+        <SceneAsides
+          asides={step.asides}
+          mobile={mobile}
+          positions={mobile ? mobileLayout : stageLayout}
+          renderAside={(aside, index) => (
+            <div
+              key={`${index}-${aside.register}`}
+              className={`${ELEMENT_TAG}-chat-vn-aside`}
+              data-register={aside.register}
+            >
+              <SceneFace
+                actorId={aside.speakerId ?? step.speakerId}
+                portrait={aside.speakerId ? portraits[aside.speakerId] : speakerPortrait}
+                name={aside.name ?? step.name}
+                glyph={step.player ? "person" : "initial"}
+                className={`${ELEMENT_TAG}-chat-vn-aside-face`}
+              />
+              <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
+                <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
+                  <span
+                    className={`${ELEMENT_TAG}-chat-vn-aside-name`}
+                    style={nameStyle(aside.speakerId ?? step.speakerId)}
+                  >
+                    {aside.name ?? step.name}
+                  </span>
+                  {aside.register === "whisper" && aside.target ? (
+                    <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`to ${aside.target}`}</span>
+                  ) : null}
+                </p>
+                <p
+                  className={`${ELEMENT_TAG}-chat-vn-aside-text`}
+                  style={speechStyle(aside.speakerId ?? step.speakerId)}
+                >
+                  {renderVillagesMarkdown(aside.text, `vn-aside-${index}-`)}
+                </p>
+              </div>
+            </div>
+          )}
+        />
+      ) : null}
+
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
         <div
           className={`${ELEMENT_TAG}-chat-cast`}
@@ -1119,6 +1176,7 @@ export function RoomPanel({
           data-animate={animateStaging ? "true" : "false"}
         >
           {displayed.map((villager, index) => {
+            const npc = villager.characterId.startsWith("npc:");
             const sprite = sprites[villager.characterId];
             const isSpeaker = villager.characterId === speaker?.characterId;
             const mobileSlot = mobileLayout[villager.characterId];
@@ -1138,7 +1196,7 @@ export function RoomPanel({
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
                 data-active={isSpeaker && (!mobile || register !== "narration") ? "true" : "false"}
-                data-sprite={selected ? "true" : "false"}
+                data-sprite={npc || selected ? "true" : "false"}
                 data-character-id={villager.characterId}
                 data-position={slot ? stagingState[villager.characterId].position : undefined}
                 data-attention={slot ? slot.facing : undefined}
@@ -1152,7 +1210,9 @@ export function RoomPanel({
                   } as CSSProperties
                 }
               >
-                {selected ? (
+                {npc ? (
+                  <NpcSprite />
+                ) : selected ? (
                   <CardFlipSprite
                     key={room.id}
                     url={selected.image.url}
@@ -1181,7 +1241,8 @@ export function RoomPanel({
           <div className={`${ELEMENT_TAG}-chat-cast-rest`}>
             {rest.map((person) => (
               <span key={person.characterId}>
-                <AvatarFace
+                <SceneFace
+                  actorId={person.characterId}
                   portrait={portraits[person.characterId]}
                   name={person.name}
                   className={`${ELEMENT_TAG}-avatar`}
@@ -1259,52 +1320,6 @@ export function RoomPanel({
             />
           </div>
         ) : null}
-        {step && step.asides.length > 0 ? (
-          <SceneAsides
-            asides={step.asides}
-            mobile={mobile}
-            positions={mobile ? mobileLayout : stageLayout}
-            mainSpeakerId={step.speakerId}
-            desktopSide={asideSide}
-            renderAside={(aside, index) => (
-              <div
-                key={`${index}-${aside.register}`}
-                className={`${ELEMENT_TAG}-chat-vn-aside`}
-                data-register={aside.register}
-              >
-                <AvatarFace
-                  portrait={aside.speakerId ? portraits[aside.speakerId] : speakerPortrait}
-                  name={aside.name ?? step.name}
-                  glyph={step.player ? "person" : "initial"}
-                  className={`${ELEMENT_TAG}-chat-vn-aside-face`}
-                />
-                <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
-                  <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
-                    <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
-                      {aside.register === "whisper" ? "🤫" : aside.register === "shout" ? "📣" : "💬"}
-                    </span>
-                    <span
-                      className={`${ELEMENT_TAG}-chat-vn-aside-name`}
-                      style={nameStyle(aside.speakerId ?? step.speakerId)}
-                    >
-                      {aside.name ?? step.name}
-                    </span>
-                    {aside.register === "whisper" && aside.target ? (
-                      <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`→ ${aside.target}`}</span>
-                    ) : null}
-                  </p>
-                  <p
-                    className={`${ELEMENT_TAG}-chat-vn-aside-text`}
-                    style={speechStyle(aside.speakerId ?? step.speakerId)}
-                  >
-                    {renderVillagesMarkdown(aside.text, `vn-aside-${index}-`)}
-                  </p>
-                </div>
-              </div>
-            )}
-          />
-        ) : null}
-
         {/* One readable paragraph shares the same dock with navigation and the composer at the latest paragraph. */}
         <div
           className={`${ELEMENT_TAG}-chat-vn-card`}
@@ -1318,7 +1333,8 @@ export function RoomPanel({
                 <SceneControlIcon name="narrator" />
               </div>
             ) : (
-              <AvatarFace
+              <SceneFace
+                actorId={step?.speakerId}
                 portrait={speakerPortrait}
                 name={step?.name ?? playerName}
                 glyph={step?.player ? "person" : "initial"}
@@ -1337,16 +1353,6 @@ export function RoomPanel({
                   {step?.viaDoorway ? (
                     <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
                       Nearby
-                    </span>
-                  ) : step?.delivery === "whisper" ? (
-                    <span title="Whisper" aria-label="Whisper">
-                      {" "}
-                      · 🤫
-                    </span>
-                  ) : step?.delivery === "shout" ? (
-                    <span title="Shout" aria-label="Shout">
-                      {" "}
-                      · 📣
                     </span>
                   ) : null}
                 </p>

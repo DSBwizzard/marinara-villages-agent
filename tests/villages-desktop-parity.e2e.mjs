@@ -535,7 +535,7 @@ await withBrowser(browser, async () => {
     await expect(reading).toContainText("Sixth reply.");
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: /^Mode: /u })).toHaveCount(0);
-    const asideBand = page.locator(".marinara-capability-villages-chat-vn-asides");
+    const asideBand = page.locator(".marinara-capability-villages-scene-asides");
     await expect(asideBand).toContainText("A small aside rides with the final reply.");
     await expect(asideBand).toContainText("A quiet word stays visible too.");
     const asideOverflow = await asideBand.evaluate((element) => ({
@@ -557,7 +557,7 @@ await withBrowser(browser, async () => {
     assert.equal(
       await asideBand.evaluate((element) => getComputedStyle(element).position),
       "absolute",
-      "asides float without reserving stage height",
+      "asides float above the cast",
     );
     assert.deepEqual(errors, [], `${width}×${height} renders without page errors`);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {

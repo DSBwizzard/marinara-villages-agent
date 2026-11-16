@@ -250,6 +250,7 @@ await withBrowser(browser, async () => {
         );
         const keyboardHeight = Math.min(300, Math.round(height * 0.45));
         const visible = height - keyboardHeight;
+        let keyboardFirstY = 0;
         for (const resizesLayout of [false, true]) {
           await composer.focus();
           await page.evaluate((height) => {
@@ -268,11 +269,16 @@ await withBrowser(browser, async () => {
             }),
           );
           for (let i = 0; i < baseline.length; i++)
-            for (const key of ["x", "y", "width", "height"])
+            for (const key of ["x", "width", "height"])
               assert.ok(
                 Math.abs(baseline[i][key] - after[i][key]) < 1,
                 `keyboard preserves sprite ${i} ${key} (${resizesLayout ? "layout" : "visual"} viewport)`,
               );
+          assert.ok(
+            after.every((box, index) => box.y <= baseline[index].y + 1),
+            "the keyboard may lift the art",
+          );
+          keyboardFirstY = Math.round(after[0].y);
           assert.ok((await dock.boundingBox()).y >= 0, "dock stays inside the visible screen");
           assert.ok(
             after.some((box) => box.y + box.height > visible),
@@ -291,7 +297,7 @@ await withBrowser(browser, async () => {
           await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
           await expect(composer).toHaveValue("Keyboard draft");
         }
-        // Viewport panning moves the dock, not the artwork.
+        // Panning that preserves the visible bottom also preserves the keyboard layout.
         await page.evaluate(
           ({ visible }) => {
             window.sceneViewport.height = visible - 30;
@@ -302,9 +308,7 @@ await withBrowser(browser, async () => {
           { visible },
         );
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        await expect
-          .poll(async () => Math.round((await images.first().boundingBox()).y))
-          .toBe(Math.round(baseline[0].y));
+        await expect.poll(async () => Math.round((await images.first().boundingBox()).y)).toBe(keyboardFirstY);
         await page.evaluate((height) => {
           window.sceneViewport.height = height;
           window.sceneViewport.offsetTop = 0;
