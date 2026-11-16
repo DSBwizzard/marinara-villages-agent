@@ -319,6 +319,11 @@ export async function runLiveSceneComparison(config, output) {
         };
         const result = await call("/api/villages/rooms/turn", "POST", payload);
         turn.processingSummary = result.session?.processingSummary;
+        const latest = result.session?.latestTurn;
+        assert(
+          latest?.id === turn.submissionId && latest.published === true,
+          "Villages must publish the exact submitted Scene turn",
+        );
         const changes = await call(`/api/villages/rooms/${encodeURIComponent(config.sessionId)}/changes`);
         assert(Array.isArray(changes.unresolved), "Native consequence status must be available");
         assert(changes.unresolved.length < 50, "Native consequence status is incomplete; inspect the exact turn");

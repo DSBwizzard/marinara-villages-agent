@@ -100,7 +100,10 @@ const server = createServer(async (request, response) => {
       }
     }
     return send({
-      session: { processingSummary: { failed: 0, pending: 0, rejected: baselineProblem === "rejected" ? 1 : 0 } },
+      session: {
+        latestTurn: { id: input.submissionId, published: baselineProblem !== "unpublished" },
+        processingSummary: { failed: 0, pending: 0, rejected: baselineProblem === "rejected" ? 1 : 0 },
+      },
     });
   }
   response.statusCode = 404;
@@ -146,7 +149,7 @@ try {
   assert.equal(retried.turns[0].submissionId, "explicit-retry");
   assert.equal(retried.turns[0].capabilityAttemptCount, 1);
   assert.equal(retried.turns[0].replayAttempts.length, 0);
-  for (const problem of ["rejected", "capped"]) {
+  for (const problem of ["rejected", "capped", "unpublished"]) {
     baselineProblem = problem;
     const rejectedOutput = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
     await assert.rejects(
@@ -159,7 +162,9 @@ try {
         },
         rejectedOutput,
       ),
-      /discarded consequence|status is incomplete/,
+      problem === "unpublished"
+        ? /publish the exact submitted Scene turn/
+        : /discarded consequence|status is incomplete/,
     );
     const rejected = JSON.parse(await readFile(rejectedOutput, "utf8")).turns[0];
     assert.equal(rejected.status, "failed");
