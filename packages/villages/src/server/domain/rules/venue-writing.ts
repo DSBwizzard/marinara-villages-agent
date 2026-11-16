@@ -92,11 +92,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 }
 
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
-export function assembleVenueWritingMessages(
-  blocks: readonly VenueWritingBlock[],
-  input: string,
-  replyReminder?: string,
-) {
+export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
   const transcriptEnd = blocks.findLast((block) => block.transcript);
   const messages: CapabilityLanguageModelMessage[] = [];
@@ -147,7 +143,6 @@ export function assembleVenueWritingMessages(
       : []),
     ...(role === "user" ? [{ role: "user" as const, content: "## Current player submission" }] : []),
     { role: "user", content: input },
-    ...(replyReminder ? [{ role: "user" as const, content: replyReminder }] : []),
   ] satisfies CapabilityLanguageModelMessage[];
 }
 
@@ -157,7 +152,6 @@ export function fitVenueWritingMessages(
   input: string,
   maxTokens: number,
   connectionName = "Narration",
-  replyReminder?: string,
 ) {
   let kept = [...blocks];
   // Prune optional recall, memories and lore before rebuilding the Scene transcript.
@@ -165,7 +159,7 @@ export function fitVenueWritingMessages(
   for (;;) {
     const evidence = new Set(kept.map((block) => block.evidenceId));
     kept = kept.filter((block) => hasWritingEvidence(block, evidence));
-    const messages = assembleVenueWritingMessages(kept, input, replyReminder);
+    const messages = assembleVenueWritingMessages(kept, input);
     // shortcut: reserve JSON object headroom with a fit-only message until the public fitter accepts responseFormat.
     const probe = messages.slice();
     probe.splice(-1, 0, { role: "user", content: "." });

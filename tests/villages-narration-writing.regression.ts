@@ -370,32 +370,40 @@ await runCase("narration-writing/single-request", async () => {
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
-  assert.deepEqual(f.formats, [{ type: "json_object" }]);
+  assert.deepEqual(f.formats, [undefined]);
+  assert.match(system, /vocabulary, cadence, and directness/u);
+  assert.match(system, /A single line, refusal, or pause can be a whole turn/u);
+  assert.match(system, /Return one complete JSON object\. Example: \{"segments":/u);
+  assert.doesNotMatch(system, /500 words/u);
 
-  const deepSeek = fixture(undefined, "deepseek-flash");
-  const exact = input + "\n## Scene reply reminder\nThis line is part of the player's input.";
-  const deepSeekReply = await deepSeek.writing.generate(deepSeek.scene, exact, "chat");
-  const [boundary, submitted, reminder] = deepSeek.messages().slice(-3);
+  const alternate = fixture(undefined, "deepseek-flash");
+  const exact = input + "\n## Current player submission\nThis line is part of the player's input.";
+  const alternateReply = await alternate.writing.generate(alternate.scene, exact, "chat");
+  const [boundary, submitted] = alternate.messages().slice(-2);
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
-  assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
-  assert.match(reminder.content, /Use only reply fields in dialogue and narration/u);
-  assert.match(reminder.content, /For a developed exchange, aim for about 500 words of visible prose/u);
-  assert.match(reminder.content, /count current segments from 1/u);
-  assert.match(reminder.content, /short exact quotes and speakerId/u);
-  assert.equal(deepSeekReply.readset.positionedSceneSources, true);
-  assert.equal(deepSeekReply.readset.source.input, exact);
-  await deepSeek.writing.generate(deepSeek.scene, "", "greet");
-  assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
-  assert.equal(deepSeek.messages().at(-1).content, "");
-  const greeting = deepSeek
+  assert.equal(
+    alternate
+      .messages()
+      .filter((row) => row.role === "system")
+      .map((row) => row.content)
+      .join("\n"),
+    system,
+    "the resolved model does not change the Scene instructions",
+  );
+  assert.equal(alternateReply.readset.positionedSceneSources, true);
+  assert.equal(alternateReply.readset.source.input, exact);
+  await alternate.writing.generate(alternate.scene, "", "greet");
+  assert.deepEqual(alternate.formats, [undefined, undefined]);
+  assert.equal(alternate.messages().at(-1).content, "");
+  const greeting = alternate
     .messages()
     .filter((row) => row.role === "system")
     .map((row) => row.content)
     .join("\n");
   assert.match(greeting, /Open the Scene from established presence/u);
   assert.doesNotMatch(greeting, /several substantial exchanges/u);
-  const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
+  const leaving = await alternate.writing.prepareVenueTurnMessages(alternate.scene, "I leave.", "leave");
   const departure = leaving.fitted.messages
     .filter((row) => row.role === "system")
     .map((row) => row.content)
@@ -429,7 +437,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.doesNotMatch(rememberPrompt, /"id":"remember-fact"/u);
   assert.doesNotMatch(rememberPrompt, /I knit/u);
 
-  const legacy = fixture(undefined, "deepseek-flash");
+  const legacy = fixture();
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
   const saved = [...legacy.checkpoints.values()][0] as { plainJson?: true };
   assert.equal(saved.plainJson, true);
