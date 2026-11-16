@@ -73,7 +73,13 @@ export function createReturnCatchup(ports: Ports) {
         const tracking = state.returnCatchup,
           batch = tracking?.batch,
           capture = tracking?.capture;
-        if (!batch || !capture || !["queued", "running", "failed"].includes(batch.status)) return;
+        if (
+          state.backgroundPace === "off" ||
+          !batch ||
+          !capture ||
+          !["queued", "running", "failed"].includes(batch.status)
+        )
+          return;
         if (batch.status === "failed") {
           const record = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
           const opportunity = batch.opportunities?.find((row) => row.id === record?.opportunityId);
@@ -89,6 +95,7 @@ export function createReturnCatchup(ports: Ports) {
           )
             return;
           await update(batch.id, (world) => {
+            if (world.backgroundPace === "off") return;
             const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
             row.automaticRetryUsed = true;
             row.status = "queued";
@@ -99,6 +106,7 @@ export function createReturnCatchup(ports: Ports) {
         }
         if (batch.status === "queued") {
           await update(batch.id, (world) => {
+            if (world.backgroundPace === "off") return;
             world.returnCatchup!.batch!.status = "running";
           });
           continue;
@@ -232,6 +240,7 @@ export function createReturnCatchup(ports: Ports) {
     advancing = true;
     try {
       const state = await readAuthority();
+      if (state.backgroundPace === "off") throw conflict("Turn Pace on before retrying catch-up.");
       const batch = state.returnCatchup?.batch;
       if (!batch || batch.id !== batchId) throw conflict("Village catch-up changed. Refresh its status.");
       const record = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
@@ -242,6 +251,7 @@ export function createReturnCatchup(ports: Ports) {
       const subjectId = returnCatchupSubject(batch.id, record.opportunityId);
       const job = await ports.job(kind, subjectId);
       await update(batch.id, (world) => {
+        if (world.backgroundPace === "off") throw conflict("Turn Pace on before retrying catch-up.");
         world.returnCatchup!.batch!.status = "running";
         if (record.status === "held")
           world.returnCatchup!.batch!.records!.find((row) => row.opportunityId === record.opportunityId)!.status =

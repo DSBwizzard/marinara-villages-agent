@@ -1,11 +1,20 @@
 import type { CapabilityLanguageModelCompletion } from "@marinara-engine/shared";
 
+export class ModelPurchasePaused extends Error {}
+
+export type ProviderDispatch = (
+  start: () => Promise<CapabilityLanguageModelCompletion>,
+  signal?: AbortSignal,
+) => Promise<CapabilityLanguageModelCompletion>;
+
 export type VillageCompletionOptions = {
   responseFormat?: Readonly<{ type: string; [key: string]: unknown }>;
   /** Stable background request identity; optional for sequential generators. */
   checkpointId?: string;
   /** New-work preflight after replay and before reservation; may lower the output allowance. */
   beforeBackgroundDispatch?: () => Promise<number | void>;
+  /** Check current authority immediately before a new standalone provider request. */
+  providerDispatch?: ProviderDispatch;
   /** Durable replay response for a standalone task, separate from applying its effects. */
   savedRequest?: {
     key: string;

@@ -1,9 +1,11 @@
-import type { VillageCompletionOptions } from "./completion-model.js";
+import type { ProviderDispatch, VillageCompletionOptions } from "./completion-model.js";
 import type {
   CapabilityLanguageModelCompletion,
   CapabilityLanguageModelMessage,
   CapabilityResolvedLanguageModel,
 } from "@marinara-engine/shared";
+
+export type BackgroundProviderDispatch = ProviderDispatch;
 
 export type BackgroundCompletion = ((
   model: CapabilityResolvedLanguageModel,
@@ -13,5 +15,5 @@ export type BackgroundCompletion = ((
 ) => Promise<CapabilityLanguageModelCompletion>) & {
   metadata?: { id: string; kind: string; cause: string; attempt?: number };
   signal?: AbortSignal;
-  beforeProviderDispatch?: () => void;
+  providerDispatch?: BackgroundProviderDispatch;
 };

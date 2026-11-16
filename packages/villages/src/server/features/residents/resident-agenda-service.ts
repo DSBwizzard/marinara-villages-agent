@@ -172,7 +172,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     };
     return { ...context, loreUse: inspectedLoreUse(loreInspection, "Routine") };
   }
-  async function queueVillagerAgenda(characterId: string, finite = true, origin?: "founding"): Promise<void> {
+  async function queueVillagerAgenda(characterId: string, finite = true, origin?: "founding" | "idle"): Promise<void> {
     let village = await readVillageState({ memories: true });
     const villager = village.villagers.find((row) => row.characterId === characterId);
     if (!villager) return;
@@ -213,23 +213,26 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         { memories: true },
       );
     await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
-    await queueBackgroundJob({
-      kind: "agenda",
-      retryActionId: founding ? village.foundingPreparation?.retryActions?.at(-1) : undefined,
-      subjectId: characterId,
-      seed: village.seed,
-      revision,
-      finite,
-      label: villager.cardSnapshot.name + "'s agenda",
-      initialError: founding ? undefined : villager.agenda?.personalizationFailure,
-      input: {
+    await queueBackgroundJob(
+      {
+        kind: "agenda",
+        retryActionId: founding ? village.foundingPreparation?.retryActions?.at(-1) : undefined,
+        subjectId: characterId,
         seed: village.seed,
-        characterId,
-        foundingContract: founding ? 1 : undefined,
         revision,
-        context,
+        finite,
+        label: villager.cardSnapshot.name + "'s agenda",
+        initialError: founding ? undefined : villager.agenda?.personalizationFailure,
+        input: {
+          seed: village.seed,
+          characterId,
+          foundingContract: founding ? 1 : undefined,
+          revision,
+          context,
+        },
       },
-    });
+      origin === "idle",
+    );
   }
 
   const agendaBackgroundHandler: Handler = {
@@ -322,8 +325,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   /** Discover missing agendas. The coordinator retains failures across dates and throttles provider requests. */
   async function queuePendingAgendas(village: VillageState, _now: Date): Promise<VillageState> {
+    if (village.backgroundPace === "off") return village;
     const pending = village.villagers.filter((resident) => resident.agenda?.personalizationPending === true);
-    for (const resident of pending) await queueVillagerAgenda(resident.characterId, Boolean(resident.agendaGeneration));
+    for (const resident of pending) await queueVillagerAgenda(resident.characterId, false, "idle");
     return readVillageState();
   }
 

@@ -47,8 +47,8 @@ export async function villageBackgroundPresence<T = void>(
 ): Promise<T | undefined> {
   return binding.get().villageBackgroundPresence<T>(sessionId, visible, options);
 }
-export function queueBackgroundJob(work: BackgroundInput): Promise<void> {
-  return binding.get().queueBackgroundJob(work);
+export function queueBackgroundJob(work: BackgroundInput, automatic = false): Promise<void> {
+  return binding.get().queueBackgroundJob(work, undefined, automatic);
 }
 export function cancelReturnCatchup(batchId: string): Promise<void> {
   return binding.get().cancelReturnCatchup(batchId);
