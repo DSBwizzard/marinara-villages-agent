@@ -687,6 +687,7 @@ type RoomParticipant = {
 export type RoomOperation = {
   committed?: boolean;
   replyReady?: boolean;
+  acceptance?: "pending" | "held" | "applied" | "abandoned";
   /** The Scene has ended and its completed transcript is no longer retained. */
   terminal?: boolean;
   recordEvents?: RoomRecordEvent[];

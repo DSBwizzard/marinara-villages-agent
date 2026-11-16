@@ -1,4 +1,4 @@
-// Test cases: packaged-scene/ordinary, packaged-scene/invitation, packaged-scene/revoked, packaged-scene/refused, packaged-scene/banned, packaged-scene/escort-ban, packaged-scene/strict-reply, packaged-scene/spoken-visit
+// Test cases: packaged-scene/ordinary, packaged-scene/invitation, packaged-scene/revoked, packaged-scene/refused, packaged-scene/banned, packaged-scene/escort-ban, packaged-scene/strict-reply, packaged-scene/spoken-visit, packaged-scene/retry-held-agreement
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
@@ -11,6 +11,68 @@ import {
 import { actorEpisodeView } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { sceneResend } from "../packages/villages/src/client/features/scenes/villages-venue-send.js";
+
+await runCase("packaged-scene/retry-held-agreement", async () => {
+  const host = await packagedSceneServer();
+  let calls = 0;
+  const text = "You can stay on the couch tonight.";
+  host.model.chatComplete = async () => ({
+    finishReason: "stop",
+    content: JSON.stringify({
+      segments: [{ id: "reply", kind: "dialogue", speakerId: "mara", text: ++calls === 1 ? text : "Let's talk." }],
+      ...(calls === 1 && {
+        keep: [
+          {
+            id: "agreement",
+            for: ["player", "mara"],
+            class: "commitment",
+            text,
+            source: [{ segment: "reply", act: "offer" }],
+            offer: { proposer: "mara", participants: ["mara", "player"], contributions: [] },
+          },
+        ],
+      }),
+    }),
+  });
+  try {
+    const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(active.statusCode, 200, active.body);
+    const payload = {
+      sessionId: "browser",
+      submissionId: "a4444444-4444-4444-8444-444444444444",
+      message: "Can I stay tonight?",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: host.scene().sceneRevision,
+    };
+    const post = (body: typeof payload) =>
+      host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: body });
+    const failed = await post(payload);
+    assert(failed.statusCode >= 400, failed.body);
+    assert.equal(host.scene().submissions[0].acceptance.status, "held");
+    assert.equal(calls, 1);
+    const details = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/operation" });
+    assert.equal(details.statusCode, 200, details.body);
+    const { operation } = details.json();
+    assert.equal(operation.acceptance, "held");
+    const resend = sceneResend(operation, payload, payload.submissionId);
+    assert.notEqual(resend.submissionId, payload.submissionId);
+    const sent = await post({ ...payload, ...resend });
+    assert.equal(sent.statusCode, 200, sent.body);
+    assert.equal(calls, 2, "the unchanged Send makes exactly one new attempt");
+    assert.deepEqual(
+      host.scene().submissions.map(({ acceptance }) => acceptance.status),
+      ["abandoned", "applied"],
+    );
+    assert(
+      !host.scene().lines.some((line) => line.content === text),
+      "the invalid agreement never becomes Scene dialogue",
+    );
+  } finally {
+    await host.stop();
+  }
+});
 
 await runCase("packaged-scene/spoken-visit", async () => {
   const host = await packagedSceneServer({

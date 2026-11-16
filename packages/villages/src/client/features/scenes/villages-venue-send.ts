@@ -1,3 +1,4 @@
+import type { RoomOperation } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
 export function shouldSubmitVenueKey(key: string, shiftKey: boolean, composing: boolean, sendOnEnter = false): boolean {
@@ -17,6 +18,7 @@ type SavedSceneRequest = {
   kind?: string;
   attemptId?: string;
   error?: string;
+  acceptance?: RoomOperation["acceptance"];
   input?: SceneSendInput | null;
 };
 
@@ -37,7 +39,7 @@ export function sceneResend(
     (prior.targetId || "") === (input.targetId || "") &&
     prior.contact?.kind === input.contact?.kind &&
     prior.contact?.boundaryZoneId === input.contact?.boundaryZoneId;
-  if (same) return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
+  if (same && saved.acceptance !== "held") return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
   if (saved.kind !== "turn")
     throw new Error("Recover the saved request before changing this action. Your edits are preserved.");
   return {

@@ -310,7 +310,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             setRoomDraft(value);
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
-          onSend={() => void sendRoom()}
+          onSend={() => void sendRoom(contactRecovery?.sceneId === room.id ? contactRecovery : undefined)}
           onConclude={() => void leaveRoom()}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);

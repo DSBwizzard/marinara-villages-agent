@@ -641,7 +641,7 @@ export function RoomPanel({
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !ended && room.status === "active";
   const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
-  const canSend = canCompose && !contactRecovery && !(changeStatus && changeStatus.pending + changeStatus.failed > 0);
+  const canSend = canCompose && !changeStatus?.pending;
   const moveDestinations = movementZones.filter((zone) => zone.id !== room.zoneId && !zone.closed);
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
@@ -792,7 +792,7 @@ export function RoomPanel({
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={!canSend}
+                    disabled={!canSend || !!contactRecovery || !!changeStatus?.failed}
                     onClick={() => {
                       setActionsView(null);
                       actionsRef.current?.querySelector("button")?.focus();
