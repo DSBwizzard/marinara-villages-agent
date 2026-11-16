@@ -4,7 +4,7 @@ import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
 import type { RepairBrowseItem, RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { ContinuityRecord, ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
-import { badRequest, conflict } from "./errors.js";
+import { badRequest, conflict, repairFieldError } from "./errors.js";
 import { memoryHash, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
 import { continuityRepairEntries, changeContinuityMemory } from "./continuity-library.js";
 import { continuityActor } from "./continuity-actors.js";
@@ -577,12 +577,12 @@ function inputValues(record: RepairRecord, request: RepairRequest) {
         (field.min !== undefined && value < field.min) ||
         (field.max !== undefined && value > field.max)
       )
-        throw badRequest(`Check ${field.label}.`);
-    } else if (typeof value !== typeof field.value) throw badRequest(`Check ${field.label}.`);
+        throw repairFieldError(field.key, `Check ${field.label}.`);
+    } else if (typeof value !== typeof field.value) throw repairFieldError(field.key, `Check ${field.label}.`);
     if (typeof value === "string" && value.length > 16000 && value !== field.value)
-      throw badRequest(`Shorten ${field.label}.`);
+      throw repairFieldError(field.key, `Shorten ${field.label}.`);
     if (field.options && !field.options.some((option) => option.value === value))
-      throw badRequest(`Choose ${field.label}.`);
+      throw repairFieldError(field.key, `Choose ${field.label}.`);
     result[field.key] = value;
   }
   if (Object.keys(request.values).some((key) => !record.fields.some((f) => f.key === key)))

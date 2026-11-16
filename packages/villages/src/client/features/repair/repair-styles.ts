@@ -2,7 +2,7 @@ export const REPAIR_STYLES = `
 .villages-repair {
  --repair-bg:#23272a;--repair-paper:#1b1e20;--repair-ink:#eceae3;--repair-muted:#b9bcbf;
  --repair-line:#495056;--repair-control:#777e84;--repair-soft:#30363b;
- --repair-primary:#eda967;--repair-onprimary:#211a15;--repair-warn:#ffd49c;--repair-focus:#b1d9f6;
+ --repair-primary:#eda967;--repair-onprimary:#211a15;--repair-warn:#ffd49c;--repair-focus:#b1d9f6;--repair-danger:#ff9a9a;
  display:grid;grid-template-columns:196px minmax(0,1fr);grid-template-rows:auto 1fr;
  background:var(--repair-bg);color:var(--repair-ink);color-scheme:dark;
  font:16px/1.5 "Segoe UI",system-ui,sans-serif;min-height:100%;overflow:auto;
@@ -49,7 +49,7 @@ export const REPAIR_STYLES = `
 .villages-repair footer label{display:flex;align-items:center;gap:8px;min-height:44px;font-size:13px;}
 .villages-repair .repair-notice{border-left:2px solid var(--repair-warn);padding:8px 12px;margin:15px 0 20px;}
 .villages-repair .repair-notice button{margin-left:8px;}
-.villages-repair .repair-error{color:var(--repair-warn);}
+.villages-repair .repair-error{color:var(--repair-danger);}
 .villages-repair .repair-layout{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:20px;align-items:start;}
 .villages-repair .repair-layout[data-single=true]{grid-template-columns:minmax(0,1fr);max-width:800px;}
 .villages-repair .repair-panel{min-width:0;}
@@ -63,6 +63,8 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-records{display:grid;gap:10px;margin:17px 0 10px;}
 .villages-repair .repair-actions{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:20px;}
 .villages-repair .repair-field{margin-bottom:20px;}
+.villages-repair .repair-field .repair-error{margin:0 0 6px;font-size:.9em;}
+.villages-repair .repair-field [aria-invalid=true]{border-color:var(--repair-danger);}
 .villages-repair .repair-editor[data-agenda=true]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;}
 .villages-repair .repair-editor[data-agenda=true]>:is(h2,.repair-notice,.repair-buttons,.repair-field:has(textarea,select)){grid-column:1/-1;}
 .villages-repair .repair-editor[data-agenda=true] textarea{min-height:68px;}

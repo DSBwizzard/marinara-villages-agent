@@ -21,7 +21,7 @@ export type RepairField = {
   label: string;
   value: RepairValue;
   type: "text" | "number" | "choice" | "boolean" | "clock";
-  options?: { value: string; label: string }[];
+  options?: { value: string; label: string; zones?: { value: string; label: string }[] }[];
   min?: number;
   max?: number;
 };

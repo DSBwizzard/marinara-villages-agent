@@ -118,6 +118,7 @@ export function RepairPage({
   const browsingAgenda = c.topic === "people" && c.section === "agenda";
   const [agendaDate, setAgendaDate] = useState<string>();
   const agendaEditorHeading = useRef<HTMLHeadingElement>(null);
+  const editor = useRef<HTMLElement>(null);
   const editingAgenda = browsingAgenda && c.view === "list" && Boolean(c.selected?.agendaDay);
   useEffect(() => {
     if (!editingAgenda || !c.selected) return;
@@ -129,6 +130,25 @@ export function RepairPage({
     if (record) void c.open(record.id, { index, token: record.token });
   };
   const agendaDraftStale = c.selected?.agendaDay && c.draft?.agendaToken !== c.selected.token;
+  const venueId = c.draft?.values["venue:new"];
+  const venue = c.editorFields.find((field) => field.key === "venue:new")?.options?.find((o) => o.value === venueId);
+  const fields = c.editorFields.flatMap((field) =>
+    field.key !== "zone:new"
+      ? [field]
+      : venueId
+        ? [{ ...field, options: [{ value: "", label: "Choose automatically" }, ...(venue?.zones ?? [])] }]
+        : [],
+  );
+  const inlineError =
+    (c.view === "edit" || editingAgenda) &&
+    !agendaDraftStale &&
+    !memoryReadOnly &&
+    fields.some((field) => field.key === c.errorField)
+      ? c.errorField
+      : undefined;
+  useEffect(() => {
+    if (inlineError && !c.busy) editor.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus();
+  }, [inlineError, c.error, c.busy]);
   const browsingPlaces = c.view !== "hub" && c.topic === "places" && c.collection === "list";
   let placeItems = c.placeDirectory;
   const placeTrail = [];
@@ -156,7 +176,14 @@ export function RepairPage({
       ? display(c.draft?.values.letterFontId)
       : undefined;
   useLetterFont(previewFontId);
-  const value = (key: string, next: RepairValue) => c.update({ values: { ...c.draft?.values, [key]: next } });
+  const value = (key: string, next: RepairValue) =>
+    c.update({
+      values: {
+        ...c.draft?.values,
+        [key]: next,
+        ...(key === "venue:new" ? { "zone:new": "" } : {}),
+      },
+    });
   return (
     <div className="villages-repair" aria-label="REPAIR">
       <style>{REPAIR_STYLES}</style>
@@ -289,7 +316,7 @@ export function RepairPage({
             </button>
           </div>
         ) : null}
-        {c.error ? (
+        {c.error && !inlineError ? (
           <p role="alert" className="repair-error">
             {c.error}
           </p>
@@ -538,7 +565,7 @@ export function RepairPage({
         ) : null}
         {(c.view === "edit" || editingAgenda) && c.selected && c.draft ? (
           <div className="repair-layout" data-single={!hasSource}>
-            <section className="repair-panel repair-editor" data-agenda={!!c.selected.agendaDay}>
+            <section ref={editor} className="repair-panel repair-editor" data-agenda={!!c.selected.agendaDay}>
               {editingAgenda ? (
                 <h2 tabIndex={-1} ref={agendaEditorHeading}>
                   {c.draft.action === "add-activity" ? "Add activity" : "Edit activity"}
@@ -577,95 +604,106 @@ export function RepairPage({
                 </div>
               ) : null}
               {!agendaDraftStale &&
-                c.editorFields.map((f) => (
-                  <div className="repair-field" key={f.key}>
-                    {memoryReadOnly ? (
-                      <h2>{f.label}</h2>
-                    ) : (
-                      <label htmlFor={`repair-${f.key}`}>
-                        {c.selected!.agendaDay
-                          ? f.label
-                              .replace(/ \d+/, "")
-                              .replace("Activity start", "Start")
-                              .replace("Activity end", "End")
-                          : f.label}
-                      </label>
-                    )}
-                    {f.key === "letterFontId" ? (
-                      <div>
-                        <p
-                          style={{
-                            fontFamily: letterFontFamily(display(c.draft?.values[f.key])),
-                            fontSize: "1.25rem",
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          Dear friend, I hope this letter finds you well. 123
+                fields.map((f) => {
+                  const id = `repair-${f.key}`;
+                  const invalid = inlineError === f.key;
+                  const control = {
+                    id,
+                    disabled: c.busy,
+                    "aria-invalid": invalid || undefined,
+                    "aria-describedby": invalid ? `${id}-error` : undefined,
+                  };
+                  return (
+                    <div className="repair-field" key={f.key}>
+                      {memoryReadOnly ? (
+                        <h2>{f.label}</h2>
+                      ) : (
+                        <label htmlFor={id}>
+                          {c.selected!.agendaDay
+                            ? f.label
+                                .replace(/ \d+/, "")
+                                .replace("Activity start", "Start")
+                                .replace("Activity end", "End")
+                            : f.label}
+                        </label>
+                      )}
+                      {invalid ? (
+                        <p role="alert" id={`${id}-error`} className="repair-error">
+                          {c.error}
                         </p>
-                      </div>
-                    ) : null}
-                    {memoryReadOnly ? (
-                      <p>{display(f.value)}</p>
-                    ) : f.type === "choice" ? (
-                      <select
-                        id={`repair-${f.key}`}
-                        disabled={c.busy}
-                        value={display(c.draft?.values[f.key])}
-                        onChange={(e) => value(f.key, e.target.value)}
-                      >
-                        {f.options?.some((option) => option.value === display(c.draft?.values[f.key])) ? null : (
-                          <option value={display(c.draft?.values[f.key])} disabled>
-                            Choose an option
-                          </option>
-                        )}
-                        {f.options?.map((o) => (
-                          <option key={o.value} value={o.value}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : f.type === "number" ? (
-                      <input
-                        autoComplete="off"
-                        id={`repair-${f.key}`}
-                        type="number"
-                        min={f.min}
-                        max={f.max}
-                        step="any"
-                        disabled={c.busy}
-                        value={display(c.draft?.values[f.key])}
-                        onChange={(e) => value(f.key, e.target.value === "" ? "" : Number(e.target.value))}
-                      />
-                    ) : f.type === "boolean" ? (
-                      <input
-                        autoComplete="off"
-                        id={`repair-${f.key}`}
-                        type="checkbox"
-                        disabled={c.busy}
-                        checked={c.draft?.values[f.key] === true}
-                        onChange={(e) => value(f.key, e.target.checked)}
-                      />
-                    ) : f.type === "clock" ? (
-                      <input
-                        id={`repair-${f.key}`}
-                        type="text"
-                        placeholder="HH:MM"
-                        maxLength={5}
-                        disabled={c.busy}
-                        value={display(c.draft?.values[f.key])}
-                        onChange={(e) => value(f.key, e.target.value)}
-                      />
-                    ) : (
-                      <textarea
-                        autoComplete="off"
-                        id={`repair-${f.key}`}
-                        disabled={c.busy}
-                        value={display(c.draft?.values[f.key])}
-                        onChange={(e) => value(f.key, e.target.value)}
-                      />
-                    )}
-                  </div>
-                ))}
+                      ) : null}
+                      {f.key === "letterFontId" ? (
+                        <div>
+                          <p
+                            style={{
+                              fontFamily: letterFontFamily(display(c.draft?.values[f.key])),
+                              fontSize: "1.25rem",
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            Dear friend, I hope this letter finds you well. 123
+                          </p>
+                        </div>
+                      ) : null}
+                      {memoryReadOnly ? (
+                        <p>{display(f.value)}</p>
+                      ) : f.type === "choice" ? (
+                        <select
+                          {...control}
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value)}
+                        >
+                          {f.options?.some((option) => option.value === display(c.draft?.values[f.key])) ? null : (
+                            <option value={display(c.draft?.values[f.key])} disabled>
+                              Choose an option
+                            </option>
+                          )}
+                          {f.options?.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : f.type === "number" ? (
+                        <input
+                          {...control}
+                          autoComplete="off"
+                          type="number"
+                          min={f.min}
+                          max={f.max}
+                          step="any"
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value === "" ? "" : Number(e.target.value))}
+                        />
+                      ) : f.type === "boolean" ? (
+                        <input
+                          {...control}
+                          autoComplete="off"
+                          type="checkbox"
+                          checked={c.draft?.values[f.key] === true}
+                          onChange={(e) => value(f.key, e.target.checked)}
+                        />
+                      ) : f.type === "clock" ? (
+                        <input
+                          {...control}
+                          autoComplete="off"
+                          type="text"
+                          placeholder="HH:MM"
+                          maxLength={5}
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value)}
+                        />
+                      ) : (
+                        <textarea
+                          {...control}
+                          autoComplete="off"
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               {c.selected.people ? (
                 <fieldset>
                   <legend>

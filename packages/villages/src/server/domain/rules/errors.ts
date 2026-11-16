@@ -20,6 +20,10 @@ export function badRequest(message: string): VillagesRequestError {
   return new VillagesRequestError(400, message);
 }
 
+export function repairFieldError(key: string, message: string, status = 400): VillagesRequestError {
+  return new VillagesRequestError(status, message, `repair-field:${key}`);
+}
+
 export function conflict(message: string): VillagesRequestError {
   return new VillagesRequestError(409, message);
 }

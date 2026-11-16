@@ -211,7 +211,7 @@ await withBrowser(browser, async () => {
     if (width <= 700) await page.getByRole("combobox", { name: "Section", exact: true }).selectOption("repair");
     else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
     const repair = page.locator(".villages-repair");
-    await repair.getByRole("button", { name: /^Progress\b/ }).click();
+    await repair.getByRole("button", { name: "Recover work", exact: true }).click();
     const recovery = repair.getByRole("region", { name: "Initial preparation" });
     await expect(recovery).toContainText("Resident preparation incomplete");
     const retry = recovery.getByRole("button", { name: "Retry unfinished work", exact: true });

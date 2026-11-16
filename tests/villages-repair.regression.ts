@@ -26,6 +26,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { evaluateZoneAccess, mayInvite } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { nativeHistoryFixture, retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { fixture as projectFixture, venue } from "./fixtures/villages-projects.fixture.js";
@@ -156,6 +157,7 @@ await runCase("repair/agenda", async () => {
   const f = await fixture();
   await f.repo.mutateAuthority((state) => {
     state.villagers[0]!.agenda = unwrittenVillageAgenda();
+    state.venues.push(venue("hall"));
   });
   const person = (await f.api.index()).people.find((row) => row.id === "aqua")!;
   const dates = (await f.api.list("people", "", 0, person.id, "agenda")).records;
@@ -181,22 +183,39 @@ await runCase("repair/agenda", async () => {
   await f.api.apply(undo.id, undo.token);
   assert.deepEqual((await f.read()).villagers[0]!.agenda, start);
   const todayRecord = dates[0]!;
+  assert.deepEqual(todayRecord.fields.find((field) => field.key === "venue:new")?.options?.[1]?.zones, [
+    { value: "exterior", label: "Entrance" },
+    { value: "common", label: "Common room" },
+  ]);
   const todayEdit = await f.prepare(edit(todayRecord.id, { "activity:0": "Count the lanterns" }, "edit-today"));
   await f.api.apply(todayEdit.id, todayEdit.token);
   assert.equal((await f.read()).villagers[0]!.agenda!.activeDay!.blocks[0]!.activity, "Count the lanterns");
-  const addToday = await f.prepare({
+  const addition = {
     ...edit(
       todayRecord.id,
-      { "activity:new": "Refill the lanterns", "start:new": "13:00", "end:new": "14:00" },
+      {
+        "activity:new": "Refill the lanterns",
+        "start:new": "13:00",
+        "end:new": "14:00",
+        "venue:new": "hall",
+        "zone:new": "exterior",
+      },
       "add-today",
     ),
     action: "add-activity",
+  };
+  await assert.rejects(() => f.prepare({ ...addition, values: { ...addition.values, "end:new": "noon" } }), {
+    code: "repair-field:end:new",
   });
+  await assert.rejects(() => f.prepare({ ...addition, values: { ...addition.values, "zone:new": "elsewhere" } }), {
+    code: "repair-field:zone:new",
+  });
+  const addToday = await f.prepare(addition);
   assert.ok(
     addToday.changes.some(
       (change) =>
         change.before.includes("00:00–24:00 · Count the lanterns") &&
-        change.after.includes("13:00–14:00 · Refill the lanterns"),
+        change.after.includes("13:00–14:00 · Refill the lanterns · hall · Entrance"),
     ),
   );
   await f.api.apply(addToday.id, addToday.token);
@@ -205,7 +224,12 @@ await runCase("repair/agenda", async () => {
   assert.deepEqual(savedToday.activeDay!.blocks, savedToday.plannedDays![todayRecord.agenda!.date]);
   assert.ok(
     savedToday.activeDay!.blocks.some(
-      (block) => block.startMinute === 780 && block.endMinute === 840 && block.activity === "Refill the lanterns",
+      (block) =>
+        block.startMinute === 780 &&
+        block.endMinute === 840 &&
+        block.activity === "Refill the lanterns" &&
+        block.venueId === "hall" &&
+        block.zoneId === "exterior",
     ),
   );
   assert.deepEqual((await f.api.inspect(neighbor!.id, person.id)).source, neighbor!.source);
@@ -228,7 +252,39 @@ await runCase("repair/agenda", async () => {
       await timed.repo.mutateAuthority((state) => {
         state.timeZone = "UTC";
         state.villagers[0]!.agenda = unwrittenVillageAgenda(clock);
+        state.venues.push(venue("hall"));
+        ensureNarrative(state, clock.toISOString()).conditions.push({
+          id: "spill",
+          revision: 1,
+          situationId: "spill",
+          venueId: "hall",
+          zoneId: "common",
+          observation: "The floor is dangerously slick.",
+          restriction: "ordinary-use",
+          remedy: "Wipe the floor dry.",
+          startsAt: "2026-05-21T11:59:30.000Z",
+          endsAt: null,
+          clearedAt: null,
+        });
       });
+      await assert.rejects(
+        () =>
+          timed.prepare({
+            ...edit(
+              repairId("agenda", "aqua", "2026-05-21"),
+              {
+                "activity:new": "Read in the hall",
+                "start:new": "11:00",
+                "end:new": "12:00",
+                "venue:new": "hall",
+                "zone:new": "common",
+              },
+              "overlapping-zone-closure",
+            ),
+            action: "add-activity",
+          }),
+        { code: "repair-field:zone:new", message: /unavailable for part of that time/ },
+      );
       const review = await timed.prepare(
         edit(repairId("agenda", "aqua", "2026-05-21"), { "activity:0": "Too late" }, "before-rollover"),
       );
@@ -236,6 +292,29 @@ await runCase("repair/agenda", async () => {
       await assert.rejects(timed.api.apply(review.id, review.token), /rolled over/);
       assert.equal((await timed.api.index()).history.length, 0);
       assert.equal((await timed.read()).villagers[0]!.agenda!.repairedDays, undefined);
+      clock = new Date("2026-11-01T07:00:00Z");
+      await timed.repo.mutateAuthority((state) => {
+        state.timeZone = "America/Los_Angeles";
+        ensureNarrative(state, clock.toISOString()).conditions[0]!.startsAt = "2026-11-01T09:10:00.000Z";
+      });
+      await assert.rejects(
+        () =>
+          timed.prepare({
+            ...edit(
+              repairId("agenda", "aqua", "2026-11-01"),
+              {
+                "activity:new": "Read in the hall",
+                "start:new": "01:20",
+                "end:new": "01:30",
+                "venue:new": "hall",
+                "zone:new": "common",
+              },
+              "repeated-hour-zone-closure",
+            ),
+            action: "add-activity",
+          }),
+        { code: "repair-field:zone:new", message: /unavailable for part of that time/ },
+      );
     } finally {
       release();
     }

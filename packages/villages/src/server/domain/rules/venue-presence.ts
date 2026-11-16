@@ -16,6 +16,8 @@ export function zoneActivityFits(
 ): boolean {
   if (actorIds.length > MAX_ZONE_VILLAGERS) return false;
   const boundaries = new Set([startMinute]);
+  const exact: [Date, number][] = [];
+  const dateKey = agendaDateKey(date);
   const include = (minute: number) => {
     if (minute > startMinute && minute < endMinute) boundaries.add(minute);
   };
@@ -42,13 +44,25 @@ export function zoneActivityFits(
       for (const instant of [condition.startsAt, condition.endsAt, condition.clearedAt]) {
         if (!instant) continue;
         const at = date instanceof ZonedDate ? new ZonedDate(instant, date.zone) : new Date(instant);
-        if (agendaDateKey(at) === agendaDateKey(date))
-          include(at.getHours() * 60 + at.getMinutes() + Number(at.getSeconds() > 0 || at.getMilliseconds() > 0));
+        const minute = at.getHours() * 60 + at.getMinutes();
+        if (minute >= startMinute && minute < endMinute && agendaDateKey(at) === dateKey) exact.push([at, minute]);
+      }
+    }
+    const offsetChange =
+      calendarAt(date, dateKey, 1440).getTimezoneOffset() - calendarAt(date, dateKey).getTimezoneOffset();
+    if (offsetChange > 0) {
+      // A civil-time Agenda also runs during the later occurrence of a repeated minute.
+      for (let minute = startMinute; minute < endMinute; minute++) {
+        const at = calendarAt(date, dateKey, minute);
+        at.setTime(at.getTime() + offsetChange * 60_000);
+        if (at.getHours() * 60 + at.getMinutes() === minute && agendaDateKey(at) === dateKey) exact.push([at, minute]);
       }
     }
   }
-  for (const minute of boundaries) {
-    const at = calendarAt(date, agendaDateKey(date), minute);
+  for (const [at, minute] of [
+    ...Array.from(boundaries, (minute) => [calendarAt(date, dateKey, minute), minute] as const),
+    ...exact,
+  ]) {
     const zoneId = typeof zone === "string" ? zone : zone(at, minute);
     if (!zoneId) continue;
     const others = [...villagePresence(state, minute, at)].filter(

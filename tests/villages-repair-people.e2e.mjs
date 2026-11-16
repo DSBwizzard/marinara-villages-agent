@@ -56,6 +56,18 @@ const agendaDay = {
     { key: "activity:new", label: "Activity", type: "text", value: "" },
     { key: "start:new", label: "Start", type: "clock", value: "" },
     { key: "end:new", label: "End", type: "clock", value: "" },
+    {
+      key: "venue:new",
+      label: "Venue",
+      type: "choice",
+      value: "",
+      options: [
+        { value: "", label: "No location" },
+        { value: "workshop", label: "Workshop", zones: [{ value: "bench", label: "Workbench" }] },
+        { value: "garden", label: "Garden", zones: [{ value: "plot", label: "Herb plot" }] },
+      ],
+    },
+    { key: "zone:new", label: "Zone", type: "choice", value: "" },
   ],
   source: ["09:00–24:00 · Tending herbs · Garden", "10:00–11:00 · Meet at the gate · Agreed plan"],
   actions: [
@@ -261,6 +273,11 @@ async function fixture(width) {
       const body = route.request().postDataJSON();
       assert.equal("inspection" in body, false);
       calls.push({ path, body });
+      if (body.values?.["end:new"] === "noon")
+        return fulfill(route, {
+          status: 400,
+          json: { error: "Use a 24-hour time such as 09:30 or 24:00.", code: "repair-field:end:new" },
+        });
       if (body.recordId === agendaDay.id || body.recordId === today.id)
         return reply(route, "repair", {
           kind: "repair",
@@ -338,12 +355,31 @@ await withBrowser(browser, async () => {
       await root.getByRole("button", { name: "Add activity", exact: true }).click();
       await root.getByRole("textbox", { name: "Activity" }).fill("Label drawers");
       await root.getByRole("textbox", { name: "Start" }).fill("14:00");
-      await root.getByRole("textbox", { name: "End" }).fill("14:30");
+      const end = root.getByRole("textbox", { name: "End" });
+      await end.fill("noon");
+      await root.getByRole("button", { name: "Review changes" }).click();
+      await expect(end).toBeFocused();
+      await expect(end).toHaveAccessibleDescription("Use a 24-hour time such as 09:30 or 24:00.");
+      await expect(root.getByRole("alert")).toHaveCSS("color", "rgb(255, 154, 154)");
+      await expect(root.getByRole("textbox", { name: "Start" })).not.toHaveAttribute("aria-invalid", "true");
+      await end.fill("14:30");
+      await expect(root.getByRole("alert")).toHaveCount(0);
+      const venue = root.getByRole("combobox", { name: "Venue" });
+      const zone = root.getByRole("combobox", { name: "Zone" });
+      await expect(zone).toHaveCount(0);
+      await venue.selectOption("workshop");
+      await zone.selectOption("bench");
+      await venue.selectOption("garden");
+      await expect(zone).toHaveValue("");
+      await expect(zone.getByRole("option", { name: "Workbench" })).toHaveCount(0);
+      await zone.selectOption("plot");
       await root.getByRole("button", { name: "Review changes" }).click();
       const addition = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
       assert.equal(addition.recordId, today.id);
       assert.equal(addition.action, "add-activity");
       assert.equal(addition.values["activity:new"], "Label drawers");
+      assert.equal(addition.values["venue:new"], "garden");
+      assert.equal(addition.values["zone:new"], "plot");
       await root.getByRole("button", { name: "Back", exact: true }).click();
       await root.getByRole("button", { name: /Tuesday, Nov 17/ }).click();
       await root.getByRole("button", { name: /Meet at the gate/ }).click();

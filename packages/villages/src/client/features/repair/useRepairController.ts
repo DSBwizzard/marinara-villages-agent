@@ -10,7 +10,7 @@ import type {
   RepairTopic,
   RepairValue,
 } from "../../../shared/contracts/repair.js";
-import { request, messageFrom } from "../../shared/api.js";
+import { request, messageFrom, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
 type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string; agendaToken?: string };
@@ -35,7 +35,7 @@ export function useRepairController(
     [placePath, setPlacePath] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({}),
     [review, setReview] = useState<RepairReview | null>(null);
-  const [error, setError] = useState(""),
+  const [failure, setFailure] = useState<{ message: string; field?: string }>(),
     [busy, setBusy] = useState(false),
     [saving, setSaving] = useState(false),
     [query, setQuery] = useState("");
@@ -72,7 +72,7 @@ export function useRepairController(
     setCreation(null);
     setOffset(0);
     setTotal(0);
-    setError("");
+    setFailure(undefined);
     setRestoreAcknowledged(false);
   };
   const acceptIndex = (result: RepairIndex, ticket: number) => {
@@ -131,19 +131,24 @@ export function useRepairController(
         setIndex(result);
       })
       .catch((cause) => {
-        if (!abort.signal.aborted && epoch.current === ticket) setError(messageFrom(cause, "Could not open REPAIR."));
+        if (!abort.signal.aborted && epoch.current === ticket)
+          setFailure({ message: messageFrom(cause, "Could not open REPAIR.") });
       });
     return () => abort.abort();
   }, [active]);
   const act = async (fn: (ticket: number) => Promise<void>) => {
     const ticket = epoch.current,
       id = ++operation.current;
-    setError("");
+    setFailure(undefined);
     setBusy(true);
     try {
       await fn(ticket);
     } catch (cause) {
-      if (current(ticket)) setError(messageFrom(cause, "The repair could not be completed."));
+      if (current(ticket))
+        setFailure({
+          message: messageFrom(cause, "The repair could not be completed."),
+          field: cause instanceof VillageApiError ? /^repair-field:(.+)$/u.exec(cause.code ?? "")?.[1] : undefined,
+        });
     } finally {
       if (operation.current === id) setBusy(false);
     }
@@ -265,7 +270,7 @@ export function useRepairController(
     epoch.current++;
     setSelected(null);
     setAgendaPick(undefined);
-    setError("");
+    setFailure(undefined);
   };
   const open = (id: string, pick?: AgendaPick) => {
     if (pick) {
@@ -284,7 +289,7 @@ export function useRepairController(
     setDrafts((prior) => ({ ...prior, [key]: { ...prior[key], ...change } }));
     abandonReview();
     epoch.current++;
-    setError("");
+    setFailure(undefined);
   };
   const prepare = () =>
     act(async (ticket) => {
@@ -403,7 +408,8 @@ export function useRepairController(
     editorFields: selected ? editorFields(selected, agendaPick) : [],
     draft,
     review,
-    error,
+    error: failure?.message ?? "",
+    errorField: failure?.field,
     busy,
     saving,
     query,
