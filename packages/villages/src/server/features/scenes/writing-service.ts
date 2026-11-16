@@ -12,9 +12,11 @@ import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.j
 import {
   narrationDirection,
   narrationResponse,
-  ordinarySceneKeep,
+  ORDINARY_SCENE_KEEP,
+  ordinarySceneKeepSources,
   RELATIONSHIP_DIRECTION,
   RELATIONSHIP_KEEP,
+  SCENE_NARRATION_FORMAT,
   SCENE_NARRATION_KEEP,
   SCENE_OFFER_DECISION,
   SCENE_RELATIONSHIP_DIRECTION,
@@ -259,6 +261,7 @@ export function createSceneWriting({
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
+      format: blocksFor([SCENE_NARRATION_FORMAT, nativeCommands ? SCENE_NARRATION_KEEP : ORDINARY_SCENE_KEEP]),
       metadata: blocksFor([
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
@@ -270,7 +273,7 @@ export function createSceneWriting({
           ? "Propose native actions with commands. Change access only with a supplied access command."
           : "If supplied, leadSpeakerId identifies the addressed resident. Proposed native changes stay intentions until the game confirms them.",
         narrationResponse(nativeCommands, positions, npcIntroduction),
-        nativeCommands ? SCENE_NARRATION_KEEP : ordinarySceneKeep(positions),
+        nativeCommands ? "" : ordinarySceneKeepSources(positions),
         positions ? SCENE_RELATIONSHIP_DIRECTION : RELATIONSHIP_DIRECTION,
         positions ? SCENE_RELATIONSHIP_KEEP : RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",

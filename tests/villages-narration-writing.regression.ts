@@ -364,15 +364,14 @@ await runCase("narration-writing/single-request", async () => {
       ({ role, content }) => role === "user" && content.includes(`"leadSpeakerId":${JSON.stringify(f.id)}`),
     ),
   );
-  assert.match(frame.content, /Omit delivery and targetId for ordinary speech/u);
+  const messages = f.messages();
+  const cut = messages.findIndex((row) => row.cacheBreakpoint);
+  assert(cut >= 0 && cut < messages.indexOf(frame));
+  assert.equal(messages[cut].role, "user");
+  assert.match(messages[cut].content, /Omit delivery and targetId for ordinary speech/u);
   assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
   assert.match(system, /A direct answer can be one line/u);
-  assert(
-    f
-      .messages()
-      .filter((row) => row.cacheBreakpoint)
-      .some((row) => row.content.includes("AUTHORED IDENTITY")),
-  );
+  assert(messages.slice(0, cut).some((row) => row.content.includes("AUTHORED IDENTITY")));
   assert(!f.messages().some((row) => row.content.includes("input:[")));
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);

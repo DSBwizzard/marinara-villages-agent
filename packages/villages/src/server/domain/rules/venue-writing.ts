@@ -55,6 +55,7 @@ export const hasWritingEvidence = (block: VenueWritingBlock, retained: ReadonlyS
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
   identity: VenueWritingBlock[];
+  format: VenueWritingBlock[];
   transcript?: VenueWritingBlock[];
   frame?: VenueWritingBlock[];
   circumstances: VenueWritingBlock[];
@@ -69,6 +70,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     direction: "Writing direction",
     identity: "Complete authored character identity",
     authoredInstructions: "Authored post-history direction",
+    format: "Response format",
     transcript: "Witnessed Scene transcript",
     metadata: "Response format and evidence metadata",
     frame: "Current Scene reference",
@@ -77,13 +79,11 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
     const blocks = (sections[section] ?? []).filter((block) => block.text.trim());
-    const breakpoint =
-      section ===
-      (sections.authoredInstructions.some((block) => block.text.trim()) ? "authoredInstructions" : "identity");
+    const breakpoint = section === "format";
     if (breakpoint && blocks.length) blocks[blocks.length - 1] = { ...blocks.at(-1)!, cacheBreakpoint: true };
     if (!blocks.length) return [];
     const titled = [{ text: `## ${headings[section]}` }, ...blocks];
-    return ["transcript", "metadata", "frame", "conversation", "circumstances"].includes(section)
+    return ["format", "transcript", "metadata", "frame", "conversation", "circumstances"].includes(section)
       ? titled.map((block) => ({ ...block, role: "user" as const }))
       : titled;
   });
