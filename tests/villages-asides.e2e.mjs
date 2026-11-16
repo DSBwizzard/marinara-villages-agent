@@ -241,11 +241,14 @@ await withBrowser(browser, async () => {
       }, visible);
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
       await expect(band).toBeHidden();
+      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
+      await expect(page.getByRole("button", { name: "History", exact: true })).toBeHidden();
       const composerBox = await composer.boundingBox();
       assert.ok(composerBox.y >= 0 && composerBox.y + composerBox.height <= visible);
       const spriteBox = await npc.boundingBox();
       assert.equal(spriteBox.height, originalSpriteHeight, "keyboard leaves sprite scale unchanged");
       assert.ok(spriteBox.y + 24 < composerBox.y, "the keyboard posture keeps the cast above the composer");
+      await expect(page.getByRole("button", { name: "Done", exact: true })).toBeVisible();
       await expect(composer).toHaveValue("A draft to keep.");
       await page.screenshot({ path: resolve(output, `asides-keyboard-${width}x${height}.png`) });
       await page.evaluate((height) => {
@@ -253,6 +256,8 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       }, height);
       await expect(page.locator(tag)).not.toHaveAttribute("data-scene-keyboard", "");
+      await expect(band).toBeVisible();
+      await checkGeometry("after closing the keyboard");
       await composer.blur();
       await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
       await expect(band).toBeHidden();

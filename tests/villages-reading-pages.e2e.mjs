@@ -286,8 +286,7 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       });
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
-      assert.equal(await text.textContent(), beforeKeyboard);
-      assert.equal(await counter.textContent(), counterBeforeKeyboard);
+      await expect(reading).toBeHidden();
       const { y, ...keyboardSprite } = await images.first().boundingBox();
       assert.deepEqual(keyboardSprite, { x: baseline.x, width: baseline.width, height: baseline.height });
       assert.ok(y <= baseline.y, "the keyboard may lift the sprite without changing its size");
@@ -296,6 +295,9 @@ await withBrowser(browser, async () => {
         window.sceneViewport.dispatchEvent(new Event("resize"));
       });
       await expect(page.locator(tag)).not.toHaveAttribute("data-scene-keyboard", "");
+      await expect(reading).toBeVisible();
+      assert.equal(await text.textContent(), beforeKeyboard);
+      assert.equal(await counter.textContent(), counterBeforeKeyboard);
       await expect.poll(() => images.first().boundingBox()).toEqual(baseline);
       await draft.blur();
       if (width === 320) {

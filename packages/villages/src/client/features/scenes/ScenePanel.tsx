@@ -1494,6 +1494,13 @@ export function RoomPanel({
                   <SceneControlIcon name={busy ? "sending" : "send"} />
                 </button>
               </span>
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-chat-keyboard-done`}
+                onClick={() => composerRef.current?.blur()}
+              >
+                Done
+              </button>
             </div>
           </div>
         ) : null}

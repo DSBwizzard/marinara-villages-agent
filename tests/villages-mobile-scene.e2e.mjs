@@ -309,7 +309,6 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         });
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        assert.equal(await reading.innerText(), text);
         const withKeyboard = await boxes();
         for (const [index, { x, y, width, height }] of withKeyboard.entries()) {
           assert.deepEqual(
@@ -325,12 +324,13 @@ await withBrowser(browser, async () => {
         }
         const keyboardInput = await input.boundingBox();
         assert.ok(Math.abs(keyboardInput.y + keyboardInput.height - (height - 280)) < 1);
+        await expect(reading).toBeHidden();
         await screenshot("keyboard");
-        await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
+        await page.getByRole("button", { name: "Done", exact: true }).click();
         assert.equal(
           await page.locator("textarea[data-villages-scene-composer]").evaluate((el) => el === document.activeElement),
           false,
-          "hide dismisses keyboard focus",
+          "Done dismisses keyboard focus",
         );
         await page.evaluate(() => {
           window.sceneViewport.height += 280;
@@ -338,8 +338,7 @@ await withBrowser(browser, async () => {
         });
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
         await expect.poll(boxes).toEqual(baseline);
-        await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
-        await expect(reading).toBeFocused();
+        await expect(reading).toBeVisible();
         assert.equal(await reading.innerText(), text);
         await expect(composer).toHaveValue("Preserve this draft.");
       }
