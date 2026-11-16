@@ -186,6 +186,18 @@ await withBrowser(browser, async () => {
       return geometry;
     }
     await checkGeometry("normal viewport");
+    if (!mobile) {
+      await expect
+        .poll(async () => {
+          const [sprite, asides, dialogue] = await Promise.all([
+            npc.boundingBox(),
+            band.boundingBox(),
+            dock.boundingBox(),
+          ]);
+          return sprite.height - (dialogue.y - asides.y - asides.height);
+        })
+        .toBeGreaterThan(0);
+    }
     await expect(band.locator(`.${tag}-aside-slot[data-side="left"]`)).toHaveCount(2);
     await page.screenshot({ path: resolve(output, `asides-${width}x${height}.png`) });
     showNotice = true;

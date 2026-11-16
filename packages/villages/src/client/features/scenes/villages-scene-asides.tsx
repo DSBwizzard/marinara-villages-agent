@@ -64,7 +64,7 @@ export function SceneAsides<T extends { speakerId?: string }>({
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         if (!element.getClientRects().length) return;
-        const sceneTop = scene.getBoundingClientRect().top;
+        const sceneBounds = scene.getBoundingClientRect();
         const controlsBottom = Math.max(
           head.getBoundingClientRect().bottom,
           notices.getBoundingClientRect().bottom,
@@ -74,16 +74,20 @@ export function SceneAsides<T extends { speakerId?: string }>({
           ),
         );
         const dockTop = dock.getBoundingClientRect().top;
-        const top = Math.max(0, controlsBottom - sceneTop) + 8;
-        const available = sceneAsideAvailableHeight(dockTop, sceneTop, window.visualViewport?.offsetTop ?? 0, top);
+        const top = Math.max(0, controlsBottom - sceneBounds.top) + 8;
+        const available = sceneAsideAvailableHeight(
+          dockTop,
+          sceneBounds.top,
+          window.visualViewport?.offsetTop ?? 0,
+          top,
+        );
         element.style.setProperty("--aside-top", `${top}px`);
         element.style.setProperty("--aside-height", `${Math.min(available, Math.max(112, available * 0.6))}px`);
-        const clear = Math.max(0, dockTop - element.getBoundingClientRect().bottom - 8);
+        // The desktop dialogue overlays the full stage; only phones lift the cast above it.
+        const castFloor = mobile ? dockTop : sceneBounds.bottom;
+        const clear = Math.max(0, castFloor - element.getBoundingClientRect().bottom - 8);
         scene.style.setProperty("--villages-aside-cast-height", `${clear}px`);
-        scene.style.setProperty(
-          "--villages-aside-cast-lift",
-          `${Math.max(0, scene.getBoundingClientRect().bottom - dockTop)}px`,
-        );
+        scene.style.setProperty("--villages-aside-cast-lift", `${Math.max(0, sceneBounds.bottom - castFloor)}px`);
       });
     };
     const observer = new ResizeObserver(update);
@@ -102,7 +106,7 @@ export function SceneAsides<T extends { speakerId?: string }>({
       scene.style.removeProperty("--villages-aside-cast-height");
       scene.style.removeProperty("--villages-aside-cast-lift");
     };
-  }, []);
+  }, [mobile]);
   return (
     <div
       ref={root}
