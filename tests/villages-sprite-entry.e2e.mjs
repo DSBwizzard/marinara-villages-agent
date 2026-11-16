@@ -21,11 +21,11 @@ await withBrowser(browser, async () => {
           "</svg>",
       );
     const files = [
-      { filename: "front-a.png", label: "Happy_1", folderId: null, url: picture(false), version: "100" },
+      { filename: "front-a.png", label: "Happy", folderId: null, url: picture(false), version: "100" },
       { filename: "front-b.png", label: "Happy_2", folderId: null, url: picture(false, "#a561c3"), version: "100" },
       ...Array.from({ length: 17 }, (_, index) => ({
         filename: "side-" + (index + 1) + ".png",
-        label: "Happy_" + (index + 1) + "_side",
+        label: index === 16 ? "Happy" : "Happy_" + (index + 1) + "_side",
         folderId: null,
         url: picture(true, "#6192c3"),
         version: "100",
@@ -74,6 +74,7 @@ await withBrowser(browser, async () => {
           ),
         );
         current.manager.defaultExpressionId = body.defaultExpressionId;
+        current.manager.defaultView = body.defaultView;
         current.manager.useSprites = body.useSprites;
         current.token = "resident-" + saves.length;
         value = current;
@@ -108,7 +109,7 @@ await withBrowser(browser, async () => {
     await expect(screen.getByRole("heading", { name: "Mara’s appearance" })).toBeFocused();
     await expect(screen.getByRole("heading", { name: "Scene portrait" })).toBeVisible();
     const engineLink = screen.getByRole("button", {
-      name: "Professor mari reminder to offer help with sprites!!!!!",
+      name: "Open Character sprites",
       exact: true,
     });
     await expect(engineLink).toHaveCount(0);
@@ -122,7 +123,7 @@ await withBrowser(browser, async () => {
     await expect(frontPicker.getByRole("combobox", { name: "Sprite source" })).toHaveValue("");
     await expect(frontPicker.getByRole("option", { name: "No folder" })).toBeAttached();
     await expect(frontPicker.getByRole("checkbox", { name: "Thinking" })).toHaveCount(0);
-    await frontPicker.getByRole("checkbox", { name: "Happy_1", exact: true }).check();
+    await frontPicker.getByRole("checkbox", { name: "Happy front-a.png", exact: true }).check();
     await frontPicker.getByRole("checkbox", { name: "Happy_2", exact: true }).check();
     await frontPicker.getByRole("button", { name: "Add 2 Front sprites", exact: true }).click();
     const front = screen.getByRole("region", { name: "Front", exact: true });
@@ -137,15 +138,19 @@ await withBrowser(browser, async () => {
     await expect(sidePicker.getByRole("checkbox", { name: "Thinking" })).toBeVisible();
     await source.selectOption("");
     for (let i = 1; i <= 17; i++) {
-      await sidePicker.getByRole("checkbox", { name: "Happy_" + i + "_side", exact: true }).check();
+      await sidePicker
+        .getByRole("checkbox", { name: i === 17 ? "Happy side-17.png" : "Happy_" + i + "_side", exact: true })
+        .check();
     }
     await sidePicker.getByRole("button", { name: "Add 17 Side sprites", exact: true }).click();
     await expect(side.getByRole("heading", { name: "Side · 17" })).toBeVisible();
     await expect(screen.getByRole("heading", { name: "happy", exact: true })).toBeVisible();
-    await expect(front.getByRole("img", { name: "Happy_1 · Front" })).toHaveAttribute("src", files[0].url);
-    await side.getByRole("button", { name: "Happy_17_side", exact: true }).click();
-    await expect(side.getByRole("img", { name: "Happy_17_side · Side" })).toBeVisible();
-    await expect(front.getByRole("img", { name: "Happy_1 · Front" })).toBeVisible();
+    await expect(front.getByRole("img", { name: "Happy · Front" })).toHaveAttribute("src", files[0].url);
+    await side.getByRole("button", { name: "Happy", exact: true }).click();
+    await expect(side.getByRole("img", { name: "Happy · Side" })).toBeVisible();
+    await side.getByRole("button", { name: "Set as default", exact: true }).click();
+    await expect(side.getByRole("button", { name: "Default", exact: true })).toBeDisabled();
+    await expect(front.getByRole("button", { name: "Set as default", exact: true })).toBeEnabled();
     const sideBounds = await side.boundingBox();
     assert.ok(sideBounds && sideBounds.x + sideBounds.width <= width);
     await engineLink.click();
@@ -155,6 +160,11 @@ await withBrowser(browser, async () => {
     await screen.getByRole("button", { name: "Save", exact: true }).click();
     await expect(screen.getByRole("status")).toHaveText("Saved");
     assert.equal(saves[0].expressions.length, 19);
+    assert.equal(saves[0].defaultView, "side");
+    assert.equal(
+      saves[0].expressions.find(({ id }) => id === saves[0].defaultExpressionId).side.filename,
+      "side-17.png",
+    );
     assert.ok(saves[0].expressions.every((row) => Boolean(row.front) !== Boolean(row.side)));
     assert.equal(saves[0].folders, undefined);
     await engineLink.click();
@@ -163,6 +173,8 @@ await withBrowser(browser, async () => {
     await expect(entry).toBeFocused();
     await entry.click();
     await expect(side.getByRole("heading", { name: "Side · 17" })).toBeVisible();
+    await expect(side.getByRole("button", { name: "Default", exact: true })).toBeDisabled();
+    await side.getByRole("button", { name: "Happy_1_side", exact: true }).click();
     const remove = side.getByRole("button", { name: "Remove Happy_1_side from Side" });
     await remove.click();
     await expect(side.getByRole("heading", { name: "Side · 16" })).toBeVisible();

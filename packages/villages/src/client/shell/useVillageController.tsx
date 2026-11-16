@@ -52,8 +52,6 @@ import {
   useFoundingVenueReference,
 } from "../features/founding/controller-hooks.js";
 import {
-  createFoundingExitSetupDraft,
-  createFoundingNewSetupDraft,
   createFoundingRestoreSetupDraft,
   createFoundingRetrySetupSaving,
   useFoundingDraftAutosave,
@@ -71,6 +69,7 @@ import {
 import {
   createFoundingGotoSetupStep,
   createFoundingSuggestSetupVenues,
+  createFoundingDraftSetting,
   useFoundingStartOver,
 } from "../features/founding/setup-controller.js";
 import { useFoundingState } from "../features/founding/useFoundingState.js";
@@ -105,7 +104,6 @@ import {
   useDiscardRoomDebug,
   useDismissRoomNotice,
   useGreetRoom,
-  useLeaveRoom,
   useMoveRoom,
   useOpenRoom,
   useReceiveRoomRecordEvents,
@@ -235,9 +233,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // the other half of that statement lives — a place with one person standing in
   // it never reaches this screen at all.
   const [room, setRoom] = useSceneRecord();
-  const [requestedScreen, setScreen] = useState<
-    "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person"
-  >("home");
+  const [requestedScreen, setScreen] = useState<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">(
+    "home",
+  );
 
   const {
     focusedProjectId,
@@ -461,24 +459,23 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     updateSetupMapRequest,
   });
 
-  const exitSetupDraft = createFoundingExitSetupDraft({ ...founding, flushSetupDraft, setScreen });
-
   const confirmVillages = useConfirmation(snapshot?.settings.maps?.[0]?.id);
-  const newSetupDraft = createFoundingNewSetupDraft({
+  const retrySetupSaving = createFoundingRetrySetupSaving({
     ...founding,
     confirmVillages,
-    get openSetup() {
-      return openSetup;
-    },
-    snapshot,
-    updateSetupMapRequest,
+    persistSetupDraft,
+    setupDraftData,
   });
-
-  const retrySetupSaving = createFoundingRetrySetupSaving({ ...founding, persistSetupDraft, setupDraftData });
 
   // Roster changes reconcile only the required graph; existing authored Venues survive.
 
   const suggestionSignal = useActivitySignal(visible && screen === "setup");
+  const draftSetupSetting = createFoundingDraftSetting({
+    ...founding,
+    signal: suggestionSignal,
+    persistSetupDraft,
+    setupDraftData,
+  });
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
     ...founding,
     setupWorldName: undefined,
@@ -506,8 +503,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
   useVisibleInterval(
     (signal) => {
-      if (founding.setupWorkspace.suggestionRequest && !founding.setupWorkspace.suggestionRequest.failure)
-        return suggestSetupVenues(undefined, signal);
+      const pending = founding.setupWorkspace.suggestionRequest;
+      if (pending && !pending.failure)
+        return pending.draftSetting ? draftSetupSetting("recover", signal) : suggestSetupVenues(undefined, signal);
     },
     founding.setupWorkspace.suggestionRequest && !founding.setupWorkspace.suggestionRequest.failure ? 2000 : null,
     visible && screen === "setup",
@@ -695,16 +693,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const closeRoom = useCloseRoom({
     ...scenes,
     onUnknownSceneExit: sceneRestoration.retry,
-    isFounded: snapshot?.isFounded,
-    loadSnapshot,
-    receiveRoomRecordEvents,
-    room,
-    setRoom,
-    setScreen,
-  });
-
-  const leaveRoom = useLeaveRoom({
-    ...scenes,
     isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -1082,7 +1070,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSnapshot,
   });
 
-  useFoundingDraftOffer({ ...founding, loadCatalog, loadPersonas, openSetup, setScreen, snapshot });
+  useFoundingDraftOffer({ ...founding, openSetup, restoreSetupDraft, setScreen, snapshot });
 
   useFoundingPreparationPolling({
     ...founding,
@@ -1312,12 +1300,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     dismissRoomNotice,
     draftPins,
     draftSaveError: founding.draftSaveError,
-    draftSavedAt: founding.draftSavedAt,
-    draftSaving: founding.draftSaving,
+    draftNeedsReplacement: founding.draftNeedsReplacement,
     drawPlaceImage,
     dropPlaceImage,
     error,
-    exitSetupDraft,
     explorationOrigin,
     explorationReturnTab,
     explorationSearch,
@@ -1334,7 +1320,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     homeBuildings,
     keepPlaceImage,
     lastSceneEnding: scenes.lastSceneEnding,
-    leaveRoom,
     leaveVenue,
     loadMemoryLibrary,
     loadSnapshot,
@@ -1354,7 +1339,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     movingSetupVenueId: founding.movingSetupVenueId,
     nameOfCharacter,
     navigationView,
-    newSetupDraft,
     openMenu,
     openPerson,
     openPlace,
@@ -1386,7 +1370,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     removeVenue,
     requestEdits,
     resetArmed,
-    restoreSetupDraft,
     retryPreparation,
     retrySavedScene,
     retrySetupSaving,
@@ -1401,7 +1384,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomError: scenes.roomError,
     roomGreetingError: scenes.roomGreetingError,
     roomGreetingNotice: scenes.roomGreetingNotice,
-    roomLeaveSubmissionIdRef: scenes.roomLeaveSubmissionIdRef,
     contactRecovery: scenes.contactRecovery,
     setContactRecovery: scenes.setContactRecovery,
     roomMoveOperationIdRef: scenes.roomMoveOperationIdRef,
@@ -1563,6 +1545,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     standingAt,
     startOver,
     suggestSetupVenues,
+    draftSetupSetting,
     townMapImage,
     updateSetupMapRequest,
     uploadSetupImage,

@@ -88,6 +88,7 @@ export type ZoneAccessDecision = {
 };
 /** Explicit player projections. Never serialize the authoritative ledger. */
 export type ZoneAccessView = {
+  reachable?: boolean;
   decision: ZoneAccessDecision;
   policy?: ZoneAccessPolicy;
   permissions?: AccessPermission[];

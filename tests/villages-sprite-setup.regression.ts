@@ -116,6 +116,8 @@ const expressions = [
 ];
 const body = { token: initial.token, requestId: "batch", useSprites: true, expressions, defaultExpressionId: happyId };
 
+await assert.rejects(service.save(id, { ...body, defaultView: "side" }, signal), /Choose an available default facing/);
+
 await assert.rejects(
   service.save(
     id,
@@ -154,7 +156,9 @@ await assert.rejects(
 );
 assert.deepEqual(documents.get(documentId), initialDocument);
 const readsBeforeSave = catalogReads;
-const saved = await service.save(id, body, signal);
+const chosen = { ...body, defaultView: "front" };
+const saved = await service.save(id, chosen, signal);
+assert.equal(saved.manager.defaultView, "front");
 assert.equal(catalogReads, readsBeforeSave + 1, "A whole batch validates against one Engine catalog read");
 assert.equal(saved.revision, 6);
 assert.equal(saved.manager.assignments.length, 19);
@@ -165,8 +169,12 @@ assert.deepEqual(
 );
 assert.equal(saved.manager.framing.mode, "half");
 assert.equal(saved.manager.assignments[0].artworkId, front.id);
-assert.deepEqual(await service.save(id, body, signal), saved, "Lost acknowledgements replay the exact committed save");
-await assert.rejects(service.save(id, { ...body, useSprites: false }, signal), /save changed/);
+assert.deepEqual(
+  await service.save(id, chosen, signal),
+  saved,
+  "Lost acknowledgements replay the exact committed save",
+);
+await assert.rejects(service.save(id, { ...chosen, useSprites: false }, signal), /save changed/);
 await assert.rejects(service.preparedManager(id, 5), /changed/);
 assert.deepEqual(await service.preparedManager(id, 6), saved.manager);
 assert.equal(

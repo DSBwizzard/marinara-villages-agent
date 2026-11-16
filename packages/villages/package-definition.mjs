@@ -7,7 +7,14 @@ const menuArtAssets = [
   "storybook-scenery-matte.webp",
   "venue-fallback.webp",
   "venue-fallback-day.webp",
+  "mari-founding-overlook.webp",
+  "mari-founding-overlook-day.webp",
+  "mari-founding-neutral.webp",
+  "mari-founding-happy.webp",
+  "mari-founding-playful.webp",
 ];
+
+const sceneSprite = "npc-silhouette.webp";
 
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
@@ -31,7 +38,7 @@ export const villagesDefinition = {
     description,
     runtimeDisabled: false,
   },
-  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", ...menuArtAssets],
+  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", ...menuArtAssets, sceneSprite],
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
@@ -45,7 +52,7 @@ export const villagesDefinition = {
       iconPaths: ["villages-icon.png"],
     },
     assets: {
-      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), ...menuArtAssets],
+      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), ...menuArtAssets, sceneSprite],
     },
   },
 };

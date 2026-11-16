@@ -8,7 +8,7 @@ Every Venue has an **Entrance** (`exterior`) plus up to six other Zones. The Ent
 
 ## Shared Venue page
 
-Map tiles, Places, People profiles, Scene headers, Requests and Village Settings open the same Venue page. **About** shows assigned villagers and their roles and offers **Visit** to enter a Scene. **Zones** lets you choose a room to see its known artwork and access status. Browsing leaves the player's location, admission and visit history alone and makes no generation requests. The map calls the arrival space Entrance.
+Map tiles, Places, People profiles, Scene headers, Requests and Village Settings open the same Venue page. **About** shows assigned villagers and their roles and offers **Visit** to enter a Scene. **Zones** lists every Zone by its current name, including unvisited and restricted Zones. Select a Zone to see its access status and last observed artwork. Browsing leaves the player's location, admission and visit history alone and makes no generation requests. The map calls the arrival space Entrance.
 
 In Founding, drag Zones on the layout or use their arrow keys to arrange them without overlap. **Connect Zones** chooses a pair and shows existing links with Remove actions while active. Founding supports adding and removing up to six non-Entrance Zones. Removing a Zone clears its connections, positions and destination references. Quick Start combines Venue details and the layout in **Venue**. Selection carries to the **Zone** tab, where the heading has previous/next controls and compact access choices. Selecting the artwork thumbnail opens its controls.
 

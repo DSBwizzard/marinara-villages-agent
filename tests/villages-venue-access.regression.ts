@@ -413,6 +413,11 @@ for (const scenario of [
   const home = fixture();
   world.venues = [home];
   const target = home.zones!.find((zone) => zone.id === "office")!;
+  target.name = "Unobserved workshop";
+  world.foundedAt = stamp;
+  const passage = home.zones!.find((zone) => zone.id === "living")!;
+  passage.access!.mode = "public";
+  passage.access!.accompanied = false;
   const scene = coerceSession({
     version: 5,
     id: "escort-scene",
@@ -487,7 +492,23 @@ for (const scenario of [
     ["invited", "escort-already-inside"].includes(scenario),
     scenario,
   );
+  assert.equal(projected.name, target.name, "The Zone name is visible for every access state.");
   assert.equal(projected.description, "", "An invitation never reveals the unvisited interior");
+  if (scenario === "invited") {
+    const player = { name: "Player", description: "", personaId: "", missing: false };
+    const choices = (live: typeof world) =>
+      villageSettings(world, player, scene, context, new Date(stamp), live).venues[0].zones!;
+    const live = structuredClone(world);
+    const offered = choices(live).find((zone) => zone.id === target.id)!;
+    assert.equal(offered.accessView?.reachable, true);
+    assert.equal(offered.name, target.name);
+    assert.equal(offered.description, "");
+    live.venues[0].access!.permissions[0].revoked = true;
+    const revoked = choices(live).find((zone) => zone.id === target.id)!;
+    assert.equal(revoked.accessView?.reachable, false);
+    assert.equal(revoked.name, target.name, "Revocation changes reachability, so the Zone name stays visible.");
+    assert.equal(revoked.description, "");
+  }
   assert.equal(
     JSON.stringify({ home, scene }),
     original,

@@ -15,7 +15,6 @@ export function useFoundingState() {
   const [savedSetupDraft, setSavedSetupDraft] = useState<SavedDeviceDraft<SetupDraftData> | null>(null);
   const [lorebooks, setLorebooks] = useState<VillageLorebookOption[] | null>(null);
   const [lorebooksError, setLorebooksError] = useState("");
-  const pendingDraftSaves = useRef(0);
   const [setupLorebookDraft, setSetupLorebookDraft] = useState<string[]>([]);
 
   const [setupLoreTokenBudgetDraft, setSetupLoreTokenBudgetDraft] = useState(1600);
@@ -127,15 +126,14 @@ export function useFoundingState() {
 
   const [draftSaveError, setDraftSaveError] = useState("");
 
-  const [draftSaving, setDraftSaving] = useState(false);
-
-  const [draftSavedAt, setDraftSavedAt] = useState("");
+  const [draftNeedsReplacement, setDraftNeedsReplacement] = useState(false);
 
   const draftRevision = useRef(0);
 
   const draftSaveQueue = useRef<Promise<void>>(Promise.resolve());
 
   const draftBlocked = useRef(false);
+  const skipRestoredDraftAutosave = useRef(false);
 
   const setupZoneDrafts = useRef<Record<string, AreaDraftCache["current"]>>({});
 
@@ -151,7 +149,6 @@ export function useFoundingState() {
     setLorebooks,
     lorebooksError,
     setLorebooksError,
-    pendingDraftSaves,
     setupLorebookDraft,
     setSetupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -253,13 +250,12 @@ export function useFoundingState() {
     setDraftReady,
     draftSaveError,
     setDraftSaveError,
-    draftSaving,
-    setDraftSaving,
-    draftSavedAt,
-    setDraftSavedAt,
+    draftNeedsReplacement,
+    setDraftNeedsReplacement,
     draftRevision,
     draftSaveQueue,
     draftBlocked,
+    skipRestoredDraftAutosave,
     setupZoneDrafts,
     setupOfferedRef,
   };

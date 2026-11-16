@@ -159,9 +159,9 @@ await withRoom(async ({ read, worker, control, prompts, loreReads }) => {
   assert.equal(view(ready), "A walnut cabinet.\n\nA tall window.");
   assert.equal(room(ready).description, "");
   assert.equal(room(ready).name, "Clockwork Vault");
-  assert.equal(settingsRoom(ready).name, "Staff area");
+  assert.equal(settingsRoom(ready).name, "Clockwork Vault");
   assert.equal(room(ready).preparation?.lore?.[0]?.id, "fixture-lore");
-  assert.doesNotMatch(JSON.stringify(settings(ready)), /Clockwork Vault|Unobserved work room lore/);
+  assert.doesNotMatch(JSON.stringify(settings(ready)), /A walnut cabinet|A tall window|Unobserved work room lore/);
   assert.equal(room(ready).observed, undefined);
   const scope = capturePrivateInterior(ready, ready.venues[0], room(ready), at);
   assert.equal(scope.entries.length, 2);

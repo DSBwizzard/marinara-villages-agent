@@ -82,6 +82,7 @@ export function DossierIcon({ name }: { name: DossierSection | "inspect" }) {
   };
   return (
     <svg
+      className="mari-rgb-static-icon"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

@@ -75,9 +75,10 @@ await withBrowser(browser, async () => {
         content: `Main ${delivery} conversation.`,
         at: now,
       };
+      const asideVoices = ["ordinary", delivery === "shout" ? "shout" : "whisper"];
       session.lines = [
         main,
-        ...["ordinary", "whisper", "shout"].map((voice, index) => ({
+        ...asideVoices.map((voice, index) => ({
           id: `aside-${voice}`,
           role: "assistant",
           speakerId: residents[index].characterId,
@@ -97,9 +98,10 @@ await withBrowser(browser, async () => {
       const reading = page.getByRole("region", { name: "Current paragraph" });
       await expect(reading).toContainText(`Main ${delivery} conversation.`);
       await expect(page.locator(`.${tag}-chat-vn-card`)).toHaveAttribute("data-delivery", delivery);
-      const band = page.locator(`.${tag}-chat-vn-asides`);
-      await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(3);
-      for (const voice of ["ordinary", "whisper", "shout"])
+      await expect(page.getByLabel(/^(Whisper|Shout)$/u)).toHaveCount(0);
+      const band = page.locator(`.${tag}-scene-asides`);
+      await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(2);
+      for (const voice of asideVoices)
         await expect(band.locator(`[data-register="${voice === "ordinary" ? "side" : voice}"]`)).toContainText(
           `Floating ${voice} remark.`,
         );

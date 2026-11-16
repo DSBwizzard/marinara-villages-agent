@@ -69,7 +69,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     dismissRoomNotice,
     goHome,
     greetRoom,
-    leaveRoom,
     loadSnapshot,
     mobile,
     moveRoom,
@@ -88,7 +87,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomError,
     roomGreetingError,
     roomGreetingNotice,
-    roomLeaveSubmissionIdRef,
     contactRecovery,
     setContactRecovery,
     roomNotices,
@@ -273,14 +271,13 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             const venue = sceneVenues.find((entry) => entry.id === room.placeId);
             return (venue?.zones ?? [])
               .filter((zone) => {
-                if (zone.id === room.zoneId) return true;
+                if (zone.id === room.zoneId) return false;
                 if (zone.closed) return false;
-                return zone.accessView?.decision.allowed ?? false;
+                return zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false;
               })
               .map((zone) => ({
                 id: zone.id,
                 label: sceneZoneLabel(zone) + (zone.accessView?.decision.reason === "invitation" ? " (invited)" : ""),
-                closed: zone.closed,
               }));
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
@@ -306,12 +303,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onDraft={(value) => {
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
-            roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void sendRoom()}
-          onConclude={() => void leaveRoom()}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);
