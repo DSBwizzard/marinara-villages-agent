@@ -10,6 +10,8 @@ import type {
   RepairTopic,
   RepairValue,
 } from "../../../shared/contracts/repair.js";
+import { REPAIR_NO_CHANGES } from "../../../shared/contracts/repair.js";
+import { repairClockMinutes } from "../../../shared/helpers/repair-clock.js";
 import { request, messageFrom, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
@@ -35,7 +37,7 @@ export function useRepairController(
     [placePath, setPlacePath] = useState<string[]>([]);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({}),
     [review, setReview] = useState<RepairReview | null>(null);
-  const [failure, setFailure] = useState<{ message: string; field?: string }>(),
+  const [failure, setFailure] = useState<{ message: string; field?: string; noChanges?: boolean }>(),
     [busy, setBusy] = useState(false),
     [saving, setSaving] = useState(false),
     [query, setQuery] = useState("");
@@ -148,6 +150,7 @@ export function useRepairController(
         setFailure({
           message: messageFrom(cause, "The repair could not be completed."),
           field: cause instanceof VillageApiError ? /^repair-field:(.+)$/u.exec(cause.code ?? "")?.[1] : undefined,
+          noChanges: cause instanceof VillageApiError && cause.code === REPAIR_NO_CHANGES,
         });
     } finally {
       if (operation.current === id) setBusy(false);
@@ -283,6 +286,33 @@ export function useRepairController(
     return act((ticket) => fetchRecord(id, ticket, pick));
   };
   const draft = selected ? drafts[draftKey(selected.id, agendaPick)] : undefined;
+  const fields = selected ? editorFields(selected, agendaPick) : [];
+  const hasFieldChanges = fields.some(({ key, value, type }) => {
+    const next = draft?.values[key] ?? value;
+    if (type === "clock") {
+      const before = repairClockMinutes(String(value));
+      if (before !== undefined) return repairClockMinutes(String(next)) !== before;
+    }
+    return key.startsWith("activity:") ? String(next).trim() !== String(value).trim() : next !== value;
+  });
+  const canReview = Boolean(
+    selected &&
+    draft?.action &&
+    !failure?.noChanges &&
+    (selected.topic === "memories" &&
+    draft.action === "correct" &&
+    !selected.creating &&
+    selected.people?.some((p) => p.text !== undefined)
+      ? selected.people.some(
+          (person) =>
+            draft.knowers.includes(person.id) &&
+            (person.forgotten ||
+              (person.text ?? selected.fields.find((field) => field.key === "text")?.value) !== draft.values.text),
+        )
+      : draft.action === "correct" || draft.action === "add-activity" || selected.creating
+        ? hasFieldChanges
+        : true),
+  );
   const update = (change: Partial<Draft>) => {
     if (!selected) return;
     const key = draftKey(selected.id, agendaPick);
@@ -291,9 +321,9 @@ export function useRepairController(
     epoch.current++;
     setFailure(undefined);
   };
-  const prepare = () =>
-    act(async (ticket) => {
-      if (!selected || !draft) return;
+  const prepare = () => {
+    if (!selected || !draft || !canReview) return;
+    return act(async (ticket) => {
       pending.current ??= {
         operationId: createVillagesClientId(),
         recordId: selected.id,
@@ -316,6 +346,7 @@ export function useRepairController(
       setRestoreAcknowledged(false);
       setView("review");
     });
+  };
   const apply = () =>
     act(async (ticket) => {
       if (!review) return;
@@ -405,10 +436,11 @@ export function useRepairController(
     setPlacePath,
     creation,
     selected,
-    editorFields: selected ? editorFields(selected, agendaPick) : [],
+    editorFields: fields,
     draft,
     review,
-    error: failure?.message ?? "",
+    canReview,
+    error: failure?.noChanges ? "" : (failure?.message ?? ""),
     errorField: failure?.field,
     busy,
     saving,

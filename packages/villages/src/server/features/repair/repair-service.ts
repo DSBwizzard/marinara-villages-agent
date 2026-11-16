@@ -11,6 +11,7 @@ import type {
   RepairRequest,
   RepairReview,
 } from "../../../shared/contracts/repair.js";
+import { REPAIR_NO_CHANGES } from "../../../shared/contracts/repair.js";
 import {
   repairDigest,
   repairDocumentDigest,
@@ -36,7 +37,7 @@ import { createRepairTransactionCodec } from "../../adapters/storage/repair-tran
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageRepository } from "../../domain/models/world-repository.js";
 import type { VillageState } from "../../domain/models/world.js";
-import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import { continuityHolderKey } from "../../domain/rules/continuity.js";
 import { backgroundRecoveryState } from "../../domain/rules/work-recovery.js";
@@ -736,7 +737,8 @@ export function createRepairService(ports: RepairPorts) {
         before: record.summary,
         after: record.actions.find((a) => a.id === request.action)?.label ?? request.action,
       });
-    if (!changedFields.length) throw badRequest("Change a value before reviewing.");
+    if (!changedFields.length)
+      throw new VillagesRequestError(400, "There are no changes to review.", REPAIR_NO_CHANGES);
     const memory =
       kind === "memory"
         ? {

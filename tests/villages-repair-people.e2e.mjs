@@ -39,6 +39,10 @@ const agendaDay = {
     residentId: "a",
     date: "2026-11-17",
     weekday: "Tuesday",
+    venues: [
+      { value: "workshop", label: "Workshop", zones: [{ value: "bench", label: "Workbench" }] },
+      { value: "garden", label: "Garden", zones: [{ value: "plot", label: "Herb plot" }] },
+    ],
     blocks: [
       { startMinute: 540, endMinute: 600, activity: "Tending herbs", place: "Garden", repairIndex: 0 },
       { startMinute: 600, endMinute: 660, activity: "Meet at the gate", source: "agreed" },
@@ -50,23 +54,15 @@ const agendaDay = {
     { key: "activity:0", label: "Activity 1", type: "text", value: "Tending herbs" },
     { key: "start:0", label: "Activity 1 start", type: "clock", value: "09:00" },
     { key: "end:0", label: "Activity 1 end", type: "clock", value: "10:00" },
+    { key: "venue:0", label: "Venue", type: "choice", value: "garden" },
+    { key: "zone:0", label: "Zone", type: "choice", value: "plot" },
     { key: "activity:1", label: "Activity 2", type: "text", value: "Binding notebooks" },
     { key: "start:1", label: "Activity 2 start", type: "clock", value: "12:00" },
     { key: "end:1", label: "Activity 2 end", type: "clock", value: "13:00" },
     { key: "activity:new", label: "Activity", type: "text", value: "" },
     { key: "start:new", label: "Start", type: "clock", value: "" },
     { key: "end:new", label: "End", type: "clock", value: "" },
-    {
-      key: "venue:new",
-      label: "Venue",
-      type: "choice",
-      value: "",
-      options: [
-        { value: "", label: "No location" },
-        { value: "workshop", label: "Workshop", zones: [{ value: "bench", label: "Workbench" }] },
-        { value: "garden", label: "Garden", zones: [{ value: "plot", label: "Herb plot" }] },
-      ],
-    },
+    { key: "venue:new", label: "Venue", type: "choice", value: "" },
     { key: "zone:new", label: "Zone", type: "choice", value: "" },
   ],
   source: ["09:00–24:00 · Tending herbs · Garden", "10:00–11:00 · Meet at the gate · Agreed plan"],
@@ -82,6 +78,7 @@ const today = {
   title: "Nora · Agenda · Monday, Nov 16",
   agendaDay: "Monday, Nov 16",
   agenda: {
+    ...agendaDay.agenda,
     residentId: "a",
     date: "2026-11-16",
     weekday: "Monday",
@@ -352,7 +349,10 @@ await withBrowser(browser, async () => {
       await expect(root.getByRole("textbox", { name: "Activity" })).toHaveValue("Sorting tools");
       await expect(root.getByRole("button", { name: "Repair activity" })).toHaveCount(0);
       await expect(root.getByRole("group", { name: "Day planner" })).toBeVisible();
+      const review = root.getByRole("button", { name: "Review changes", exact: true });
+      await expect(review).toBeDisabled();
       await root.getByRole("button", { name: "Add activity", exact: true }).click();
+      await expect(review).toBeDisabled();
       await root.getByRole("textbox", { name: "Activity" }).fill("Label drawers");
       await root.getByRole("textbox", { name: "Start" }).fill("14:00");
       const end = root.getByRole("textbox", { name: "End" });
@@ -389,12 +389,27 @@ await withBrowser(browser, async () => {
       await openHerbs();
       await expect(root.getByRole("textbox")).toHaveCount(3);
       await expect(root.getByRole("textbox", { name: "End" })).toHaveValue("10:00");
-      await root.getByRole("textbox", { name: "Start" }).fill("09:30");
-      await root.getByRole("button", { name: "Review changes" }).click();
+      const start = root.getByRole("textbox", { name: "Start" });
+      await expect(review).toBeDisabled();
+      await start.fill("9:00");
+      await expect(review).toBeDisabled();
+      await start.fill("09:00");
+      await expect(venue).toHaveValue("garden");
+      await expect(zone).toHaveValue("plot");
+      await venue.selectOption("workshop");
+      await expect(review).toBeEnabled();
+      await venue.selectOption("garden");
+      await expect(zone).toHaveValue("plot");
+      await expect(review).toBeDisabled();
+      await venue.selectOption("workshop");
+      await zone.selectOption("bench");
+      await review.click();
       const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
       assert.equal(sent.recordId, agendaDay.id);
-      assert.equal(sent.values["start:0"], "09:30");
-      assert.deepEqual(Object.keys(sent.values).sort(), ["activity:0", "end:0", "start:0"]);
+      assert.equal(sent.values["start:0"], "09:00");
+      assert.equal(sent.values["venue:0"], "workshop");
+      assert.equal(sent.values["zone:0"], "bench");
+      assert.deepEqual(Object.keys(sent.values).sort(), ["activity:0", "end:0", "start:0", "venue:0", "zone:0"]);
       await expect(root.getByLabel("Affected records").getByText(agendaDay.title, { exact: true })).toBeVisible();
       assert.equal(await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true);
       await root.getByRole("button", { name: "Back", exact: true }).click();

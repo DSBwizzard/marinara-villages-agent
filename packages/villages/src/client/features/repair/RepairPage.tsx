@@ -130,15 +130,25 @@ export function RepairPage({
     if (record) void c.open(record.id, { index, token: record.token });
   };
   const agendaDraftStale = c.selected?.agendaDay && c.draft?.agendaToken !== c.selected.token;
-  const venueId = c.draft?.values["venue:new"];
-  const venue = c.editorFields.find((field) => field.key === "venue:new")?.options?.find((o) => o.value === venueId);
-  const fields = c.editorFields.flatMap((field) =>
-    field.key !== "zone:new"
-      ? [field]
-      : venueId
-        ? [{ ...field, options: [{ value: "", label: "Choose automatically" }, ...(venue?.zones ?? [])] }]
-        : [],
-  );
+  const venueField = c.editorFields.find((field) => field.key.startsWith("venue:"));
+  const venues = c.selected?.agenda?.venues ?? [];
+  const venueId = venueField && c.draft?.values[venueField.key];
+  const venue = venues.find((option) => option.value === venueId);
+  const fields = c.editorFields.flatMap((field) => {
+    if (!c.selected?.agendaDay) return [field];
+    if (field === venueField) {
+      const options = [{ value: "", label: "No location" }, ...venues];
+      if (field.value && !options.some((option) => option.value === field.value))
+        options.push({ value: String(field.value), label: "Current location (unavailable)" });
+      return [{ ...field, options }];
+    }
+    if (!field.key.startsWith("zone:")) return [field];
+    if (!venueId) return [];
+    const options = [{ value: "", label: "Choose automatically" }, ...(venue?.zones ?? [])];
+    if (venueId === venueField?.value && field.value && !options.some((option) => option.value === field.value))
+      options.push({ value: String(field.value), label: "Current Zone (unavailable)" });
+    return [{ ...field, options }];
+  });
   const inlineError =
     (c.view === "edit" || editingAgenda) &&
     !agendaDraftStale &&
@@ -181,7 +191,14 @@ export function RepairPage({
       values: {
         ...c.draft?.values,
         [key]: next,
-        ...(key === "venue:new" ? { "zone:new": "" } : {}),
+        ...(key === venueField?.key
+          ? {
+              [`zone:${key.split(":")[1]}`]:
+                next === venueField.value
+                  ? (c.editorFields.find((field) => field.key.startsWith("zone:"))?.value ?? "")
+                  : "",
+            }
+          : {}),
       },
     });
   return (
@@ -749,7 +766,12 @@ export function RepairPage({
                   {editingAgenda ? "Close" : "Back to records"}
                 </button>
                 {c.selected.actions.length && !agendaDraftStale ? (
-                  <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
+                  <button
+                    type="button"
+                    className="repair-primary"
+                    disabled={c.busy || !c.canReview}
+                    onClick={() => void c.prepare()}
+                  >
                     {reviewTitle}
                   </button>
                 ) : null}

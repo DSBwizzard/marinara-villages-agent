@@ -157,7 +157,9 @@ await runCase("repair/agenda", async () => {
   const f = await fixture();
   await f.repo.mutateAuthority((state) => {
     state.villagers[0]!.agenda = unwrittenVillageAgenda();
-    state.venues.push(venue("hall"));
+    const hall = venue("hall");
+    hall.zones!.find((zone) => zone.id === "common")!.name = "Entrance";
+    state.venues.push(hall);
   });
   const person = (await f.api.index()).people.find((row) => row.id === "aqua")!;
   const dates = (await f.api.list("people", "", 0, person.id, "agenda")).records;
@@ -183,9 +185,9 @@ await runCase("repair/agenda", async () => {
   await f.api.apply(undo.id, undo.token);
   assert.deepEqual((await f.read()).villagers[0]!.agenda, start);
   const todayRecord = dates[0]!;
-  assert.deepEqual(todayRecord.fields.find((field) => field.key === "venue:new")?.options?.[1]?.zones, [
-    { value: "exterior", label: "Entrance" },
-    { value: "common", label: "Common room" },
+  assert.deepEqual(todayRecord.agenda?.venues?.[0]?.zones, [
+    { value: "exterior", label: "Entrance (1)" },
+    { value: "common", label: "Entrance (2)" },
   ]);
   const todayEdit = await f.prepare(edit(todayRecord.id, { "activity:0": "Count the lanterns" }, "edit-today"));
   await f.api.apply(todayEdit.id, todayEdit.token);
@@ -215,7 +217,7 @@ await runCase("repair/agenda", async () => {
     addToday.changes.some(
       (change) =>
         change.before.includes("00:00–24:00 · Count the lanterns") &&
-        change.after.includes("13:00–14:00 · Refill the lanterns · hall · Entrance"),
+        change.after.includes("13:00–14:00 · Refill the lanterns · hall · Entrance (1)"),
     ),
   );
   await f.api.apply(addToday.id, addToday.token);
@@ -238,6 +240,26 @@ await runCase("repair/agenda", async () => {
   assert.ok(
     (await f.read()).villagers[0]!.agenda!.activeDay!.blocks.every((block) => block.activity !== "Refill the lanterns"),
   );
+  const restoredAddition = await f.prepare({ ...addition, operationId: "add-for-relocation" });
+  await f.api.apply(restoredAddition.id, restoredAddition.token);
+  const noChange = edit(
+    todayRecord.id,
+    { "start:1": "13:00", "venue:1": "hall", "zone:1": "exterior" },
+    "same-location",
+  );
+  await assert.rejects(() => f.prepare(noChange), { code: "repair-no-changes" });
+  await assert.rejects(() => f.prepare(edit(todayRecord.id, { "zone:1": "elsewhere" }, "unknown-zone")), {
+    code: "repair-field:zone:1",
+  });
+  const move = await f.prepare(edit(todayRecord.id, { "zone:1": "common" }, "move-existing"));
+  assert.ok(
+    move.changes.some((row) => row.before.includes("hall · Entrance (1)") && row.after.includes("hall · Entrance (2)")),
+  );
+  await f.api.apply(move.id, move.token);
+  assert.equal((await f.read()).villagers[0]!.agenda!.activeDay!.blocks[1]!.zoneId, "common");
+  const undoMove = await f.api.undo(move.id, "undo-move");
+  await f.api.apply(undoMove.id, undoMove.token);
+  assert.deepEqual((await f.read()).villagers[0]!.agenda, savedToday);
 
   {
     let clock = new Date("2026-05-20T12:00:00Z");
@@ -284,6 +306,28 @@ await runCase("repair/agenda", async () => {
             action: "add-activity",
           }),
         { code: "repair-field:zone:new", message: /unavailable for part of that time/ },
+      );
+      await timed.repo.mutateAuthority((state) => {
+        const agenda = state.villagers[0]!.agenda!;
+        (agenda.plannedDays ??= {})["2026-05-21"] = [
+          { startMinute: 0, endMinute: 660, activity: "Morning errands", venueId: "" },
+          { startMinute: 660, endMinute: 690, activity: "Read in the hall", venueId: "hall", zoneId: "common" },
+          { startMinute: 690, endMinute: 1440, activity: "Afternoon errands", venueId: "" },
+        ];
+      });
+      await assert.rejects(
+        () =>
+          timed.prepare(
+            edit(
+              repairId("agenda", "aqua", "2026-05-21"),
+              {
+                "end:1": "12:00",
+                "start:2": "12:00",
+              },
+              "extend-existing-zone-closure",
+            ),
+          ),
+        { code: "repair-field:end:1", message: /unavailable for part of that time/ },
       );
       const review = await timed.prepare(
         edit(repairId("agenda", "aqua", "2026-05-21"), { "activity:0": "Too late" }, "before-rollover"),

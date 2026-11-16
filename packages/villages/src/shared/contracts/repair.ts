@@ -1,8 +1,11 @@
 import type { AgendaWeek } from "./agenda.js";
 
+export const REPAIR_NO_CHANGES = "repair-no-changes";
+
 export type RepairAgendaDay = Omit<AgendaWeek["days"][number], "blocks"> & {
   residentId: string;
   today?: boolean;
+  venues?: { value: string; label: string; zones: { value: string; label: string }[] }[];
   blocks: (AgendaWeek["days"][number]["blocks"][number] & { repairIndex?: number; note?: string })[];
 };
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";
@@ -21,7 +24,7 @@ export type RepairField = {
   label: string;
   value: RepairValue;
   type: "text" | "number" | "choice" | "boolean" | "clock";
-  options?: { value: string; label: string; zones?: { value: string; label: string }[] }[];
+  options?: { value: string; label: string }[];
   min?: number;
   max?: number;
 };
