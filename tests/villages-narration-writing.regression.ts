@@ -345,21 +345,27 @@ await runCase("narration-writing/single-request", async () => {
     .map((row) => row.content)
     .join("\n");
   const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
-  assert.equal(frame.role, "system");
+  assert.equal(frame.role, "user");
   assert(
     frame.content.includes(
       `"dialogueSpeakers":${JSON.stringify(reply.readset.source.scene.contactGeneration?.actorIds)}`,
     ),
   );
-  assert(!frame.content.includes('"leadSpeakerId"'));
+  assert(
+    !frame.content
+      .split("\n")
+      .find((line: string) => line.startsWith('{"location":'))
+      ?.includes('"leadSpeakerId"'),
+  );
   const addressed = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, what do you think?", "chat");
   assert(
     addressed.fitted.messages.some(
       ({ role, content }) => role === "user" && content.includes(`"leadSpeakerId":${JSON.stringify(f.id)}`),
     ),
   );
-  assert.match(system, /Omit delivery and targetId for ordinary speech/u);
-  assert.doesNotMatch(system, /"whisper\|shout"/u);
+  assert.match(frame.content, /Omit delivery and targetId for ordinary speech/u);
+  assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
+  assert.match(system, /A direct answer can be one line/u);
   assert(
     f
       .messages()
@@ -379,10 +385,13 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
-  assert.match(reminder.content, /Use only reply fields in dialogue and narration/u);
-  assert.match(reminder.content, /For a developed exchange, aim for about 500 words of visible prose/u);
-  assert.match(reminder.content, /count current segments from 1/u);
-  assert.match(reminder.content, /short exact quotes and speakerId/u);
+  assert.doesNotMatch(
+    deepSeek
+      .messages()
+      .map((row) => row.content)
+      .join("\n"),
+    /500 words/u,
+  );
   assert.equal(deepSeekReply.readset.positionedSceneSources, true);
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
@@ -390,16 +399,12 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(deepSeek.messages().at(-1).content, "");
   const greeting = deepSeek
     .messages()
-    .filter((row) => row.role === "system")
     .map((row) => row.content)
     .join("\n");
   assert.match(greeting, /Open the Scene from established presence/u);
   assert.doesNotMatch(greeting, /several substantial exchanges/u);
   const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
-  const departure = leaving.fitted.messages
-    .filter((row) => row.role === "system")
-    .map((row) => row.content)
-    .join("\n");
+  const departure = leaving.fitted.messages.map((row) => row.content).join("\n");
   assert.match(departure, /close when it is complete/u);
   assert.doesNotMatch(departure, /several substantial exchanges/u);
   const casual = await f.writing.prepareVenueTurnMessages(

@@ -133,9 +133,9 @@ const prepared = await prepareScenePrompt(state, cards[0], "chat", "What about A
 const { prompt } = prepared;
 const positions = [
   "## Writing direction",
-  "## Response format and evidence metadata",
   "## Complete authored character identity",
   "## Authored post-history direction",
+  "## Response format and evidence metadata",
   "## Witnessed conversation",
   "## Current Scene circumstances",
 ].map((heading) => prompt.indexOf(heading));
