@@ -6,7 +6,7 @@ import { CONNECTION_SETUP_PROBLEMS, ELEMENT_TAG } from "../../shared/constants.j
 import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
-import { AgentConnections } from "../settings/AgentConnections.js";
+import { AgentConnectionsControls, useAgentConnections } from "../settings/AgentConnections.js";
 import { Appearance } from "../residents/Appearance.js";
 import { FoundingPagination } from "./FoundingPagination.js";
 import { FoundingDialog } from "./FoundingDialog.js";
@@ -18,13 +18,7 @@ import {
 import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide } from "./FoundingGuide.js";
 import { FoundingSettingScene, settingBeat } from "./FoundingSettingScene.js";
-import {
-  FoundingPersonaSelector,
-  FoundingVillagerPicker,
-  LoreTokenBudgetField,
-  SETUP_STEPS,
-  VillageLorebookPicker,
-} from "./FoundingPanels.js";
+import { FoundingPersonaSelector, FoundingVillagerPicker, SETUP_STEPS } from "./FoundingPanels.js";
 import { QuickStartButton } from "./QuickStartButton.js";
 import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
@@ -95,8 +89,6 @@ export function FoundingScreen({
     generateSetupImage,
     generateSetupTownMap,
     gotoSetupStep,
-    lorebooks,
-    lorebooksError,
     movingSetupVenueId,
     nameOfCharacter,
     patchSetupVenue,
@@ -116,7 +108,6 @@ export function FoundingScreen({
     setSetupSpriteRevisions,
     setupSpriteRevisions,
     setSetupFoundingVillagerIds,
-    setSetupLorebookDraft,
     setSetupMapBusy,
     setSetupMapProblem,
     setSetupMapReviewed,
@@ -132,7 +123,6 @@ export function FoundingScreen({
     setupEditorOpen,
     setupFocusIssue,
     setupFoundingVillagerIds,
-    setupLoreTokenBudgetDraft,
     setupLorebookDraft,
     setupMapBusy,
     setupMapProblem,
@@ -147,7 +137,6 @@ export function FoundingScreen({
     setupPlayerBackground,
     setupProblem: currentSetupProblem,
     setupWorldName,
-    setSetupWorldName,
     setupSetting,
     setupContext,
     setSetupContext,
@@ -173,7 +162,11 @@ export function FoundingScreen({
   const setupProblem = venueConnectionUnavailable
     ? "The System connection is unavailable. Choose another model or review it in Engine."
     : rawSetupProblem;
-  const [contextView, setContextView] = useState("");
+  const connections = useAgentConnections(screen === "setup");
+  useEffect(() => {
+    if (screen === "setup") setConnectionSetupProblem(connections.setupProblem);
+  }, [screen, connections.setupProblem, setConnectionSetupProblem]);
+  const [connectionPickerOpen, setConnectionPickerOpen] = useState(false);
   const [phone, setPhone] = useState(() => window.matchMedia(PHONE_LAYOUT).matches);
   useEffect(() => {
     const layout = window.matchMedia(PHONE_LAYOUT);
@@ -186,21 +179,24 @@ export function FoundingScreen({
   const mobileScene = phone && !!chapterMenu && setupWorkspace.mobileMenu !== chapterMenu && !draftSaveError;
   const beat = settingBeat(setupWorkspace);
   const manualSetting = beat === "manual";
-  const [arrival, setArrival] = useState<"turning" | "greeting">();
+  const [arrival, setArrival] = useState<"fading" | "turning" | "greeting">();
+  const fading = arrival === "fading";
   const turning = arrival === "turning";
   const enteringScene = arrival === "greeting" && setupStep === 0 && beat === "welcome";
   const showTitle =
-    turning ||
+    fading ||
     (setupStep === 0 &&
       beat === "welcome" &&
       setupWorkspace.settingBeat === undefined &&
       setupWorkspace.settingIntroPending === true &&
       !draftSaveError);
+  const chooseConnections = setupStep === 0 && setupWorkspace.settingIntroPending === "connections" && !fading;
+  const prelude = showTitle || chooseConnections || turning;
   useEffect(() => {
-    if (!turning) return;
-    const timer = window.setTimeout(() => setArrival("greeting"), 2000);
+    if (!fading && !turning) return;
+    const timer = window.setTimeout(() => setArrival(fading ? undefined : "greeting"), fading ? 350 : 500);
     return () => window.clearTimeout(timer);
-  }, [turning]);
+  }, [fading, turning]);
   const hasSettingDraft = !!setupWorkspace.settingDraft;
   const settingEditorOpen =
     manualSetting ||
@@ -246,8 +242,12 @@ export function FoundingScreen({
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
   const settingTitle = useRef<HTMLHeadingElement>(null);
+  const connectionTitle = useRef<HTMLHeadingElement>(null);
   const chapterLine = useRef<HTMLParagraphElement>(null);
   const chapterTitle = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (chooseConnections) connectionTitle.current?.focus({ preventScroll: true });
+  }, [chooseConnections]);
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0 });
     bodyRef.current?.parentElement?.scrollTo({ top: 0 });
@@ -337,7 +337,7 @@ export function FoundingScreen({
   ]);
   if (screen === "setup") {
     const title = showTitle ? (
-      <div className="villages-founding-title" inert={turning}>
+      <div className="villages-founding-title" inert={fading}>
         <div className="villages-founding-logo">
           <h1>Villages</h1>
           <svg className="mari-rgb-static-icon" viewBox="0 15 600 104" aria-hidden="true" focusable="false">
@@ -357,27 +357,65 @@ export function FoundingScreen({
         <button
           type="button"
           onClick={() => {
-            setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
+            if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) setArrival("fading");
             setSetupWorkspace((workspace) => ({
               ...workspace,
-              settingIntroPending: undefined,
-              settingBeat: "welcome",
+              settingIntroPending: "connections",
             }));
           }}
         >
           START
         </button>
       </div>
+    ) : chooseConnections ? (
+      <section
+        className="villages-setting-dialogue villages-founding-connections"
+        aria-labelledby="founding-models-title"
+      >
+        <h2 id="founding-models-title" tabIndex={-1} ref={connectionTitle}>
+          Choose your models
+        </h2>
+        <AgentConnectionsControls connections={connections} kind="language" compact />
+        <div className="villages-founding-menu-actions">
+          <button
+            type="button"
+            onClick={() => setSetupWorkspace((workspace) => ({ ...workspace, settingIntroPending: true }))}
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            className="villages-forging-primary"
+            disabled={!!connections.setupProblem || !!draftSaveError}
+            onClick={() => {
+              setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
+              setSetupWorkspace((workspace) => ({
+                ...workspace,
+                settingIntroPending: undefined,
+                settingBeat: "welcome",
+              }));
+            }}
+          >
+            Next
+          </button>
+        </div>
+      </section>
+    ) : turning ? (
+      <span hidden />
     ) : null;
-    const openSettingEditor = (view?: "Connections") => {
-      if (view) setContextView(view);
+    const openConnectionPicker = () => {
+      if (connectionPickerOpen) return;
+      connections.refresh();
+      setConnectionPickerOpen(true);
+    };
+    const openSettingEditor = () => {
       setSettingEditorOpen(true);
       if (!phone) requestAnimationFrame(() => settingTitle.current?.focus());
     };
     const changeStep = (step: number, openMenu = false) => {
+      if (openMenu && step === 0) setSettingEditorOpen(true);
       if (phone && openMenu) {
         setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: CHAPTER_MENUS[step] }));
-        if (openMenu && step === 0) setSettingEditorOpen(true);
       }
       gotoSetupStep(step);
     };
@@ -509,7 +547,10 @@ export function FoundingScreen({
         }
         onClick={() => {
           if (spriteWorking.current) return;
-          if (setupStep === 0 && connectionSetupProblem) setContextView("Connections");
+          if (connectionSetupProblem) {
+            openConnectionPicker();
+            return;
+          }
           setValidationAttempt((attempt) => attempt + 1);
           setValidatedFields((fields) => [
             ...new Set([
@@ -529,6 +570,11 @@ export function FoundingScreen({
                 : []),
             ]),
           ]);
+          if (setupStep === 0 && manualSetting && setupName.trim() && setupLocationName.trim() && setupSetting.trim()) {
+            setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "world", settingEditorOpen: false }));
+            bodyRef.current?.scrollTo({ top: 0 });
+            return;
+          }
           if (setupStep === 2 && !setupMapSrc) {
             requestAnimationFrame(() =>
               bodyRef.current?.querySelector<HTMLElement>(".villages-forging-map-warning")?.focus(),
@@ -546,7 +592,7 @@ export function FoundingScreen({
       >
         {busy
           ? "Saving village…"
-          : phone && setupStep < 3
+          : (phone && setupStep < 3) || (setupStep === 0 && manualSetting)
             ? "Next"
             : ["Let’s meet the villagers", "Let’s set up their homes", "Let’s look it over", "Found village"][
                 setupStep
@@ -601,8 +647,10 @@ export function FoundingScreen({
         data-lighting={storybookDaylight ? "day" : "night"}
         data-scene-arrival={enteringScene || undefined}
         data-title={showTitle || undefined}
+        data-prelude={prelude || undefined}
+        data-title-fading={fading || undefined}
         data-mari-turning={turning || undefined}
-        aria-busy={turning || undefined}
+        aria-busy={fading || turning || undefined}
         ref={rootRef}
       >
         <ol className="villages-forging-steps" aria-label="Founding phases" role="list">
@@ -625,7 +673,24 @@ export function FoundingScreen({
             </li>
           ))}
         </ol>
-        {setupStep === 0 && artSettingsOpen ? (
+        {connectionPickerOpen ? (
+          <FoundingDialog
+            title="Model Connections"
+            onClose={() => setConnectionPickerOpen(false)}
+            dismissible={!connections.saving}
+            showCloseButton={!connections.saving}
+          >
+            <div className="villages-founding-editor-body">
+              <AgentConnectionsControls connections={connections} kind="language" compact />
+            </div>
+            <footer>
+              <button type="button" disabled={connections.saving} onClick={() => setConnectionPickerOpen(false)}>
+                Done
+              </button>
+            </footer>
+          </FoundingDialog>
+        ) : null}
+        {setupStep === 2 && artSettingsOpen ? (
           <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
               <SceneryStyleFields
@@ -635,6 +700,7 @@ export function FoundingScreen({
                 onChange={controller.setSceneryStyle}
                 onProfileChange={controller.setSceneryStyleProfileId}
               />
+              <AgentConnectionsControls connections={connections} kind="images" compact />
               <label>
                 Map details
                 <textarea
@@ -748,11 +814,12 @@ export function FoundingScreen({
             {setupStep === 0 && (!phone || !settingEditorOpen) ? (
               <FoundingSettingScene
                 controller={controller}
+                connectionProblem={connections.setupProblem}
                 phone={phone}
                 enteringScene={enteringScene}
                 title={title}
-                onConnections={() => openSettingEditor("Connections")}
-                onEditSetting={() => openSettingEditor()}
+                onConnections={openConnectionPicker}
+                onEditSetting={openSettingEditor}
                 onBeatChange={() => {
                   setArrival(undefined);
                   bodyRef.current?.scrollTo({ top: 0 });
@@ -818,88 +885,6 @@ export function FoundingScreen({
                   }}
                 />
               </FoundingField>
-              <div className="villages-place-options">
-                <div className="villages-founding-tabs" role="group" aria-label="Village context">
-                  {["World rules", "Lorebooks", "Connections"].map((view) => (
-                    <button
-                      key={view}
-                      type="button"
-                      aria-expanded={contextView === view}
-                      onClick={() => setContextView(contextView === view ? "" : view)}
-                    >
-                      {view}
-                      {view === "World rules" && (setupContext.rules.trim() || setupWorldName.trim()) ? (
-                        <span aria-hidden="true"> · Added</span>
-                      ) : null}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
-                    onClick={() => setArtSettingsOpen(true)}
-                  >
-                    Art settings
-                  </button>
-                </div>
-                <div className="villages-founding-context" hidden={!contextView}>
-                  {contextView === "World rules" ? (
-                    <>
-                      <FoundingField title="World name" optional>
-                        <input
-                          autoComplete="off"
-                          maxLength={120}
-                          value={setupWorldName}
-                          disabled={busy}
-                          onChange={(event) => setSetupWorldName(event.target.value)}
-                        />
-                      </FoundingField>
-                      <FoundingField title="World rules" optional>
-                        <textarea
-                          autoComplete="off"
-                          aria-label="World rules"
-                          maxLength={4096}
-                          rows={3}
-                          value={setupContext.rules}
-                          disabled={busy}
-                          onChange={(event) => {
-                            const rules = event.currentTarget.value;
-                            setSetupContext((context) => ({ ...context, rules }));
-                          }}
-                        />
-                      </FoundingField>
-                    </>
-                  ) : null}
-                  {contextView === "Lorebooks" ? (
-                    <>
-                      <VillageLorebookPicker
-                        books={lorebooks}
-                        error={lorebooksError}
-                        selected={setupLorebookDraft}
-                        onChange={setSetupLorebookDraft}
-                        disabled={busy}
-                      />
-                      <LoreTokenBudgetField
-                        value={setupLoreTokenBudgetDraft}
-                        onChange={controller.setSetupLoreTokenBudgetDraft}
-                        min={snapshot?.settings.loreTokenBudgetMin ?? 0}
-                        max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
-                        disabled={busy}
-                      />
-                    </>
-                  ) : null}
-                  <div hidden={contextView !== "Connections"}>
-                    {validatedFields.includes("connections") &&
-                    [CONNECTION_SETUP_PROBLEMS.required, CONNECTION_SETUP_PROBLEMS.missing].includes(
-                      connectionSetupProblem,
-                    ) ? (
-                      <p role="alert" data-founding-problem tabIndex={-1}>
-                        {connectionSetupProblem}
-                      </p>
-                    ) : null}
-                    <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
-                  </div>
-                </div>
-              </div>
               {phone ? (
                 <div className="villages-founding-menu-actions">
                   <button
@@ -955,6 +940,13 @@ export function FoundingScreen({
                   <>
                     <button
                       type="button"
+                      disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
+                      onClick={() => setArtSettingsOpen(true)}
+                    >
+                      Art settings
+                    </button>
+                    <button
+                      type="button"
                       disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
                       onClick={() => {
                         if (setupMapRequest?.phase === "paused") {
@@ -1005,13 +997,7 @@ export function FoundingScreen({
                 }
                 problemAction={
                   venueConnectionUnavailable ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        gotoSetupStep(0);
-                        openSettingEditor("Connections");
-                      }}
-                    >
+                    <button type="button" onClick={openConnectionPicker}>
                       Check Model Connections
                     </button>
                   ) : undefined

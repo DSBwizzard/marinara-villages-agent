@@ -60,7 +60,7 @@ await withBrowser(browser, async () => {
         }
         value = { session: null };
       } else if (path.endsWith("/connections"))
-        value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
+        value = { systemConnectionId: "clock-test", narrationConnectionId: "clock-test", imageConnectionId: "" };
       else if (path.endsWith("/catalog")) value = { characters: [] };
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/lorebooks")) value = { books: [] };
@@ -78,6 +78,9 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/town-map")) value = { image: base.settings.townMapImage };
       await fulfill(route, { status, contentType: "application/json", body: JSON.stringify(value) });
     });
+    await page.route("**/api/connections", (route) =>
+      fulfill(route, { json: [{ id: "clock-test", name: "Clock fixture", provider: "language" }] }),
+    );
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await runCase("village-clock/" + width, async () => {
@@ -111,12 +114,17 @@ await withBrowser(browser, async () => {
       const mari = scene.getByRole("region", { name: "Professor Mari", exact: true });
       await expect(scene).toHaveAttribute("aria-busy", "true");
       await expect(scene.locator(".villages-founding-title")).toHaveJSProperty("inert", true);
+      await expect(scene.locator(".villages-founding-title")).toHaveCSS("animation-name", "villages-title-fade");
       await expect(scene.locator('.villages-setting-stage img[src$="mari-founding-looking-up.webp"]')).toHaveCount(1);
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
-      await page.clock.fastForward(1999);
+      await page.clock.fastForward(350);
+      const models = scene.getByRole("region", { name: "Choose your models" });
+      await expect(models).toBeVisible();
       await expect(phases).toHaveCount(0);
       await expect(mari).toHaveCount(0);
-      await page.clock.fastForward(1);
+      await models.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(scene).toHaveAttribute("data-mari-turning", "true");
+      await page.clock.fastForward(500);
       await expect(scene.locator(".villages-founding-title")).toHaveCount(0);
       await expect(phases).toBeVisible();
       await expect(mari.getByText("Professor Mari", { exact: true })).toBeVisible();
@@ -125,9 +133,9 @@ await withBrowser(browser, async () => {
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
       await scene.getByRole("button", { name: "Draft with Mari", exact: true }).click();
-      const world = scene.getByLabel("The larger world");
+      const world = scene.getByLabel(width === 390 ? "World description" : "The larger world");
       await world.fill("A string of settlements along the coast");
-      await page.clock.fastForward(2000);
+      await page.clock.fastForward(3000);
       await expect(scene).toHaveAttribute("data-lighting", "night");
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook\.webp/);
       await expect(world).toHaveValue("A string of settlements along the coast");

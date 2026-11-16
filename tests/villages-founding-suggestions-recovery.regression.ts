@@ -133,6 +133,11 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     [{ lorebookReferences: [lorebookReference] }, { world: worldBrief, village: brief }],
   );
   assert.equal(completions, 3);
+  const authoredWorld = { worldName: "Relay Belt", worldRules: "The gates only open at noon." };
+  const authoredDraft = await writer.suggestStartingVenues({ ...draftInput, ...authoredWorld });
+  assert.equal(authoredDraft.setting?.worldName, authoredWorld.worldName);
+  assert.equal(authoredDraft.setting?.rules, authoredWorld.worldRules);
+  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredWorld, village: brief });
 }
 {
   const app = Fastify();
@@ -425,10 +430,12 @@ try {
   const noop = () => undefined;
   let name = "My village";
   let location = "My quay";
+  let worldName = "  My world  ";
+  let rules = "  The tide stops at midnight.  ";
   const settingPorts: Parameters<typeof createFoundingDraftSetting>[0] = {
     ...clientPorts,
     setupWorkspace: workspace,
-    setupDraftData: { name, startingLocationName: location, setting: "", worldName: "", context: { rules: "" } },
+    setupDraftData: { name, startingLocationName: location, setting: "", worldName, context: { rules } },
     setupLorebookDraft: ["new-book"],
     setupLoreTokenBudgetDraft: 1800,
     setupSuggestionsClaim: { current: false },
@@ -440,8 +447,12 @@ try {
       location = typeof update === "function" ? update(location) : update;
     },
     setSetupSetting: noop,
-    setSetupWorldName: noop,
-    setSetupContext: noop,
+    setSetupWorldName: (update) => {
+      worldName = typeof update === "function" ? update(worldName) : update;
+    },
+    setSetupContext: (update) => {
+      rules = (typeof update === "function" ? update({ rules } as any) : update).rules;
+    },
   };
   const resume = createFoundingDraftSetting(settingPorts);
   await resume("recover");
@@ -457,7 +468,10 @@ try {
     settingPosts++;
     assert.equal(persisted.workspace.suggestionRequest.settingReplacement.name, "My village");
     assert.equal(persisted.workspace.suggestionRequest.settingReplacement.startingLocationName, "My quay");
-    assert.equal(JSON.parse(String(init?.body)).settingReplacement, undefined);
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.settingReplacement, undefined);
+    assert.equal(body.worldName, worldName.trim());
+    assert.equal(body.worldRules, rules.trim());
     throw new TypeError("Synthetic lost connection after admission");
   };
   const draft = createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace });
@@ -485,6 +499,8 @@ try {
   await createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace })("recover");
   assert.equal(name, "New village", "A recovered result honors the original replacement confirmation");
   assert.equal(location, "", "Recovery preserves a field cleared after confirmation");
+  assert.equal(worldName, "  My world  ", "A draft cannot rewrite a supplied world name");
+  assert.equal(rules, "  The tide stops at midnight.  ", "A draft cannot rewrite supplied standing rules");
   assert.equal(workspace.suggestionRequest, undefined);
   lost = false;
 } finally {

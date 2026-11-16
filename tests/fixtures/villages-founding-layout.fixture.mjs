@@ -99,6 +99,7 @@ export async function verifyFoundingLayout(group) {
           generationImage,
           mapReceipt;
         const artRequests = [];
+        let modelSelection = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname,
             method = route.request().method();
@@ -146,7 +147,9 @@ export async function verifyFoundingLayout(group) {
                 "selectedLorebookIds",
                 "sourceKey",
                 "worldBrief",
+                "worldRules",
               ]);
+              assert.equal(body.worldRules, "The sun never sets.");
               assert.deepEqual(body.selectedLorebookIds, ["relay-belt"]);
               assert.equal(body.worldBrief, worldBrief);
               assert.equal(body.loreTokenBudget, 1600);
@@ -272,11 +275,12 @@ export async function verifyFoundingLayout(group) {
               persona: { ...personas[0], description: "A patient observer.", identity: "A patient observer." },
             });
           if (path.endsWith("/connections")) {
-            if (holdConnectionRead) {
+            if (method === "PUT") modelSelection = { ...modelSelection, ...route.request().postDataJSON() };
+            if (method === "GET" && holdConnectionRead) {
               connectionReadHeld = true;
               return;
             }
-            return send({ systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" });
+            return send(modelSelection);
           }
           if (path.endsWith("/catalog")) return send({ characters });
           if (path.endsWith("/lorebooks"))
@@ -291,6 +295,7 @@ export async function verifyFoundingLayout(group) {
             contentType: "application/json",
             body: JSON.stringify([
               { id: "talk", name: "Language model", provider: "language", defaultForAgents: true },
+              { id: "alt-talk", name: "Draft model", provider: "language" },
               { id: "image", name: "Image model", provider: "image_generation", profileImportReviewRequired: "true" },
             ]),
           }),
@@ -462,15 +467,62 @@ export async function verifyFoundingLayout(group) {
           await expect(start).toBeVisible();
         }
         await start.click();
-        const reduceMotion = view.height === 650;
         await expect(start).toHaveCount(0);
-        if (!reduceMotion) {
-          await expect(root).toHaveAttribute("data-mari-turning", "true");
-          await expect(title).toHaveCSS("animation-name", "villages-title-fade");
-          await expect(sidePose).toHaveCSS("animation-name", "villages-mari-turn-away");
-          await expect(frontPose).toHaveCSS("animation-name", "villages-mari-turn-forward");
-          await expect(title).toHaveCSS("opacity", "0");
+        const modelGate = root.getByRole("region", { name: "Choose your models" });
+        const models = modelGate.getByRole("region", { name: "Model Connections" });
+        const system = models.getByRole("button", { name: /^System / });
+        await expect(modelGate.getByRole("heading")).toBeFocused();
+        await expect(root.getByRole("region", { name: "Professor Mari" })).toHaveCount(0);
+        await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
+        await expect(frontPose).toHaveCSS("opacity", "0");
+        await expect(sidePose).toHaveCSS("animation-name", "none");
+        await expect(models.getByRole("button", { name: /^Images / })).toHaveCount(0);
+        await expect(models.getByRole("button", { name: /^GM / })).toContainText("Language model");
+        await expect(system).toContainText("Language model");
+        await expect(modelGate.getByRole("button", { name: "Next" })).toBeInViewport({ ratio: 1 });
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-models-" + view.width + ".png"),
+          });
+        if (view.width === 390 && view.height === 844) {
+          await system.click();
+          const picker = page.getByRole("dialog", { name: "System", exact: true });
+          await expect(picker.getByRole("button", { name: /^Language model/ })).toHaveAttribute("aria-current", "true");
+          await expect(picker.getByRole("button", { name: "Use Engine default" })).toHaveCount(0);
+          await page.evaluate(() => {
+            const deadline = AbortSignal.timeout.bind(AbortSignal);
+            AbortSignal.timeout = (ms) => {
+              if (ms !== 15_000) return deadline(ms);
+              const controller = new AbortController();
+              window.expireConnectionRead = () => controller.abort(new DOMException("Timed out", "TimeoutError"));
+              return controller.signal;
+            };
+          });
+          holdConnectionRead = true;
+          await picker.getByRole("button", { name: "Refresh list", exact: true }).click();
+          await expect.poll(() => connectionReadHeld).toBe(true);
+          await page.keyboard.press("Escape");
+          await expect(modelGate.getByRole("button", { name: "Next" })).toBeDisabled();
+          await page.evaluate(() => window.expireConnectionRead());
+          const timedOut = models.getByRole("alert");
+          await expect(timedOut).toContainText("Checking model connections timed out.");
+          holdConnectionRead = false;
+          await timedOut.getByRole("button", { name: "Retry", exact: true }).click();
+          await system.click();
+          await picker.getByRole("button", { name: /^Draft model/ }).click();
+          await expect(system).toContainText("Draft model");
+          assert.equal(modelSelection.systemConnectionId, "alt-talk");
+          assert.equal(modelSelection.narrationConnectionId, "talk");
+          await expect
+            .poll(() =>
+              page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.settingIntroPending),
+            )
+            .toBe("connections");
+          await page.reload();
+          await page.addScriptTag({ content: foundingBundle });
+          await expect(system).toContainText("Draft model");
         }
+        await modelGate.getByRole("button", { name: "Next" }).click();
         await expect(root).toHaveCSS("background-image", titleBackdrop);
         await expect.poll(() => root.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
         await expect(
@@ -550,6 +602,7 @@ export async function verifyFoundingLayout(group) {
           if (process.env.VILLAGES_SCREENSHOT_DIR)
             await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-wider-world.png") });
         }
+        await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         if (draftWithLore) {
           await worldField.fill(worldBrief);
           await expect
@@ -713,92 +766,18 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-setting-editor-" + view.width + ".png"),
           });
-        await button("World rules").click();
-        await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
-        if (!phone) {
-          await root.getByLabel("World rules", { exact: true }).scrollIntoViewIfNeeded();
-          await expect(stage.locator("img")).toBeInViewport({ ratio: 1 });
-          assert.equal(
-            await root.locator('.villages-forging-body[data-step="0"]').evaluate((body) => body.scrollTop),
-            0,
-            "Scrolling settings keeps Mari on the terrace",
-          );
-        }
-        await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
+        await expect(root.getByRole("group", { name: "Village context" })).toHaveCount(0);
+        await expect(button("Art settings")).toHaveCount(0);
+        await expect(root.getByLabel("World rules", { exact: true })).toHaveCount(0);
         await expect(root.getByLabel("First day", { exact: true })).toHaveCount(0);
-        await button("Connections").click();
-        const models = root.getByRole("region", { name: "Model Connections" });
-        const system = models.getByRole("button", { name: /^System / });
-        await expect(system).toContainText("Language model");
-        await expect(models.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
-        await system.click();
-        const systemPicker = page.getByRole("dialog", { name: "System", exact: true });
-        await expect(systemPicker.getByRole("button", { name: /^Language model/ })).toHaveAttribute(
-          "aria-current",
-          "true",
-        );
-        await expect(systemPicker.getByRole("button", { name: "Use Engine default" })).toHaveCount(0);
-        await page.evaluate(() => {
-          const deadline = AbortSignal.timeout.bind(AbortSignal);
-          AbortSignal.timeout = (ms) => {
-            if (ms !== 15_000) return deadline(ms);
-            const controller = new AbortController();
-            window.expireConnectionRead = () => controller.abort(new DOMException("Timed out", "TimeoutError"));
-            return controller.signal;
-          };
-        });
-        holdConnectionRead = true;
-        await systemPicker.getByRole("button", { name: "Refresh list", exact: true }).click();
-        await expect.poll(() => connectionReadHeld).toBe(true);
-        await expect(systemPicker.getByRole("status")).toHaveText("Checking model connections…");
-        await page.keyboard.press("Escape");
-        await settingNext().click();
-        await expect(root).toHaveAttribute("data-step", "0");
-        await expect(models.getByRole("status")).toBeFocused();
-        await page.evaluate(() => window.expireConnectionRead());
-        const timedOut = models.getByRole("alert");
-        await expect(timedOut).toContainText("Checking model connections timed out.");
-        await expect(system).toBeDisabled();
-        holdConnectionRead = false;
-        await timedOut.getByRole("button", { name: "Retry", exact: true }).click();
-        await expect(system).toBeEnabled();
-        await expect(root.getByText("Checking model connections…", { exact: true })).toHaveCount(0);
-        await expect(system).toContainText("Language model");
-        await system.click();
-        await page.keyboard.press("Escape");
-        await expect(system).toBeFocused();
-        await button("World rules").click();
-        await expect(root.getByLabel("Village Timezone", { exact: true })).toHaveCount(0);
-        await button("Art settings").click();
-        const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
-        await artSettings
-          .getByRole("group", { name: "Scenery style preset" })
-          .getByRole("button", { name: "Ink", exact: true })
-          .click();
-        await expect
-          .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
-          .toBe("fixture-ink");
-        await artSettings.getByRole("button", { name: "Custom description", exact: true }).click();
-        await artSettings
-          .getByLabel("Scenery style description", { exact: true })
-          .fill("Watercolor with muted teal and warm amber.");
-        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
-        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
-        if (process.env.VILLAGES_SCREENSHOT_DIR)
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
-          });
-        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
-        await expect(artSettings).toHaveCount(0);
-        assert.equal(generatedImages, 0, "Changing art settings never generates an image");
-        assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
-        await button("Art settings").click();
-        await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
-          "Watercolor with muted teal and warm amber.",
-        );
-        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
         await bounds("setting");
         await settingNext().click();
+        if (phone && !draftWithLore) {
+          await expect(root.getByLabel("World rules", { exact: true })).toHaveValue("The sun never sets.");
+          await button("Next").click();
+          await expect(root.getByRole("heading", { name: "Lorebooks", exact: true })).toBeVisible();
+          await button("Next").click();
+        }
         await expect(root).toHaveAttribute("data-step", "1");
         await enterChapter();
         if (view.width === 390 && view.height === 844) {
@@ -829,6 +808,36 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-step", "2");
         await enterChapter();
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
+        await button("Art settings").click();
+        const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
+        await expect(artSettings.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
+        await expect(artSettings.getByRole("button", { name: /^System / })).toHaveCount(0);
+        await artSettings
+          .getByRole("group", { name: "Scenery style preset" })
+          .getByRole("button", { name: "Ink", exact: true })
+          .click();
+        await expect
+          .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
+          .toBe("fixture-ink");
+        await artSettings.getByRole("button", { name: "Custom description", exact: true }).click();
+        await artSettings
+          .getByLabel("Scenery style description", { exact: true })
+          .fill("Watercolor with muted teal and warm amber.");
+        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
+        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
+          });
+        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(artSettings).toHaveCount(0);
+        assert.equal(generatedImages, 0, "Changing art settings never generates an image");
+        assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
+        await button("Art settings").click();
+        await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
+          "Watercolor with muted teal and warm amber.",
+        );
+        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
@@ -972,7 +981,7 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "zone-editing-" + view.width + ".png"),
           });
-        await expect(root.getByRole("button", { name: "Art settings", exact: true })).toHaveCount(0);
+        await expect(sheet.getByRole("button", { name: "Art settings", exact: true })).toHaveCount(0);
         const image = await page.evaluate(() => {
           const canvas = document.createElement("canvas");
           canvas.width = 1536;
@@ -1098,15 +1107,10 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
         await expect(root.getByText("stale-model-id", { exact: false })).toHaveCount(0);
         await button("Check Model Connections").click();
-        await expect(root).toHaveAttribute("data-step", "0");
-        await expect(models).toBeVisible();
-        await expect(root.getByLabel("First map name", { exact: true })).toHaveValue("Old Harbour");
-        await settingNext().click();
-        await expect(root).toHaveAttribute("data-step", "1");
-        await enterChapter();
-        await forward("Let’s set up their homes").click();
         await expect(root).toHaveAttribute("data-step", "2");
-        await enterChapter();
+        const repair = root.getByRole("dialog", { name: "Model Connections", exact: true });
+        await expect(repair.getByRole("button", { name: /^System / })).toBeVisible();
+        await repair.getByRole("button", { name: "Done", exact: true }).click();
         assert.equal(suggestions, 1, "checking connections never retries generation");
         failVenueConnection = false;
         await button("Retry").click();

@@ -2,7 +2,7 @@ import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingSpeaker, foundingMariSprite } from "./FoundingGuide.js";
-import { VillageLorebookPicker } from "./FoundingPanels.js";
+import { LoreTokenBudgetField, VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
 type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]> | "manual";
@@ -20,6 +20,7 @@ export function settingBeat(workspace: FoundingScreenController["setupWorkspace"
 
 export function FoundingSettingScene({
   controller,
+  connectionProblem,
   phone,
   enteringScene,
   title,
@@ -29,6 +30,7 @@ export function FoundingSettingScene({
   next,
 }: {
   controller: FoundingScreenController;
+  connectionProblem: string;
   phone: boolean;
   enteringScene: boolean;
   title: ReactNode;
@@ -39,6 +41,7 @@ export function FoundingSettingScene({
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
+  const manual = setupWorkspace.settingManual === true;
   const [confirmReplace, setConfirmReplace] = useState(false);
   const lineRef = useRef<HTMLParagraphElement>(null);
   const draftButton = useRef<HTMLButtonElement>(null);
@@ -60,7 +63,8 @@ export function FoundingSettingScene({
     setSetupWorkspace((workspace) => ({
       ...workspace,
       settingBeat: settingBeat === "manual" ? "village" : settingBeat,
-      settingManual: settingBeat === "manual" || undefined,
+      settingManual:
+        settingBeat === "manual" || (manual && (settingBeat === "world" || settingBeat === "lorebooks")) || undefined,
       settingEditorOpen: openEditor,
       mobileMenu: undefined,
     }));
@@ -71,7 +75,7 @@ export function FoundingSettingScene({
   const pending = request && !request.failure;
   const waitingForMari = pending && request.draftSetting;
   const error = setupWorkspace.settingProblem || (request?.draftSetting ? request.failure : "");
-  const connectionError = !!error && /connection|model.*not found/iu.test(error);
+  const connectionError = !!connectionProblem || (!!error && /connection|model.*not found/iu.test(error));
   const drafted = !!setupWorkspace.settingDraft && !waitingForMari;
   const pose = beat === "welcome" || (beat === "village" && drafted) ? "happy" : "neutral";
   const brief = setupWorkspace.settingBrief ?? "";
@@ -92,6 +96,7 @@ export function FoundingSettingScene({
     !controller.busy &&
     !setupSuggestionsBusy &&
     !controller.draftSaveError &&
+    !connectionProblem &&
     (!pending || waitingForMari);
   const dialogue = {
     welcome: phone
@@ -103,7 +108,7 @@ export function FoundingSettingScene({
     lorebooks:
       "Lorebooks can fill in details for the draft, like local customs or who already lives there. Do you have any you’d like me to read? Homework is optional, I promise.",
     village: confirmReplace
-      ? "Hang on, there’s already something here. If I draft it again, I’ll replace what’s in your setting, including any world name and rules. Want me to go ahead?"
+      ? "Hang on, there’s already something here. If I draft it again, I’ll replace what’s in your setting for the village and its first map. Want me to go ahead?"
       : setupSuggestionsBusy && waitingForMari
         ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
         : phone && waitingForMari
@@ -114,29 +119,62 @@ export function FoundingSettingScene({
   }[beat];
   const submitBrief = () => {
     if (!canDraft) return;
-    const { setupName, setupLocationName, setupSetting, setupWorldName, setupContext } = controller;
-    if (
-      !waitingForMari &&
-      [setupName, setupLocationName, setupSetting, setupWorldName, setupContext.rules].some((value) => value.trim())
-    )
+    const { setupName, setupLocationName, setupSetting } = controller;
+    if (!waitingForMari && [setupName, setupLocationName, setupSetting].some((value) => value.trim()))
       setConfirmReplace(true);
     else void draftSetupSetting("request");
   };
   const worldField = (
-    <FoundingField title={phone ? "World description" : "The larger world"} optional>
-      <textarea
-        autoComplete="off"
-        rows={phone ? 4 : 2}
-        maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
-        value={world}
-        placeholder="A network of settlements on old cargo routes…"
-        onChange={(event) => {
-          const value = event.currentTarget.value;
-          setSetupWorkspace((workspace) => ({ ...workspace, settingWorldBrief: value }));
-        }}
-      />
-    </FoundingField>
+    <>
+      {!manual ? (
+        <FoundingField title={phone ? "World description" : "The larger world"} optional>
+          <textarea
+            autoComplete="off"
+            rows={phone ? 4 : 2}
+            maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
+            value={world}
+            placeholder="A network of settlements on old cargo routes…"
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              setSetupWorkspace((workspace) => ({ ...workspace, settingWorldBrief: value }));
+            }}
+          />
+        </FoundingField>
+      ) : null}
+      <FoundingField title="World name" optional>
+        <input
+          autoComplete="off"
+          maxLength={120}
+          value={controller.setupWorldName}
+          disabled={controller.busy}
+          onChange={(event) => controller.setSetupWorldName(event.currentTarget.value)}
+        />
+      </FoundingField>
+      <FoundingField title="World rules" optional>
+        <textarea
+          autoComplete="off"
+          aria-label="World rules"
+          maxLength={4096}
+          rows={2}
+          value={controller.setupContext.rules}
+          disabled={controller.busy}
+          onChange={(event) => {
+            const rules = event.currentTarget.value;
+            controller.setSetupContext((context) => ({ ...context, rules }));
+          }}
+        />
+      </FoundingField>
+    </>
   );
+  const loreBudget = pickedBooks ? (
+    <LoreTokenBudgetField
+      value={controller.setupLoreTokenBudgetDraft}
+      onChange={controller.setSetupLoreTokenBudgetDraft}
+      min={controller.snapshot?.settings.loreTokenBudgetMin ?? 0}
+      max={controller.snapshot?.settings.loreTokenBudgetMax ?? 3200}
+      disabled={controller.busy || setupSuggestionsBusy}
+    />
+  ) : null;
   const briefField = (
     <FoundingField title={phone ? "Village description" : "Tell Mari about your village"}>
       <textarea
@@ -201,7 +239,8 @@ export function FoundingSettingScene({
         onSubmit={(event) => {
           event.preventDefault();
           if (mobilePrompt === "world") moveTo("lorebooks");
-          else if (mobilePrompt === "lorebooks") moveTo("village");
+          else if (mobilePrompt === "lorebooks" && !manual) moveTo("village");
+          else if (mobilePrompt === "lorebooks") return;
           else submitBrief();
         }}
       >
@@ -212,14 +251,17 @@ export function FoundingSettingScene({
         {mobilePrompt === "world" ? (
           worldField
         ) : mobilePrompt === "lorebooks" ? (
-          <VillageLorebookPicker
-            inline
-            books={controller.lorebooks}
-            error={controller.lorebooksError}
-            selected={controller.setupLorebookDraft}
-            onChange={controller.setSetupLorebookDraft}
-            disabled={controller.busy || setupSuggestionsBusy}
-          />
+          <>
+            <VillageLorebookPicker
+              inline
+              books={controller.lorebooks}
+              error={controller.lorebooksError}
+              selected={controller.setupLorebookDraft}
+              onChange={controller.setSetupLorebookDraft}
+              disabled={controller.busy || setupSuggestionsBusy}
+            />
+            {loreBudget}
+          </>
         ) : (
           <>
             {briefField}
@@ -241,14 +283,30 @@ export function FoundingSettingScene({
           <button
             type="button"
             onClick={() =>
-              moveTo(mobilePrompt === "world" ? "welcome" : mobilePrompt === "lorebooks" ? "world" : "lorebooks")
+              moveTo(
+                mobilePrompt === "world"
+                  ? manual
+                    ? "manual"
+                    : "welcome"
+                  : mobilePrompt === "lorebooks"
+                    ? "world"
+                    : "lorebooks",
+              )
             }
           >
             Back
           </button>
-          <button type="submit" className="villages-forging-primary" disabled={mobilePrompt === "village" && !canDraft}>
-            Next
-          </button>
+          {mobilePrompt === "lorebooks" && manual ? (
+            next
+          ) : (
+            <button
+              type="submit"
+              className="villages-forging-primary"
+              disabled={mobilePrompt === "village" && !canDraft}
+            >
+              Next
+            </button>
+          )}
         </div>
       </form>
     );
@@ -287,35 +345,42 @@ export function FoundingSettingScene({
           <>
             {worldField}
             <div className="villages-founding-replies">
-              <button type="button" onClick={() => moveTo("welcome")}>
+              <button type="button" onClick={() => moveTo(manual ? "manual" : "welcome")}>
                 Back
               </button>
               <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
-                {world.trim() ? "Use this world" : "I only know the village so far"}
+                {manual ? "Next" : world.trim() ? "Use this world" : "I only know the village so far"}
               </button>
             </div>
           </>
         ) : null}
         {beat === "lorebooks" ? (
-          <div className="villages-founding-replies">
-            <button type="button" onClick={() => moveTo("world")}>
-              Back
-            </button>
-            <VillageLorebookPicker
-              books={controller.lorebooks}
-              error={controller.lorebooksError}
-              selected={controller.setupLorebookDraft}
-              onChange={(ids) => {
-                controller.setSetupLorebookDraft(ids);
-                moveTo("village");
-              }}
-              disabled={controller.busy || setupSuggestionsBusy}
-              triggerLabel={pickedBooks ? "Change lorebooks" : "Choose lorebooks"}
-            />
-            <button type="button" onClick={() => moveTo("village")}>
-              {pickedBooks > 0 ? "Keep selected lorebooks" : "Skip for now"}
-            </button>
-          </div>
+          <>
+            {loreBudget}
+            <div className="villages-founding-replies">
+              <button type="button" onClick={() => moveTo("world")}>
+                Back
+              </button>
+              <VillageLorebookPicker
+                books={controller.lorebooks}
+                error={controller.lorebooksError}
+                selected={controller.setupLorebookDraft}
+                onChange={(ids) => {
+                  controller.setSetupLorebookDraft(ids);
+                  if (!manual) moveTo("village");
+                }}
+                disabled={controller.busy || setupSuggestionsBusy}
+                triggerLabel={pickedBooks ? "Change lorebooks" : "Choose lorebooks"}
+              />
+              {manual ? (
+                next
+              ) : (
+                <button type="button" onClick={() => moveTo("village")}>
+                  {pickedBooks > 0 ? "Keep selected lorebooks" : "Skip for now"}
+                </button>
+              )}
+            </div>
+          </>
         ) : null}
         {beat === "village" && confirmReplace ? (
           <div className="villages-founding-replies">

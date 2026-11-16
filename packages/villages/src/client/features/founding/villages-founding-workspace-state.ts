@@ -9,7 +9,7 @@ export type FoundingWorkspaceState = {
   settingBrief?: string;
   settingBeat?: "welcome" | "world" | "lorebooks" | "village";
   settingManual?: true;
-  settingIntroPending?: true;
+  settingIntroPending?: true | "connections";
   settingWorldBrief?: string;
   settingDraft?: Partial<FoundingSetting>;
   settingEditorOpen?: boolean;
