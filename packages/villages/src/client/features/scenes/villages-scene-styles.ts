@@ -77,7 +77,11 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-send svg { width: .9375rem; height: .9375rem; }
 .${tag}-room-screen .${tag}-chat-send:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
 .${tag}-room-screen .${tag}-room-actions-menu { max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 4rem)); overflow-y: auto; }
-.${tag}-room-screen .${tag}-room-actions-menu > select { width: 100%; min-width: 0; }
+.villages-founding-dialog.villages-scene-move { width:min(24rem,calc(100vw - 2rem)); height:fit-content; padding:.5rem; }
+.villages-scene-move > header { margin:0; padding:.3rem .5rem; }
+.villages-scene-move .villages-founding-editor-body { display:grid; gap:.45rem; padding:.75rem; }
+.villages-scene-move .villages-founding-editor-body p { margin:0 0 .2rem; }
+.villages-scene-move .villages-founding-editor-body button { width:100%; text-align:left; min-height:44px; }
 .${tag}-room-screen .${tag}-chat-head:has(.${tag}-room-actions-menu) { z-index: 25; }
 .${tag}-scene-settings-backdrop { position: absolute; z-index: 30; inset: 0; height: var(--villages-scene-visible-height, 100%); display: grid; place-items: center; padding: .75rem; box-sizing: border-box; background: #0008; }
 .${tag}-scene-settings { width: min(36rem, 100%); max-height: 100%; overflow-y: auto; padding: .75rem; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); }

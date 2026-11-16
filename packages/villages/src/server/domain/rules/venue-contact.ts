@@ -3,7 +3,8 @@ import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
-import { venueZones, zoneClosed } from "./venue-zones.js";
+import { resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { conflict } from "./errors.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 export type ContactDelivery = "voice" | "loud";
@@ -147,4 +148,44 @@ export function contactPath(
     }
   }
   return null;
+}
+
+/** Recheck a captured move against current authority before displaying or claiming it. */
+export function liveSceneMovePermission(
+  state: VillageState,
+  venue: VillageVenue,
+  zoneId: string,
+  scene: VenueScene,
+  accompanying: VenueScene["accompanying"],
+  at: Date | undefined,
+  permissionId: string | undefined,
+): string | undefined {
+  const target = resolveVenueZone(venue, zoneId);
+  if (!target) throw conflict("That Zone is no longer available.");
+  const liveScene = {
+    ...scene,
+    continuity: undefined,
+    sceneAttendance: scene.sceneAttendance ? { ...scene.sceneAttendance, layout: undefined } : undefined,
+    accompanying,
+  };
+  if (!contactPath(state, venue, scene.zoneId, target.id, "player", liveScene, at))
+    throw conflict("That route is no longer permitted.");
+  for (const companion of accompanying ?? []) {
+    const origin = contactPosition(scene, companion.characterId);
+    if (
+      origin !== companion.zoneId &&
+      !contactPath(state, venue, origin, companion.zoneId, companion.characterId, liveScene, at)
+    )
+      throw conflict("Your escort can no longer take that route.");
+  }
+  const decision = evaluateZoneAccess(venue, target, "player", {
+    ...sceneAccessContext({ ...scene, accompanying }, at),
+    accepting: true,
+    unavailable: zoneClosed(state, venue, target),
+    environment: state.narrative,
+  });
+  if (!decision.allowed) throw conflict(decision.explanation);
+  if (permissionId && decision.permissionId !== permissionId)
+    throw conflict("That invitation changed. Refresh the Scene before moving.");
+  return decision.permissionId;
 }

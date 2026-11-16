@@ -15,6 +15,7 @@ import {
   captureSceneContinuity,
   cloneSceneFacts,
 } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { narrationContinuityContext } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import {
@@ -318,9 +319,16 @@ assert.equal(venue.access!.bans[0].id, "outside-ban");
 {
   const { state, ids } = fixture(4);
   const saved = coerceSession({ ...scene, id: "removed-zone", status: "active", continuity: undefined });
+  const neighboring = resolveVenueZone(state.venues[0], "b")!;
+  const seenImage = { id: "seen", ref: "global-gallery:seen", url: "/api/global-gallery/file/seen.png" };
+  neighboring.image = seenImage;
+  neighboring.seen = true;
+  neighboring.observed = captureZoneObservation(state.venues[0], neighboring, "Observed interior.");
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
   state.venues[0].zones = state.venues[0].zones!.filter((zone) => zone.id !== "a");
-  resolveVenueZone(state.venues[0], "b")!.closed = true;
+  neighboring.closed = true;
+  neighboring.name = "Current Zone name";
+  neighboring.image = { id: "unseen", ref: "global-gallery:unseen", url: "/api/global-gallery/file/unseen.png" };
   const snapshot = await createVillageSnapshot({
     readVillageState: async () => structuredClone(state),
     mutateVillageState: async (change: any) => {
@@ -336,7 +344,15 @@ assert.equal(venue.access!.bans[0].id, "outside-ban");
   assert.equal(snapshot.villagers.find((person) => person.characterId === ids[0])!.place!.zoneId, "a");
   assert(!snapshot.settings.venues[0].zones!.some((zone) => zone.id === "a"));
   assert(snapshot.sceneVenue!.venue.zones!.some((zone) => zone.id === "a"));
-  assert.equal(snapshot.sceneVenue!.venue.zones!.find((zone) => zone.id === "b")!.closed, false);
+  const sceneNeighbor = snapshot.sceneVenue!.venue.zones!.find((zone) => zone.id === "b")!;
+  assert.equal(sceneNeighbor.name, "Current Zone name");
+  assert.equal(sceneNeighbor.closed, false);
+  const listedNeighbor = snapshot.settings.venues[0].zones!.find((zone) => zone.id === "b")!;
+  for (const zone of [sceneNeighbor, listedNeighbor]) {
+    assert.equal(zone.name, "Current Zone name");
+    assert.deepEqual(zone.image, seenImage);
+    assert.equal(zone.description, "Observed interior.");
+  }
   assert.equal(snapshot.sceneVenue!.venue.access, undefined, "the Scene presentation reuses the sanitized projection");
 }
 

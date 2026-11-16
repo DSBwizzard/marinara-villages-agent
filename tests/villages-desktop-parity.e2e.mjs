@@ -152,7 +152,7 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     let lastTurn = null;
     let lastEntry = null;
-    let lastLeave = null;
+    let lastClose = null;
     let session = {
       version: 2,
       id: "visit-1",
@@ -287,8 +287,8 @@ await withBrowser(browser, async () => {
             },
           ],
         };
-      } else if (path.endsWith("/rooms/leave")) {
-        lastLeave = route.request().postDataJSON();
+      } else if (path.endsWith("/rooms/end")) {
+        lastClose = route.request().postDataJSON();
         session = { ...session, status: "closed", endedAt: now };
         value = { session, recordEvents: [] };
       }
@@ -462,7 +462,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(page.getByRole("menuitem", { name: /Leave Scene/u })).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "End Scene now" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Conclude" })).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(page.getByRole("button", { name: /^Mode: /u })).toHaveCount(0);
     const oneLine = await composer.evaluate((field) => {
@@ -502,7 +502,7 @@ await withBrowser(browser, async () => {
     await expect(actions).toBeFocused();
     await expect(composer).toHaveValue("My response.");
     assert.equal(lastTurn, null, "opening Venue actions does not send the draft");
-    assert.equal(lastLeave, null, "opening Venue actions does not conclude the Scene");
+    assert.equal(lastClose, null, "opening Venue actions does not conclude the Scene");
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await page.getByRole("button", { name: "Send" }).click();
@@ -568,10 +568,10 @@ await withBrowser(browser, async () => {
     const finalLine = width === 390 ? "" : "Goodbye.";
     await composer.fill(finalLine);
     await actions.click();
-    assert.equal(lastLeave, null, "opening Venue actions does not submit the final draft");
+    assert.equal(lastClose, null, "opening Venue actions does not submit the final draft");
     await menu.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await expect(page.getByRole("button", { name: "Return to map" }).first()).toBeVisible();
-    assert.equal(lastLeave.message, finalLine, "Conclude sends the optional final line");
+    assert.equal(lastClose.message, undefined, "Conclude closes without sending the unfinished draft");
     if (width === 1440) {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();

@@ -319,7 +319,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "End Scene now" }).click();
+    await page.getByRole("menuitem", { name: "Conclude" }).click();
     await expect(draft).toHaveCount(0);
     await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toHaveCount(0);
     await expect(tray).toHaveAccessibleName("5 World changes");

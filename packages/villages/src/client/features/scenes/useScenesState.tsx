@@ -50,8 +50,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const roomSubmissionIdRef = useRef<string | null>(null);
 
-  const roomLeaveSubmissionIdRef = useRef<string | null>(null);
-
   const roomCompletionRef = useRef<{ roomId: string; submissionId: string } | null>(null);
 
   const roomSendInFlightRef = useRef(false);
@@ -118,7 +116,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomBusy,
     leavingRoomPendingRef,
     roomSubmissionIdRef,
-    roomLeaveSubmissionIdRef,
     roomCompletionRef,
     roomSendInFlightRef,
     composerEditVersionRef,

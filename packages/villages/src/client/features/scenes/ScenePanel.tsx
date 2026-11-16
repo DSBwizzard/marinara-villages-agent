@@ -38,14 +38,10 @@ import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
+import { ModalDialog } from "../../shared/ModalDialog.js";
 
-/** Unseen Zone names remain private. */
-export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boolean }): string {
-  if (zone?.seen) return zone.name;
-  if (zone?.kind === "exterior") return "Exterior";
-  if (zone?.kind === "private-residence") return "Private-space doorway";
-  if (zone?.kind === "staff" || zone?.kind === "restricted") return "Restricted doorway";
-  return "Interior entrance";
+export function sceneZoneLabel(zone?: { name: string }): string {
+  return zone?.name || "Zone";
 }
 
 function NpcSprite({ className }: { className?: string }) {
@@ -238,7 +234,6 @@ export function RoomPanel({
   sprites,
   onDraft,
   onSend,
-  onConclude,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
@@ -291,7 +286,6 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onSend: () => void;
-  onConclude: () => void;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
@@ -311,7 +305,7 @@ export function RoomPanel({
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
-  movementZones: { id: string; label: string; closed?: boolean }[];
+  movementZones: { id: string; label: string }[];
   onMovementTarget: (id: string) => void;
   currentZoneLabel: string;
 }) {
@@ -329,7 +323,6 @@ export function RoomPanel({
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const memoryCloseRef = useRef<HTMLButtonElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const movePickerRef = useRef<HTMLSelectElement | null>(null);
   const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
   const readingRef = useRef<HTMLDivElement | null>(null);
@@ -362,7 +355,7 @@ export function RoomPanel({
   }, [historyOpen]);
 
   useEffect(() => {
-    if (!actionsView) return;
+    if (actionsView !== "menu") return;
     const closeOnOutside = (event: Event) => {
       if (!actionsRef.current?.contains(event.target as Node)) setActionsView(null);
     };
@@ -380,10 +373,6 @@ export function RoomPanel({
       document.removeEventListener("focusin", closeOnOutside);
       document.removeEventListener("keydown", closeOnEscape);
     };
-  }, [actionsView]);
-
-  useEffect(() => {
-    if (actionsView === "move") movePickerRef.current?.focus();
   }, [actionsView]);
 
   useEffect(() => {
@@ -643,7 +632,6 @@ export function RoomPanel({
   const canDraft = !ended && room.status === "active";
   const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
   const canSend = canCompose && !contactRecovery && !(changeStatus && changeStatus.pending + changeStatus.failed > 0);
-  const moveDestinations = movementZones.filter((zone) => zone.id !== room.zoneId && !zone.closed);
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -715,7 +703,7 @@ export function RoomPanel({
           ? "Opening the Scene…"
           : room.status === "closing"
             ? "Saving this Scene…"
-            : actionsView === "move" || room.operation?.kind === "move"
+            : room.operation?.kind === "move"
               ? "Moving…"
               : "This Scene is responding. Your draft stays here."}
       </span>
@@ -773,35 +761,24 @@ export function RoomPanel({
             onClick={() => setActionsView((value) => (value ? null : "menu"))}
             aria-label="Venue actions"
             aria-haspopup="menu"
-            aria-expanded={actionsView === "menu" || (actionsView === "move" && !contactRecovery)}
+            aria-expanded={actionsView === "menu"}
           >
             ···
           </button>
           {actionsView === "menu" ? (
             <span className={`${ELEMENT_TAG}-room-actions-menu`} role="menu" aria-label="Venue actions">
-              {canCompose ? (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={!!contactRecovery || !moveDestinations.length}
-                    onClick={() => setActionsView("move")}
-                  >
-                    Move
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={!canSend}
-                    onClick={() => {
-                      setActionsView(null);
-                      actionsRef.current?.querySelector("button")?.focus();
-                      onConclude();
-                    }}
-                  >
-                    Conclude
-                  </button>
-                </>
+              {canDraft ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy || !!contactRecovery || !movementZones.length}
+                  onClick={() => {
+                    actionsRef.current?.querySelector("button")?.focus();
+                    setActionsView("move");
+                  }}
+                >
+                  Move
+                </button>
               ) : null}
               <LoreActivityButton
                 query={`Scene · ${room.placeName}`}
@@ -885,11 +862,12 @@ export function RoomPanel({
                 role="menuitem"
                 onClick={() => {
                   setActionsView(null);
+                  actionsRef.current?.querySelector("button")?.focus();
                   onEnd();
                 }}
                 disabled={busy}
               >
-                {ended ? "Return to map" : "End Scene now"}
+                {ended ? "Return to map" : "Conclude"}
               </button>
 
               {debugDiscardEnabled && room.status !== "closed" ? (
@@ -906,32 +884,35 @@ export function RoomPanel({
                 </button>
               ) : null}
             </span>
-          ) : actionsView === "move" && !contactRecovery ? (
-            <span className={`${ELEMENT_TAG}-room-actions-menu`}>
-              <select
-                ref={movePickerRef}
-                className={`${ELEMENT_TAG}-select`}
-                aria-label="Move to Zone"
-                disabled={!canCompose || !!contactRecovery}
-                value=""
-                onChange={(event) => {
-                  const destination = event.currentTarget.value;
-                  if (!destination) return;
-                  actionsRef.current?.querySelector("button")?.focus();
-                  onMovementTarget(destination);
-                }}
-              >
-                <option value="">Choose a Zone · in {currentZoneLabel}</option>
-                {moveDestinations.map((zone) => (
-                  <option key={zone.id} value={zone.id}>
-                    {zone.label}
-                  </option>
-                ))}
-              </select>
-            </span>
           ) : null}
         </span>
       </div>
+      {actionsView === "move" && !contactRecovery ? (
+        <ModalDialog
+          title="Move to Zone"
+          onClose={() => setActionsView(null)}
+          className="villages-scene-move"
+          compact
+          scrollBody
+        >
+          <div className="villages-founding-editor-body">
+            <p>In {currentZoneLabel}</p>
+            {movementZones.map((zone) => (
+              <button
+                key={zone.id}
+                type="button"
+                disabled={busy || !canDraft}
+                onClick={() => {
+                  setActionsView(null);
+                  onMovementTarget(zone.id);
+                }}
+              >
+                {zone.label}
+              </button>
+            ))}
+          </div>
+        </ModalDialog>
+      ) : null}
       {settingsOpen ? (
         <div
           className={ELEMENT_TAG + "-scene-settings-backdrop"}
@@ -1208,6 +1189,7 @@ export function RoomPanel({
               facing,
               staged?.sideExpression,
               sprite?.named,
+              sprite?.defaultView,
             );
             return (
               <div
