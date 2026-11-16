@@ -1166,11 +1166,6 @@ export function RoomPanel({
               />
               <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
                 <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
-                  {aside.register === "side" ? null : (
-                    <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
-                      {aside.register === "whisper" ? "Whisper" : "Shout"}
-                    </span>
-                  )}
                   <span
                     className={`${ELEMENT_TAG}-chat-vn-aside-name`}
                     style={nameStyle(aside.speakerId ?? step.speakerId)}
@@ -1178,7 +1173,7 @@ export function RoomPanel({
                     {aside.name ?? step.name}
                   </span>
                   {aside.register === "whisper" && aside.target ? (
-                    <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`→ ${aside.target}`}</span>
+                    <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`to ${aside.target}`}</span>
                   ) : null}
                 </p>
                 <p
@@ -1376,16 +1371,6 @@ export function RoomPanel({
                   {step?.viaDoorway ? (
                     <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
                       Nearby
-                    </span>
-                  ) : step?.delivery === "whisper" ? (
-                    <span title="Whisper" aria-label="Whisper">
-                      {" "}
-                      · 🤫
-                    </span>
-                  ) : step?.delivery === "shout" ? (
-                    <span title="Shout" aria-label="Shout">
-                      {" "}
-                      · 📣
                     </span>
                   ) : null}
                 </p>

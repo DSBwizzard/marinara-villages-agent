@@ -153,10 +153,14 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
 /* Large artwork overlaps inside stable left/right groups, with a shared raised floor. */
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage { padding-left: 0; padding-right: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-character-id] {
-  --cast-image-height: min(105cqw, 100cqh);
-  --cast-lift: min(max(0px, calc(var(--villages-scene-resting-dock-height, 13.25rem) - min(26.25cqw, 25cqh) + var(--cast-depth, 0px))), max(0px, calc(100cqh - var(--cast-image-height))));
+  --cast-image-height: min(120cqw, 68cqh);
+  --cast-lift: clamp(0px, calc(var(--villages-scene-resting-dock-height, 13.25rem) - min(48cqw, 42cqh) + var(--cast-depth, 0px)), 4cqh);
   left: calc(var(--cast-center) - var(--cast-display-width) / 2);
-  bottom: max(var(--cast-lift), var(--villages-aside-cast-lift, 0px)); height: var(--cast-image-height); opacity: .72; z-index: 1;
+  bottom: var(--cast-lift); height: var(--cast-image-height); opacity: .72; z-index: 1;
+}
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-sprite="true"] {
+  /* Keep faces in the visible strip while preserving the art and background scale. */
+  bottom: max(var(--cast-lift), calc(var(--villages-scene-dock-bottom, 0px) + var(--villages-scene-stage-offset, 0px) - var(--cast-image-height) + 8rem));
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-active="true"] { opacity: 1; z-index: 3; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="true"] > span:not(.${tag}-avatar) { display: none; }

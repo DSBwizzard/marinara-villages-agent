@@ -98,6 +98,7 @@ await withBrowser(browser, async () => {
       const reading = page.getByRole("region", { name: "Current paragraph" });
       await expect(reading).toContainText(`Main ${delivery} conversation.`);
       await expect(page.locator(`.${tag}-chat-vn-card`)).toHaveAttribute("data-delivery", delivery);
+      await expect(page.getByLabel(/^(Whisper|Shout)$/u)).toHaveCount(0);
       const band = page.locator(`.${tag}-scene-asides`);
       await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(2);
       for (const voice of asideVoices)

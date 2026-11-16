@@ -128,19 +128,20 @@ await withBrowser(browser, async () => {
     await load();
     const dock = page.locator(`.${tag}-chat-vn`);
     const reading = page.getByRole("region", { name: "Current paragraph" });
+    const npc = page.locator('[data-character-id="npc:eli"][data-sprite="true"] > img[data-npc-sprite]');
+    const spriteHeight = () => npc.evaluate((image) => image.getBoundingClientRect().height);
     const before = {
       dock: await dock.boundingBox(),
       reading: await reading.boundingBox(),
       text: await reading.textContent(),
     };
+    const originalSpriteHeight = await spriteHeight();
     session.lines.push(...asides);
     await load();
     const band = page.locator(`.${tag}-scene-asides`);
     await expect(band).toContainText("Save me the good chair.");
-    await expect(band).toContainText("→ Riley");
-    await expect(band.getByText("Whisper", { exact: true })).toHaveCount(1);
-    await expect(band.locator(`[data-register="side"] .${tag}-chat-vn-aside-icon`)).toHaveCount(0);
-    const npc = page.locator('[data-character-id="npc:eli"][data-sprite="true"] > img[data-npc-sprite]');
+    await expect(band).toContainText("to you");
+    await expect(band.getByText("Whisper", { exact: true })).toHaveCount(0);
     await expect(npc).toBeVisible();
     await expect.poll(() => npc.evaluate((image) => image.naturalHeight)).toBe(768);
     await expect(npc).toHaveCSS("opacity", "0.78");
@@ -186,6 +187,7 @@ await withBrowser(browser, async () => {
       return geometry;
     }
     await checkGeometry("normal viewport");
+    assert.equal(await spriteHeight(), originalSpriteHeight, "asides leave sprite scale unchanged");
     if (!mobile) {
       await expect
         .poll(async () => {
@@ -239,6 +241,11 @@ await withBrowser(browser, async () => {
       }, visible);
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
       await expect(band).toBeHidden();
+      const composerBox = await composer.boundingBox();
+      assert.ok(composerBox.y >= 0 && composerBox.y + composerBox.height <= visible);
+      const spriteBox = await npc.boundingBox();
+      assert.equal(spriteBox.height, originalSpriteHeight, "keyboard leaves sprite scale unchanged");
+      assert.ok(spriteBox.y + 24 < composerBox.y, "the keyboard posture keeps the cast above the composer");
       await expect(composer).toHaveValue("A draft to keep.");
       await page.screenshot({ path: resolve(output, `asides-keyboard-${width}x${height}.png`) });
       await page.evaluate((height) => {
@@ -266,6 +273,7 @@ await withBrowser(browser, async () => {
     session.lines[2] = asides[0];
     await load();
     await expect(band).toContainText("A long aside with every word preserved.");
+    assert.equal(await spriteHeight(), originalSpriteHeight, "wrapping only changes the aside region");
     if (mobile) {
       const text = band.locator(`.${tag}-chat-vn-aside-text`).first();
       await expect.poll(() => band.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);

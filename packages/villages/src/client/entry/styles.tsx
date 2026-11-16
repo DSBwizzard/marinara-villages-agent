@@ -555,7 +555,6 @@ ${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(-
   display: flex; align-items: center; gap: .375rem;
   margin: 0; min-width: 0;
 }
-.${ELEMENT_TAG}-chat-vn-aside-icon { flex: 0 0 auto; font-size: .5625rem; }
 .${ELEMENT_TAG}-chat-vn-aside-name {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: .6875rem; font-weight: 600; line-height: 1.4;
@@ -2032,7 +2031,7 @@ ${ELEMENT_TAG} {
   transform: none;
 }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-stage .${ELEMENT_TAG}-chat-cast > .${ELEMENT_TAG}-chat-cast-person[data-sprite="true"] {
-  --cast-display-width: min(70cqw, 66.666667cqh);
+  --cast-display-width: 80cqw;
 }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-cast-person > img { flex: 0 0 auto; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-cast-person > img[data-framing="half"] { object-fit: cover; object-position: center top; }

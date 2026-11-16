@@ -10,7 +10,7 @@ export const SCENE_ASIDE_STYLES = `
 .${tag}-scene-asides {
   position: absolute; z-index: 4; inset: var(--aside-top, 4rem) .75rem auto;
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: row dense;
-  align-items: start; gap: .65rem; padding-bottom: .5rem;
+  align-items: start; gap: .65rem;
   max-height: var(--aside-height, 40%); overflow: auto; overscroll-behavior: contain;
   box-sizing: border-box; pointer-events: none;
 }
@@ -18,14 +18,9 @@ export const SCENE_ASIDE_STYLES = `
 .${tag}-scene-asides > [data-side="left"] { grid-column: 1; justify-self: start; }
 .${tag}-scene-asides > [data-side="right"] { grid-column: 2; justify-self: end; }
 .${tag}-scene-asides .${tag}-chat-vn-aside {
-  position: relative; max-width: none; box-sizing: border-box;
+  max-width: none; box-sizing: border-box;
   background: var(--marinara-chat-chrome-panel-bg, var(--popover));
 }
-.${tag}-scene-asides [data-onstage] .${tag}-chat-vn-aside::after {
-  content: ""; position: absolute; bottom: -.3rem; left: 16%; width: .55rem; height: .55rem;
-  background: inherit; border: inherit; border-width: 0 1px 1px 0; transform: rotate(45deg);
-}
-.${tag}-scene-asides [data-side="right"] .${tag}-chat-vn-aside::after { left: auto; right: 16%; }
 .${tag}-scene-asides .${tag}-chat-vn-aside-head { flex-wrap: wrap; row-gap: .125rem; }
 .${tag}-scene-asides :is(.${tag}-chat-vn-aside-name, .${tag}-chat-vn-aside-target) {
   flex: 0 1 auto; white-space: normal; overflow-wrap: anywhere;
@@ -37,7 +32,6 @@ export const SCENE_ASIDE_STYLES = `
 .${tag}-scene-asides[data-mobile="true"] .${tag}-chat-vn-aside-face { width: 1.25rem; height: 1.25rem; }
 .${tag}-scene-asides[data-mobile="true"] .${tag}-chat-vn-aside-text { font-size: .75rem; }
 ${tag}[data-scene-keyboard] .${tag}-scene-asides[data-mobile="true"] { display: none; }
-.${tag}-room-screen .${tag}-chat-cast-person { max-height: var(--villages-aside-cast-height, none); }
 `;
 
 export function SceneAsides<T extends { speakerId?: string }>({
@@ -83,15 +77,10 @@ export function SceneAsides<T extends { speakerId?: string }>({
         );
         element.style.setProperty("--aside-top", `${top}px`);
         element.style.setProperty("--aside-height", `${Math.min(available, Math.max(112, available * 0.6))}px`);
-        // The desktop dialogue overlays the full stage; only phones lift the cast above it.
-        const castFloor = mobile ? dockTop : sceneBounds.bottom;
-        const clear = Math.max(0, castFloor - element.getBoundingClientRect().bottom - 8);
-        scene.style.setProperty("--villages-aside-cast-height", `${clear}px`);
-        scene.style.setProperty("--villages-aside-cast-lift", `${Math.max(0, sceneBounds.bottom - castFloor)}px`);
       });
     };
     const observer = new ResizeObserver(update);
-    for (const node of [element, head, notices, dock, scene]) observer.observe(node);
+    for (const node of [head, notices, dock, scene]) observer.observe(node);
     const noticeUpdates = new MutationObserver(update);
     noticeUpdates.observe(notices, { childList: true, characterData: true, subtree: true });
     window.visualViewport?.addEventListener("resize", update);
@@ -103,10 +92,8 @@ export function SceneAsides<T extends { speakerId?: string }>({
       noticeUpdates.disconnect();
       window.visualViewport?.removeEventListener("resize", update);
       window.visualViewport?.removeEventListener("scroll", update);
-      scene.style.removeProperty("--villages-aside-cast-height");
-      scene.style.removeProperty("--villages-aside-cast-lift");
     };
-  }, [mobile]);
+  }, []);
   return (
     <div
       ref={root}
@@ -120,12 +107,7 @@ export function SceneAsides<T extends { speakerId?: string }>({
       {asides.slice(0, MAX_SCENE_ASIDES).map((aside, index) => {
         const x = positions[aside.speakerId ?? ""]?.x;
         return (
-          <div
-            key={index}
-            className={`${tag}-aside-slot`}
-            data-side={(x ?? 0.5) < 0.5 ? "left" : "right"}
-            data-onstage={x === undefined ? undefined : ""}
-          >
+          <div key={index} className={`${tag}-aside-slot`} data-side={(x ?? 0.5) < 0.5 ? "left" : "right"}>
             {renderAside(aside, index)}
           </div>
         );
