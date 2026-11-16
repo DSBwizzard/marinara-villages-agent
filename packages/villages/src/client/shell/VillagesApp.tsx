@@ -452,9 +452,23 @@ type VillageScreenProps = {
 
 function VillageScreen(props: VillageScreenProps) {
   const { controller } = props;
-  const { room, sceneRestoration } = controller;
+  const { room, sceneRestoration, snapshot, screen, error, loadSnapshot } = controller;
 
-  if (!room && sceneRestoration.status !== "ready")
+  if (!snapshot || (!snapshot.isFounded && screen === "home"))
+    return (
+      <div className={ELEMENT_TAG + "-root"}>
+        <section className={ELEMENT_TAG + "-panel"} role={error ? "alert" : "status"}>
+          <p>{error || "Opening Villages…"}</p>
+          {error ? (
+            <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => void loadSnapshot()}>
+              Try again
+            </button>
+          ) : null}
+        </section>
+      </div>
+    );
+
+  if (snapshot.isFounded && !room && sceneRestoration.status !== "ready")
     return (
       <div className={ELEMENT_TAG + "-root"}>
         <section className={ELEMENT_TAG + "-panel"} role={sceneRestoration.status === "error" ? "alert" : "status"}>

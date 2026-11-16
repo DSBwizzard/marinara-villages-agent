@@ -19,6 +19,7 @@ await withBrowser(browser, async () => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let founding = false;
+    let foundingSceneChecks = 0;
     let serverInstant = "2026-10-15T02:30:00Z";
     const state = () => {
       const value = structuredClone(base);
@@ -46,8 +47,13 @@ await withBrowser(browser, async () => {
         return fulfill(route, { json: { status: "ready", snapshot: state() } });
       let value = state();
       const status = 200;
-      if (path.endsWith("/rooms/active")) value = { session: null };
-      else if (path.endsWith("/connections"))
+      if (path.endsWith("/rooms/active")) {
+        if (founding) {
+          foundingSceneChecks++;
+          return fulfill(route, { status: 503, json: { error: "Scene check should not run during Founding" } });
+        }
+        value = { session: null };
+      } else if (path.endsWith("/connections"))
         value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
       else if (path.endsWith("/catalog")) value = { characters: [] };
       else if (path.endsWith("/personas")) value = { personas: [] };
@@ -120,6 +126,16 @@ await withBrowser(browser, async () => {
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook\.webp/);
       await expect(world).toHaveValue("A string of settlements along the coast");
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-night-" + width + ".png" });
+      await page.evaluate(async () => {
+        const villages = document.querySelector("marinara-capability-villages");
+        const parent = villages.parentElement;
+        villages.remove();
+        await Promise.resolve();
+        parent.append(villages);
+      });
+      await expect(world).toHaveValue("A string of settlements along the coast");
+      await expect(page.getByText("Checking Scene…", { exact: true })).toHaveCount(0);
+      assert.equal(foundingSceneChecks, 0, "Founding remounts never ask for an active Scene");
     });
     assert.deepEqual(errors, []);
     await context.close();

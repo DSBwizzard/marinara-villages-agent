@@ -71,18 +71,18 @@ export function FoundingSettingScene({
     (!pending || waitingForMari);
   const dialogue = {
     welcome:
-      "Hey, you made it. I’m Mari. In Villages, you live alongside a community. A ship’s crew counts. So does one suspiciously dramatic apartment building. We’ll start with their world, then pick the people and places.",
+      "Hey, you made it. I’m Mari. In Villages, you live alongside a community. A ship’s crew counts. So does one suspiciously dramatic apartment building. We’ll sketch their world, then meet the people and find them places to live.",
     world:
-      "Give me a sentence about the wider world. It’ll help me draft a starting place that fits. Save volume twelve for office hours.",
+      "Knowing what’s beyond the village helps me draft a home that fits. A stop on a busy trade route feels different from an outpost on an isolated moon. What’s the wider world like? A sentence will do. If you’re still figuring it out, we can skip ahead.",
     lorebooks:
-      "Got lorebooks about this world or its people? Pick what you want me to read. I’ll use the relevant bits in your draft. Yes, the reading is optional.",
+      "Lorebooks can fill in details for the draft, like local customs or who already lives there. Do you have any you’d like me to read? Homework is optional, I promise.",
     village: confirmReplace
       ? "Hang on, there’s already something here. If I draft it again, I’ll replace what’s in your setting, including any world name and rules. Want me to go ahead?"
       : setupSuggestionsBusy && waitingForMari
         ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
         : drafted
           ? "There’s your draft. Go ahead and meddle with the name, starting location, or description. That’s the fun bit."
-          : "Where do these people call home? Give me the messy version. I’ll draft the name, starting location, and description.",
+          : "This is where your story starts. A few details about everyday life will help me draft a name, a starting location, and a description. Where do these people call home, and what’s it like there? Give me the messy version.",
   }[beat];
   return (
     <section

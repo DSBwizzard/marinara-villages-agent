@@ -543,9 +543,9 @@ export function FoundingScreen({
             {
               [
                 "",
-                "Right, the good part. Pick your starting villagers and set up their sprites. I want to see who’s showing up in Scenes.",
-                "Open a Venue from the map or list. Its Zones are where people visit and sleep. Yes, the couch counts.",
-                "Last check. Look at where everyone lives and sleeps. If day one already has drama, add it under First day.",
+                "The people you pick here will be there from the start, and their sprites are how you’ll see them in Scenes. Who’s already part of this community? Pick them and set up their sprites.",
+                "Places give your villagers somewhere to spend their days and somewhere to come home to. Open a Venue to set up its Zones, then decide who can visit and where everyone sleeps. Yes, the couch counts.",
+                "This is your last look before we found the village. Check where everyone lives and sleeps. If something’s happening when you arrive, put it under First day so it can shape the opening.",
               ][setupStep]!
             }
           </FoundingGuide>
