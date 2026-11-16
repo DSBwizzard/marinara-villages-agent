@@ -10,7 +10,7 @@ import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { PlacesDirectory } from "./PlacesDirectory.js";
 import type { PlaceDetail, PlaceDirectory, PlaceSummary } from "../../../shared/contracts/places.js";
 
@@ -28,8 +28,8 @@ export function ExplorationScreen({
   arrival,
 }: {
   controller: ExplorationScreenController;
-  openMapVenue: (place: VillageVenue, origin: string) => void;
-  arrival?: { origin: string; content: ReactNode };
+  openMapVenue: (place: VillageVenue) => void;
+  arrival?: ReactNode;
 }) {
   const lighting = useVillageLighting(controller.snapshot?.village);
   const { visible } = useVillageActivity();
@@ -218,17 +218,6 @@ export function ExplorationScreen({
     }
   };
   const navigatorOpen = !placingProjectId && exploreSheet?.tab === "places";
-  const mapViewport = useRef<HTMLDivElement>(null);
-  const arriveAtVenue = (place: VillageVenue) => {
-    // The arrival viewport starts above the map's status bar.
-    const frame = mapViewport.current?.closest(`.${ELEMENT_TAG}-home-full`)?.getBoundingClientRect();
-    const pin = mapViewport.current
-      ?.querySelector(`button[data-pin-id="${CSS.escape(place.id)}"]`)
-      ?.getBoundingClientRect();
-    const origin =
-      frame && pin ? `${pin.x + pin.width / 2 - frame.x}px ${pin.y + pin.height / 2 - frame.y}px` : "center";
-    openMapVenue(place, origin);
-  };
   const selectPlace = (place: VillageVenue) => {
     setFocusSearch(false);
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -281,7 +270,7 @@ export function ExplorationScreen({
             selected: pin.id === openPlaceId,
             onSelect:
               place && !busy && !placingProjectId && !placingPlace
-                ? () => (navigatorOpen ? openPlace(place) : arriveAtVenue(place))
+                ? () => (navigatorOpen ? openPlace(place) : openMapVenue(place))
                 : undefined,
           };
         });
@@ -310,7 +299,11 @@ export function ExplorationScreen({
       className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-home-full`}
       data-mobile={mobile ? "true" : "false"}
     >
-      <div className={`${ELEMENT_TAG}-home-bar`} hidden={!!arrival}>
+      <div
+        className={`${ELEMENT_TAG}-home-bar`}
+        inert={!!arrival}
+        style={arrival ? { visibility: "hidden" } : undefined}
+      >
         <span className={`${ELEMENT_TAG}-map-identity`}>
           <strong>{snapshot?.village.name}</strong>
           <HomeDateWeather weather={snapshot?.village.weather ?? ""} village={snapshot?.village} />
@@ -504,12 +497,7 @@ export function ExplorationScreen({
                   </details>
                 </div>
               ) : null}
-              <div
-                className={`${ELEMENT_TAG}-home-map-viewport`}
-                ref={mapViewport}
-                data-arrival={!!arrival || undefined}
-                style={arrival ? ({ "--arrival-origin": arrival.origin } as CSSProperties) : undefined}
-              >
+              <div className={`${ELEMENT_TAG}-home-map-viewport`}>
                 <MapStage
                   inert={!!arrival}
                   navigationControlsOnMobile={navigatorOpen}
@@ -641,12 +629,16 @@ export function ExplorationScreen({
                     <div className={ELEMENT_TAG + "-maps-empty"}>No Venues on this map.</div>
                   ) : null}
                 </MapStage>
-                {arrival ? <div className={ELEMENT_TAG + "-venue-arrival"}>{arrival.content}</div> : null}
               </div>
             </div>
           </>
         )}
       </div>
+      {arrival ? (
+        <div className={ELEMENT_TAG + "-venue-arrival"} data-arrival>
+          {arrival}
+        </div>
+      ) : null}
       {mobile && !placingProjectId && !markerDraft ? navigation : null}
       {discoveryOpen && selectedMap ? (
         <PlacesDirectory
