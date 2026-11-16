@@ -12,6 +12,7 @@ import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { openingView } from "../../domain/rules/opening-project.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
@@ -74,11 +75,12 @@ export function createVillageSnapshot({
     const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
     const capturedVenue = residenceAccess && findLocation(sceneWorld, residenceAccess.placeId);
     const liveVenue = residenceAccess && findLocation(village, residenceAccess.placeId);
-    const scenePresentation = capturedVenue && {
-      ...capturedVenue,
-      zones: capturedVenue.zones?.map((zone) => {
-        const observed = liveVenue && resolveVenueZone(liveVenue, zone.id)?.observed;
-        return observed ? { ...zone, observed } : zone;
+    const sceneLayout = capturedVenue && residenceAccess && sceneLayoutVenue(capturedVenue, residenceAccess);
+    const scenePresentation = sceneLayout && {
+      ...sceneLayout,
+      zones: sceneLayout.zones?.map((zone) => {
+        const liveZone = liveVenue && resolveVenueZone(liveVenue, zone.id);
+        return liveZone ? { ...zone, name: liveZone.name, observed: liveZone.observed ?? zone.observed } : zone;
       }),
     };
     const presence = villagePresence(village, minuteOfDay, now);
@@ -289,6 +291,7 @@ export function createVillageSnapshot({
                   residenceAccess.continuity?.capturedAt ?? residenceAccess.startedAt,
                   sceneWorld.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
                 ),
+                village,
               ).venues.find((venue) => venue.id === scenePresentation.id)!,
             },
           }

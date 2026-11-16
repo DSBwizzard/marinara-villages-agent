@@ -718,9 +718,9 @@ async function main() {
       assert.equal(state.venues[2].zones![1].preparation?.status, "pending");
       assert.match(
         state.foundingPreparation!.error,
-        failure === "provider" ? /Private room: Offline/ : /Private room: Space response/,
+        failure === "provider" ? /Storage Bay: Offline/ : /Storage Bay: Space response/,
       );
-      assert.doesNotMatch(state.foundingPreparation!.error, /Storage Bay|PRIVATE CONTENT|private-secret/);
+      assert.doesNotMatch(state.foundingPreparation!.error, /PRIVATE CONTENT|private-secret/);
       await foundingPreparationSnapshot();
       await preparePrivateSpaces();
       assert.deepEqual(
