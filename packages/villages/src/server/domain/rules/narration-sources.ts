@@ -308,6 +308,37 @@ export function readSceneNarrationReply(
       }),
     };
   }
+  if (
+    readset.ordinaryDialogue &&
+    Array.isArray(raw.segments) &&
+    Object.keys(raw).every((key) => key === "segments" || key === "keep") &&
+    (raw.keep === undefined || (Array.isArray(raw.keep) && raw.keep.length === 0))
+  ) {
+    raw = {
+      ...raw,
+      segments: raw.segments.map((value: unknown) => {
+        const line = asRecord(value);
+        if (
+          line.kind !== "dialogue" ||
+          line.requires !== undefined ||
+          !Array.isArray(line.source) ||
+          line.source.length !== 1
+        )
+          return value;
+        const echo = asRecord(line.source[0]);
+        if (
+          Object.keys(echo).length !== 2 ||
+          typeof echo.quote !== "string" ||
+          typeof echo.speakerId !== "string" ||
+          echo.speakerId !== line.speakerId ||
+          echo.quote !== line.text
+        )
+          return value;
+        const { source: _echo, ...dialogue } = line;
+        return dialogue;
+      }),
+    };
+  }
   if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
   const {
     source: { historical, seed },
