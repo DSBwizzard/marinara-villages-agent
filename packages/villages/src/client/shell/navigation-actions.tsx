@@ -6,11 +6,11 @@ export function useScenesOpenMenu(ports: {
   loadProgressDebug: () => Promise<void>;
   debugDiscardEnabled: boolean;
   menuPage: import("../shared/types.js").MenuPage;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   setFocusedRequestId: React.Dispatch<React.SetStateAction<string>>;
   setMenuPage: React.Dispatch<React.SetStateAction<import("../shared/types.js").MenuPage>>;
   setScreen: React.Dispatch<
-    React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
   setSettingsError: React.Dispatch<React.SetStateAction<string>>;
   setSiteProjectId: React.Dispatch<React.SetStateAction<string>>;

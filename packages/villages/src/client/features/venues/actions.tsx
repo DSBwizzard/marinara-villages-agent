@@ -17,9 +17,7 @@ export function useOpenVenue(ports: {
   setMovePrivateZoneId: React.Dispatch<SetStateAction<string>>;
   setOpenPlaceId: React.Dispatch<SetStateAction<string>>;
   setPlayerMovePrivateZoneId: React.Dispatch<SetStateAction<string>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
 }) {
   const {
     explorationOrigin,
@@ -62,9 +60,7 @@ export function useLeaveVenue(ports: {
   venueReturnTo?: "home" | "menu" | "room" | "person";
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
   setOpenPlaceId: React.Dispatch<SetStateAction<string>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
   setVenueEditDraft: React.Dispatch<SetStateAction<VillageVenue>>;
   setVenueId: React.Dispatch<SetStateAction<string>>;
   setVenuePage: React.Dispatch<SetStateAction<"view" | "edit" | "proposal">>;

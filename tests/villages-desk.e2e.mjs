@@ -40,9 +40,10 @@ async function bundle() {
       "MenuScreen.tsx",
       `export function MenuScreen(){return <><button hidden>Hidden draft</button><button>Project control</button></>}`,
     ],
-    ...["FoundingScreen", "PreparationScreen", "ResumeScreen", "ResidentsScreen", "SceneScreen", "VenueScreen"].map(
-      (name) => [name + ".tsx", `export function ${name}(){return null}`],
-    ),
+    ...["FoundingScreen", "PreparationScreen", "ResidentsScreen", "SceneScreen", "VenueScreen"].map((name) => [
+      name + ".tsx",
+      `export function ${name}(){return null}`,
+    ]),
   ]);
   const result = await build({
     stdin: {

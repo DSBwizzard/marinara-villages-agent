@@ -321,7 +321,7 @@ export function ExplorationScreen({
             disabled={!!markerDraft}
             onClick={() => controller.setMailboxOpen(true)}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
+            <svg className="mari-rgb-static-icon" viewBox="0 0 24 24" aria-hidden="true">
               <rect x="3" y="5" width="18" height="14" rx="2" />
               <path d="m3 6 9 7 9-7" />
             </svg>

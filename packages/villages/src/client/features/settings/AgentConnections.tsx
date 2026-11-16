@@ -372,6 +372,7 @@ function JobIcon({ job }: { job: ConnectionJob }) {
   if (job.key === "systemConnectionId") return <VillageIcon name="settings" />;
   return (
     <svg
+      className="mari-rgb-static-icon"
       viewBox="0 0 24 24"
       width="24"
       height="24"
