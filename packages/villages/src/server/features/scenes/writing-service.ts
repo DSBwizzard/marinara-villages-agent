@@ -261,7 +261,12 @@ export function createSceneWriting({
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
-      format: blocksFor([SCENE_NARRATION_FORMAT, nativeCommands ? SCENE_NARRATION_KEEP : ORDINARY_SCENE_KEEP]),
+      format: blocksFor([
+        SCENE_NARRATION_FORMAT,
+        nativeCommands ? SCENE_NARRATION_KEEP : ORDINARY_SCENE_KEEP,
+        nativeCommands ? RELATIONSHIP_DIRECTION : SCENE_RELATIONSHIP_DIRECTION,
+        nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP,
+      ]),
       metadata: blocksFor([
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
@@ -274,8 +279,6 @@ export function createSceneWriting({
           : "If supplied, leadSpeakerId identifies the addressed resident. Proposed native changes stay intentions until the game confirms them.",
         narrationResponse(nativeCommands, positions, npcIntroduction),
         nativeCommands ? "" : ordinarySceneKeepSources(positions),
-        positions ? SCENE_RELATIONSHIP_DIRECTION : RELATIONSHIP_DIRECTION,
-        positions ? SCENE_RELATIONSHIP_KEEP : RELATIONSHIP_KEEP,
         nativeCommands ? NARRATION_NATIVE : "",
         npcIntroduction
           ? 'When a supporting character tells the player their own name aloud, add an optional commands entry {type:"npc.introduce",who:"npc-id",name:"exact spoken name",at:"dialogue-segment-id",source:["dialogue-segment-id"],independent:true}. Use the exact name as spoken. Keep their role label until the player hears them give a name.'
