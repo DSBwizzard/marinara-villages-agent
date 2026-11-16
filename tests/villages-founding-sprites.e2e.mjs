@@ -158,20 +158,17 @@ await withBrowser(browser, async () => {
       );
       await page.goto("http://founding-sprites.test/");
       await page.addScriptTag({ content: bundle });
+      const phone = viewport.width <= 727;
       const root = page.locator(".villages-forging-v2"),
-        next = root.getByRole("button", { name: "Let’s set up their homes", exact: true });
-      for (const reply of ["START", "Let’s talk about the world", "I only know the village so far", "Skip for now"])
+        next = root.getByRole("button", { name: phone ? "Next" : "Let’s set up their homes", exact: true });
+      for (const reply of ["START", "Next", "Set it up myself"])
         await root.getByRole("button", { name: reply, exact: true }).click();
-      if (viewport.width <= 727) await root.getByRole("button", { name: "Edit setting", exact: true }).click();
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
-      await root.getByLabel("Location name", { exact: true }).fill("Harbour");
+      await root.getByLabel("First map name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      if (viewport.width <= 727)
-        await root
-          .getByRole("region", { name: "Your setting" })
-          .getByRole("button", { name: "Done", exact: true })
-          .click();
-      await root.getByRole("button", { name: "Let’s meet the villagers", exact: true }).click();
+      for (const reply of ["Next", "Next", phone ? "Next" : "Let’s meet the villagers"])
+        await root.getByRole("button", { name: reply, exact: true }).click();
+      if (phone) await next.click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
         await page

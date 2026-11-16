@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue, SceneView } from "../../../shared/contracts/village.js";
 import { useFocusRevision } from "../../shared/activity.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
@@ -166,8 +166,15 @@ export function useSceneSelectionReset(ports: {
     setRoomTargetId,
     setScreen,
   } = ports;
+  const isFounded = ports.snapshot?.isFounded;
+  useLayoutEffect(() => {
+    if (isFounded === false && room) {
+      setRoom(null);
+      setRoomOpen(false);
+    }
+  }, [isFounded, room, setRoom, setRoomOpen]);
   useEffect(() => {
-    if (!room?.id || room.status === "closed" || screen !== "room") return;
+    if (isFounded !== true || !room?.id || room.status === "closed" || screen !== "room") return;
     if (observedRoomIdRef.current !== room.id) {
       observedRoomIdRef.current = room.id;
       setRoomContactBoundary("");
@@ -227,6 +234,7 @@ export function useSceneSelectionReset(ports: {
   }, [
     room?.id,
     room?.status,
+    isFounded,
     ports.snapshot?.village.instant,
     screen,
     loadSnapshot,
@@ -418,7 +426,7 @@ export function useActiveSceneRestoration(ports: {
   } = ports;
   const lifetime = useSceneEntryLifetime({
     room,
-    isFounded,
+    isFounded: isFounded === true,
     ended: roomEnded,
     inFlight: roomSendInFlightRef,
     completion: roomCompletionRef,
@@ -427,9 +435,21 @@ export function useActiveSceneRestoration(ports: {
   const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
-  // A restoration attempt starts only on mount or explicit retry. Its captured
-  // selection still retires through the entry lifetime, including after handoff.
+  const [world, setWorld] = useState({ isFounded, openingOnLoad: isFounded !== false });
+  if (world.isFounded !== isFounded) {
+    setWorld({
+      isFounded,
+      openingOnLoad: world.openingOnLoad && world.isFounded !== true && isFounded !== false,
+    });
+    setStatus("checking");
+    setError("");
+    setAttempt(0);
+  }
   const restore = useEffectEvent((attempt: number) => {
+    if (!world.openingOnLoad && room && attempt === 0) {
+      setStatus("ready");
+      return;
+    }
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     let claim: ReturnType<typeof lifetime.begin> = null;
@@ -456,8 +476,8 @@ export function useActiveSceneRestoration(ports: {
             setRoom(restored);
             setRoomOpen(true);
             setScreen("room");
-            // A retry only checks saved state; opening generation remains an explicit action.
-            if (session.status === "opening" && attempt === 0 && retries === 0) {
+            // Only startup of an existing village can resume its opening automatically.
+            if (session.status === "opening" && world.openingOnLoad && attempt === 0 && retries === 0) {
               owned.busy = true;
               setRoomBusy(true);
               try {
@@ -513,11 +533,14 @@ export function useActiveSceneRestoration(ports: {
       if (claim) lifetime.cancel(claim);
     };
   });
-  useEffect(() => restore(attempt), [attempt]);
+  useEffect(() => {
+    if (isFounded === true) return restore(attempt);
+  }, [attempt, isFounded]);
   const retry = useCallback(() => {
+    if (isFounded !== true) return;
     setStatus("checking");
     setError("");
     setAttempt((current) => current + 1);
-  }, []);
+  }, [isFounded]);
   return { status, error, retry };
 }

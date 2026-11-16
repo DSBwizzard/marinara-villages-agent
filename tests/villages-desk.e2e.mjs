@@ -14,10 +14,10 @@ async function bundle() {
       import {useState,useRef} from 'react';
       export function useVillageController(){
         const [screen,setScreen]=useState('home'),[menuPage,setMenuPage]=useState('index'),[personProfile,setPersonProfile]=useState(null);
-        const [snapshot,setSnapshot]=useState({worldScope:'world-a',settings:{venues:[]}});
+        const [snapshot,setSnapshot]=useState({isFounded:true,worldScope:'world-a',settings:{venues:[]}});
         const [exploreSheet,setExploreSheet]=useState(null);
         const spriteLeaveGuard=useRef(async()=>{window.guardCalls++;return true});
-        window.scopeChange=()=>setSnapshot({worldScope:'world-b',settings:{venues:[]}});
+        window.scopeChange=()=>setSnapshot({isFounded:true,worldScope:'world-b',settings:{venues:[]}});
         window.setDeskClock=village=>setSnapshot(value=>({...value,isFounded:!!village,village}));
         return {screen,setScreen,menuPage,setMenuPage,snapshot,spriteLeaveGuard,exploreSheet,setExploreSheet,personProfile,
           explorationReturnTab:useRef("map"),explorationOrigin:useRef(null),

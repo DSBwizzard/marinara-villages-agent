@@ -97,23 +97,39 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       worldBrief.length > FOUNDING_SETTING_BRIEF_LIMIT
     )
       throw badRequest("Use up to 4,096 characters to describe the world.");
+    const authoredWorldName = readWorldName(input.worldName === undefined ? "" : input.worldName);
+    if (authoredWorldName === null) throw badRequest("Use a world name within 120 characters.");
+    const authoredRules = input.worldRules === undefined ? "" : input.worldRules;
+    if (typeof authoredRules !== "string" || authoredRules.length > MAX_SETTING_LENGTH)
+      throw badRequest("Standing rules must be text of at most 4,096 characters.");
+    const world = {
+      world: worldBrief,
+      worldName: authoredWorldName || undefined,
+      worldRules: authoredRules.trim() || undefined,
+    };
     const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
     const budget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
     let inspection: LoreInspection | undefined;
     const lore =
       ids.length && budget
-        ? await readVillageLore(ids, worldBrief, undefined, budget, {
-            current: brief,
-            purpose: "Mari’s setting draft",
-            inspect: (report) => {
-              inspection = report;
+        ? await readVillageLore(
+            ids,
+            [worldBrief, authoredWorldName, authoredRules.trim()].filter(Boolean).join("\n"),
+            undefined,
+            budget,
+            {
+              current: brief,
+              purpose: "Mari’s setting draft",
+              inspect: (report) => {
+                inspection = report;
+              },
             },
-          })
+          )
         : [];
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
-    const requested = Math.min(model.maxOutputTokens ?? 1536, 1536);
+    const requested = model.maxOutputTokens ?? 4096;
     const sources = inspectedLoreUse(inspection, "Mari’s setting draft");
     const fitted = fitVenueWritingMessages(
       model,
@@ -122,12 +138,13 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           text: [
             "Draft the opening setting for this player's shared-life village. It can be any kind of community, in any setting.",
             'Return one JSON object with strings: "name" (community, up to 60 characters), "startingLocationName" (the area the map will cover, up to 80), "description" (a short paragraph describing that area and everyday life there), "worldName" (up to 120) and "rules" (standing facts for the setting).',
-            "Preserve the player's explicit names and details. Use the lorebook references for relevant setting facts, and follow the player's description whenever they differ. Treat all source material as context. If a required name is unspecified, suggest one that fits. Use empty strings for worldName and rules unless established by the player or relevant lore. Leave first-day events, the starting cast, living arrangements and map placement for later steps. Write in the language of the player's village description.",
+            "The village name identifies the whole community. The first map covers the area where the starting villagers live and meet. When the player names a large city, station, or other expansive home but leaves the first area open, choose one locally meaningful district, deck, or equivalent within it. A city can be the village and its market district the first map. Use a district or local area named in the player's description or relevant lore when it fits. Use the whole place as the first map if it is small or the player explicitly requests it. Describe the first map area and its relationship to the larger place.",
+            "Preserve the player's explicit names and details. Follow any supplied world name and standing world rules. Use the lorebook references for relevant setting facts, and follow the player's description whenever they differ. Treat all source material as context. If a required name is unspecified, suggest one that fits. Use empty strings for worldName and rules unless established by the player or relevant lore. Leave first-day events, the starting cast, living arrangements and map placement for later steps. Write in the language of the player's village description.",
           ].join(" "),
         },
         ...lore.map((text, index) => ({ text, optional: "lore" as const, lore: sources[index] })),
       ],
-      worldBrief ? JSON.stringify({ world: worldBrief, village: brief }) : brief,
+      worldBrief || world.worldName || world.worldRules ? JSON.stringify({ ...world, village: brief }) : brief,
       requested,
       "System",
     );
@@ -143,10 +160,14 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       usagePurpose: "other",
       debugMode: false,
     });
+    if (["length", "max_tokens"].includes(completion.finishReason))
+      throw badRequest(
+        "I ran out of room before I could finish your setting. Try again or check the System output limit.",
+      );
     const reply = extractModelJsonObject(completion);
     if (reply) {
-      const worldName = readWorldName(reply.worldName ?? "");
-      const rules = reply.rules ?? "";
+      const worldName = authoredWorldName || readWorldName(reply.worldName ?? "");
+      const rules = world.worldRules ?? reply.rules ?? "";
       if (worldName !== null && typeof rules === "string" && rules.length <= MAX_SETTING_LENGTH) {
         try {
           const name = readVillageName(reply.name);

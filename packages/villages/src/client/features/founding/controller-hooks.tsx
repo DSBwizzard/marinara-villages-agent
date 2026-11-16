@@ -535,7 +535,7 @@ export function useFoundingPreparationPolling(ports: {
   useEffect(() => {
     if (screen !== "preparing" || !ports.visible) return;
     if (ports.canPlay) {
-      setScreen("home");
+      setScreen((current) => (current === "preparing" ? "home" : current));
       return;
     }
     if (status === "failed" && !ports.historyPending) return;
@@ -548,7 +548,8 @@ export function useFoundingPreparationPolling(ports: {
         if (cancelled) return;
         setSnapshot(next);
         setPreparationProblem("");
-        if (!next.foundingPreparation || next.foundingPreparation.canPlay) setScreen("home");
+        if (!next.foundingPreparation || next.foundingPreparation.canPlay)
+          setScreen((current) => (current === "preparing" ? "home" : current));
         else if (
           next.foundingPreparation.status === "pending" ||
           next.backgroundWork?.some((row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status))

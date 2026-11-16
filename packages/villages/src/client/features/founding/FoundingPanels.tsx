@@ -377,6 +377,7 @@ export function VillageLorebookPicker({
   onChange,
   disabled,
   triggerLabel,
+  inline = false,
 }: {
   books: VillageLorebookOption[] | null;
   error: string;
@@ -384,6 +385,7 @@ export function VillageLorebookPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
   triggerLabel?: string;
+  inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
@@ -407,6 +409,74 @@ export function VillageLorebookPicker({
   ) : options.length === 0 ? (
     <p>No lorebooks available.</p>
   ) : null;
+  const choices = (
+    <>
+      <input
+        autoComplete="off"
+        type="search"
+        className="villages-lorebook-search"
+        value={query}
+        onKeyDown={(event) => {
+          if (inline && event.key === "Enter") event.preventDefault();
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+          }
+        }}
+        aria-label="Search Lorebooks"
+        placeholder="Search Lorebooks"
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {status}
+      {stale ? <p role="alert">Lorebooks changed. Close and reopen this picker.</p> : null}
+      <div className="villages-lorebook-results" role="group" aria-label="Lorebooks">
+        {shown.map((book) => {
+          const checked = active.includes(book.id);
+          const state = missing.includes(book.id)
+            ? books === null
+              ? error
+                ? "Unavailable"
+                : "Checking"
+              : "Missing"
+            : book.enabled
+              ? ""
+              : "Disabled";
+          return (
+            <label key={book.id} className="villages-lorebook-option" data-selected={checked}>
+              <input
+                autoComplete="off"
+                type="checkbox"
+                checked={checked}
+                disabled={
+                  disabled ||
+                  stale ||
+                  (!book.enabled && !checked && !selected.includes(book.id)) ||
+                  (!checked && active.length >= 24)
+                }
+                onChange={() => {
+                  const next = checked ? active.filter((id) => id !== book.id) : [...active, book.id];
+                  if (inline) onChange(next);
+                  else setPending(next);
+                }}
+              />
+              <span>
+                {book.name}
+                {state ? <small>{state}</small> : null}
+              </span>
+            </label>
+          );
+        })}
+        {books !== null && options.length > 0 && filtered.length === 0 ? <p>No matches</p> : null}
+        {filtered.length > shown.length ? (
+          <p>
+            {shown.length} of {filtered.length} matches
+          </p>
+        ) : null}
+      </div>
+    </>
+  );
+  if (inline) return choices;
   return (
     <section
       className={
@@ -475,68 +545,7 @@ export function VillageLorebookPicker({
       {!open && !triggerLabel ? status : null}
       {open ? (
         <FoundingDialog title="Choose Lorebooks" scrollBody onClose={() => setOpen(false)}>
-          <input
-            autoComplete="off"
-            type="search"
-            className="villages-lorebook-search"
-            value={query}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                setOpen(false);
-              }
-            }}
-            aria-label="Search Lorebooks"
-            placeholder="Search Lorebooks"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {status}
-          {stale ? <p role="alert">Lorebooks changed. Close and reopen this picker.</p> : null}
-          <div className="villages-lorebook-results" role="group" aria-label="Lorebooks">
-            {shown.map((book) => {
-              const checked = active.includes(book.id);
-              const state = missing.includes(book.id)
-                ? books === null
-                  ? error
-                    ? "Unavailable"
-                    : "Checking"
-                  : "Missing"
-                : book.enabled
-                  ? ""
-                  : "Disabled";
-              return (
-                <label key={book.id} className="villages-lorebook-option" data-selected={checked}>
-                  <input
-                    autoComplete="off"
-                    type="checkbox"
-                    checked={checked}
-                    disabled={
-                      disabled ||
-                      stale ||
-                      (!book.enabled && !checked && !selected.includes(book.id)) ||
-                      (!checked && active.length >= 24)
-                    }
-                    onChange={() =>
-                      setPending((current) =>
-                        checked ? current.filter((id) => id !== book.id) : [...current, book.id],
-                      )
-                    }
-                  />
-                  <span>
-                    {book.name}
-                    {state ? <small>{state}</small> : null}
-                  </span>
-                </label>
-              );
-            })}
-            {books !== null && options.length > 0 && filtered.length === 0 ? <p>No matches</p> : null}
-            {filtered.length > shown.length ? (
-              <p>
-                {shown.length} of {filtered.length} matches
-              </p>
-            ) : null}
-          </div>
+          {choices}
           <footer className="villages-lorebook-footer">
             <span aria-live="polite">{active.length} / 24</span>
             <button

@@ -102,7 +102,7 @@ export function useFoundingKeyboardOverlay(root: RefObject<HTMLElement | null>, 
         }
         const target = document.activeElement;
         if (!(target instanceof HTMLElement) || !node.contains(target)) return;
-        const scroller = target.closest<HTMLElement>('dialog[open], .villages-forging-body[data-step="0"]') ?? node;
+        const scroller = target.closest<HTMLElement>("dialog[open], .villages-forging-body") ?? node;
         const bounds = target.getBoundingClientRect();
         const top = Math.max(viewport?.offsetTop ?? 0, scroller.getBoundingClientRect().top);
         if (bounds.bottom > bottom - 12) scroller.scrollTop += bounds.bottom - bottom + 12;
