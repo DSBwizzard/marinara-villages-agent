@@ -574,6 +574,7 @@ async function privateInteriorLifecycle() {
     sceneryImageKey(village, home, village.setupAt, "bedroom"),
     sceneryImageKey(village, structuredClone(home), village.setupAt, "bedroom"),
   );
+  village.backgroundPace = "balanced";
   bedroom.image = null;
   let draws = 0;
   const images = createLocationImages({
