@@ -4,8 +4,16 @@ import { FoundingField } from "./FoundingField.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
-type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]>;
+type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]> | "manual";
+export const manualSettingLine =
+  "All yours. Give the village a name, pick where we’ll first meet the locals, and tell me what it’s like there. A working name is fine. The sign painter can wait.";
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
+  if (
+    workspace.settingBeat === "village" &&
+    workspace.settingManual === true &&
+    !workspace.suggestionRequest?.draftSetting
+  )
+    return "manual";
   return workspace.settingBeat ?? (workspace.suggestionRequest?.draftSetting ? "village" : "welcome");
 }
 
@@ -44,11 +52,17 @@ export function FoundingSettingScene({
   }, [confirmReplace]);
   const moveTo = (settingBeat: SettingBeat) => {
     const openEditor =
-      settingBeat === "village" &&
-      !!setupWorkspace.settingDraft &&
-      !setupWorkspace.settingProblem &&
-      !setupWorkspace.suggestionRequest?.draftSetting;
-    setSetupWorkspace((workspace) => ({ ...workspace, settingBeat, settingEditorOpen: openEditor }));
+      settingBeat === "manual" ||
+      (settingBeat === "village" &&
+        !!setupWorkspace.settingDraft &&
+        !setupWorkspace.settingProblem &&
+        !setupWorkspace.suggestionRequest?.draftSetting);
+    setSetupWorkspace((workspace) => ({
+      ...workspace,
+      settingBeat: settingBeat === "manual" ? "village" : settingBeat,
+      settingManual: settingBeat === "manual" || undefined,
+      settingEditorOpen: openEditor,
+    }));
     onBeatChange();
     if (!openEditor || !window.matchMedia("(max-width:727px)").matches)
       requestAnimationFrame(() => lineRef.current?.focus());
@@ -71,7 +85,8 @@ export function FoundingSettingScene({
     (!pending || waitingForMari);
   const dialogue = {
     welcome:
-      "Hey, you made it. I’m Mari. In Villages, you live alongside a community. A ship’s crew counts. So does one suspiciously dramatic apartment building. We’ll sketch their world, then meet the people and find them places to live.",
+      "Oh, hey! I’m Mari. In Villages, you make a life with a community. A ship’s crew counts. So does one alarmingly dramatic apartment building. Want to draft a village with me, or set it up yourself?",
+    manual: manualSettingLine,
     world:
       "Knowing what’s beyond the village helps me draft a home that fits. A stop on a busy trade route feels different from an outpost on an isolated moon. What’s the wider world like? A sentence will do. If you’re still figuring it out, we can skip ahead.",
     lorebooks:
@@ -103,8 +118,19 @@ export function FoundingSettingScene({
         {beat === "welcome" ? (
           <div className="villages-founding-replies">
             <button type="button" className="villages-forging-primary" onClick={() => moveTo("world")}>
-              Let’s talk about the world
+              Draft with Mari
             </button>
+            <button type="button" onClick={() => moveTo("manual")}>
+              Set it up myself
+            </button>
+          </div>
+        ) : null}
+        {beat === "manual" ? (
+          <div className="villages-founding-replies">
+            <button type="button" onClick={() => moveTo("welcome")}>
+              Back
+            </button>
+            {next}
           </div>
         ) : null}
         {beat === "world" ? (

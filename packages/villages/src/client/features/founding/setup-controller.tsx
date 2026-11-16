@@ -82,6 +82,7 @@ export function createFoundingDraftSetting(
       setSetupWorkspace((workspace) => ({
         ...workspace,
         settingBeat: "village",
+        settingManual: undefined,
         suggestionRequest: undefined,
         settingDraft: setting,
         settingEditorOpen: true,

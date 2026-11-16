@@ -335,6 +335,26 @@ export async function verifyFoundingLayout(group) {
             true,
             "No horizontal overflow on " + phase,
           );
+          if (phase !== "setting") {
+            const guide = root.locator(".villages-chapter-guide");
+            const sprite = guide.locator(".villages-setting-stage img");
+            await expect.poll(() => sprite.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+            const guideBox = await guide.boundingBox();
+            const workBox = await root.locator(".villages-forging-body").boundingBox();
+            const spriteBox = await sprite.boundingBox();
+            const dialogueBox = await guide.locator(".villages-setting-dialogue").boundingBox();
+            assert.ok(spriteBox.x + spriteBox.width <= dialogueBox.x + 1, "Mari stands beside her dialogue");
+            assert.ok(
+              view.width <= 727
+                ? guideBox.y + guideBox.height <= workBox.y + 1
+                : guideBox.x + guideBox.width <= workBox.x + 1,
+              "The workspace follows Mari on phones and sits to her right on wider screens",
+            );
+            if (process.env.VILLAGES_SCREENSHOT_DIR)
+              await page.screenshot({
+                path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${phase}-mari-${view.width}.png`),
+              });
+          }
           await button(
             phase === "setting"
               ? "Let’s meet the villagers"
@@ -359,7 +379,9 @@ export async function verifyFoundingLayout(group) {
           }
           if (phase === "review") {
             assert.equal(
-              await root.locator(".villages-forging-body").evaluate((element) => getComputedStyle(element).overflowY),
+              await root
+                .locator(view.width <= 727 ? ".villages-founding-chapter" : ".villages-forging-body")
+                .evaluate((element) => getComputedStyle(element).overflowY),
               "auto",
               "Review remains scrollable",
             );
@@ -461,9 +483,9 @@ export async function verifyFoundingLayout(group) {
         const phone = view.width <= 727;
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
         await expect(scene.locator('p[aria-live="polite"]')).toBeFocused();
-        await expect(scene).toContainText("Hey, you made it. I’m Mari.");
-        await expect(scene).toContainText("you live alongside a community");
-        await expect(button("Draft with Mari")).toHaveCount(0);
+        await expect(scene).toContainText("Oh, hey!");
+        await expect(button("Draft with Mari")).toBeVisible();
+        await expect(button("Set it up myself")).toBeVisible();
         if (!phone) {
           const sprite = stage.locator("img");
           await expect(sprite).toBeInViewport({ ratio: 1 });
@@ -476,12 +498,35 @@ export async function verifyFoundingLayout(group) {
           );
           assert.ok(dialogue.x >= portrait.x + portrait.width, "Dialogue sits beside Mari");
         }
-        await expect(button("Let’s talk about the world")).toBeInViewport({ ratio: 1 });
+        await expect(button("Draft with Mari")).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-welcome-" + view.width + ".png"),
           });
-        await button("Let’s talk about the world").click();
+        if ((view.width === 390 && view.height === 844) || view.width === 1366) {
+          await button("Set it up myself").click();
+          const manual = root.getByRole("region", { name: "Your setting" });
+          const name = manual.getByLabel("Village Name", { exact: true });
+          await expect(name).toBeVisible();
+          await expect(root.getByLabel("Tell Mari about your village")).toHaveCount(0);
+          await name.fill("Handmade Harbor");
+          await expect
+            .poll(() =>
+              page.evaluate(() => {
+                const saved = window.featureController.savedSetupDraft?.data;
+                return [saved?.workspace?.settingManual, saved?.name];
+              }),
+            )
+            .toEqual([true, "Handmade Harbor"]);
+          await page.reload();
+          await page.addScriptTag({ content: foundingBundle });
+          await expect(name).toHaveValue("Handmade Harbor");
+          await expect(root.getByLabel("The larger world")).toHaveCount(0);
+          assert.equal(settingCalls, 0, "Manual setup never dispatches a Mari draft");
+          await name.fill("");
+          await (phone ? manual : scene).getByRole("button", { name: "Back", exact: true }).click();
+        }
+        await button("Draft with Mari").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         if (draftWithLore) {
           await scene.getByLabel("The larger world").fill(worldBrief);

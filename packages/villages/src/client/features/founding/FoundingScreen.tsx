@@ -1,7 +1,7 @@
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { simpleFoundingMap } from "./simple-map.js";
 import { assignFoundingHome, foundingHomeMembers, reconcileFoundingRoster } from "./founding-homes.js";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { CONNECTION_SETUP_PROBLEMS, ELEMENT_TAG } from "../../shared/constants.js";
 import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
@@ -17,7 +17,7 @@ import {
 } from "../../../shared/helpers/founding-circumstance.js";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide } from "./FoundingGuide.js";
-import { FoundingSettingScene, settingBeat } from "./FoundingSettingScene.js";
+import { FoundingSettingScene, manualSettingLine, settingBeat } from "./FoundingSettingScene.js";
 import {
   FoundingPersonaSelector,
   FoundingVillagerPicker,
@@ -39,6 +39,28 @@ const PLACE_ERRORS = {
   setting: "Describe the starting location.",
 };
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
+
+function FoundingChapter({
+  step,
+  guide,
+  bodyRef,
+  children,
+}: {
+  step: number;
+  guide: ReactNode;
+  bodyRef: Ref<HTMLElement>;
+  children: ReactNode;
+}) {
+  return (
+    <div className="villages-founding-chapter" data-guided={step > 0 || undefined}>
+      {guide}
+      <main className="villages-forging-body" data-step={step} ref={bodyRef}>
+        {children}
+      </main>
+    </div>
+  );
+}
+
 export function FoundingScreen({
   controller,
   host,
@@ -139,6 +161,7 @@ export function FoundingScreen({
     : rawSetupProblem;
   const [contextView, setContextView] = useState("");
   const beat = settingBeat(setupWorkspace);
+  const manualSetting = beat === "manual";
   const [arrival, setArrival] = useState<"turning" | "greeting">();
   const turning = arrival === "turning";
   const enteringScene = arrival === "greeting" && setupStep === 0 && beat === "welcome";
@@ -156,11 +179,12 @@ export function FoundingScreen({
   }, [turning]);
   const hasSettingDraft = !!setupWorkspace.settingDraft;
   const settingEditorOpen =
-    setupWorkspace.settingEditorOpen ??
-    (beat === "village" &&
-      hasSettingDraft &&
-      !setupWorkspace.suggestionRequest?.draftSetting &&
-      !setupWorkspace.settingProblem);
+    manualSetting ||
+    (setupWorkspace.settingEditorOpen ??
+      (beat === "village" &&
+        hasSettingDraft &&
+        !setupWorkspace.suggestionRequest?.draftSetting &&
+        !setupWorkspace.settingProblem));
   const setSettingEditorOpen = useCallback(
     (open: boolean) =>
       setSetupWorkspace((workspace) =>
@@ -201,6 +225,7 @@ export function FoundingScreen({
   const editSettingButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0 });
+    bodyRef.current?.parentElement?.scrollTo({ top: 0 });
     bodyRef.current?.scrollTo({ top: 0 });
     setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
   }, [setupStep, screen]);
@@ -491,6 +516,36 @@ export function FoundingScreen({
           : ["Let’s meet the villagers", "Let’s set up their homes", "Let’s look it over", "Found village"][setupStep]}
       </button>
     );
+    const guide =
+      setupStep > 0 ? (
+        <FoundingGuide
+          scene
+          pose={setupStep === 1 ? "playful" : setupStep === 3 ? "happy" : "neutral"}
+          replies={
+            <>
+              <button
+                type="button"
+                disabled={busy || spriteBusy || setupEditorOpen}
+                onClick={() => {
+                  if (!spriteWorking.current) gotoSetupStep(setupStep - 1);
+                }}
+              >
+                Back
+              </button>
+              {nextReply}
+            </>
+          }
+        >
+          {
+            [
+              "",
+              "Time to cast the locals. The people you choose are already part of this community. Pick who you’ll play, then choose the neighbors and how they’ll look in Scenes. I promise the casting committee is just you.",
+              "A Venue is a place on the map, and its Zones are the spots inside. Open a Venue to decide who can visit, who gets personal space, and where everyone sleeps. Yes, the couch counts.",
+              "Take one last look at the map and where everyone sleeps. If you want anything happening as you arrive, add it under First day. A quiet morning is also legal, despite what certain neighbors will tell you.",
+            ][setupStep]!
+          }
+        </FoundingGuide>
+      ) : null;
     return (
       <div
         className={FOUNDING_ROOT}
@@ -522,34 +577,6 @@ export function FoundingScreen({
             </li>
           ))}
         </ol>
-        {setupStep > 0 ? (
-          <FoundingGuide
-            pose={setupStep === 1 ? "playful" : setupStep === 3 ? "happy" : "neutral"}
-            replies={
-              <>
-                <button
-                  type="button"
-                  disabled={busy || spriteBusy || setupEditorOpen}
-                  onClick={() => {
-                    if (!spriteWorking.current) gotoSetupStep(setupStep - 1);
-                  }}
-                >
-                  Back
-                </button>
-                {nextReply}
-              </>
-            }
-          >
-            {
-              [
-                "",
-                "The people you pick here will be there from the start, and their sprites are how you’ll see them in Scenes. Who’s already part of this community? Pick them and set up their sprites.",
-                "Places give your villagers somewhere to spend their days and somewhere to come home to. Open a Venue to set up its Zones, then decide who can visit and where everyone sleeps. Yes, the couch counts.",
-                "This is your last look before we found the village. Check where everyone lives and sleeps. If something’s happening when you arrive, put it under First day so it can shape the opening.",
-              ][setupStep]!
-            }
-          </FoundingGuide>
-        ) : null}
         {setupStep === 0 && artSettingsOpen ? (
           <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
@@ -590,7 +617,7 @@ export function FoundingScreen({
             </footer>
           </FoundingDialog>
         ) : null}
-        <main className="villages-forging-body" data-step={setupStep} ref={bodyRef}>
+        <FoundingChapter step={setupStep} bodyRef={bodyRef} guide={guide}>
           <div hidden={setupStep !== 1}>
             <div className="villages-forging-columns villages-people-columns">
               <section className="villages-forging-card">
@@ -625,10 +652,9 @@ export function FoundingScreen({
                     setSpriteId(id);
                     requestAnimationFrame(() => {
                       const root = rootRef.current;
-                      const body = root?.querySelector<HTMLElement>(".villages-forging-body");
-                      const pane = root?.querySelector<HTMLElement>(".villages-founding-sprites");
-                      if (root && root.clientWidth < 728 && body && pane)
-                        body.scrollTop += pane.getBoundingClientRect().top - body.getBoundingClientRect().top;
+                      root
+                        ?.querySelector<HTMLElement>(".villages-founding-sprites")
+                        ?.scrollIntoView({ block: "nearest" });
                     });
                   }}
                   activeId={activeSpriteId}
@@ -663,7 +689,7 @@ export function FoundingScreen({
             hidden={setupStep !== 0}
             className="villages-place-panels"
             data-editing={settingEditorOpen || undefined}
-            data-intro={beat !== "village" || undefined}
+            data-intro={(beat !== "village" && !manualSetting) || undefined}
           >
             {setupStep === 0 ? (
               <FoundingSettingScene
@@ -689,19 +715,32 @@ export function FoundingScreen({
                   type="button"
                   className="villages-setting-done"
                   onClick={() => {
-                    setSettingEditorOpen(false);
+                    if (manualSetting) {
+                      setSetupWorkspace((workspace) => ({
+                        ...workspace,
+                        settingBeat: "welcome",
+                        settingManual: undefined,
+                        settingEditorOpen: false,
+                      }));
+                    } else setSettingEditorOpen(false);
                     bodyRef.current?.scrollTo({ top: 0 });
-                    requestAnimationFrame(() => editSettingButton.current?.focus());
+                    requestAnimationFrame(() => {
+                      if (manualSetting)
+                        bodyRef.current?.querySelector<HTMLButtonElement>(".villages-setting-guide button")?.focus();
+                      else editSettingButton.current?.focus();
+                    });
                   }}
                 >
-                  {hasSettingDraft ? "Back to Mari" : "Done"}
+                  {manualSetting ? "Back" : hasSettingDraft ? "Back to Mari" : "Done"}
                 </button>
               </div>
               <div className="villages-setting-editor-guide">
                 <FoundingGuide pose={hasSettingDraft ? "happy" : "neutral"}>
-                  {hasSettingDraft
-                    ? "Go ahead and change anything. I’m very brave about edits. Mostly."
-                    : "Start with a name and a place to meet the locals. A working name will do."}
+                  {manualSetting
+                    ? manualSettingLine
+                    : hasSettingDraft
+                      ? "Go ahead and change anything. I’m very brave about edits. Mostly."
+                      : "Start with a name and a place to meet the locals. A working name will do."}
                 </FoundingGuide>
               </div>
               <FoundingField
@@ -1131,7 +1170,7 @@ export function FoundingScreen({
             </div>
           ) : null}
           {settingsError ? <p role="alert">{settingsError}</p> : null}
-        </main>
+        </FoundingChapter>
       </div>
     );
   }

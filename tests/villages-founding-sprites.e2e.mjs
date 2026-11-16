@@ -160,7 +160,7 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ content: bundle });
       const root = page.locator(".villages-forging-v2"),
         next = root.getByRole("button", { name: "Let’s set up their homes", exact: true });
-      for (const reply of ["START", "Let’s talk about the world", "I only know the village so far", "Skip for now"])
+      for (const reply of ["START", "Draft with Mari", "I only know the village so far", "Skip for now"])
         await root.getByRole("button", { name: reply, exact: true }).click();
       if (viewport.width <= 727) await root.getByRole("button", { name: "Edit setting", exact: true }).click();
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
