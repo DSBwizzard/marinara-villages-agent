@@ -112,6 +112,8 @@ Ordinary speech reaches everyone in the same Zone. A whisper reaches its one loc
 
 An aside appears beside the main Scene paragraph. It follows the same hearing rules as ordinary dialogue, whispers, and shouts. A card marked **Whisper** names its recipient.
 
+When you are alone with the person who made an open offer, type **I accept:** followed by the offer’s exact saved wording. The Scene records the assent with your exact words.
+
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
 If you see **HALT**, the proposed turn has not entered the story. Read the notice and revise your draft. Ordinary refusals can still happen within the story. Villages holds unsupported required outcomes with your original input and the generated reply. Recovery offers local replay or an explicit Retry when applicable. Character abilities remain part of their identity, and enacted consequences must fit what Villages can support.

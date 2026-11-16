@@ -314,6 +314,23 @@ export function acceptNarrationContinuity(
       ? new Set<string>()
       : undefined;
   const keeps = reply.keep.slice();
+  if (readset.exactOfferAssent) {
+    const { replace, residentId } = readset.exactOfferAssent;
+    memoryRequire(
+      source.input && !admission.protectedRoots.length && !reply.commands.length,
+      "the exact assent lost its captured scope",
+    );
+    memoryRequire(!keeps.some((raw) => asRecord(raw).id === "accept-offer"), "the exact assent effect ID is reserved");
+    keeps.unshift({
+      id: "accept-offer",
+      replace,
+      for: ["player", residentId],
+      accept: "player",
+      source: [
+        { input: source.input, ground: { kind: "spoken", to: ["player", residentId], at: "start" }, act: "accept" },
+      ],
+    });
+  }
   if (readset.codeRequestedMemory) {
     memoryRequire(
       requestedMemory?.recipientId && !admission.protectedRoots.length && !reply.commands.length,

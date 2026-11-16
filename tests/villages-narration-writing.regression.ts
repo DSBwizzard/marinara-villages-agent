@@ -506,6 +506,46 @@ await runCase("narration-writing/open-offer-guidance", async () => {
     readset.capturedAt,
   );
   assert.equal(result.held, false, JSON.stringify(result.rejected));
+  f.nextOperation("exact-offer-operation");
+  await assert.rejects(
+    () => f.writing.prepareVenueTurnMessages(f.scene, "I accept: different terms.", "chat"),
+    /exact terms of one open offer/u,
+  );
+  const exactWords = "I accept: " + text;
+  const exact = await f.writing.prepareVenueTurnMessages(f.scene, exactWords, "chat");
+  assert.equal(exact.readset.exactOfferAssent?.residentId, f.id);
+  assert.equal(exact.readset.source.input, exactWords);
+  const acceptedState = structuredClone(f.state);
+  const exactReply = { segments: [{ kind: "dialogue", speakerId: f.id, text: "See you there." }] };
+  const exactOutcome = acceptNarration(
+    acceptedState,
+    { readset: exact.readset, raw: exactReply, responseDigest: memoryHash(exactReply) },
+    "exact-offer-turn",
+    exact.readset.capturedAt,
+  );
+  assert.equal(exactOutcome.held, false, JSON.stringify(exactOutcome.rejected));
+  const decision = acceptedState.continuity.records
+    .find((row) => row.offer)
+    ?.offer?.events.find((event) => event.act === "accept");
+  assert.equal(decision?.sources[0].excerpt, exactWords);
+  assert.deepEqual(
+    decision?.sources[0].perceptions.map((row) => row.actorId),
+    ["player", f.id],
+  );
+  assert.equal(
+    acceptNarration(
+      acceptedState,
+      { readset: exact.readset, raw: exactReply, responseDigest: memoryHash(exactReply) },
+      "exact-offer-turn",
+      exact.readset.capturedAt,
+    ).episode?.id,
+    exactOutcome.episode?.id,
+  );
+  assert.equal(
+    acceptedState.continuity.records.find((row) => row.offer)?.offer?.events.filter((event) => event.act === "accept")
+      .length,
+    1,
+  );
   f.nextOperation("accept-operation");
   const next = await f.writing.prepareVenueTurnMessages(f.scene, "Yes, I'll help paint the sign.", "chat");
   const prompt = next.fitted.messages.map((row) => row.content).join("\n");
