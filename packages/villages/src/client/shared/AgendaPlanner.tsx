@@ -123,7 +123,7 @@ const agendaStyles = `
 }
 .${P}-day-planner[data-repair=true]{
  --planner-paper:var(--repair-paper);--planner-line:var(--repair-control);
- --notebook-hand:"Segoe UI",system-ui,sans-serif;--menu-selected:var(--repair-soft);
+ --notebook-hand:"Segoe UI",system-ui,sans-serif;--menu-selected:var(--repair-primary);
  margin-block:16px;
 }
 .${P}-day-planner[data-repair=true] .${P}-planner-detail{margin-block:12px}
