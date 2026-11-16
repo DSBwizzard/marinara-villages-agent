@@ -171,7 +171,10 @@ function fixture(resident = false) {
   return { state, actorId, home, cafe, readset, context, sources, decision, before, apply, publication, command };
 }
 
-function cottageInvitation(setup?: (cottage: VillageVenue, actorId: string) => void) {
+function cottageInvitation(
+  setup?: (cottage: VillageVenue, actorId: string) => void,
+  input = "May I stay here tonight?",
+) {
   const f = fixture(true);
   const cottage = { ...structuredClone(f.home.location), id: "cottage", name: "Mara's cottage" };
   cottage.zones = cottage.zones!.map((zone) =>
@@ -197,7 +200,7 @@ function cottageInvitation(setup?: (cottage: VillageVenue, actorId: string) => v
     },
     cottage,
   );
-  const prepared = narrationContinuityContext(f.state, scene, cottage, "invite", "May I stay here tonight?", at);
+  const prepared = narrationContinuityContext(f.state, scene, cottage, "invite", input, at);
   const readset = {
     ...fittedNarrationReadset(
       f.state,
@@ -250,6 +253,19 @@ await runCase("narration-access/spoken-visit", () => {
     assert.equal(acceptNarration(f.state, publication, "submission", at).replayed, true);
     assert.equal(f.cottage().access!.permissions.length, 1);
   }
+  const f = cottageInvitation(undefined, '"Thanks. Can I actually come inside? Could we talk?"');
+  const result = acceptNarration(
+    f.state,
+    f.publication([
+      "Yes — come in, come in, it's warmer than it looks. Boots off by the mat if you don't mind, the floor gets slippery.",
+      "What did you want to talk about?",
+    ]),
+    "submission",
+    at,
+  );
+  assert.equal(result.held, false);
+  assert.equal(result.episode?.playerAccessChanges?.[0].entry.room, "Living Room");
+  assert.deepEqual(f.cottage().access!.permissions[0].sourceLineIds, [result.episode!.segments[0].id]);
 });
 
 await runCase("narration-access/spoken-visit-uncertain", () => {
@@ -260,8 +276,14 @@ await runCase("narration-access/spoken-visit-uncertain", () => {
     ["Come in and look at the bedroom."],
     ["Come in. Wait outside until I get back."],
     ["Come in.", "Wait outside. I need to ask first."],
+    ["Yes — come in if my housemate agrees.", "Anyway, let's talk."],
+    ["Yes — come in, come in, it's warmer once the landlord says yes.", "Anyway, let's talk."],
+    ["“Yes — come in.” That's what I would have said.", "Anyway, let's talk."],
+    ["Yes — come in.", "How have you been?", "On second thought, wait outside."],
+    ["Yes — come in. Only once I've asked my housemate.", "How have you been?"],
+    ["Yes — come in.", "When my housemate gets back."],
   ]) {
-    const f = cottageInvitation();
+    const f = cottageInvitation(undefined, "Can I actually come inside?");
     assert.equal(acceptNarration(f.state, f.publication(texts), "submission", at).held, false);
     assert.deepEqual(f.cottage().access!.permissions, [], texts.join(" "));
   }

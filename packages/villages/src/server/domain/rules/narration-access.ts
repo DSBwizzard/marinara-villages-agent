@@ -256,10 +256,32 @@ export type NarrationAccessDecision = {
 const visitWelcome =
   /^(?:please,? )?(?:(?:come|step)(?: on)?|you (?:can|may) come) (?:in|inside)(?: out of the (?:rain|cold|wind))?(?: and (?:look around|(?:have|take) a look|look at (?<lookAt>[\p{L}\p{M} ]+?))(?: first)?)?(?:, please)?(?:[.!](?: then (?:you )?tell me if (?:that|it) works[.!]?)?)?$/iu;
 
+const entryQuestion = /(?:^["“]?|[.!?]\s+)(?:can|could|may) i (?:actually |please )?(?:come|step) (?:in|inside)\s*\?/iu;
+const entryAnswer =
+  /^(?:yes|sure|of course)[,!.: —–-]+(?<welcome>(?:come|step) (?:on )?(?:in|inside))(?:, \k<welcome>)*(?:[.!](?!\?)|$|, (?=it(?:['’]s| is) (?:warm(?:er)?|dry|cold|wet)\b))/iu;
+const entryRetraction =
+  /\b(?:not (?:yet|now|through (?:this|that) door)|on second thought|i take that back|only (?:if|once|after|when)|(?:wait|stay) (?:right )?(?:here|there|outside|on the (?:step|porch))|(?:before|until) you (?:enter|(?:come|step|go) (?:in|inside))|(?:can['’]t|cannot|don['’]t|do not|mustn['’]t|may not) (?:actually )?(?:enter|(?:come|step|go) (?:in|inside)))\b/iu;
+const entryCondition = /\b(?:if|unless|only|once|after|when|provided|as long as)\b/iu;
+const delayedEntry = /(?:^|[.!?]\s+)(?:if|unless|once|after|when|provided|as long as)\b/iu;
+
 export function spokenVisitInvitation(state: VillageState, context: NarrationSourceContext, at: Date) {
   const { scene, lines } = context;
   if (scene.zoneId !== "exterior" || !scene.sceneAttendance?.layout) return;
-  const segment = lines.findLastIndex((line) => line.kind !== "narration" && line.heardBy?.includes("player"));
+  const heard = lines.map((line) =>
+    line.kind !== "narration" && line.heardBy?.includes("player") ? line.content.trim().replace(/\s+/gu, " ") : "",
+  );
+  let segment = heard.findLastIndex((text) => text.length > 0);
+  const words = heard[segment]?.match(visitWelcome);
+  if (!words) {
+    if (!entryQuestion.test(context.input.trim())) return;
+    segment = heard.findLastIndex((text) => entryAnswer.test(text));
+    const answer = heard[segment]?.match(entryAnswer)?.[0];
+    if (!answer || heard.slice(segment).some((text) => entryRetraction.test(text) || delayedEntry.test(text))) return;
+    if (answer.endsWith(", ")) {
+      const remainder = heard[segment].slice(answer.length).split(/[.!?]/u, 1)[0];
+      if (entryCondition.test(remainder)) return;
+    }
+  }
   const line = lines[segment];
   if (
     line?.kind !== "dialogue" ||
@@ -270,8 +292,6 @@ export function spokenVisitInvitation(state: VillageState, context: NarrationSou
   const by = line.speakerId;
   const positions = narrationPositions(context, { index: segment, side: "after" });
   if (!by || by === "player" || positions[by] !== "exterior" || positions.player !== "exterior") return;
-  const words = line.content.trim().replace(/\s+/gu, " ").match(visitWelcome);
-  if (!words) return;
 
   const venue = findLocation(state, scene.placeId);
   if (!venue) return;
@@ -281,7 +301,7 @@ export function spokenVisitInvitation(state: VillageState, context: NarrationSou
   );
   if (shared?.length !== 1 || !shared[0].seen) return;
   const zone = venue.zones?.find((zone) => zone.id === shared[0].id);
-  const object = words.groups?.lookAt?.toLowerCase().replace(/^the /u, "");
+  const object = words?.groups?.lookAt?.toLowerCase().replace(/^the /u, "");
   if (
     zone?.kind !== "shared-residence" ||
     !zone.seen ||

@@ -56,8 +56,9 @@ await runCase("packaged-scene/spoken-visit", async () => {
           {
             kind: "dialogue",
             speakerId: "mara",
-            text: "Come in out of the rain and look at it first. Then you tell me if that works.",
+            text: "Yes — come in, come in, it's warmer than it looks. Boots off by the mat if you don't mind, the floor gets slippery.",
           },
+          { kind: "dialogue", speakerId: "mara", text: "What did you want to talk about?" },
         ],
       }),
       usage: { inputTokens: 10, outputTokens: 10 },
@@ -72,7 +73,7 @@ await runCase("packaged-scene/spoken-visit", async () => {
       payload: {
         sessionId: "browser",
         submissionId: "a3333333-3333-4333-8333-333333333333",
-        message: "Is your couch free tonight?",
+        message: '"Thanks. Can I actually come inside? Could we talk?"',
         mode: "chat",
         targetId: "",
         expectedSceneRevision: host.scene().sceneRevision,
