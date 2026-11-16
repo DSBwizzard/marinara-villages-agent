@@ -233,10 +233,7 @@ await withBrowser(browser, async () => {
         const canvas = await page.locator(`.${tag}-chat-cast`).boundingBox();
         for (const image of await people.locator(":scope > img").all()) {
           const box = await image.boundingBox();
-          assert.ok(
-            Math.abs(box.width - Math.min(canvas.width * 0.7, (canvas.height * 2) / 3)) < 1,
-            "sprite scale is independent of cast count",
-          );
+          assert.ok(Math.abs(box.width - canvas.width * 0.8) < 1, "sprite scale is independent of cast count");
           assert.ok(box.y >= canvas.y - 1, "sprite heads stay clear of top controls");
           if (width === 390) {
             const dock = await page.locator(`.${tag}-chat-vn`).boundingBox();
@@ -312,7 +309,19 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         });
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        assert.deepEqual(await boxes(), baseline, "keyboard movement does not shrink or reposition the cast");
+        const withKeyboard = await boxes();
+        for (const [index, { x, y, width, height }] of withKeyboard.entries()) {
+          assert.deepEqual(
+            { x, width, height },
+            {
+              x: baseline[index].x,
+              width: baseline[index].width,
+              height: baseline[index].height,
+            },
+            "the keyboard preserves sprite scale and horizontal positions",
+          );
+          assert.ok(y <= baseline[index].y, "the keyboard may lift the cast into view");
+        }
         const keyboardInput = await input.boundingBox();
         assert.ok(Math.abs(keyboardInput.y + keyboardInput.height - (height - 280)) < 1);
         await expect(reading).toBeHidden();
@@ -328,6 +337,7 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         });
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
+        await expect.poll(boxes).toEqual(baseline);
         await expect(reading).toBeVisible();
         assert.equal(await reading.innerText(), text);
         await expect(composer).toHaveValue("Preserve this draft.");
@@ -347,7 +357,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "End Scene now" }).click();
+    await page.getByRole("menuitem", { name: "Conclude" }).click();
     await expect(composer).toHaveCount(0);
     await expect
       .poll(

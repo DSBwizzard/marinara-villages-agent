@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { NpcIdentity } from "../models/places.js";
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -21,6 +22,21 @@ export type NpcAdmissionRequest = {
   label?: string;
   characterization?: string;
 };
+
+export function witnessedNpcName(source: ContinuityEvidence, actorId: string, name: string): boolean {
+  if (!name.trim() || name !== name.trim() || name.length > 100 || /[\r\n]/.test(name)) return false;
+  const pattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (
+    source.kind === "speech" &&
+    source.actorId === actorId &&
+    source.perceptions.some(
+      (row) =>
+        row.actorId === "player" &&
+        row.channel === "words" &&
+        new RegExp(`(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, "u").test(row.text),
+    )
+  );
+}
 
 /** Metadata is provisional until its current observed introduction passes native acceptance. */
 export function prepareNpcAdmission(
@@ -65,7 +81,7 @@ export function prepareNpcAdmission(
       id,
       revision: 1,
       name: request.name,
-      label: request.label || request.name,
+      label: request.label?.trim() || "Stranger",
       characterization: request.characterization,
       facts: [],
       associations: [],

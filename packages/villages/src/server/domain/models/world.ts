@@ -89,6 +89,7 @@ export type VillageResidentSprite = {
   assetId: string;
   named?: true;
   defaultExpressionId?: string;
+  defaultView?: "front" | "side";
   expressions: Array<{
     view: "front" | "side";
     label: string;
@@ -573,6 +574,7 @@ export type VillageState = {
   /** Current work remains separate from the recent, terminal debug history. */
   returnCatchup?: {
     capture?: ReturnCatchupCapture;
+    lastPresenceWallTime?: number;
     batch?: ReturnCatchupBatch;
     history?: ReturnCatchupBatch[];
   };

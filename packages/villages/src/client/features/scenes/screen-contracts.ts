@@ -14,8 +14,6 @@ import type { useDismissRoomNotice } from "./actions.js";
 
 import type { useGreetRoom } from "./actions.js";
 
-import type { useLeaveRoom } from "./actions.js";
-
 import type { useLoadVillageSnapshot } from "../../shared/data-controller.js";
 
 import type { useMoveRoom } from "./actions.js";
@@ -38,7 +36,6 @@ export type SceneScreenController = {
   readonly dismissRoomNotice: ReturnType<typeof useDismissRoomNotice>;
   readonly goHome: () => void;
   readonly greetRoom: ReturnType<typeof useGreetRoom>;
-  readonly leaveRoom: ReturnType<typeof useLeaveRoom>;
   readonly loadSnapshot: ReturnType<typeof useLoadVillageSnapshot>;
   readonly mailboxOpen: ScenesState["mailboxOpen"];
   readonly mobile: boolean;
@@ -59,7 +56,6 @@ export type SceneScreenController = {
   readonly roomError: ScenesState["roomError"];
   readonly roomGreetingError: ScenesState["roomGreetingError"];
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
-  readonly roomLeaveSubmissionIdRef: ScenesState["roomLeaveSubmissionIdRef"];
   readonly contactRecovery: ScenesState["contactRecovery"];
   readonly setContactRecovery: ScenesState["setContactRecovery"];
   readonly roomMoveOperationIdRef: ScenesState["roomMoveOperationIdRef"];
@@ -83,7 +79,7 @@ export type SceneScreenController = {
   readonly setRoomError: ScenesState["setRoomError"];
   readonly setRoomTargetId: ScenesState["setRoomTargetId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setSnapshot: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>

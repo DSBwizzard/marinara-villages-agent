@@ -32,12 +32,12 @@ export type VenueScreenController = {
   readonly retryWork: (job: BackgroundWork) => Promise<void>;
   readonly room: import("../../../shared/contracts/village").SceneView;
   readonly roomBusy: boolean;
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
+  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly setMovePrivateZoneId: VenuesState["setMovePrivateZoneId"];
   readonly setMoveTargetId: VenuesState["setMoveTargetId"];
   readonly setPlayerMovePrivateZoneId: VenuesState["setPlayerMovePrivateZoneId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setVenueEditDraft: VenuesState["setVenueEditDraft"];
   readonly setVenueEditError: VenuesState["setVenueEditError"];

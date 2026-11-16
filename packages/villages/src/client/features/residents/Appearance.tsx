@@ -20,6 +20,7 @@ type Choice = {
   useSprites: boolean;
   expressions: AppearanceExpression[];
   defaultExpressionId: string;
+  defaultView?: SpriteView;
 };
 type SaveResult = Pick<SpriteAppearance, "revision" | "token" | "manager">;
 const views = ["front", "side"] as const;
@@ -58,6 +59,14 @@ function SpriteBatchPicker({
   }, [readPath]);
 
   const visible = library?.files.filter((file) => (file.folderId ?? "") === source) ?? [];
+  const nameOf = (file: SpriteLibraryItem) => engineSpriteName(file.label ?? "", file.filename);
+  const names = new Set<string>();
+  const duplicateNames = new Set<string>();
+  for (const file of visible) {
+    const name = nameOf(file).toLocaleLowerCase();
+    if (names.has(name)) duplicateNames.add(name);
+    names.add(name);
+  }
   const selected = library?.files.filter((file) => checked.includes(file.filename)) ?? [];
   const available = visible.filter((file) => !assigned.get(file.filename)?.artworkId);
   return (
@@ -104,7 +113,8 @@ function SpriteBatchPicker({
                 }
               />
               <img src={file.url} alt="" loading="lazy" />
-              <span>{engineSpriteName(file.label ?? "", file.filename)}</span>
+              <span>{nameOf(file)}</span>
+              {duplicateNames.has(nameOf(file).toLocaleLowerCase()) ? <small>{file.filename}</small> : null}
               {assigned.get(file.filename)?.artworkId ? <small>Added</small> : null}
             </label>
           ))}
@@ -133,17 +143,27 @@ function SpriteGallery({
   rows,
   image,
   onRemove,
+  onDefault,
+  defaultExpressionId,
+  defaultView,
   locked,
 }: {
   view: SpriteView;
   rows: AppearanceExpression[];
   image(source: SpriteChoice | undefined): string;
   onRemove(row: AppearanceExpression): void;
+  onDefault(row: AppearanceExpression): void;
+  defaultExpressionId: string;
+  defaultView?: SpriteView;
   locked: boolean;
 }) {
   const label = viewLabels[view];
   const [selection, setSelection] = useState("");
-  const row = rows.find(({ id }) => id === selection) ?? rows[0];
+  const row =
+    rows.find(({ id }) => id === selection) ??
+    (view === defaultView ? rows.find(({ id }) => id === defaultExpressionId) : undefined) ??
+    rows[0];
+  const isDefault = row?.id === defaultExpressionId && view === defaultView;
   return (
     <section className="appearance-view" aria-label={label}>
       <h4>
@@ -169,15 +189,20 @@ function SpriteGallery({
           ) : (
             <span className="appearance-variant-name">{row.name}</span>
           )}
-          <button
-            type="button"
-            className="appearance-link"
-            aria-label={`Remove ${row.name} from ${label}`}
-            disabled={locked}
-            onClick={() => onRemove(row)}
-          >
-            Remove
-          </button>
+          <div className="appearance-expression-fields">
+            <button type="button" disabled={locked || isDefault} onClick={() => onDefault(row)}>
+              {isDefault ? "Default" : "Set as default"}
+            </button>
+            <button
+              type="button"
+              className="appearance-link"
+              aria-label={`Remove ${row.name} from ${label}`}
+              disabled={locked}
+              onClick={() => onRemove(row)}
+            >
+              Remove
+            </button>
+          </div>
         </>
       ) : null}
     </section>
@@ -201,6 +226,7 @@ function savedChoice(manager: SpriteAppearance["manager"], enabled: boolean): Ch
     useSprites: enabled && manager.useSprites !== false && expressions.length > 0,
     expressions,
     defaultExpressionId: manager.defaultExpressionId ?? "",
+    defaultView: manager.defaultView,
   };
 }
 
@@ -246,6 +272,7 @@ export function Appearance({
   const heading = useRef<HTMLHeadingElement>(null);
   const spriteEdits =
     choice.defaultExpressionId !== baseline.defaultExpressionId ||
+    choice.defaultView !== baseline.defaultView ||
     JSON.stringify(choice.expressions) !== JSON.stringify(baseline.expressions);
   const dirty = spriteEdits || choice.useSprites !== baseline.useSprites;
   const locked = pending || uncertain;
@@ -339,13 +366,16 @@ export function Appearance({
   }
 
   function updateSprites(expressions: AppearanceExpression[]) {
-    const defaultExpressionId =
-      (
-        expressions.find((row) => row.id === choice.defaultExpressionId) ??
-        groupSpritesByMood(expressions).get("neutral")?.[0] ??
-        expressions[0]
-      )?.id ?? "";
-    edit({ useSprites: true, expressions, defaultExpressionId });
+    const row =
+      expressions.find((row) => row.id === choice.defaultExpressionId) ??
+      groupSpritesByMood(expressions).get("neutral")?.[0] ??
+      expressions[0];
+    const defaultView = choice.defaultView
+      ? row?.id === choice.defaultExpressionId && row[choice.defaultView]
+        ? choice.defaultView
+        : views.find((view) => row?.[view])
+      : undefined;
+    edit({ useSprites: true, expressions, defaultExpressionId: row?.id ?? "", defaultView });
   }
 
   function removeSprite(row: AppearanceExpression, view: SpriteView) {
@@ -511,7 +541,7 @@ export function Appearance({
                       }
                     }}
                   >
-                    Professor mari reminder to offer help with sprites!!!!!
+                    Open Character sprites
                   </button>
                 ) : null}
               </div>
@@ -543,7 +573,16 @@ export function Appearance({
                               onClick={() => select(row.id)}
                             >
                               <span className="appearance-expression-image">
-                                <img src={image(row.front ?? row.side) || undefined} alt="" />
+                                <img
+                                  src={
+                                    image(
+                                      (preferred && choice.defaultView ? preferred[choice.defaultView] : undefined) ??
+                                        row.front ??
+                                        row.side,
+                                    ) || undefined
+                                  }
+                                  alt=""
+                                />
                               </span>
                               <span>{mood}</span>
                               {preferred ? <small>Default</small> : null}
@@ -553,22 +592,7 @@ export function Appearance({
                       </div>
                     </div>
                     <div className="appearance-preview">
-                      <div className="appearance-expression-fields">
-                        <h3>{selectedGroup[0]}</h3>
-                        <button
-                          type="button"
-                          disabled={locked || selectedGroup[1].some((row) => row.id === choice.defaultExpressionId)}
-                          onClick={() =>
-                            edit({
-                              ...choice,
-                              defaultExpressionId: (selectedGroup[1].find((row) => row.front) ?? selectedGroup[1][0]!)
-                                .id,
-                            })
-                          }
-                        >
-                          Set as default
-                        </button>
-                      </div>
+                      <h3>{selectedGroup[0]}</h3>
                       <div className="appearance-views">
                         {views.map((view) => (
                           <SpriteGallery
@@ -578,6 +602,9 @@ export function Appearance({
                             locked={locked}
                             image={image}
                             onRemove={(row) => removeSprite(row, view)}
+                            onDefault={(row) => edit({ ...choice, defaultExpressionId: row.id, defaultView: view })}
+                            defaultExpressionId={choice.defaultExpressionId}
+                            defaultView={choice.defaultView}
                           />
                         ))}
                       </div>

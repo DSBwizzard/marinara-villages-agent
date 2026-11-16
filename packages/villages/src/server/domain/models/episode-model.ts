@@ -35,6 +35,7 @@ export type AcceptedEpisode = {
       | "room"
       | "discovery"
       | "npc"
+      | "npc-introduction"
       | "establishment"
       | "circumstance"
       | "condition-repair"

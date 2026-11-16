@@ -1097,6 +1097,11 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
   if (typeof value !== "object" || Array.isArray(value))
     throw new Error("The saved Village catch-up could not be read.");
   const record = value as Record<string, unknown>;
+  if (
+    record.lastPresenceWallTime !== undefined &&
+    (!Number.isSafeInteger(record.lastPresenceWallTime) || Number(record.lastPresenceWallTime) <= 0)
+  )
+    throw new Error("The saved Village presence time could not be read.");
   if (record.capture !== undefined) {
     if (!record.capture || typeof record.capture !== "object" || Array.isArray(record.capture))
       throw new Error("The saved Village departure capture could not be read.");

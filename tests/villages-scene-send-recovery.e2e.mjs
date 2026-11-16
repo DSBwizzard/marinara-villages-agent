@@ -353,7 +353,7 @@ await withBrowser(browser, async () => {
     await load();
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-    const zoneSelect = page.getByLabel("Move to Zone", { exact: true });
+    const zoneSelect = page.getByRole("dialog", { name: "Move to Zone" });
     session.operation = {
       id: "held-before-move",
       kind: "turn",
@@ -366,7 +366,7 @@ await withBrowser(browser, async () => {
         contact: { kind: "call", boundaryZoneId: "hall" },
       },
     };
-    await zoneSelect.selectOption("hall");
+    await zoneSelect.getByRole("button", { name: "Hall", exact: true }).click();
     await expectSceneError(page, "Review the saved action before moving");
     assert.equal(zonePosts, 0, "movement does not replace an unresolved Contact action");
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -377,7 +377,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-    await expect(zoneSelect).toBeEnabled();
+    await expect(zoneSelect).toBeVisible();
     await page.keyboard.press("Escape");
     await composer.fill("My newer unsent draft");
     session.operation = {

@@ -38,15 +38,6 @@ export function observedZone(zone: VillageVenueZone, authoring: boolean): Villag
     : {
         ...zone,
         observed: undefined,
-        name:
-          observed?.name ||
-          (zone.kind === "private-residence"
-            ? "Private room"
-            : zone.kind === "staff"
-              ? "Staff area"
-              : zone.kind === "restricted"
-                ? "Restricted Zone"
-                : zone.name),
         description: observed?.description ?? "",
         purpose: observed?.purpose ?? "",
         roomSpecification: observed?.roomSpecification,

@@ -33,6 +33,7 @@ import {
   withinVisitorHours,
 } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { prepareReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup.js";
 import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import {
@@ -412,6 +413,11 @@ for (const scenario of [
   const home = fixture();
   world.venues = [home];
   const target = home.zones!.find((zone) => zone.id === "office")!;
+  target.name = "Unobserved workshop";
+  world.foundedAt = stamp;
+  const passage = home.zones!.find((zone) => zone.id === "living")!;
+  passage.access!.mode = "public";
+  passage.access!.accompanied = false;
   const scene = coerceSession({
     version: 5,
     id: "escort-scene",
@@ -486,7 +492,23 @@ for (const scenario of [
     ["invited", "escort-already-inside"].includes(scenario),
     scenario,
   );
+  assert.equal(projected.name, target.name, "The Zone name is visible for every access state.");
   assert.equal(projected.description, "", "An invitation never reveals the unvisited interior");
+  if (scenario === "invited") {
+    const player = { name: "Player", description: "", personaId: "", missing: false };
+    const choices = (live: typeof world) =>
+      villageSettings(world, player, scene, context, new Date(stamp), live).venues[0].zones!;
+    const live = structuredClone(world);
+    const offered = choices(live).find((zone) => zone.id === target.id)!;
+    assert.equal(offered.accessView?.reachable, true);
+    assert.equal(offered.name, target.name);
+    assert.equal(offered.description, "");
+    live.venues[0].access!.permissions[0].revoked = true;
+    const revoked = choices(live).find((zone) => zone.id === target.id)!;
+    assert.equal(revoked.accessView?.reachable, false);
+    assert.equal(revoked.name, target.name, "Revocation changes reachability, so the Zone name stays visible.");
+    assert.equal(revoked.description, "");
+  }
   assert.equal(
     JSON.stringify({ home, scene }),
     original,
@@ -1100,6 +1122,111 @@ async function main() {
         stamp,
         known,
       );
+    });
+    for (const longAbsence of [false, true]) {
+      await mutateVillageState((current) => {
+        const home = current.venues[0];
+        home.zones!.find((row) => row.id === "bedroom")!.access!.managerIds = ["jim"];
+        for (const [zoneId, visitorId, duration] of [
+          ["bedroom", "player", "visit"],
+          ["living", "player", "visit"],
+          ["office", "mara", "visit"],
+        ] as const) {
+          applyAccessCommand(
+            home,
+            {
+              action: "invite",
+              operationId: [longAbsence ? "long" : "short", zoneId].join("-"),
+              expectedRevision: home.access!.revision,
+              zoneId,
+              visitorId,
+              duration,
+              accompanied: false,
+              outsideHours: true,
+            },
+            "jim",
+            stamp,
+            known,
+          );
+        }
+      });
+      const visit = await enterVenue("home", "bedroom");
+      assert.equal(visit.zoneId, "bedroom");
+      const bedGrant = (await readVillageState({ memories: true })).venues[0].access!.permissions.find(
+        (row) => row.sceneId === visit.id && row.zoneId === "bedroom",
+      )!;
+      await mutateVillageState((current) => {
+        current.returnCatchup = { lastPresenceWallTime: Date.now() - (longAbsence ? 61 : 20) * 60_000 };
+        if (longAbsence)
+          current.villagers.find((resident) => resident.characterId === "jim")!.agenda!.activeDay!.blocks[0].zoneId =
+            "bedroom";
+      });
+      if (!longAbsence) await prepareReturnCatchup(new Date(Date.now() + 5000), "short-return");
+      const after = await activeVenueSession();
+      const grants = (await readVillageState({ memories: true })).venues[0].access!.permissions;
+      assert.equal(after!.id, visit.id, "The same Scene stays open after return.");
+      assert.equal(grants.find((row) => row.id === bedGrant.id)!.revoked, longAbsence);
+      assert.equal(
+        grants.find((row) => row.id === "escorted-arrival")!.revoked,
+        false,
+        "Standing permission persists.",
+      );
+      assert.equal(
+        grants.find((row) => row.id === "long-living")?.revoked ?? false,
+        false,
+        "An unused invitation persists.",
+      );
+      assert.equal(
+        grants.find((row) => row.id === "long-office")?.revoked ?? false,
+        false,
+        "Other visitors keep their grants.",
+      );
+      if (longAbsence) {
+        assert.equal(after!.zoneId, "exterior");
+        assert(
+          !after!.participants.some((person) => person.characterId === "jim"),
+          "The return read does not disclose the newly occupied bedroom.",
+        );
+        await assert.rejects(() => moveVenueZone(visit.id, "bedroom", after!.sceneRevision), {
+          name: "VillagesRequestError",
+        });
+        const lineCount = after!.lines.filter((line) => line.content.includes("access has ended")).length;
+        await mutateVillageState((current) => {
+          const home = current.venues[0];
+          applyAccessCommand(
+            home,
+            {
+              action: "invite",
+              operationId: "fresh-return-grant",
+              expectedRevision: home.access!.revision,
+              zoneId: "bedroom",
+              visitorId: "player",
+              duration: "visit",
+              accompanied: false,
+              outsideHours: true,
+              sceneId: visit.id,
+            },
+            "jim",
+            stamp,
+            known,
+          );
+        });
+        await prepareReturnCatchup(new Date(Date.now() + 5000), "retry-return");
+        const fresh = (await readVillageState({ memories: true })).venues[0].access!.permissions.find(
+          (row) => row.id === "fresh-return-grant",
+        )!;
+        assert.equal(fresh.revoked, false, "Retrying the same return preserves a new invitation.");
+        assert.equal(lineCount, 1);
+        assert.equal(
+          (await activeVenueSession())!.lines.filter((line) => line.content.includes("access has ended")).length,
+          1,
+        );
+      } else assert.equal(after!.zoneId, "bedroom");
+      await endVenueSession(visit.id);
+    }
+    await mutateVillageState((current) => {
+      current.villagers.find((resident) => resident.characterId === "jim")!.agenda!.activeDay!.blocks[0].zoneId =
+        "office";
     });
     const escortedArrival = await enterVenue("home", "office");
     assert.equal(escortedArrival.zoneId, "office", "Initial entry uses captured attendance for the named escort.");

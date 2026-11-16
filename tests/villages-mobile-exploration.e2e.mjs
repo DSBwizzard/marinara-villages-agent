@@ -407,11 +407,14 @@ await withBrowser(browser, async () => {
     await expect(page.locator("[data-desk]")).toHaveAttribute("data-desk", "none");
     await settleLayout();
     const beforeMarker = await cameraGeometry();
+    const beforeStage = await stage.boundingBox();
     const statusBar = home.locator("." + P + "-home-bar");
     await expect(statusBar).toBeVisible();
     await marker.press("Enter");
     await expect(venue.getByRole("heading", { name: "Village Market", exact: true })).toBeFocused();
     await expect(statusBar).toBeHidden();
+    assert.deepEqual(await stage.boundingBox(), beforeStage, "Opening a Venue leaves the map stage in place");
+    assert.deepEqual(await cameraGeometry(), beforeMarker, "Opening a Venue leaves the map camera unchanged");
     await expect(venue.locator("img")).toHaveAttribute("src", fixture.settings.venues[0].presentation.image.url);
     await expect(venue.getByRole("button", { name: "View venue", exact: true })).toHaveCount(0);
     await expect(venue.getByRole("group", { name: "Venues", exact: true })).toHaveCount(0);
@@ -656,7 +659,7 @@ await withBrowser(browser, async () => {
     assert.equal(sceneRequests[0].venueId, "market");
     await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await page.getByRole("button", { name: "Return to map", exact: true }).click();
     await expect(home).toBeVisible();
     await expect(venue).toHaveCount(0);
