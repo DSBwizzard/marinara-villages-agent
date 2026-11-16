@@ -466,19 +466,28 @@ export async function verifyFoundingLayout(group) {
           await page.addScriptTag({ content: foundingBundle });
           await expect(start).toBeVisible();
         }
+        const titlePose = await sidePose.boundingBox();
         await start.click();
         await expect(start).toHaveCount(0);
         const modelGate = root.getByRole("region", { name: "Choose your models" });
         const models = modelGate.getByRole("region", { name: "Model Connections" });
         const system = models.getByRole("button", { name: /^System / });
-        await expect(modelGate.getByRole("heading")).toBeFocused();
+        await expect(modelGate).toBeFocused();
+        await expect(modelGate.getByRole("button", { name: "Back", exact: true })).toHaveCount(0);
         await expect(root.getByRole("region", { name: "Professor Mari" })).toHaveCount(0);
         await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
         await expect(frontPose).toHaveCSS("opacity", "0");
         await expect(sidePose).toHaveCSS("animation-name", "none");
+        assert.deepEqual(
+          await sidePose.boundingBox(),
+          titlePose,
+          "Mari holds her START position while models are chosen",
+        );
         await expect(models.getByRole("button", { name: /^Images / })).toHaveCount(0);
         await expect(models.getByRole("button", { name: /^GM / })).toContainText("Language model");
+        await expect(models.getByRole("button", { name: /^GM / })).toContainText("Scenes and dialogue");
         await expect(system).toContainText("Language model");
+        await expect(system).toContainText("Drafts and village activity");
         await expect(modelGate.getByRole("button", { name: "Next" })).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({

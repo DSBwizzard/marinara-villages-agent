@@ -242,11 +242,11 @@ export function FoundingScreen({
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
   const settingTitle = useRef<HTMLHeadingElement>(null);
-  const connectionTitle = useRef<HTMLHeadingElement>(null);
+  const connectionGate = useRef<HTMLElement>(null);
   const chapterLine = useRef<HTMLParagraphElement>(null);
   const chapterTitle = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
-    if (chooseConnections) connectionTitle.current?.focus({ preventScroll: true });
+    if (chooseConnections) connectionGate.current?.focus({ preventScroll: true });
   }, [chooseConnections]);
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0 });
@@ -369,36 +369,27 @@ export function FoundingScreen({
       </div>
     ) : chooseConnections ? (
       <section
-        className="villages-setting-dialogue villages-founding-connections"
-        aria-labelledby="founding-models-title"
+        className="villages-founding-connections"
+        aria-label="Choose your models"
+        tabIndex={-1}
+        ref={connectionGate}
       >
-        <h2 id="founding-models-title" tabIndex={-1} ref={connectionTitle}>
-          Choose your models
-        </h2>
         <AgentConnectionsControls connections={connections} kind="language" compact />
-        <div className="villages-founding-menu-actions">
-          <button
-            type="button"
-            onClick={() => setSetupWorkspace((workspace) => ({ ...workspace, settingIntroPending: true }))}
-          >
-            Back
-          </button>
-          <button
-            type="button"
-            className="villages-forging-primary"
-            disabled={!!connections.setupProblem || !!draftSaveError}
-            onClick={() => {
-              setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
-              setSetupWorkspace((workspace) => ({
-                ...workspace,
-                settingIntroPending: undefined,
-                settingBeat: "welcome",
-              }));
-            }}
-          >
-            Next
-          </button>
-        </div>
+        <button
+          type="button"
+          className="villages-forging-primary"
+          disabled={!!connections.setupProblem || !!draftSaveError}
+          onClick={() => {
+            setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
+            setSetupWorkspace((workspace) => ({
+              ...workspace,
+              settingIntroPending: undefined,
+              settingBeat: "welcome",
+            }));
+          }}
+        >
+          Next
+        </button>
       </section>
     ) : turning ? (
       <span hidden />
