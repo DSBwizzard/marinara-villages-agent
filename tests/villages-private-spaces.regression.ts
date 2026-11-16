@@ -388,6 +388,7 @@ async function main() {
     };
     try {
       await mutateVillageState((current) => {
+        current.backgroundPace = "balanced";
         resolveVenueZone(current.venues[1], "private:player")!.image = null;
       });
       await generateFirstZoneImage("own", "player");
