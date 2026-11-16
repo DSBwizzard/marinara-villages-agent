@@ -50,6 +50,28 @@ const base = {
   requires: z.array(label).max(8).optional(),
 };
 export const nativeCommand = z.discriminatedUnion("type", [
+  z
+    .object({
+      id: label.optional(),
+      type: z.literal("guest.invite"),
+      at: label,
+      by: id.optional(),
+      zone: id.optional(),
+      until: z
+        .union([
+          z.literal("morning"),
+          z
+            .object({
+              dayOffset: z.number().int().min(0).max(30),
+              minute: z.number().int().min(0).max(1439),
+            })
+            .strict(),
+        ])
+        .optional(),
+      independent: z.literal(true).optional(),
+      requires: z.array(label).max(8).optional(),
+    })
+    .strict(),
   z.object({ ...base, type: z.literal("circumstance"), ...narrationCircumstanceFields }).strict(),
   z.object({ ...base, type: z.literal("npc.admit"), ...npcAdmissionFields }).strict(),
   z.object({ ...base, type: z.literal("contact.end"), who: id }).strict(),
@@ -166,6 +188,9 @@ export const NARRATION_NATIVE =
 
 export const NARRATION_ACCESS_COMMANDS =
   'Access commands use supplied venue and zone IDs: permission.grant or permission.revoke {by,visitor,venue,zone}; access.decide {by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?} or {outcome:"access-management",management:exact native action fields without operationId, expectedRevision, zoneId or sceneId}}. Cite natural deciding words and use the supplied Zone when the referent is clear. A visit to another Place uses invite-later and binds on arrival. An unfinished prerequisite stays in dialogue; accompaniment may be recorded as a visit condition.';
+
+export const NARRATION_GUEST_INVITE =
+  'When a host clearly welcomes the player inside here, give the dialogue segment an id and include commands:[{type:"guest.invite",at:that id,zone?:supplied room ID}]. For a visible silent welcome such as beckoning through the door, label its narration segment and add by:host ID. Use zone for a named or non-obvious destination. For an agreed overnight stay use until:"morning" or until:{dayOffset,minute} for an exact checkout. Honor refusals and unfinished conditions. Let the player choose whether to move.';
 
 export const NARRATION_HOUSING_COMMANDS =
   "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the natural request or reply about the same supplied home and sleeping space. A reply can refer to the pending request without repeating its terms.";

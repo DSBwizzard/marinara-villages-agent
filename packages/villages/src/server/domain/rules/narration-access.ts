@@ -4,18 +4,16 @@ import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
+import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { continuityActor } from "./continuity-actors.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import {
-  narrationPositions,
-  narrationWitnesses,
-  type NarrationCommunication,
-  type NarrationSourceContext,
-} from "./narration-sources.js";
+import { narrationWitnesses, type NarrationCommunication, type NarrationSourceContext } from "./narration-sources.js";
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
-import { contactNeighbors, sceneAccessContext } from "./venue-contact.js";
-import { sceneLayoutVenue } from "./scene-layout.js";
+import { contactNeighbors, contactPath } from "./venue-contact.js";
+import { captureSceneLayout, sceneLayoutVenue } from "./scene-layout.js";
 import { zoneClosed } from "./venue-zones.js";
+import { sceneAppointment } from "./scene-calendar.js";
+import { permittedVenuePath } from "./venue-path.js";
 import {
   applyAccessCommand,
   defaultZonePolicy,
@@ -243,6 +241,7 @@ export type NarrationAccessDecision = {
 } & (
   | { type: "permission.grant"; visitor: string }
   | { type: "permission.revoke"; visitor: string }
+  | { type: "guest.invite"; visitor: string; expiresAt?: string; route?: string[] }
   | {
       type: "access.decide";
       visitor: string;
@@ -252,75 +251,98 @@ export type NarrationAccessDecision = {
   | { type: "access.decide"; outcome: "access-management"; management: unknown }
 );
 
-// shortcut: recognize direct welcomes at a single shared entrance; use explicit decisions for other arrangements.
-const visitWelcome =
-  /^(?:please,? )?(?:(?:come|step)(?: on)?|you (?:can|may) come) (?:in|inside)(?: out of the (?:rain|cold|wind))?(?: and (?:look around|(?:have|take) a look|look at (?<lookAt>[\p{L}\p{M} ]+?))(?: first)?)?(?:, please)?(?:[.!](?: then (?:you )?tell me if (?:that|it) works[.!]?)?)?$/iu;
-
-const entryQuestion = /(?:^["“]?|[.!?]\s+)(?:can|could|may) i (?:actually |please )?(?:come|step) (?:in|inside)\s*\?/iu;
-const entryAnswer =
-  /^(?:yes|sure|of course)[,!.: —–-]+(?<welcome>(?:come|step) (?:on )?(?:in|inside))(?:, \k<welcome>)*(?:[.!](?!\?)|$|, (?=it(?:['’]s| is) (?:warm(?:er)?|dry|cold|wet)\b))/iu;
-const entryRetraction =
-  /\b(?:not (?:yet|now|through (?:this|that) door)|on second thought|i take that back|only (?:if|once|after|when)|(?:wait|stay) (?:right )?(?:here|there|outside|on the (?:step|porch))|(?:before|until) you (?:enter|(?:come|step|go) (?:in|inside))|(?:can['’]t|cannot|don['’]t|do not|mustn['’]t|may not) (?:actually )?(?:enter|(?:come|step|go) (?:in|inside)))\b/iu;
-const entryCondition = /\b(?:if|unless|only|once|after|when|provided|as long as)\b/iu;
-const delayedEntry = /(?:^|[.!?]\s+)(?:if|unless|once|after|when|provided|as long as)\b/iu;
-
-export function spokenVisitInvitation(state: VillageState, context: NarrationSourceContext, at: Date) {
-  const { scene, lines } = context;
-  if (scene.zoneId !== "exterior" || !scene.sceneAttendance?.layout) return;
-  const heard = lines.map((line) =>
-    line.kind !== "narration" && line.heardBy?.includes("player") ? line.content.trim().replace(/\s+/gu, " ") : "",
-  );
-  let segment = heard.findLastIndex((text) => text.length > 0);
-  const words = heard[segment]?.match(visitWelcome);
-  if (!words) {
-    if (!entryQuestion.test(context.input.trim())) return;
-    segment = heard.findLastIndex((text) => entryAnswer.test(text));
-    const answer = heard[segment]?.match(entryAnswer)?.[0];
-    if (!answer || heard.slice(segment).some((text) => entryRetraction.test(text) || delayedEntry.test(text))) return;
-    if (answer.endsWith(", ")) {
-      const remainder = heard[segment].slice(answer.length).split(/[.!?]/u, 1)[0];
-      if (entryCondition.test(remainder)) return;
-    }
-  }
-  const line = lines[segment];
-  if (
-    line?.kind !== "dialogue" ||
-    line.contactReport ||
-    (line.targetId ? line.targetId !== "player" : scene.activeIds.length !== 1)
-  )
-    return;
-  const by = line.speakerId;
-  const positions = narrationPositions(context, { index: segment, side: "after" });
-  if (!by || by === "player" || positions[by] !== "exterior" || positions.player !== "exterior") return;
-
+export function guestInvitation(
+  state: VillageState,
+  context: NarrationSourceContext,
+  readset: NarrationReadset,
+  cue: { by?: string; zone?: string; until?: "morning" | { dayOffset: number; minute: number } },
+  proof: ContinuityEvidence,
+  receiptId: string,
+  at: string,
+): NarrationAccessDecision {
+  const { scene } = context;
   const venue = findLocation(state, scene.placeId);
-  if (!venue) return;
-  const neighbors = contactNeighbors(venue, "exterior", scene);
-  const shared = sceneLayoutVenue(venue, scene).zones?.filter(
-    (zone) => zone.kind === "shared-residence" && neighbors.includes(zone.id),
+  const by = proof.kind === "speech" ? proof.actorId : cue.by;
+  const positions = proof.positions;
+  const origin = positions?.player;
+  memoryRequire(
+    venue?.access &&
+      by &&
+      by !== "player" &&
+      origin &&
+      positions?.[by] &&
+      (!cue.by || cue.by === by) &&
+      (positions[by] === origin || contactNeighbors(venue, origin, scene).includes(positions[by])) &&
+      memoryHash(captureSceneLayout(venue)) === memoryHash(scene.sceneAttendance?.layout),
+    "the invitation needs the current host and doorway",
   );
-  if (shared?.length !== 1 || !shared[0].seen) return;
-  const zone = venue.zones?.find((zone) => zone.id === shared[0].id);
-  const object = words?.groups?.lookAt?.toLowerCase().replace(/^the /u, "");
-  if (
-    zone?.kind !== "shared-residence" ||
-    !zone.seen ||
-    zone.closed ||
-    !zone.access ||
-    zone.access.accompanied ||
-    !mayInvite(venue, zone, by) ||
-    (object && object !== "it" && object !== zone.name.toLowerCase()) ||
-    !contactNeighbors(venue, "exterior").includes(zone.id)
-  )
-    return;
-  const access = evaluateZoneAccess(venue, zone, "player", {
-    ...sceneAccessContext(scene, at),
-    accepting: true,
-    unavailable: zoneClosed(state, venue, zone),
-    environment: state.narrative,
+  const captured = sceneLayoutVenue(context.venue, scene);
+  const neighbors = contactNeighbors(captured, origin, scene);
+  const rooms = captured.zones?.filter(
+    (zone) => neighbors.includes(zone.id) && (zone.kind === "shared-residence" || zone.kind === "public"),
+  );
+  const zoneId = cue.zone ?? (rooms?.length === 1 && rooms[0].seen ? rooms[0].id : undefined);
+  const zone = venue.zones?.find((row) => row.id === zoneId);
+  memoryRequire(
+    zone &&
+      captured.zones?.some((row) => row.id === zone.id) &&
+      mayInvite(venue, zone, by) &&
+      !zoneClosed(state, venue, zone),
+    "the invitation needs a supplied room this host can open",
+  );
+  const decision = { type: "guest.invite" as const, by, venue: venue.id, zone: zone.id, visitor: "player" };
+  const now = new ZonedDate(at, readset.calendar.timeZone);
+  let expiresAt: string | undefined;
+  if (cue.until === "morning") {
+    const dayOffset = now.getHours() < 8 && !/\btonight\b/iu.test(proof.excerpt) ? 0 : 1;
+    expiresAt = calendarAt(
+      now,
+      sceneAppointment({ when: { dayOffset }, minute: 480 }, readset.calendar).date,
+      480,
+    ).toISOString();
+  } else if (cue.until) {
+    const { dayOffset, minute } = cue.until;
+    const { date } = sceneAppointment({ when: { dayOffset }, minute }, readset.calendar);
+    expiresAt = calendarAt(now, date, minute).toISOString();
+  }
+  const projected = structuredClone(venue);
+  const potentialRoute = venue.zones
+    ?.filter((row) => !row.access?.accompanied && managesAccess(venue, row.id, by))
+    .map((row) => row.id);
+  applyAccessCommand(
+    projected,
+    {
+      action: "invite",
+      operationId: receiptId,
+      expectedRevision: venue.access.revision,
+      zoneId: zone.id,
+      visitorId: "player",
+      accompanied: false,
+      outsideHours: !!expiresAt,
+      sceneId: scene.id,
+      ...(expiresAt ? { duration: "timed", expiresAt, route: potentialRoute } : { duration: "visit" }),
+    },
+    by,
+    at,
+    ["player"],
+  );
+  const entry = contactPath(state, projected, origin, zone.id, "player", { ...scene, continuity: undefined }, now);
+  memoryRequire(entry, "there is no permitted route to the invited room");
+  if (!expiresAt) return decision;
+  const checkout = new ZonedDate(Date.parse(expiresAt) - 1, now.zone);
+  const arrival = permittedVenuePath(state, projected, "player", zone.id, now);
+  const departure = permittedVenuePath(state, projected, "player", zone.id, checkout);
+  memoryRequire(arrival && departure, "there is no permitted route during the stay");
+  const route = [...new Set([...entry, ...arrival, ...departure])].filter((id) => {
+    const room = venue.zones?.find((room) => room.id === id);
+    if (!room || id === zone.id || !potentialRoute?.includes(id)) return false;
+    const policy = room.access ?? defaultZonePolicy(venue, room);
+    const alwaysPublic =
+      policy.mode === "public" &&
+      (policy.visitorHours === "always" || (policy.visitorHours === "inherit" && !venue.access!.visitorHours));
+    return !alwaysPublic && evaluateZoneAccess(venue, room, "player", { at: now }).reason !== "member";
   });
-  if (access.reason !== "permission-required") return;
-  return { by, venue: venue.id, zone: zone.id, segment };
+  return { ...decision, expiresAt, route };
 }
 
 /** The exact current communication is required; private context and recalled consent have no native authority. */
@@ -399,11 +421,43 @@ export function applyNarrationAccess(
       captured.authorities.some((authority) => authority.actorId === decision.by),
     "the captured access authority changed or was not supplied",
   );
-  assertNarrationDecision(state, decision.by, context, sources);
-  memoryRequire(
-    sources.every((source) => source.perceptions.some((row) => row.channel === "words" && row.actorId !== decision.by)),
-    "an access decision must actually be communicated",
-  );
+  if (decision.type === "guest.invite" && sources[0]?.kind === "observation") {
+    const proof = sources[0];
+    const line = context.lines[proof.moment?.index ?? -1];
+    memoryRequire(
+      sources.length === 1 &&
+        proof.seed === state.seed &&
+        proof.episodeId === context.episodeId &&
+        line?.kind === "narration" &&
+        line.id === proof.unitId &&
+        proof.fingerprint === memoryHash(line) &&
+        proof.moment &&
+        memoryHash(proof.positions) === memoryHash(context.positions(proof.moment)) &&
+        proof.positions?.[decision.by] === proof.positions?.player &&
+        context.actors.some(
+          (actor) => actor.id === decision.by && continuityActor(state, actor.id)?.incarnation === actor.incarnation,
+        ) &&
+        proof.perceptions.some((row) => row.channel === "sight" && row.actorId === "player"),
+      "the player's invitation needs a witnessed action by the present host",
+    );
+  } else {
+    assertNarrationDecision(state, decision.by, context, sources);
+    memoryRequire(
+      sources.every((source) =>
+        source.perceptions.some(
+          (row) =>
+            row.channel === "words" &&
+            (decision.type === "guest.invite" ? row.actorId === "player" : row.actorId !== decision.by),
+        ),
+      ) &&
+        (decision.type !== "guest.invite" ||
+          sources.every((source) => {
+            const line = context.lines[source.moment!.index];
+            return !line.targetId || line.targetId === "player";
+          })),
+      "an access decision must actually be communicated",
+    );
+  }
   const lineIds = [...new Set(sources.map((source) => source.unitId))],
     known = ["player", ...sceneActorIds(state)];
   const apply = (meaning: object, id = receiptId) => {
@@ -417,7 +471,23 @@ export function applyNarrationAccess(
       state.communityVenueId,
     );
   };
-  if (decision.type === "permission.revoke") {
+  if (decision.type === "guest.invite") {
+    memoryRequire(
+      decision.zone && context.visit?.placeId === decision.venue,
+      "the invitation belongs to the current Place",
+    );
+    apply({
+      action: "invite",
+      zoneId: decision.zone,
+      visitorId: decision.visitor,
+      accompanied: false,
+      outsideHours: !!decision.expiresAt,
+      sceneId: context.visit.id,
+      ...(decision.expiresAt
+        ? { duration: "timed", expiresAt: decision.expiresAt, route: decision.route }
+        : { duration: "visit" }),
+    });
+  } else if (decision.type === "permission.revoke") {
     memoryRequire(decision.zone, "standing permission needs its exact Zone");
     memoryRequire(known.includes(decision.visitor), "standing permission needs an established visitor");
     const grants = venue.access.permissions.filter(
@@ -501,7 +571,7 @@ export function applyNarrationAccess(
     (venue.zones?.find((zone) => zone.id === decision.zone)?.name ?? "the Venue") + " at " + venue.name;
   let text: string;
   if (grant)
-    text = `${person(decision.by)} ${grant.duration === "standing" ? "gave standing permission to" : "invited"} ${person(grant.visitorId)} to ${destination}${grant.duration === "visit" ? (grant.sceneId ? " for this visit" : " for one visit") : ""}${grant.accompaniedBy ? ", accompanied by " + person(grant.accompaniedBy) : ""}${grant.outsideHours ? ", including outside visitor hours" : ", during visitor hours"}.`;
+    text = `${person(decision.by)} ${grant.duration === "standing" ? "gave standing permission to" : "invited"} ${person(grant.visitorId)} to ${destination}${grant.duration === "visit" ? (grant.sceneId ? " for this visit" : " for one visit") : grant.duration === "timed" ? " until " + grant.expiresAt : ""}${grant.accompaniedBy ? ", accompanied by " + person(grant.accompaniedBy) : ""}${grant.outsideHours ? ", including outside visitor hours" : ", during visitor hours"}.`;
   else if (decision.type === "permission.revoke")
     text = `${person(decision.by)} withdrew their standing permission for ${person(decision.visitor)} to ${destination}.`;
   else {

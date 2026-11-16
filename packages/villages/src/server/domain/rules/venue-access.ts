@@ -37,7 +37,7 @@ export const permissionSchema = z
     zoneId: id,
     visitorId: id,
     issuerId: id,
-    duration: z.enum(["visit", "standing", "stay"]),
+    duration: z.enum(["visit", "standing", "stay", "timed"]),
     expiresAt: z.iso.datetime().optional(),
     route: ids.optional(),
     pendingStay: z
@@ -53,7 +53,9 @@ export const permissionSchema = z
   .refine((grant) =>
     grant.duration === "stay"
       ? (grant.pendingStay ? !grant.route : !!grant.expiresAt) && grant.sceneId === null && grant.accompaniedBy === null
-      : !grant.expiresAt && !grant.route && !grant.pendingStay,
+      : grant.duration === "timed"
+        ? !!grant.expiresAt && !grant.pendingStay && grant.sceneId === null && grant.accompaniedBy === null
+        : !grant.expiresAt && !grant.route && !grant.pendingStay,
   );
 export const banSchema = z.object({
   id,
@@ -127,10 +129,12 @@ const commandSchema = z.discriminatedUnion("action", [
       ...base,
       action: z.literal("invite"),
       visitorId: id,
-      duration: z.enum(["visit", "standing"]),
+      duration: z.enum(["visit", "standing", "timed"]),
       accompanied: z.boolean(),
       outsideHours: z.boolean(),
       sceneId: id.optional(),
+      expiresAt: z.iso.datetime().optional(),
+      route: ids.optional(),
     })
     .strict(),
   z.object({ ...base, action: z.literal("revoke"), permissionId: id }).strict(),
@@ -244,6 +248,12 @@ export function mayInvite(venue: VillageVenue, zone: VillageVenueZone, actor: st
     zone.kind !== "exterior" && (zoneManagers(venue, zone).includes(actor) || !!zone.access?.inviterIds.includes(actor))
   );
 }
+
+function mayIssuePermission(venue: VillageVenue, zone: VillageVenueZone, issuer: string, duration: string): boolean {
+  if (duration === "stay") return mayHostStay(venue, zone, issuer);
+  if (duration === "timed") return !!zone.access && !zone.access.accompanied && managesAccess(venue, zone.id, issuer);
+  return mayInvite(venue, zone, issuer);
+}
 function members(venue: VillageVenue, zone: VillageVenueZone): string[] {
   const policy = zone.access;
   return [
@@ -324,14 +334,15 @@ export function evaluateZoneAccess(
       !grant.revoked &&
       !grant.pendingStay &&
       (!context.permissionId || grant.id === context.permissionId) &&
-      (grant.zoneId === zone.id || (grant.duration === "stay" && grant.route?.includes(zone.id))) &&
+      (grant.zoneId === zone.id || grant.route?.includes(zone.id)) &&
       grant.visitorId === actor &&
-      mayInvite(venue, zone, grant.issuerId) &&
+      mayIssuePermission(venue, zone, grant.issuerId, grant.duration) &&
       (grant.duration === "standing" ||
-        (grant.duration === "stay"
-          ? mayHostStay(venue, zone, grant.issuerId) &&
-            venue.zones?.some(
-              (destination) => destination.id === grant.zoneId && mayHostStay(venue, destination, grant.issuerId),
+        (grant.duration !== "visit"
+          ? venue.zones?.some(
+              (destination) =>
+                destination.id === grant.zoneId &&
+                mayIssuePermission(venue, destination, grant.issuerId, grant.duration),
             ) &&
             Date.parse(grant.issuedAt) <= instant &&
             Date.parse(grant.expiresAt ?? "") > instant
@@ -343,7 +354,7 @@ export function evaluateZoneAccess(
   const permitted = grants.filter((grant) =>
     bans.every(
       (ban) =>
-        grant.duration !== "stay" &&
+        (grant.duration === "visit" || grant.duration === "standing") &&
         ledger.exceptions.some((exception) => exception.permissionId === grant.id && exception.banIds.includes(ban.id)),
     ),
   );
@@ -379,7 +390,7 @@ export function evaluateZoneAccess(
     );
   const escortPresent = (escort: string | null) => !!escort && context.positions?.[escort] === zone.id;
   for (const grant of eligible) {
-    if (grant.duration === "stay" && restricted) continue;
+    if ((grant.duration === "stay" || grant.duration === "timed") && restricted) continue;
     const escort = grant.accompaniedBy ?? (policy.accompanied ? grant.issuerId : null);
     if (escort && !escortPresent(escort)) continue;
     return result(
@@ -387,7 +398,7 @@ export function evaluateZoneAccess(
       "invitation",
       grant.duration === "standing"
         ? "You have standing permission."
-        : grant.duration === "stay"
+        : grant.duration === "stay" || grant.duration === "timed"
           ? "You have permission for your stay."
           : "You are invited for this visit.",
       { permissionId: grant.id, ...(escort ? { accompaniedBy: escort } : {}) },
@@ -431,12 +442,13 @@ export function reconcileVenueAccess(venue: VillageVenue, knownActors?: string[]
     if (
       !zone ||
       (known && !known.has(grant.visitorId)) ||
-      (grant.duration === "stay"
-        ? !mayHostStay(venue, zone, grant.issuerId) ||
-          grant.route?.some(
-            (id) => !venue.zones?.some((room) => room.id === id && mayHostStay(venue, room, grant.issuerId)),
-          )
-        : !mayInvite(venue, zone, grant.issuerId))
+      !mayIssuePermission(venue, zone, grant.issuerId, grant.duration) ||
+      grant.route?.some(
+        (id) =>
+          !venue.zones?.some(
+            (room) => room.id === id && mayIssuePermission(venue, room, grant.issuerId, grant.duration),
+          ),
+      )
     )
       grant.revoked = true;
   }
@@ -552,6 +564,20 @@ export function applyAccessCommand(
     case "invite":
       if (!zone || !mayInvite(venue, zone, actor)) forbidden();
       assertIds([command.visitorId]);
+      if (command.duration === "timed") {
+        if (
+          !command.expiresAt ||
+          !(Date.parse(command.expiresAt) > Date.parse(at)) ||
+          command.accompanied ||
+          !mayIssuePermission(venue, zone, actor, "timed") ||
+          command.route?.some(
+            (id) => !venue.zones?.some((room) => room.id === id && mayIssuePermission(venue, room, actor, "timed")),
+          )
+        )
+          throw badRequest("Timed access needs a future checkout and authorized unescorted rooms.");
+      } else if (command.expiresAt || command.route) {
+        throw badRequest("Only timed access can include a checkout or route.");
+      }
       if (command.sceneId)
         ledger.visitDenials = ledger.visitDenials.filter(
           (denial) =>
@@ -563,7 +589,9 @@ export function applyAccessCommand(
         visitorId: command.visitorId,
         issuerId: actor,
         duration: command.duration,
-        sceneId: command.sceneId ?? null,
+        ...(command.expiresAt && { expiresAt: command.expiresAt }),
+        ...(command.route?.length && { route: command.route }),
+        sceneId: command.duration === "timed" ? null : (command.sceneId ?? null),
         accompaniedBy: command.accompanied ? actor : null,
         outsideHours: command.outsideHours,
         revoked: false,
@@ -600,6 +628,8 @@ export function applyAccessCommand(
     case "exception": {
       const grant = ledger.permissions.find((row) => row.id === command.permissionId && !row.revoked);
       if (!manager || !grant) forbidden();
+      if (grant!.duration !== "visit" && grant!.duration !== "standing")
+        throw badRequest("A ban exception needs a visit or standing invitation.");
       const bans = ledger.bans.filter((row) => command.banIds.includes(row.id));
       if (
         !command.banIds.length ||
@@ -664,7 +694,7 @@ export function projectVenueAccess(venue: VillageVenue, actor: string, community
             .filter(
               (grant) =>
                 !grant.revoked &&
-                grant.duration !== "stay" &&
+                (grant.duration === "visit" || grant.duration === "standing") &&
                 venue.access!.bans.some(
                   (ban) => ban.active && ban.zoneId === null && ban.visitorId === grant.visitorId,
                 ),

@@ -17,7 +17,7 @@ export type AccessPermission = {
   zoneId: string;
   visitorId: string;
   issuerId: string;
-  duration: "visit" | "standing" | "stay";
+  duration: "visit" | "standing" | "stay" | "timed";
   expiresAt?: string;
   route?: string[];
   pendingStay?: { condition: string; hostIncarnation: string; guestIncarnation: string };
@@ -132,7 +132,9 @@ export type AccessCommand = {
   | {
       action: "invite";
       visitorId: string;
-      duration: "visit" | "standing";
+      duration: "visit" | "standing" | "timed";
+      expiresAt?: string;
+      route?: string[];
       accompanied: boolean;
       outsideHours: boolean;
       sceneId?: string;

@@ -6,6 +6,7 @@ import { memoryHash } from "./memory-integrity.js";
 import { evaluateZoneAccess, managesAccess, mayInvite } from "./venue-access.js";
 import { venueZones } from "./venue-zones.js";
 import { observedZone } from "./zone-observation.js";
+import { accessibleVenueRoute } from "./venue-path.js";
 
 export function playerAccess(
   state: VillageState,
@@ -25,6 +26,8 @@ export function playerAccess(
     const ledger = venue.access;
     function add(kind: PlayerAccessEntry["kind"], zone?: VillageVenueZone, info?: Partial<PlayerAccessEntry>) {
       const id = memoryHash([venue.id, zone?.id, kind, info?.thisVisit, info?.escorted, info?.visitorHours]);
+      const currentEnd = entries.get(id)?.endsAt;
+      if (currentEnd && info?.endsAt && Date.parse(currentEnd) > Date.parse(info.endsAt)) return;
       entries.set(id, { id, kind, placeId: venue.id, place: venue.name, ...(zone && { room: zone.name }), ...info });
     }
     if (venue.occupancy.playerHome) {
@@ -76,6 +79,17 @@ export function playerAccess(
         const escorted = !!(grant.accompaniedBy || zone.access?.accompanied);
         const hours = zone.access?.visitorHours === "inherit" ? ledger.visitorHours : zone.access?.visitorHours;
         const visitorHours = !grant.outsideHours && Array.isArray(hours);
+        if (grant.duration === "timed") {
+          if (
+            !refused &&
+            managesAccess(venue, zone.id, grant.issuerId) &&
+            !zone.access?.accompanied &&
+            Date.parse(grant.expiresAt ?? "") > at.getTime() &&
+            accessibleVenueRoute(state, venue, "player", zone.id, at)
+          )
+            add("stay", zone, { endsAt: grant.expiresAt });
+          continue;
+        }
         add(grant.duration, visibleZone, {
           ...(grant.sceneId && grant.duration === "visit" && { thisVisit: true }),
           ...(escorted && { escorted: true }),

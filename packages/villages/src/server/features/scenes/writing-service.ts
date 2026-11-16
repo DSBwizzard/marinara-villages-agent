@@ -34,6 +34,7 @@ import { narrationPlacePrompt } from "../../domain/rules/narration-place.js";
 import {
   NARRATION_ACCESS_COMMANDS,
   NARRATION_CIRCUMSTANCE_COMMANDS,
+  NARRATION_GUEST_INVITE,
   NARRATION_HOUSING_COMMANDS,
   NARRATION_NATIVE,
   NARRATION_PROJECT_COMMANDS,
@@ -259,6 +260,7 @@ export function createSceneWriting({
       input,
       new Date(calendar.instant),
       discussLodging,
+      true,
     );
     const pendingStayVisit = lodging.some(
       ({ pending }) =>
@@ -268,9 +270,17 @@ export function createSceneWriting({
           .split(/\W+/u)
           .some((word) => word.length > 4 && input.toLowerCase().includes(word)),
     );
-    const showAccess =
-      context.access.length > 0 && (nativeCommands || pendingStayVisit || sceneAccessDiscussed(scene, venue, input));
-    const teachAccess = showAccess && (nativeCommands || pendingStayVisit || discussesAccess(scene, input));
+    const teachAccess =
+      context.access.length > 0 && (nativeCommands || pendingStayVisit || discussesAccess(scene, input));
+    const localAuthority = context.access.filter(({ venueId }) => venueId === venue.id);
+    const guestInvite = localAuthority.some(({ authorities }) =>
+      authorities.some(
+        ({ actorId, zones }) =>
+          actorId !== "player" && zones.some(({ invites, policy }) => invites && !!policy && policy.mode !== "public"),
+      ),
+    );
+    const visibleAccess =
+      teachAccess || sceneAccessDiscussed(scene, venue, input) ? context.access : guestInvite ? localAuthority : [];
     const socialCommands = !nativeCommands && (teachAccess || (housingDiscussed && !!housing));
     const agendaContext = "agenda-context";
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
@@ -346,7 +356,8 @@ export function createSceneWriting({
         ...blocksFor([
           nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
-          showAccess ? narrationAccessPrompt(context.access) : "",
+          narrationAccessPrompt(visibleAccess),
+          guestInvite ? NARRATION_GUEST_INVITE : "",
           teachAccess ? NARRATION_ACCESS_COMMANDS : "",
           housing,
           (nativeCommands || housingDiscussed) && housing ? NARRATION_HOUSING_COMMANDS : "",
@@ -403,7 +414,7 @@ export function createSceneWriting({
           ? [
               {
                 text: [
-                  discussLodging ? LODGING_SPEECH : "",
+                  discussLodging ? "Lodging applies to a villager's rest routine. " + LODGING_SPEECH : "",
                   lodging.some((row) => row.pending) ? LODGING_COMPLETION : "",
                   JSON.stringify(lodging),
                 ]
@@ -453,6 +464,8 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        access: visibleAccess,
+        npcLodgingOnly: true,
         ...(fitted.evidenceIds.includes(lodgingContext) ? { lodging } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length

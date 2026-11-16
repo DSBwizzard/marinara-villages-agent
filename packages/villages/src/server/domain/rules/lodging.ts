@@ -59,15 +59,17 @@ export function sceneLodgingOptions(
   input = "",
   at?: Date,
   discuss = true,
+  npcGuestsOnly = false,
 ): Option[] {
   if (actors.length < 2) return [];
+  const guests = npcGuestsOnly ? actors.filter((id) => id !== "player") : actors;
   const pending = at
-    ? actors.flatMap((guest) => {
+    ? guests.flatMap((guest) => {
         const stay = pendingLodging(state, guest, at);
         if (
           !stay ||
           !actors.includes(stay.permission.issuerId) ||
-          (actors.includes("player") && guest !== "player" && stay.permission.issuerId !== "player")
+          (!npcGuestsOnly && actors.includes("player") && guest !== "player" && stay.permission.issuerId !== "player")
         )
           return [];
         const record = state.continuity.records.find((row) => row.id === stay.permission.id);
@@ -97,7 +99,12 @@ export function sceneLodgingOptions(
     .flatMap((venue) =>
       venueZones(venue).flatMap((zone) =>
         actors
-          .filter((host) => mayHostStay(venue, zone, host) && !zoneClosed(state, venue, zone))
+          .filter(
+            (host) =>
+              guests.some((guest) => guest !== host) &&
+              mayHostStay(venue, zone, host) &&
+              !zoneClosed(state, venue, zone),
+          )
           .map((host) => ({ host, venue: venue.id, zone: zone.id, placeName: venue.name, zoneName: zone.name })),
       ),
     )

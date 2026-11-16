@@ -26,6 +26,7 @@ export type NarrationReadset = {
   stripSceneHistoryDecoration?: true;
   ordinaryFormatRecovery?: true | 2 | 3 | 4 | 5 | 6;
   quotedSceneSources?: true;
+  npcLodgingOnly?: true;
   splitKeepRecovery?: true | 2;
   explicitSceneReplacement?: true;
   coalesceOfferDecisions?: true;

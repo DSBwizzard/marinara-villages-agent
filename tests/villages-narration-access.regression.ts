@@ -221,12 +221,15 @@ function cottageInvitation(
 
 await runCase("narration-access/spoken-visit", () => {
   for (const words of [
-    "Come in.",
+    "Come on. I'll get the door.",
     "Come in and look at the living room.",
     "Come in out of the rain and look at it first. Then you tell me if that works.",
   ]) {
     const f = cottageInvitation();
-    const publication = f.publication(["The bedroom is off limits. I can show you the couch.", words]);
+    const publication = f.publication(
+      ["The bedroom is off limits. I can show you the couch.", words],
+      [{ type: "guest.invite", at: "line-1" }],
+    );
     const result = acceptNarration(f.state, publication, "submission", at);
     assert.equal(result.held, false);
     assert.deepEqual(result.rejected, []);
@@ -256,16 +259,62 @@ await runCase("narration-access/spoken-visit", () => {
   const f = cottageInvitation(undefined, '"Thanks. Can I actually come inside? Could we talk?"');
   const result = acceptNarration(
     f.state,
-    f.publication([
-      "Yes — come in, come in, it's warmer than it looks. Boots off by the mat if you don't mind, the floor gets slippery.",
-      "What did you want to talk about?",
-    ]),
+    f.publication(
+      ["The couch is yours until morning.", "I'll fetch a blanket."],
+      [{ type: "guest.invite", at: "line-0", zone: "living", until: "morning" }],
+    ),
     "submission",
     at,
   );
   assert.equal(result.held, false);
   assert.equal(result.episode?.playerAccessChanges?.[0].entry.room, "Living Room");
-  assert.deepEqual(f.cottage().access!.permissions[0].sourceLineIds, [result.episode!.segments[0].id]);
+  const grant = f.cottage().access!.permissions[0];
+  assert.equal(grant.duration, "timed");
+  assert.equal(grant.sceneId, null);
+  assert.equal(result.episode?.playerAccessChanges?.[0].entry.endsAt, grant.expiresAt);
+  assert.deepEqual(grant.sourceLineIds, [result.episode!.segments[0].id]);
+  const cottage = f.cottage();
+  assert.equal(
+    evaluateZoneAccess(cottage, cottage.zones![1], "player", { sceneId: "later", at: new Date(at) }).allowed,
+    true,
+  );
+  assert.equal(
+    evaluateZoneAccess(cottage, cottage.zones![1], "player", { sceneId: "later", at: new Date(grant.expiresAt!) })
+      .allowed,
+    false,
+  );
+
+  const silent = cottageInvitation();
+  const observed = silent.publication([], [{ type: "guest.invite", at: "door", by: silent.actorId }]);
+  observed.raw.segments = [
+    { kind: "narration", id: "door", text: "Mara holds the door open and beckons you inside." },
+  ] as typeof observed.raw.segments;
+  observed.responseDigest = memoryHash(observed.raw);
+  const accepted = acceptNarration(silent.state, observed, "submission", at);
+  assert.equal(accepted.held, false);
+  assert.deepEqual(accepted.rejected, []);
+  assert.equal(accepted.episode?.playerAccessChanges?.[0].entry.room, "Living Room");
+
+  const shared = cottageInvitation((venue, host) => {
+    venue.zones![1].access!.managerIds = [host, "housemate"];
+    venue.zones![1].connectedTo!.push("study");
+  });
+  const overnight = acceptNarration(
+    shared.state,
+    shared.publication(
+      ["You can use my bedroom until morning."],
+      [{ type: "guest.invite", at: "line-0", zone: "study", until: "morning" }],
+    ),
+    "submission",
+    at,
+  );
+  assert.equal(overnight.held, false);
+  assert.deepEqual(overnight.rejected, []);
+  assert.deepEqual(shared.cottage().access!.permissions[0].route, ["living"]);
+  assert.deepEqual(
+    overnight.episode?.playerAccessChanges?.map(({ entry }) => entry.room),
+    ["Bedroom"],
+  );
 });
 
 await runCase("narration-access/spoken-visit-uncertain", () => {
@@ -299,12 +348,13 @@ await runCase("narration-access/spoken-visit-authority", () => {
     (cottage) => {
       cottage.access!.visitorHours = [{ days: ["Monday"], start: "00:00", end: "00:01" }];
     },
-    (cottage, issuerId) =>
-      cottage.access!.visitDenials.push({ zoneId: "living", visitorId: "player", sceneId: "scene", issuerId }),
   ];
   for (const setup of setups) {
     const f = cottageInvitation(setup);
-    assert.equal(acceptNarration(f.state, f.publication(["Come in!"]), "submission", at).held, false);
+    const publication = f.publication(["Come in!"], [{ type: "guest.invite", at: "line-0" }]);
+    const result = acceptNarration(f.state, publication, "submission", at);
+    assert.equal(result.held, false);
+    assert.equal(result.rejected.length, 1);
     assert.deepEqual(f.cottage().access!.permissions, []);
   }
   const f = cottageInvitation();

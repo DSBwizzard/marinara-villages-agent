@@ -117,11 +117,13 @@ await runCase("packaged-scene/spoken-visit", async () => {
         segments: [
           {
             kind: "dialogue",
+            id: "welcome",
             speakerId: "mara",
-            text: "Yes — come in, come in, it's warmer than it looks. Boots off by the mat if you don't mind, the floor gets slippery.",
+            text: "Come on. I'll hold the door for you.",
           },
           { kind: "dialogue", speakerId: "mara", text: "What did you want to talk about?" },
         ],
+        commands: [{ type: "guest.invite", at: "welcome" }],
       }),
       usage: { inputTokens: 10, outputTokens: 10 },
     };

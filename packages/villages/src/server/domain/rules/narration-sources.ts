@@ -110,7 +110,12 @@ function bindSceneSourcePositions(
   quotes: boolean,
   directOffers?: NarrationReadset["recognizeDirectOfferSpeech"],
 ) {
-  if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
+  if (
+    !Array.isArray(raw.segments) ||
+    (Object.hasOwn(raw, "commands") &&
+      !(Array.isArray(raw.commands) && raw.commands.every((command) => asRecord(command).type === "guest.invite")))
+  )
+    return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
     typeof position === "number" && Number.isSafeInteger(position) && position >= 1

@@ -493,8 +493,9 @@ function prepareResidentNarration(
     effects.push(effect);
     try {
       memoryRequire(value.encounter, "native commands require an actual resident encounter");
-      const command = readNarrationNativeCommand(raw),
-        segment = lines.findIndex((line) => line.id === labels[command.at]);
+      const command = readNarrationNativeCommand(raw);
+      memoryRequire(command.type !== "guest.invite", "player invitations belong to player Scenes");
+      const segment = lines.findIndex((line) => line.id === labels[command.at]);
       memoryRequire(segment >= 0, "resident native command needs its actual utterance label");
       memoryRequire(
         !capture.historical || command.type === "appointment",

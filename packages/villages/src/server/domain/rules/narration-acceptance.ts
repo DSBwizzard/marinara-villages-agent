@@ -48,7 +48,6 @@ export type NarrationPublication = {
   /** Results and exact evidence from the native validators, never model-authored success flags. */
   native: {
     effects: SceneEffectResult[];
-    spokenVisit?: string;
     receipts: Record<string, AcceptedEpisode["commandReceipts"][number]>;
     sources: Record<string, ContinuityEvidence[]>;
     moves: (ContactMove & { effectId: string })[];
@@ -339,18 +338,15 @@ export function acceptNarrationContinuity(
     sources: [],
   };
   const effects = native.effects.map((effect) => ({ ...effect, requires: [...effect.requires] }));
-  memoryRequire(
-    effects.length === reply.commands.length + Number(!!native.spokenVisit) &&
-      (!native.spokenVisit || (!reply.commands.length && effects[0].id === native.spokenVisit)),
-    "native validation did not cover every proposed command",
-  );
+  memoryRequire(effects.length === reply.commands.length, "native validation did not cover every proposed command");
   for (const [index, command] of reply.commands.entries()) {
     const header = readNarrationEffectHeader(command, "command-" + index);
     memoryRequire(effects[index].id === header.id, "native effect identity changed");
   }
   const prepared = new Map<string, ReturnType<typeof prepareNarrationKeep>>();
   const repeatedOfferDecisions = new Set<string>();
-  const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
+  const hasOtherCommands = reply.commands.some((command) => asRecord(command).type !== "guest.invite");
+  const allowTranscriptNotes = readset.ordinaryDialogue && !hasOtherCommands && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
   const memoryFallback = readset.optionalActorMemories;
   const optionalActorMemories =
@@ -368,7 +364,7 @@ export function acceptNarrationContinuity(
   const keeps = reply.keep.slice();
   if (readset.codeRequestedMemory) {
     memoryRequire(
-      requestedMemory?.recipientId && !admission.protectedRoots.length && !reply.commands.length,
+      requestedMemory?.recipientId && !admission.protectedRoots.length && !hasOtherCommands,
       "the automatic memory lost its captured scope",
     );
     const { start, end, recipientId } = requestedMemory;
@@ -432,7 +428,7 @@ export function acceptNarrationContinuity(
     const openingOfferEcho =
       submissionId === "greeting" &&
       !readset.source.input &&
-      !reply.commands.length &&
+      !hasOtherCommands &&
       !Object.hasOwn(note, "source") &&
       typeof offer.proposer === "string" &&
       Array.isArray(offer.participants) &&
@@ -543,7 +539,7 @@ export function acceptNarrationContinuity(
       const write = keep.write;
       if (
         readset.coalesceOfferDecisions === true &&
-        !reply.commands.length &&
+        !hasOtherCommands &&
         write.target &&
         (write.accept || write.closeOffer) &&
         !Object.hasOwn(note, "id") &&
@@ -756,7 +752,8 @@ export function acceptNarrationContinuity(
       try {
         if (keep) {
           let write = keep.write;
-          if (keep.lodging)
+          if (keep.lodging) {
+            memoryRequire(!readset.npcLodgingOnly || keep.lodging.guest !== "player", "the player uses guest access");
             write = lodgingWrite(
               write,
               keep.lodging,
@@ -765,6 +762,7 @@ export function acceptNarrationContinuity(
               readset.calendar,
               scene.placeId,
             );
+          }
           if (keep.agenda) {
             const evidence = { ...keep.agenda, activity: keep.agenda.activity ?? "" };
             write = { ...write, agenda: evidence };

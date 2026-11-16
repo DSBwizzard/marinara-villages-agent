@@ -39,10 +39,9 @@ import {
   applyNarrationAccess,
   assertNarrationDecision,
   narrationAccessScopes,
-  spokenVisitInvitation,
+  guestInvitation,
 } from "./narration-access.js";
 import { asRecord } from "./coerce.js";
-import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 /** Fixed native validators prepare a detached candidate inside the existing Village CAS. */
 export function prepareNarrationNative(
@@ -147,6 +146,7 @@ export function prepareNarrationNative(
       const header = readNarrationEffectHeader(raw, "command-" + index);
       const effect = { ...header, failure: excluded.get(header.id) };
       const proposed = asRecord(raw);
+      if (proposed.type === "guest.invite") effect.independent = true;
       if (
         proposed.type === "circumstance" &&
         effect.independent &&
@@ -218,33 +218,22 @@ export function prepareNarrationNative(
       "Tentative movement routing failed: " + String(error).slice(0, 1900);
     return { native, candidate: structuredClone(state), routingFailure: true as const };
   }
-  const visit =
-    !reply.commands.length &&
-    !reply.halt &&
-    spokenVisitInvitation(state, context, new ZonedDate(at, readset.calendar.timeZone));
-  if (visit && !reply.segments[visit.segment].requires?.length) {
-    const line = reply.segments[visit.segment];
-    const id = "spoken-visit-" + memoryHash([source.episodeId, line.id]).slice(0, 32);
-    const parsed = nativeCommand.safeParse({
-      type: "access.decide",
-      id,
-      at: line.id,
-      source: [{ segment: line.id }],
-      by: visit.by,
-      venue: visit.venue,
-      zone: visit.zone,
-      decision: { outcome: "invite-now", visitor: "player" },
-    });
-    if (parsed.success) {
-      const effect = { id, requires: [], independent: true as const, failure: excluded.get(id) };
-      native.spokenVisit = id;
-      native.effects.push(effect);
-      commands.push({ command: parsed.data, effect, segment: visit.segment, index: commands.length });
-    }
-  }
   function apply(candidate: VillageState, row: (typeof commands)[number]) {
     const { command, effect } = row;
-    const sources = command.source.map((ref) => bindNarrationSource(ref, context));
+    const sources =
+      command.type === "guest.invite"
+        ? [
+            bindNarrationSource(
+              {
+                segment: command.at,
+                ...(reply.segments[row.segment].kind === "narration"
+                  ? { perceive: { kind: "seen", by: ["player"] } }
+                  : {}),
+              },
+              context,
+            ),
+          ]
+        : command.source.map((ref) => bindNarrationSource(ref, context));
     memoryRequire(
       sources.every(
         (source) =>
@@ -374,7 +363,8 @@ export function prepareNarrationNative(
         sources,
       };
     }
-    assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
+    if (command.type !== "guest.invite")
+      assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
     if (command.type === "residence.request" || command.type === "residence.decide" || command.type === "venue.request")
       return {
         receipt: applyNarrationResidence(
@@ -421,12 +411,14 @@ export function prepareNarrationNative(
         before,
       );
     } else {
-      const before = accessBefore.get(command.venue);
-      memoryRequire(before, "native access scope is missing");
       const decision =
-        command.type === "access.decide"
-          ? { type: command.type, by: command.by, venue: command.venue, zone: command.zone, ...command.decision }
-          : command;
+        command.type === "guest.invite"
+          ? guestInvitation(candidate, context, readset, command, sources[0], receiptId, at)
+          : command.type === "access.decide"
+            ? { type: command.type, by: command.by, venue: command.venue, zone: command.zone, ...command.decision }
+            : command;
+      const before = accessBefore.get(decision.venue);
+      memoryRequire(before, "native access scope is missing");
       receipt = applyNarrationAccess(
         candidate,
         decision,
