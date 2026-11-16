@@ -365,7 +365,6 @@ export function narrationContinuityContext(
     });
   // Raw witness views are larger than the rendered transcript. Fit the model-facing
   // transcript below, with a separate ceiling on raw projection work.
-  const transcriptBudget = 12_000;
   const recallBudget = 750;
   const history = selectEpisodeHistory(state.episodes, state.continuity, holders, recallQuery, 256_000, scene.id);
   const episodeOrder = new Map(state.episodes.records.map((row, index) => [row.id, index]));
@@ -406,10 +405,12 @@ export function narrationContinuityContext(
       },
     };
   };
-  const transcript = appendHistoryWithin(
-    history.episodes.map((view) => historyPart(view, true)),
-    transcriptBudget,
-    (part) => estimatedTextTokens(part.block.text),
+  const historyParts = history.episodes.map((view) => historyPart(view, true));
+  const newestExchange = estimatedTextTokens(historyParts.at(-1)?.block.text ?? "");
+  // Leave room for the newest complete exchange when it can still fit the full request.
+  const transcriptBudget = newestExchange <= 12_000 ? Math.max(4_000, newestExchange) : 4_000;
+  const transcript = appendHistoryWithin(historyParts, transcriptBudget, (part) =>
+    estimatedTextTokens(part.block.text),
   );
   const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
   parts.push(...transcript);

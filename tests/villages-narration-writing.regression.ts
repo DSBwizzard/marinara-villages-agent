@@ -1572,6 +1572,7 @@ await runCase("narration-writing/history-prefix", async () => {
     );
     f.nextOperation("after-" + id);
     const request = await f.writing.prepareVenueTurnMessages(f.scene, keyword, "chat");
+    assert(Buffer.byteLength(JSON.stringify(request.fitted.messages)) <= 48_000);
     const blocks = request.fitted.messages
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
@@ -1685,7 +1686,7 @@ await runCase("narration-writing/required-evidence-bound", async () => {
   );
   await assert.rejects(
     () => f.writing.generate(f.scene, "Hello.", "chat"),
-    /evidence exceeds the retained request bound before generation/,
+    /required context exceeds the Scene prompt limit/,
   );
   assert.equal(f.calls.purchases, 0, "a fit that cannot retain all required provenance never reaches the provider");
   assert.equal(f.checkpoints.size, 0);

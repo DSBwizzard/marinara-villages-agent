@@ -295,3 +295,37 @@ assert.deepEqual(fitted.messages, [
   { role: "system", content: "COMPLETE CARD" },
   { role: "user", content: "latest input" },
 ]);
+
+const unboundedFitter = { fitContext: (messages: ReturnType<typeof assembleVenueWritingMessages>) => ({ messages }) };
+const playerWords = "The exact latest input 🌱";
+const byteLimited = fitVenueWritingMessages(
+  unboundedFitter,
+  [
+    { text: "FULL AUTHOR CARD" },
+    { text: "庭".repeat(300), optional: "history", evidenceId: "omitted-history" },
+    { text: "An instruction using the omitted evidence", requiresEvidence: [["omitted-history"]] },
+  ],
+  playerWords,
+  4096,
+  "Narration",
+  undefined,
+  500,
+);
+assert.deepEqual(byteLimited.messages, [
+  { role: "system", content: "FULL AUTHOR CARD" },
+  { role: "user", content: playerWords },
+]);
+assert.deepEqual(byteLimited.evidenceIds, []);
+assert.throws(
+  () =>
+    fitVenueWritingMessages(
+      unboundedFitter,
+      [{ text: "庭".repeat(300) }],
+      playerWords,
+      4096,
+      "Narration",
+      undefined,
+      500,
+    ),
+  /exceeds the Scene prompt limit/u,
+);

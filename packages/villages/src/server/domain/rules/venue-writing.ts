@@ -158,6 +158,7 @@ export function fitVenueWritingMessages(
   maxTokens: number,
   connectionName = "Narration",
   replyReminder?: string,
+  maxMessageBytes?: number,
 ) {
   let kept = [...blocks];
   // Prune optional recall, memories and lore before rebuilding the Scene transcript.
@@ -166,11 +167,13 @@ export function fitVenueWritingMessages(
     const evidence = new Set(kept.map((block) => block.evidenceId));
     kept = kept.filter((block) => hasWritingEvidence(block, evidence));
     const messages = assembleVenueWritingMessages(kept, input, replyReminder);
+    const exceedsMessageBudget =
+      maxMessageBytes !== undefined && Buffer.byteLength(JSON.stringify(messages)) > maxMessageBytes;
     // shortcut: reserve JSON object headroom with a fit-only message until the public fitter accepts responseFormat.
     const probe = messages.slice();
     probe.splice(-1, 0, { role: "user", content: "." });
-    const fitted = model.fitContext(probe, { maxTokens });
-    if (JSON.stringify(fitted.messages) === JSON.stringify(probe)) {
+    const fitted = exceedsMessageBudget ? undefined : model.fitContext(probe, { maxTokens });
+    if (fitted && JSON.stringify(fitted.messages) === JSON.stringify(probe)) {
       const measured = model.fitContext(messages, { maxTokens: fitted.maxTokens ?? maxTokens });
       return {
         ...fitted,
@@ -196,10 +199,13 @@ export function fitVenueWritingMessages(
             ),
         )
         .find((rows) => rows.length) ?? [];
-    if (!optional.length)
+    if (!optional.length) {
+      if (exceedsMessageBudget)
+        throw badRequest("The required context exceeds the Scene prompt limit. No reply was requested.");
       throw badRequest(
         `The complete character cards and required context do not fit the ${connectionName} connection. Increase its context limit or choose a connection with a larger context window. No reply was requested.`,
       );
+    }
     // Drop whole low-priority rows in batches: fitting a long Scene must not scan it once per line.
     const count = optional[0].block.optional === "history" ? Math.ceil(optional.length / 4) : 1;
     const remove = new Set(optional.slice(0, count).map(({ block }) => block));
