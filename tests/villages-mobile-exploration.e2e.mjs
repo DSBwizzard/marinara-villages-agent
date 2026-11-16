@@ -659,7 +659,7 @@ await withBrowser(browser, async () => {
     assert.equal(sceneRequests[0].venueId, "market");
     await expect(page.getByRole("textbox", { name: "Message at Village Market" })).toBeVisible();
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await page.getByRole("button", { name: "Return to map", exact: true }).click();
     await expect(home).toBeVisible();
     await expect(venue).toHaveCount(0);
