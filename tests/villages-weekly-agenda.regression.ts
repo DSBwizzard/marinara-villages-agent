@@ -1,8 +1,12 @@
-// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo
+// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { mock } from "node:test";
 import { runCase } from "../scripts/test-cases.mjs";
+import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
 import {
   defaultVillageState,
   coerceVillageState,
@@ -239,6 +243,119 @@ await runCase("weekly-agenda/agreement", () => {
   const due = new Date(tomorrow + "T12:15:00Z");
   assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
   assert.equal(Object.hasOwn(agendaWeek(state, "mara", due, false).days[0].blocks[0], "join"), false);
+});
+
+await runCase("weekly-agenda/scene-scheduling", async () => {
+  const previousTimeZone = process.env.TZ;
+  try {
+    process.env.TZ = "UTC";
+    mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-10T10:00:00.000Z") });
+    const host = await packagedSceneServer({
+      configure(world, now) {
+        const block = { startMinute: 540, endMinute: 660, venueId: "mill", zoneId: "common", activity: "Sort maps" };
+        world.villagers[0].agenda = agendaFixture({
+          day: [block],
+          generatedAt: now,
+          activeDay: { dateKey: now.slice(0, 10), weekday: "Tuesday", scheduleInformed: false, blocks: [block] },
+        });
+      },
+    });
+    let calls = 0;
+    const offer = "Let's look through maps here tomorrow from noon to one.";
+    host.model.chatComplete = async (messages: { content: string }[]) => {
+      const agenda = messages
+        .flatMap(({ content }) => content.split("\n"))
+        .find((line) => line.startsWith('{"agendaOptions":'));
+      assert(agenda, `turn ${calls + 1} uses fitted schedule evidence`);
+      const packet = JSON.parse(agenda);
+      const schedule = { ...time, zoneId: "common" };
+      const reply =
+        ++calls === 1
+          ? {
+              segments: [{ kind: "dialogue", speakerId: "mara", text: "I sort maps here from nine until eleven." }],
+              keep: [
+                {
+                  for: ["player"],
+                  about: ["mara"],
+                  class: "information",
+                  text: "Mara sorts maps here today from nine until eleven.",
+                  source: [{ segment: 1 }],
+                  agenda: {
+                    actorId: "mara",
+                    kind: "told",
+                    time: { ...schedule, date: "2026-11-10", startMinute: 540, endMinute: 660 },
+                  },
+                },
+              ],
+            }
+          : {
+              segments: [
+                { kind: "dialogue", speakerId: "mara", text: "Yes, I'll meet you here tomorrow at noon until one." },
+              ],
+              keep: [
+                {
+                  for: ["player", "mara"],
+                  about: ["mara"],
+                  class: "commitment",
+                  text: "Look through maps at The Mill tomorrow from noon to one.",
+                  offer: { proposer: "player", participants: ["player", "mara"] },
+                  source: [
+                    { input: offer, ground: { kind: "spoken", to: ["mara"] }, act: "offer" },
+                    { segment: 1, act: "accept" },
+                  ],
+                  agenda: { actorId: "mara", kind: "offer", time: schedule, activity: "Look through maps" },
+                },
+              ],
+            };
+      if (calls === 1) {
+        assert.equal(packet.agendaOptions.length, 1);
+        assert.equal(packet.agendaOptions[0].activity, "Sort maps");
+        assert.equal(packet.agendaVenues, undefined, "casual speech carries no appointment destinations");
+      } else {
+        assert(packet.agendaOptions.some((slot: { time: { date: string } }) => slot.time.date === tomorrow));
+        assert(packet.agendaVenues.some((venue: { id: string }) => venue.id === "mill"));
+      }
+      return { content: JSON.stringify(reply), finishReason: "stop" };
+    };
+    try {
+      assert.equal((await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
+      for (const message of ["How are you today? I am reading a book.", offer]) {
+        const result = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/turn",
+          payload: {
+            sessionId: "browser",
+            submissionId: randomUUID(),
+            message,
+            mode: "chat",
+            targetId: "",
+            expectedSceneRevision: host.scene().sceneRevision,
+          },
+        });
+        assert.equal(result.statusCode, 200, result.body);
+        const { acceptance } = host.scene().submissions.at(-1)!;
+        assert.equal(acceptance.status, "applied");
+        assert.deepEqual(acceptance.rejected, []);
+      }
+      const state = fixtureVillageState(host.records.get("villages-village").data, host.records);
+      const [today, next] = agendaWeek(state, "mara", new Date(), false).days;
+      assert.deepEqual(
+        today.blocks.map(({ activity, source }) => [activity, source]),
+        [["Sort maps", "told"]],
+      );
+      assert.deepEqual(
+        next.blocks.map(({ activity, source }) => [activity, source]),
+        [["Look through maps", "agreed"]],
+      );
+      assert.equal(calls, 2);
+    } finally {
+      await host.stop();
+    }
+  } finally {
+    mock.timers.reset();
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
 });
 
 await runCase("weekly-agenda/shared-scene", () => {
