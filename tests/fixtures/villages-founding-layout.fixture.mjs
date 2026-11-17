@@ -693,19 +693,27 @@ export async function verifyFoundingLayout(group) {
         );
         assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns toward the player in place");
         await expect(button("Choose lorebooks")).toHaveCount(0);
-        const worldField = root.getByLabel(phone ? "World description" : "The larger world");
+        const worldField = root.getByLabel("World description");
+        const worldRules = root.getByLabel("World rules", { exact: true });
         const worldPopup = root.getByRole("dialog", { name: "The wider world", exact: true });
         if (phone) {
           await expect(worldPopup).toBeVisible();
-        } else {
-          await expect(line).toHaveText(/^What’s out past the Village/);
         }
+        const worldForm = phone ? worldPopup : scene;
+        await expect(worldForm.getByText(/^What World does your Village take place in\?/)).toBeVisible();
+        await expect(worldForm.locator(".villages-founding-field-heading label")).toHaveText([
+          /^World name/,
+          /^World description/,
+          /^World rules/,
+        ]);
         await expect(worldField).toBeVisible();
+        await expect(worldField).toHaveAccessibleDescription(/wider setting/);
+        await expect(worldRules).toHaveAccessibleDescription(/hold in play/);
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `founding-world-form-${view.width}-${view.height}.png`),
           });
-        await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
+        await worldRules.fill("The sun never sets.");
         if (draftWithLore) {
           await worldField.fill(worldBrief);
           await expect

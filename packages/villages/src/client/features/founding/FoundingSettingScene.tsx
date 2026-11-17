@@ -22,7 +22,7 @@ const script: Record<SettingBeat, readonly string[]> = {
     "The World is the big backdrop. If your Village belongs to a world you already know, tell me enough to get my bearings. You can leave it open if you’re still deciding.",
   ],
   world: [
-    "What’s out past the Village? One sentence will do. If you haven’t decided, we can leave the horizon blurry.",
+    "What World does your Village take place in? One sentence will do. If you haven’t decided, we can leave the horizon blurry.",
   ],
   lorebooks: [
     "Got Lorebooks? I can pull details from them while I draft, like how the locals greet each other or why everyone avoids the north pier.",
@@ -177,14 +177,28 @@ export function FoundingSettingScene({
   };
   const worldField = (
     <>
+      <FoundingField title="World name" optional>
+        <input
+          autoComplete="off"
+          maxLength={120}
+          value={controller.setupWorldName}
+          placeholder="The Shattered Isles"
+          disabled={controller.busy}
+          onChange={(event) => controller.setSetupWorldName(event.currentTarget.value)}
+        />
+      </FoundingField>
       {!manual ? (
-        <FoundingField title={phone ? "World description" : "The larger world"} optional>
+        <FoundingField
+          title="World description"
+          description="A quick picture of the wider setting for Mari’s draft."
+          optional
+        >
           <textarea
             autoComplete="off"
-            rows={phone ? 4 : 2}
+            rows={2}
             maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
             value={world}
-            placeholder="A network of settlements on old cargo routes…"
+            placeholder="A chain of island kingdoms linked by trade ships."
             onChange={(event) => {
               const value = event.currentTarget.value;
               setSetupWorkspace((workspace) => ({ ...workspace, settingWorldBrief: value }));
@@ -192,22 +206,14 @@ export function FoundingSettingScene({
           />
         </FoundingField>
       ) : null}
-      <FoundingField title="World name" optional>
-        <input
-          autoComplete="off"
-          maxLength={120}
-          value={controller.setupWorldName}
-          disabled={controller.busy}
-          onChange={(event) => controller.setSetupWorldName(event.currentTarget.value)}
-        />
-      </FoundingField>
-      <FoundingField title="World rules" optional>
+      <FoundingField title="World rules" description="Facts or limits that should always hold in play." optional>
         <textarea
           autoComplete="off"
           aria-label="World rules"
           maxLength={4096}
           rows={2}
           value={controller.setupContext.rules}
+          placeholder="Magic only works after sunset."
           disabled={controller.busy}
           onChange={(event) => {
             const rules = event.currentTarget.value;
@@ -463,6 +469,7 @@ export function FoundingSettingScene({
             focusLine();
           }}
         >
+          <p>{script.world[0]}</p>
           {worldField}
           <footer>
             <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>

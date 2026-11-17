@@ -136,7 +136,7 @@ await withBrowser(browser, async () => {
       for (let line = 0; line < 3; line++) await next.click();
       await scene.getByRole("button", { name: "Draft with Mari", exact: true }).click();
       for (let line = 0; line < 2; line++) await next.click();
-      const world = scene.getByLabel(width === 390 ? "World description" : "The larger world");
+      const world = scene.getByLabel("World description");
       await world.fill("A string of settlements along the coast");
       await page.clock.fastForward(3000);
       await expect(scene).toHaveAttribute("data-lighting", "night");
