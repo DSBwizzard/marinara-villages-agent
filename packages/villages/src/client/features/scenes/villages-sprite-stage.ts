@@ -1,6 +1,5 @@
 import type { ResidentSprite } from "../../../shared/contracts/village.js";
-
-export type SpriteFacing = "front" | "left" | "right";
+import type { SpriteFacing } from "../../shared/CardFlipSprite.js";
 
 type SpriteImage = ResidentSprite["images"][number];
 

@@ -359,8 +359,7 @@ export async function verifyFoundingLayout(group) {
           assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari keeps her standing mark between phases");
           if (phase !== "setting" && !phone) {
             const guide = root.locator(".villages-chapter-guide");
-            const sprite = stage.locator("img[data-active]");
-            await expect.poll(() => sprite.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+            const sprite = await expectPose({ people: "happy", venues: "playful", review: "proud" }[phase]);
             const guideBox = await guide.boundingBox();
             const workBox = await root.locator(".villages-forging-body").boundingBox();
             const spriteBox = await sprite.boundingBox();
@@ -435,11 +434,14 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
         const title = root.locator(".villages-founding-title");
         const stage = root.locator(".villages-setting-stage");
-        const sidePose = stage.locator('img[src$="mari-founding-looking-up.webp"]');
-        const frontPose = stage.locator('img[src$="mari-founding-happy.webp"]');
+        const expectPose = async (pose) => {
+          const sprite = stage.locator(`img[src$="mari-founding-${pose}.webp"]`);
+          await expect(sprite).toHaveAttribute("data-flipping", "false");
+          await expect(sprite).toHaveJSProperty("naturalHeight", 600);
+          return sprite;
+        };
+        const sidePose = await expectPose("looking-up");
         await expect(sidePose).toBeInViewport({ ratio: 1 });
-        await expect.poll(() => sidePose.evaluate((sprite) => sprite.naturalWidth)).toBeGreaterThan(0);
-        await expect(frontPose).toHaveCSS("opacity", "0");
         const sideBounds = await sidePose.boundingBox();
         const titleBounds = await title.boundingBox();
         const stageBounds = await stage.boundingBox();
@@ -482,8 +484,7 @@ export async function verifyFoundingLayout(group) {
         await expect(modelGate.getByRole("button", { name: "Back", exact: true })).toHaveCount(0);
         await expect(root.getByRole("region", { name: "Professor Mari" })).toHaveCount(0);
         await expect(root.getByRole("list", { name: "Founding phases" })).toHaveCount(0);
-        await expect(frontPose).toHaveCSS("opacity", "0");
-        await expect(sidePose).toHaveCSS("animation-name", "none");
+        await expect(sidePose).toHaveAttribute("data-flipping", "false");
         assert.deepEqual(
           await sidePose.boundingBox(),
           titlePose,
@@ -556,9 +557,8 @@ export async function verifyFoundingLayout(group) {
         );
         const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
         await expect(title).toHaveCount(0);
+        const greetingPose = await expectPose("wave");
         await expect(sidePose).toHaveCount(0);
-        await expect(frontPose).toHaveCSS("opacity", "1");
-        await expect(frontPose).toHaveCSS("animation-name", "none");
         assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns without moving to a different spot");
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
         await expect(scene.locator('p[aria-live="polite"]')).toBeFocused();
@@ -575,8 +575,7 @@ export async function verifyFoundingLayout(group) {
         await expect(button("Draft with Mari")).toBeVisible();
         await expect(button("Set it up myself")).toBeVisible();
         if (!phone) {
-          const sprite = stage.locator("img[data-active]");
-          const portrait = await sprite.boundingBox();
+          const portrait = await greetingPose.boundingBox();
           const dialogue = await scene.locator(".villages-setting-dialogue").boundingBox();
           const artworkHeight = Math.max(frame.height, (frame.width * 820) / 1311);
           assert.ok(
@@ -635,9 +634,7 @@ export async function verifyFoundingLayout(group) {
         await expect(line).toHaveText(/^See these five layers\?/);
         await expect(button("Choose lorebooks")).toHaveCount(0);
         await expect(hierarchy).toHaveCSS("background-color", /^rgba\(.+, 0\.[1-9]/);
-        const presenting = stage.locator('img[src$="mari-founding-presenting.webp"]');
-        await expect(presenting).toHaveCSS("opacity", "1");
-        await expect(presenting).toHaveJSProperty("naturalHeight", 600);
+        const presenting = await expectPose("presenting");
         const portraitBox = await presenting.boundingBox();
         const treeBox = await hierarchy.boundingBox();
         const railBox = await root.getByRole("list", { name: "Founding phases" }).boundingBox();
@@ -662,12 +659,37 @@ export async function verifyFoundingLayout(group) {
         await nextLine();
         await expect(line).toHaveText(/^The World is the big backdrop/);
         await expect(hierarchy).toBeVisible();
-        await expect(presenting).toHaveAttribute("data-active", "true");
+        await expect(presenting).toHaveAttribute("data-flipping", "false");
+        await page.evaluate(() => {
+          const animate = Element.prototype.animate;
+          window.mariFlips = [];
+          Element.prototype.animate = function (keyframes, options) {
+            if (this.matches(".villages-setting-stage img"))
+              window.mariFlips.push([this.dataset.flipping, this.getAttribute("src").split("/").at(-1), keyframes]);
+            return animate.call(this, keyframes, options);
+          };
+        });
         await nextLine();
-        const facingPlayer = stage.locator('img[data-pose="neutral"]');
-        await expect(facingPlayer).toHaveAttribute("data-active", "true");
-        await expect(facingPlayer).toHaveCSS("opacity", "1");
-        await expect(presenting).toHaveCSS("opacity", "0");
+        const facingPlayer = await expectPose("thoughtful");
+        await expect(facingPlayer).toHaveAttribute("data-facing", "front");
+        assert.deepEqual(
+          await page.evaluate(() => window.mariFlips),
+          view.height === 650
+            ? []
+            : [
+                [
+                  "out",
+                  "mari-founding-presenting.webp",
+                  [{ transform: "rotateY(0deg) scaleX(1)" }, { transform: "rotateY(90deg) scaleX(1)" }],
+                ],
+                [
+                  "in",
+                  "mari-founding-thoughtful.webp",
+                  [{ transform: "rotateY(-90deg) scaleX(1)" }, { transform: "rotateY(0deg) scaleX(1)" }],
+                ],
+              ],
+          "The sprite swaps at the edge of the paper flip, or immediately with reduced motion",
+        );
         assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns toward the player in place");
         await expect(button("Choose lorebooks")).toHaveCount(0);
         const worldField = root.getByLabel(phone ? "World description" : "The larger world");
@@ -703,7 +725,7 @@ export async function verifyFoundingLayout(group) {
         else await button(draftWithLore ? "Use this world" : "Skip world description").click();
         await layer("World");
         await expect(line).toHaveText(/^Got Lorebooks\?/);
-        await expect(frontPose).toHaveAttribute("data-active", "true");
+        await expectPose("delighted");
         await expect(button("Choose lorebooks")).toHaveCount(0);
         if (draftWithLore) {
           await scene.getByRole("button", { name: "Back", exact: true }).click();
@@ -731,11 +753,12 @@ export async function verifyFoundingLayout(group) {
           await picker.getByRole("button", { name: "Done", exact: true }).click();
         } else await button("Skip for now").click();
         await layer("Village");
-        await expect(presenting).toHaveAttribute("data-active", "true");
+        await expectPose("presenting");
         await expect(line).toHaveText(/^The Village is your whole community/);
         await expect(villageName).toBeHidden();
         await nextLine();
         await layer("Map");
+        await expectPose("happy-side");
         await expect(line).toHaveText(/^A Map is where we actually play/);
         await expect(villageName).toBeHidden();
         await nextLine();

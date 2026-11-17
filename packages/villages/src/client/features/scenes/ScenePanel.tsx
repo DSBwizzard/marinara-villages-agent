@@ -27,7 +27,7 @@ import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import type { SceneFailure } from "./scene-error-report.js";
-import { CardFlipSprite } from "./villages-card-flip-sprite.js";
+import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { scenePlaybackSteps } from "./scene-playback.js";
 import { useScenePlayback } from "./useScenePlayback.js";

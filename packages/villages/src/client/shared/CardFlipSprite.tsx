@@ -1,5 +1,6 @@
-import type { SpriteFacing } from "./villages-sprite-stage.js";
 import { useLayoutEffect, useRef } from "react";
+
+export type SpriteFacing = "front" | "left" | "right";
 
 type SpriteFace = {
   url: string;
@@ -18,13 +19,15 @@ export function CardFlipSprite({
   enabled,
   animate,
   stepKey,
+  transformOrigin = "center center",
   onError,
 }: SpriteFace & {
   framing: "full" | "half";
   enabled: boolean;
   animate: boolean;
   stepKey: string;
-  onError: (url: string) => void;
+  transformOrigin?: string;
+  onError?: (url: string) => void;
 }) {
   const imageRef = useRef<HTMLImageElement>(null);
   // React keeps the initial attributes stable; the effect owns later swaps so
@@ -98,7 +101,7 @@ export function CardFlipSprite({
       } catch {
         if (!cancelled) {
           stop();
-          errorHandler.current(url);
+          errorHandler.current?.(url);
         }
       }
     };
@@ -121,8 +124,8 @@ export function CardFlipSprite({
       alt=""
       data-framing={framing}
       data-facing={initial.current.view === "front" ? "front" : initial.current.mirrored ? "left" : "right"}
-      style={{ transformOrigin: "center center" }}
-      onError={(event) => errorHandler.current(event.currentTarget.getAttribute("src") ?? url)}
+      style={{ transformOrigin }}
+      onError={(event) => errorHandler.current?.(event.currentTarget.getAttribute("src") ?? url)}
     />
   );
 }

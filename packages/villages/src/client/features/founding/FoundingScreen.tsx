@@ -2,6 +2,7 @@ import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venu
 import { simpleFoundingMap } from "./simple-map.js";
 import { assignFoundingHome, foundingHomeMembers, reconcileFoundingRoster } from "./founding-homes.js";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { CONNECTION_SETUP_PROBLEMS, ELEMENT_TAG } from "../../shared/constants.js";
 import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
@@ -36,6 +37,15 @@ const PLACE_ERRORS = {
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 const PHONE_LAYOUT = "(max-width:727px)";
 const CHAPTER_MENUS = [undefined, "people", "venues", "review"] as const;
+const SETTING_MARI_POSES = {
+  welcome: "wave",
+  manual: "neutral",
+  "world-overview": "presenting",
+  world: "thoughtful",
+  lorebooks: "delighted",
+  "village-overview": "presenting",
+  village: "happy-side",
+} as const;
 
 function FoundingChapter({
   step,
@@ -216,21 +226,17 @@ export function FoundingScreen({
           : "World"
       : undefined;
   const mariPose =
-    setupStep === 0
-      ? {
-          welcome: "happy",
-          manual: "neutral",
-          "world-overview": "presenting",
-          world: "neutral",
-          lorebooks: "happy",
-          "village-overview": "presenting",
-          village: "happy",
-        }[beat]
-      : setupStep === 1
-        ? "playful"
-        : setupStep === 3
+    prelude && !turning
+      ? "looking-up"
+      : setupStep === 0
+        ? SETTING_MARI_POSES[beat]
+        : setupStep === 1
           ? "happy"
-          : "neutral";
+          : setupStep === 3
+            ? "proud"
+            : "playful";
+  const mariView = mariPose === "looking-up" || mariPose === "happy-side" ? "side" : "front";
+  const mariFlipEnabled = snapshot?.settings.spriteCardFlipEnabled !== false;
   useEffect(() => {
     if (!fading && !turning) return;
     const timer = window.setTimeout(() => setArrival(fading ? undefined : "greeting"), fading ? 350 : 500);
@@ -375,7 +381,8 @@ export function FoundingScreen({
           className="villages-forging-primary"
           disabled={!!connections.setupProblem || !!draftSaveError}
           onClick={() => {
-            setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
+            const turn = mariFlipEnabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            setArrival(turn ? "turning" : "greeting");
             setSetupWorkspace((workspace) => ({
               ...workspace,
               settingIntroPending: undefined,
@@ -738,23 +745,17 @@ export function FoundingScreen({
         ref={rootRef}
       >
         <div className="villages-setting-stage" aria-hidden="true">
-          {(["neutral", "happy", "playful", "presenting"] as const).map((pose) => (
-            <img
-              key={pose}
-              data-pose={pose}
-              data-active={pose === mariPose || undefined}
-              src={foundingMariSprite(pose)}
-              alt=""
-            />
-          ))}
-          {prelude ? (
-            <img
-              className="villages-mari-looking-up"
-              data-pose="looking-up"
-              src={foundingMariSprite("looking-up")}
-              alt=""
-            />
-          ) : null}
+          <CardFlipSprite
+            url={foundingMariSprite(mariPose)}
+            facing={mariView === "side" ? "right" : "front"}
+            mirrored={false}
+            view={mariView}
+            framing="full"
+            enabled={mariFlipEnabled}
+            animate
+            stepKey={mariPose}
+            transformOrigin="var(--shoe-center, 50%) bottom"
+          />
         </div>
         {hierarchyLayer ? <FoundingHierarchy current={hierarchyLayer} /> : null}
         <ol className="villages-forging-steps" aria-label="Founding phases" role="list">
