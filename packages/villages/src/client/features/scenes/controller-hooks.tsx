@@ -264,9 +264,12 @@ export function useSceneOperationPolling(ports: {
   setRoomError: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const { room, roomBusy, setRoom, setRoomEnded, setRoomError } = ports;
+  const operationId = room?.operation?.id;
+  const attemptId = room?.operation?.attemptId;
   useEffect(() => {
     if (
       !room?.id ||
+      !operationId ||
       room.operation?.status !== "running" ||
       roomBusy ||
       !ports.visible ||
@@ -279,13 +282,30 @@ export function useSceneOperationPolling(ports: {
     const poll = async () => {
       if (stopped || reading || document.hidden) return;
       reading = true;
-      let latest = await refreshSceneAfterFailure(room.id, room.operation?.id, () => !stopped);
-      if (!stopped && latest?.operation?.status === "running") {
+      let latest = await refreshSceneAfterFailure(room.id, operationId, () => !stopped);
+      if (!stopped && (!latest || latest.operation?.status === "running")) {
+        const expected = latest?.operation ?? { id: operationId, attemptId };
         const { operation } = await request<{ operation: RoomOperation | null }>(
-          `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(latest.operation.id)}`,
+          `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(expected.id)}`,
           { signal: AbortSignal.timeout(5_000) },
         ).catch(() => ({ operation: null }));
-        if (operation?.status === "interrupted") latest = { ...latest, operation };
+        if (
+          !stopped &&
+          operation?.status === "interrupted" &&
+          operation.id === expected.id &&
+          operation.attemptId === expected.attemptId
+        ) {
+          if (latest) latest = { ...latest, operation };
+          else
+            setRoom((current) =>
+              current?.id === room.id &&
+              current.operation?.status === "running" &&
+              current.operation.id === operation.id &&
+              current.operation.attemptId === operation.attemptId
+                ? { ...current, operation }
+                : current,
+            );
+        }
       }
       reading = false;
       if (!stopped && latest) {
@@ -305,7 +325,8 @@ export function useSceneOperationPolling(ports: {
     };
   }, [
     room?.id,
-    room?.operation?.id,
+    operationId,
+    attemptId,
     room?.operation?.status,
     roomBusy,
     ports.visible,

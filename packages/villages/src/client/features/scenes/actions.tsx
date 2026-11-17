@@ -584,7 +584,7 @@ export function useSendRoom(ports: {
             submissionId = uncertain.submissionId;
             sharedIdentity = !!uncertain.changed || text !== uncertain.text;
             keptUnconfirmedId = true;
-          }
+          } else if (previous.id !== operation?.id) submissionId = createVillagesClientId();
         }
         if (
           !replacement &&
@@ -733,7 +733,13 @@ export function useSendRoom(ports: {
         claim.submission = roomSubmissionIdRef.current;
         const confirmedFailure =
           operation?.id === submissionId &&
-          (operation.status === "interrupted" || (operation.status === "complete" && !!operation.error));
+          (operation.acceptance === "abandoned" ||
+            operation.status === "interrupted" ||
+            (operation.status === "complete" && !!operation.error));
+        if (operation?.id === submissionId && operation.acceptance === "abandoned") {
+          roomSubmissionIdRef.current = null;
+          claim.submission = null;
+        }
         const stillUncertain =
           !confirmedFailure &&
           (!(cause instanceof VillageApiError) ||

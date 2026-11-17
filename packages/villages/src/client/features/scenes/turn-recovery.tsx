@@ -189,12 +189,26 @@ export function useTurnRecovery(ports: {
         return;
       }
       if (
-        scene &&
         operation?.id === pending.submissionId &&
-        (operation.status === "interrupted" || (operation.status === "complete" && !!operation.error))
+        (operation.acceptance === "abandoned" ||
+          operation.status === "interrupted" ||
+          (operation.status === "complete" && !!operation.error))
       ) {
-        latest.current.setRoom(scene);
-        latest.current.setRoomError(operation.error || "The saved request needs an explicit retry.");
+        latest.current.setRoom((current) => {
+          const view = scene ?? current;
+          return view?.id === pending.sceneId &&
+            view.operation?.id === operation.id &&
+            view.operation.attemptId === operation.attemptId
+            ? { ...view, operation }
+            : view;
+        });
+        if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
+        latest.current.setRoomError(
+          operation.error ||
+            (operation.acceptance === "abandoned"
+              ? "The saved request was replaced. Your draft is ready to send."
+              : "The saved request needs an explicit retry."),
+        );
         finish();
         return;
       }

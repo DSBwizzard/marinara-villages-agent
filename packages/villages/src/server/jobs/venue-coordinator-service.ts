@@ -957,7 +957,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             ...(saved ? { acceptance: saved.acceptance.status } : {}),
             replyReady: !saved || sceneTurnPublished(saved),
           }
-        : null;
+        : (data.abandonedOperations as VenueOperation[] | undefined)?.some((entry) => entry.id === operationId)
+          ? { id: operationId, status: "complete", input: null, acceptance: "abandoned", committed: false }
+          : null;
     }
     return operation
       ? {

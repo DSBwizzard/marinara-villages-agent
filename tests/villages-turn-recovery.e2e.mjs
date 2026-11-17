@@ -37,6 +37,8 @@ await withBrowser(browser, async () => {
     for (const mode of [
       "receipt",
       "error",
+      "status-only-error",
+      "abandoned",
       "draft",
       "same-draft",
       "selection",
@@ -60,6 +62,8 @@ await withBrowser(browser, async () => {
         requests.push(r.request().method());
         if (unavailable) return fulfill(r, { status: 503, json: { error: "offline" } });
         const path = new URL(r.request().url()).pathname;
+        if (mode === "status-only-error" && !path.includes("/operations/"))
+          return fulfill(r, { status: 503, json: { error: "Scene read unavailable" } });
         if (mode.startsWith("retired") && path.includes("/archive/"))
           return fulfill(r, { status: 404, json: { error: "Scene unavailable" } });
         return fulfill(r, {
@@ -103,8 +107,10 @@ await withBrowser(browser, async () => {
           ...(mode === "retired-unknown" ? { error: "The request outcome is unavailable." } : {}),
         };
         scene.submissions = [];
-      } else if (mode === "error")
+      } else if (mode === "error" || mode === "status-only-error")
         scene.operation = { id: "submission", status: "complete", error: "Confirmed validation failure" };
+      else if (mode === "abandoned")
+        scene.operation = { id: "submission", status: "complete", acceptance: "abandoned" };
       else scene.submissions = [{ mode: "chat", id: "submission" }];
       if (mode === "hidden-return") await page.evaluate(() => window.h.visible(true));
       else await page.evaluate(() => window.h.check());
@@ -117,19 +123,21 @@ await withBrowser(browser, async () => {
           state.draft,
           mode === "draft" || mode === "retired-draft"
             ? "new draft"
-            : mode === "error" || mode === "same-draft" || mode === "retired-unknown"
+            : ["error", "status-only-error", "abandoned", "same-draft", "retired-unknown"].includes(mode)
               ? "sent"
               : "",
         );
         assert.equal(
           state.error,
-          mode === "error"
+          mode === "error" || mode === "status-only-error"
             ? "Confirmed validation failure"
-            : mode === "retired-unknown"
-              ? "The request outcome is unavailable."
-              : mode.startsWith("retired")
-                ? "The Scene ended. Your turn completed, but the reply text is no longer available."
-                : "",
+            : mode === "abandoned"
+              ? "The saved request was replaced. Your draft is ready to send."
+              : mode === "retired-unknown"
+                ? "The request outcome is unavailable."
+                : mode.startsWith("retired")
+                  ? "The Scene ended. Your turn completed, but the reply text is no longer available."
+                  : "",
         );
         if (mode !== "error" && mode !== "retired-unknown") assert.equal(state.submission, null);
         if (mode.startsWith("retired")) {
