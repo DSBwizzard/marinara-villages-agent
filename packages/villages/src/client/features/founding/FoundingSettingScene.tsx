@@ -91,11 +91,20 @@ export function FoundingSettingScene({
   const nextPrompt = { lorebooks: "world", world: "village-overview", "village-overview": "village" } as const;
   const hierarchy =
     !manual && beat !== "welcome" && beat !== "manual" ? (
-      <>
-        {firstLayer ? <p>Villages contain five layers.</p> : null}
-        <FoundingHierarchy current={beat === "village-overview" ? "Village" : beat === "village" ? "Map" : "World"} />
-      </>
+      <FoundingHierarchy current={beat === "village-overview" ? "Village" : beat === "village" ? "Map" : "World"} />
     ) : null;
+  const stage = (
+    <div className="villages-setting-stage" aria-hidden="true">
+      <img key={pose} src={foundingMariSprite(pose)} alt="" />
+      {title ? <img className="villages-mari-looking-up" src={foundingMariSprite("looking-up")} alt="" /> : null}
+    </div>
+  );
+  const illustration = hierarchy ? (
+    <div className="villages-setting-illustration">
+      {stage}
+      {hierarchy}
+    </div>
+  ) : null;
   const mobilePrompt =
     phone &&
     (beat === "world" ||
@@ -253,82 +262,86 @@ export function FoundingSettingScene({
       village: "village-overview",
     } as const;
     return (
-      <form
-        className="villages-founding-mobile-menu villages-forging-card"
-        aria-labelledby="founding-prompt-title"
-        autoComplete="off"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (mobilePrompt === "village") submitBrief();
-          else if (mobilePrompt === "world" && manual) moveTo("lorebooks");
-          else if (mobilePrompt !== "lorebooks" || !manual) moveTo(nextPrompt[mobilePrompt]);
-        }}
-      >
-        <h2 id="founding-prompt-title" tabIndex={-1} ref={promptTitle}>
-          {title}
-        </h2>
-        {hierarchy}
-        <p className="villages-setting-line">{dialogue}</p>
-        {mobilePrompt === "world" ? (
-          worldField
-        ) : mobilePrompt === "lorebooks" ? (
-          <>
-            <VillageLorebookPicker
-              inline
-              books={controller.lorebooks}
-              error={controller.lorebooksError}
-              selected={controller.setupLorebookDraft}
-              onChange={controller.setSetupLorebookDraft}
-              disabled={controller.busy || setupSuggestionsBusy}
-            />
-            {loreBudget}
-          </>
-        ) : mobilePrompt === "village" ? (
-          <>
-            {briefField}
-            {loreNotice}
-            {errorNotice}
-            {connectionError ? (
-              <button type="button" onClick={onConnections}>
-                Model Connections
+      <>
+        {illustration}
+        <form
+          className="villages-founding-mobile-menu villages-forging-card"
+          aria-labelledby="founding-prompt-title"
+          autoComplete="off"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (mobilePrompt === "village") submitBrief();
+            else if (mobilePrompt === "world" && manual) moveTo("lorebooks");
+            else if (mobilePrompt !== "lorebooks" || !manual) moveTo(nextPrompt[mobilePrompt]);
+          }}
+        >
+          <h2 id="founding-prompt-title" tabIndex={-1} ref={promptTitle}>
+            {title}
+          </h2>
+          {firstLayer ? <p>Villages contain five layers.</p> : null}
+          <p className="villages-setting-line">{dialogue}</p>
+          {mobilePrompt === "world" ? (
+            worldField
+          ) : mobilePrompt === "lorebooks" ? (
+            <>
+              <VillageLorebookPicker
+                inline
+                books={controller.lorebooks}
+                error={controller.lorebooksError}
+                selected={controller.setupLorebookDraft}
+                onChange={controller.setSetupLorebookDraft}
+                disabled={controller.busy || setupSuggestionsBusy}
+              />
+              {loreBudget}
+            </>
+          ) : mobilePrompt === "village" ? (
+            <>
+              {briefField}
+              {loreNotice}
+              {errorNotice}
+              {connectionError ? (
+                <button type="button" onClick={onConnections}>
+                  Model Connections
+                </button>
+              ) : null}
+            </>
+          ) : null}
+          <div className="villages-founding-menu-actions">
+            <button type="button" onClick={() => moveTo(back[mobilePrompt])}>
+              Back
+            </button>
+            {mobilePrompt === "village" ? (
+              <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
+                Enter my setting
               </button>
             ) : null}
-          </>
-        ) : null}
-        <div className="villages-founding-menu-actions">
-          <button type="button" onClick={() => moveTo(back[mobilePrompt])}>
-            Back
-          </button>
-          {mobilePrompt === "village" ? (
-            <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
-              Enter my setting
-            </button>
-          ) : null}
-          {mobilePrompt === "lorebooks" && manual ? (
-            next
-          ) : (
-            <button
-              type="submit"
-              className={mobilePrompt === "village" ? undefined : "villages-forging-primary"}
-              disabled={mobilePrompt === "village" && !canDraft}
-            >
-              {mobilePrompt === "village" ? (drafted ? "Draft again with Mari" : "Draft with Mari") : "Next"}
-            </button>
-          )}
-        </div>
-      </form>
+            {mobilePrompt === "lorebooks" && manual ? (
+              next
+            ) : (
+              <button
+                type="submit"
+                className={mobilePrompt === "village" ? undefined : "villages-forging-primary"}
+                disabled={mobilePrompt === "village" && !canDraft}
+              >
+                {mobilePrompt === "village" ? (drafted ? "Draft again with Mari" : "Draft with Mari") : "Next"}
+              </button>
+            )}
+          </div>
+        </form>
+      </>
     );
   }
   return (
-    <section className="villages-setting-guide" aria-label={title ? undefined : "Professor Mari"}>
-      <div className="villages-setting-stage" aria-hidden="true">
-        <img key={pose} src={foundingMariSprite(pose)} alt="" />
-        {title ? <img className="villages-mari-looking-up" src={foundingMariSprite("looking-up")} alt="" /> : null}
-      </div>
+    <section
+      className="villages-setting-guide"
+      data-hierarchy={!!hierarchy || undefined}
+      aria-label={title ? undefined : "Professor Mari"}
+    >
+      {illustration ?? stage}
       {title}
       <div className="villages-setting-dialogue" hidden={!!title}>
         <FoundingSpeaker pose={pose} />
-        {hierarchy}
+        {firstLayer ? <p>Villages contain five layers.</p> : null}
         <p className="villages-setting-line" aria-live="polite" tabIndex={-1} ref={lineRef}>
           {dialogue}
         </p>

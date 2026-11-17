@@ -609,6 +609,31 @@ export async function verifyFoundingLayout(group) {
           await expect(hierarchy.locator("[data-active] text")).toHaveText(name);
         };
         await layer("World");
+        await expect(hierarchy).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        await expect(stage.locator("img")).toHaveCSS("opacity", "1");
+        const portraitBox = await stage.boundingBox();
+        const treeBox = await hierarchy.boundingBox();
+        const dialogueBox = await (
+          phone ? root.getByRole("form", { name: "Lorebooks" }) : scene.locator(".villages-setting-dialogue")
+        ).boundingBox();
+        assert.ok(portraitBox.x + portraitBox.width <= treeBox.x, "The tree sits to Mari’s right");
+        assert.ok(
+          phone
+            ? Math.max(portraitBox.y + portraitBox.height, treeBox.y + treeBox.height) <= dialogueBox.y
+            : treeBox.x + treeBox.width <= dialogueBox.x,
+          "Dialogue sits below the illustration on phones and to its right on desktop",
+        );
+        if (phone) {
+          const sprite = await stage.locator("img").boundingBox();
+          assert.ok(
+            sprite.y >= portraitBox.y && sprite.height > portraitBox.height,
+            "Only Mari’s lower body is cropped",
+          );
+        }
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `founding-world-${view.width}-${view.height}.png`),
+          });
         if (phone) {
           const relay = root.getByRole("checkbox", { name: "Relay Belt" });
           await expect(relay).toBeVisible();
