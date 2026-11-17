@@ -405,7 +405,7 @@ for (const scenario of scenarios)
           segments: [],
           halt: {
             reason: "time",
-            message: "Village time cannot be skipped through narration.",
+            message: "The old model notice contained a private fact.",
             source: [{ input: "I advance the Village clock by two days." }],
           },
         };
@@ -512,8 +512,9 @@ for (const scenario of scenarios)
           assert(turn.acceptance.rejected.some((row) => /past|nonexistent/.test(row.reason)));
         else {
           assert.equal(response.statusCode, 409);
-          assert.equal(response.json().error, raw.halt.message, "a supported halt explains the boundary directly");
-          assert(turn.acceptance.rejected.some((row) => row.reason.includes(raw.halt.message)));
+          const notice = response.json().error;
+          assert.match(notice, /^HALT · Village time/);
+          assert(turn.acceptance.rejected.some((row) => row.reason.includes(notice)));
           const status = await host.app.inject({
             method: "GET",
             url: `/api/villages/rooms/browser/operations/${payload.submissionId}`,
@@ -521,6 +522,14 @@ for (const scenario of scenarios)
           assert.equal(status.statusCode, 200, status.body);
           assert.equal(status.json().operation.acceptance, "held");
           assert.equal(status.json().operation.input.message, payload.message);
+          assert.equal(status.json().operation.error, notice);
+          const details = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/error-details" });
+          assert.equal(details.statusCode, 200, details.body);
+          assert(!details.body.includes(raw.halt.message));
+          const replay = await host.app.inject({ method: "POST", url, payload });
+          assert.equal(replay.statusCode, 409, replay.body);
+          assert.equal(replay.json().error, notice);
+          assert.equal(calls, 1, "saved HALT replay uses the existing GM response");
           assert.deepEqual(world.clock, before.clock, "a native halt changes no Village time");
         }
       } else {

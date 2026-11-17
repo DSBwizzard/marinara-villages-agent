@@ -114,7 +114,7 @@ An aside appears beside the main Scene paragraph. It follows the same hearing ru
 
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
-If you see **HALT**, the proposed turn has not entered the story. Read the notice and revise your draft. Ordinary refusals can still happen within the story. Villages holds unsupported required outcomes with your original input and the generated reply. Recovery offers local replay or an explicit Retry when applicable. Character abilities remain part of their identity, and enacted consequences must fit what Villages can support.
+The GM first tries to continue in character. Attempts, threats, ordinary refusals, and plausible local damage can play out in the Scene. Permanent character loss, changes to the shared Village clock, and destruction of the playable Village can require **HALT**. The turn stays outside the story and the notice helps you revise your preserved draft. Recovery uses the saved reply or offers an explicit Retry when applicable.
 
 ### Take breaks without losing your progress
 
