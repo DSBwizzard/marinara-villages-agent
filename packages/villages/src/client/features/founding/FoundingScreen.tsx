@@ -215,13 +215,22 @@ export function FoundingScreen({
           ? "Map"
           : "World"
       : undefined;
-  const mariPose = hierarchyLayer
-    ? "presenting"
-    : setupStep === 1
-      ? "playful"
-      : setupStep === 3 || (setupStep === 0 && beat === "welcome")
-        ? "happy"
-        : "neutral";
+  const mariPose =
+    setupStep === 0
+      ? {
+          welcome: "happy",
+          manual: "neutral",
+          "world-overview": "presenting",
+          world: "neutral",
+          lorebooks: "happy",
+          "village-overview": "presenting",
+          village: "happy",
+        }[beat]
+      : setupStep === 1
+        ? "playful"
+        : setupStep === 3
+          ? "happy"
+          : "neutral";
   useEffect(() => {
     if (!fading && !turning) return;
     const timer = window.setTimeout(() => setArrival(fading ? undefined : "greeting"), fading ? 350 : 500);
@@ -729,7 +738,15 @@ export function FoundingScreen({
         ref={rootRef}
       >
         <div className="villages-setting-stage" aria-hidden="true">
-          <img key={mariPose} data-pose={mariPose} src={foundingMariSprite(mariPose)} alt="" />
+          {(["neutral", "happy", "playful", "presenting"] as const).map((pose) => (
+            <img
+              key={pose}
+              data-pose={pose}
+              data-active={pose === mariPose || undefined}
+              src={foundingMariSprite(pose)}
+              alt=""
+            />
+          ))}
           {prelude ? (
             <img
               className="villages-mari-looking-up"

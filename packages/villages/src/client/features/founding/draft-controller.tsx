@@ -192,7 +192,9 @@ export function createFoundingRestoreSetupDraft(ports: {
       (data.workspace.settingBrief != null && typeof data.workspace.settingBrief !== "string") ||
       (data.workspace.settingWorldBrief != null && typeof data.workspace.settingWorldBrief !== "string") ||
       (data.workspace.settingBeat != null &&
-        !["welcome", "world", "lorebooks", "village-overview", "village"].includes(data.workspace.settingBeat)) ||
+        !["welcome", "world-overview", "world", "lorebooks", "village-overview", "village"].includes(
+          data.workspace.settingBeat,
+        )) ||
       !data.zoneDrafts ||
       !Array.isArray(data.venues) ||
       !Array.isArray(data.roster) ||

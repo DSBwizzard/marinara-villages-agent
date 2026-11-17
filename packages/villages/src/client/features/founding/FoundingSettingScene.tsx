@@ -17,14 +17,16 @@ const script: Record<SettingBeat, readonly string[]> = {
   manual: [
     "The pencil’s yours. Name the Village, pick the first bit we’ll put on the map, and tell me what a normal day looks like there.",
   ],
-  lorebooks: [
+  "world-overview": [
     "See these five layers? We’ll start at the top and work our way down. I promise there’s no quiz.",
     "The World is the big backdrop. If your Village belongs to a world you already know, tell me enough to get my bearings. You can leave it open if you’re still deciding.",
-    "Got Lorebooks? I can pull details from them while I draft, like how the locals greet each other or why everyone avoids the north pier.",
-    "Which Lorebooks should I have on my desk?",
   ],
   world: [
     "What’s out past the Village? One sentence will do. If you haven’t decided, we can leave the horizon blurry.",
+  ],
+  lorebooks: [
+    "Got Lorebooks? I can pull details from them while I draft, like how the locals greet each other or why everyone avoids the north pier.",
+    "Which Lorebooks should I have on my desk?",
   ],
   "village-overview": [
     "The Village is your whole community and the places it calls home. That’s the big picture. We’ll spend most of our time in the places on its Maps.",
@@ -102,9 +104,10 @@ export function FoundingSettingScene({
       mobileMenu: undefined,
     }));
     setTurn(showLast ? { beat: settingBeat, index: script[settingBeat].length - 1 } : undefined);
-    setPopup(undefined);
+    const openWorld = phone && settingBeat === "world" && !manual;
+    setPopup(openWorld ? "world" : undefined);
     onBeatChange();
-    if (!openEditor || !phone) focusLine();
+    if (!openWorld && (!openEditor || !phone)) focusLine();
   };
   const request = setupWorkspace.suggestionRequest;
   const pending = request && !request.failure;
@@ -115,7 +118,6 @@ export function FoundingSettingScene({
   const brief = setupWorkspace.settingBrief ?? "";
   const world = setupWorkspace.settingWorldBrief ?? "";
   const pickedBooks = controller.setupLorebookDraft.length;
-  const previousWorld = manual ? "manual" : "lorebooks";
   const canDraft =
     !!brief.trim() &&
     !controller.busy &&
@@ -136,7 +138,7 @@ export function FoundingSettingScene({
     beat === "village" && draftDialogue
       ? [draftDialogue]
       : beat === "lorebooks" && manual
-        ? [script.lorebooks[3]!]
+        ? script.lorebooks.slice(-1)
         : script[beat];
   const lineIndex = Math.min(
     lines.length - 1,
@@ -153,16 +155,16 @@ export function FoundingSettingScene({
   const previous = {
     welcome: undefined,
     manual: "welcome",
-    world: previousWorld,
-    lorebooks: manual ? "world" : "welcome",
-    "village-overview": "world",
+    "world-overview": "welcome",
+    world: manual ? "manual" : "world-overview",
+    lorebooks: "world",
+    "village-overview": "lorebooks",
     village: "village-overview",
   } as const;
   const back = () => {
     if (lineIndex > 0) showLine(lineIndex - 1);
     else if (previous[beat]) moveTo(previous[beat], true);
   };
-  const advanceWorld = () => moveTo(manual ? "lorebooks" : "village-overview");
   const submitBrief = () => {
     if (!canDraft) return;
     setPopup(undefined);
@@ -321,7 +323,7 @@ export function FoundingSettingScene({
         ) : beat === "welcome" ? (
           <div className="villages-founding-replies">
             {backReply}
-            <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
+            <button type="button" className="villages-forging-primary" onClick={() => moveTo("world-overview")}>
               Draft with Mari
             </button>
             <button type="button" onClick={() => moveTo("manual")}>
@@ -349,7 +351,11 @@ export function FoundingSettingScene({
                   Describe world
                 </button>
               ) : null}
-              <button type="button" className={phone ? undefined : "villages-forging-primary"} onClick={advanceWorld}>
+              <button
+                type="button"
+                className={phone ? undefined : "villages-forging-primary"}
+                onClick={() => moveTo("lorebooks")}
+              >
                 {manual ? "Next" : world.trim() ? "Use this world" : "Skip world description"}
               </button>
             </div>
@@ -363,7 +369,7 @@ export function FoundingSettingScene({
               selected={controller.setupLorebookDraft}
               onChange={(ids) => {
                 controller.setSetupLorebookDraft(ids);
-                if (!manual) moveTo("world");
+                if (!manual) moveTo("village-overview");
               }}
               disabled={controller.busy || setupSuggestionsBusy}
               triggerLabel={pickedBooks ? "Change lorebooks" : "Choose lorebooks"}
@@ -372,15 +378,19 @@ export function FoundingSettingScene({
             {manual ? (
               next
             ) : (
-              <button type="button" onClick={() => moveTo("world")}>
+              <button type="button" onClick={() => moveTo("village-overview")}>
                 {pickedBooks > 0 ? "Keep selected lorebooks" : "Skip for now"}
               </button>
             )}
           </div>
-        ) : beat === "village-overview" ? (
+        ) : beat === "world-overview" || beat === "village-overview" ? (
           <div className="villages-founding-replies">
             {backReply}
-            <button type="button" className="villages-forging-primary" onClick={() => moveTo("village")}>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              onClick={() => moveTo(beat === "world-overview" ? "world" : "village")}
+            >
               Next
             </button>
           </div>
@@ -436,10 +446,16 @@ export function FoundingSettingScene({
         )}
       </div>
       {phone && popup === "world" && beat === "world" ? (
-        <FoundingDialog title="The wider world" onClose={() => setPopup(undefined)}>
+        <FoundingDialog
+          title="The wider world"
+          onClose={() => {
+            setPopup(undefined);
+            focusLine();
+          }}
+        >
           {worldField}
           <footer>
-            <button type="button" className="villages-forging-primary" onClick={advanceWorld}>
+            <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
               Done
             </button>
           </footer>

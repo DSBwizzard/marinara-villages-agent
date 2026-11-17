@@ -359,7 +359,7 @@ export async function verifyFoundingLayout(group) {
           assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari keeps her standing mark between phases");
           if (phase !== "setting" && !phone) {
             const guide = root.locator(".villages-chapter-guide");
-            const sprite = stage.locator("img");
+            const sprite = stage.locator("img[data-active]");
             await expect.poll(() => sprite.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
             const guideBox = await guide.boundingBox();
             const workBox = await root.locator(".villages-forging-body").boundingBox();
@@ -575,7 +575,7 @@ export async function verifyFoundingLayout(group) {
         await expect(button("Draft with Mari")).toBeVisible();
         await expect(button("Set it up myself")).toBeVisible();
         if (!phone) {
-          const sprite = stage.locator("img");
+          const sprite = stage.locator("img[data-active]");
           const portrait = await sprite.boundingBox();
           const dialogue = await scene.locator(".villages-setting-dialogue").boundingBox();
           const artworkHeight = Math.max(frame.height, (frame.width * 820) / 1311);
@@ -662,37 +662,26 @@ export async function verifyFoundingLayout(group) {
         await nextLine();
         await expect(line).toHaveText(/^The World is the big backdrop/);
         await expect(hierarchy).toBeVisible();
+        await expect(presenting).toHaveAttribute("data-active", "true");
         await nextLine();
-        await expect(line).toHaveText(/^Got Lorebooks\?/);
+        const facingPlayer = stage.locator('img[data-pose="neutral"]');
+        await expect(facingPlayer).toHaveAttribute("data-active", "true");
+        await expect(facingPlayer).toHaveCSS("opacity", "1");
+        await expect(presenting).toHaveCSS("opacity", "0");
+        assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns toward the player in place");
         await expect(button("Choose lorebooks")).toHaveCount(0);
-        await nextLine();
-        await expect(line).toHaveText(/^Which Lorebooks should I have/);
-        await expect(root.getByRole("searchbox", { name: "Search Lorebooks" })).toHaveCount(0);
-        if (draftWithLore) {
-          await button("Choose lorebooks").click();
-          const picker = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
-          const relay = picker.getByRole("checkbox", { name: "Relay Belt" });
-          await relay.check();
-          if (phone) {
-            const budget = picker.getByRole("textbox", { name: "Lorebook Token Budget", exact: true });
-            await budget.fill("1200");
-            await picker.getByRole("button", { name: "Close Choose Lorebooks" }).click();
-            await button("Choose lorebooks").click();
-            await expect(relay).not.toBeChecked();
-            await relay.check();
-            await expect(budget).toHaveValue("1600");
-          }
-          await picker.getByRole("button", { name: "Done", exact: true }).click();
-        } else await button("Skip for now").click();
-        await layer("World");
-        await expect(line).toHaveText(/^What’s out past the Village/);
         const worldField = root.getByLabel(phone ? "World description" : "The larger world");
         const worldPopup = root.getByRole("dialog", { name: "The wider world", exact: true });
         if (phone) {
-          await expect(worldField).toHaveCount(0);
-          await button("Describe world").click();
           await expect(worldPopup).toBeVisible();
+        } else {
+          await expect(line).toHaveText(/^What’s out past the Village/);
         }
+        await expect(worldField).toBeVisible();
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `founding-world-form-${view.width}-${view.height}.png`),
+          });
         await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         if (draftWithLore) {
           await worldField.fill(worldBrief);
@@ -712,7 +701,37 @@ export async function verifyFoundingLayout(group) {
         }
         if (phone) await worldPopup.getByRole("button", { name: "Done", exact: true }).click();
         else await button(draftWithLore ? "Use this world" : "Skip world description").click();
+        await layer("World");
+        await expect(line).toHaveText(/^Got Lorebooks\?/);
+        await expect(frontPose).toHaveAttribute("data-active", "true");
+        await expect(button("Choose lorebooks")).toHaveCount(0);
+        if (draftWithLore) {
+          await scene.getByRole("button", { name: "Back", exact: true }).click();
+          await expect(worldField).toHaveValue(worldBrief);
+          if (phone) await worldPopup.getByRole("button", { name: "Done", exact: true }).click();
+          else await button("Use this world").click();
+        }
+        await nextLine();
+        await expect(line).toHaveText(/^Which Lorebooks should I have/);
+        await expect(root.getByRole("searchbox", { name: "Search Lorebooks" })).toHaveCount(0);
+        if (draftWithLore) {
+          await button("Choose lorebooks").click();
+          const picker = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
+          const relay = picker.getByRole("checkbox", { name: "Relay Belt" });
+          await relay.check();
+          if (phone) {
+            const budget = picker.getByRole("textbox", { name: "Lorebook Token Budget", exact: true });
+            await budget.fill("1200");
+            await picker.getByRole("button", { name: "Close Choose Lorebooks" }).click();
+            await button("Choose lorebooks").click();
+            await expect(relay).not.toBeChecked();
+            await relay.check();
+            await expect(budget).toHaveValue("1600");
+          }
+          await picker.getByRole("button", { name: "Done", exact: true }).click();
+        } else await button("Skip for now").click();
         await layer("Village");
+        await expect(presenting).toHaveAttribute("data-active", "true");
         await expect(line).toHaveText(/^The Village is your whole community/);
         await expect(villageName).toBeHidden();
         await nextLine();
