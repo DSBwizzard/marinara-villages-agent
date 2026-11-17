@@ -69,12 +69,9 @@ async function main() {
   for (const mode of ["greet", "chat", "leave"] as const) {
     const prompt = await currentScenePrompt(village, card, mode, mode === "greet" ? "" : "What do you think?");
     assert.equal(scenePromptPacket(prompt, "player").player.name, "Robin");
-    assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u);
-    assert.match(prompt, /Never write a new player response or imply one/u);
-    assert.match(
-      prompt,
-      /narrate only what they explicitly submitted, the departure they chose, or an outcome already verified in the scene/u,
-    );
+    assert.match(prompt, /The player (?:controls|supplies) their [^.]*speech[^.]+thoughts[^.]+consent/u);
+    assert.match(prompt, /Leave their next (?:response|choice) (?:to them|open)/u);
+    assert.match(prompt, /(?:narrate only what they explicitly submitted|Describe only their submitted actions)/u);
     assert.equal(scenePromptPacket(prompt, "interaction").interaction.gmPrivateInput, input);
     assert.match(prompt, /Then the bees can stay put/u);
     if (mode === "greet") assert.match(prompt, /Open the Scene from established presence/u);

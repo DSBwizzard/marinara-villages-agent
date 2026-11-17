@@ -85,16 +85,16 @@ await runCase("scene-prefix/current-native-context", async () => {
       let calls = 0;
       host.model.chatComplete = async (messages: any[]) => {
         calls++;
-        const prefix = messages.filter((row) => row.cacheBreakpoint),
+        const prefix = messages.slice(0, messages.findLastIndex((row) => row.cacheBreakpoint) + 1),
           stable = JSON.stringify(prefix),
           changing = messages
-            .filter((row) => !row.cacheBreakpoint)
+            .slice(prefix.length)
             .map((row) => row.content)
             .join("\n");
         prefixes.push(prefix);
         const frame = messages.find((row) => row.content.includes("## Current Scene reference"));
-        assert.equal(frame?.role, "system");
-        assert(frame.cacheBreakpoint);
+        assert.equal(frame?.role, "user");
+        assert(!frame.cacheBreakpoint);
         frames.push(frame.content.split("\n").find((line: string) => line.startsWith('{"location":')));
         assert(!stable.includes('"movements":'));
         assert(changing.includes('"movements":'));
@@ -175,16 +175,26 @@ await runCase("scene-prefix/current-native-context", async () => {
         configureSceneCostWorld(world, now, "multi-resident");
       },
     });
-    const groupPrefixes: { content: string }[][] = [];
+    const groupPrefixes: { role: string; content: string }[][] = [];
+    let purchases = 0;
     group.model.chatComplete = async (messages: any[]) => {
-      groupPrefixes.push(messages.filter((row) => row.cacheBreakpoint));
+      purchases++;
+      groupPrefixes.push(
+        messages
+          .slice(0, messages.findLastIndex((row) => row.cacheBreakpoint) + 1)
+          .map(({ role, content }) => ({ role, content })),
+      );
       return {
         content: JSON.stringify({ segments: [{ kind: "dialogue", speakerId: "bryn", text: "Morning." }] }),
         finishReason: "stop",
       };
     };
     try {
-      for (const submissionId of ["f2222222-2222-4222-8222-222222222222", "f3333333-3333-4333-8333-333333333333"]) {
+      for (const [submissionId, message] of [
+        ["f2222222-2222-4222-8222-222222222222", "Hello."],
+        ["f3333333-3333-4333-8333-333333333333", "Good morning."],
+        ["f4444444-4444-4444-8444-444444444444", "Mara, please remember this: I knit."],
+      ]) {
         const active = await group.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
         assert.equal(active.statusCode, 200, active.body);
         const answer = await group.app.inject({
@@ -193,7 +203,7 @@ await runCase("scene-prefix/current-native-context", async () => {
           payload: {
             sessionId: "browser",
             submissionId,
-            message: "Hello.",
+            message,
             mode: "chat",
             targetId: "",
             expectedSceneRevision: group.scene().sceneRevision,
@@ -201,11 +211,17 @@ await runCase("scene-prefix/current-native-context", async () => {
         });
         assert.equal(answer.statusCode, 200, answer.body);
       }
-      assert.equal(groupPrefixes.length, 2);
+      assert.equal(purchases, 3);
       assert.deepEqual(
         groupPrefixes[1].slice(0, groupPrefixes[0].length),
         groupPrefixes[0],
         "a new speaker cannot reorder the same cached cast",
+      );
+      assert(groupPrefixes[1].some(({ content }) => content.includes("Witnessed Scene transcript")));
+      assert.deepEqual(
+        groupPrefixes[2].slice(0, groupPrefixes[1].length),
+        groupPrefixes[1],
+        "an exact disclosure keeps the authored and witnessed message prefix",
       );
     } finally {
       await group.stop();

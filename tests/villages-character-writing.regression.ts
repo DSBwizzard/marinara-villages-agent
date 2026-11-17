@@ -86,8 +86,8 @@ const next = await prepareScenePrompt(state, card, "chat", "A different question
   startedAt: "2026-10-07T12:01:00.000Z",
 });
 const prefix = (value: typeof prepared) =>
-  value.fitted.messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
-assert.equal(prefix(prepared).length, 2);
+  value.fitted.messages.slice(0, value.fitted.messages.findIndex((message) => message.cacheBreakpoint) + 1);
+assert.equal(prepared.fitted.messages.filter((message) => message.cacheBreakpoint).length, 1);
 assert.deepEqual(
   prefix(next),
   prefix(prepared),
@@ -101,7 +101,10 @@ for (const tail of [
   "WORLD RULES TAIL",
   "WORLD NAME TAIL",
 ]) {
-  assert(prefix(next)[1].content.includes(tail), tail);
+  assert(
+    prefix(next).some(({ content }) => content.includes(tail)),
+    tail,
+  );
   assert.equal(prepared.prompt.split(tail).length - 1, 1);
 }
 for (const fragment of [
@@ -120,7 +123,8 @@ assert(venueCardProfile(authored).includes(RESIDENT_CONTINUITY_RULE));
 assert.match(prepared.prompt, /where compatible with character identity/);
 assert.match(prepared.prompt, /present tense/);
 assert.match(prepared.prompt, /Address the player as "you"/);
-assert.match(prepared.prompt, /Residents may initiate plausible actions according to their own cards/);
+assert.match(prepared.prompt, /Portray authored residents using what they know/);
+assert.match(prepared.prompt, /Residents can initiate within evidence and permissions/);
 assert.doesNotMatch(prepared.prompt, /UNRELATED SECRET FROM AN ABSENT RESIDENT|SCRIPTED TELL SECRET/);
 assert(
   prepared.readset.admission.supplied.some((row) => row.id === wishId),

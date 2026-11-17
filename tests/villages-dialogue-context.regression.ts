@@ -133,9 +133,9 @@ const prepared = await prepareScenePrompt(state, cards[0], "chat", "What about A
 const { prompt } = prepared;
 const positions = [
   "## Writing direction",
-  "## Response format and evidence metadata",
   "## Complete authored character identity",
   "## Authored post-history direction",
+  "## Response format and evidence metadata",
   "## Witnessed conversation",
   "## Current Scene circumstances",
 ].map((heading) => prompt.indexOf(heading));
@@ -154,8 +154,8 @@ const prefix = (messages: typeof prepared.fitted.messages) =>
 assert.equal(prefix(prepared.fitted.messages).length, 2);
 assert.deepEqual(prefix(ordered.fitted.messages), prefix(prepared.fitted.messages));
 assert.match(prompt, /where compatible with character identity/);
-assert.match(prompt, /Residents may initiate plausible actions/);
-assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/);
+assert.match(prompt, /Residents can initiate within evidence and permissions/);
+assert.match(prompt, /The player supplies their speech, actions, thoughts, feelings and consent/);
 assert.doesNotMatch(prompt, /permission\.grant or permission\.revoke/);
 assert.doesNotMatch(prompt, /ABSENT PERSON SECRET|"rootRevision"/);
 

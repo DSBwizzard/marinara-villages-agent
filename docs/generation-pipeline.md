@@ -18,7 +18,7 @@ Standalone, Scene and background receipts retain their own ownership and uncerta
 
 ## Scenes
 
-Scene format 5 in Village format 18 uses one narration contract: `{segments, keep?, commands?, halt?}`. An ordinary successful exchange requires one GM response. Ordinary conversation needs only prose segments; meaningful retained changes use common continuity, while game mechanics use native commands. The same model portrays the exchange and proposes meaning, so semantic judgment still needs playtesting.
+Scene format 5 in Village format 18 uses one narration contract: `{segments, keep?, commands?, halt?}`. An ordinary successful exchange requires one GM response. Simple dialogue needs only an attributed line. The same reply can propose a lasting change and point to witnessed evidence. Ordinary prompts supply authored setting and backstory directly, with concise shared rules and the applicable Scene evidence. Native actions use their existing command rules. The same model portrays the exchange and proposes meaning, so semantic judgment still needs playtesting.
 
 Exact submitted input is the final model message, including whitespace, and private thoughts. The model does not classify the whole submission. Only consequential excerpts need grounding as actual speech, visible action or private input. Code derives source offsets, positions, witnesses, identities and revisions. Generated narration cannot invent the Player's speech, consent or travel. History and playback may display original source input to Engine users; those rows have no resident audience and never establish character speech.
 

@@ -34,13 +34,22 @@ ${style.writingGuidance}`
     : "";
 }
 
-export function venueWritingDirection(style: VillageNarrationStyle, playerName: string): string {
+export function venueWritingDirection(style: VillageNarrationStyle, playerName: string, compact: boolean): string {
   const person =
     style.person === "first"
       ? 'Use "I" for the player in scene prose.'
       : style.person === "third"
         ? `Refer to the player in scene prose as ${JSON.stringify(playerName.trim() || "the player")}.`
         : 'Address the player as "you" in scene prose.';
+  if (compact)
+    return [
+      "## Venue writing",
+      `Use ${style.tense} tense for narration. ${person} Dialogue keeps its authored grammar.`,
+      "The player supplies their speech, actions, thoughts, feelings and consent. Describe only their submitted actions or verified results. Leave their next choice open. Residents can initiate within evidence and permissions.",
+      style.rating === "nsfw"
+        ? "NSFW: Adult explicit content only where player and Scene lead."
+        : "SFW: Keep narration and dialogue non-explicit.",
+    ].join("\n");
   return [
     "## Venue writing",
     `Write narration segments and other non-dialogue scene description in ${style.tense} tense. ${person}`,
