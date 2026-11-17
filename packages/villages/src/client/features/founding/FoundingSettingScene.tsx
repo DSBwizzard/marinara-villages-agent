@@ -2,38 +2,37 @@ import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import { FoundingField } from "./FoundingField.js";
-import { FoundingSpeaker, foundingMariSprite } from "./FoundingGuide.js";
-import { FoundingHierarchy } from "./FoundingHierarchy.js";
+import { FoundingSpeaker } from "./FoundingGuide.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
 type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]> | "manual";
 const script: Record<SettingBeat, readonly string[]> = {
   welcome: [
-    "Oh, hey!",
-    "Welcome to Villages.",
-    "Villages is a social game where you make a life with a community. The village itself can be anything: a city, a kingdom, a spaceship, or even one alarmingly dramatic apartment building.",
-    "Before you begin, we need to set the Village itself up. Would you like my help, or do you want to dive in on your own?",
+    "Oh, hi! I’m Mari. You caught me arguing with a map.",
+    "Welcome to Villages. Come on over. The view’s good from here.",
+    "You’ll make a life with a community here. That could mean a dockside town, a spaceship crew, or six neighbors with one catastrophically shared laundry room.",
+    "We need a place for your people to call home. Want to build it together, or shall I hand you the pencil?",
   ],
   manual: [
-    "All yours. Name the village, then pick which part we’ll map first. Tell me what daily life looks like there. The sign painter can wait.",
+    "The pencil’s yours. Name the Village, pick the first bit we’ll put on the map, and tell me what a normal day looks like there.",
   ],
   lorebooks: [
-    "Villages contain five layers.",
-    "The first layer is the World. This is the world itself that your Village takes place in. You don't have to define a World if you don't want to, but it can help ground the Village in an established lore and universe if you want.",
-    "Speaking of lore, now is a good time to mention that Lorebooks can be used in Villages. If you want, you can share any Lorebooks you have that can fill in details for the drafts we make, like the greater World, local customs or who already lives there.",
-    "Do you have any Lorebooks you want to have Villages use to describe the World, Village, people, etc?",
+    "See these five layers? We’ll start at the top and work our way down. I promise there’s no quiz.",
+    "The World is the big backdrop. If your Village belongs to a world you already know, tell me enough to get my bearings. You can leave it open if you’re still deciding.",
+    "Got Lorebooks? I can pull details from them while I draft, like how the locals greet each other or why everyone avoids the north pier.",
+    "Which Lorebooks should I have on my desk?",
   ],
   world: [
-    "What’s the wider world like? A sentence will do. Defining a broader World is optional, just like paying attention in your high school history class.",
+    "What’s out past the Village? One sentence will do. If you haven’t decided, we can leave the horizon blurry.",
   ],
   "village-overview": [
-    "The next layer is the Village itself. This is the big picture, and represents your playable game space as a whole. You don't generally interact with this layer, or the World layer above it.",
+    "The Village is your whole community and the places it calls home. That’s the big picture. We’ll spend most of our time in the places on its Maps.",
   ],
   village: [
-    "Instead, you'll interact with the Village through a series of Maps. A Map is the actual playing area of that part of your Village, and you interact with it frequently to visit areas or perform activities with your community.",
-    "A single Map represents one defined locale. A Map can be an aerial view of a city block, the interior of a cruise ship, a beautiful glade in the forest, or an entire planet. And don't worry, a Village can have multiple Maps.",
-    "Now, give me a name for the Village as a whole, and choose what you want your first Map to be!",
+    "A Map is where we actually play. It’s how you get to the places your community uses.",
+    "Each Map covers one locale. It might be a ship’s deck, a forest clearing, or an entire planet. You can add more Maps when you need them.",
+    "What do we call the Village, and where should your first Map take us? We can worry about the town sign later.",
   ],
 };
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
@@ -113,27 +112,10 @@ export function FoundingSettingScene({
   const error = setupWorkspace.settingProblem || (request?.draftSetting ? request.failure : "");
   const connectionError = !!connectionProblem || (!!error && /connection|model.*not found/iu.test(error));
   const drafted = !!setupWorkspace.settingDraft && !waitingForMari;
-  const pose = beat === "welcome" || (beat === "village" && drafted) ? "happy" : "neutral";
   const brief = setupWorkspace.settingBrief ?? "";
   const world = setupWorkspace.settingWorldBrief ?? "";
   const pickedBooks = controller.setupLorebookDraft.length;
   const previousWorld = manual ? "manual" : "lorebooks";
-  const hierarchy =
-    !manual && beat !== "welcome" && beat !== "manual" ? (
-      <FoundingHierarchy current={beat === "village-overview" ? "Village" : beat === "village" ? "Map" : "World"} />
-    ) : null;
-  const stage = (
-    <div className="villages-setting-stage" aria-hidden="true">
-      <img key={pose} src={foundingMariSprite(pose)} alt="" />
-      {title ? <img className="villages-mari-looking-up" src={foundingMariSprite("looking-up")} alt="" /> : null}
-    </div>
-  );
-  const illustration = hierarchy ? (
-    <div className="villages-setting-illustration">
-      {stage}
-      {hierarchy}
-    </div>
-  ) : null;
   const canDraft =
     !!brief.trim() &&
     !controller.busy &&
@@ -322,16 +304,10 @@ export function FoundingSettingScene({
     </form>
   );
   return (
-    <section
-      className="villages-setting-guide"
-      data-conversation={!title || undefined}
-      data-hierarchy={!!hierarchy || undefined}
-      aria-label={title ? undefined : "Professor Mari"}
-    >
-      {illustration ?? stage}
+    <section className="villages-setting-guide" aria-label={title ? undefined : "Professor Mari"}>
       {title}
       <div className="villages-setting-dialogue" hidden={!!title}>
-        <FoundingSpeaker pose={pose} />
+        <FoundingSpeaker />
         <p aria-live="polite" tabIndex={-1} ref={lineRef}>
           {lines[lineIndex]}
         </p>

@@ -13,6 +13,7 @@ const menuArtAssets = [
   "mari-founding-happy.webp",
   "mari-founding-looking-up.webp",
   "mari-founding-playful.webp",
+  "mari-founding-presenting.webp",
 ];
 
 const sceneSprite = "npc-silhouette.webp";

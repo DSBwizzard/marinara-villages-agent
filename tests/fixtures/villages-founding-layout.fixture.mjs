@@ -356,16 +356,21 @@ export async function verifyFoundingLayout(group) {
             true,
             "No horizontal overflow on " + phase,
           );
+          assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari keeps her standing mark between phases");
           if (phase !== "setting" && !phone) {
             const guide = root.locator(".villages-chapter-guide");
-            const sprite = guide.locator(".villages-setting-stage img");
+            const sprite = stage.locator("img");
             await expect.poll(() => sprite.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
             const guideBox = await guide.boundingBox();
             const workBox = await root.locator(".villages-forging-body").boundingBox();
             const spriteBox = await sprite.boundingBox();
             const dialogueBox = await guide.locator(".villages-setting-dialogue").boundingBox();
             assert.ok(spriteBox.x + spriteBox.width <= dialogueBox.x + 1, "Mari stands beside her dialogue");
-            assert.ok(guideBox.x + guideBox.width <= workBox.x + 1, "The workspace sits to Mari’s right on desktop");
+            assert.ok(
+              guideBox.x + guideBox.width <= workBox.x + 1 ||
+                (phase === "venues" && guideBox.y + guideBox.height <= workBox.y + 1),
+              "The dialogue leaves room for the desktop workspace",
+            );
             if (process.env.VILLAGES_SCREENSHOT_DIR)
               await page.screenshot({
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${phase}-mari-${view.width}.png`),
@@ -394,7 +399,7 @@ export async function verifyFoundingLayout(group) {
             });
             assert.ok(Math.abs(widths.available - widths.venues) <= 1, "Venues use the full Founding content width");
             const map = root.locator(".villages-quick-map");
-            assert.ok((await map.boundingBox()).height >= 200, "The actual playable map remains visible on phones");
+            assert.ok((await map.boundingBox()).height >= 200, "The playable map keeps enough room to place markers");
             await map.scrollIntoViewIfNeeded();
           }
           if (phase === "review") {
@@ -438,7 +443,10 @@ export async function verifyFoundingLayout(group) {
         const sideBounds = await sidePose.boundingBox();
         const titleBounds = await title.boundingBox();
         const stageBounds = await stage.boundingBox();
-        assert.ok(sideBounds.x + sideBounds.width <= titleBounds.x, "Mari stands left of the title");
+        assert.ok(
+          phone ? sideBounds.y + sideBounds.height <= titleBounds.y : sideBounds.x + sideBounds.width <= titleBounds.x,
+          "The title leaves room for Mari’s standing mark",
+        );
         const titleBackdrop = await root.evaluate((element) => getComputedStyle(element).backgroundImage);
         assert.match(titleBackdrop, /mari-founding-overlook(?:-day)?\.webp/u);
         await expect(title.locator("h1")).toHaveCSS("text-transform", "uppercase");
@@ -551,28 +559,33 @@ export async function verifyFoundingLayout(group) {
         await expect(sidePose).toHaveCount(0);
         await expect(frontPose).toHaveCSS("opacity", "1");
         await expect(frontPose).toHaveCSS("animation-name", "none");
-        if (!phone)
-          assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns without moving to a different spot");
+        assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns without moving to a different spot");
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
         await expect(scene.locator('p[aria-live="polite"]')).toBeFocused();
         const line = scene.locator("p[aria-live=polite]");
         const nextLine = () => scene.getByRole("button", { name: "Next", exact: true }).click();
-        await expect(line).toHaveText("Oh, hey!");
+        await expect(line).toHaveText(/I’m Mari/);
         await expect(button("Draft with Mari")).toHaveCount(0);
         await nextLine();
-        await expect(line).toHaveText("Welcome to Villages.");
+        await expect(line).toHaveText(/^Welcome to Villages\./);
         await nextLine();
-        await expect(line).toHaveText(/^Villages is a social game/);
+        await expect(line).toHaveText(/make a life with a community/);
         await nextLine();
-        await expect(line).toHaveText(/^Before you begin/);
+        await expect(line).toHaveText(/Want to build it together/);
         await expect(button("Draft with Mari")).toBeVisible();
         await expect(button("Set it up myself")).toBeVisible();
         if (!phone) {
           const sprite = stage.locator("img");
-          await expect(sprite).toBeInViewport({ ratio: 1 });
           const portrait = await sprite.boundingBox();
           const dialogue = await scene.locator(".villages-setting-dialogue").boundingBox();
           const artworkHeight = Math.max(frame.height, (frame.width * 820) / 1311);
+          assert.ok(
+            portrait.x >= frame.x - 0.5 &&
+              portrait.y >= frame.y - 0.5 &&
+              portrait.x + portrait.width <= frame.x + frame.width + 0.5 &&
+              portrait.y + portrait.height <= frame.y + frame.height + 0.5,
+            "Mari’s whole sprite fits on the stage",
+          );
           assert.ok(
             portrait.y + portrait.height > frame.y + frame.height - artworkHeight * 0.2,
             "Mari stands on the terrace",
@@ -616,41 +629,44 @@ export async function verifyFoundingLayout(group) {
         const layer = async (name) => {
           await expect(hierarchy).toHaveAccessibleName(`World, Village, Map, Venue, Zone. Current layer: ${name}`);
           await expect(hierarchy.locator("[data-active] text")).toHaveText(name);
+          assert.deepEqual(await stage.boundingBox(), stageBounds, "The chart leaves Mari’s standing mark in place");
         };
         await layer("World");
-        await expect(line).toHaveText("Villages contain five layers.");
+        await expect(line).toHaveText(/^See these five layers\?/);
         await expect(button("Choose lorebooks")).toHaveCount(0);
-        await expect(hierarchy).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-        await expect(stage.locator("img")).toHaveCSS("opacity", "1");
-        const portraitBox = await stage.boundingBox();
+        await expect(hierarchy).toHaveCSS("background-color", /^rgba\(.+, 0\.[1-9]/);
+        const presenting = stage.locator('img[src$="mari-founding-presenting.webp"]');
+        await expect(presenting).toHaveCSS("opacity", "1");
+        await expect(presenting).toHaveJSProperty("naturalHeight", 600);
+        const portraitBox = await presenting.boundingBox();
         const treeBox = await hierarchy.boundingBox();
+        const railBox = await root.getByRole("list", { name: "Founding phases" }).boundingBox();
         const dialogueBox = await scene.locator(".villages-setting-dialogue").boundingBox();
-        assert.ok(portraitBox.x + portraitBox.width <= treeBox.x, "The tree sits to Mari’s right");
+        assert.ok(treeBox.y >= railBox.y + railBox.height, "The chart clears the phase rail");
+        assert.ok(treeBox.x + treeBox.width <= portraitBox.x, "The chart sits to the viewer’s left of Mari’s gesture");
         assert.ok(
           phone
             ? Math.max(portraitBox.y + portraitBox.height, treeBox.y + treeBox.height) <= dialogueBox.y
-            : treeBox.x + treeBox.width <= dialogueBox.x,
+            : portraitBox.x + portraitBox.width <= dialogueBox.x,
           "Dialogue sits below the illustration on phones and to its right on desktop",
         );
-        if (phone) {
-          const sprite = await stage.locator("img").boundingBox();
-          assert.ok(
-            sprite.y >= portraitBox.y && sprite.y + sprite.height < portraitBox.y + portraitBox.height,
-            "The whole sprite stands within the terrace stage",
-          );
-        }
+        assert.equal(
+          portraitBox.y + portraitBox.height,
+          stageBounds.y + stageBounds.height,
+          "Mari’s shoes stay grounded",
+        );
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `founding-world-${view.width}-${view.height}.png`),
           });
         await nextLine();
-        await expect(line).toHaveText(/^The first layer is the World\./);
+        await expect(line).toHaveText(/^The World is the big backdrop/);
         await expect(hierarchy).toBeVisible();
         await nextLine();
-        await expect(line).toHaveText(/^Speaking of lore/);
+        await expect(line).toHaveText(/^Got Lorebooks\?/);
         await expect(button("Choose lorebooks")).toHaveCount(0);
         await nextLine();
-        await expect(line).toHaveText(/^Do you have any Lorebooks/);
+        await expect(line).toHaveText(/^Which Lorebooks should I have/);
         await expect(root.getByRole("searchbox", { name: "Search Lorebooks" })).toHaveCount(0);
         if (draftWithLore) {
           await button("Choose lorebooks").click();
@@ -669,7 +685,7 @@ export async function verifyFoundingLayout(group) {
           await picker.getByRole("button", { name: "Done", exact: true }).click();
         } else await button("Skip for now").click();
         await layer("World");
-        await expect(line).toHaveText(/^What’s the wider world like/);
+        await expect(line).toHaveText(/^What’s out past the Village/);
         const worldField = root.getByLabel(phone ? "World description" : "The larger world");
         const worldPopup = root.getByRole("dialog", { name: "The wider world", exact: true });
         if (phone) {
@@ -697,16 +713,16 @@ export async function verifyFoundingLayout(group) {
         if (phone) await worldPopup.getByRole("button", { name: "Done", exact: true }).click();
         else await button(draftWithLore ? "Use this world" : "Skip world description").click();
         await layer("Village");
-        await expect(line).toHaveText(/^The next layer is the Village itself/);
+        await expect(line).toHaveText(/^The Village is your whole community/);
         await expect(villageName).toBeHidden();
         await nextLine();
         await layer("Map");
-        await expect(line).toHaveText(/^Instead, you'll interact/);
+        await expect(line).toHaveText(/^A Map is where we actually play/);
         await expect(villageName).toBeHidden();
         await nextLine();
-        await expect(line).toHaveText(/^A single Map represents/);
+        await expect(line).toHaveText(/^Each Map covers one locale/);
         await nextLine();
-        await expect(line).toHaveText(/^Now, give me a name/);
+        await expect(line).toHaveText(/^What do we call the Village/);
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
         const draftPopup = root.getByRole("dialog", { name: "Draft with Mari", exact: true });

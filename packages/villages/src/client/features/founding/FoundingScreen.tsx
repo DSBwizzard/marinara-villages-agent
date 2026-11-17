@@ -16,7 +16,8 @@ import {
   foundingCircumstanceFromText,
 } from "../../../shared/helpers/founding-circumstance.js";
 import { FoundingField } from "./FoundingField.js";
-import { FoundingGuide } from "./FoundingGuide.js";
+import { FoundingGuide, foundingMariSprite } from "./FoundingGuide.js";
+import { FoundingHierarchy } from "./FoundingHierarchy.js";
 import { FoundingSettingScene, settingBeat } from "./FoundingSettingScene.js";
 import { FoundingPersonaSelector, FoundingVillagerPicker, SETUP_STEPS } from "./FoundingPanels.js";
 import { QuickStartButton } from "./QuickStartButton.js";
@@ -206,6 +207,21 @@ export function FoundingScreen({
       !draftSaveError);
   const chooseConnections = setupStep === 0 && setupWorkspace.settingIntroPending === "connections" && !fading;
   const prelude = showTitle || chooseConnections || turning;
+  const hierarchyLayer =
+    setupStep === 0 && !prelude && !setupWorkspace.settingManual && beat !== "welcome" && !manualSetting
+      ? beat === "village-overview"
+        ? "Village"
+        : beat === "village"
+          ? "Map"
+          : "World"
+      : undefined;
+  const mariPose = hierarchyLayer
+    ? "presenting"
+    : setupStep === 1
+      ? "playful"
+      : setupStep === 3 || (setupStep === 0 && beat === "welcome")
+        ? "happy"
+        : "neutral";
   useEffect(() => {
     if (!fading && !turning) return;
     const timer = window.setTimeout(() => setArrival(fading ? undefined : "greeting"), fading ? 350 : 500);
@@ -664,7 +680,6 @@ export function FoundingScreen({
           scene
           inactive={phone && !mobileScene}
           lineRef={chapterLine}
-          pose={setupStep === 1 ? "playful" : setupStep === 3 ? "happy" : "neutral"}
           replies={
             <>
               <button
@@ -693,9 +708,9 @@ export function FoundingScreen({
           {
             [
               "",
-              "Time to cast the locals. The people you choose are already part of this community. Pick who you’ll play, then choose the neighbors and how they’ll look in Scenes. I promise the casting committee is just you.",
-              "A Venue is a place on the map, and its Zones are the spots inside. Open a Venue to decide who can visit, who gets personal space, and where everyone sleeps. Yes, the couch counts.",
-              "Take one last look at the map and where everyone sleeps. If you want anything happening as you arrive, add it under First day. A quiet morning is also legal, despite what certain neighbors will tell you.",
+              "Now for the neighbors. Choose who you’ll play, then who already lives here and how they’ll look in Scenes. I’ve retired from the casting committee.",
+              "Let’s give everyone somewhere to go. A Venue is a place on the Map, and its Zones are the spots inside. Decide who can visit, where people get privacy, and where they sleep. Yes, the couch counts.",
+              "One last look. Check the Map and everyone’s sleeping spot. If you want something happening when you arrive, add it under First day. A quiet morning is a perfectly good plan.",
             ][setupStep]!
           }
         </FoundingGuide>
@@ -708,12 +723,23 @@ export function FoundingScreen({
         data-scene-arrival={enteringScene || undefined}
         data-title={showTitle || undefined}
         data-prelude={prelude || undefined}
-        data-conversation={(!prelude && setupStep === 0) || undefined}
         data-title-fading={fading || undefined}
         data-mari-turning={turning || undefined}
         aria-busy={fading || turning || undefined}
         ref={rootRef}
       >
+        <div className="villages-setting-stage" aria-hidden="true">
+          <img key={mariPose} data-pose={mariPose} src={foundingMariSprite(mariPose)} alt="" />
+          {prelude ? (
+            <img
+              className="villages-mari-looking-up"
+              data-pose="looking-up"
+              src={foundingMariSprite("looking-up")}
+              alt=""
+            />
+          ) : null}
+        </div>
+        {hierarchyLayer ? <FoundingHierarchy current={hierarchyLayer} /> : null}
         <ol className="villages-forging-steps" aria-label="Founding phases" role="list">
           {SETUP_STEPS.map((label, index) => (
             <li

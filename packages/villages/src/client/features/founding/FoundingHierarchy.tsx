@@ -1,13 +1,13 @@
 const levels = ["World", "Village", "Map", "Venue", "Zone"] as const;
-const links = ["M144 16V76", "M144 76 106 106 87 136M106 106 125 136", "M144 76 182 106 163 136M182 106 201 136"];
-const highlighted = { World: "", Village: "M144 16V46", Map: "M144 16V76" };
+const links = ["M116 16V76", "M116 76 88 106 70 136M88 106 99 136", "M116 76 144 106 133 136M144 106 162 136"];
+const highlighted = { World: "", Village: "M116 16V46", Map: "M116 16V76" };
 
 export function FoundingHierarchy({ current }: { current: keyof typeof highlighted }) {
   const active = levels.indexOf(current);
   return (
     <svg
       className="villages-founding-hierarchy"
-      viewBox="0 0 222 152"
+      viewBox="0 0 174 152"
       role="img"
       aria-label={`World, Village, Map, Venue, Zone. Current layer: ${current}`}
     >
@@ -19,7 +19,7 @@ export function FoundingHierarchy({ current }: { current: keyof typeof highlight
       </g>
       {levels.map((level, index) => {
         const y = 16 + 30 * index;
-        const stars = index < 3 ? [144] : index === 3 ? [106, 182] : [87, 125, 163, 201];
+        const stars = index < 3 ? [116] : index === 3 ? [88, 144] : [70, 99, 133, 162];
         return (
           <g key={level} data-active={index === active || undefined} data-ancestor={index < active || undefined}>
             <text x="9" y={y} dominantBaseline="central">
