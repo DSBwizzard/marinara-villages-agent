@@ -634,7 +634,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-setting-stage [src$="mari-founding-playful.webp"] { --shoe-center:49.6%; }
 .villages-setting-stage [src$="mari-founding-presenting.webp"] { --shoe-center:63%; }
 .villages-setting-stage [src$="mari-founding-wave.webp"] { --shoe-center:52.7%; }
-.villages-setting-stage [src$="mari-founding-thoughtful.webp"] { --shoe-center:48.4%; }
+.villages-setting-stage [src$="mari-founding-thoughtful.webp"] { --shoe-center:48%; }
 .villages-setting-stage [src$="mari-founding-happy-side.webp"] { --shoe-center:35%; }
 .villages-setting-stage [src$="mari-founding-proud.webp"] { --shoe-center:47.9%; }
 .villages-setting-dialogue,.villages-forging-v2 .villages-founding-setting.villages-forging-card {
