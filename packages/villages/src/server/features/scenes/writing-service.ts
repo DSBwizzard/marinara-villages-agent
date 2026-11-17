@@ -75,6 +75,7 @@ export interface SceneWritingPorts {
   readVillageState: typeof import("../world/village-store.js").readVillageState;
 }
 export const VENUE_REPLY_MAX_TOKENS = 4096;
+const SCENE_MESSAGE_MAX_BYTES = 48_000;
 type Request = {
   fitted: ReturnType<typeof fitVenueWritingMessages>;
   readset: NarrationReadset;
@@ -405,6 +406,7 @@ export function createSceneWriting({
       plainJson
         ? '## Scene reply reminder\nBegin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.'
         : undefined,
+      SCENE_MESSAGE_MAX_BYTES,
     );
     if (loreInspection) {
       const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));
