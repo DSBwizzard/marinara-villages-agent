@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-14T17:26:09.769Z",
+  "generatedAt": "2026-11-17T04:19:43.241Z",
   "packages": [
     {
       "manifest": {
@@ -15,7 +15,7 @@
         },
         "id": "villages",
         "name": "Villages",
-        "version": "0.8.4",
+        "version": "0.8.5",
         "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
         "engine": {
           "min": "2.5.2",
@@ -58,7 +58,14 @@
               "storybook-background-day.webp",
               "storybook-scenery-matte.webp",
               "venue-fallback.webp",
-              "venue-fallback-day.webp"
+              "venue-fallback-day.webp",
+              "mari-founding-overlook.webp",
+              "mari-founding-overlook-day.webp",
+              "mari-founding-neutral.webp",
+              "mari-founding-happy.webp",
+              "mari-founding-looking-up.webp",
+              "mari-founding-playful.webp",
+              "npc-silhouette.webp"
             ]
           }
         },
@@ -70,13 +77,13 @@
           },
           {
             "path": "server.mjs",
-            "sha256": "41346183315b0e5379afc45c268028961b186d1cd1169a2680b06c903cb53831",
-            "bytes": 1819794
+            "sha256": "69e5943b773fa1b06505e07f71adae41f3322c3cbb48db599713639cd638c4e7",
+            "bytes": 1825288
           },
           {
             "path": "client.js",
-            "sha256": "fb8f19dd8d8740b2a02af433219f6867addbb4eae3f576cb5c9ecb044082412f",
-            "bytes": 1766711
+            "sha256": "2e5f104845f1908c59b96218686f695758a6e3475cdf2d4a7651bbc2cd53e9ee",
+            "bytes": 1805437
           },
           {
             "path": "letter-fonts/PROVENANCE.txt",
@@ -205,8 +212,8 @@
           },
           {
             "path": "villages-icon.png",
-            "sha256": "e45351b98093012f0932fe265d0c6943043bdeb89240d46657bf01d52a4a1cc4",
-            "bytes": 4383
+            "sha256": "fddb512a6ff3b3b9508ab0539569ce24cabd18f7e9fdc254d66e3d2959527f9d",
+            "bytes": 8916
           },
           {
             "path": "icon-licenses.txt",
@@ -237,6 +244,41 @@
             "path": "venue-fallback-day.webp",
             "sha256": "9fe793e5c06ca3d4bb4839700ed522979f8496074fc3ea0660e76776a06bfefd",
             "bytes": 51132
+          },
+          {
+            "path": "mari-founding-overlook.webp",
+            "sha256": "a0123365cfd6636b7429f9c4cc776061fdda5f66055d4274d4a3ed17bd0436b8",
+            "bytes": 65564
+          },
+          {
+            "path": "mari-founding-overlook-day.webp",
+            "sha256": "027f7c9d21ab8251470cbc35b3858b8c332590b96f120d7e4ee60937b47b1461",
+            "bytes": 177442
+          },
+          {
+            "path": "mari-founding-neutral.webp",
+            "sha256": "ae8b02ff93e84b556d7da4fc40d44c8ec527f5737c67551a5cbea3739d84d6e8",
+            "bytes": 32872
+          },
+          {
+            "path": "mari-founding-happy.webp",
+            "sha256": "421c20b346f83da375eb41ff245a7e50d5576f98a322ee46bb252e6f944e5c91",
+            "bytes": 34132
+          },
+          {
+            "path": "mari-founding-looking-up.webp",
+            "sha256": "e0f1ee5bb53f4c89b5a03e18becb6a3e51ea9bf2adb6a18754c43700901cf789",
+            "bytes": 45892
+          },
+          {
+            "path": "mari-founding-playful.webp",
+            "sha256": "b6a1a3301f2d53a7af20214a56044acfca240b03d5d2f10167bc1e56b5075f87",
+            "bytes": 30924
+          },
+          {
+            "path": "npc-silhouette.webp",
+            "sha256": "e792d4161b840bffb26e78c9675f0436a0aae0d872ff50cf9c5fc50af356ebfa",
+            "bytes": 25102
           }
         ],
         "permissions": [
@@ -249,14 +291,14 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-ef40b5395a8908ec/villages-0.8.4-ef40b5395a8908ec.zip",
-        "sha256": "ef40b5395a8908ec6fa43c2964315e2a14467b2513825219c998906ef0a36e4c",
-        "bytes": 1996116
+        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-a69bd24db8bbd55b/villages-0.8.5-a69bd24db8bbd55b.zip",
+        "sha256": "a69bd24db8bbd55b5411492fc86064866715bfb0e3aa7d93cd434e445b3b232d",
+        "bytes": 2428489
       }
     }
   ],
   "provenance": {
     "kind": "custom",
-    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/43620118516"
+    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/44014912363"
   }
 }
