@@ -365,7 +365,7 @@ export function narrationContinuityContext(
     });
   // Raw witness views are larger than the rendered transcript. Fit the model-facing
   // transcript below, with a separate ceiling on raw projection work.
-  const transcriptBudget = 12_000;
+  const transcriptBudget = 6_144;
   const recallBudget = 750;
   const history = selectEpisodeHistory(state.episodes, state.continuity, holders, recallQuery, 256_000, scene.id);
   const episodeOrder = new Map(state.episodes.records.map((row, index) => [row.id, index]));

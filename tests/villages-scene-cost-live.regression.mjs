@@ -12,6 +12,7 @@ const attempts = [],
   submissions = new Set();
 let generations = 0;
 let baselineProblem = "";
+let resetLedger = false;
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
   let body = "";
@@ -25,8 +26,34 @@ const server = createServer(async (request, response) => {
   if (path === "/api/capability-packages/installed")
     return send([{ id: "villages", version: "0.8.1", status: "active" }]);
   if (path === "/api/villages/connections") return send({ narrationConnectionId: "model" });
-  if (path === "/api/villages/usage") return send({ requests: attempts, running: 0 });
-  if (path === "/api/villages/rooms/active") return send({ session: { sceneRevision: submissions.size + 1 } });
+  if (path === "/api/villages/usage")
+    return send({
+      requests: resetLedger ? attempts.slice(-1) : attempts,
+      running: 0,
+      since: resetLedger ? "reset-period" : attempts.length ? "fixture-period" : "unsaved",
+      totals: { requests: resetLedger ? 1 : attempts.length },
+      ...(baselineProblem === "held-ledger-error" ? { error: "Usage recording is incomplete." } : {}),
+    });
+  if (path === "/api/villages/rooms/active")
+    return send({ session: { id: "scene", sceneRevision: submissions.size + 1 } });
+  if (path.startsWith("/api/villages/rooms/scene/operations/")) {
+    const id = path.split("/").at(-1);
+    assert.equal(id, [...submissions].at(-1));
+    const held = baselineProblem.startsWith("held");
+    return send({
+      operation:
+        baselineProblem === "unobserved"
+          ? null
+          : {
+              id,
+              status: held ? "interrupted" : "complete",
+              acceptance: held ? "held" : "applied",
+              committed: !held,
+              replyReady: !held,
+              ...(held ? { stage: "reply" } : {}),
+            },
+    });
+  }
   if (path === "/api/villages/rooms/scene/changes")
     return send({
       unresolved: [
@@ -42,6 +69,7 @@ const server = createServer(async (request, response) => {
     assert.equal(input.reasoningEffort, undefined);
     assert.equal(input.maxTokens, undefined);
     generations++;
+    if (baselineProblem === "game-no-reply") return response.end('data: {"type":"error"}\n\n');
     messages.push({
       id: "game:" + generations,
       role: "assistant",
@@ -61,7 +89,7 @@ const server = createServer(async (request, response) => {
         },
       },
     });
-    return response.end('data: {"type":"done"}\n\n');
+    return response.end(baselineProblem === "game-error" ? 'data: {"type":"error"}\n\n' : 'data: {"type":"done"}\n\n');
   }
   if (path === "/api/villages/rooms/turn") {
     if (input.submissionId === "explicit-retry") assert.equal(input.retryOfAttemptId, "previous-attempt");
@@ -70,14 +98,24 @@ const server = createServer(async (request, response) => {
       if (submissions.size === 2) attempts.push({ id: "uncertain", status: "unknown" });
       attempts.push({
         id: "village:" + submissions.size,
+        periodId: baselineProblem === "held-ledger-reset" ? "reset-period" : "initial",
         status: "complete",
         connectionId: "model",
         model: baselineProblem === "village-model" ? "unexpected" : "fixture",
         usage,
       });
+      if (baselineProblem === "held-ledger-reset") resetLedger = true;
+    }
+    if (baselineProblem.startsWith("held") || ["lost-ack", "unobserved"].includes(baselineProblem)) {
+      response.statusCode = 500;
+      return send({ error: baselineProblem });
     }
     return send({
-      session: { processingSummary: { failed: 0, pending: 0, rejected: baselineProblem === "rejected" ? 1 : 0 } },
+      session: {
+        id: "scene",
+        latestTurn: { id: input.submissionId, published: true },
+        processingSummary: { failed: 0, pending: 0, rejected: baselineProblem === "rejected" ? 1 : 0 },
+      },
     });
   }
   response.statusCode = 404;
@@ -103,11 +141,15 @@ try {
   const expected = (80 * 0.3 + 20 * 0.006 + 50 * 1.2) / 1_000_000;
   assert.equal(report.turns[0].ratedCostUsd, expected, "Reasoning is already included in completion");
   assert.equal(report.turns[1].ratedCostUsd, expected);
+  assert.equal(report.turns[0].firstPassPublished, true);
+  assert.equal(report.turns[1].firstPassPublished, true);
   assert.equal(report.turns[2].capabilityAttemptCount, 2);
   assert.equal(report.turns[2].additionalAttempts, 1);
   assert.equal(report.turns[2].unknownCostAttempts, 1);
   assert.equal(report.turns[2].ratedCostUsd, null, "Unknown billed attempts cannot be priced as zero");
   assert.equal(report.turns[2].knownRatedSubtotalUsd, expected);
+  assert.equal(report.turns[2].published, true);
+  assert.equal(report.turns[2].firstPassPublished, null, "multiple observed attempts make first pass ambiguous");
   assert.equal(report.turns[2].replayAttempts.length, 0);
   assert.equal(generations, 2);
   assert.equal(report.actualInvoiceCostUsd, null);
@@ -122,6 +164,8 @@ try {
   );
   assert.equal(retried.turns[0].submissionId, "explicit-retry");
   assert.equal(retried.turns[0].capabilityAttemptCount, 1);
+  assert.equal(retried.turns[0].published, true);
+  assert.equal(retried.turns[0].firstPassPublished, false);
   assert.equal(retried.turns[0].replayAttempts.length, 0);
   for (const problem of ["rejected", "capped"]) {
     baselineProblem = problem;
@@ -140,7 +184,55 @@ try {
     );
     const rejected = JSON.parse(await readFile(rejectedOutput, "utf8")).turns[0];
     assert.equal(rejected.status, "failed");
+    assert.equal(rejected.firstPassPublished, true, "a disqualified comparison can still have published the reply");
+    assert.equal(rejected.failedResponseCosts, null);
     assert.equal(rejected.attempts[0].usage.completionTokens, 50, "A discarded result remains billed");
+  }
+  for (const [problem, published, error] of [
+    ["held", false, /HTTP 500/],
+    ["held-ledger-error", false, /HTTP 500/],
+    ["held-ledger-reset", false, /HTTP 500/],
+    ["lost-ack", true, /HTTP 500/],
+    ["unobserved", null, /HTTP 500/],
+    ["game-error", true, /generation error/],
+    ["game-no-reply", false, /must save a new response/],
+  ]) {
+    baselineProblem = problem;
+    if (problem === "held-ledger-reset") attempts.length = 0;
+    const output = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
+    await assert.rejects(
+      runLiveSceneComparison(
+        {
+          chatId: "game",
+          sessionId: "scene",
+          connectionId: "model",
+          rate: { input: 0.3, cached: 0.006, output: 1.2, currency: "USD" },
+          pairs: [{ id: problem, message: "The submitted exchange." }],
+        },
+        output,
+      ),
+      error,
+    );
+    const failed = JSON.parse(await readFile(output, "utf8")).turns.at(-1);
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.published, published);
+    assert.equal(
+      failed.firstPassPublished,
+      ["game-no-reply", "held-ledger-error", "held-ledger-reset"].includes(problem) ? null : published,
+    );
+    assert.deepEqual(
+      failed.failedResponseCosts,
+      problem === "game-no-reply"
+        ? { observedRequests: null, knownRatedSubtotalUsd: 0, unknownCostAttempts: null }
+        : published === false
+          ? {
+              observedRequests: 1,
+              knownRatedSubtotalUsd: expected,
+              unknownCostAttempts: problem.startsWith("held-ledger-") ? null : 0,
+            }
+          : null,
+    );
+    resetLedger = false;
   }
   for (const problem of ["planning", "model", "village-model"]) {
     baselineProblem = problem;

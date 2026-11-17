@@ -1541,6 +1541,44 @@ await runCase("narration-writing/history-prefix", async () => {
     incarnation: continuityActor(f.state, id)!.incarnation,
     zoneId: "parlor",
   }));
+  const quote = "The bronze astrolabe’s needle points toward the old ferry.";
+  const privateLine = "The ferryman’s private sign is a blue lantern.";
+  const callback = "Quote the bronze astrolabe line.";
+  const prepareCallback = async () => {
+    const request = await f.writing.prepareVenueTurnMessages(f.scene, callback, "chat");
+    const recall = request.fitted.messages
+      .flatMap(({ content }) => content.split("\n\n"))
+      .filter((row) => row.startsWith('{"interaction":'))
+      .map((row) => JSON.parse(row))
+      .find((row) => row.earlierRecall);
+    assert.equal(recall?.interaction.pastExchange, "e1");
+    assert.equal(recall.interaction.at, at);
+    const [line] = recall.interaction.historyLines;
+    assert.equal(line.text, quote);
+    const evidence = request.readset.source.historical[line.witnessedWords.ref];
+    assert.equal(evidence.episodeId, "exchange-1");
+    assert.equal(evidence.excerpt, quote);
+    assert.deepEqual(evidence.perceptions.map(({ actorId }) => actorId).sort(), [f.id, "player"].sort());
+    assert(
+      !Object.values(request.readset.source.historical).some(
+        (source) => source.excerpt === privateLine && source.perceptions.some(({ actorId }) => actorId === "player"),
+      ),
+      "an older callback cannot grant the player words they did not hear",
+    );
+    const retained = f.state.episodes.records[0];
+    assert.equal(retained.segments[1].content, privateLine, "rollover preserves the canonical private source");
+    assert.equal(
+      actorEpisodeView(
+        retained,
+        f.state.continuity,
+        continuityActor(f.state, "player")!,
+        f.state.episodes,
+      )?.segments.some((entry) => entry.text === privateLine),
+      false,
+    );
+  };
+  let savedReply: Awaited<ReturnType<typeof f.writing.generate>> | undefined;
+  let savedCheckpoints: Map<string, unknown> | undefined;
   let previous: string[] = [],
     resets = 0;
   for (let count = 1; count <= 108; count++) {
@@ -1560,6 +1598,10 @@ await runCase("narration-writing/history-prefix", async () => {
         .repeat(longExchange ? 60 : count > 12 ? 28 : 7)
         .slice(0, 1999),
     }));
+    if (count === 1) {
+      segments[0].content = quote;
+      segments.push({ ...segments[0], id: "private-ferry-line", content: privateLine, heardBy: [f.id] });
+    }
     if (count === 2)
       segments.unshift({
         ...segments[0],
@@ -1600,6 +1642,7 @@ await runCase("narration-writing/history-prefix", async () => {
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
     const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
+    assert(active.reduce((tokens, row) => tokens + Math.ceil(Buffer.byteLength(row, "utf8") / 4), 0) <= 6_144);
     assert.equal(JSON.parse(active.at(-1)!).interaction.pastExchange, "e" + (count === 13 ? 12 : count));
     assert.deepEqual(blocks.slice(0, active.length), active);
     const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
@@ -1625,11 +1668,26 @@ await runCase("narration-writing/history-prefix", async () => {
     if (count === 13) assert.deepEqual(active, previous, "an oversized exchange leaves the previous window available");
     else if (previous.length && active[0] === previous[0])
       assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");
-    else if (previous.length) resets++;
+    else if (previous.length) {
+      resets++;
+      assert(!active.some((row) => row.includes(quote)), "the callback has aged out of the transcript");
+      f.nextOperation("callback-after-rollover-" + resets);
+      await prepareCallback();
+      if (resets === 2) break;
+      savedReply = await f.writing.generate(f.scene, callback, "chat");
+      savedCheckpoints = structuredClone(f.checkpoints);
+    }
     previous = active;
   }
-  assert(resets > 0, "long Scenes eventually rebuild the bounded transcript");
-  assert.equal(f.calls.purchases, 0);
+  assert.equal(resets, 2, "a continuous Scene rebuilds the bounded transcript twice");
+  assert(savedReply && savedCheckpoints);
+  const calls = { ...f.calls };
+  f.disable();
+  f.nextOperation("callback-after-rollover-1");
+  for (const [key, value] of savedCheckpoints) f.checkpoints.set(key, value);
+  assert.deepEqual(await f.writing.generate(f.scene, callback, "chat"), savedReply);
+  assert.equal(calls.purchases, 1, "only the original stubbed completion ran");
+  assert.deepEqual(f.calls, calls, "saved replay keeps the fitted evidence without a new read or completion");
 });
 
 await runCase("narration-writing/required-evidence-bound", async () => {
