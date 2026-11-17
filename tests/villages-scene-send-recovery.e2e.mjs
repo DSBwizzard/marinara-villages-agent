@@ -76,6 +76,8 @@ await withBrowser(browser, async () => {
     let hideReads = false;
     let loseOperationRead = false;
     let staleRecovery = null;
+    let dropTurn = false;
+    const undelivered = new Set();
     let savedChangeRecovery = null;
     let replays = 0;
     const turns = [];
@@ -151,7 +153,7 @@ await withBrowser(browser, async () => {
       } else if (/\/rooms\/[^/]+\/operations?/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         if (loseOperationRead) return fulfill(route, { status: 404, json: { error: "Operation unavailable" } });
-        value = { operation: session.operation };
+        value = { operation: undelivered.has(path.split("/").at(-1)) ? null : session.operation };
       } else if (/\/rooms\/[^/]+\/recovery$/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { visit: session };
@@ -166,6 +168,12 @@ await withBrowser(browser, async () => {
       } else if (path.endsWith("/rooms/turn") || path.endsWith("/rooms/leave")) {
         const input = request.postDataJSON();
         turns.push(input);
+        if (dropTurn) {
+          dropTurn = false;
+          undelivered.add(input.submissionId);
+          return abort(route, "failed");
+        }
+        undelivered.delete(input.submissionId);
         if (liveStale) {
           liveStale = false;
           session.activeIds = ["eli"];
@@ -474,7 +482,7 @@ await withBrowser(browser, async () => {
     await expect(failedMessage).toContainText("The AI described a sound the game couldn’t place in the Scene.");
     await expect(failedMessage).not.toContainText("invalid narrated sound");
     await expect(failurePanel).not.toContainText("send-recovery");
-    await failurePanel.getByRole("button", { name: "Copy details", exact: true }).click();
+    await failurePanel.getByRole("button", { name: "Copy private details", exact: true }).click();
     await expect(failurePanel.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
     const copied = await page.evaluate(() => window.copiedSceneError);
     assert.match(copied, /Original error: The reply used an invalid narrated sound/u);
@@ -682,6 +690,58 @@ await withBrowser(browser, async () => {
     await send.click();
     await expect(composer).toHaveValue("");
     assert.equal(turns.at(-1).expectedSceneRevision, session.sceneRevision - 1);
+    const beforePreflight = turns.length;
+    const preflight = Promise.withResolvers();
+    await page.route(
+      "**/rooms/send-recovery/operation",
+      async (route) => {
+        await preflight.promise;
+        await route.fallback().catch(() => {});
+      },
+      { times: 1 },
+    );
+    await composer.fill("Draft with a stalled status read");
+    await send.click();
+    await expect(composer).toBeEditable();
+    await expect(send).toBeEnabled({ timeout: 12_000 });
+    assert.equal(turns.length, beforePreflight, "a timed-out preflight never posts a turn");
+    await expect(composer).toHaveValue("Draft with a stalled status read");
+    preflight.resolve();
+    for (const edit of [false, true]) {
+      const original = "Unadmitted draft " + edit;
+      const beforeDrop = turns.length;
+      dropTurn = true;
+      await composer.fill(original);
+      const staleStatus = Promise.withResolvers();
+      if (!edit)
+        await page.route(
+          "**/rooms/send-recovery/operations/*",
+          async (route) => {
+            await staleStatus.promise;
+            await route.fallback().catch(() => {});
+          },
+          { times: 1 },
+        );
+      await send.click();
+      await expect.poll(() => turns.length).toBe(beforeDrop + 1);
+      const dropped = turns.at(-1).submissionId;
+      await expect(composer).toBeEditable();
+      await expect(composer).toHaveValue(original);
+      if (edit) {
+        await composer.fill(original + " with edits");
+        await load();
+      }
+      const message = edit ? original + " with edits" : original;
+      await expect(composer).toHaveValue(message);
+      await expect(send).toBeEnabled({ timeout: 12_000 });
+      staleStatus.resolve();
+      await send.click();
+      await expect.poll(() => turns.length).toBe(beforeDrop + 2);
+      assert.equal(turns.at(-1).submissionId, dropped, "a delayed original can only claim the same submission");
+      assert.equal(turns.at(-1).message, message);
+      await expect(composer).toHaveValue("");
+      assert.equal(session.submissions.filter((item) => item.id === dropped).length, 1);
+    }
     assert.deepEqual(errors, []);
     await page.close();
   }

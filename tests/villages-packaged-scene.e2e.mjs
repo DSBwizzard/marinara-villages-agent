@@ -42,6 +42,19 @@ await withBrowser({ close: server.stop }, async () => {
       }),
     );
     const turns = [];
+    let rejectFirstReply = false;
+    const complete = server.model.chatComplete;
+    server.model.chatComplete = (...args) => {
+      if (!rejectFirstReply) return complete(...args);
+      rejectFirstReply = false;
+      return {
+        finishReason: "stop",
+        content: JSON.stringify({
+          input: [{ kind: "speech", text: "Unsupported inventory" }],
+          segments: [{ kind: "dialogue", speakerId: "mara", text: "Retired reply shape." }],
+        }),
+      };
+    };
     await context.route("**/api/villages**", async (route) => {
       const request = route.request(),
         url = new URL(request.url());
@@ -53,7 +66,12 @@ await withBrowser({ close: server.stop }, async () => {
         ...(payload ? { payload } : {}),
       });
       if (url.pathname.endsWith("/rooms/turn")) turns.push({ input: request.postDataJSON(), response });
-      assert.equal(response.statusCode, 200, `${request.method()} ${url.pathname}: ${response.body}`);
+      if (response.statusCode !== 200)
+        assert(
+          (url.pathname.endsWith("/rooms/turn") && server.scene().submissions.at(-1)?.acceptance.status === "held") ||
+            (url.pathname.endsWith("/rooms/browser/recovery") && response.json().error === "That Scene is not closed."),
+          `${request.method()} ${url.pathname}: ${response.body}`,
+        );
       await fulfill(route, { status: response.statusCode, headers: response.headers, body: response.rawPayload });
     });
     const page = await context.newPage();
@@ -91,6 +109,36 @@ await withBrowser({ close: server.stop }, async () => {
       })
       .toContain("Hello there.");
     assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    for (const edit of [false, true]) {
+      rejectFirstReply = true;
+      const original = "An ordinary line " + edit;
+      const beforeHold = turns.length;
+      await composer.fill(original);
+      await send.click();
+      await expect.poll(() => turns.length).toBe(beforeHold + 1);
+      await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("held");
+      const held = turns.at(-1).input.submissionId;
+      await expect(composer).toHaveValue(original);
+      const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
+      await expect(chip).toHaveCount(1);
+      await expect(chip).toHaveAccessibleName("1 Scene error");
+      if (edit) await composer.fill(original + " with edits");
+      await send.click();
+      await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");
+      assert.equal(turns.at(-1).input.replaceOfOperationId, held);
+      assert.equal(turns.at(-1).input.message, edit ? original + " with edits" : original);
+      assert.equal(server.scene().submissions.find((row) => row.id === held).acceptance.status, "abandoned");
+      await expect
+        .poll(async () => {
+          const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+          if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+          return composer.isVisible();
+        })
+        .toBe(true);
+      await expect(composer).toHaveValue("");
+    }
+    assert.equal(server.calls(), 3, "each deliberate replacement makes one request");
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");

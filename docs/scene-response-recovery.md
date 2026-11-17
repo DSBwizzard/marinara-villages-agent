@@ -14,11 +14,11 @@ Villages validates the GM's segments, common continuity and native commands agai
 
 ## Lost turn connections
 
-A failed browser connection can outlive the request while the server finishes a turn. The client retains the submission identity and reconciles saved receipts using reads only. It checks while visible for up to one minute, then offers Check saved reply; returning or reconnecting also checks. Missing operations do not prove success. Matching saved receipts establish completion, and matching failed operations establish failure.
+A failed browser connection can outlive the request while the server finishes a turn. The client saves the draft and submission identity in the current browser tab and reconciles saved receipts with bounded reads. It checks while visible, including while a known request is still running, and offers Check saved reply. A deliberate resend checks the exact prior identity first. If the server has no receipt, it reuses that identity even for edited input, so a delayed original and the resend cannot both publish. When a recovery read cannot distinguish which text won, the draft stays available.
 
 A visible playback page is not the submission ledger. The latest saved submission provides committed/publication proof even when its reply falls outside the current page or a later close replaced the operation. Unpublished consequential effects remain held. Clarifications must match both submitted text and submission identity; reconciliation never sends a duplicate turn.
 
-Late replies preserve newer composer edits, including edits with identical text, and retain the reading position. Pending reconciliation allows draft editing while preventing another submission until the outcome is known. Confirmed failure preserves the draft and explicit recovery controls.
+Late replies preserve newer composer edits, including edits with identical text, and retain the reading position. The composer stays editable while the Scene responds. A held reply can be replayed locally or explicitly replaced by sending the draft again with or without edits. Replacement checks for already committed effects, retains the old evidence and fences late results before starting new work. If a failed status write leaves a request marked running, the coordinator can interrupt that exact owner once the Scene work fence is idle.
 
 ## Hearing evidence and citations
 
@@ -26,7 +26,7 @@ Current nonverbal sounds use metadata on an ordinary narration segment. Full nar
 
 Consequential input citations bind exact excerpts and, when necessary, their occurrence. The submitted text establishes the source. Code checks the claimed communication or perception against captured positions and eligible witnesses. The full input remains private GM chronology with an empty resident audience. Generated segment labels and fitted source references bind accepted effects to the evidence the GM actually received.
 
-Ordinary responses omit private provider evidence and request checkpoints. Copy error details explicitly reads bounded diagnostics for the displayed attempt. The Changes evidence panel reads its own scoped diagnostics. These reads protect credentials, mark unavailable or shortened details and leave saved work and Village time intact.
+Ordinary responses omit private provider evidence and request checkpoints. Copy Discord report includes fixed error categories and workflow stages for sharing. Copy private details explicitly reads bounded diagnostics for the displayed attempt. The Changes evidence panel reads its own scoped diagnostics. These reads protect credentials, mark unavailable or shortened details and leave saved work and Village time intact.
 
 ## Response timings and validation
 

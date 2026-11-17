@@ -685,6 +685,7 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  acceptance?: "pending" | "held" | "applied" | "abandoned";
   committed?: boolean;
   replyReady?: boolean;
   /** The Scene has ended and its completed transcript is no longer retained. */

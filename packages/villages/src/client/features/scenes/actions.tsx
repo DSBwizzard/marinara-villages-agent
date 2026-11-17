@@ -526,6 +526,8 @@ export function useSendRoom(ports: {
   });
   const recovery = useTurnRecovery({
     visible: ports.visible,
+    worldScope: snapshot?.worldScope,
+    draft: roomDraft,
     room,
     setRoom,
     setRoomEnded,
@@ -536,10 +538,10 @@ export function useSendRoom(ports: {
     receiveRoomRecordEvents,
     refreshSnapshot: () => void loadSnapshot({ quiet: true }),
   });
-  const { pending: recoveryPending, begin: beginRecovery } = recovery;
+  const { pending: recoveryPending, attempt: uncertain, check, begin: beginRecovery, finish, track } = recovery;
   const sendRoom = useCallback(
     async (replacement?: ContactRecovery) => {
-      if (recoveryPending || (contactRecovery?.sceneId === room?.id && !replacement)) return;
+      if (contactRecovery?.sceneId === room?.id && !replacement) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
       const text = roomDraft;
       if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.trim().length === 0)
@@ -547,15 +549,43 @@ export function useSendRoom(ports: {
       const claim = lifetime.begin(room.id);
       if (!claim) return;
       const owns = () => lifetime.owns(claim);
+      setRoomBusy(true);
+      claim.busy = true;
       let submissionId = roomSubmissionIdRef.current ?? createVillagesClientId();
       let resend: ReturnType<typeof sceneResend>;
+      let sharedIdentity = false;
+      let keptUnconfirmedId = false;
       const before = room;
       recordTurnTiming(room.id, submissionId, "send");
       try {
         const { operation } = await request<{ operation: RoomOperation | null }>(
           `/rooms/${encodeURIComponent(room.id)}/operation`,
+          { signal: AbortSignal.timeout(5_000) },
         );
         if (!owns()) return;
+        if (uncertain) {
+          const previous =
+            operation?.id === uncertain.submissionId
+              ? operation
+              : (
+                  await request<{ operation: RoomOperation | null }>(
+                    `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(uncertain.submissionId)}`,
+                    { signal: AbortSignal.timeout(5_000) },
+                  )
+                ).operation;
+          if (!owns()) return;
+          if (previous && (previous.committed || previous.terminal || previous.status === "running")) {
+            await check();
+            if (lifetime.finish(claim)) setRoomBusy(false);
+            return;
+          }
+          if (!previous) {
+            // One submission ID lets the server admit either input while a late original is still possible.
+            submissionId = uncertain.submissionId;
+            sharedIdentity = !!uncertain.changed || text !== uncertain.text;
+            keptUnconfirmedId = true;
+          }
+        }
         if (
           !replacement &&
           (operation?.status !== "complete" || !!operation.error) &&
@@ -574,10 +604,13 @@ export function useSendRoom(ports: {
           submissionId,
         );
         submissionId = resend.submissionId;
+        finish();
+        track({ sceneId: room.id, submissionId, text, editVersion, started: Date.now(), changed: sharedIdentity });
         roomSubmissionIdRef.current = submissionId;
         claim.submission = submissionId;
       } catch (cause) {
         if (!lifetime.finish(claim)) return;
+        setRoomBusy(false);
         const staleReason = staleVenueReason(cause);
         if (staleReason) {
           setRoom(null);
@@ -600,10 +633,7 @@ export function useSendRoom(ports: {
         content: text,
         at: new Date().toISOString(),
       };
-      setRoomBusy(true);
-      claim.busy = true;
       setRoomError("");
-      setRoomDraft("");
       setRoom({ ...room, lines: [...room.lines, mine] });
       roomCompletionRef.current = { roomId: room.id, submissionId };
       claim.completion = roomCompletionRef.current;
@@ -624,6 +654,7 @@ export function useSendRoom(ports: {
           signal: AbortSignal.timeout(300_000),
         });
         if (!owns()) return;
+        finish();
         recordTurnTiming(room.id, submissionId, "responseReceived");
         setRoom(currentRoom(answer.session));
         setRoomEnded(answer.session.status === "closed");
@@ -633,6 +664,8 @@ export function useSendRoom(ports: {
         }
         receiveRoomRecordEvents(answer.recordEvents ?? []);
         if (replacement) setContactRecovery(null);
+        if (!composerEditVersionRef || composerEditVersionRef.current === editVersion)
+          setRoomDraft((current) => (current === text ? "" : current));
         roomSubmissionIdRef.current = null;
         claim.submission = null;
         setRoomGreetingNotice("");
@@ -643,6 +676,7 @@ export function useSendRoom(ports: {
         if (!owns()) return;
         const { operation } = await request<{ operation: RoomOperation | null }>(
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(submissionId)}`,
+          { signal: AbortSignal.timeout(5_000) },
         ).catch(() => ({ operation: null }));
         if (!owns()) return;
         // A turn can commit between recovery reads. Check the final active read
@@ -657,12 +691,14 @@ export function useSendRoom(ports: {
         if (!owns()) return;
         if (hasPublishedRoomSubmission(authoritative, submissionId)) recovered = authoritative;
         if (recovered) {
+          finish();
           if (replacement) setContactRecovery(null);
           if (latest) setRoom(currentRoom(latest));
           setRoom(currentRoom(recovered));
           setRoomEnded(recovered.status === "closed");
           setRoomError("");
-          setRoomDraft("");
+          if (!sharedIdentity && (!composerEditVersionRef || composerEditVersionRef.current === editVersion))
+            setRoomDraft((current) => (current === text ? "" : current));
           roomSubmissionIdRef.current = null;
           claim.submission = null;
           setRoomGreetingNotice("");
@@ -673,6 +709,7 @@ export function useSendRoom(ports: {
         claim.completion = null;
         const staleReason = staleVenueReason(cause);
         if (staleReason) {
+          finish();
           if (latest) setRoom(currentRoom(latest));
           setRoom(null);
           setRoomOpen(false);
@@ -694,21 +731,38 @@ export function useSendRoom(ports: {
         if (cause instanceof VillageApiError && (cause.code === "SCENE_BUSY" || cause.code === "SCENE_STALE"))
           roomSubmissionIdRef.current = null;
         claim.submission = roomSubmissionIdRef.current;
-        setRoomDraft((current) => current || text);
-        const uncertain =
-          !(cause instanceof VillageApiError) ||
-          cause.status === 0 ||
-          ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "");
-        if (uncertain) {
-          beginRecovery(submissionId, text, editVersion, messageFrom(cause, "The reply connection was interrupted."));
+        const confirmedFailure =
+          operation?.id === submissionId &&
+          (operation.status === "interrupted" || (operation.status === "complete" && !!operation.error));
+        const stillUncertain =
+          !confirmedFailure &&
+          (!(cause instanceof VillageApiError) ||
+            cause.status === 0 ||
+            cause.status >= 500 ||
+            ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "") ||
+            keptUnconfirmedId);
+        if (stillUncertain) {
+          beginRecovery(
+            submissionId,
+            text,
+            editVersion,
+            messageFrom(cause, "The reply connection was interrupted."),
+            sharedIdentity,
+          );
           setRoomError("");
-        } else setRoomError(messageFrom(cause, "That line could not be sent."));
+        } else {
+          finish();
+          setRoomError(messageFrom(cause, "That line could not be sent."));
+        }
       } finally {
         if (lifetime.finish(claim)) setRoomBusy(false);
       }
     },
     [
-      recoveryPending,
+      uncertain,
+      check,
+      finish,
+      track,
       composerEditVersionRef,
       roomDraft,
       contactRecovery,
@@ -901,6 +955,7 @@ export function useRetrySavedScene(ports: {
       try {
         const { operation } = await request<{ operation: RoomOperation }>(
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
+          { signal: AbortSignal.timeout(5_000) },
         );
         if (!lifetime.owns(claim)) return;
         if (!expected && operation?.kind === "turn" && operation.input?.mode === "contact")
@@ -932,6 +987,7 @@ export function useRetrySavedScene(ports: {
                 : "/rooms/end";
         const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
           method: "POST",
+          signal: AbortSignal.timeout(300_000),
           body: JSON.stringify({
             ...operation.input,
             sessionId: room.id,

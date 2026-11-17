@@ -1,9 +1,12 @@
-/** Display only; Copy details keeps the original error. */
-export function sceneErrorMessage(original: string): string {
-  const message = original
+export function sceneErrorCause(original: string): string {
+  return original
     .trim()
     .replace(/^(?:Error|VillagesRequestError|VillageApiError):\s*/u, "")
     .replace(/\s*\(HTTP \d+; [^)]+\)/gu, "");
+}
+
+/** Returns only fixed strings safe to include in a shareable report. */
+export function sceneErrorCategory(message: string): string | undefined {
   const rules: [RegExp, string][] = [
     [/^Invalid request details/iu, "The request contains invalid details."],
     [/History temporarily unavailable|Could not load Scene history/iu, "The game couldn’t load the Scene history."],
@@ -125,7 +128,12 @@ export function sceneErrorMessage(original: string): string {
       "The game hit an internal error.",
     ],
   ];
-  const friendly = rules.find(([pattern]) => pattern.test(message))?.[1];
+  return rules.find(([pattern]) => pattern.test(message))?.[1];
+}
+
+export function sceneErrorMessage(original: string): string {
+  const message = sceneErrorCause(original);
+  const friendly = sceneErrorCategory(message);
   if (friendly) return friendly;
   // Keep the cause in the panel and the recovery details in the copied report.
   const cause = message

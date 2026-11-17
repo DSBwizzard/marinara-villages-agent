@@ -17,6 +17,7 @@ type SavedSceneRequest = {
   kind?: string;
   attemptId?: string;
   error?: string;
+  acceptance?: string;
   input?: SceneSendInput | null;
 };
 
@@ -37,7 +38,8 @@ export function sceneResend(
     (prior.targetId || "") === (input.targetId || "") &&
     prior.contact?.kind === input.contact?.kind &&
     prior.contact?.boundaryZoneId === input.contact?.boundaryZoneId;
-  if (same) return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
+  if (same && saved.acceptance !== "held" && saved.acceptance !== "abandoned")
+    return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
   if (saved.kind !== "turn")
     throw new Error("Recover the saved request before changing this action. Your edits are preserved.");
   return {

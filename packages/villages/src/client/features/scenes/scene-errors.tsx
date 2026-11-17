@@ -1,6 +1,11 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { sceneErrorMessage } from "./scene-error-message.js";
-import { sceneErrorReport, type SceneErrorDiagnostic, type SceneErrorReportItem } from "./scene-error-report.js";
+import {
+  anonymousSceneErrorReport,
+  sceneErrorReport,
+  type SceneErrorDiagnostic,
+  type SceneErrorReportItem,
+} from "./scene-error-report.js";
 import { ELEMENT_TAG as tag } from "../../shared/constants.js";
 
 export type SceneErrorItem = SceneErrorReportItem & {
@@ -14,11 +19,13 @@ export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipPr
   const anchor = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
+  const [shareState, setShareState] = useState<"idle" | "copied" | "manual">("idle");
   const copyOwner = useRef(0);
   const errorKey = items.map((item) => `${item.id}:${item.diagnosticId ?? ""}:${item.message}`).join("\n");
   useEffect(() => {
     copyOwner.current++;
     setCopyState("idle");
+    setShareState("idle");
   }, [errorKey]);
   useEffect(() => {
     if (!items.length) {
@@ -93,9 +100,6 @@ export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipPr
           {items.map((item) => (
             <div key={item.id} className={`${tag}-scene-error-item`} role="group" aria-label={item.title}>
               <div className={`${tag}-scene-error-message`}>
-                <span className={`${tag}-scene-error-icon`} aria-hidden="true">
-                  !
-                </span>
                 <span>{sceneErrorMessage(item.message)}</span>
               </div>
               {item.actions ? (
@@ -104,6 +108,35 @@ export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipPr
             </div>
           ))}
           <div className={`${tag}-scene-error-detail`}>
+            <button
+              type="button"
+              onClick={() => {
+                const owner = copyOwner.current;
+                const text = anonymousSceneErrorReport(items);
+                const update = (state: "copied" | "manual") => {
+                  if (copyOwner.current === owner) setShareState(state);
+                };
+                try {
+                  void navigator.clipboard.writeText(text).then(
+                    () => update("copied"),
+                    () => update("manual"),
+                  );
+                } catch {
+                  update("manual");
+                }
+              }}
+            >
+              Copy Discord report
+            </button>
+            {shareState === "copied" ? <p role="status">Anonymous report copied.</p> : null}
+            {shareState === "manual" ? (
+              <textarea
+                aria-label="Anonymous Discord report"
+                readOnly
+                value={anonymousSceneErrorReport(items)}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+            ) : null}
             <button
               type="button"
               disabled={copyState === "copying"}
@@ -155,7 +188,7 @@ export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipPr
                 }
               }}
             >
-              {copyState === "copying" ? "Copying…" : copyState === "copied" ? "Copied" : "Copy details"}
+              {copyState === "copying" ? "Copying…" : copyState === "copied" ? "Copied" : "Copy private details"}
             </button>
             {copyState === "failed" ? <p role="status">The browser couldn’t copy the details.</p> : null}
           </div>

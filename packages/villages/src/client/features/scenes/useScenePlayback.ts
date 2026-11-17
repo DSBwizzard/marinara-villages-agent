@@ -55,7 +55,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
         const query = cursor ? "&cursor=" + encodeURIComponent(cursor) : entry === "first" ? "&first=1" : "";
         const result = await request<ScenePlaybackWindow>(
           `/rooms/${encodeURIComponent(owner.sceneId)}/playback?scope=${encodeURIComponent(scope)}${query}`,
-          { signal: controller.signal },
+          { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]) },
         );
         if (
           controller.signal.aborted ||

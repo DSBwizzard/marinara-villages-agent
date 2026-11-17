@@ -33,8 +33,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const dismissedRoomEventIdsRef = useRef(new Set<string>());
 
-  const [roomChangeStatus, setRoomChangeStatus] = useState({ pending: 0, failed: 0, rejected: 0 });
-
   const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<SceneChangeIssue[]>([]);
 
   const [debugDiscardEnabled, setDebugDiscardEnabled] = useState(false);
@@ -103,8 +101,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomNotices,
     seenRoomEventIdsRef,
     dismissedRoomEventIdsRef,
-    roomChangeStatus,
-    setRoomChangeStatus,
     roomUnresolvedChanges,
     setRoomUnresolvedChanges,
     debugDiscardEnabled,

@@ -163,7 +163,9 @@ await withBrowser(browser, async () => {
     });
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await contactStarted;
-    await expect(composer).toHaveCount(0);
+    await expect(composer).toBeEditable();
+    await expect(page.getByRole("button", { name: "Sending", exact: true })).toBeDisabled();
+    await composer.fill("Typed while the reply was pending");
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     assert.equal(lastContact.mode, "chat");
     assert.equal(lastContact.contact, undefined);
@@ -179,7 +181,7 @@ await withBrowser(browser, async () => {
       await next.click();
     }
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
-    await expect(composer).toBeVisible();
+    await expect(composer).toHaveValue("Typed while the reply was pending");
     const preservedDraft = "Draft survives Zone changes. ".repeat(35);
     await composer.fill(preservedDraft);
     const dockAtBottom = async (selector) => {

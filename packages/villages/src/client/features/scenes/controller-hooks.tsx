@@ -21,20 +21,12 @@ export function useSceneChangesPolling(ports: {
   receiveRoomRecordEvents: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
   room: import("../../../shared/contracts/village.js").SceneView;
   roomNotices: readonly RoomRecordEvent[];
-  setRoomChangeStatus: React.Dispatch<React.SetStateAction<{ pending: number; failed: number; rejected: number }>>;
   setRoomNotices: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
   >;
   setRoomUnresolvedChanges: React.Dispatch<React.SetStateAction<SceneChangeIssue[]>>;
 }) {
-  const {
-    dismissedRoomEventIdsRef,
-    receiveRoomRecordEvents,
-    room,
-    setRoomChangeStatus,
-    setRoomNotices,
-    setRoomUnresolvedChanges,
-  } = ports;
+  const { dismissedRoomEventIdsRef, receiveRoomRecordEvents, room, setRoomNotices, setRoomUnresolvedChanges } = ports;
   const cursorRef = useRef({ sceneId: "", cursor: "" });
   const shownWishIds = useEffectEvent(() =>
     ports.roomNotices
@@ -48,7 +40,6 @@ export function useSceneChangesPolling(ports: {
     if (!room?.id || !ports.visible || !ports.viewing || ports.busy) return;
     if (cursorRef.current.sceneId !== room.id) {
       cursorRef.current = { sceneId: room.id, cursor: "" };
-      setRoomChangeStatus({ pending: 0, failed: 0, rejected: 0 });
       setRoomUnresolvedChanges([]);
     }
     const controller = new AbortController();
@@ -67,7 +58,6 @@ export function useSceneChangesPolling(ports: {
         notices: RoomRecordEvent[];
         dismissedNoticeIds: string[];
         hiddenWishNoticeIds?: string[];
-        processingSummary: { pending: number; failed: number; rejected: number };
         nextCursor: string;
         hasMore: boolean;
         unresolved: SceneChangeIssue[];
@@ -93,7 +83,6 @@ export function useSceneChangesPolling(ports: {
             (event) => !hiddenWishes.has(event.id),
           ),
         );
-        setRoomChangeStatus(answer.processingSummary ?? { pending: 0, failed: 0, rejected: 0 });
         setRoomUnresolvedChanges(answer.unresolved ?? []);
         cursor = answer.nextCursor ?? cursor;
         cursorRef.current.cursor = cursor;
@@ -120,7 +109,6 @@ export function useSceneChangesPolling(ports: {
     revision,
     focusRevision,
     receiveRoomRecordEvents,
-    setRoomChangeStatus,
     setRoomUnresolvedChanges,
     setRoomNotices,
     dismissedRoomEventIdsRef,
@@ -291,7 +279,14 @@ export function useSceneOperationPolling(ports: {
     const poll = async () => {
       if (stopped || reading || document.hidden) return;
       reading = true;
-      const latest = await refreshSceneAfterFailure(room.id, room.operation?.id, () => !stopped);
+      let latest = await refreshSceneAfterFailure(room.id, room.operation?.id, () => !stopped);
+      if (!stopped && latest?.operation?.status === "running") {
+        const { operation } = await request<{ operation: RoomOperation | null }>(
+          `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(latest.operation.id)}`,
+          { signal: AbortSignal.timeout(5_000) },
+        ).catch(() => ({ operation: null }));
+        if (operation?.status === "interrupted") latest = { ...latest, operation };
+      }
       reading = false;
       if (!stopped && latest) {
         setRoom(currentRoom(latest));
@@ -359,6 +354,7 @@ export function useSceneInterruptedSubmission(ports: {
     const editVersion = composerEditVersionRef.current;
     void request<{ operation: RoomOperation | null }>(
       `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
+      { signal: AbortSignal.timeout(5_000) },
     )
       .then(({ operation }) => {
         if (disposed || !operation?.input) return;

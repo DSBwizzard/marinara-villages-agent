@@ -14,7 +14,11 @@ import {SceneErrorChip} from './packages/villages/src/client/features/scenes/sce
 import {VILLAGES_SCENE_STYLES} from './packages/villages/src/client/features/scenes/villages-scene-styles.js';
 window.detailReads=0; window.clipboardCalls=0;
 window.ClipboardItem=class { constructor(data){this.data=data;} };
-Object.defineProperty(navigator,'clipboard',{configurable:true,value:{write(items){
+Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText(text){
+  if(window.failCopy) return Promise.reject(Error('Clipboard refused'));
+  window.anonymousReport=text;
+  return Promise.resolve();
+},write(items){
   window.clipboardCalls++; window.copyHadGesture=navigator.userActivation.isActive;
   if(window.failCopy) return Promise.reject(Error('Clipboard refused'));
   return items[0].data['text/plain'].then(blob=>blob.text()).then(text=>{window.copied=text;});
@@ -64,10 +68,16 @@ await withBrowser(browser, async () => {
       await expect(panel.getByText(message, { exact: true })).toBeVisible();
     await expect(panel).not.toContainText(/private-scene-id|retry required|transcript|complete JSON/);
     assert.equal(await page.evaluate(() => window.detailReads), 0, "opening errors never loads owner diagnostics");
+    await panel.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    const share = await page.evaluate(() => window.anonymousReport);
+    assert.match(share, /Villages Scene error report/);
+    assert.match(share, /The AI returned a reply the game couldn’t read/);
+    assert.doesNotMatch(share, /private-scene-id|Breakwater Bungalow|reply-failure|resident didn’t hear|complete JSON/);
+    assert.equal(await page.evaluate(() => window.detailReads), 0, "Discord copy does not read private details");
     const box = await panel.boundingBox();
     assert.ok(box.x >= 0 && box.x + box.width <= width, "error text stays within the phone viewport");
     await page.screenshot({ path: `.build-tmp/scene-errors/errors-${width}.png` });
-    await panel.getByRole("button", { name: "Copy details", exact: true }).click();
+    await panel.getByRole("button", { name: "Copy private details", exact: true }).click();
     await expect(panel.getByRole("button", { name: "Copying…", exact: true })).toBeDisabled();
     await page.evaluate(() => window.rerenderErrors());
     await expect(panel.getByRole("button", { name: "Copying…", exact: true })).toBeDisabled();
@@ -88,8 +98,10 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => {
       window.failCopy = true;
     });
+    await panel.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(panel.getByRole("textbox", { name: "Anonymous Discord report" })).toHaveValue(share);
     await panel.getByRole("button", { name: "Copied", exact: true }).click();
-    await expect(panel.getByRole("status")).toHaveText("The browser couldn’t copy the details.");
+    await expect(panel.getByText("The browser couldn’t copy the details.")).toBeVisible();
     await page.evaluate(() => window.finishDetails());
     await page.close();
   }

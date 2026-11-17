@@ -6,6 +6,7 @@ import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js"
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
 import type { SceneErrorItem } from "./scene-errors.js";
+import { sceneErrorCause } from "./scene-error-message.js";
 import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
@@ -81,7 +82,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     sceneReading,
     room,
     roomBusy,
-    roomChangeStatus,
     roomDraft,
     roomEnded,
     roomError,
@@ -159,8 +159,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 (entry, index, all) =>
                   !!entry.message &&
                   (!requestErrorIds.has(entry.id) ||
-                    all.findIndex((other) => requestErrorIds.has(other.id) && other.message === entry.message) ===
-                      index),
+                    all.findIndex(
+                      (other) =>
+                        requestErrorIds.has(other.id) &&
+                        other.message &&
+                        sceneErrorCause(other.message) === sceneErrorCause(entry.message!),
+                    ) === index),
               )
               .map((entry): SceneErrorItem => ({ ...entry, message: entry.message! })),
           ]}
@@ -284,13 +288,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           currentZoneLabel={sceneZoneLabel(
             sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}
-          busy={roomBusy || contactReviewBusy || controller.replyPending || room.operation?.status === "running"}
+          busy={roomBusy || contactReviewBusy || room.operation?.status === "running"}
           error={
             roomError ||
             room.operation?.error ||
             (room.status === "opening" && roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "")
           }
-          draftWhilePending={controller.replyPending}
           greetingNotice={roomGreetingNotice}
           open={roomOpen}
           ended={roomEnded}
@@ -319,16 +322,20 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onOpenWish={(actorId, wishId) => {
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });
           }}
-          changeStatus={room.id ? roomChangeStatus : undefined}
           unresolvedChanges={roomUnresolvedChanges}
           onReplayChanges={() => {
             if (!room?.id || roomBusy) return;
             setRoomBusy(true);
             void (async () => {
-              await request("/rooms/" + encodeURIComponent(room.id) + "/changes/replay", { method: "POST" });
-              const active = await request<{ session: SceneView | null }>("/rooms/active");
+              await request("/rooms/" + encodeURIComponent(room.id) + "/changes/replay", {
+                method: "POST",
+                signal: AbortSignal.timeout(15_000),
+              });
+              const active = await request<{ session: SceneView | null }>("/rooms/active", {
+                signal: AbortSignal.timeout(5_000),
+              });
               if (active.session?.id === room.id) setRoom(active.session);
-              await loadSnapshot();
+              void loadSnapshot({ quiet: true });
             })()
               .catch((cause) => setRoomError(messageFrom(cause, "Could not replay the saved reply.")))
               .finally(() => setRoomBusy(false));

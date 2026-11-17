@@ -225,7 +225,6 @@ export function RoomPanel({
   turnRecovery,
   sceneErrors = [],
   onCheckSavedReply,
-  draftWhilePending,
   open,
   ended,
   playerName,
@@ -243,7 +242,6 @@ export function RoomPanel({
   notices,
   onDismissNotice,
   onOpenWish,
-  changeStatus,
   onReplayChanges,
   unresolvedChanges,
   debugDiscardEnabled,
@@ -277,7 +275,6 @@ export function RoomPanel({
   turnRecovery?: string;
   sceneErrors?: SceneErrorItem[];
   onCheckSavedReply?: () => void;
-  draftWhilePending?: boolean;
   open: boolean;
   ended: boolean;
   playerName: string;
@@ -295,7 +292,6 @@ export function RoomPanel({
   notices: RoomRecordEvent[];
   onDismissNotice: (id: string) => void;
   onOpenWish?: (actorId: string, wishId: string) => void;
-  changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
   unresolvedChanges?: SceneChangeIssue[];
   debugDiscardEnabled: boolean;
@@ -491,6 +487,17 @@ export function RoomPanel({
     });
   for (const change of unresolvedChanges ?? []) {
     if (change.status === "pending") continue;
+    const replay = onReplayChanges ? (
+      <button type="button" disabled={busy} onClick={onReplayChanges}>
+        Replay
+      </button>
+    ) : undefined;
+    const operation = change.submissionId === room.operation?.id && errorItems.find((item) => item.id === "operation");
+    if (operation) {
+      operation.diagnosticId = change.diagnosticId ?? operation.diagnosticId;
+      operation.actions = replay ?? operation.actions;
+      continue;
+    }
     errorItems.push({
       id: "narration:" + change.submissionId,
       diagnosticId: change.diagnosticId,
@@ -500,11 +507,7 @@ export function RoomPanel({
         { label: "Scene", value: room.placeName },
         ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
       ],
-      actions: onReplayChanges ? (
-        <button type="button" disabled={busy} onClick={onReplayChanges}>
-          Replay
-        </button>
-      ) : undefined,
+      actions: replay,
     });
   }
 
@@ -630,8 +633,12 @@ export function RoomPanel({
     checkpoint.current.window = playback.window;
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !ended && room.status === "active";
-  const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
-  const canSend = canCompose && !contactRecovery && !(changeStatus && changeStatus.pending + changeStatus.failed > 0);
+  const canCompose =
+    canDraft &&
+    (!canReadNext || busy || !!error || !!turnRecovery || !!playback.error) &&
+    !historyOpen &&
+    (!playback.restoring || !!playback.error);
+  const canSend = canCompose && !busy && !playback.busy && !contactRecovery;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -1448,7 +1455,7 @@ export function RoomPanel({
 
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
-            {contactRecovery ? (
+            {contactRecovery && !busy ? (
               <div role="status">
                 <p>Saved Contact action · {recoveryDestination}</p>
                 <p>{contactRecovery.operation.input?.message || "Saved action"}</p>
@@ -1481,7 +1488,6 @@ export function RoomPanel({
                   }}
                   placeholder="Message…"
                   aria-label={`Message at ${room.placeName}`}
-                  disabled={(busy && !draftWhilePending) || ended || room.status !== "active"}
                 />
                 <button
                   type="button"

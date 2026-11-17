@@ -82,6 +82,20 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   function hasVenueOperation(id: string): boolean {
     return live.has(id);
   }
+
+  async function interruptOrphan(id: string, operation: VenueOperation) {
+    if (live.get(id)?.token() === operation.token || ports.sceneWorkBusy?.(id)) return false;
+    const interrupt = () =>
+      update(id, (data) => {
+        const saved = data.operation as VenueOperation | undefined;
+        if (saved?.status !== "running" || saved.token !== operation.token) return;
+        saved.token = randomUUID();
+        saved.status = "interrupted";
+        saved.error = "The Scene request stopped before it finished. Review the saved reply or send again.";
+      });
+    await (ports.withSceneWork ? ports.withSceneWork(id, interrupt) : interrupt());
+    return true;
+  }
   function withResponseWork<T>(sessionId: string, work: () => Promise<T>) {
     return ports.operations.outsideVenueOperation(() => {
       const fenced = () => (ports.withLateResponseWork ? ports.withLateResponseWork(sessionId, work) : work());
@@ -533,7 +547,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       // Another activation may own this Scene even though this coordinator has no local live entry.
       // Refuse promptly instead of queueing behind a potentially long provider call.
       const saved = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + sessionId);
-      if (asRecord(asRecord(saved?.data).operation).status === "running")
+      const savedOperation = asRecord(saved?.data).operation as VenueOperation | undefined;
+      if (savedOperation?.status === "running" && !(await interruptOrphan(sessionId, savedOperation)))
         throw venueRefusal(
           "OPERATION_INTERRUPTED",
           "A Scene request is already running. Recover or retry it after it finishes.",
@@ -905,6 +920,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     readSceneHistoryRoot(data);
     memoryRequire(data.id === id, "Scene operation owner identity changed");
     const operation = data.operation as VenueOperation | undefined;
+    if (operation?.status === "running" && (await interruptOrphan(id, operation)))
+      return readVenueOperationOnce(id, operationId);
     const requested = operationId ?? operation?.id;
     const header = readSceneIndex(data),
       head = readSceneSubmissionHead(data.submissionHistory, header);
