@@ -39,32 +39,46 @@ const CHAPTER_MENUS = [undefined, "people", "venues", "review"] as const;
 function FoundingChapter({
   step,
   mobileScene,
-  mobileMenuRef,
+  mobileTitle,
+  onCloseMenu,
+  canCloseMenu,
   guide,
   bodyRef,
   children,
 }: {
   step: number;
   mobileScene: boolean;
-  mobileMenuRef: Ref<HTMLHeadingElement>;
+  mobileTitle?: string;
+  onCloseMenu(): void;
+  canCloseMenu: boolean;
   guide: ReactNode;
   bodyRef: Ref<HTMLElement>;
   children: ReactNode;
 }) {
+  const body = (
+    <main className="villages-forging-body" data-step={step} ref={bodyRef}>
+      {children}
+    </main>
+  );
   return (
     <div className="villages-founding-chapter" data-guided={step > 0 || undefined}>
       {guide}
-      <main className="villages-forging-body" data-step={step} ref={bodyRef} hidden={mobileScene}>
-        <h2
-          className="villages-founding-menu-title"
-          hidden={step === 0 || step === 3}
-          tabIndex={-1}
-          ref={mobileMenuRef}
-        >
-          {step === 1 ? "People" : "Venues and Map"}
-        </h2>
-        {children}
-      </main>
+      {mobileTitle ? (
+        mobileScene ? null : (
+          <FoundingDialog
+            title={mobileTitle}
+            className="villages-chapter-menu"
+            scrollBody
+            dismissible={canCloseMenu}
+            showCloseButton={canCloseMenu}
+            onClose={onCloseMenu}
+          >
+            {body}
+          </FoundingDialog>
+        )
+      ) : (
+        body
+      )}
     </div>
   );
 }
@@ -199,8 +213,8 @@ export function FoundingScreen({
   }, [fading, turning]);
   const hasSettingDraft = !!setupWorkspace.settingDraft;
   const settingEditorOpen =
-    manualSetting ||
-    (setupWorkspace.settingEditorOpen ??
+    setupWorkspace.settingEditorOpen ??
+    (manualSetting ||
       (beat === "village" &&
         hasSettingDraft &&
         !setupWorkspace.suggestionRequest?.draftSetting &&
@@ -244,7 +258,6 @@ export function FoundingScreen({
   const settingTitle = useRef<HTMLHeadingElement>(null);
   const connectionGate = useRef<HTMLElement>(null);
   const chapterLine = useRef<HTMLParagraphElement>(null);
-  const chapterTitle = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (chooseConnections) connectionGate.current?.focus({ preventScroll: true });
   }, [chooseConnections]);
@@ -255,14 +268,7 @@ export function FoundingScreen({
     setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
   }, [setupStep, screen]);
   useEffect(() => {
-    if (screen !== "setup" || setupStep !== 0 || !settingEditorOpen || !phone) return;
-    bodyRef.current?.scrollTo({ top: 0 });
-    settingTitle.current?.focus({ preventScroll: true });
-  }, [screen, setupStep, settingEditorOpen, phone]);
-  useEffect(() => {
-    if (screen !== "setup" || !phone || !chapterMenu) return;
-    bodyRef.current?.scrollTo({ top: 0 });
-    (mobileScene ? chapterLine : chapterTitle).current?.focus({ preventScroll: true });
+    if (screen === "setup" && mobileScene) chapterLine.current?.focus({ preventScroll: true });
   }, [screen, phone, chapterMenu, mobileScene]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const mapUpload = useRef<HTMLInputElement>(null);
@@ -336,6 +342,26 @@ export function FoundingScreen({
     setSettingEditorOpen,
   ]);
   if (screen === "setup") {
+    const connectionPrompt = (
+      <>
+        <AgentConnectionsControls connections={connections} kind="language" compact />
+        <button
+          type="button"
+          className="villages-forging-primary"
+          disabled={!!connections.setupProblem || !!draftSaveError}
+          onClick={() => {
+            setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
+            setSetupWorkspace((workspace) => ({
+              ...workspace,
+              settingIntroPending: undefined,
+              settingBeat: "welcome",
+            }));
+          }}
+        >
+          Next
+        </button>
+      </>
+    );
     const title = showTitle ? (
       <div className="villages-founding-title" inert={fading}>
         <div className="villages-founding-logo">
@@ -367,31 +393,16 @@ export function FoundingScreen({
           START
         </button>
       </div>
-    ) : chooseConnections ? (
+    ) : chooseConnections && !phone ? (
       <section
         className="villages-founding-connections"
         aria-label="Choose your models"
         tabIndex={-1}
         ref={connectionGate}
       >
-        <AgentConnectionsControls connections={connections} kind="language" compact />
-        <button
-          type="button"
-          className="villages-forging-primary"
-          disabled={!!connections.setupProblem || !!draftSaveError}
-          onClick={() => {
-            setArrival(window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "greeting" : "turning");
-            setSetupWorkspace((workspace) => ({
-              ...workspace,
-              settingIntroPending: undefined,
-              settingBeat: "welcome",
-            }));
-          }}
-        >
-          Next
-        </button>
+        {connectionPrompt}
       </section>
-    ) : turning ? (
+    ) : turning || chooseConnections ? (
       <span hidden />
     ) : null;
     const openConnectionPicker = () => {
@@ -590,10 +601,68 @@ export function FoundingScreen({
               ]}
       </button>
     );
+    const settingFields = (
+      <>
+        <FoundingField
+          title="Village name"
+          error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
+        >
+          <input
+            autoComplete="off"
+            aria-label="Village Name"
+            maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
+            value={setupName}
+            disabled={busy}
+            onChange={(event) => {
+              setSetupName(event.target.value);
+              clearFieldValidation("place-name");
+            }}
+          />
+        </FoundingField>
+        <FoundingField
+          title="First map name"
+          error={
+            validatedFields.includes("location-name") && !setupLocationName.trim() ? PLACE_ERRORS.locationName : ""
+          }
+        >
+          <input
+            autoComplete="off"
+            placeholder="e.g. The market district"
+            maxLength={80}
+            value={setupLocationName}
+            disabled={busy}
+            onChange={(event) => {
+              setSetupLocationName(event.target.value);
+              clearFieldValidation("location-name");
+            }}
+          />
+        </FoundingField>
+        <FoundingField
+          title="What’s the first map area like?"
+          error={validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""}
+        >
+          <textarea
+            autoComplete="off"
+            aria-label="Location description"
+            maxLength={snapshot?.settings.settingMaxLength ?? 4096}
+            rows={3}
+            value={setupSetting}
+            disabled={busy}
+            onChange={(event) => {
+              setSetupSetting(event.target.value);
+              clearFieldValidation("place-setting");
+            }}
+          />
+        </FoundingField>
+      </>
+    );
+    const closeChapterMenu = () => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }));
+    const canCloseChapterMenu = !busy && !spriteBusy && !setupEditorOpen;
     const guide =
-      setupStep > 0 && (!phone || mobileScene) ? (
+      setupStep > 0 ? (
         <FoundingGuide
           scene
+          inactive={phone && !mobileScene}
           lineRef={chapterLine}
           pose={setupStep === 1 ? "playful" : setupStep === 3 ? "happy" : "neutral"}
           replies={
@@ -639,6 +708,7 @@ export function FoundingScreen({
         data-scene-arrival={enteringScene || undefined}
         data-title={showTitle || undefined}
         data-prelude={prelude || undefined}
+        data-conversation={(!prelude && setupStep === 0) || undefined}
         data-title-fading={fading || undefined}
         data-mari-turning={turning || undefined}
         aria-busy={fading || turning || undefined}
@@ -722,12 +792,34 @@ export function FoundingScreen({
             </footer>
           </FoundingDialog>
         ) : null}
+        {phone && chooseConnections ? (
+          <FoundingDialog
+            title="Choose your models"
+            onClose={() => setSetupWorkspace((workspace) => ({ ...workspace, settingIntroPending: true }))}
+          >
+            {connectionPrompt}
+          </FoundingDialog>
+        ) : null}
+        {phone && setupStep === 0 && settingEditorOpen && !prelude ? (
+          <FoundingDialog
+            title="Your setting"
+            onClose={() => setSettingEditorOpen(false)}
+            dismissible={!busy}
+            showCloseButton={!busy}
+          >
+            {hasSettingDraft ? <p>Mari’s draft is ready to edit.</p> : null}
+            {settingFields}
+            <footer>{nextReply}</footer>
+          </FoundingDialog>
+        ) : null}
         <FoundingChapter
           step={setupStep}
           bodyRef={bodyRef}
           guide={guide}
           mobileScene={mobileScene}
-          mobileMenuRef={setupStep === 3 ? null : chapterTitle}
+          mobileTitle={phone && chapterMenu ? SETUP_STEPS[setupStep] : undefined}
+          canCloseMenu={canCloseChapterMenu}
+          onCloseMenu={closeChapterMenu}
         >
           <div hidden={setupStep !== 1}>
             <div className="villages-forging-columns villages-people-columns">
@@ -800,9 +892,9 @@ export function FoundingScreen({
             hidden={setupStep !== 0}
             className="villages-place-panels"
             data-editing={settingEditorOpen || undefined}
-            data-intro={(beat !== "village" && !manualSetting) || undefined}
+            data-intro={(!manualSetting && (beat !== "village" || !settingEditorOpen)) || undefined}
           >
-            {setupStep === 0 && (!phone || !settingEditorOpen) ? (
+            {setupStep === 0 ? (
               <FoundingSettingScene
                 controller={controller}
                 connectionProblem={connections.setupProblem}
@@ -818,92 +910,15 @@ export function FoundingScreen({
                 next={nextReply}
               />
             ) : null}
-            <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
-              <h2 tabIndex={-1} ref={settingTitle}>
-                Your setting
-              </h2>
-              {phone && hasSettingDraft ? <p>Mari’s draft is ready to edit.</p> : null}
-              <FoundingField
-                title="Village name"
-                error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
-              >
-                <input
-                  autoComplete="off"
-                  aria-label="Village Name"
-                  maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
-                  value={setupName}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setSetupName(event.target.value);
-                    clearFieldValidation("place-name");
-                  }}
-                />
-              </FoundingField>
-              <FoundingField
-                title="First map name"
-                error={
-                  validatedFields.includes("location-name") && !setupLocationName.trim()
-                    ? PLACE_ERRORS.locationName
-                    : ""
-                }
-              >
-                <input
-                  autoComplete="off"
-                  placeholder="e.g. The market district"
-                  maxLength={80}
-                  value={setupLocationName}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setSetupLocationName(event.target.value);
-                    clearFieldValidation("location-name");
-                  }}
-                />
-              </FoundingField>
-              <FoundingField
-                title="What’s the first map area like?"
-                error={validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""}
-              >
-                <textarea
-                  autoComplete="off"
-                  aria-label="Location description"
-                  maxLength={snapshot?.settings.settingMaxLength ?? 4096}
-                  rows={3}
-                  value={setupSetting}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setSetupSetting(event.target.value);
-                    clearFieldValidation("place-setting");
-                  }}
-                />
-              </FoundingField>
-              {phone ? (
-                <div className="villages-founding-menu-actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (manualSetting) {
-                        setSetupWorkspace((workspace) => ({
-                          ...workspace,
-                          settingBeat: "welcome",
-                          settingManual: undefined,
-                          settingEditorOpen: false,
-                        }));
-                      } else setSettingEditorOpen(false);
-                      bodyRef.current?.scrollTo({ top: 0 });
-                      requestAnimationFrame(() => {
-                        if (manualSetting)
-                          bodyRef.current?.querySelector<HTMLButtonElement>(".villages-setting-guide button")?.focus();
-                      });
-                    }}
-                  >
-                    Back
-                  </button>
-                  {nextReply}
-                </div>
-              ) : beat === "village" ? (
-                <div className="villages-forging-actions">{nextReply}</div>
-              ) : null}
-            </section>
+            {!phone ? (
+              <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
+                <h2 tabIndex={-1} ref={settingTitle}>
+                  Your setting
+                </h2>
+                {settingFields}
+                {beat === "village" ? <div className="villages-forging-actions">{nextReply}</div> : null}
+              </section>
+            ) : null}
           </div>
           {setupStep === 2 ? (
             <div className="villages-founding-places">
@@ -1024,9 +1039,7 @@ export function FoundingScreen({
           ) : null}
           {setupStep === 3 ? (
             <>
-              <h2 tabIndex={-1} ref={chapterTitle}>
-                Review {setupName}
-              </h2>
+              {!phone ? <h2>Review {setupName}</h2> : null}
               <div className="villages-forging-columns">
                 <div>
                   <section className="villages-forging-card">
@@ -1198,11 +1211,7 @@ export function FoundingScreen({
           {settingsError ? <p role="alert">{settingsError}</p> : null}
           {phone && chapterMenu ? (
             <div className="villages-founding-menu-actions">
-              <button
-                type="button"
-                disabled={busy || spriteBusy || setupEditorOpen}
-                onClick={() => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }))}
-              >
+              <button type="button" disabled={!canCloseChapterMenu} onClick={closeChapterMenu}>
                 Back
               </button>
               {nextReply}

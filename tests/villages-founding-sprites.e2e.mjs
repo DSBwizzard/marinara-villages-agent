@@ -161,7 +161,7 @@ await withBrowser(browser, async () => {
       const phone = viewport.width <= 727;
       const root = page.locator(".villages-forging-v2"),
         next = root.getByRole("button", { name: phone ? "Next" : "Let’s set up their homes", exact: true });
-      for (const reply of ["START", "Next", "Set it up myself"])
+      for (const reply of ["START", "Next", "Next", "Next", "Next", "Set it up myself"])
         await root.getByRole("button", { name: reply, exact: true }).click();
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
       await root.getByLabel("First map name", { exact: true }).fill("Harbour");

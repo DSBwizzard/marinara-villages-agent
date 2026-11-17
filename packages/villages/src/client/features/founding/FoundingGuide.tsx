@@ -19,12 +19,14 @@ export function FoundingGuide({
   pose = "neutral",
   replies,
   scene = false,
+  inactive = false,
   lineRef,
 }: {
   children: string;
   pose?: Parameters<typeof foundingMariSprite>[0];
   replies?: ReactNode;
   scene?: boolean;
+  inactive?: boolean;
   lineRef?: Ref<HTMLParagraphElement>;
 }) {
   const sprite = <img src={foundingMariSprite(pose)} alt="" />;
@@ -32,6 +34,8 @@ export function FoundingGuide({
     <aside
       className={scene ? "villages-setting-guide villages-chapter-guide" : "villages-founding-guide"}
       aria-label="Professor Mari"
+      aria-hidden={inactive || undefined}
+      inert={inactive || undefined}
     >
       {scene ? (
         <div className="villages-setting-stage" aria-hidden="true">

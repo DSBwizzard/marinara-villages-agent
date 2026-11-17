@@ -59,12 +59,14 @@ export function ModalDialog({
       aria-label={headerContent || headerless ? title : undefined}
       onKeyDown={(event) => {
         if (!scope || event.key !== "Escape" || event.defaultPrevented) return;
+        if (event.target instanceof Element && event.target.closest("dialog") !== event.currentTarget) return;
         event.preventDefault();
         event.stopPropagation();
         if (dismissible) onClose();
       }}
       onCancel={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         if (dismissible) onClose();
       }}
       onClick={(event) => {

@@ -379,7 +379,7 @@ export function VillageLorebookPicker({
   onChange,
   disabled,
   triggerLabel,
-  inline = false,
+  budget,
 }: {
   books: VillageLorebookOption[] | null;
   error: string;
@@ -387,10 +387,11 @@ export function VillageLorebookPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
   triggerLabel?: string;
-  inline?: boolean;
+  budget?: Parameters<typeof LoreTokenBudgetField>[0];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
+  const [pendingBudget, setPendingBudget] = useState<number>();
   const [baseSelection, setBaseSelection] = useState<string[]>([]);
   const active = open ? pending : selected;
   const stale =
@@ -419,7 +420,6 @@ export function VillageLorebookPicker({
         className="villages-lorebook-search"
         value={query}
         onKeyDown={(event) => {
-          if (inline && event.key === "Enter") event.preventDefault();
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
@@ -456,11 +456,7 @@ export function VillageLorebookPicker({
                   (!book.enabled && !checked && !selected.includes(book.id)) ||
                   (!checked && active.length >= 24)
                 }
-                onChange={() => {
-                  const next = checked ? active.filter((id) => id !== book.id) : [...active, book.id];
-                  if (inline) onChange(next);
-                  else setPending(next);
-                }}
+                onChange={() => setPending(checked ? active.filter((id) => id !== book.id) : [...active, book.id])}
               />
               <span>
                 {book.name}
@@ -478,7 +474,6 @@ export function VillageLorebookPicker({
       </div>
     </>
   );
-  if (inline) return choices;
   return (
     <section
       className={
@@ -506,6 +501,7 @@ export function VillageLorebookPicker({
           disabled={disabled}
           onClick={() => {
             setQuery("");
+            setPendingBudget(undefined);
             setPending([...selected]);
             setBaseSelection([...selected]);
             setOpen(true);
@@ -548,6 +544,9 @@ export function VillageLorebookPicker({
       {open ? (
         <FoundingDialog title="Choose Lorebooks" scrollBody onClose={() => setOpen(false)}>
           {choices}
+          {budget && active.length ? (
+            <LoreTokenBudgetField {...budget} value={pendingBudget ?? budget.value} onChange={setPendingBudget} />
+          ) : null}
           <footer className="villages-lorebook-footer">
             <span aria-live="polite">{active.length} / 24</span>
             <button
@@ -556,6 +555,7 @@ export function VillageLorebookPicker({
               disabled={disabled || stale}
               onClick={() => {
                 if (disabled || stale) return;
+                if (budget && pending.length && pendingBudget !== undefined) budget.onChange(pendingBudget);
                 onChange(pending);
                 setOpen(false);
               }}
