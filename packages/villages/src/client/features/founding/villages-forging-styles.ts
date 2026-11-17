@@ -582,6 +582,15 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-steps li[aria-current=step] { color:#fff0c3; }
 .villages-forging-steps li[aria-current=step] .villages-founding-star { font-size:1.35rem; text-shadow:0 0 .55rem #ffc982; }
 .villages-founding-step-label { position:absolute; top:1.4rem; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:.77rem; }
+.villages-founding-hierarchy { display:block; width:min(100%,14rem); height:auto; margin:.45rem auto; background:#302d47; border-radius:.45rem; }
+.villages-founding-hierarchy text { fill:#f0dfbc; font-size:12px; }
+.villages-founding-hierarchy-links { fill:none; stroke:#d8a7b880; }
+.villages-founding-hierarchy-links [data-highlighted] { stroke:#eed1a8; }
+.villages-founding-hierarchy-star circle { fill:#362a46; }
+.villages-founding-hierarchy-star path { fill:#d4b0c7; }
+.villages-founding-hierarchy [data-ancestor] .villages-founding-hierarchy-star path { fill:#eed1a8; }
+.villages-founding-hierarchy [data-active] :is(text,.villages-founding-hierarchy-star path) { fill:#fff0c3; }
+.villages-founding-hierarchy [data-active] .villages-founding-hierarchy-star path { filter:drop-shadow(0 0 3px #ffc982); }
 .villages-founding-guide { display:flex; align-items:center; gap:.55rem; margin:.55rem 0; flex:none; }
 .villages-founding-guide img { flex:none; width:2rem; height:3rem; object-fit:contain; object-position:center top; }
 .villages-forging-v2 .villages-founding-guide .villages-setting-dialogue { max-width:48rem; padding:.55rem .8rem; }
@@ -608,6 +617,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-setting-dialogue { position:relative; min-width:0; }
 .villages-setting-dialogue>strong { color:#efb6bc; font-size:.85rem; }
 .villages-setting-dialogue p { margin:.2rem 0 .35rem; line-height:1.4; }
+.villages-setting-line { white-space:pre-line; }
 .villages-setting-dialogue form { margin-top:.7rem; border-top:1px solid #ad839b62; }
 .villages-setting-dialogue .villages-founding-field { margin:.5rem 0; }
 .villages-setting-lore-notice { color:#e8b9c2; font-size:.85rem; }

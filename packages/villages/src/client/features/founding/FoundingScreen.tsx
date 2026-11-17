@@ -900,6 +900,8 @@ export function FoundingScreen({
                   </button>
                   {nextReply}
                 </div>
+              ) : beat === "village" ? (
+                <div className="villages-forging-actions">{nextReply}</div>
               ) : null}
             </section>
           </div>

@@ -603,6 +603,29 @@ export async function verifyFoundingLayout(group) {
         }
         await button("Draft with Mari").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
+        const hierarchy = root.getByRole("img", { name: /^World, Village, Map, Venue, Zone/ });
+        const layer = async (name) => {
+          await expect(hierarchy).toHaveAccessibleName(`World, Village, Map, Venue, Zone. Current layer: ${name}`);
+          await expect(hierarchy.locator("[data-active] text")).toHaveText(name);
+        };
+        await layer("World");
+        if (phone) {
+          const relay = root.getByRole("checkbox", { name: "Relay Belt" });
+          await expect(relay).toBeVisible();
+          if (draftWithLore) {
+            await root.getByRole("searchbox", { name: "Search Lorebooks" }).press("Enter");
+            await relay.check();
+          }
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-lorebooks.png") });
+          await button("Next").click();
+        } else if (draftWithLore) {
+          await button("Choose lorebooks").click();
+          const picker = page.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
+          await picker.getByRole("checkbox", { name: "Relay Belt" }).check();
+          await picker.getByRole("button", { name: "Done", exact: true }).click();
+        } else await button("Skip for now").click();
+        await layer("World");
         const worldField = root.getByLabel(phone ? "World description" : "The larger world");
         if (phone) {
           await expect(scene).toHaveCount(0);
@@ -627,29 +650,15 @@ export async function verifyFoundingLayout(group) {
           await expect(currentStar).toHaveAttribute("aria-label", "Setting");
           await expect(worldField).toHaveValue(worldBrief);
         }
-        await forward(draftWithLore ? "Use this world" : "I only know the village so far").click();
-        await expect(currentStar).toHaveAttribute("aria-label", "Setting");
-        if (phone) {
-          const relay = root.getByRole("checkbox", { name: "Relay Belt" });
-          await expect(relay).toBeVisible();
-          if (draftWithLore) {
-            await root.getByRole("searchbox", { name: "Search Lorebooks" }).press("Enter");
-            await relay.check();
-            await button("Back").click();
-            await expect(worldField).toHaveValue(worldBrief);
-            await button("Next").click();
-            await expect(relay).toBeChecked();
-          }
-          if (process.env.VILLAGES_SCREENSHOT_DIR)
-            await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-lorebooks.png") });
-          await button("Next").click();
-        } else if (draftWithLore) {
-          await button("Choose lorebooks").click();
-          const picker = page.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
-          await picker.getByRole("checkbox", { name: "Relay Belt" }).check();
-          await picker.getByRole("button", { name: "Done", exact: true }).click();
-          await expect(scene).toContainText("1 lorebook selected for drafting");
-        } else await button("Skip for now").click();
+        await forward(draftWithLore ? "Use this world" : "Skip world description").click();
+        await layer("Village");
+        await expect(villageName).toBeHidden();
+        await button("Next").click();
+        await layer("Map");
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `founding-hierarchy-${view.width}.png`),
+          });
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
         const returnToBrief = async () => {
@@ -680,8 +689,7 @@ export async function verifyFoundingLayout(group) {
             await expect(root).not.toHaveAttribute("data-founding-keyboard", "true");
           }
           if (!draftWithLore) {
-            for (let beat = 0; beat < 3; beat++) await button("Back").click();
-            await button("Set it up myself").click();
+            await button("Enter my setting").click();
             await expect(settingPanel.getByRole("heading")).toBeFocused();
             await villageName.fill("Coastal Community");
           }
@@ -696,7 +704,7 @@ export async function verifyFoundingLayout(group) {
         if (draftWithLore) {
           const originalStage = phone ? null : await stage.boundingBox();
           await villageBrief.fill("Our village is a converted cargo ship.");
-          await forward("Draft with Mari").click();
+          await button("Draft with Mari").click();
           await expect(scene).toContainText("I’ll replace what’s in your setting");
           assert.equal(settingCalls, 0, "Mari asks before sending a replacement request");
           await button("Keep my setting").click();
@@ -705,7 +713,7 @@ export async function verifyFoundingLayout(group) {
           await expect(villageName).toHaveValue("Coastal Community");
           assert.equal(settingCalls, 0, "Keeping the setting does not send a request");
           await returnToBrief();
-          await forward("Draft with Mari").click();
+          await button("Draft with Mari").click();
           await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(1);
           if (!phone) await mapName.fill("");
@@ -725,7 +733,7 @@ export async function verifyFoundingLayout(group) {
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
           await returnToBrief();
           await villageBrief.fill("Our village is inside a dumpster.");
-          await forward("Draft again with Mari").click();
+          await button("Draft again with Mari").click();
           await expect(scene).toContainText("I’ll replace what’s in your setting");
           await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(2);
@@ -746,11 +754,11 @@ export async function verifyFoundingLayout(group) {
           await expect(mapDescription).toHaveValue("Lanterns hang from the lip of the bin. ".repeat(90));
           if (phone) {
             await returnToBrief();
-            await button("Back").click();
+            for (let beat = 0; beat < 3; beat++) await button("Back").click();
             await expect(root.getByRole("checkbox", { name: "Relay Belt" })).toBeChecked();
-            await button("Next").click();
+            for (let beat = 0; beat < 3; beat++) await button("Next").click();
             await expect(villageBrief).toHaveValue("Our village is inside a dumpster.");
-            await button("Next").click();
+            await button("Draft again with Mari").click();
             await button("Keep my setting").click();
             await expect(settingPanel.getByRole("heading")).toBeFocused();
             assert.equal(settingCalls, 2, "Reviewing the existing setting need not run another draft");
@@ -781,12 +789,6 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("First day", { exact: true })).toHaveCount(0);
         await bounds("setting");
         await settingNext().click();
-        if (phone && !draftWithLore) {
-          await expect(root.getByLabel("World rules", { exact: true })).toHaveValue("The sun never sets.");
-          await button("Next").click();
-          await expect(root.getByRole("heading", { name: "Lorebooks", exact: true })).toBeVisible();
-          await button("Next").click();
-        }
         await expect(root).toHaveAttribute("data-step", "1");
         await enterChapter();
         if (view.width === 390 && view.height === 844) {

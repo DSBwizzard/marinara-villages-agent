@@ -7,7 +7,7 @@ export type FoundingWorkspaceState = {
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   settingBrief?: string;
-  settingBeat?: "welcome" | "world" | "lorebooks" | "village";
+  settingBeat?: "welcome" | "world" | "lorebooks" | "village-overview" | "village";
   settingManual?: true;
   settingIntroPending?: true | "connections";
   settingWorldBrief?: string;

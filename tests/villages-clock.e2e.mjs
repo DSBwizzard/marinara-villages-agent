@@ -133,6 +133,7 @@ await withBrowser(browser, async () => {
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
       await scene.getByRole("button", { name: "Draft with Mari", exact: true }).click();
+      await scene.getByRole("button", { name: width === 390 ? "Next" : "Skip for now", exact: true }).click();
       const world = scene.getByLabel(width === 390 ? "World description" : "The larger world");
       await world.fill("A string of settlements along the coast");
       await page.clock.fastForward(3000);

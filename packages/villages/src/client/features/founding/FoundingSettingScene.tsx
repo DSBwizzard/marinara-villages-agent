@@ -2,6 +2,7 @@ import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingSpeaker, foundingMariSprite } from "./FoundingGuide.js";
+import { FoundingHierarchy } from "./FoundingHierarchy.js";
 import { LoreTokenBudgetField, VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
@@ -69,7 +70,11 @@ export function FoundingSettingScene({
       mobileMenu: undefined,
     }));
     onBeatChange();
-    if (!openEditor || !phone) requestAnimationFrame(() => lineRef.current?.focus());
+    if (!openEditor || !phone)
+      requestAnimationFrame(() => {
+        lineRef.current?.parentElement?.scrollTo({ top: 0 });
+        lineRef.current?.focus({ preventScroll: true });
+      });
   };
   const request = setupWorkspace.suggestionRequest;
   const pending = request && !request.failure;
@@ -81,10 +86,21 @@ export function FoundingSettingScene({
   const brief = setupWorkspace.settingBrief ?? "";
   const world = setupWorkspace.settingWorldBrief ?? "";
   const pickedBooks = controller.setupLorebookDraft.length;
+  const previousWorld = manual ? "manual" : "lorebooks";
+  const firstLayer = !manual && beat === "lorebooks";
+  const nextPrompt = { lorebooks: "world", world: "village-overview", "village-overview": "village" } as const;
+  const hierarchy =
+    !manual && beat !== "welcome" && beat !== "manual" ? (
+      <>
+        {firstLayer ? <p>Villages contain five layers.</p> : null}
+        <FoundingHierarchy current={beat === "village-overview" ? "Village" : beat === "village" ? "Map" : "World"} />
+      </>
+    ) : null;
   const mobilePrompt =
     phone &&
     (beat === "world" ||
       beat === "lorebooks" ||
+      beat === "village-overview" ||
       (beat === "village" && !confirmReplace && !waitingForMari && !setupSuggestionsBusy))
       ? beat
       : undefined;
@@ -100,13 +116,16 @@ export function FoundingSettingScene({
     (!pending || waitingForMari);
   const dialogue = {
     welcome: phone
-      ? "Oh, hey! I’m Mari. In Villages, you make a life with a community. A ship’s crew counts. So does one alarmingly dramatic apartment building. Want to draft together?"
-      : "Oh, hey! I’m Mari. In Villages, you make a life with a community. A ship’s crew counts. So does one alarmingly dramatic apartment building. Want to draft a village with me, or set it up yourself?",
+      ? "Oh, hey! Welcome to Villages. Make a life with a community in a city, a kingdom, a spaceship, or even one alarmingly dramatic apartment building. Would you like my help setting up, or do you want to dive in on your own?"
+      : "Oh, hey! Welcome to Villages.\n\nVillages is a social game where you make a life with a community. The Village itself can be a city, a kingdom, a spaceship, or even one alarmingly dramatic apartment building.\n\nBefore you begin, we need to set up the Village. Would you like my help, or do you want to dive in on your own?",
     manual: manualSettingLine,
     world:
-      "Knowing what’s beyond the village helps me draft a home that fits. A stop on a busy trade route feels different from an outpost on an isolated moon. What’s the wider world like? A sentence will do. If you’re still figuring it out, we can skip ahead.",
-    lorebooks:
-      "Lorebooks can fill in details for the draft, like local customs or who already lives there. Do you have any you’d like me to read? Homework is optional, I promise.",
+      "What’s the wider world like? A sentence will do. Defining a broader World is optional, just like paying attention in your high school history class.",
+    lorebooks: manual
+      ? "Do you have any lorebooks you’d like to use for the World, the Village, or the people who live there?"
+      : "The first layer is the World, where your Village takes place. You can leave it undefined or use it to ground the Village in an established universe.\n\nSpeaking of lore, you can share Lorebooks to fill in details for the drafts we make, like the greater World, local customs, or who already lives there. Do you have any you’d like Villages to use?",
+    "village-overview":
+      "The next layer is the Village itself. This is the big picture, your playable game space as a whole. You generally won’t interact directly with this layer or the World above it.",
     village: confirmReplace
       ? "Hang on, there’s already something here. If I draft it again, I’ll replace what’s in your setting for the village and its first map. Want me to go ahead?"
       : setupSuggestionsBusy && waitingForMari
@@ -115,7 +134,7 @@ export function FoundingSettingScene({
           ? "I still have your draft request. Want me to check on it?"
           : drafted
             ? "There’s your draft. Go ahead and meddle with the name, starting location, or description. That’s the fun bit."
-            : "This is where your story starts. A few details about everyday life will help me draft a name, a starting location, and a description. Where do these people call home, and what’s it like there? Give me the messy version.",
+            : "You’ll interact with the Village through its Maps. A Map is the playing area you use to visit places and do things with your community.\n\nEach Map covers one locale. It could be a city block seen from above, the inside of a cruise ship, a forest glade, or an entire planet. A Village can have multiple Maps.\n\nGive me a name for the Village as a whole, and choose what you want your first Map to be!",
   }[beat];
   const submitBrief = () => {
     if (!canDraft) return;
@@ -221,16 +240,18 @@ export function FoundingSettingScene({
       </button>
     ) : null;
   if (mobilePrompt) {
-    const title = { world: "The wider world", lorebooks: "Lorebooks", village: "Tell Mari about your village" }[
-      mobilePrompt
-    ];
-    const context = {
-      world:
-        "What’s beyond your village? A busy trade route makes for a different home than a lonely moon. A line is plenty, or leave it blank.",
-      lorebooks: "Pick any lorebooks that help me picture life there. Homework is optional, I promise.",
-      village:
-        "Where do your people live, and which part should we map first? If you give me a whole city, I can pick a district. Next, I’ll draft from your notes and the lorebooks you picked.",
+    const title = {
+      world: "The wider world",
+      lorebooks: "Lorebooks",
+      "village-overview": "The Village",
+      village: "Your first Map",
     }[mobilePrompt];
+    const back = {
+      world: previousWorld,
+      lorebooks: manual ? "world" : "welcome",
+      "village-overview": "world",
+      village: "village-overview",
+    } as const;
     return (
       <form
         className="villages-founding-mobile-menu villages-forging-card"
@@ -238,16 +259,16 @@ export function FoundingSettingScene({
         autoComplete="off"
         onSubmit={(event) => {
           event.preventDefault();
-          if (mobilePrompt === "world") moveTo("lorebooks");
-          else if (mobilePrompt === "lorebooks" && !manual) moveTo("village");
-          else if (mobilePrompt === "lorebooks") return;
-          else submitBrief();
+          if (mobilePrompt === "village") submitBrief();
+          else if (mobilePrompt === "world" && manual) moveTo("lorebooks");
+          else if (mobilePrompt !== "lorebooks" || !manual) moveTo(nextPrompt[mobilePrompt]);
         }}
       >
         <h2 id="founding-prompt-title" tabIndex={-1} ref={promptTitle}>
           {title}
         </h2>
-        <p>{context}</p>
+        {hierarchy}
+        <p className="villages-setting-line">{dialogue}</p>
         {mobilePrompt === "world" ? (
           worldField
         ) : mobilePrompt === "lorebooks" ? (
@@ -262,7 +283,7 @@ export function FoundingSettingScene({
             />
             {loreBudget}
           </>
-        ) : (
+        ) : mobilePrompt === "village" ? (
           <>
             {briefField}
             {loreNotice}
@@ -272,39 +293,26 @@ export function FoundingSettingScene({
                 Model Connections
               </button>
             ) : null}
-            {error ? (
-              <button type="button" onClick={onEditSetting}>
-                Edit setting
-              </button>
-            ) : null}
           </>
-        )}
+        ) : null}
         <div className="villages-founding-menu-actions">
-          <button
-            type="button"
-            onClick={() =>
-              moveTo(
-                mobilePrompt === "world"
-                  ? manual
-                    ? "manual"
-                    : "welcome"
-                  : mobilePrompt === "lorebooks"
-                    ? "world"
-                    : "lorebooks",
-              )
-            }
-          >
+          <button type="button" onClick={() => moveTo(back[mobilePrompt])}>
             Back
           </button>
+          {mobilePrompt === "village" ? (
+            <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
+              Enter my setting
+            </button>
+          ) : null}
           {mobilePrompt === "lorebooks" && manual ? (
             next
           ) : (
             <button
               type="submit"
-              className="villages-forging-primary"
+              className={mobilePrompt === "village" ? undefined : "villages-forging-primary"}
               disabled={mobilePrompt === "village" && !canDraft}
             >
-              Next
+              {mobilePrompt === "village" ? (drafted ? "Draft again with Mari" : "Draft with Mari") : "Next"}
             </button>
           )}
         </div>
@@ -320,12 +328,13 @@ export function FoundingSettingScene({
       {title}
       <div className="villages-setting-dialogue" hidden={!!title}>
         <FoundingSpeaker pose={pose} />
-        <p aria-live="polite" tabIndex={-1} ref={lineRef}>
+        {hierarchy}
+        <p className="villages-setting-line" aria-live="polite" tabIndex={-1} ref={lineRef}>
           {dialogue}
         </p>
         {beat === "welcome" ? (
           <div className="villages-founding-replies">
-            <button type="button" className="villages-forging-primary" onClick={() => moveTo("world")}>
+            <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
               Draft with Mari
             </button>
             <button type="button" onClick={() => moveTo("manual")}>
@@ -345,11 +354,15 @@ export function FoundingSettingScene({
           <>
             {worldField}
             <div className="villages-founding-replies">
-              <button type="button" onClick={() => moveTo(manual ? "manual" : "welcome")}>
+              <button type="button" onClick={() => moveTo(previousWorld)}>
                 Back
               </button>
-              <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
-                {manual ? "Next" : world.trim() ? "Use this world" : "I only know the village so far"}
+              <button
+                type="button"
+                className="villages-forging-primary"
+                onClick={() => moveTo(manual ? "lorebooks" : "village-overview")}
+              >
+                {manual ? "Next" : world.trim() ? "Use this world" : "Skip world description"}
               </button>
             </div>
           </>
@@ -358,7 +371,7 @@ export function FoundingSettingScene({
           <>
             {loreBudget}
             <div className="villages-founding-replies">
-              <button type="button" onClick={() => moveTo("world")}>
+              <button type="button" onClick={() => moveTo(manual ? "world" : "welcome")}>
                 Back
               </button>
               <VillageLorebookPicker
@@ -367,7 +380,7 @@ export function FoundingSettingScene({
                 selected={controller.setupLorebookDraft}
                 onChange={(ids) => {
                   controller.setSetupLorebookDraft(ids);
-                  if (!manual) moveTo("village");
+                  if (!manual) moveTo("world");
                 }}
                 disabled={controller.busy || setupSuggestionsBusy}
                 triggerLabel={pickedBooks ? "Change lorebooks" : "Choose lorebooks"}
@@ -375,12 +388,22 @@ export function FoundingSettingScene({
               {manual ? (
                 next
               ) : (
-                <button type="button" onClick={() => moveTo("village")}>
+                <button type="button" onClick={() => moveTo("world")}>
                   {pickedBooks > 0 ? "Keep selected lorebooks" : "Skip for now"}
                 </button>
               )}
             </div>
           </>
+        ) : null}
+        {beat === "village-overview" ? (
+          <div className="villages-founding-replies">
+            <button type="button" onClick={() => moveTo("world")}>
+              Back
+            </button>
+            <button type="button" className="villages-forging-primary" onClick={() => moveTo("village")}>
+              Next
+            </button>
+          </div>
         ) : null}
         {beat === "village" && confirmReplace ? (
           <div className="villages-founding-replies">
@@ -442,7 +465,7 @@ export function FoundingSettingScene({
               <button
                 type="button"
                 disabled={!!waitingForMari || setupSuggestionsBusy}
-                onClick={() => moveTo("lorebooks")}
+                onClick={() => moveTo("village-overview")}
               >
                 Back
               </button>
@@ -461,7 +484,6 @@ export function FoundingSettingScene({
                 </button>
               ) : null}
               {dismiss}
-              {next}
             </div>
           </form>
         ) : null}
