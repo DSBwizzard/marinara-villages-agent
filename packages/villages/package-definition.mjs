@@ -20,7 +20,7 @@ const sceneSprite = "npc-silhouette.webp";
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.8.4",
+  version: "0.8.5",
   minEngineVersion: "2.5.2",
   maxEngineExclusive: "4.0.0",
   name: "Villages",
