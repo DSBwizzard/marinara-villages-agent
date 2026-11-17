@@ -37,7 +37,7 @@ const prompt = await currentScenePrompt(
   "I have abdicated.",
 );
 assert.equal(scenePromptPacket(prompt, "player").startingBackground, state.playerBackground);
-assert.match(prompt, /Player backstory and private context are GM-only/u);
+assert.match(prompt, /Player backstory and private facts are GM-only until learned/u);
 assert.match(prompt, /Verified facts supersede older accounts/u);
 console.log(
   "Player background: bounded prose, current-state precedence and independent gameplay responsibilities passed.",

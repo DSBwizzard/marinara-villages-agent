@@ -372,9 +372,10 @@ await runCase("narration-writing/single-request", async () => {
   const cut = messages.findIndex((row) => row.cacheBreakpoint);
   assert(cut >= 0 && cut < messages.indexOf(frame));
   assert.equal(messages[cut].role, "user");
-  assert.match(messages[cut].content, /Omit delivery and targetId for ordinary speech/u);
+  assert.match(messages[cut].content, /Local speech by default/u);
+  assert.match(messages[cut].content, /delivery:"whisper" with targetId or delivery:"shout" to connected Zones/u);
   assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
-  assert.match(system, /A direct answer can be one line/u);
+  assert.match(system, /Answer addressed hearers; one line can suffice/u);
   const identity = messages.slice(0, cut).find((row) => row.content.includes("AUTHORED IDENTITY"));
   assert(identity);
   const facts = JSON.parse(identity.content.split("\n").find((line: string) => line.startsWith('{"player":'))!);
@@ -390,16 +391,13 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
   assert.deepEqual(f.formats, [{ type: "json_object" }]);
-  const example = f
-    .messages()
-    .map((row) => row.content)
-    .join("\n")
-    .match(/Example: (\{"segments":\[.*?\]\})\./u);
+  const example = messages[cut].content.match(/(\{"segments":\[.*?\]\})/u);
   assert(example, "The model receives a Scene response example");
   assert.deepEqual(
     readNarrationReply(JSON.parse(example[1]), ["resident-id"]).segments.map(({ kind }) => kind),
-    ["narration", "dialogue"],
+    ["dialogue"],
   );
+  assert.match(messages[cut].content, /Narration: \{kind:"narration",text\}/u);
 
   const deepSeek = fixture(undefined, "deepseek-flash");
   const exact = input + "\n## Scene reply reminder\nThis line is part of the player's input.";
@@ -437,7 +435,7 @@ await runCase("narration-writing/single-request", async () => {
     "chat",
   );
   const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
-  assert.match(casualPrompt, /Use keep only for requested memories or lasting changes/u);
+  assert.match(casualPrompt, /Requested memory or lasting change: keep:\[/u);
   assert.match(casualPrompt, /offer:\{proposer,participants\}/u);
   assert.match(casualPrompt, /act:"offer"/u);
   assert.doesNotMatch(

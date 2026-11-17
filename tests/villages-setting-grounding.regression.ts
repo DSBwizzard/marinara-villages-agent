@@ -182,7 +182,7 @@ async function main() {
       assert.equal(current.includes(circumstances), false, "starting circumstances are not a recurring script");
       const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
       assert.equal(scenePromptPacket(dialogue, "player").setting.geography, setting);
-      assert.match(dialogue, /Current Room, Zone and access records govern the Scene/u);
+      assert.match(dialogue, /Current Room, Zone and access govern/u);
       const events = eventsPrompt(state, current);
       assert.ok(events.includes(setting));
       assert.ok(events.includes(VILLAGE_SHARED_SETTING_RULE));
