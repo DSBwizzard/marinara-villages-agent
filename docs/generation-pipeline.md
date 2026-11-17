@@ -40,9 +40,9 @@ Unsupported saved formats fail without conversion. Deterministic navigation and 
 
 ## Scene outcome boundaries
 
-Cards and lore establish identity and abilities, not authority over time, attendance, access or construction. The GM can return a native halt with a short explanation and source references, including an exact unspoken input excerpt as context. The original input and response remain held for recovery; no assistant fiction, common meaning, native change or accepted Episode is published.
+Cards and lore establish identity and abilities, not authority over time, attendance, access or construction. The Scene GM first tries to continue in character. If an unsupported outcome cannot be avoided while preserving what the player explicitly declared, the GM can return a halt reason and source references, including an exact unspoken input excerpt. The original input and response remain held for recovery; no assistant fiction, common meaning, native change or accepted Episode is published.
 
-Before showing that explanation, code checks fresh identities, protection and provenance, then binds every cited halt source. Invalid citations and an in-flight Correct or Forget remain validation failures without exposing the model explanation. A valid halt uses the existing intentional request-error channel and the existing held-reply lifecycle. Saved replay repeats the explanation without purchasing another response.
+Code checks fresh identities, protection and provenance, then binds every cited halt source. The public notice is fixed text for the validated reason. Saved replies can still contain a legacy message field, which is discarded when interpreting the result. Invalid citations and an in-flight Correct or Forget remain validation failures. A valid halt uses the existing intentional request-error channel and held-reply lifecycle. Saved replay uses the server notice without purchasing another response.
 
 ## Resident access actions
 

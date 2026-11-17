@@ -102,11 +102,13 @@ const reply = z
     commands: z.array(z.unknown()).max(16).optional(),
     halt: z
       .object({
-        reason: z.enum(["time", "activity", "world", "structure", "authority"]),
-        message: z.string().min(1).max(600),
+        reason: z.enum(["time", "activity", "condition", "world", "structure", "authority"]),
+        // Saved replies may still carry the old model-written notice.
+        message: z.string().min(1).max(600).optional(),
         source: sources,
       })
       .strict()
+      .transform(({ reason, source }) => ({ reason, source }))
       .optional(),
   })
   .strict();
@@ -284,7 +286,11 @@ export function readContinuityProposal(raw: unknown) {
   };
 }
 
+const sceneOutcomeDirection =
+  "Preserve the player's intent. Play attempts, threats, quotes, reports, hypotheticals, starting to rest, ordinary refusals, and plausible local damage naturally. Never make completed death, resurrection or permanent incapacity of the player or established residents, time travel, shared-clock changes, large time skips, or destruction of the playable Village true in the ongoing story or simulation. Revise unsupported outcomes you introduced. HALT only if no natural continuation can preserve the player's explicit meaning within the game's rules. Return segments:[] and halt:{reason,source} with no effects. Choose time, activity, condition, world, structure, or authority. Cite the exact relevant input or supplied evidence. ";
+
 const sceneTurnDirection =
+  sceneOutcomeDirection +
   "Let each resident's authored voice shape their vocabulary, cadence, formality, and interruptions. Let residents pursue their own aims, disagree, or deflect when it fits. Let awkwardness and tension stand when the exchange has yet to resolve them. Let warmth and reconciliation reflect the characters' relationships and what happens in the Scene. " +
   "Continue from the latest beat. Avoid echoing dialogue or recapping unchanged details unless the player asks or the current beat depends on them. When their motives, commitments, or surroundings give them a reason to act, let residents start or finish a brief action or exchange within their abilities and the Scene's rules. Let quiet moments stay quiet. End when the beat settles or further progress requires the player's own words, action, decision, or consent.";
 
@@ -327,10 +333,10 @@ export const SCENE_NARRATION_FORMAT =
 export const ORDINARY_SCENE_FORMAT =
   'One JSON object: {"segments":[{"kind":"dialogue","speakerId":"resident-id","text":"…"}]}. Copy supplied speaker IDs; leadSpeakerId is context. Narration: {kind:"narration",text}. Local speech by default. Dialogue can use delivery:"whisper" with targetId or delivery:"shout" to connected Zones. Place presentation:"aside" after its main line (max ' +
   MAX_SCENE_ASIDES +
-  "). Omit unused fields. Sources belong on effects. Confirm only with requires:[effect ID]; independent:true only if prose survives rejection. Native changes need game confirmation. halt:{reason,message,source} only for a time/activity/world/structure/authority blocker, without effects.";
+  "). Omit unused fields. Sources belong on effects. Confirm only with requires:[effect ID]; independent:true only if prose survives rejection. Native changes need game confirmation.";
 export const ordinarySceneCitationIds = (positions: boolean) =>
   `Give cited ${positions ? "effects" : "lines and effects"} fresh IDs (start with a letter, up to 48 letters/digits/_/-).`;
 
 export const NARRATION_RESPONSE =
-  "Copy speakerId from the current Scene's dialogueSpeakers or the local key of a supporting character introduced by a command in this reply. Add a keep array or commands array only for a consequential effect. When the action must pause, add halt with reason (time, activity, world, structure, or authority), message, and a source array. A halt may carry clarification prose and has no effects.\n" +
+  "Copy speakerId from the current Scene's dialogueSpeakers or the local key of a supporting character introduced by a command in this reply. Add a keep array or commands array only for a consequential effect.\n" +
   "Give cited segments and effects fresh IDs, starting with a letter and using letters, digits, underscores, or hyphens, up to 48 characters. In a source array, cite a current segment by its exact id or a historical h: alias as a string.";

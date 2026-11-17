@@ -57,6 +57,16 @@ export type NarrationPublication = {
 };
 
 type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
+const haltNotices = {
+  time: "Village time can’t be skipped or rewritten in a Scene. Revise your draft to stay in the current moment.",
+  activity: "This Scene can begin the activity. Revise your draft to play the current moment.",
+  condition:
+    "The Village can’t continue from that permanent change to a character. Revise the outcome or describe what you attempt.",
+  world: "The playable Village must remain intact. Revise the outcome to a local effect or describe what you attempt.",
+  structure: "Structural changes to a Venue need a Project. Revise your draft to describe what you propose or attempt.",
+  authority:
+    "That outcome needs permission or a choice the Scene hasn’t established. Revise your draft as a request or attempt.",
+};
 const abandonmentKey = (publication: SavedNarration) => "narration-abandoned:" + publication.readset.source.episodeId;
 const abandonmentFingerprint = (publication: SavedNarration, submissionId: string) =>
   memoryHash([submissionId, publication.responseDigest, publication.raw, publication.readset]);
@@ -257,7 +267,7 @@ export function acceptNarrationContinuity(
     );
   if (reply.halt) {
     for (const ref of reply.halt.source) bindNarrationSource(ref, source);
-    throw conflict(reply.halt.message);
+    throw conflict("HALT · " + haltNotices[reply.halt.reason]);
   }
   const offeredAnswers = readset.admission.relationshipAnswers;
   const closingEffect = offeredAnswers?.onSceneEnd && native.sceneEffects?.find((effect) => effect.closed)?.effectId;
