@@ -29,6 +29,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "sharp": "0.35.5",
+    "tinyglobby": "file:scripts/lint-project-glob",
     "tsx": "4.23.12",
     "typescript": "5.9.3",
     "typescript-eslint": "8.67.0",
@@ -68,7 +69,8 @@
     }
   },
   "overrides": {
-    "minimatch": "11.0.1"
+    "minimatch": "11.0.1",
+    "tinyglobby": "$tinyglobby"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
