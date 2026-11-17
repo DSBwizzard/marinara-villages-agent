@@ -759,7 +759,12 @@ export async function verifyFoundingLayout(group) {
         await expect(villageName).toBeHidden();
         await nextLine();
         await layer("Map");
-        await expectPose("happy-side");
+        const mapPose = await expectPose("happy-side");
+        await expect(mapPose).toHaveAttribute("data-facing", "left");
+        await expect(mapPose).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
+        const mapPortrait = await mapPose.boundingBox();
+        assert.ok(treeBox.x + treeBox.width <= mapPortrait.x + 0.5, "Mari’s left-facing gesture clears the chart");
+        assert.ok(Math.abs(mapPortrait.y + mapPortrait.height - portraitBox.y - portraitBox.height) < 0.5);
         await expect(line).toHaveText(/^A Map is where we actually play/);
         await expect(villageName).toBeHidden();
         await nextLine();

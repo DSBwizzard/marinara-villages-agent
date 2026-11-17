@@ -628,6 +628,7 @@ export const VILLAGES_FORGING_STYLES = `
   translate:calc(-1 * var(--shoe-center,50%)) 0;
   filter:drop-shadow(0 .15rem .3rem #170f2840);
 }
+.villages-setting-stage img[data-facing=left] { transform:scaleX(-1); }
 .villages-setting-stage [src$="mari-founding-neutral.webp"] { --shoe-center:48.2%; }
 .villages-setting-stage [src$="mari-founding-happy.webp"] { --shoe-center:50.7%; }
 .villages-setting-stage [src$="mari-founding-looking-up.webp"] { --shoe-center:40.6%; }

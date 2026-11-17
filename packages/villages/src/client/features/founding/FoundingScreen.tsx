@@ -235,7 +235,7 @@ export function FoundingScreen({
           : setupStep === 3
             ? "proud"
             : "playful";
-  const mariView = mariPose === "looking-up" || mariPose === "happy-side" ? "side" : "front";
+  const mariFacing = mariPose === "happy-side" ? "left" : mariPose === "looking-up" ? "right" : "front";
   const mariFlipEnabled = snapshot?.settings.spriteCardFlipEnabled !== false;
   useEffect(() => {
     if (!fading && !turning) return;
@@ -741,9 +741,9 @@ export function FoundingScreen({
         <div className="villages-setting-stage" aria-hidden="true">
           <CardFlipSprite
             url={foundingMariSprite(mariPose)}
-            facing={mariView === "side" ? "right" : "front"}
-            mirrored={false}
-            view={mariView}
+            facing={mariFacing}
+            mirrored={mariFacing === "left"}
+            view={mariFacing === "front" ? "front" : "side"}
             framing="full"
             enabled={mariFlipEnabled}
             animate
