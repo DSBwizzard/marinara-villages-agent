@@ -285,6 +285,7 @@ export function readContinuityProposal(raw: unknown) {
 }
 
 const sceneTurnDirection =
+  "Let each resident's authored voice shape their vocabulary, cadence, formality, and interruptions. Let residents pursue their own aims, disagree, or deflect when it fits. Let awkwardness and tension stand when the exchange has yet to resolve them. Let warmth and reconciliation reflect the characters' relationships and what happens in the Scene. " +
   "Continue from the latest beat. Avoid echoing dialogue or recapping unchanged details unless the player asks or the current beat depends on them. When a resident chooses to act, let them follow through within their abilities and the Scene's rules. End when the player has a natural chance to act or speak. A line of dialogue can end the turn. Use a closing description only when it gives the player something new to respond to.";
 
 export const narrationDirection =
