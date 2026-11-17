@@ -12,7 +12,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { startingZone } from "./founding-template.js";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it
@@ -379,6 +379,7 @@ export function VillageLorebookPicker({
   onChange,
   disabled,
   triggerLabel,
+  inline = false,
   budget,
 }: {
   books: VillageLorebookOption[] | null;
@@ -387,12 +388,18 @@ export function VillageLorebookPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
   triggerLabel?: string;
+  inline?: boolean;
   budget?: Parameters<typeof LoreTokenBudgetField>[0];
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
   const [pendingBudget, setPendingBudget] = useState<number>();
   const [baseSelection, setBaseSelection] = useState<string[]>([]);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const close = () => {
+    setOpen(false);
+    if (inline) requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true }));
+  };
   const active = open ? pending : selected;
   const stale =
     open && (baseSelection.length !== selected.length || baseSelection.some((id, index) => id !== selected[index]));
@@ -416,6 +423,7 @@ export function VillageLorebookPicker({
     <>
       <input
         autoComplete="off"
+        autoFocus={inline}
         type="search"
         className="villages-lorebook-search"
         value={query}
@@ -423,7 +431,7 @@ export function VillageLorebookPicker({
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            setOpen(false);
+            close();
           }
         }}
         aria-label="Search Lorebooks"
@@ -474,14 +482,44 @@ export function VillageLorebookPicker({
       </div>
     </>
   );
+  const editor = (
+    <>
+      {choices}
+      {budget && active.length ? (
+        <LoreTokenBudgetField {...budget} value={pendingBudget ?? budget.value} onChange={setPendingBudget} />
+      ) : null}
+      <footer className="villages-lorebook-footer">
+        <span aria-live="polite">{active.length} / 24</span>
+        {inline ? (
+          <button type="button" onClick={close}>
+            Cancel
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="villages-forging-primary"
+          disabled={disabled || stale}
+          onClick={() => {
+            if (disabled || stale) return;
+            if (budget && pending.length && pendingBudget !== undefined) budget.onChange(pendingBudget);
+            onChange(pending);
+            close();
+          }}
+        >
+          Done
+        </button>
+      </footer>
+    </>
+  );
   return (
     <section
       className={
         triggerLabel ? undefined : ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"
       }
       aria-label="Village Lorebooks"
+      data-inline-open={(inline && open) || undefined}
     >
-      <div className="villages-lorebook-header">
+      <div className="villages-lorebook-header" hidden={inline && open}>
         {triggerLabel ? null : (
           <>
             <div className="villages-lorebook-heading">
@@ -496,6 +534,7 @@ export function VillageLorebookPicker({
         )}
         <button
           type="button"
+          ref={trigger}
           className="villages-lorebook-action"
           aria-label={triggerLabel ?? "Choose Village Lorebooks"}
           disabled={disabled}
@@ -542,28 +581,13 @@ export function VillageLorebookPicker({
       )}
       {!open && !triggerLabel ? status : null}
       {open ? (
-        <FoundingDialog title="Choose Lorebooks" scrollBody onClose={() => setOpen(false)}>
-          {choices}
-          {budget && active.length ? (
-            <LoreTokenBudgetField {...budget} value={pendingBudget ?? budget.value} onChange={setPendingBudget} />
-          ) : null}
-          <footer className="villages-lorebook-footer">
-            <span aria-live="polite">{active.length} / 24</span>
-            <button
-              type="button"
-              className="villages-forging-primary"
-              disabled={disabled || stale}
-              onClick={() => {
-                if (disabled || stale) return;
-                if (budget && pending.length && pendingBudget !== undefined) budget.onChange(pendingBudget);
-                onChange(pending);
-                setOpen(false);
-              }}
-            >
-              Done
-            </button>
-          </footer>
-        </FoundingDialog>
+        inline ? (
+          <div className="villages-lorebook-inline">{editor}</div>
+        ) : (
+          <FoundingDialog title="Choose Lorebooks" scrollBody onClose={close}>
+            {editor}
+          </FoundingDialog>
+        )
       ) : null}
     </section>
   );

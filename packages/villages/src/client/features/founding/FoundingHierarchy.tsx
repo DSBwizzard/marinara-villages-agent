@@ -9,6 +9,7 @@ export function FoundingHierarchy({ current }: { current: keyof typeof highlight
       className="villages-founding-hierarchy"
       viewBox="0 0 174 152"
       role="img"
+      focusable="false"
       aria-label={`World, Village, Map, Venue, Zone. Current layer: ${current}`}
     >
       <g className="villages-founding-hierarchy-links">

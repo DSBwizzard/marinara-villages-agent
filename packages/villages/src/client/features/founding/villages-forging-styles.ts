@@ -451,17 +451,23 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-lorebook-budget input { flex:none; width:6rem!important; min-width:0; min-height:44px; margin-left:auto; padding:.6rem; border:1px solid #65799c; border-radius:.45rem; color:#f3f3ff; background:#0c1830; font:inherit; }
 .villages-lorebook-search { flex:none; margin-bottom:.65rem; }
 .villages-lorebook-results { flex:1 1 auto; min-height:0; max-height:calc(var(--founding-viewport-height,100dvh) * .5); overflow:auto; overscroll-behavior:contain; }
-.villages-founding-dialog .villages-lorebook-option { display:flex; align-items:center; gap:.65rem; min-height:44px; margin:0 0 .4rem; padding:.55rem .65rem; border:1px solid #43547d; border-radius:.65rem; background:#19213b; cursor:pointer; transition:background .15s,border-color .15s; }
-.villages-founding-dialog .villages-lorebook-option[data-selected=true] { background:#30305c; border-color:#aa87ff; }
-.villages-founding-dialog .villages-lorebook-option:hover { border-color:#b495ff; }
-.villages-founding-dialog .villages-lorebook-option input { flex:none; width:1.15rem; min-height:1.15rem; height:1.15rem; margin:0; padding:0; accent-color:#b495ff; }
+:is(.villages-founding-dialog,.villages-lorebook-inline) .villages-lorebook-option { display:flex; align-items:center; gap:.65rem; min-height:44px; margin:0 0 .4rem; padding:.55rem .65rem; border:1px solid #43547d; border-radius:.65rem; background:#19213b; cursor:pointer; transition:background .15s,border-color .15s; }
+:is(.villages-founding-dialog,.villages-lorebook-inline) .villages-lorebook-option[data-selected=true] { background:#30305c; border-color:#aa87ff; }
+:is(.villages-founding-dialog,.villages-lorebook-inline) .villages-lorebook-option:hover { border-color:#b495ff; }
+:is(.villages-founding-dialog,.villages-lorebook-inline) .villages-lorebook-option input { flex:none; width:1.15rem; min-height:1.15rem; height:1.15rem; margin:0; padding:0; accent-color:#b495ff; }
 .villages-lorebook-option>span { min-width:0; overflow-wrap:anywhere; }
 .villages-lorebook-option small { display:block; color:#b8c3e8; font-size:.8rem; }
 .villages-lorebook-option:has(input:disabled) { opacity:.55; cursor:default; }
 .villages-founding-dialog .villages-lorebook-footer { align-items:center; justify-content:space-between; }
+.villages-founding-replies>[data-inline-open] { flex:1 1 100%; min-width:0; }
+.villages-founding-replies:has(>[data-inline-open])>button { display:none; }
+.villages-lorebook-inline .villages-lorebook-search { width:100%; }
+.villages-lorebook-inline .villages-lorebook-results { max-height:min(12rem,28cqh); }
+.villages-lorebook-inline .villages-lorebook-footer { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; margin-top:.55rem; }
+.villages-lorebook-inline .villages-lorebook-footer span { margin-inline-end:auto; }
 .villages-lorebook-action:focus-visible { outline:3px solid #c1acff; outline-offset:2px; }
 .villages-lorebook-option input:focus-visible { outline:2px solid #c1acff; outline-offset:3px; }
-@media(prefers-reduced-motion:reduce) { .villages-lorebook-card .villages-lorebook-action,.villages-founding-dialog .villages-lorebook-option { transition:none; } }
+@media(prefers-reduced-motion:reduce) { .villages-lorebook-card .villages-lorebook-action,.villages-lorebook-option { transition:none; } }
 
 /* Each step fits the Engine content area; only the active pane can scroll. */
 .villages-forging-v2 [hidden] { display:none!important; }
@@ -591,9 +597,9 @@ export const VILLAGES_FORGING_STYLES = `
   position:absolute; right:var(--chart-right);
   bottom:min(calc(var(--mari-floor) + var(--mari-height) * .56),calc(100cqh - 3.5rem - var(--chart-width) * .88));
   width:var(--chart-width); height:auto; padding:.25rem;
-  background:#342741bf; border:1px solid #eed1a830; border-radius:.65rem;
+  background:#342741bf; border:1px solid #eed1a830; border-radius:.65rem; outline:none;
 }
-.villages-founding-hierarchy text { fill:#f0dfbc; font-size:16px; text-shadow:0 1px 2px #21192d; }
+.villages-founding-hierarchy text { fill:#f0dfbc; font-size:16px; font-weight:400; stroke:none; text-shadow:none; }
 .villages-founding-hierarchy-links { fill:none; stroke:#e2b5c2; filter:drop-shadow(0 1px 1px #21192d); }
 .villages-founding-hierarchy-links [data-highlighted] { stroke:#eed1a8; }
 .villages-founding-hierarchy-star circle { fill:#362a46; stroke:#dfbbaf; stroke-width:.8; }

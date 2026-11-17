@@ -24,7 +24,7 @@ const script: Record<SettingBeat, readonly string[]> = {
   ],
   world: [`${worldQuestion} One sentence will do. If you haven’t decided, we can leave the horizon blurry.`],
   lorebooks: [
-    "Got Lorebooks? I can pull details from them while I draft, like how the locals greet each other or why everyone avoids the north pier.",
+    "Got Lorebooks? I’ll look up people and customs when I draft your setting. Villages can keep using those books for Scenes, new places, and daily routines.",
     "Which Lorebooks should I have on my desk?",
   ],
   "village-overview": [
@@ -388,6 +388,7 @@ export function FoundingSettingScene({
               }}
               disabled={controller.busy || setupSuggestionsBusy}
               triggerLabel={pickedBooks ? "Change lorebooks" : "Choose lorebooks"}
+              inline={!phone}
               budget={loreBudget}
             />
             {manual ? (
