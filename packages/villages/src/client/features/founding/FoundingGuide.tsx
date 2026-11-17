@@ -2,17 +2,7 @@ import type { ReactNode, Ref } from "react";
 
 const art = "/api/capability-packages/villages/assets/mari-founding-";
 export const foundingMariSprite = (
-  pose:
-    | "neutral"
-    | "happy"
-    | "playful"
-    | "looking-up"
-    | "presenting"
-    | "wave"
-    | "thoughtful"
-    | "delighted"
-    | "happy-side"
-    | "proud",
+  pose: "neutral" | "happy" | "playful" | "looking-up" | "presenting" | "wave" | "thoughtful" | "happy-side" | "proud",
 ) => art + pose + ".webp";
 
 export function FoundingSpeaker() {

@@ -136,7 +136,6 @@ await withBrowser(browser, async () => {
       for (let line = 0; line < 3; line++) await next.click();
       await scene.getByRole("button", { name: "Draft with Mari", exact: true }).click();
       for (let line = 0; line < 2; line++) await next.click();
-      const describeWorld = scene.getByRole("button", { name: "Describe world", exact: true });
       const world = scene.getByLabel(width === 390 ? "World description" : "The larger world");
       await world.fill("A string of settlements along the coast");
       await page.clock.fastForward(3000);
@@ -158,7 +157,7 @@ await withBrowser(browser, async () => {
       await fulfill(heldSnapshot, { status: 503, json: { error: "Village snapshot unavailable" } });
       await expect(page.getByRole("alert")).toContainText("Village snapshot unavailable");
       await page.getByRole("button", { name: "Try again", exact: true }).click();
-      if (width === 390) await describeWorld.click();
+      if (width === 390) await next.click();
       await expect(world).toHaveValue("A string of settlements along the coast");
       assert.equal(foundingSceneChecks, 0, "Founding remounts never ask for an active Scene");
     });

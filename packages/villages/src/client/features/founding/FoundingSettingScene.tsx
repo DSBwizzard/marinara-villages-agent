@@ -335,7 +335,7 @@ export function FoundingSettingScene({
             {backReply}
             {phone ? (
               <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
-                Enter my setting
+                Next
               </button>
             ) : (
               next
@@ -346,17 +346,20 @@ export function FoundingSettingScene({
             {!phone ? worldField : null}
             <div className="villages-founding-replies">
               {backReply}
-              {phone ? (
+              {phone && manual ? (
                 <button type="button" className="villages-forging-primary" onClick={() => setPopup("world")}>
                   Describe world
                 </button>
               ) : null}
               <button
                 type="button"
-                className={phone ? undefined : "villages-forging-primary"}
-                onClick={() => moveTo("lorebooks")}
+                className={phone && manual ? undefined : "villages-forging-primary"}
+                onClick={() => {
+                  if (phone && !manual) setPopup("world");
+                  else moveTo("lorebooks");
+                }}
               >
-                {manual ? "Next" : world.trim() ? "Use this world" : "Skip world description"}
+                Next
               </button>
             </div>
           </>
@@ -378,8 +381,8 @@ export function FoundingSettingScene({
             {manual ? (
               next
             ) : (
-              <button type="button" onClick={() => moveTo("village-overview")}>
-                {pickedBooks > 0 ? "Keep selected lorebooks" : "Skip for now"}
+              <button type="button" className="villages-forging-primary" onClick={() => moveTo("village-overview")}>
+                Next
               </button>
             )}
           </div>

@@ -32,7 +32,6 @@ const deskAssets = {
   "mari-founding-presenting.webp": "image/webp",
   "mari-founding-wave.webp": "image/webp",
   "mari-founding-thoughtful.webp": "image/webp",
-  "mari-founding-delighted.webp": "image/webp",
   "mari-founding-happy-side.webp": "image/webp",
   "mari-founding-proud.webp": "image/webp",
   "villages-icon.png": "image/png",

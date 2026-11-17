@@ -160,13 +160,13 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ content: bundle });
       const phone = viewport.width <= 727;
       const root = page.locator(".villages-forging-v2"),
-        next = root.getByRole("button", { name: phone ? "Next" : "Let’s set up their homes", exact: true });
+        next = root.getByRole("button", { name: "Next", exact: true });
       for (const reply of ["START", "Next", "Next", "Next", "Next", "Set it up myself"])
         await root.getByRole("button", { name: reply, exact: true }).click();
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
       await root.getByLabel("First map name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      for (const reply of ["Next", "Next", phone ? "Next" : "Let’s meet the villagers"])
+      for (const reply of ["Next", "Next", "Next"])
         await root.getByRole("button", { name: reply, exact: true }).click();
       if (phone) await next.click();
       for (const person of people) {

@@ -42,7 +42,7 @@ const SETTING_MARI_POSES = {
   manual: "neutral",
   "world-overview": "presenting",
   world: "thoughtful",
-  lorebooks: "delighted",
+  lorebooks: "happy",
   "village-overview": "presenting",
   village: "happy-side",
 } as const;
@@ -624,13 +624,7 @@ export function FoundingScreen({
           else changeStep(setupStep + 1);
         }}
       >
-        {busy
-          ? "Saving village…"
-          : (phone && setupStep < 3) || (setupStep === 0 && manualSetting)
-            ? "Next"
-            : ["Let’s meet the villagers", "Let’s set up their homes", "Let’s look it over", "Found village"][
-                setupStep
-              ]}
+        {busy ? "Saving village…" : setupStep === 3 ? "Found village" : "Next"}
       </button>
     );
     const settingFields = (
