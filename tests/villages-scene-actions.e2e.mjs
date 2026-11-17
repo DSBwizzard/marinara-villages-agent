@@ -220,6 +220,7 @@ await withBrowser(browser, async () => {
     await selectMove();
     await picker.getByRole("button", { name: "Entrance", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await expect(composer).toHaveValue(preservedDraft);
     assert.equal(moves, 1);
     assert.equal(scene.lines.length, lineCount);
@@ -230,6 +231,7 @@ await withBrowser(browser, async () => {
       await expect(composer).toHaveValue(preservedDraft);
       await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
       await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(zoneId === "hall" ? 1 : 0);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     }
     assert.equal(moves, 5, "selection immediately navigates repeatedly without Send");
     await expect(composer).toHaveValue(preservedDraft);
