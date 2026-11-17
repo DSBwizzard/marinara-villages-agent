@@ -937,6 +937,7 @@ export function FoundingScreen({
                 controller={controller}
                 connectionProblem={connections.setupProblem}
                 phone={phone}
+                inactive={phone && settingEditorOpen}
                 enteringScene={enteringScene}
                 title={title}
                 onConnections={openConnectionPicker}

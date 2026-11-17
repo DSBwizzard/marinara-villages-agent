@@ -602,6 +602,7 @@ export async function verifyFoundingLayout(group) {
         if (view.width === 390 || view.width === 1366) {
           await button("Set it up myself").click();
           await expect(villageName).toBeVisible();
+          if (phone) await expect(scene).toHaveCount(0);
           await expect(root.getByLabel("Tell Mari about your village")).toHaveCount(0);
           await villageName.fill("Handmade Harbor");
           await expect

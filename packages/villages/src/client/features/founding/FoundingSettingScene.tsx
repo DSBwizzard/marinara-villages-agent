@@ -51,6 +51,7 @@ export function FoundingSettingScene({
   controller,
   connectionProblem,
   phone,
+  inactive,
   enteringScene,
   title,
   onConnections,
@@ -61,6 +62,7 @@ export function FoundingSettingScene({
   controller: FoundingScreenController;
   connectionProblem: string;
   phone: boolean;
+  inactive: boolean;
   enteringScene: boolean;
   title: ReactNode;
   onConnections(): void;
@@ -306,7 +308,12 @@ export function FoundingSettingScene({
     </form>
   );
   return (
-    <section className="villages-setting-guide" aria-label={title ? undefined : "Professor Mari"}>
+    <section
+      className="villages-setting-guide"
+      aria-label={title ? undefined : "Professor Mari"}
+      aria-hidden={inactive || undefined}
+      inert={inactive || undefined}
+    >
       {title}
       <div className="villages-setting-dialogue" hidden={!!title}>
         <FoundingSpeaker />
