@@ -774,6 +774,11 @@ export const VILLAGES_FORGING_STYLES = `
   }
   .villages-chapter-menu>.villages-forging-body { overflow:auto; padding:.35rem; }
   .villages-forging-v2 .villages-chapter-menu [role=alert] { color:#ff9ba5; }
+  .villages-forging-v2 .villages-founding-overlay>dialog.villages-founding-world-dialog { padding:.65rem; overflow:hidden; }
+  .villages-founding-world-fields { min-height:0; overflow:auto; }
+  .villages-forging-v2 .villages-founding-world-fields>p { margin:.3rem 0 .5rem; line-height:1.35; }
+  .villages-founding-world-dialog .villages-founding-field { margin:.4rem 0; }
+  .villages-founding-world-dialog .villages-founding-field-heading label>small { margin-inline-start:.45em; }
   .villages-forging-v2[data-step] {
     --mari-floor:min(65cqh,max(33cqh,13rem));
     --founding-mobile-stage-height:calc(100cqh - var(--mari-floor));

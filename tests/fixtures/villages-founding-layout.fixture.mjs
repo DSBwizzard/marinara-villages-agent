@@ -698,6 +698,7 @@ export async function verifyFoundingLayout(group) {
         const worldPopup = root.getByRole("dialog", { name: "The wider world", exact: true });
         if (phone) {
           await expect(worldPopup).toBeVisible();
+          await expect(worldPopup.getByRole("button", { name: "Done", exact: true })).toBeInViewport({ ratio: 0.99 });
         }
         const worldForm = phone ? worldPopup : scene;
         await expect(worldForm.getByText(/^What World does your Village take place in\?/)).toBeVisible();

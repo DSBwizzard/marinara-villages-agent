@@ -7,6 +7,7 @@ import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
 type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]> | "manual";
+const worldQuestion = "What World does your Village take place in?";
 const script: Record<SettingBeat, readonly string[]> = {
   welcome: [
     "Oh, hi! I’m Mari. You caught me arguing with a map.",
@@ -21,9 +22,7 @@ const script: Record<SettingBeat, readonly string[]> = {
     "See these five layers? We’ll start at the top and work our way down. I promise there’s no quiz.",
     "The World is the big backdrop. If your Village belongs to a world you already know, tell me enough to get my bearings. You can leave it open if you’re still deciding.",
   ],
-  world: [
-    "What World does your Village take place in? One sentence will do. If you haven’t decided, we can leave the horizon blurry.",
-  ],
+  world: [`${worldQuestion} One sentence will do. If you haven’t decided, we can leave the horizon blurry.`],
   lorebooks: [
     "Got Lorebooks? I can pull details from them while I draft, like how the locals greet each other or why everyone avoids the north pier.",
     "Which Lorebooks should I have on my desk?",
@@ -464,13 +463,17 @@ export function FoundingSettingScene({
       {phone && popup === "world" && beat === "world" ? (
         <FoundingDialog
           title="The wider world"
+          className="villages-founding-world-dialog"
+          scrollBody
           onClose={() => {
             setPopup(undefined);
             focusLine();
           }}
         >
-          <p>{script.world[0]}</p>
-          {worldField}
+          <div className="villages-founding-world-fields">
+            <p>{worldQuestion}</p>
+            {worldField}
+          </div>
           <footer>
             <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
               Done
