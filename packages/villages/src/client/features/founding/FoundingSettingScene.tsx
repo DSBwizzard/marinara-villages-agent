@@ -116,7 +116,7 @@ export function FoundingSettingScene({
     (!pending || waitingForMari);
   const dialogue = {
     welcome: phone
-      ? "Oh, hey! Welcome to Villages. Make a life with a community in a city, a kingdom, a spaceship, or even one alarmingly dramatic apartment building. Would you like my help setting up, or do you want to dive in on your own?"
+      ? "Oh, hey! Welcome to Villages. Make a life with a community in a city, kingdom, spaceship, or one alarmingly dramatic apartment building. Want my help setting up, or ready to dive in?"
       : "Oh, hey! Welcome to Villages.\n\nVillages is a social game where you make a life with a community. The Village itself can be a city, a kingdom, a spaceship, or even one alarmingly dramatic apartment building.\n\nBefore you begin, we need to set up the Village. Would you like my help, or do you want to dive in on your own?",
     manual: manualSettingLine,
     world:
