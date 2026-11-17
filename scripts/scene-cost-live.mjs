@@ -214,7 +214,13 @@ export async function runLiveSceneComparison(config, output) {
         try {
           const after = await call("/api/villages/usage?details=1");
           turn.attempts = after.requests.filter((row) => !beforeUsage.requests.some((old) => old.id === row.id));
-          const completeUsage = !beforeUsage.error && !after.error && beforeUsage.since === after.since;
+          // The first saved request establishes the initial ledger's start time.
+          const initialized =
+            beforeUsage.totals?.requests === 0 &&
+            beforeUsage.requests.length === 0 &&
+            after.requests[0]?.periodId === "initial";
+          const completeUsage =
+            !beforeUsage.error && !after.error && (beforeUsage.since === after.since || initialized);
           if (!completeUsage) turn.usageAttributionIncomplete = true;
           if (primaryAttempts)
             turn.replayAttempts = turn.attempts.filter((row) => !primaryAttempts.some((old) => old.id === row.id));

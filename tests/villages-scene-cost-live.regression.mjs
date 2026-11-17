@@ -12,6 +12,7 @@ const attempts = [],
   submissions = new Set();
 let generations = 0;
 let baselineProblem = "";
+let resetLedger = false;
 const server = createServer(async (request, response) => {
   const path = new URL(request.url, "http://localhost").pathname;
   let body = "";
@@ -27,9 +28,10 @@ const server = createServer(async (request, response) => {
   if (path === "/api/villages/connections") return send({ narrationConnectionId: "model" });
   if (path === "/api/villages/usage")
     return send({
-      requests: attempts,
+      requests: resetLedger ? attempts.slice(-1) : attempts,
       running: 0,
-      since: "fixture-period",
+      since: resetLedger ? "reset-period" : attempts.length ? "fixture-period" : "unsaved",
+      totals: { requests: resetLedger ? 1 : attempts.length },
       ...(baselineProblem === "held-ledger-error" ? { error: "Usage recording is incomplete." } : {}),
     });
   if (path === "/api/villages/rooms/active")
@@ -96,11 +98,13 @@ const server = createServer(async (request, response) => {
       if (submissions.size === 2) attempts.push({ id: "uncertain", status: "unknown" });
       attempts.push({
         id: "village:" + submissions.size,
+        periodId: baselineProblem === "held-ledger-reset" ? "reset-period" : "initial",
         status: "complete",
         connectionId: "model",
         model: baselineProblem === "village-model" ? "unexpected" : "fixture",
         usage,
       });
+      if (baselineProblem === "held-ledger-reset") resetLedger = true;
     }
     if (baselineProblem.startsWith("held") || ["lost-ack", "unobserved"].includes(baselineProblem)) {
       response.statusCode = 500;
@@ -187,12 +191,14 @@ try {
   for (const [problem, published, error] of [
     ["held", false, /HTTP 500/],
     ["held-ledger-error", false, /HTTP 500/],
+    ["held-ledger-reset", false, /HTTP 500/],
     ["lost-ack", true, /HTTP 500/],
     ["unobserved", null, /HTTP 500/],
     ["game-error", true, /generation error/],
     ["game-no-reply", false, /must save a new response/],
   ]) {
     baselineProblem = problem;
+    if (problem === "held-ledger-reset") attempts.length = 0;
     const output = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
     await assert.rejects(
       runLiveSceneComparison(
@@ -212,7 +218,7 @@ try {
     assert.equal(failed.published, published);
     assert.equal(
       failed.firstPassPublished,
-      ["game-no-reply", "held-ledger-error"].includes(problem) ? null : published,
+      ["game-no-reply", "held-ledger-error", "held-ledger-reset"].includes(problem) ? null : published,
     );
     assert.deepEqual(
       failed.failedResponseCosts,
@@ -222,10 +228,11 @@ try {
           ? {
               observedRequests: 1,
               knownRatedSubtotalUsd: expected,
-              unknownCostAttempts: problem === "held-ledger-error" ? null : 0,
+              unknownCostAttempts: problem.startsWith("held-ledger-") ? null : 0,
             }
           : null,
     );
+    resetLedger = false;
   }
   for (const problem of ["planning", "model", "village-model"]) {
     baselineProblem = problem;
