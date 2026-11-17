@@ -42,6 +42,19 @@ const server = createServer(async (request, response) => {
     assert.equal(input.reasoningEffort, undefined);
     assert.equal(input.maxTokens, undefined);
     generations++;
+    if (baselineProblem === "game-interrupted") {
+      messages.push({
+        id: "saved-game-input",
+        role: "user",
+        content: input.userMessage,
+        extra: { submissionId: input.submissionId },
+      });
+      return response.end('data: {"type":"error","data":"Upstream response stream was interrupted"}\n\n');
+    }
+    if (baselineProblem === "game-retry") {
+      assert.equal(input.userMessage, undefined, "Native Retry uses the existing player message");
+      assert.equal(input.submissionId, undefined);
+    }
     messages.push({
       id: "game:" + generations,
       role: "assistant",
@@ -57,7 +70,8 @@ const server = createServer(async (request, response) => {
           tokensCompletion: 50,
           tokensCachedPrompt: 20,
           tokensReasoning: 30,
-          requestCount: 1,
+          requestCount: baselineProblem === "multiple-requests" ? 2 : 1,
+          ...(baselineProblem === "fallback" ? { fallback: { used: true } } : {}),
         },
       },
     });
@@ -68,16 +82,28 @@ const server = createServer(async (request, response) => {
     if (!submissions.has(input.submissionId)) {
       submissions.add(input.submissionId);
       if (submissions.size === 2) attempts.push({ id: "uncertain", status: "unknown" });
-      attempts.push({
+      const record = {
         id: "village:" + submissions.size,
-        status: "complete",
+        status: baselineProblem === "village-late" ? "unknown" : "complete",
         connectionId: "model",
         model: baselineProblem === "village-model" ? "unexpected" : "fixture",
-        usage,
-      });
+        ...(baselineProblem === "village-late" ? {} : { usage }),
+      };
+      attempts.push(record);
+      if (baselineProblem === "village-late") {
+        response.statusCode = 502;
+        return send({ error: "Provider outcome unavailable" });
+      }
+      if (baselineProblem === "village-replacement") {
+        assert.equal(input.replaceOfOperationId, "original");
+        assert.equal(input.retryOfAttemptId, "explicit-replacement");
+      }
     }
     return send({
-      session: { processingSummary: { failed: 0, pending: 0, rejected: baselineProblem === "rejected" ? 1 : 0 } },
+      session: {
+        latestTurn: { id: input.submissionId, published: baselineProblem !== "unpublished" },
+        processingSummary: { failed: 0, pending: 0, rejected: baselineProblem === "rejected" ? 1 : 0 },
+      },
     });
   }
   response.statusCode = 404;
@@ -123,7 +149,7 @@ try {
   assert.equal(retried.turns[0].submissionId, "explicit-retry");
   assert.equal(retried.turns[0].capabilityAttemptCount, 1);
   assert.equal(retried.turns[0].replayAttempts.length, 0);
-  for (const problem of ["rejected", "capped"]) {
+  for (const problem of ["rejected", "capped", "unpublished"]) {
     baselineProblem = problem;
     const rejectedOutput = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
     await assert.rejects(
@@ -136,13 +162,15 @@ try {
         },
         rejectedOutput,
       ),
-      /discarded consequence|status is incomplete/,
+      problem === "unpublished"
+        ? /publish the exact submitted Scene turn/
+        : /discarded consequence|status is incomplete/,
     );
     const rejected = JSON.parse(await readFile(rejectedOutput, "utf8")).turns[0];
     assert.equal(rejected.status, "failed");
     assert.equal(rejected.attempts[0].usage.completionTokens, 50, "A discarded result remains billed");
   }
-  for (const problem of ["planning", "model", "village-model"]) {
+  for (const problem of ["planning", "model", "village-model", "multiple-requests", "fallback"]) {
     baselineProblem = problem;
     const output = resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
     await assert.rejects(
@@ -169,7 +197,65 @@ try {
     }
     assert.equal(failed.ratedCostUsd, null);
     if (problem === "planning") assert.equal(failed.gameToolPlanning.usage.promptTokens, 200);
+    if (problem === "multiple-requests") assert.equal(failed.knownRatedSubtotalUsd, expected);
   }
+
+  const config = {
+    chatId: "game",
+    sessionId: "scene",
+    connectionId: "model",
+    rate: { input: 0.3, cached: 0.006, output: 1.2, currency: "USD" },
+  };
+  const path = () => resolve(".build-tmp", `scene-cost-live-test-${randomUUID()}.json`);
+  const originalVillage = path();
+  baselineProblem = "village-late";
+  const village = { id: "late-result", mode: "villages", message: "Wait for the rain.", submissionId: "original" };
+  await assert.rejects(runLiveSceneComparison({ ...config, pairs: [village] }, originalVillage), /outcome unavailable/);
+  const original = await readFile(originalVillage, "utf8");
+  assert.equal(JSON.parse(original).logicalTurns[0].ratedCostUsd, null);
+  Object.assign(attempts.at(-1), { status: "complete", usage });
+  baselineProblem = "village-replacement";
+  const continued = await runLiveSceneComparison(
+    {
+      ...config,
+      continueFrom: originalVillage,
+      pairs: [
+        {
+          ...village,
+          submissionId: "replacement",
+          retryOfAttemptId: "explicit-replacement",
+          replaceOfOperationId: "original",
+        },
+      ],
+    },
+    path(),
+  );
+  assert.deepEqual(continued.logicalTurns[0].submissionIds, ["original", "replacement"]);
+  assert.equal(continued.logicalTurns[0].ratedCostUsd, 2 * expected);
+  assert.equal(continued.turns[1].replayAttempts.length, 0);
+  assert.equal(await readFile(originalVillage, "utf8"), original, "Earlier evidence stays immutable");
+
+  baselineProblem = "game-interrupted";
+  const game = { id: "interrupted-stream", mode: "game", message: "Can I stay awhile?" };
+  const originalGame = path();
+  await assert.rejects(runLiveSceneComparison({ ...config, pairs: [game] }, originalGame), /save a new response/);
+  const generationsBeforeRetry = generations;
+  await assert.rejects(runLiveSceneComparison({ ...config, pairs: [game] }, originalGame), { code: "EEXIST" });
+  assert.equal(generations, generationsBeforeRetry, "An existing journal blocks a second purchase");
+  baselineProblem = "game-retry";
+  const gameRetry = await runLiveSceneComparison(
+    { ...config, continueFrom: originalGame, pairs: [{ ...game, retryGame: true }] },
+    path(),
+  );
+  assert.equal(gameRetry.logicalTurns[0].status, "complete");
+  assert.equal(gameRetry.logicalTurns[0].submissions, 2);
+  assert.equal(gameRetry.logicalTurns[0].ratedCostUsd, null, "Interrupted usage remains unresolved");
+  assert.equal(gameRetry.logicalTurns[0].knownRatedSubtotalUsd, expected);
+  await assert.rejects(
+    runLiveSceneComparison({ ...config, continueFrom: originalGame, pairs: [{ ...game, retryGame: true }] }, path()),
+    { code: "EEXIST" },
+  );
+  assert.equal(generations, generationsBeforeRetry + 1, "A journal has one continuation across output paths");
 } finally {
   if (previous === undefined) delete process.env.VILLAGES_ENGINE_URL;
   else process.env.VILLAGES_ENGINE_URL = previous;
