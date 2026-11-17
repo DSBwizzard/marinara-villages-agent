@@ -19,7 +19,7 @@ import { venueCardProfile } from "../packages/villages/src/server/domain/rules/v
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { venueInZone, venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
-import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
+import { currentScenePrompt, scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -181,8 +181,8 @@ async function main() {
       }
       assert.equal(current.includes(circumstances), false, "starting circumstances are not a recurring script");
       const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
-      assert.ok(dialogue.includes(setting));
-      assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
+      assert.equal(scenePromptPacket(dialogue, "player").setting.geography, setting);
+      assert.match(dialogue, /Current Room, Zone and access records govern the Scene/u);
       const events = eventsPrompt(state, current);
       assert.ok(events.includes(setting));
       assert.ok(events.includes(VILLAGE_SHARED_SETTING_RULE));
