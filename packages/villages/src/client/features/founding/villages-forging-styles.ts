@@ -762,7 +762,8 @@ export const VILLAGES_FORGING_STYLES = `
 }
 @media(max-width:727px) {
   .villages-founding-chapter[data-guided] {
-    flex-direction:column; padding-top:var(--founding-mobile-stage-height); overflow:auto; overscroll-behavior:contain;
+    flex-direction:column; padding-top:calc(var(--founding-mobile-stage-height) - 2rem);
+    overflow:auto; overscroll-behavior:contain;
   }
   .villages-forging-v2 .villages-founding-overlay>dialog.villages-chapter-menu {
     width:calc(100% - 1.1rem); height:min(52rem,calc(100% - 1.1rem)); overflow:hidden;
@@ -770,17 +771,16 @@ export const VILLAGES_FORGING_STYLES = `
   .villages-chapter-menu>.villages-forging-body { overflow:auto; padding:.35rem; }
   .villages-forging-v2 .villages-chapter-menu [role=alert] { color:#ff9ba5; }
   .villages-forging-v2[data-step] {
-    --founding-mobile-stage-height:clamp(8rem,calc(var(--founding-viewport-height,100dvh) - 20rem),32rem);
-    --founding-mobile-backdrop-height:calc(var(--founding-mobile-stage-height) + 4rem);
-    --founding-mobile-backdrop-size:max(100%,calc(var(--founding-mobile-backdrop-height) * 1.6)) var(--founding-mobile-backdrop-height);
+    --founding-mobile-stage-height:max(8rem,min(58cqh,calc(100cqh - 16rem)));
+    /* Keep the floor under Mari while leaving room below for dialogue. */
+    --founding-mobile-backdrop-size:auto max(225%,63vw);
     --mari-x:74cqw; --mari-height:min(calc(var(--founding-mobile-stage-height) * .85),82cqw,24rem);
-    --mari-floor:calc(100cqh - var(--founding-mobile-stage-height) - 1rem);
-    background-position:center,center top;
+    --mari-floor:calc(100cqh - var(--founding-mobile-stage-height) + .65rem);
+    background-position:center,center bottom;
     background-size:auto,var(--founding-mobile-backdrop-size);
-    background-color:#292438;
   }
   .villages-forging-v2[data-step][data-lighting=day] {
-    background-position:center,center,center top;
+    background-position:center,center,center bottom;
     background-size:auto,auto,var(--founding-mobile-backdrop-size);
   }
   .villages-founding-chapter>.villages-chapter-guide { margin:0 .65rem .65rem; }
@@ -788,7 +788,12 @@ export const VILLAGES_FORGING_STYLES = `
     display:block; height:100%; padding:var(--founding-mobile-stage-height) .65rem .75rem;
   }
   .villages-founding-hierarchy { --chart-limit:min(13rem,calc(var(--founding-mobile-stage-height) * .9)); }
-  .villages-founding-logo { font-size:min(13cqi,8dvh,4rem); }
+  .villages-founding-title {
+    position:absolute; inset:auto auto calc(var(--mari-floor) + var(--mari-height) * .59) .65rem;
+    width:calc(var(--mari-x) - var(--mari-height) * .17 - 1.3rem);
+    translate:0 50%; padding:0;
+  }
+  .villages-founding-logo { font-size:min(15cqi,2.75rem); }
   .villages-setting-guide .villages-setting-dialogue { padding:.65rem .75rem; backdrop-filter:blur(12px); }
   .villages-setting-guide .villages-setting-dialogue p { line-height:1.4; margin:.45rem 0; }
   .villages-setting-guide .villages-founding-replies>button,

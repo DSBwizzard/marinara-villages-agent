@@ -446,8 +446,12 @@ export async function verifyFoundingLayout(group) {
         const titleBounds = await title.boundingBox();
         const stageBounds = await stage.boundingBox();
         assert.ok(
-          phone ? sideBounds.y + sideBounds.height <= titleBounds.y : sideBounds.x + sideBounds.width <= titleBounds.x,
-          "The title leaves room for Mari’s standing mark",
+          phone
+            ? titleBounds.x + titleBounds.width <= sideBounds.x &&
+                titleBounds.y < sideBounds.y + sideBounds.height &&
+                titleBounds.y + titleBounds.height > sideBounds.y
+            : sideBounds.x + sideBounds.width <= titleBounds.x,
+          "The title sits beside Mari",
         );
         const titleBackdrop = await root.evaluate((element) => getComputedStyle(element).backgroundImage);
         assert.match(titleBackdrop, /mari-founding-overlook(?:-day)?\.webp/u);
