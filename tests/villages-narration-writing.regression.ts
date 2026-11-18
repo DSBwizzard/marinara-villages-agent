@@ -376,6 +376,8 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(messages[cut].content, /delivery:"whisper" with targetId or delivery:"shout" to connected Zones/u);
   assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
   assert.match(system, /Answer addressed hearers; one line can suffice/u);
+  assert.match(system, /HALT only if no natural continuation/u);
+  assert.match(system, /halt:\{reason,source\}/u);
   const identity = messages.slice(0, cut).find((row) => row.content.includes("AUTHORED IDENTITY"));
   assert(identity);
   const facts = JSON.parse(identity.content.split("\n").find((line: string) => line.startsWith('{"player":'))!);
@@ -424,6 +426,8 @@ await runCase("narration-writing/single-request", async () => {
     .map((row) => row.content)
     .join("\n");
   assert.match(greeting, /Open the Scene from established presence/u);
+  assert.match(greeting, /HALT only if no natural continuation/u);
+  assert.match(greeting, /halt:\{reason,source\}/u);
   assert.doesNotMatch(greeting, /several substantial exchanges/u);
   const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
   const departure = leaving.fitted.messages.map((row) => row.content).join("\n");
