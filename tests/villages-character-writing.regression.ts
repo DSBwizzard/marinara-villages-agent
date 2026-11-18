@@ -93,7 +93,7 @@ assert.deepEqual(
   prefix(prepared),
   "Changing the source and time preserves the cacheable authored prefix",
 );
-assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+assert.deepEqual(next.fitted.messages.at(-2), { role: "user", content: "A different question?" });
 for (const tail of [
   "PLAYER IDENTITY TAIL",
   "PLAYER BACKGROUND TAIL",
@@ -228,7 +228,7 @@ state.playerBackground = "Neighbors know me through harbor projects.";
 const outside = await prepareScenePrompt(state, card, "greet", "", scene);
 assert.equal(scenePromptPacket(outside.prompt, "location").location.player.zone.id, "exterior");
 assert.match(outside.prompt, /Neighbors know me through harbor projects/);
-assert.deepEqual(outside.fitted.messages.at(-1), { role: "user", content: "" });
+assert.deepEqual(outside.fitted.messages.at(-2), { role: "user", content: "" });
 
 const background = buildResidentPlanningMessages({
   format: 1,
