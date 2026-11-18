@@ -57,6 +57,8 @@ export function FoundingSettingScene({
   onEditSetting,
   onBeatChange,
   next,
+  advanceSetup,
+  advanceDisabled,
 }: {
   controller: FoundingScreenController;
   connectionProblem: string;
@@ -68,6 +70,8 @@ export function FoundingSettingScene({
   onEditSetting(): void;
   onBeatChange(): void;
   next: ReactNode;
+  advanceSetup(): void;
+  advanceDisabled: boolean;
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
@@ -108,7 +112,8 @@ export function FoundingSettingScene({
     const openWorld = phone && settingBeat === "world" && !manual;
     setPopup(openWorld ? "world" : undefined);
     onBeatChange();
-    if (!openWorld && (!openEditor || !phone)) focusLine();
+    const openLorebooks = settingBeat === "lorebooks" && (manual || showLast);
+    if (!openWorld && !openLorebooks && (!openEditor || !phone)) focusLine();
   };
   const request = setupWorkspace.suggestionRequest;
   const pending = request && !request.failure;
@@ -151,7 +156,7 @@ export function FoundingSettingScene({
     if (!phone && beat === "village") {
       setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: index === lines.length - 1 }));
     }
-    focusLine();
+    if (beat !== "lorebooks" || index !== lines.length - 1) focusLine();
   };
   const previous = {
     welcome: undefined,
@@ -384,20 +389,13 @@ export function FoundingSettingScene({
               selected={controller.setupLorebookDraft}
               onChange={(ids) => {
                 controller.setSetupLorebookDraft(ids);
-                if (!manual) moveTo("village-overview");
+                if (manual) advanceSetup();
+                else moveTo("village-overview");
               }}
-              disabled={controller.busy || setupSuggestionsBusy}
-              triggerLabel={pickedBooks ? "Change lorebooks" : "Choose lorebooks"}
-              inline={!phone}
+              disabled={controller.busy || setupSuggestionsBusy || (manual && advanceDisabled)}
+              founding={{ inline: !phone, onBack: back, nextLabel: phone && !manual ? "Done" : "Next" }}
               budget={loreBudget}
             />
-            {manual ? (
-              next
-            ) : (
-              <button type="button" className="villages-forging-primary" onClick={() => moveTo("village-overview")}>
-                Next
-              </button>
-            )}
           </div>
         ) : beat === "world-overview" || beat === "village-overview" ? (
           <div className="villages-founding-replies">

@@ -459,8 +459,8 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-lorebook-option small { display:block; color:#b8c3e8; font-size:.8rem; }
 .villages-lorebook-option:has(input:disabled) { opacity:.55; cursor:default; }
 .villages-founding-dialog .villages-lorebook-footer { align-items:center; justify-content:space-between; }
-.villages-founding-replies>[data-inline-open] { flex:1 1 100%; min-width:0; }
-.villages-founding-replies:has(>[data-inline-open])>button { display:none; }
+.villages-founding-replies>[data-picker-open] { flex:1 1 100%; min-width:0; }
+.villages-founding-replies:has(>[data-picker-open])>button { display:none; }
 .villages-lorebook-inline .villages-lorebook-results { max-height:min(12rem,28cqh); }
 .villages-lorebook-inline .villages-lorebook-footer { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; margin-top:.55rem; }
 .villages-lorebook-inline .villages-lorebook-footer span { margin-inline-end:auto; }

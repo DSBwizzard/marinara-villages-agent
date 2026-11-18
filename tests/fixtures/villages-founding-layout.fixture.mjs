@@ -751,29 +751,30 @@ export async function verifyFoundingLayout(group) {
           if (phone) await worldPopup.getByRole("button", { name: "Done", exact: true }).click();
           else await nextLine();
         }
-        await nextLine();
-        await expect(line).toHaveText(/^Which Lorebooks should I have/);
         await expect(root.getByRole("searchbox", { name: "Search Lorebooks" })).toHaveCount(0);
+        await nextLine();
+        const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
+        const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
+        await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
+        await expect(button("Choose lorebooks")).toHaveCount(0);
+        if (!phone) {
+          await expect(line).toHaveText(/^Which Lorebooks should I have/);
+          await expect(loreDialog).toHaveCount(0);
+          await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeFocused();
+          await expect(scene.getByRole("button", { name: "Next", exact: true })).toHaveCount(1);
+        }
         if (draftWithLore) {
-          await button("Choose lorebooks").click();
-          const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
-          const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
-          if (!phone) {
-            await expect(loreDialog).toHaveCount(0);
-            await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeFocused();
-            await expect(scene.getByRole("button", { name: "Next", exact: true })).toHaveCount(0);
-          }
           const relay = picker.getByRole("checkbox", { name: "Relay Belt" });
           await relay.check();
           const budget = picker.getByRole("textbox", { name: "Lorebook Token Budget", exact: true });
           await budget.fill("1200");
-          await picker.getByRole("button", { name: phone ? "Close Choose Lorebooks" : "Cancel", exact: true }).click();
-          await button("Choose lorebooks").click();
+          await picker.getByRole("button", { name: phone ? "Close Choose Lorebooks" : "Back", exact: true }).click();
+          await nextLine();
           await expect(relay).not.toBeChecked();
           await relay.check();
           await expect(budget).toHaveValue("1600");
-          await picker.getByRole("button", { name: "Done", exact: true }).click();
-        } else await nextLine();
+        }
+        await picker.getByRole("button", { name: phone ? "Done" : "Next", exact: true }).click();
         await layer("Village");
         await expectPose("presenting");
         await expect(line).toHaveText(/^The Village is your whole community/);

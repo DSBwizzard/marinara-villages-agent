@@ -566,63 +566,59 @@ export function FoundingScreen({
       setSetupMapReviewed(false);
       setSetupProblem("");
     };
+    const advanceDisabled =
+      busy ||
+      spriteBusy ||
+      setupEditorOpen ||
+      setupSuggestionsBusy ||
+      setupVenueBusy ||
+      !!draftSaveError ||
+      (setupStep === 2 && (setupMapBusy || !!setupMapRequest));
+    const advanceSetup = () => {
+      if (spriteWorking.current) return;
+      if (connectionSetupProblem) {
+        openConnectionPicker();
+        return;
+      }
+      setValidationAttempt((attempt) => attempt + 1);
+      setValidatedFields((fields) => [
+        ...new Set([
+          ...fields,
+          "connections",
+          "place-name",
+          "location-name",
+          "place-setting",
+          ...(setupStep === 2 ? ["map"] : []),
+          ...(setupStep >= 1
+            ? ["persona", "playerBackground", "villagers", ...setupFoundingVillagerIds.map((id) => "backstory:" + id)]
+            : []),
+        ]),
+      ]);
+      if (setupStep === 0 && manualSetting && setupName.trim() && setupLocationName.trim() && setupSetting.trim()) {
+        setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "world", settingEditorOpen: false }));
+        bodyRef.current?.scrollTo({ top: 0 });
+        return;
+      }
+      if (setupStep === 2 && !setupMapSrc) {
+        requestAnimationFrame(() =>
+          bodyRef.current?.querySelector<HTMLElement>(".villages-forging-map-warning")?.focus(),
+        );
+        return;
+      }
+      if (setupStep === 2 && setupIssues.length) {
+        setSetupShowIssues(true);
+        openIssue(setupIssues[0]);
+        return;
+      }
+      if (setupStep === 3) void foundVillage();
+      else changeStep(setupStep + 1);
+    };
     const nextReply = (
       <button
         type="button"
         className="villages-forging-primary villages-founding-next-reply"
-        disabled={
-          busy ||
-          spriteBusy ||
-          setupEditorOpen ||
-          setupSuggestionsBusy ||
-          setupVenueBusy ||
-          !!draftSaveError ||
-          (setupStep === 2 && (setupMapBusy || !!setupMapRequest))
-        }
-        onClick={() => {
-          if (spriteWorking.current) return;
-          if (connectionSetupProblem) {
-            openConnectionPicker();
-            return;
-          }
-          setValidationAttempt((attempt) => attempt + 1);
-          setValidatedFields((fields) => [
-            ...new Set([
-              ...fields,
-              "connections",
-              "place-name",
-              "location-name",
-              "place-setting",
-              ...(setupStep === 2 ? ["map"] : []),
-              ...(setupStep >= 1
-                ? [
-                    "persona",
-                    "playerBackground",
-                    "villagers",
-                    ...setupFoundingVillagerIds.map((id) => "backstory:" + id),
-                  ]
-                : []),
-            ]),
-          ]);
-          if (setupStep === 0 && manualSetting && setupName.trim() && setupLocationName.trim() && setupSetting.trim()) {
-            setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "world", settingEditorOpen: false }));
-            bodyRef.current?.scrollTo({ top: 0 });
-            return;
-          }
-          if (setupStep === 2 && !setupMapSrc) {
-            requestAnimationFrame(() =>
-              bodyRef.current?.querySelector<HTMLElement>(".villages-forging-map-warning")?.focus(),
-            );
-            return;
-          }
-          if (setupStep === 2 && setupIssues.length) {
-            setSetupShowIssues(true);
-            openIssue(setupIssues[0]);
-            return;
-          }
-          if (setupStep === 3) void foundVillage();
-          else changeStep(setupStep + 1);
-        }}
+        disabled={advanceDisabled}
+        onClick={advanceSetup}
       >
         {busy ? "Saving village…" : setupStep === 3 ? "Found village" : "Next"}
       </button>
@@ -947,6 +943,8 @@ export function FoundingScreen({
                   bodyRef.current?.scrollTo({ top: 0 });
                 }}
                 next={nextReply}
+                advanceSetup={advanceSetup}
+                advanceDisabled={advanceDisabled}
               />
             ) : null}
             {!phone ? (

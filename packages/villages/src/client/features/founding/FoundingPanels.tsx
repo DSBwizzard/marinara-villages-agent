@@ -378,8 +378,7 @@ export function VillageLorebookPicker({
   selected,
   onChange,
   disabled,
-  triggerLabel,
-  inline = false,
+  founding,
   budget,
 }: {
   books: VillageLorebookOption[] | null;
@@ -387,14 +386,14 @@ export function VillageLorebookPicker({
   selected: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
-  triggerLabel?: string;
-  inline?: boolean;
+  founding?: { inline: boolean; onBack(): void; nextLabel: "Next" | "Done" };
   budget?: Parameters<typeof LoreTokenBudgetField>[0];
 }) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<string[]>([]);
+  const inline = founding?.inline ?? false;
+  const [open, setOpen] = useState(!!founding);
+  const [pending, setPending] = useState(selected);
   const [pendingBudget, setPendingBudget] = useState<number>();
-  const [baseSelection, setBaseSelection] = useState<string[]>([]);
+  const [baseSelection, setBaseSelection] = useState(selected);
   const trigger = useRef<HTMLButtonElement>(null);
   const close = () => {
     setOpen(false);
@@ -490,9 +489,9 @@ export function VillageLorebookPicker({
       ) : null}
       <footer className="villages-lorebook-footer">
         <span aria-live="polite">{active.length} / 24</span>
-        {inline ? (
-          <button type="button" onClick={close}>
-            Cancel
+        {founding ? (
+          <button type="button" onClick={founding.onBack}>
+            Back
           </button>
         ) : null}
         <button
@@ -506,21 +505,19 @@ export function VillageLorebookPicker({
             close();
           }}
         >
-          Done
+          {founding?.nextLabel ?? "Done"}
         </button>
       </footer>
     </>
   );
   return (
     <section
-      className={
-        triggerLabel ? undefined : ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"
-      }
+      className={founding ? undefined : ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"}
       aria-label="Village Lorebooks"
-      data-inline-open={(inline && open) || undefined}
+      data-picker-open={(!!founding && open) || undefined}
     >
-      <div className="villages-lorebook-header" hidden={inline && open}>
-        {triggerLabel ? null : (
+      <div className="villages-lorebook-header" hidden={!!founding && open}>
+        {founding ? null : (
           <>
             <div className="villages-lorebook-heading">
               <h3>Village Lorebooks</h3>
@@ -535,8 +532,8 @@ export function VillageLorebookPicker({
         <button
           type="button"
           ref={trigger}
-          className="villages-lorebook-action"
-          aria-label={triggerLabel ?? "Choose Village Lorebooks"}
+          className={founding ? "villages-forging-primary" : "villages-lorebook-action"}
+          aria-label={founding ? undefined : "Choose Village Lorebooks"}
           disabled={disabled}
           onClick={() => {
             setQuery("");
@@ -546,10 +543,10 @@ export function VillageLorebookPicker({
             setOpen(true);
           }}
         >
-          {triggerLabel ?? "Choose..."}
+          {founding ? "Next" : "Choose..."}
         </button>
       </div>
-      {triggerLabel ? null : (
+      {founding ? null : (
         <div className={ELEMENT_TAG + "-lore-selected"} aria-live="polite">
           {selected.length ? (
             selected.map((id) => (
@@ -579,7 +576,7 @@ export function VillageLorebookPicker({
           )}
         </div>
       )}
-      {!open && !triggerLabel ? status : null}
+      {!open && !founding ? status : null}
       {open ? (
         inline ? (
           <div className="villages-lorebook-inline">{editor}</div>
