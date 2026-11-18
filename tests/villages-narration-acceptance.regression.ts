@@ -209,20 +209,20 @@ await runCase("narration-acceptance/requested-memory", () => {
       fixture(`"Mara, remember this: ${aside}"`).publication({}, "operation", true).readset.codeRequestedMemory,
       undefined,
     );
-  const saved = fixture(`Mara, remember this: ${fact}.`);
-  const captured = saved.publication({ segments: saved.response(["remember-fact"]) }, "saved-operation", true);
+  const admitted = fixture(`Mara, remember this: ${fact}.`);
+  const captured = admitted.publication({ segments: admitted.response(["remember-fact"]) }, "saved-operation", true);
   captured.readset.requestedMemory = {
-    start: saved.input.indexOf(fact),
-    end: saved.input.indexOf(fact) + fact.length,
-    recipientId: saved.id,
+    start: admitted.input.indexOf(fact),
+    end: admitted.input.indexOf(fact) + fact.length,
+    recipientId: admitted.id,
   };
   captured.readset.codeRequestedMemory = true;
   assert.equal(
-    acceptNarrationContinuity(saved.state, captured, "saved-memory", later).held,
+    acceptNarrationContinuity(admitted.state, captured, "saved-memory", later).held,
     false,
     "an older admitted request retains its captured speech and exact evidence",
   );
-  assert.equal(saved.state.continuity.versions[0].text, "Player said: " + fact);
+  assert.equal(admitted.state.continuity.versions[0].text, "Player said: " + fact);
   const protectedWorld = fixture(input);
   acceptNarrationContinuity(
     protectedWorld.state,
