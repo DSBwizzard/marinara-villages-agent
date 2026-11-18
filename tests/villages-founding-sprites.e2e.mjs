@@ -54,7 +54,7 @@ const files = [
   { filename: "happy-side.png", label: "Happy_blush", url: image, folderId: "profile" },
   { filename: "neutral-side.png", label: "Neutral_2", url: image, folderId: "profile" },
   { filename: "thinking-side.png", label: "Thinking", url: image, folderId: "profile" },
-  { filename: "neutral.png", label: "Neutral", url: image, folderId: "body" },
+  { filename: "neutral.png", label: "Neutral", url: "/api/sprites/aqua/file/neutral.png", folderId: "body" },
 ];
 const existing = {
   version: 1,
@@ -77,12 +77,25 @@ await withBrowser(browser, async () => {
     await runCase(name, async () => {
       const page = await browser.newPage({ viewport, hasTouch: phone, reducedMotion: "reduce" });
       await mockEngineLookups(page);
+      const portraitLoads = [];
+      let spriteLoads = 0;
+      await page.route("**/api/avatars/file/aqua.png?*", (route) => {
+        portraitLoads.push(new URL(route.request().url()));
+        return fulfill(route, {
+          contentType: phone ? "image/png" : "image/svg+xml",
+          body: phone ? "unreadable image" : Buffer.from(image.split(",")[1], "base64"),
+        });
+      });
+      await page.route("**/api/sprites/aqua/file/neutral.png", (route) => {
+        spriteLoads++;
+        return fulfill(route, { contentType: "image/svg+xml", body: Buffer.from(image.split(",")[1], "base64") });
+      });
       await page.route("**/api/characters/summaries", (route) =>
         route.fulfill({
           json: [
             {
               id: "aqua",
-              avatarUrl: image,
+              avatarUrl: "/api/avatars/file/aqua.png?v=7",
               avatarCrop: { srcX: 0.3, srcY: 0.2, srcWidth: 0.25, srcHeight: 0.25 },
             },
           ],
@@ -229,9 +242,19 @@ await withBrowser(browser, async () => {
         await expect(root.getByRole("button", { name: person.name, exact: true })).toBeVisible();
       }
       const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
-      const frontPreview = pane.getByRole("img", { name: "Front preview", exact: true });
       await expect(pane.getByRole("button", { name: "Sprites", exact: true })).toHaveAttribute("aria-pressed", "true");
-      await expect(frontPreview).toBeVisible();
+      const avatar = pane.locator(".appearance-compact-summary > .marinara-capability-villages-avatar");
+      await expect.poll(() => portraitLoads.length).toBeGreaterThan(0);
+      assert.ok(portraitLoads.every((url) => url.searchParams.get("w") === "320" && url.searchParams.get("v") === "7"));
+      if (phone) {
+        await expect(avatar.locator("img")).toHaveCount(0);
+        await expect(avatar).toHaveText("A");
+      } else {
+        await expect(avatar.locator("img")).toBeVisible();
+        await expect(avatar.locator("img")).toHaveAttribute("loading", "lazy");
+        await expect(avatar.locator("img")).toHaveCSS("object-fit", "fill");
+      }
+      assert.equal(spriteLoads, 0, "The compact People row does not download a full sprite");
       await expect(pane.getByText("6 Front · 0 Side", { exact: true })).toBeVisible();
       await expect(pane.getByText("Manage expressions")).toHaveCount(0);
       await expect(pane.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);

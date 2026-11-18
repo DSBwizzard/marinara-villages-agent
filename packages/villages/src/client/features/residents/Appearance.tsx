@@ -612,8 +612,6 @@ export function Appearance({
   if (!resident) {
     const front = baseline.expressions.filter((row) => row.front);
     const side = baseline.expressions.filter((row) => row.side);
-    const preview = front.find((row) => row.id === baseline.defaultExpressionId) ?? front[0];
-    const previewUrl = baseline.useSprites ? image(preview?.front ?? side[0]?.side) : "";
     const moveEntries = (view: SpriteView) =>
       (view === "front" ? front : side).map((row) => {
         const source = row[view]!;
@@ -632,13 +630,7 @@ export function Appearance({
         <style>{APPEARANCE_STYLES}</style>
         <div className="appearance-compact-row">
           <div className="appearance-compact-summary">
-            {previewUrl ? (
-              <span className="appearance-compact-image">
-                <img src={previewUrl} alt={front.length ? "Front preview" : "Side preview"} />
-              </span>
-            ) : (
-              <AvatarFace className={`${ELEMENT_TAG}-avatar`} name={name} portrait={portrait} />
-            )}
+            <AvatarFace className={`${ELEMENT_TAG}-avatar`} name={name} portrait={portrait} />
             <div>
               <h3>Appearance</h3>
               <span role="status">

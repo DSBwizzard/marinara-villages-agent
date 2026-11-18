@@ -102,10 +102,9 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-compact-summary { display:flex; align-items:center; flex:1 1 9.5rem; gap:.55rem; }
 .villages-forging-card .appearance-compact-summary h3 { margin:0 0 .1rem; font-size:1rem; }
 .appearance-compact-summary [role=status] { white-space:nowrap; font-size:.85rem; }
-.appearance-compact-image,.appearance-compact-summary>.marinara-capability-villages-avatar {
+.appearance-compact-summary>.marinara-capability-villages-avatar {
   display:block; width:2.9rem; height:2.9rem; flex:none; overflow:hidden; border-radius:.35rem;
 }
-.appearance-compact-image img { width:100%; height:100%; object-fit:contain; object-position:top; transform:scale(2.5); transform-origin:center top; }
 .appearance-compact-controls { display:grid; gap:.3rem; flex:1 1 11rem; }
 .appearance-compact-controls .appearance-mode { max-width:none; margin:0; }
 .appearance-compact-controls>button { width:100%; }
