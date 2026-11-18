@@ -29,10 +29,10 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
   display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap;
   min-height: 2rem; margin-block: -.4375rem; padding-inline: .25rem; border: 0; background: transparent;
   font: inherit; font-size: .75rem; font-weight: 600; cursor: pointer;
-  color: var(--marinara-chat-chrome-highlight-text, var(--primary));
+  color: var(--marinara-chat-chrome-highlight-text, color-mix(in srgb, var(--primary) 75%, var(--foreground)));
 }
 .${tag}-scene-reply-actions button svg { width: .9375rem; height: .9375rem; flex: none; }
-.${tag}-scene-reply-actions button:disabled { color: var(--muted-foreground); cursor: default; }
+.${tag}-scene-reply-actions button:disabled { color: var(--muted-foreground); opacity: .55; cursor: default; }
 .${tag}-scene-reply-actions button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: .25rem; }
 .${tag}-room-screen .${tag}-chat-vn-card {
   border: 1px solid var(--border); border-radius: .75rem;
