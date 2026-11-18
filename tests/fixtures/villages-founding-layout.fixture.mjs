@@ -682,7 +682,19 @@ export async function verifyFoundingLayout(group) {
         const railBox = await root.getByRole("list", { name: "Founding phases" }).boundingBox();
         const dialogueBox = await scene.locator(".villages-setting-dialogue").boundingBox();
         assert.ok(treeBox.y >= railBox.y + railBox.height, "The chart clears the phase rail");
-        assert.ok(treeBox.x + treeBox.width <= portraitBox.x, "The chart sits to the viewer’s left of Mari’s gesture");
+        if (phone) {
+          assert.ok(treeBox.width >= Math.min(frame.width * 0.4, 176), "The mobile chart keeps its labels readable");
+          assert.ok(treeBox.x + treeBox.width < stageBounds.x + stageBounds.width / 2, "The chart clears Mari’s face");
+          assert.ok(
+            treeBox.y + treeBox.height <= portraitBox.y + portraitBox.height * 0.43,
+            "The chart sits by Mari’s presenting hand",
+          );
+        } else {
+          assert.ok(
+            treeBox.x + treeBox.width <= portraitBox.x,
+            "The chart sits to the viewer’s left of Mari’s gesture",
+          );
+        }
         if (phone) {
           assert.ok(treeBox.y + treeBox.height <= dialogueBox.y, "The chart clears the bottom dialogue");
           const overlap = portraitBox.y + portraitBox.height - dialogueBox.y;
@@ -743,6 +755,12 @@ export async function verifyFoundingLayout(group) {
         if (phone) {
           await expect(worldPopup).toBeVisible();
           await expect(worldPopup.getByRole("button", { name: "Done", exact: true })).toBeInViewport({ ratio: 0.99 });
+          const popupBounds = await worldPopup.boundingBox();
+          assert.ok(popupBounds.x >= frame.x + 10 && popupBounds.x + popupBounds.width <= frame.x + frame.width - 10);
+          assert.ok(popupBounds.height < frame.height * 0.86, "The World form leaves the terrace visible around it");
+          await expect(worldPopup.getByRole("button", { name: "Close The wider world" })).toBeInViewport({
+            ratio: 0.99,
+          });
         }
         const worldForm = phone ? worldPopup : scene;
         await expect(worldForm.getByText(/^What World does your Village take place in\?/)).toBeVisible();
@@ -884,7 +902,12 @@ export async function verifyFoundingLayout(group) {
         await expect(mapPose).toHaveAttribute("data-facing", "left");
         await expect(mapPose).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
         const mapPortrait = await mapPose.boundingBox();
-        assert.ok(treeBox.x + treeBox.width <= mapPortrait.x + 0.5, "Mari’s left-facing gesture clears the chart");
+        assert.ok(
+          phone
+            ? treeBox.y + treeBox.height <= mapPortrait.y + mapPortrait.height * 0.43
+            : treeBox.x + treeBox.width <= mapPortrait.x + 0.5,
+          "Mari’s left-facing gesture clears the chart",
+        );
         assert.ok(Math.abs(mapPortrait.y + mapPortrait.height - portraitBox.y - portraitBox.height) < 0.5);
         await expect(line).toHaveText(/^A Map is where we actually play/);
         await expect(villageName).toHaveCount(0);

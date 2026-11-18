@@ -536,7 +536,7 @@ export const VILLAGES_FORGING_STYLES = `
 /* Founding overlays belong to the capability pane, never the Engine window. */
 .villages-founding-overlay { position:absolute; inset:0; z-index:100; display:grid; grid-template:minmax(0,1fr) / minmax(0,1fr); place-items:center; padding:1rem; overflow:hidden; background:#090c1a99; }
 .villages-forging-v2 .villages-founding-overlay>dialog { position:relative; inset:auto; margin:0; width:min(42rem,100%); height:auto; max-width:100%; max-height:100%; }
-.villages-forging-v2 .villages-founding-overlay>dialog:not(.villages-quick-dialog,.villages-founding-roster-dialog) { overflow:auto; }
+.villages-forging-v2 .villages-founding-overlay>dialog:not(.villages-quick-dialog,[data-scroll-body=true]) { overflow:auto; }
 .villages-founding-roster-dialog>input { flex:none; }
 .villages-founding-roster-dialog>.villages-people-choices { min-height:0; overflow:auto; overscroll-behavior:contain; }
 .villages-forging-v2 .villages-founding-overlay>dialog[data-compact=true] { width:min(26rem,100%); max-height:100%; }
@@ -763,15 +763,40 @@ export const VILLAGES_FORGING_STYLES = `
     flex-direction:column; justify-content:safe flex-end;
     overflow:auto; overscroll-behavior:contain;
   }
+  .villages-founding-overlay { padding:.85rem; background:#17102070; backdrop-filter:blur(3px); }
+  .villages-forging-v2 .villages-founding-overlay>dialog.villages-founding-dialog {
+    width:min(30rem,100%); max-width:100%; max-height:86%; padding:.85rem;
+    border:1px solid #a68091a6; border-radius:1rem; color:#f0dfbc;
+    background:linear-gradient(155deg,#3b3149fa,#292438fa); box-shadow:0 1rem 3rem #170f2870;
+  }
+  .villages-forging-v2 .villages-founding-dialog>header {
+    padding:0 0 .55rem; margin:0 0 .55rem; background:transparent; border-bottom:1px solid #ad839b45;
+  }
+  .villages-forging-v2 .villages-founding-dialog>header h3 { font-size:1.1rem; font-weight:400; }
+  .villages-forging-v2 .villages-founding-dialog>header>button {
+    flex:none; width:44px; height:44px; padding:0; border-color:transparent; background:transparent;
+  }
+  .villages-forging-v2 .villages-founding-dialog>footer {
+    padding:.65rem 0 0; background:transparent; border-color:#ad839b45;
+  }
+  .villages-forging-v2 .villages-founding-dialog :is(input:not([type=checkbox]),textarea,select) {
+    background:#30283e; border-color:#9b768c8c; color:#f0dfbc;
+  }
+  .villages-forging-v2 .villages-founding-dialog .villages-forging-primary {
+    background:#a5ac8b; border-color:#a5ac8b; color:#292938;
+  }
   .villages-forging-v2 .villages-founding-overlay>dialog.villages-chapter-menu {
-    width:calc(100% - 1.1rem); height:min(52rem,calc(100% - 1.1rem)); overflow:hidden;
+    height:auto; overflow:hidden;
   }
   .villages-chapter-menu>.villages-forging-body { overflow:auto; padding:.35rem; }
   .villages-forging-v2 .villages-chapter-menu [role=alert] { color:#ff9ba5; }
-  .villages-forging-v2 .villages-founding-overlay>dialog.villages-setting-fields-dialog { padding:.65rem; overflow:hidden; }
+  .villages-forging-v2 .villages-founding-overlay>dialog.villages-setting-fields-dialog { overflow:hidden; }
   .villages-setting-fields { min-height:0; overflow:auto; }
   .villages-forging-v2 .villages-setting-fields>p { margin:.3rem 0 .5rem; line-height:1.35; }
   .villages-setting-fields-dialog .villages-founding-field { margin:.4rem 0; }
+  .villages-setting-fields-dialog .villages-founding-field-heading label { font-size:.9rem; }
+  .villages-forging-v2 .villages-setting-fields-dialog .villages-founding-field-description { font-size:.8rem; line-height:1.35; }
+  .villages-forging-v2 .villages-setting-fields-dialog textarea { min-height:3.5rem; height:3.5rem; }
   .villages-setting-fields-dialog .villages-founding-field-heading label>small { margin-inline-start:.45em; }
   .villages-forging-v2[data-step] {
     --mari-floor:12cqh;
@@ -797,8 +822,9 @@ export const VILLAGES_FORGING_STYLES = `
     height:100%; padding:0 .65rem .65rem;
   }
   .villages-founding-hierarchy {
-    --chart-limit:13rem;
-    bottom:min(calc(var(--mari-floor) + var(--mari-height) * .4),calc(100cqh - 3.5rem - var(--chart-width) * .88));
+    --chart-width:min(43cqw,11rem);
+    top:max(4rem,calc(100cqh - var(--mari-floor) - var(--mari-height) - 1rem));
+    left:.7rem; right:auto; bottom:auto;
   }
   .villages-founding-title {
     position:absolute; inset:auto auto calc(var(--mari-floor) + var(--mari-height) * .57) .65rem;
