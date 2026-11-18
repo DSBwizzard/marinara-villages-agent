@@ -72,9 +72,11 @@ export type SceneScreenController = {
     [next: React.SetStateAction<import("../../../shared/contracts/village").SceneView>]
   >;
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
+  readonly setRoomBusy: ScenesState["setRoomBusy"];
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
   readonly setRoomError: ScenesState["setRoomError"];
+  readonly setRoomNotices: ScenesState["setRoomNotices"];
   readonly setRoomTargetId: ScenesState["setRoomTargetId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">

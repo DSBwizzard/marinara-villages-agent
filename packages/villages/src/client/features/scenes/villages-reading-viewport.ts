@@ -53,6 +53,7 @@ export function useReadingPages(
   readingKey: string,
   readingRef: RefObject<HTMLDivElement | null>,
   position: Pick<SceneReadingSession, "checkpoint" | "reset" | "isFounded" | "anchor" | "enterAtEnd">,
+  reveal = false,
 ) {
   const nodes = useMemo(() => parseVillagesInlineMarkdown(text), [text]);
   const length = readingText(nodes).length;
@@ -178,5 +179,47 @@ export function useReadingPages(
     setCursor(anchor.current);
     return true;
   };
-  return { nodes: sliceReadingNodes(nodes, page.start, page.end), index, count: pages.length, move };
+  const passage = useReplyReveal(
+    sliceReadingNodes(nodes, page.start, page.end),
+    reveal && index === 0 ? readingKey : undefined,
+  );
+  return { ...passage, index, count: pages.length, move };
+}
+
+/** Reveal the opening passage of a retried reply at Game mode's default pace. */
+function useReplyReveal(nodes: VillagesMarkdownNode[], key?: string) {
+  const text = key ? readingText(nodes) : "";
+  const ends = useMemo(
+    () => Array.from(new Intl.Segmenter().segment(text), ({ index, segment }) => index + segment.length),
+    [text],
+  );
+  const [progress, setProgress] = useState<{ key: string; count: number }>();
+  const instant = !!key && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const count = progress?.key === key ? (progress?.count ?? 0) : 0;
+  const active = !!key && !instant && count < ends.length;
+  const finish = () => {
+    if (key) setProgress({ key, count: ends.length });
+  };
+  const length = ends.length;
+  useLayoutEffect(() => {
+    if (!key || !active) return;
+    const started = performance.now();
+    let shown = 0;
+    let frame: number;
+    const reveal = (now: number) => {
+      const count = Math.min(length, Math.floor((now - started) / 31));
+      if (count !== shown) {
+        shown = count;
+        setProgress({ key, count });
+      }
+      if (count < length) frame = requestAnimationFrame(reveal);
+    };
+    frame = requestAnimationFrame(reveal);
+    return () => cancelAnimationFrame(frame);
+  }, [key, active, length]);
+  return {
+    nodes: active ? sliceReadingNodes(nodes, 0, ends[count - 1] ?? 0) : nodes,
+    revealing: active,
+    finishReveal: finish,
+  };
 }

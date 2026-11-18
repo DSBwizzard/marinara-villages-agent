@@ -207,22 +207,31 @@ try {
   row.data = structuredClone(valid);
 
   const warm = createScenePresentations(f.documents);
-  await warm.prepare(full, positions, valid.publicHistory.source, valid.publicHistory.presentation);
+  const previous = { head: valid.publicHistory.presentation, lineCount: valid.publicHistory.lineCount };
+  await warm.prepare(full, positions, valid.publicHistory.source, previous);
   const malformedVersion = { ...valid.publicHistory.presentation, publicVersion: "f".repeat(64) };
   for (const store of [warm, createScenePresentations(f.documents)])
     await assert.rejects(
       store.prepare(full, positions, valid.publicHistory.source, {
-        ...valid.publicHistory.presentation,
-        paragraphs: valid.publicHistory.presentation.paragraphs + 1,
+        ...previous,
+        head: {
+          ...valid.publicHistory.presentation,
+          paragraphs: valid.publicHistory.presentation.paragraphs + 1,
+        },
       }),
       /paragraph count changed/,
     );
   for (const source of [valid.publicHistory.source, "e".repeat(64)]) {
-    await assert.rejects(warm.prepare(full, positions, source, malformedVersion), /version changed/);
     await assert.rejects(
-      createScenePresentations(f.documents).prepare(full, positions, source, malformedVersion),
+      warm.prepare(full, positions, source, { ...previous, head: malformedVersion }),
       /version changed/,
     );
+    await assert.rejects(
+      createScenePresentations(f.documents).prepare(full, positions, source, { ...previous, head: malformedVersion }),
+      /version changed/,
+    );
+    for (const store of [warm, createScenePresentations(f.documents)])
+      await assert.rejects(store.prepare(full, positions, source, { ...previous, lineCount: 0 }), /moment position/);
   }
   const parses = new Map<string, number>(),
     parse = JSON.parse;

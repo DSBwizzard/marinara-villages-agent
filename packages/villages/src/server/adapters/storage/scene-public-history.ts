@@ -321,7 +321,7 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
       scene,
       rows,
       encoded.head.source,
-      previous?.presentation,
+      previous && { head: previous.presentation, lineCount: previous.lineCount },
       previous?.source === encoded.head.source && previous.publicVersion !== encoded.head.publicVersion,
     );
     const head = { ...encoded.head, presentation };

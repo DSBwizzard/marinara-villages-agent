@@ -242,7 +242,7 @@ await withBrowser(browser, async () => {
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
       await expect(band).toBeHidden();
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
-      await expect(page.getByRole("button", { name: "History", exact: true })).toBeHidden();
+      await expect(page.getByRole("button", { name: "Retry reply", exact: true })).toBeHidden();
       const composerBox = await composer.boundingBox();
       assert.ok(composerBox.y >= 0 && composerBox.y + composerBox.height <= visible);
       const spriteBox = await npc.boundingBox();
@@ -259,9 +259,11 @@ await withBrowser(browser, async () => {
       await expect(band).toBeVisible();
       await checkGeometry("after closing the keyboard");
       await composer.blur();
-      await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
       await expect(band).toBeHidden();
-      await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(band).toBeVisible();
       await expect(composer).toHaveValue("A draft to keep.");
     }
@@ -270,9 +272,11 @@ await withBrowser(browser, async () => {
     await expect(band).toHaveCount(0);
     await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(band).toHaveCount(1);
-    await page.getByRole("button", { name: "History", exact: true }).click();
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
     await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Save me the good chair.");
-    await page.getByRole("button", { name: "Hide history" }).click();
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
     // Long speech remains complete and scrollable, while the dock stays unchanged.
     asides[0].content = "**A long aside with every word preserved.** ".repeat(35);
     session.lines[2] = asides[0];

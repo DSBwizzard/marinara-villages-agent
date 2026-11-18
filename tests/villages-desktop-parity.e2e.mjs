@@ -442,13 +442,14 @@ await withBrowser(browser, async () => {
         await expect(reading).toContainText(longGreeting);
       }
     }
-    const historyButton = page.locator(".marinara-capability-villages-chat-history-toggle");
-    await expect(historyButton).toHaveCount(1);
-    await historyButton.click();
+    const sceneMenu = page.getByRole("button", { name: "Venue actions" });
+    await sceneMenu.click();
+    await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
     await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
     const stageWithHistory = await stage.boundingBox();
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
-    await historyButton.click();
+    await sceneMenu.click();
+    await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(composer).toBeVisible();
@@ -495,7 +496,7 @@ await withBrowser(browser, async () => {
     await expect(menu.getByRole("menuitem", { name: "Conclude", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Move", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Contact", exact: true })).toHaveCount(0);
-    await historyButton.focus();
+    await reading.focus();
     await expect(menu).toHaveCount(0);
     await actions.click();
     await page.keyboard.press("Escape");

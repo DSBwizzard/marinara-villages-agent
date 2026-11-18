@@ -89,19 +89,25 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return "Village catch-up is still in progress. Finish or continue before changing the Village.";
     return null;
   };
-  const surface = publicSceneRoutes(engine, projectSceneResponse, guard, [
-    "post /setup",
-    "get /memories",
-    "get /rooms/:id/history",
-    "get /rooms/:id/playback",
-    "get /rooms/:id/error-details",
-    "get /memories/inspect",
-    "get /memories/:id/evidence",
-    "get /memories/inspect/:id",
-    "get /artwork/:size/:id/:extension",
-    "post /memories/:id/forget",
-    "post /memories/:id/correct",
-  ]);
+  const surface = publicSceneRoutes(
+    engine,
+    projectSceneResponse,
+    guard,
+    [
+      "post /setup",
+      "get /memories",
+      "get /rooms/:id/history",
+      "get /rooms/:id/playback",
+      "get /rooms/:id/error-details",
+      "get /memories/inspect",
+      "get /memories/:id/evidence",
+      "get /memories/inspect/:id",
+      "get /artwork/:size/:id/:extension",
+      "post /memories/:id/forget",
+      "post /memories/:id/correct",
+    ],
+    ["post /rooms/retry"],
+  );
   registerRelationshipRoutes(surface);
   registerSpriteManagerRoutes(surface);
   registerSnapshotCatalogRoutes(surface);

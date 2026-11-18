@@ -177,6 +177,7 @@ import { configureSceneArchive, listVenueVisits } from "../features/scenes/archi
 import { createSceneChanges } from "../features/scenes/changes-service.js";
 import { configureSceneChanges, replaySceneChanges } from "../features/scenes/changes.js";
 import { createSceneCommands } from "../features/scenes/command-service.js";
+import { createSceneRetry } from "../features/scenes/retry-service.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import {
   activeVenueSession,
@@ -531,8 +532,24 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readVillageState: readVillageMemoryState,
     }),
   );
+  const sceneRetry = createSceneRetry({
+    documents: villagesDocuments,
+    repository: villageRepository,
+    gate: repairGate(),
+    readActive,
+    readSession,
+    changeSession,
+    requireLiveVenueSession,
+    generate,
+    coordinateVenue,
+    cancelVenueOperation,
+    assertVenueOwnership,
+    venueOperationSignal,
+    venueRequestMetrics,
+  });
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      retry: sceneRetry,
       selectActiveScene: sceneRepository.selectActiveScene,
       readTerminal: sceneTerminals.read,
       withSceneWork: backendWork.sceneFence.run,
@@ -608,6 +625,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseQueries = configureSceneQueries({
     ...createSceneQueryService({
+      retryTarget: sceneRetry.target,
       readSession,
       readVillageState,
       villagesDocuments,

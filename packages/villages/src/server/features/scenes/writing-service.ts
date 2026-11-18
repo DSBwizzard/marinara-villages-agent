@@ -6,7 +6,7 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import { agendaSpeechOptions } from "../../domain/rules/agenda-overview.js";
 import type { NarrationReadset } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
-import { badGateway, conflict } from "../../domain/rules/errors.js";
+import { badGateway, conflict, VillagesRequestError } from "../../domain/rules/errors.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import {
@@ -56,6 +56,8 @@ import {
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
 import { addressedSceneResidents, zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
+import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
+import type { ContinuityEvidence } from "../../domain/models/continuity-model.js";
 
 export interface SceneWritingPorts {
   venueCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
@@ -75,12 +77,13 @@ export interface SceneWritingPorts {
   readVillageState: typeof import("../world/village-store.js").readVillageState;
 }
 export const VENUE_REPLY_MAX_TOKENS = 4096;
-type Request = {
+export type SceneWritingRequest = {
   fitted: ReturnType<typeof fitVenueWritingMessages>;
   readset: NarrationReadset;
   model: { model: string; connectionId: string };
   plainJson?: true;
 };
+type Request = SceneWritingRequest;
 
 /** One GM purchase. Existing operation checkpoints own the exact fit and purchased reply through recovery. */
 export function createSceneWriting({
@@ -428,6 +431,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        ...(!nativeCommands ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
           ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }
@@ -448,7 +452,7 @@ export function createSceneWriting({
               recognizeDirectOfferSpeech: 5,
               optionalActorMemories: 5,
               continuityEffectRecovery: true,
-              stripSceneReplyDecorations: 4,
+              stripSceneReplyDecorations: 5,
             }
           : {}),
       },
@@ -468,6 +472,7 @@ export function createSceneWriting({
     mode: "greet" | "chat" | "leave",
     signal?: AbortSignal,
     trace?: GreetingTrace,
+    retry?: { request: Request; beforeDispatch: () => Promise<void> },
   ) {
     assertCurrentSceneGeneration(scene);
     return measurePipeline("Scene narration", { sceneId: scene.id, mode }, async () => {
@@ -481,14 +486,17 @@ export function createSceneWriting({
         request = savedRequest;
         completion = savedCompletion;
       } else {
-        const prepared = await prepareVenueTurnMessages(scene, input, mode, signal, trace);
+        const prepared = retry
+          ? await prepareRetryRequest(retry.request, scene, input, key)
+          : await prepareVenueTurnMessages(scene, input, mode, signal, trace);
         request = prepared;
         signal?.throwIfAborted();
         await recordLoreUse(request.fitted.lore, `Scene · ${scene.placeName || "Exchange"}`);
         trace?.("model request", 0, `${prepared.resolvedModel.model} (${prepared.resolvedModel.connectionId})`);
-        completion = await venueCheckpoint(completionStage, () =>
-          requestCompletion(prepared.resolvedModel, request, signal),
-        );
+        completion = await venueCheckpoint(completionStage, async () => {
+          if (retry) await retry.beforeDispatch();
+          return requestCompletion(prepared.resolvedModel, request, signal);
+        });
       }
       const parsed = readModelJsonObject(completion);
       const raw = completeSceneObject(
@@ -514,6 +522,12 @@ export function createSceneWriting({
           message: "The Scene response was not complete JSON.",
         };
         await rejectVenueCompletion({ ...request.model, reason: "invalid-gm-response" }, { stages: [completionStage] });
+        if (retry)
+          throw new VillagesRequestError(
+            409,
+            "The alternate reply could not be read. Your reply is kept.",
+            "SCENE_RETRY_UNAVAILABLE",
+          );
         throw Object.assign(badGateway(failure.message + " Your input and purchased response are retained."), {
           failure: { ...failure, responseDiagnostics: diagnostics },
         });
@@ -531,6 +545,34 @@ export function createSceneWriting({
         responseDiagnostics: diagnostics,
       };
     });
+  }
+  async function prepareRetryRequest(original: Request, scene: VenueScene, input: string, key: string) {
+    const source = original.readset.source;
+    const operationId = venueOperationId();
+    const episodeId = sceneEpisodeId(source.seed, source.scene.id, operationId);
+    const rebind = (proof: ContinuityEvidence) =>
+      proof.kind === "knowledge" && proof.episodeId === source.episodeId
+        ? { ...proof, episodeId, id: "source-" + memoryHash([episodeId, proof.fingerprint]).slice(0, 32) }
+        : proof;
+    const request = await venueCheckpoint<Request>("writing-request:" + key, async () => ({
+      ...original,
+      readset: {
+        ...original.readset,
+        ...(original.readset.stripSceneReplyDecorations === 4 ? { stripSceneReplyDecorations: 5 as const } : {}),
+        source: {
+          ...source,
+          episodeId,
+          operationId,
+          historical: Object.fromEntries(Object.entries(source.historical).map(([id, proof]) => [id, rebind(proof)])),
+        },
+        admission: { ...original.readset.admission, episodeId, operationId: episodeId },
+        ...(original.readset.readOnlyKnowledge
+          ? { readOnlyKnowledge: original.readset.readOnlyKnowledge.map(rebind) }
+          : {}),
+      },
+    }));
+    assertRequestIdentity(request, scene, input);
+    return { ...request, resolvedModel: await capturedModel(request) };
   }
   function assertRequestIdentity(request: Request, scene: VenueScene, input: string) {
     memoryRequire(

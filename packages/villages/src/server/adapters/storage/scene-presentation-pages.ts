@@ -362,6 +362,10 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
     if (remembered) {
       assertParagraphs(remembered.moments);
       memoryRequire(
+        remembered.moments.every((moment) => moment.lines.every((line) => line.position < lineCount)),
+        "invalid Scene moment position",
+      );
+      memoryRequire(
         versionOf(remembered.layout, versions) === head.publicVersion,
         "Scene presentation version changed",
       );
@@ -410,13 +414,13 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
     scene: VenueScene,
     positions: Position[],
     source: string,
-    previous?: ScenePresentationHead,
+    previous?: { head: ScenePresentationHead; lineCount: number },
     refresh = false,
   ) {
-    if (previous) readScenePresentationHead(previous, scene);
-    const old = previous ? await read(previous, scene, scene.lines.length) : undefined;
-    if (!refresh && previous?.source === source) return previous;
-    const { head, pages, ...entry } = encodeScenePresentations(scene, positions, source, previous, old, versions);
+    if (previous) readScenePresentationHead(previous.head, scene);
+    const old = previous ? await read(previous.head, scene, previous.lineCount) : undefined;
+    if (!refresh && previous?.head.source === source) return previous.head;
+    const { head, pages, ...entry } = encodeScenePresentations(scene, positions, source, previous?.head, old, versions);
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {
       const exists = await documents.getById("villages", id);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
-import { request } from "../../shared/api.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
@@ -28,6 +29,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   >([]);
   const sceneId = controller.room?.id;
   const sceneLifetime = useRef<string | undefined>(sceneId);
+  const replyRetry = useRef<{ sceneId: string; pending: boolean } | null>(null);
+  const [retryPending, setRetryPending] = useState(false);
   const [contactReviewBusy, setContactReviewBusy] = useState(false);
   const contactReviewPending = useRef(false);
   const contactReviewGeneration = useRef(0);
@@ -38,6 +41,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     contactReviewPending.current = false;
     contactReviewGeneration.current++;
     setContactReviewBusy(false);
+    setRetryPending(false);
     return () => {
       sceneLifetime.current = undefined;
     };
@@ -98,6 +102,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     sendRoom,
     setMailboxOpen,
     setRoom,
+    setRoomBusy,
     setRoomDraft,
     setRoomError,
     openVenue,
@@ -107,6 +112,71 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     room?.operation?.kind === "turn" &&
     roomErrorTrace?.submissionId === room.operation.id &&
     (room.operation.status === "interrupted" || (room.operation.status === "complete" && !!room.operation.error));
+
+  async function changeReply() {
+    const target = room.retryReply;
+    const remembered = replyRetry.current;
+    const pending = remembered?.pending && remembered.sceneId === room.id ? remembered : undefined;
+    if (!room.id || !target || roomBusy || pending) return;
+    const requestId = createVillagesClientId();
+    const action = { sceneId: room.id, pending: true };
+    replyRetry.current = action;
+    setRoomBusy(true);
+    setRetryPending(true);
+    setRoomError("");
+    const current = () => sceneLifetime.current === action.sceneId && replyRetry.current === action;
+    let replaced = false;
+    try {
+      const result = await request<{ saved: boolean; replacedNoticeIds?: string[] }>("/rooms/retry", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: room.id, token: target.token, requestId }),
+      });
+      replaced = result.saved;
+      if (current() && result.replacedNoticeIds?.length)
+        controller.setRoomNotices((events) => events.filter((event) => !result.replacedNoticeIds!.includes(event.id)));
+    } catch (cause) {
+      if (current()) setRoomError(messageFrom(cause, "Could not retry the reply."));
+    }
+    try {
+      const active = await request<{ session: SceneView | null }>("/rooms/active");
+      const scene = active.session;
+      if (current() && scene?.id === room.id) {
+        if (
+          replaced &&
+          scene.latestTurn?.id === room.latestTurn?.id &&
+          scene.playback.version !== room.playback.version
+        ) {
+          const start = scene.retryStart;
+          sceneReading.checkpoint.current.bookmark = start
+            ? {
+                scope: scene.playback.scope,
+                sceneId: scene.id,
+                lineId: start.id,
+                paragraph: 0,
+                momentIndex: start.index,
+                anchorCursor: start.anchorCursor,
+                atEnd: false,
+                reveal: true,
+              }
+            : undefined;
+          sceneReading.checkpoint.current.window = {
+            ...scene.playback,
+            lines: scene.lines,
+            participants: scene.participants,
+          };
+        }
+        setRoom(scene);
+      }
+    } catch (cause) {
+      if (current()) setRoomError(messageFrom(cause, "Could not refresh the reply."));
+    } finally {
+      action.pending = false;
+      if (current()) {
+        setRoomBusy(false);
+        setRetryPending(false);
+      }
+    }
+  }
 
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
@@ -141,7 +211,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 actions:
                   room.operation?.status === "interrupted" &&
                   room.operation.kind !== "turn" &&
-                  room.status !== "opening" ? (
+                  room.status !== "opening" &&
+                  room.operation.kind !== "retry" ? (
                     <button
                       type="button"
                       disabled={roomBusy || contactReviewBusy}
@@ -321,6 +392,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void sendRoom()}
+          onRetryReply={() => void changeReply()}
+          retryPending={retryPending}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);

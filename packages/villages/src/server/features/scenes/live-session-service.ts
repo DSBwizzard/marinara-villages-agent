@@ -1,6 +1,6 @@
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { observableRoomDescription, zonePictureContext } from "../../domain/rules/zone-picture.js";
-import { findLocation, findNpc, hasAssociatedNpc } from "../../domain/rules/places.js";
+import { findLocation, hasAssociatedNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
@@ -13,7 +13,7 @@ import {
   accessExits,
   captureSceneAttendance,
   sceneZoneOccupants,
-  sameSceneRoutine,
+  projectLiveAttendance,
 } from "../../domain/rules/scene-attendance.js";
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { requireSceneZoneId, captureSceneLayout } from "../../domain/rules/scene-layout.js";
@@ -423,35 +423,7 @@ export function createLiveScenes({
     const currentMoment = moment(now);
     const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
     const previousMoment = moment(new Date(previousAt));
-    const sameRoutine = (id: string) => !!findNpc(village, id) || sameSceneRoutine(village, session, id, now);
-    const accompanying = (session.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
-    const positions = new Map(
-      accompanying.flatMap((row) => {
-        const zone = resolveVenueZone(venue, row.zoneId);
-        return zone
-          ? [
-              [
-                row.characterId,
-                {
-                  id: venue.id,
-                  name: venue.name,
-                  kind: "venue" as const,
-                  zoneId: zone.id,
-                  zoneName: zone.name,
-                  image: zone.image,
-                },
-              ] as const,
-            ]
-          : [];
-      }),
-    );
-    const attendance = captureSceneAttendance(village, venue.id, now, positions);
-    attendance.occupants.push(
-      ...(session.sceneAttendance?.occupants ?? []).filter(
-        (person) => !!findNpc(village, person.characterId) && !session.departedIds?.includes(person.characterId),
-      ),
-    );
-    const departedIds = (session.departedIds ?? []).filter(sameRoutine);
+    const { attendance, accompanying, departedIds, sameRoutine } = projectLiveAttendance(village, session, venue, now);
     const continuity = captureSceneContinuity(village, session, now.getTime());
     if (
       session.continuity &&

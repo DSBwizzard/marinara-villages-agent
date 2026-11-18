@@ -216,7 +216,7 @@ export function readSceneNarrationReply(
   const quotes = readset.quotedSceneSources === true;
   const format = readset.ordinaryFormatRecovery;
   const recovery = format === 5 || format === 6 ? 4 : format;
-  const decorations = readset.stripSceneReplyDecorations;
+  const decorations = readset.stripSceneReplyDecorations === 5 ? 4 : readset.stripSceneReplyDecorations;
   const knownDecorations = decorations === true || decorations === 2 || decorations === 3 || decorations === 4;
   if (
     readset.recoverCodeMemoryEcho === true &&
@@ -278,6 +278,7 @@ export function readSceneNarrationReply(
     Array.isArray(raw.segments) &&
     Object.keys(raw).every((key) => key === "segments" || key === "keep")
   ) {
+    const proseOnly = !Object.hasOwn(raw, "keep");
     raw = {
       ...raw,
       segments: raw.segments.map((value: unknown) => {
@@ -291,10 +292,12 @@ export function readSceneNarrationReply(
           recovery === 4 &&
           (line.delivery === "normal" || (knownDecorations && line.delivery === null)) &&
           !Object.hasOwn(line, "targetId");
-        if (!normal && line.truncated !== false) return value;
+        const emptyNote = proseOnly && readset.stripSceneReplyDecorations === 5 && line.textNote === "";
+        if (!normal && !emptyNote && line.truncated !== false) return value;
         const normalized = { ...line };
         if (line.truncated === false) delete normalized.truncated;
         if (normal) delete normalized.delivery;
+        if (emptyNote) delete normalized.textNote;
         return normalized;
       }),
     };

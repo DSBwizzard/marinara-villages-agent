@@ -20,6 +20,12 @@ A visible playback page is not the submission ledger. The latest saved submissio
 
 Send clears the composer at dispatch. A confirmed failure restores the submitted text if the player has made no newer edits. The composer stays editable while the Scene responds, and late replies retain the reading position. Replace a held reply by sending the restored draft with or without edits. Replacement checks for already committed effects, retains the old evidence and fences late results before starting new work. If a failed status write leaves a request marked running, the coordinator can interrupt that exact owner once the Scene work fence is idle.
 
+## Retry an accepted reply
+
+**Retry** replaces the latest ordinary reply in the active Scene using the original message, positions, witnesses and Village day. The original stays readable until an alternate and its effects commit together. Memories, Wishes, relationship scores and daily limits are evaluated from before the replaced reply. Each explicit Retry starts one new Narration request. The control is disabled while generation runs or the latest reply is ineligible.
+
+A reply needs its retained original request and unchanged continuity and Episode history. Later Scene activity, changed attendance or access, and work that already depends on the reply can close the window. Unrelated Village settings, Place records and pending mail can advance independently. Appointments and other native effects are outside Retry. A failed or interrupted attempt retains its evidence and leaves the accepted turn in place unless its replacement already committed. Sending a new message atomically retires an interrupted Retry and preserves its evidence. Another explicit Retry starts a fresh attempt.
+
 ## Hearing evidence and citations
 
 Current nonverbal sounds use metadata on an ordinary narration segment. Full narration stays local; remote listeners receive only the permitted audible cue through soundOnly under the same line ID. Raised voices likewise distinguish heard words from indistinct sound. Routing creates no extra evidence line and grants no unseen visuals, attendance, access or movement.

@@ -66,6 +66,7 @@ assert.throws(
   /Recover the saved request/,
 );
 assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
+assert.deepEqual(sceneResend({ ...saved, kind: "retry", input: {} }, saved.input, "new"), { submissionId: "new" });
 for (const mode of ["chat", "contact", "leave"])
   assert.deepEqual(sceneResend(saved, { message: "Edited", mode, targetId: "new-target" }, "new"), {
     submissionId: "new",
