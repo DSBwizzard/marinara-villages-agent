@@ -171,7 +171,7 @@ export function openingFailureMessage(cause: unknown): string {
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */
-function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" }) {
+function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" | "retry" | "retry-unavailable" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -190,6 +190,11 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" }) {
         </>
       ) : name === "sending" ? (
         <path d="M12 3a9 9 0 1 1-9 9" />
+      ) : name === "retry" || name === "retry-unavailable" ? (
+        <>
+          <path d="M20 4v6h-6 M20 10a8 8 0 1 0 0 5" />
+          {name === "retry-unavailable" ? <path d="M4 20 20 4" /> : null}
+        </>
       ) : (
         <>
           <rect x="4" y="8" width="16" height="13" rx="3" />
@@ -650,6 +655,8 @@ export function RoomPanel({
     !historyOpen &&
     !playback.busy &&
     !playback.restoring;
+  const canRetryReply = canCompose && !!room.retryReply && !!onRetryReply;
+  const recoverReply = !!room.retryReply?.requestId;
   const canSend =
     canCompose &&
     !contactRecovery &&
@@ -1307,17 +1314,6 @@ export function RoomPanel({
       </div>
 
       <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
-        <div className={ELEMENT_TAG + "-scene-reply-actions"}>
-          <button type="button" disabled={!canCompose || !room.retryReply || !onRetryReply} onClick={onRetryReply}>
-            {room.retryReply?.requestId ? "Recover reply" : "Retry reply"}
-          </button>
-          {onCancelRetry &&
-          (retryPending || (room.operation?.kind === "retry" && room.operation.status !== "complete")) ? (
-            <button type="button" onClick={onCancelRetry}>
-              Cancel retry
-            </button>
-          ) : null}
-        </div>
         {historyOpen ? (
           <div
             ref={historyRef}
@@ -1361,21 +1357,40 @@ export function RoomPanel({
               />
             )}
             <div className={`${ELEMENT_TAG}-chat-vn-column`}>
-              {retrying ? null : register === "narration" ? (
-                <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
-              ) : (
-                <p
-                  className={`${ELEMENT_TAG}-chat-vn-name`}
-                  style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
-                >
-                  {step?.name ?? ""}
-                  {step?.viaDoorway ? (
-                    <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
-                      Nearby
-                    </span>
+              <div className={ELEMENT_TAG + "-scene-speaker-row"}>
+                {retrying ? null : register === "narration" ? (
+                  <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
+                ) : (
+                  <p
+                    className={`${ELEMENT_TAG}-chat-vn-name`}
+                    style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
+                  >
+                    {step?.name ?? ""}
+                    {step?.viaDoorway ? (
+                      <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                        Nearby
+                      </span>
+                    ) : null}
+                  </p>
+                )}
+                <div className={ELEMENT_TAG + "-scene-reply-actions"}>
+                  <button
+                    type="button"
+                    aria-label={recoverReply ? "Recover reply" : "Retry reply"}
+                    disabled={!canRetryReply}
+                    onClick={onRetryReply}
+                  >
+                    <SceneControlIcon name={canRetryReply ? "retry" : "retry-unavailable"} />
+                    {recoverReply ? "Recover" : "Retry"}
+                  </button>
+                  {onCancelRetry &&
+                  (retryPending || (room.operation?.kind === "retry" && room.operation.status !== "complete")) ? (
+                    <button type="button" onClick={onCancelRetry}>
+                      Cancel retry
+                    </button>
                   ) : null}
-                </p>
-              )}
+                </div>
+              </div>
               <div
                 ref={readingRef}
                 className={`${ELEMENT_TAG}-chat-vn-reading`}

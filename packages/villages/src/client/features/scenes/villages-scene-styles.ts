@@ -23,22 +23,17 @@ ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !imp
 }
 ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-vn[hidden] { display: none; }
-.${tag}-scene-reply-actions {
-  position: absolute; inset-inline-start: .75rem; bottom: calc(100% + .25rem);
-  display: flex; gap: .375rem;
-}
+.${tag}-scene-speaker-row { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.${tag}-scene-reply-actions { display: flex; flex: none; gap: .375rem; margin-inline-start: auto; }
 .${tag}-scene-reply-actions button {
-  min-height: 2rem; padding: .25rem .75rem; border: 1px solid var(--border); border-radius: .5rem;
-  font: inherit; font-size: .8125rem; font-weight: 600; cursor: pointer;
-  color: var(--foreground); background: var(--popover);
+  display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap;
+  min-height: 2rem; margin-block: -.4375rem; padding-inline: .25rem; border: 0; background: transparent;
+  font: inherit; font-size: .75rem; font-weight: 600; cursor: pointer;
+  color: var(--marinara-chat-chrome-highlight-text, var(--primary));
 }
-.${tag}-scene-reply-actions button:first-child:enabled {
-  color: var(--primary-foreground, var(--background)); background: var(--primary);
-}
-.${tag}-scene-reply-actions button:disabled {
-  color: var(--muted-foreground); cursor: default;
-}
-.${tag}-scene-reply-actions button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.${tag}-scene-reply-actions button svg { width: .9375rem; height: .9375rem; flex: none; }
+.${tag}-scene-reply-actions button:disabled { color: var(--muted-foreground); cursor: default; }
+.${tag}-scene-reply-actions button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; border-radius: .25rem; }
 .${tag}-room-screen .${tag}-chat-vn-card {
   border: 1px solid var(--border); border-radius: .75rem;
   background: var(--marinara-chat-chrome-panel-bg, var(--popover)); backdrop-filter: blur(12px); box-shadow: 0 .25rem .75rem #0004;
@@ -142,20 +137,19 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-chat-keyboard-done { display: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem; gap: .25rem; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn:has(.${tag}-composer)
-  > :is(.${tag}-scene-reply-actions, .${tag}-chat-log, .${tag}-chat-vn-card) { display: none; }
+  > :is(.${tag}-chat-log, .${tag}-chat-vn-card) { display: none; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-composer-row { flex-wrap: nowrap; gap: .375rem; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-keyboard-done {
   display: block; flex: 0 0 auto; min-height: 44px; min-width: 44px; padding: 0 .625rem;
   border: 1px solid var(--border); border-radius: .75rem; font: inherit; font-size: .8125rem;
   color: var(--foreground); background: var(--popover); cursor: pointer;
 }
-.${tag}-room-screen[data-mobile="true"] .${tag}-scene-reply-actions { inset-inline-start: .375rem; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-scene-reply-actions button { min-height: 44px; }
+/* Enlarge the tap target inside the card without adding height to the speaker row. */
+.${tag}-room-screen[data-mobile="true"] .${tag}-scene-reply-actions button { min-height: 44px; margin-block: -.375rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr); align-items: center; padding: .5rem .625rem; gap: .375rem .5rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-portrait { width: 32px; height: 32px; box-sizing: border-box; border-radius: .375rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-column { display: contents; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-name,
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-label { grid-column: 2; align-self: center; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-scene-speaker-row { grid-column: 2; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-reading { grid-column: 1 / -1; width: 100%; box-sizing: border-box; min-height: 0; max-height: min(var(--villages-reading-page-height, 3.9375rem), max(1.3125rem, calc(var(--villages-scene-visible-height, 100cqh) - 10.5rem))); }
 .${tag}-room-screen[data-mobile="true"] .${tag}-room-panel-tools { padding: 0 .375rem; gap: .125rem; align-items: center; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-room-panel-tools .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; padding: .25rem .375rem; }

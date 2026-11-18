@@ -65,11 +65,20 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(desktopRetry).toBeDisabled();
     const checkRetryPlacement = async (page, button) => {
       const card = page.locator(".marinara-capability-villages-chat-vn-card");
-      const [control, dialogue] = await Promise.all([button.boundingBox(), card.boundingBox()]);
-      assert.ok(control && dialogue && control.y >= 0);
-      assert.ok(control.y + control.height <= dialogue.y, "Retry sits above the dialogue box");
-      assert.ok(Math.abs(control.x - dialogue.x) <= 2, "Retry aligns to the left edge");
-      await expect(button.locator("..")).toHaveCSS("position", "absolute");
+      const speakerRow = card.locator(".marinara-capability-villages-scene-speaker-row");
+      const [control, dialogue, row] = await Promise.all([
+        button.boundingBox(),
+        card.boundingBox(),
+        speakerRow.boundingBox(),
+      ]);
+      assert.ok(control && dialogue && row);
+      assert.ok(control.y >= dialogue.y && control.y + control.height <= dialogue.y + dialogue.height);
+      assert.ok(Math.abs(control.x + control.width - row.x - row.width) <= 2, "Retry trails the speaker row");
+      assert.ok(Math.abs(control.y + control.height / 2 - row.y - row.height / 2) <= 2);
+      assert.ok(control.width <= 64, "Retry has a compact label");
+      await expect(button).toHaveText("Retry");
+      await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await expect(button.locator("svg path")).toHaveCount((await button.isDisabled()) ? 2 : 1);
     };
     await checkRetryPlacement(page, desktopRetry);
     await expect(composer).toBeVisible();
