@@ -42,6 +42,7 @@ await withBrowser({ close: server.stop }, async () => {
       }),
     );
     const turns = [];
+    let failedRetryExpected = false;
     await context.route("**/api/villages**", async (route) => {
       const request = route.request(),
         url = new URL(request.url());
@@ -53,7 +54,8 @@ await withBrowser({ close: server.stop }, async () => {
         ...(payload ? { payload } : {}),
       });
       if (url.pathname.endsWith("/rooms/turn")) turns.push({ input: request.postDataJSON(), response });
-      assert.equal(response.statusCode, 200, `${request.method()} ${url.pathname}: ${response.body}`);
+      const expectedStatus = failedRetryExpected && url.pathname.endsWith("/rooms/retry") ? 500 : 200;
+      assert.equal(response.statusCode, expectedStatus, `${request.method()} ${url.pathname}: ${response.body}`);
       await fulfill(route, { status: response.statusCode, headers: response.headers, body: response.rawPayload });
     });
     const page = await context.newPage();
@@ -120,6 +122,7 @@ await withBrowser({ close: server.stop }, async () => {
     server.model.chatComplete = async () => {
       const attempt = ++retries;
       if (attempt === 1) await firstRetry.promise;
+      if (attempt === 3) throw Error("fixture provider disconnected");
       return {
         content: JSON.stringify({
           segments:
@@ -149,7 +152,8 @@ await withBrowser({ close: server.stop }, async () => {
       await desktopRetry.click();
       await expect(current).toHaveText("Retrying reply…");
       await expect(desktopRetry).toBeDisabled();
-      await expect(page.getByRole("button", { name: "Cancel retry" })).toBeVisible();
+      await expect(page.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(1);
+      await expect(desktopRetry).toHaveText("Retry");
       await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
     } finally {
       firstRetry.resolve();
@@ -188,9 +192,29 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
     assert.equal(retries, 2);
 
+    const phoneComposer = phone.getByRole("textbox", { name: "Message at The Mill" });
+    await phoneComposer.fill("Keep talking after a failed retry");
+    failedRetryExpected = true;
+    await retryReply.click();
+    await expect(retryReply).toBeEnabled();
+    failedRetryExpected = false;
+    await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
+    await expect(phone.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await expect(phone.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(1);
+    await expect(retryReply).toHaveText("Retry");
+    assert.equal(retries, 3);
+    await phone.reload();
+    await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect
+      .poll(async () => {
+        if (await retryReply.isEnabled()) return true;
+        if ((await phoneNext.isVisible()) && (await phoneNext.isEnabled())) await phoneNext.click();
+        return retryReply.isEnabled();
+      })
+      .toBe(true);
     await retryReply.click();
     await expect(phoneCurrent).toHaveText("The rain eases over the mill.");
-    assert.equal(retries, 3);
+    assert.equal(retries, 4);
     const active = await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
     const { session } = active.json();
     assert.ok(session.retryStart, "the retried reply has a public reading anchor");

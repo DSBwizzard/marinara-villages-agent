@@ -27,7 +27,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   >([]);
   const sceneId = controller.room?.id;
   const sceneLifetime = useRef<string | undefined>(sceneId);
-  const replyRetry = useRef<{ sceneId: string; token: string; requestId: string; pending: boolean } | null>(null);
+  const replyRetry = useRef<{ sceneId: string; pending: boolean } | null>(null);
   const [retryPending, setRetryPending] = useState(false);
   const [contactReviewBusy, setContactReviewBusy] = useState(false);
   const contactReviewPending = useRef(false);
@@ -107,51 +107,25 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     snapshot,
   } = controller;
 
-  async function changeReply(cancel = false) {
+  async function changeReply() {
     const target = room.retryReply;
     const remembered = replyRetry.current;
     const pending = remembered?.pending && remembered.sceneId === room.id ? remembered : undefined;
-    if (!room.id || (cancel ? !pending && room.operation?.kind !== "retry" : !target || roomBusy || pending)) return;
-    if (cancel && pending) {
-      try {
-        await request("/rooms/retry/cancel", {
-          method: "POST",
-          body: JSON.stringify({
-            sessionId: room.id,
-            operationId: pending.requestId,
-            token: pending.token,
-          }),
-        });
-      } catch (cause) {
-        if (sceneLifetime.current === room.id) setRoomError(messageFrom(cause, "Could not cancel the retry."));
-      }
-      return;
-    }
-    const requestId =
-      target?.requestId ??
-      (remembered && remembered.sceneId === room.id && remembered.token === target?.token
-        ? remembered.requestId
-        : createVillagesClientId());
-    const action = { sceneId: room.id, token: target?.token ?? "", requestId, pending: true };
+    if (!room.id || !target || roomBusy || pending) return;
+    const requestId = createVillagesClientId();
+    const action = { sceneId: room.id, pending: true };
     replyRetry.current = action;
     setRoomBusy(true);
-    setRetryPending(!cancel);
+    setRetryPending(true);
     setRoomError("");
     const current = () => sceneLifetime.current === action.sceneId && replyRetry.current === action;
     let replaced = false;
     try {
-      const result = await request<{ saved: boolean; replacedNoticeIds?: string[] }>(
-        cancel ? "/rooms/retry/cancel" : "/rooms/retry",
-        {
-          method: "POST",
-          body: JSON.stringify(
-            cancel
-              ? { sessionId: room.id, operationId: room.operation!.id }
-              : { sessionId: room.id, token: target!.token, requestId },
-          ),
-        },
-      );
-      replaced = !cancel && result.saved;
+      const result = await request<{ saved: boolean; replacedNoticeIds?: string[] }>("/rooms/retry", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: room.id, token: target.token, requestId }),
+      });
+      replaced = result.saved;
       if (current() && result.replacedNoticeIds?.length)
         controller.setRoomNotices((events) => events.filter((event) => !result.replacedNoticeIds!.includes(event.id)));
     } catch (cause) {
@@ -405,7 +379,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void sendRoom()}
           onRetryReply={() => void changeReply()}
-          onCancelRetry={() => void changeReply(true)}
           retryPending={retryPending}
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);

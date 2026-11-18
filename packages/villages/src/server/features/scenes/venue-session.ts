@@ -63,6 +63,3 @@ export async function settleScene(...args: Parameters<SceneCommands["settleScene
 export function retryReply(...args: Parameters<SceneCommands["retryReply"]>) {
   return binding.get().retryReply(...args);
 }
-export function cancelRetry(...args: Parameters<SceneCommands["cancelRetry"]>) {
-  return binding.get().cancelRetry(...args);
-}

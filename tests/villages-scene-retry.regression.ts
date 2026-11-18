@@ -1,4 +1,4 @@
-// Test cases: scene-retry/refusal, scene-retry/repeated, scene-retry/memory, scene-retry/wish, scene-retry/relationship, scene-retry/unrelated-place, scene-retry/unrelated-mail, scene-retry/unrelated-during-generation, scene-retry/history-changed, scene-retry/history-race, scene-retry/legacy, scene-retry/stale-token, scene-retry/inactive, scene-retry/attendance, scene-retry/offstage-attendance, scene-retry/malformed, scene-retry/native-alternate, scene-retry/duplicate, scene-retry/cancel, scene-retry/journal-village, scene-retry/journal-scene, scene-retry/lost-ack, scene-retry/cleanup, scene-retry/wish-follow, scene-retry/fitted-knowledge, scene-retry/missing-base, scene-retry/before-journal, scene-retry/checkpoint, scene-retry/appointment
+// Test cases: scene-retry/refusal, scene-retry/repeated, scene-retry/shorter, scene-retry/failure, scene-retry/startup, scene-retry/failure-race, scene-retry/settlement-ack, scene-retry/memory, scene-retry/wish, scene-retry/relationship, scene-retry/unrelated-place, scene-retry/unrelated-mail, scene-retry/unrelated-during-generation, scene-retry/history-changed, scene-retry/history-race, scene-retry/legacy, scene-retry/stale-token, scene-retry/inactive, scene-retry/attendance, scene-retry/offstage-attendance, scene-retry/malformed, scene-retry/native-alternate, scene-retry/duplicate, scene-retry/journal-village, scene-retry/journal-scene, scene-retry/lost-ack, scene-retry/cleanup, scene-retry/wish-follow, scene-retry/fitted-knowledge, scene-retry/missing-base, scene-retry/before-journal, scene-retry/checkpoint, scene-retry/appointment
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -112,7 +112,7 @@ async function fixture() {
     return {
       sessionId: "browser",
       token: scene.retryReply.token,
-      requestId: scene.retryReply.requestId ?? randomUUID(),
+      requestId: randomUUID(),
     };
   };
   const retry = async (scene: any, next: unknown = alternate) => {
@@ -158,6 +158,30 @@ async function fixture() {
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
+async function interruptedRetry(f: Fixture) {
+  const first = await f.send();
+  const update = f.documents.update;
+  f.documents.update = async (input) => {
+    if (
+      input.id === "villages-venue-visit-browser" &&
+      input.data.operation?.kind === "retry" &&
+      input.data.operation.status === "complete"
+    )
+      throw Error("fixture settlement unavailable");
+    return update(input);
+  };
+  try {
+    f.responses.push(() => {
+      throw Error("fixture provider disconnected");
+    });
+    assert.equal((await f.post("/retry", f.body(first))).statusCode, 500);
+  } finally {
+    f.documents.update = update;
+  }
+  const held = await f.active();
+  assert.equal(held.operation.status, "interrupted");
+  return held;
+}
 const test = (name: string, work: (f: Fixture) => Promise<void>) =>
   runCase("scene-retry/" + name, async () => {
     const f = await fixture();
@@ -197,6 +221,116 @@ await test("repeated", async (f) => {
   assert.notEqual(f.latest().episodeId, replaced);
   assert.equal(f.latest().id, id);
   assert.equal((await f.send()).latestTurn.published, true);
+});
+await test("shorter", async (f) => {
+  const first = await f.send({
+    segments: Array.from({ length: 12 }, (_, index) => ({
+      kind: "dialogue",
+      speakerId: "mara",
+      text: "A long reply passage " + index + ".",
+    })),
+  });
+  const cold = await packagedSceneServer({ records: structuredClone(f.records) });
+  try {
+    let purchases = 0;
+    cold.model.chatComplete = async () => {
+      purchases++;
+      return { content: JSON.stringify(alternate), finishReason: "stop" } as any;
+    };
+    const result = await cold.app.inject({ method: "POST", url: "/api/villages/rooms/retry", payload: f.body(first) });
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(result.json().saved, true);
+    assert(cold.scene().lines.length < first.lines.length);
+    assert(cold.scene().lines.some((row) => row.content.includes("window")));
+    assert.equal(purchases, 1);
+  } finally {
+    await cold.stop();
+  }
+});
+await test("startup", async (f) => {
+  const held = await interruptedRetry(f);
+  const cold = await packagedSceneServer({ records: structuredClone(f.records) });
+  try {
+    assert.equal(cold.calls(), 0, "startup settles the old attempt without generation");
+    const response = await cold.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(response.statusCode, 200, response.body);
+    const scene = response.json().session;
+    assert.equal(scene.operation, null);
+    assert.equal(scene.latestTurn.id, held.latestTurn.id);
+    assert(scene.retryReply);
+    assert.equal(cold.scene().abandonedOperations!.at(-1)!.kind, "retry");
+    assert.equal(cold.scene().generationReceipts!.at(-1)!.outcome, "unknown");
+    const send = await cold.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: "browser",
+        submissionId: randomUUID(),
+        mode: "chat",
+        message: "Let's keep talking.",
+        expectedSceneRevision: scene.sceneRevision,
+      },
+    });
+    assert.equal(send.statusCode, 200, send.body);
+    assert.equal(cold.calls(), 1);
+  } finally {
+    await cold.stop();
+  }
+});
+await test("failure-race", async (f) => {
+  const held = await interruptedRetry(f);
+  const before = structuredClone(f.scene().operation);
+  assert.equal((await f.post("/retry", { ...f.body(held), token: "0".repeat(64) })).statusCode, 409);
+  assert.deepEqual(f.scene().operation, before, "a stale click preserves the held attempt");
+  let complete!: (value: unknown) => void;
+  let started!: () => void;
+  const dispatch = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  f.responses.push(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+        started();
+      }),
+  );
+  const a = f.post("/retry", f.body(held));
+  await dispatch;
+  const b = f.post("/retry", f.body(held));
+  complete(alternate);
+  const results = await Promise.all([a, b]);
+  assert.deepEqual(results.map((result) => result.statusCode).sort(), [200, 409]);
+  assert.equal(f.prompts.length, 3, "competing fresh clicks buy one alternate");
+  assert.equal((await f.active()).operation, null);
+});
+await test("settlement-ack", async (f) => {
+  const request = f.body(await f.send());
+  const update = f.documents.update;
+  let lost = false;
+  f.documents.update = async (input) => {
+    const result = await update(input);
+    if (
+      !lost &&
+      input.id === "villages-venue-visit-browser" &&
+      input.data.operation?.kind === "retry" &&
+      input.data.operation.status === "complete" &&
+      input.data.abandonedOperations?.length
+    ) {
+      lost = true;
+      throw Error("fixture lost settlement acknowledgement");
+    }
+    return result;
+  };
+  f.responses.push(() => {
+    throw Error("fixture provider disconnected");
+  });
+  assert.equal((await f.post("/retry", request)).statusCode, 500);
+  assert(lost);
+  const failed = await f.active();
+  assert.equal(failed.operation, null);
+  assert.equal((await f.post("/retry", request)).json().saved, false);
+  await f.retry(failed);
+  assert.equal(f.prompts.length, 3);
 });
 for (const [name, original, kind] of [
   ["memory", memory, "information"],
@@ -425,32 +559,25 @@ await test("duplicate", async (f) => {
   for (const result of await Promise.all([a, b])) assert.equal(result.statusCode, 200, result.body);
   assert.equal(f.prompts.length, 2);
 });
-await test("cancel", async (f) => {
+await test("failure", async (f) => {
   const first = await f.send(),
     id = f.latest().episodeId;
   const request = f.body(first);
-  let complete!: (value: unknown) => void;
-  let dispatch!: () => void;
-  const started = new Promise<void>((resolve) => {
-    dispatch = resolve;
+  f.responses.push(() => {
+    throw Error("fixture provider disconnected");
   });
-  f.responses.push(
-    () =>
-      new Promise((resolve) => {
-        complete = resolve;
-        dispatch();
-      }),
-  );
-  const work = f.post("/retry", request);
-  await started;
-  const operationId = f.scene().operation!.id;
-  const cancel = await f.post("/retry/cancel", { sessionId: "browser", operationId });
-  complete(alternate);
-  assert.equal(cancel.statusCode, 200, cancel.body);
-  assert.equal((await work).statusCode, 409);
+  assert.equal((await f.post("/retry", request)).statusCode, 500);
   assert.equal(f.latest().episodeId, id);
+  const failed = await f.active();
+  assert.equal(failed.operation, null);
+  assert(failed.retryReply);
+  assert.deepEqual(Object.keys(failed.retryReply), ["token"]);
+  assert.equal(f.scene().abandonedOperations!.at(-1)!.kind, "retry");
+  assert.equal(f.scene().generationReceipts!.at(-1)!.outcome, "unknown");
   assert.equal((await f.post("/retry", request)).json().saved, false);
   assert.equal(f.prompts.length, 2);
+  await f.retry(failed);
+  assert.equal(f.prompts.length, 3);
 });
 for (const [name, failedRow, lost] of [
   ["journal-village", "villages-village", false],
@@ -472,7 +599,8 @@ for (const [name, failedRow, lost] of [
       return update(input);
     };
     f.responses.push(alternate);
-    await f.post("/retry", request);
+    const result = await f.post("/retry", request);
+    assert.equal(result.statusCode, 200, result.body);
     assert(interrupted);
     const recovered = await f.active();
     assert.equal(recovered.latestTurn.id, first.latestTurn.id);
@@ -547,10 +675,11 @@ await test("before-journal", async (f) => {
   assert(refused);
   assert.equal(f.latest().episodeId, original);
   assert.equal(f.state().episodes.records.at(-1)!.id, original);
-  const recovered = await f.post("/retry", retry);
-  assert.equal(recovered.statusCode, 200, recovered.body);
-  assert.notEqual(f.latest().episodeId, original);
+  const failed = await f.active();
+  assert.equal(failed.operation, null);
+  assert.equal((await f.post("/retry", retry)).json().saved, false);
   assert.equal(f.prompts.length, 2);
+  await f.send();
 });
 await test("checkpoint", async (f) => {
   const first = await f.send();

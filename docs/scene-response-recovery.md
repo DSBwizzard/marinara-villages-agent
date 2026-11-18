@@ -22,9 +22,9 @@ Late replies preserve newer composer edits, including edits with identical text,
 
 ## Retry an accepted reply
 
-**Retry reply** replaces the latest ordinary reply in the active Scene using the original message, positions, witnesses and Village day. The original stays readable until an alternate and its effects commit together. Memories, Wishes, relationship scores and daily limits are evaluated from before the replaced reply. Explicit Retry makes one new Narration request. Recovery of a saved alternate reuses its purchase.
+**Retry** replaces the latest ordinary reply in the active Scene using the original message, positions, witnesses and Village day. The original stays readable until an alternate and its effects commit together. Memories, Wishes, relationship scores and daily limits are evaluated from before the replaced reply. Each explicit Retry starts one new Narration request. The control is disabled while generation runs or the latest reply is ineligible.
 
-A reply needs its retained original request and unchanged continuity and Episode history. Later Scene activity, changed attendance or access, and work that already depends on the reply can close the window. Unrelated Village settings, Place records and pending mail can advance independently. Appointments and other native effects are outside Retry. A rejected alternate leaves the accepted turn in place. A Retry interrupted after dispatch can be recovered or cancelled from the Scene.
+A reply needs its retained original request and unchanged continuity and Episode history. Later Scene activity, changed attendance or access, and work that already depends on the reply can close the window. Unrelated Village settings, Place records and pending mail can advance independently. Appointments and other native effects are outside Retry. A failed or interrupted attempt retains its evidence and leaves the accepted turn in place unless its replacement already committed. Play can continue, and another explicit Retry starts a fresh attempt.
 
 ## Hearing evidence and citations
 

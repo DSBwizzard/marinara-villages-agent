@@ -480,7 +480,7 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       if (mode === "scene-retry")
         throw new VillagesRequestError(
           409,
-          "Other Village work is saving. Recover the saved alternate reply shortly.",
+          "Other Village work is saving. Try Retry again shortly.",
           "SCENE_RETRY_BUSY",
         );
       throw conflict("Other Village work is active. Let it finish, then try REPAIR again.");

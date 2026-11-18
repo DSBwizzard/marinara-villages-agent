@@ -1065,7 +1065,7 @@ export function createSceneCommands({
           () => moveVenueZoneOnce(id, String(operation.input.zoneId)),
           { recovery: true },
         );
-      if (operation.kind === "retry") return;
+      if (operation.kind === "retry") return cancelVenueOperation(id, operation);
       if (operation.kind === "turn") {
         assertSceneTurnMode(operation.input.mode);
         assertCurrentSceneGeneration(await readSession(id));
@@ -1118,10 +1118,6 @@ export function createSceneCommands({
     async retryReply(id: string, operationId: string, token: string) {
       if (!retry) throw conflict("Reply Retry is unavailable.");
       return retry.retryReply(id, operationId, token);
-    },
-    async cancelRetry(id: string, operationId: string, token?: string) {
-      if (!retry) throw conflict("Reply Retry is unavailable.");
-      return retry.cancel(id, operationId, token);
     },
     moveVenueZone,
     enterVenue,

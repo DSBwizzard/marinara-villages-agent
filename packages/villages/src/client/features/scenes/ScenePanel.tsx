@@ -236,7 +236,6 @@ export function RoomPanel({
   onDraft,
   onSend,
   onRetryReply,
-  onCancelRetry,
   retryPending,
   sendOnEnter,
   spriteCardFlipEnabled,
@@ -291,7 +290,6 @@ export function RoomPanel({
   onDraft: (value: string) => void;
   onSend: () => void;
   onRetryReply?: () => void;
-  onCancelRetry?: () => void;
   retryPending?: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
@@ -656,7 +654,6 @@ export function RoomPanel({
     !playback.busy &&
     !playback.restoring;
   const canRetryReply = canCompose && !!room.retryReply && !!onRetryReply;
-  const recoverReply = !!room.retryReply?.requestId;
   const canSend =
     canCompose &&
     !contactRecovery &&
@@ -1374,21 +1371,10 @@ export function RoomPanel({
                   </p>
                 )}
                 <div className={ELEMENT_TAG + "-scene-reply-actions"}>
-                  <button
-                    type="button"
-                    aria-label={recoverReply ? "Recover reply" : "Retry reply"}
-                    disabled={!canRetryReply}
-                    onClick={onRetryReply}
-                  >
+                  <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
                     <SceneControlIcon name={canRetryReply ? "retry" : "retry-unavailable"} />
-                    {recoverReply ? "Recover" : "Retry"}
+                    Retry
                   </button>
-                  {onCancelRetry &&
-                  (retryPending || (room.operation?.kind === "retry" && room.operation.status !== "complete")) ? (
-                    <button type="button" onClick={onCancelRetry}>
-                      Cancel retry
-                    </button>
-                  ) : null}
                 </div>
               </div>
               <div

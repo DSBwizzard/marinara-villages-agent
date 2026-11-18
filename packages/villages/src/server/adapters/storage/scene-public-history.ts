@@ -317,7 +317,12 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
     const old = previous ? await read(previous, previous.lineCount) : undefined;
     const encoded = encodePositions(scene, transcript, submissions, old, versions);
     const { rows, layout, pages } = encoded;
-    const presentation = await presentations.prepare(scene, rows, encoded.head.source, previous?.presentation);
+    const presentation = await presentations.prepare(
+      scene,
+      rows,
+      encoded.head.source,
+      previous && { head: previous.presentation, lineCount: previous.lineCount },
+    );
     const head = { ...encoded.head, presentation };
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {

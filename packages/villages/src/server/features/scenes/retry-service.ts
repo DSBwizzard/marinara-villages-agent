@@ -9,7 +9,7 @@ import { operationEvidenceStore } from "../../adapters/storage/operation-evidenc
 import { readSceneRetryRecord } from "../../adapters/storage/scene-retry-record.js";
 import { readVillageRoot, type createVillageRepository } from "../../adapters/storage/village-repository.js";
 import { validateBackgroundJobRecord } from "../../adapters/storage/background-responses.js";
-import { withRepairWork, type RepairGate } from "../../adapters/storage/repair-gate.js";
+import { outsideRepairWork, withRepairWork, type RepairGate } from "../../adapters/storage/repair-gate.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Job } from "../../domain/models/background-model.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
@@ -100,9 +100,7 @@ export function createSceneRetry(ports: RetryPorts) {
       const recovery =
         scene.operation?.kind === "retry" && scene.operation.status === "interrupted" ? scene.operation : undefined;
       const { retry } = await check(scene, recovery?.id);
-      return recovery
-        ? { token: String(recovery.input.token), requestId: String(recovery.input.requestId) }
-        : { token: retryToken(scene, retry.episodeId) };
+      return { token: retryToken(scene, retry.episodeId) };
     } catch (error) {
       if (!(error instanceof VillagesRequestError) || error.code !== "SCENE_RETRY_UNAVAILABLE") throw error;
       return undefined;
@@ -190,10 +188,21 @@ export function createSceneRetry(ports: RetryPorts) {
         saved: scene.submissions.at(-1)?.episodeId === sceneEpisodeId(scene.villageSeed, scene.id, id),
         replacedNoticeIds: [],
       };
-    const live = prior ? scene : await ports.requireLiveVenueSession(sessionId);
+    let live =
+      prior || (scene.operation?.kind === "retry" && scene.operation.status === "interrupted")
+        ? scene
+        : await ports.requireLiveVenueSession(sessionId);
     const admitted = await withRepairWork(() =>
       ports.repository.withAuthorityLock(async () => {
-        const admitted = await check(live, prior?.id);
+        const current = await ports.readSession(sessionId);
+        if (current.operation?.token !== live.operation?.token)
+          unavailable("The Scene request changed. Check the latest reply.");
+        live = current;
+        const interrupted =
+          !prior && live.operation?.kind === "retry" && live.operation.status === "interrupted"
+            ? live.operation
+            : undefined;
+        const admitted = await check(live, prior?.id ?? interrupted?.id);
         if (!prior && retryToken(live, admitted.retry.episodeId) !== token)
           unavailable("That Retry belongs to an earlier reply.");
         original = (await operationEvidenceStore(ports.documents()).read(
@@ -219,10 +228,14 @@ export function createSceneRetry(ports: RetryPorts) {
         const state = await ports.repository.readAuthority({ memories: true });
         verifyScope(state, live, original);
         await checkDependencies(state, admitted.retry.episodeId);
+        if (interrupted) {
+          await ports.cancelVenueOperation(sessionId, interrupted);
+          live = await ports.readSession(sessionId);
+        }
         return admitted;
       }),
     );
-    return ports.coordinateVenue(
+    const pending = ports.coordinateVenue(
       sessionId,
       id,
       "retry",
@@ -347,15 +360,28 @@ export function createSceneRetry(ports: RetryPorts) {
         },
       },
     );
+    return pending.catch((error: unknown) =>
+      outsideRepairWork(async () => {
+        try {
+          // Reconcile the durable journal before settling an uncommitted failure.
+          const current = await ports.readSession(sessionId);
+          if (current.submissions.at(-1)?.episodeId === sceneEpisodeId(current.villageSeed, current.id, id))
+            return {
+              saved: true,
+              replacedNoticeIds: (admitted.turn.recordEvents ?? []).map((event) => event.id),
+            };
+          if (
+            current.operation?.id === id &&
+            current.operation.kind === "retry" &&
+            current.operation.status === "interrupted"
+          )
+            await ports.cancelVenueOperation(sessionId, current.operation);
+        } catch {
+          // Preserve the original failure and any unresolved journal for the next read.
+        }
+        throw error;
+      }),
+    );
   }
-
-  async function cancel(sessionId: string, id: string, token?: string) {
-    const operationId = token ? operationIdFor(sessionId, id, token) : id;
-    const scene = await ports.readSession(sessionId);
-    if (scene.operation?.kind !== "retry" || scene.operation.id !== operationId)
-      unavailable("That Retry is no longer pending.");
-    await ports.cancelVenueOperation(sessionId, scene.operation);
-    return { saved: true };
-  }
-  return { retryReply, target, cancel };
+  return { retryReply, target };
 }

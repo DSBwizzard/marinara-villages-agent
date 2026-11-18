@@ -747,7 +747,7 @@ export type SceneView = {
   lines: RoomLine[];
   playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
   latestTurn?: { id: string; at: string; published: boolean };
-  retryReply?: { token: string; requestId?: string };
+  retryReply?: { token: string };
   retryStart?: Pick<import("./scene-playback.js").ScenePlaybackMoment, "id" | "index" | "anchorCursor">;
 };
 
