@@ -60,6 +60,18 @@ await withBrowser({ close: server.stop }, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
+    const desktopRetry = page.getByRole("button", { name: "Retry reply", exact: true });
+    await expect(desktopRetry).toBeVisible();
+    await expect(desktopRetry).toBeDisabled();
+    const checkRetryPlacement = async (page, button) => {
+      const card = page.locator(".marinara-capability-villages-chat-vn-card");
+      const [control, dialogue] = await Promise.all([button.boundingBox(), card.boundingBox()]);
+      assert.ok(control && dialogue && control.y >= 0);
+      assert.ok(control.y + control.height <= dialogue.y, "Retry sits above the dialogue box");
+      assert.ok(Math.abs(control.x - dialogue.x) <= 2, "Retry aligns to the left edge");
+      await expect(button.locator("..")).toHaveCSS("position", "absolute");
+    };
+    await checkRetryPlacement(page, desktopRetry);
     await expect(composer).toBeVisible();
     await composer.fill("Hello from browser");
     await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -122,9 +134,13 @@ await withBrowser({ close: server.stop }, async () => {
     };
     await composer.fill("Keep this unsent draft");
     const current = page.getByRole("region", { name: "Current paragraph" });
+    await expect(desktopRetry).toBeEnabled();
+    await checkRetryPlacement(page, desktopRetry);
     try {
-      await page.getByRole("button", { name: "Retry reply", exact: true }).click();
+      await desktopRetry.click();
       await expect(current).toHaveText("Retrying reply…");
+      await expect(desktopRetry).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Cancel retry" })).toBeVisible();
       await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
     } finally {
       firstRetry.resolve();
@@ -145,14 +161,19 @@ await withBrowser({ close: server.stop }, async () => {
     const phoneNext = phone.getByRole("button", { name: "Next paragraph", exact: true });
     await expect
       .poll(async () => {
-        if (await retryReply.isVisible()) return true;
+        if (await retryReply.isEnabled()) return true;
         if ((await phoneNext.isVisible()) && (await phoneNext.isEnabled())) await phoneNext.click();
-        return retryReply.isVisible();
+        return retryReply.isEnabled();
       })
       .toBe(true);
     await expect(retryReply).toBeInViewport();
+    await checkRetryPlacement(phone, retryReply);
+    assert.equal((await retryReply.boundingBox()).height, 44);
     await retryReply.click();
     await expect(phoneCurrent).toHaveText("Rain patters on the mill roof.");
+    await expect(retryReply).toBeVisible();
+    await expect(retryReply).toBeDisabled();
+    await checkRetryPlacement(phone, retryReply);
     await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
     await phoneNext.click();
     await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");

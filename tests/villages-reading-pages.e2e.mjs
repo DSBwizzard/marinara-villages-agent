@@ -243,9 +243,11 @@ await withBrowser(browser, async () => {
       await expect(counter).toContainText("Page 1/");
       const initialText = await text.textContent();
       await page.screenshot({ path: `artifacts/compact-before-hide-${width}x${height}.png` });
-      await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
       await expect(reading).toBeHidden();
-      await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(draft).toHaveCount(0);
       assert.equal(await text.textContent(), initialText);
       const images = page.locator(`.${tag}-chat-cast-person > img`);

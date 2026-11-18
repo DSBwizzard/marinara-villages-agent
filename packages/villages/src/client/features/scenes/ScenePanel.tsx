@@ -171,7 +171,7 @@ export function openingFailureMessage(cause: unknown): string {
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */
-function SceneControlIcon({ name }: { name: "send" | "sending" | "up" | "down" | "narrator" }) {
+function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -190,10 +190,6 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "up" | "down" |
         </>
       ) : name === "sending" ? (
         <path d="M12 3a9 9 0 1 1-9 9" />
-      ) : name === "up" ? (
-        <path d="m6 15 6-6 6 6" />
-      ) : name === "down" ? (
-        <path d="m6 9 6 6 6-6" />
       ) : (
         <>
           <rect x="4" y="8" width="16" height="13" rx="3" />
@@ -331,7 +327,7 @@ export function RoomPanel({
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const memoryCloseRef = useRef<HTMLButtonElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const actionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
@@ -361,6 +357,11 @@ export function RoomPanel({
     if (!historyOpen) return;
     window.requestAnimationFrame(() => historyRef.current?.focus());
   }, [historyOpen]);
+
+  const closeTranscript = () => {
+    setHistoryOpen(false);
+    actionsTriggerRef.current?.focus();
+  };
 
   useEffect(() => {
     if (actionsView !== "menu") return;
@@ -780,6 +781,7 @@ export function RoomPanel({
         </span>
         <span ref={actionsRef} className={`${ELEMENT_TAG}-chat-actions`}>
           <button
+            ref={actionsTriggerRef}
             type="button"
             className={`${ELEMENT_TAG}-room-actions-trigger`}
             onClick={() => setActionsView((value) => (value ? null : "menu"))}
@@ -791,6 +793,32 @@ export function RoomPanel({
           </button>
           {actionsView === "menu" ? (
             <span className={`${ELEMENT_TAG}-room-actions-menu`} role="menu" aria-label="Venue actions">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  composerRef.current?.blur();
+                  setActionsView(null);
+                  setDialogueHidden(!dialogueHidden);
+                  closeTranscript();
+                  if (dialogueHidden) window.requestAnimationFrame(() => readingRef.current?.focus());
+                }}
+              >
+                {dialogueHidden ? "Show dialogue" : "Hide dialogue"}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!worldScope || !room.lines.length}
+                onClick={() => {
+                  setActionsView(null);
+                  setDialogueHidden(false);
+                  if (historyOpen) closeTranscript();
+                  else setHistoryOpen(true);
+                }}
+              >
+                {historyOpen ? "Close transcript" : "Read transcript"}
+              </button>
               {canDraft ? (
                 <button
                   type="button"
@@ -1278,49 +1306,18 @@ export function RoomPanel({
         ) : null}
       </div>
 
-      {dialogueHidden ? (
-        <button
-          type="button"
-          className={ELEMENT_TAG + "-dialogue-restore"}
-          onClick={() => {
-            setDialogueHidden(false);
-            window.requestAnimationFrame(() => readingRef.current?.focus());
-          }}
-        >
-          Show dialogue
-        </button>
-      ) : null}
-      <div className={`${ELEMENT_TAG}-chat-vn`} data-dialogue-hidden={dialogueHidden ? "true" : "false"}>
-        <button
-          type="button"
-          className={ELEMENT_TAG + "-dialogue-hide"}
-          onClick={() => {
-            composerRef.current?.blur();
-            setDialogueHidden(true);
-            setActionsView(null);
-            window.requestAnimationFrame(() =>
-              document.querySelector<HTMLButtonElement>(`.${ELEMENT_TAG}-dialogue-restore`)?.focus(),
-            );
-          }}
-        >
-          Hide dialogue
-        </button>
-        {room.lines.length > 0 ? (
-          <div className={ELEMENT_TAG + "-chat-tab"}>
-            <button
-              ref={historyTriggerRef}
-              type="button"
-              className={ELEMENT_TAG + "-chat-history-toggle"}
-              aria-label={historyOpen ? "Hide history" : "History"}
-              aria-expanded={historyOpen}
-              disabled={!worldScope}
-              title={historyOpen ? "Return to Visual Novel" : "Show chat history"}
-              onClick={() => setHistoryOpen((value) => !value)}
-            >
-              <SceneControlIcon name={historyOpen ? "down" : "up"} />
+      <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
+        <div className={ELEMENT_TAG + "-scene-reply-actions"}>
+          <button type="button" disabled={!canCompose || !room.retryReply || !onRetryReply} onClick={onRetryReply}>
+            {room.retryReply?.requestId ? "Recover reply" : "Retry reply"}
+          </button>
+          {onCancelRetry &&
+          (retryPending || (room.operation?.kind === "retry" && room.operation.status !== "complete")) ? (
+            <button type="button" onClick={onCancelRetry}>
+              Cancel retry
             </button>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         {historyOpen ? (
           <div
             ref={historyRef}
@@ -1329,9 +1326,7 @@ export function RoomPanel({
             aria-label="Scene history"
             tabIndex={0}
             onKeyDown={(event) => {
-              if (event.key !== "Escape") return;
-              setHistoryOpen(false);
-              window.requestAnimationFrame(() => historyTriggerRef.current?.focus());
+              if (event.key === "Escape") closeTranscript();
             }}
           >
             <SceneHistory
@@ -1476,18 +1471,6 @@ export function RoomPanel({
           </div>
         </div>
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
-
-        {canCompose && room.retryReply && onRetryReply ? (
-          <button type="button" className={ELEMENT_TAG + "-chat-vn-button"} onClick={onRetryReply}>
-            {room.retryReply.requestId ? "Recover reply" : "Retry reply"}
-          </button>
-        ) : null}
-        {(retryPending || (room.operation?.kind === "retry" && room.operation.status !== "complete")) &&
-        onCancelRetry ? (
-          <button type="button" className={ELEMENT_TAG + "-chat-vn-button"} onClick={onCancelRetry}>
-            Cancel retry
-          </button>
-        ) : null}
 
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>

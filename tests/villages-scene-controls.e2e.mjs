@@ -162,7 +162,8 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Rain taps");
       await expect(composer).toHaveCount(0);
       await expect(send).toHaveCount(0);
-      await page.getByRole("button", { name: "History", exact: true }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
       await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
       await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Rain taps against the window.");
       const historyPages = page.getByRole("navigation", { name: "Scene history pages" });
@@ -173,9 +174,16 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
       await expect(composer).toHaveCount(0);
       await expect(send).toHaveCount(0);
-      await page.getByRole("button", { name: "Hide history" }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
       await page.getByRole("button", { name: "Next paragraph" }).click();
       await expect(send).toBeEnabled();
+      await expect(composer).toHaveValue("Tea sounds perfect.");
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
+      await expect(composer).toBeHidden();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
       for (const action of ["Move", "Conclude"])
