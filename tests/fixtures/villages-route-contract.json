@@ -270,10 +270,6 @@
     },
     {
       "method": "post",
-      "path": "/rooms/retry/cancel"
-    },
-    {
-      "method": "post",
       "path": "/rooms/leave"
     },
     {
