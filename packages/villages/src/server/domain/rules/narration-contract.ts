@@ -316,7 +316,7 @@ export function readContinuityProposal(raw: unknown, ordinaryScene = false) {
 }
 
 const sceneOutcomeDirection =
-  "Play kindness, insults, threats, physical struggle, residents' refusals, and plausible local damage through the characters and world. Treat quotes, reports, and hypotheticals as such. Never make completed death, resurrection or permanent incapacity of the player or established residents, time travel, shared-clock changes, large time skips, or destruction of the playable Village true in the ongoing story or simulation. Revise unsupported outcomes you introduced. HALT only if no natural continuation can preserve the player's explicit meaning within the game's rules. Return segments:[] and halt:{reason,source} with no effects. Choose time, activity, condition, world, structure, or authority. Cite the exact relevant input or supplied evidence. ";
+  "Play kindness, insults, threats, physical struggle, quotes, reports, hypotheticals, starting to rest, residents' refusals, and plausible local damage naturally. Never make completed death, resurrection or permanent incapacity of the player or established residents, time travel, shared-clock changes, large time skips, or destruction of the playable Village true in the ongoing story or simulation. Revise unsupported outcomes you introduced. HALT only if no natural continuation can preserve the player's explicit meaning within the game's rules. Return segments:[] and halt:{reason,source} with no effects. Choose time, activity, condition, world, structure, or authority. Cite the exact relevant input or supplied evidence. ";
 
 const sceneTurnDirection =
   sceneOutcomeDirection +
