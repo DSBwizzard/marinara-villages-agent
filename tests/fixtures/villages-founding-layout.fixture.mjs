@@ -452,11 +452,11 @@ export async function verifyFoundingLayout(group) {
           });
           assert.ok(backdropHeight >= frame.height);
           const frameBottom = frame.y + frame.height;
-          const lampBase = frameBottom - (backdropHeight * (820 - 455)) / 820;
+          const cropLeft = (1311 - (frame.width * 820) / backdropHeight) / 2;
           const wallBase = frameBottom - (backdropHeight * (820 - 635)) / 820;
           const skyline = frameBottom - (backdropHeight * (820 - 425)) / 820;
           assert.ok(skyline >= frame.y + frame.height * 0.28, "The phone crop leaves room for the sky");
-          assert.ok(titleBounds.y >= lampBase + 4, "The logo and Start clear the lamp");
+          assert.ok(cropLeft >= 148, "The centered crop keeps the lamp post offscreen");
           assert.ok(
             stageBounds.y + stageBounds.height >= wallBase + 8,
             "Mari stands forward of the wall on the paving",
@@ -683,12 +683,15 @@ export async function verifyFoundingLayout(group) {
         const dialogueBox = await scene.locator(".villages-setting-dialogue").boundingBox();
         assert.ok(treeBox.y >= railBox.y + railBox.height, "The chart clears the phase rail");
         assert.ok(treeBox.x + treeBox.width <= portraitBox.x, "The chart sits to the viewer’s left of Mari’s gesture");
-        assert.ok(
-          phone
-            ? Math.max(portraitBox.y + portraitBox.height, treeBox.y + treeBox.height) <= dialogueBox.y
-            : portraitBox.x + portraitBox.width <= dialogueBox.x,
-          "Dialogue sits below the illustration on phones and to its right on desktop",
-        );
+        if (phone) {
+          assert.ok(treeBox.y + treeBox.height <= dialogueBox.y, "The chart clears the bottom dialogue");
+          const overlap = portraitBox.y + portraitBox.height - dialogueBox.y;
+          assert.ok(overlap < portraitBox.height * 0.45, "The dialogue leaves Mari’s upper body visible");
+          if (view.height < 700) assert.ok(overlap > 0, "The bottom dialogue can cover Mari’s lower legs");
+          assert.ok(dialogueBox.y + dialogueBox.height <= frame.y + frame.height, "The bottom dialogue fits onscreen");
+        } else {
+          assert.ok(portraitBox.x + portraitBox.width <= dialogueBox.x, "Dialogue sits to Mari’s right on desktop");
+        }
         assert.equal(
           portraitBox.y + portraitBox.height,
           stageBounds.y + stageBounds.height,
