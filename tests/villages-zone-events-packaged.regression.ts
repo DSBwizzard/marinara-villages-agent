@@ -248,8 +248,8 @@ const model = {
     assert.match(messages[0].content, /GM of Villages/);
     const prompt = messages.map(({ content }) => content).join("\n");
     if (prompt.includes("Requested Contact shortcut:")) assert.match(prompt, /Native changes use commands/u);
-    assert.equal(messages.at(-1)?.role, "user");
-    lastInput = messages.at(-1)!.content;
+    assert.equal(messages.at(-2)?.role, "user");
+    lastInput = messages.at(-2)!.content;
     assert(answer, "Only an explicitly supplied synthetic response may dispatch");
     const selected = answer;
     answer = undefined;

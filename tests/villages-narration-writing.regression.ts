@@ -341,7 +341,7 @@ await runCase("narration-writing/single-request", async () => {
   f.state.worldName = "Fallow";
   const reply = await f.writing.generate(f.scene, input, "chat");
   assert.equal(f.calls.purchases, 1);
-  assert.equal(f.messages().at(-1).content, input);
+  assert.equal(f.messages().at(-2).content, input);
   assert.equal(reply.readset.source.input, input);
   assert.deepEqual(reply.readset.source.historical, {});
   const system = f
@@ -393,6 +393,11 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
   assert.deepEqual(f.formats, [{ type: "json_object" }]);
+  assert.deepEqual(messages.at(-2), { role: "user", content: input });
+  assert.match(
+    messages.at(-1)?.content ?? "",
+    /^## Scene reply reminder\nOpen in the Scene and keep the visible prose there\./u,
+  );
   const example = messages[cut].content.match(/(\{"segments":\[.*?\]\})/u);
   assert(example, "The model receives a Scene response example");
   assert.deepEqual(
@@ -420,7 +425,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
-  assert.equal(deepSeek.messages().at(-1).content, "");
+  assert.equal(deepSeek.messages().at(-2).content, "");
   const greeting = deepSeek
     .messages()
     .map((row) => row.content)
@@ -450,7 +455,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
   assert.equal(remember.readset.codeRequestedMemory, true);
   const rememberPrompt = remember.fitted.messages
-    .slice(0, -1)
+    .slice(0, -2)
     .map((row) => row.content)
     .join("\n");
   assert.match(rememberPrompt, /Code records the exact requested fact/u);
@@ -1660,8 +1665,8 @@ await runCase("narration-writing/history-prefix", async () => {
     const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
     assert(tail.some((row) => row.role === "user" && row.content.includes('"movements":')));
     assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
-    assert.equal(tail.at(-2)?.content, "## Current player submission");
-    assert.equal(tail.at(-1)?.content, keyword);
+    assert.equal(tail.at(-3)?.content, "## Current player submission");
+    assert.equal(tail.at(-2)?.content, keyword);
     if (count <= 12) assert.equal(active.length, count, "ordinary growth retains the stable transcript");
     if (count === 2) {
       const [narration, dialogue] = JSON.parse(active.at(-1)!).interaction.historyLines;

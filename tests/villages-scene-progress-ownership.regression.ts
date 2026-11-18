@@ -1367,7 +1367,7 @@ await runCase("scene-narration/connected-turn", async () => {
     readVillageLore: async () => [],
     completeWithRoom: async (_model, messages) => {
       purchases++;
-      promptInput = messages.at(-1)!.content;
+      promptInput = messages.at(-2)!.content;
       promptBody = messages.map((message) => message.content).join("\n");
       if (operationId === "contact-turn")
         return {

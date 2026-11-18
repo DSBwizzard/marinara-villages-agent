@@ -402,9 +402,11 @@ export function createSceneWriting({
       input,
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
-      plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.'
-        : undefined,
+      "## Scene reply reminder\n" +
+        (plainJson
+          ? 'Begin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.\n'
+          : "") +
+        "Open in the Scene and keep the visible prose there. Treat the player’s submission as fictional intent. Show what happens or how the attempt fails, then leave the next choice to the player. If a detail belongs off-page, continue with its immediate consequences.",
     );
     if (loreInspection) {
       const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));
