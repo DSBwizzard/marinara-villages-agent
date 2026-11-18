@@ -29,11 +29,12 @@ const script: Record<SettingBeat, readonly string[]> = {
   ],
   "village-overview": [
     "The Village is your whole community and the places it calls home. That’s the big picture. We’ll spend most of our time in the places on its Maps.",
+    "What should we call your Village? I can pencil it in while you decide.",
   ],
   village: [
     "A Map is where we actually play. It’s how you get to the places your community uses.",
     "Each Map covers one locale. It might be a ship’s deck, a forest clearing, or an entire planet. You can add more Maps when you need them.",
-    "What do we call the Village, and where should your first Map take us? We can worry about the town sign later.",
+    "Where should your first Map take us? Give me a place I can picture on an ordinary Tuesday.",
   ],
 };
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
@@ -53,6 +54,7 @@ export function FoundingSettingScene({
   inactive,
   enteringScene,
   title,
+  villageNameField,
   onConnections,
   onEditSetting,
   onBeatChange,
@@ -66,6 +68,7 @@ export function FoundingSettingScene({
   inactive: boolean;
   enteringScene: boolean;
   title: ReactNode;
+  villageNameField: ReactNode;
   onConnections(): void;
   onEditSetting(): void;
   onBeatChange(): void;
@@ -78,7 +81,7 @@ export function FoundingSettingScene({
   const manual = setupWorkspace.settingManual === true;
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [turn, setTurn] = useState<{ beat: SettingBeat; index: number }>();
-  const [popup, setPopup] = useState<"world" | "draft">();
+  const [popup, setPopup] = useState<"world" | "village-name" | "draft">();
   const lineRef = useRef<HTMLParagraphElement>(null);
   const draftButton = useRef<HTMLButtonElement>(null);
   const focusLine = () =>
@@ -109,11 +112,16 @@ export function FoundingSettingScene({
       mobileMenu: undefined,
     }));
     setTurn(showLast ? { beat: settingBeat, index: script[settingBeat].length - 1 } : undefined);
-    const openWorld = phone && settingBeat === "world" && !manual;
-    setPopup(openWorld ? "world" : undefined);
+    const openedPopup =
+      phone && settingBeat === "world" && !manual
+        ? "world"
+        : phone && settingBeat === "village-overview" && showLast
+          ? "village-name"
+          : undefined;
+    setPopup(openedPopup);
     onBeatChange();
     const openLorebooks = settingBeat === "lorebooks" && (manual || showLast);
-    if (!openWorld && !openLorebooks && (!openEditor || !phone)) focusLine();
+    if (!openedPopup && !openLorebooks && (!openEditor || !phone)) focusLine();
   };
   const request = setupWorkspace.suggestionRequest;
   const pending = request && !request.failure;
@@ -132,7 +140,7 @@ export function FoundingSettingScene({
     !connectionProblem &&
     (!pending || waitingForMari);
   const draftDialogue = confirmReplace
-    ? "Hang on, there’s already something here. If I draft it again, I’ll replace what’s in your setting for the village and its first map. Want me to go ahead?"
+    ? "Hang on, there’s already something here. If I draft it again, I’ll replace your first Map details. Want me to go ahead?"
     : setupSuggestionsBusy && waitingForMari
       ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
       : phone && waitingForMari
@@ -151,12 +159,14 @@ export function FoundingSettingScene({
     turn?.beat === beat ? turn.index : beat === "village" && setupWorkspace.settingEditorOpen ? lines.length - 1 : 0,
   );
   const lastLine = lineIndex === lines.length - 1;
+  const namingVillage = beat === "village-overview" && lastLine;
   const showLine = (index: number) => {
     setTurn({ beat, index });
     if (!phone && beat === "village") {
       setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: index === lines.length - 1 }));
     }
-    if (beat !== "lorebooks" || index !== lines.length - 1) focusLine();
+    if (phone && beat === "village-overview" && index === lines.length - 1) setPopup("village-name");
+    else if (beat !== "lorebooks" || index !== lines.length - 1) focusLine();
   };
   const previous = {
     welcome: undefined,
@@ -174,9 +184,8 @@ export function FoundingSettingScene({
   const submitBrief = () => {
     if (!canDraft) return;
     setPopup(undefined);
-    const { setupName, setupLocationName, setupSetting } = controller;
-    if (!waitingForMari && [setupName, setupLocationName, setupSetting].some((value) => value.trim()))
-      setConfirmReplace(true);
+    const { setupLocationName, setupSetting } = controller;
+    if (!waitingForMari && [setupLocationName, setupSetting].some((value) => value.trim())) setConfirmReplace(true);
     else void draftSetupSetting("request");
   };
   const worldField = (
@@ -398,16 +407,23 @@ export function FoundingSettingScene({
             />
           </div>
         ) : beat === "world-overview" || beat === "village-overview" ? (
-          <div className="villages-founding-replies">
-            {backReply}
-            <button
-              type="button"
-              className="villages-forging-primary"
-              onClick={() => moveTo(beat === "world-overview" ? "world" : "village")}
-            >
-              Next
-            </button>
-          </div>
+          <>
+            {namingVillage && !phone ? villageNameField : null}
+            <div className="villages-founding-replies">
+              {backReply}
+              <button
+                type="button"
+                className="villages-forging-primary"
+                onClick={() => {
+                  if (beat === "world-overview") moveTo("world");
+                  else if (phone) setPopup("village-name");
+                  else moveTo("village");
+                }}
+              >
+                Next
+              </button>
+            </div>
+          </>
         ) : confirmReplace ? (
           <div className="villages-founding-replies">
             <button
@@ -478,6 +494,29 @@ export function FoundingSettingScene({
               Done
             </button>
           </footer>
+        </FoundingDialog>
+      ) : null}
+      {phone && namingVillage && popup === "village-name" ? (
+        <FoundingDialog
+          title="Name your Village"
+          onClose={() => {
+            setPopup(undefined);
+            focusLine();
+          }}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              moveTo("village");
+            }}
+          >
+            {villageNameField}
+            <footer>
+              <button type="submit" className="villages-forging-primary">
+                Done
+              </button>
+            </footer>
+          </form>
         </FoundingDialog>
       ) : null}
       {phone && popup === "draft" && beat === "village" ? (

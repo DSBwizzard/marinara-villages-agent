@@ -49,8 +49,7 @@ export function createFoundingDraftSetting(
     if (!pending && !setupWorkspace.settingBrief?.trim()) return;
     const { name, startingLocationName, setting: description, worldName, context } = ports.setupDraftData;
     const current = { name, startingLocationName, description, worldName, rules: context?.rules ?? "" };
-    if (!pending && mode !== "replace" && [name, startingLocationName, description].some((value) => value.trim()))
-      return;
+    if (!pending && mode !== "replace" && [startingLocationName, description].some((value) => value.trim())) return;
     const baseline = pending ? pending.settingReplacement : current;
     setupSuggestionsClaim.current = true;
     setSetupSuggestionsBusy(true);
@@ -61,6 +60,7 @@ export function createFoundingDraftSetting(
         : {
             mode: "draft-setting",
             brief: setupWorkspace.settingBrief!.trim(),
+            ...(name.trim() ? { villageName: name.trim() } : {}),
             worldBrief: setupWorkspace.settingWorldBrief?.trim() ?? "",
             ...(worldName.trim() ? { worldName: worldName.trim() } : {}),
             ...(current.rules.trim() ? { worldRules: current.rules.trim() } : {}),
@@ -77,7 +77,7 @@ export function createFoundingDraftSetting(
       // Fields may have been edited while Mari was working, including after a reload.
       const apply = (field: keyof FoundingSetting, value: string) =>
         (baseline ? value === baseline[field] : !value.trim()) ? setting[field] : value;
-      ports.setSetupName((value) => apply("name", value));
+      if (!input?.villageName) ports.setSetupName((value) => apply("name", value));
       ports.setSetupLocationName((value) => apply("startingLocationName", value));
       ports.setSetupSetting((value) => apply("description", value));
       ports.setSetupWorldName((value) => (value.trim() ? value : apply("worldName", value)));

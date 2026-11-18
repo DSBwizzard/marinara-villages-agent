@@ -144,14 +144,19 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     [{ lorebookReferences: [lorebookReference] }, { world: worldBrief, village: brief }],
   );
   assert.equal(completions, 3);
-  const authoredWorld = { worldName: "Relay Belt", worldRules: "The gates only open at noon." };
+  const authoredSetting = {
+    villageName: "The Tide Roads",
+    worldName: "Relay Belt",
+    worldRules: "The gates only open at noon.",
+  };
   connectionLimit = null;
   requestedTokens = undefined;
-  const authoredDraft = await writer.suggestStartingVenues({ ...draftInput, ...authoredWorld });
+  const authoredDraft = await writer.suggestStartingVenues({ ...draftInput, ...authoredSetting });
   assert.equal(requestedTokens, 4096, "Use the bounded fallback when the connection supplies no output limit");
-  assert.equal(authoredDraft.setting?.worldName, authoredWorld.worldName);
-  assert.equal(authoredDraft.setting?.rules, authoredWorld.worldRules);
-  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredWorld, village: brief });
+  assert.equal(authoredDraft.setting?.name, authoredSetting.villageName);
+  assert.equal(authoredDraft.setting?.worldName, authoredSetting.worldName);
+  assert.equal(authoredDraft.setting?.rules, authoredSetting.worldRules);
+  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredSetting, village: brief });
 }
 {
   const app = Fastify();
@@ -484,6 +489,7 @@ try {
     assert.equal(persisted.workspace.suggestionRequest.settingReplacement.startingLocationName, "My quay");
     const body = JSON.parse(String(init?.body));
     assert.equal(body.settingReplacement, undefined);
+    assert.equal(body.villageName, name);
     assert.equal(body.worldName, worldName.trim());
     assert.equal(body.worldRules, rules.trim());
     throw new TypeError("Synthetic lost connection after admission");
@@ -511,7 +517,7 @@ try {
     });
   };
   await createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace })("recover");
-  assert.equal(name, "New village", "A recovered result honors the original replacement confirmation");
+  assert.equal(name, "My village", "A recovered map draft preserves the chosen Village name");
   assert.equal(location, "", "Recovery preserves a field cleared after confirmation");
   assert.equal(worldName, "  My world  ", "A draft cannot rewrite a supplied world name");
   assert.equal(rules, "  The tide stops at midnight.  ", "A draft cannot rewrite supplied standing rules");

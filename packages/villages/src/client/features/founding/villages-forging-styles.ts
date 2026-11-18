@@ -596,16 +596,13 @@ export const VILLAGES_FORGING_STYLES = `
   position:absolute; right:var(--chart-right);
   bottom:min(calc(var(--mari-floor) + var(--mari-height) * .56),calc(100cqh - 3.5rem - var(--chart-width) * .88));
   width:var(--chart-width); height:auto; padding:.25rem;
-  background:#342741bf; border:1px solid #eed1a830; border-radius:.65rem; outline:none;
+  background:#342741bf; border:1px solid #eed1a830; border-radius:.65rem; outline:none; user-select:none;
 }
 .villages-founding-hierarchy text { fill:#f0dfbc; font-size:16px; font-weight:400; stroke:none; text-shadow:none; }
 .villages-founding-hierarchy-links { fill:none; stroke:#e2b5c2; filter:drop-shadow(0 1px 1px #21192d); }
-.villages-founding-hierarchy-links [data-highlighted] { stroke:#eed1a8; }
 .villages-founding-hierarchy-star circle { fill:#362a46; stroke:#dfbbaf; stroke-width:.8; }
-.villages-founding-hierarchy-star path { fill:#d4b0c7; }
-.villages-founding-hierarchy [data-ancestor] .villages-founding-hierarchy-star path { fill:#eed1a8; }
+.villages-founding-hierarchy-star path { fill:#d4b0c7; stroke:none; filter:none; }
 .villages-founding-hierarchy [data-active] :is(text,.villages-founding-hierarchy-star path) { fill:#fff0c3; }
-.villages-founding-hierarchy [data-active] .villages-founding-hierarchy-star path { filter:drop-shadow(0 0 3px #ffc982); }
 .villages-founding-guide { display:flex; align-items:center; gap:.55rem; margin:.55rem 0; flex:none; }
 .villages-founding-guide img { flex:none; width:2rem; height:3rem; object-fit:contain; object-position:center top; }
 .villages-forging-v2 .villages-founding-guide .villages-setting-dialogue { max-width:48rem; padding:.55rem .8rem; }

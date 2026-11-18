@@ -146,10 +146,12 @@ export async function verifyFoundingLayout(group) {
                 "mode",
                 "selectedLorebookIds",
                 "sourceKey",
+                "villageName",
                 "worldBrief",
                 "worldRules",
               ]);
               assert.equal(body.worldRules, "The sun never sets.");
+              assert.equal(body.villageName, "Coastal Community");
               assert.deepEqual(body.selectedLorebookIds, ["relay-belt"]);
               assert.equal(body.worldBrief, worldBrief);
               assert.equal(body.loreTokenBudget, 1600);
@@ -618,7 +620,6 @@ export async function verifyFoundingLayout(group) {
           await expect(villageName).toHaveValue("Handmade Harbor");
           assert.equal(settingCalls, 0, "Manual setup never dispatches a Mari draft");
           await villageName.fill(phone ? "Coastal Community" : "");
-          if (phone) await mapName.fill("My starting location");
           if (phone) await settingPanel.getByRole("button", { name: "Close Your setting" }).click();
           await scene.getByRole("button", { name: "Back", exact: true }).click();
         }
@@ -628,6 +629,14 @@ export async function verifyFoundingLayout(group) {
         const layer = async (name) => {
           await expect(hierarchy).toHaveAccessibleName(`World, Village, Map, Venue, Zone. Current layer: ${name}`);
           await expect(hierarchy.locator("[data-active] text")).toHaveText(name);
+          await expect(hierarchy.locator("[data-active] .villages-founding-hierarchy-star path")).toHaveCSS(
+            "fill",
+            "rgb(255, 240, 195)",
+          );
+          const inactiveStars = await hierarchy
+            .locator("g:not([data-active]) > .villages-founding-hierarchy-star path")
+            .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill));
+          assert.deepEqual(inactiveStars, Array(8).fill("rgb(212, 176, 199)"));
           assert.deepEqual(await stage.boundingBox(), stageBounds, "The chart leaves Mari’s standing mark in place");
         };
         await layer("World");
@@ -714,9 +723,14 @@ export async function verifyFoundingLayout(group) {
           const chartLabel = hierarchy.locator("text").first();
           await worldField.focus();
           await expect(chartLabel).toHaveCSS("stroke", "none");
+          const star = hierarchy.locator("[data-active] .villages-founding-hierarchy-star path");
+          await expect(star).toHaveCSS("stroke", "none");
+          await expect(star).toHaveCSS("filter", "none");
           await worldField.blur();
           await expect(chartLabel).toHaveCSS("stroke", "none");
           await expect(chartLabel).toHaveCSS("text-shadow", "none");
+          await expect(star).toHaveCSS("stroke", "none");
+          await expect(star).toHaveCSS("filter", "none");
         }
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
@@ -780,6 +794,23 @@ export async function verifyFoundingLayout(group) {
         await expect(line).toHaveText(/^The Village is your whole community/);
         await expect(villageName).toBeHidden();
         await nextLine();
+        const namingDialog = root.getByRole("dialog", { name: "Name your Village", exact: true });
+        const finishNaming = () =>
+          phone ? namingDialog.getByRole("button", { name: "Done", exact: true }).click() : nextLine();
+        if (phone) {
+          await expect(namingDialog.getByRole("textbox", { name: "Village Name" })).toBeVisible();
+          await expect(namingDialog.getByRole("button", { name: "Done" })).toBeInViewport({ ratio: 0.99 });
+        } else {
+          await expect(namingDialog).toHaveCount(0);
+          await expect(line).toHaveText(/^What should we call your Village/);
+          await expect(scene.getByRole("textbox", { name: "Village Name" })).toBeVisible();
+          await expect(line).toBeFocused();
+          await page.keyboard.press("Tab");
+          await expect(villageName).toBeFocused();
+        }
+        await expect(mapName).toBeHidden();
+        await villageName.fill("Coastal Community");
+        await finishNaming();
         await layer("Map");
         const mapPose = await expectPose("happy-side");
         await expect(mapPose).toHaveAttribute("data-facing", "left");
@@ -789,10 +820,13 @@ export async function verifyFoundingLayout(group) {
         assert.ok(Math.abs(mapPortrait.y + mapPortrait.height - portraitBox.y - portraitBox.height) < 0.5);
         await expect(line).toHaveText(/^A Map is where we actually play/);
         await expect(villageName).toBeHidden();
+        await scene.getByRole("button", { name: "Back", exact: true }).click();
+        await expect(villageName).toHaveValue("Coastal Community");
+        await finishNaming();
         await nextLine();
         await expect(line).toHaveText(/^Each Map covers one locale/);
         await nextLine();
-        await expect(line).toHaveText(/^What do we call the Village/);
+        await expect(line).toHaveText(/^Where should your first Map take us/);
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
         const draftPopup = root.getByRole("dialog", { name: "Draft with Mari", exact: true });
@@ -815,12 +849,10 @@ export async function verifyFoundingLayout(group) {
           if (!draftWithLore) {
             await button("Enter my setting").click();
             await expect(settingPanel).toBeVisible();
-            await villageName.fill("Coastal Community");
+            await expect(villageName).toHaveValue("Coastal Community");
           }
         } else {
-          await settingNext().click();
-          await expect(villageName).toBeFocused();
-          await villageName.fill("Coastal Community");
+          await expect(villageName).toHaveValue("Coastal Community");
           await settingNext().click();
           await expect(mapName).toBeFocused();
           if (draftWithLore) await mapName.fill("My starting location");
@@ -847,24 +879,23 @@ export async function verifyFoundingLayout(group) {
           }
           await villageBrief.fill("Our village is a converted cargo ship.");
           await submitBrief("Draft with Mari");
-          await expect(line).toContainText("I’ll replace what’s in your setting");
-          assert.equal(settingCalls, 0, "Mari asks before sending a replacement request");
-          await button("Keep my setting").click();
-          if (phone) await expect(settingPanel).toBeVisible();
-          else await expect(button("Draft with Mari")).toBeFocused();
-          await expect(villageName).toHaveValue("Coastal Community");
-          assert.equal(settingCalls, 0, "Keeping the setting does not send a request");
-          if (phone) await closeSetting();
-          await openBrief("Draft with Mari");
-          await submitBrief("Draft with Mari");
-          await button("Replace and draft").click();
+          if (!phone) {
+            await expect(line).toContainText("I’ll replace your first Map details");
+            assert.equal(settingCalls, 0, "Mari asks before replacing existing map details");
+            await button("Keep my setting").click();
+            await expect(button("Draft with Mari")).toBeFocused();
+            await expect(villageName).toHaveValue("Coastal Community");
+            assert.equal(settingCalls, 0, "Keeping the setting does not send a request");
+            await submitBrief("Draft with Mari");
+            await button("Replace and draft").click();
+          }
           await expect.poll(() => settingCalls).toBe(1);
           if (!phone) await mapName.fill("");
           else await expect(settingPanel).toBeHidden();
           settingReady = true;
           if (phone) await expect(settingPanel).toBeVisible();
           await expect(mapDescription).toHaveValue("A shared galley aboard a cargo ship.");
-          await expect(villageName).toHaveValue("Wayfarer");
+          await expect(villageName).toHaveValue("Coastal Community");
           await expect(mapName).toHaveValue(phone ? "Main Deck" : "");
           assert.equal(settingCalls, 1, "One explicit action dispatches one request");
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
@@ -872,7 +903,7 @@ export async function verifyFoundingLayout(group) {
           await openBrief("Draft again with Mari");
           await villageBrief.fill("Our village is inside a dumpster.");
           await submitBrief("Draft again with Mari");
-          await expect(line).toContainText("I’ll replace what’s in your setting");
+          await expect(line).toContainText("I’ll replace your first Map details");
           await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(2);
           if (phone) await expect(settingPanel).toBeVisible();
@@ -886,7 +917,7 @@ export async function verifyFoundingLayout(group) {
           }
           const updatedEditorHeight = (await settingPanel.boundingBox()).height;
           assert.ok(updatedEditorHeight <= originalEditorHeight + 1, "A long draft must not expand the editor");
-          await expect(villageName).toHaveValue("Glimmerdump");
+          await expect(villageName).toHaveValue("Coastal Community");
           await expect(mapName).toHaveValue("Scavenger Rim");
           await expect(mapDescription).toHaveValue("Lanterns hang from the lip of the bin. ".repeat(90));
           if (phone && view.height === 844) {
@@ -1323,7 +1354,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("review");
         await button("Found village").click();
         await expect.poll(() => payload).toBeTruthy();
-        assert.equal(payload.name, draftWithLore ? "Glimmerdump" : "Coastal Community");
+        assert.equal(payload.name, "Coastal Community");
         assert.equal(payload.timeZone, snapshot.clock?.timeZone || snapshot.village.timeZone);
         assert.equal(
           payload.startingLocationName,

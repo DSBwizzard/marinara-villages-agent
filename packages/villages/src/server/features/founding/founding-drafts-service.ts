@@ -91,6 +91,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const brief = asTrimmedString(input.brief);
     if (!asTrimmedString(input.actionId) || !brief || brief.length > FOUNDING_SETTING_BRIEF_LIMIT)
       throw badRequest("Tell Mari about your village in up to 4,096 characters.");
+    const villageName = input.villageName === undefined ? undefined : readVillageName(input.villageName);
     const worldBrief = asTrimmedString(input.worldBrief);
     if (
       (input.worldBrief !== undefined && typeof input.worldBrief !== "string") ||
@@ -144,7 +145,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         },
         ...lore.map((text, index) => ({ text, optional: "lore" as const, lore: sources[index] })),
       ],
-      worldBrief || world.worldName || world.worldRules ? JSON.stringify({ ...world, village: brief }) : brief,
+      villageName || worldBrief || world.worldName || world.worldRules
+        ? JSON.stringify({ ...world, villageName, village: brief })
+        : brief,
       requested,
       "System",
     );
@@ -170,7 +173,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       const rules = world.worldRules ?? reply.rules ?? "";
       if (worldName !== null && typeof rules === "string" && rules.length <= MAX_SETTING_LENGTH) {
         try {
-          const name = readVillageName(reply.name);
+          const name = villageName ?? readVillageName(reply.name);
           const startingLocationName = mapName(reply.startingLocationName);
           const description = readVillageSetting(reply.description);
           if (description)

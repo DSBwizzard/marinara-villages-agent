@@ -623,24 +623,27 @@ export function FoundingScreen({
         {busy ? "Saving village…" : setupStep === 3 ? "Found village" : "Next"}
       </button>
     );
+    const villageNameField = (
+      <FoundingField
+        title="Village name"
+        error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
+      >
+        <input
+          autoComplete="off"
+          aria-label="Village Name"
+          maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
+          value={setupName}
+          disabled={busy}
+          onChange={(event) => {
+            setSetupName(event.target.value);
+            clearFieldValidation("place-name");
+          }}
+        />
+      </FoundingField>
+    );
     const settingFields = (
       <>
-        <FoundingField
-          title="Village name"
-          error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
-        >
-          <input
-            autoComplete="off"
-            aria-label="Village Name"
-            maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
-            value={setupName}
-            disabled={busy}
-            onChange={(event) => {
-              setSetupName(event.target.value);
-              clearFieldValidation("place-name");
-            }}
-          />
-        </FoundingField>
+        {villageNameField}
         <FoundingField
           title="First map name"
           error={
@@ -936,6 +939,7 @@ export function FoundingScreen({
                 inactive={phone && settingEditorOpen}
                 enteringScene={enteringScene}
                 title={title}
+                villageNameField={villageNameField}
                 onConnections={openConnectionPicker}
                 onEditSetting={openSettingEditor}
                 onBeatChange={() => {
@@ -947,7 +951,7 @@ export function FoundingScreen({
                 advanceDisabled={advanceDisabled}
               />
             ) : null}
-            {!phone ? (
+            {!phone && beat !== "village-overview" ? (
               <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
                 <h2 tabIndex={-1} ref={settingTitle}>
                   Your setting
