@@ -10,7 +10,6 @@ import {
   continuityHolderKey,
   continuityProtectionUnits,
   continuitySourceUnit,
-  UNWITNESSED_CONTINUITY_SUPPORT,
 } from "./continuity.js";
 import { assertContinuityRetention } from "./continuity-retention.js";
 import { dueRelationshipAnswers } from "./continuity-library.js";
@@ -72,7 +71,7 @@ const roomFactFields = new Set([
   "requires",
   "independent",
 ]);
-const relationshipImpactFields = new Set([
+const actorNoteFields = new Set([
   "id",
   "for",
   "owner",
@@ -83,6 +82,7 @@ const relationshipImpactFields = new Set([
   "source",
   "relationship",
   "independent",
+  "requires",
 ]);
 const haltNotices = {
   time: "Village time can’t be skipped or rewritten in a Scene. Revise your draft to stay in the current moment.",
@@ -337,7 +337,7 @@ export function acceptNarrationContinuity(
   const repeatedOfferDecisions = new Set<string>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
-  const standaloneRelationshipImpacts = new Set<string>();
+  const passiveActorNotes = new Set<string>();
   const memoryFallback = readset.optionalActorMemories;
   const optionalActorMemories =
     (memoryFallback === true ||
@@ -486,6 +486,18 @@ export function acceptNarrationContinuity(
       typeof note.text === "string" &&
       (note.class === "experience" || note.class === "information") &&
       Object.keys(note).every((key) => ["for", "text", "class", "source"].includes(key));
+    // Passive actor notes can be omitted unless the reply needs them to support an outcome.
+    const passiveActorNote =
+      readset.continuityEffectRecovery &&
+      allowTranscriptNotes &&
+      !requestedMemory &&
+      Array.isArray(note.for) &&
+      note.for.length > 0 &&
+      note.for.every((id) => source.actors.some((actor) => actor.id === id)) &&
+      (note.class === undefined ||
+        ["experience", "information", "perspective", "open-matter"].includes(String(note.class))) &&
+      Object.keys(note).every((field) => actorNoteFields.has(field));
+    if (passiveActorNote) passiveActorNotes.add(header.id);
     const optionalAnswer =
       note.class === "perspective" &&
       typeof asRecord(note.relationship).answer === "string" &&
@@ -534,28 +546,6 @@ export function acceptNarrationContinuity(
         readset.recognizeDirectOfferSpeech,
       );
       const write = keep.write;
-      if (
-        readset.continuityEffectRecovery &&
-        allowTranscriptNotes &&
-        !requestedMemory &&
-        note.class === "perspective" &&
-        note.current === true &&
-        write.owner &&
-        write.owner.id !== "player" &&
-        write.holders.length === 1 &&
-        continuityHolderKey(write.holders[0]) === continuityHolderKey(write.owner) &&
-        write.about?.length === 1 &&
-        write.about[0].id !== write.owner.id &&
-        [write.owner, ...write.about].every((person) =>
-          admission.relationshipActors.some(
-            (actor) => actor.id === person.id && actor.incarnation === person.incarnation,
-          ),
-        ) &&
-        write.relationship?.impact &&
-        Object.keys(asRecord(note.relationship)).every((field) => field === "impact") &&
-        Object.keys(note).every((field) => relationshipImpactFields.has(field))
-      )
-        standaloneRelationshipImpacts.add(header.id);
       if (
         readset.coalesceOfferDecisions === true &&
         !reply.commands.length &&
@@ -731,15 +721,11 @@ export function acceptNarrationContinuity(
   let scheduledWorld = state;
   let selection: ReturnType<typeof selectSceneEffects>;
   const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
+  for (const effect of effects)
+    if (passiveActorNotes.has(effect.id) && !referenced.has(effect.id)) effect.independent = true;
   for (;;) {
     for (const effect of effects)
-      if (
-        effect.failure &&
-        !referenced.has(effect.id) &&
-        (optionalActorMemories?.has(effect.id) ||
-          (standaloneRelationshipImpacts.has(effect.id) &&
-            effect.failure === "Memory: " + UNWITNESSED_CONTINUITY_SUPPORT))
-      )
+      if (effect.failure && !referenced.has(effect.id) && optionalActorMemories?.has(effect.id))
         effect.independent = true;
     selection = selectSceneEffects(effects, [
       ...reply.assertedDependencies,

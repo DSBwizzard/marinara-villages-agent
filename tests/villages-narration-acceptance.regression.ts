@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/unwitnessed-relationship-and-room-target
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/unwitnessed-relationship-and-room-target, narration-acceptance/passive-actor-notes
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -1314,7 +1314,7 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
     const result = acceptNarrationContinuity(f.state, publication, "submission", later);
     assert.equal(
       result.held,
-      ["required", "legacy", "wrong-subject", "room-required"].includes(variant),
+      ["required", "legacy", "room-required"].includes(variant),
       variant + " " + JSON.stringify(result.rejected),
     );
     if (!result.held) assert.equal(result.episode?.segments[1].content, "Give me some space.");
@@ -1343,6 +1343,33 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
         f.state.continuity.records[0].heads[continuityHolderKey(publication.readset.admission.room!)].current,
         true,
       );
+  }
+});
+
+await runCase("narration-acceptance/passive-actor-notes", () => {
+  for (const dependency of ["none", "segment", "effect"] as const) {
+    const f = fixture("I ask if I may help.");
+    const publication = f.publication({
+      segments: f.response(dependency === "segment" ? ["plan"] : []),
+      keep: [
+        {
+          id: "plan",
+          for: [f.id],
+          class: "open-matter",
+          text: "The player offered to help.",
+          source: ['{"segment":2}'],
+        },
+        ...(dependency === "effect" ? [{ ...f.keep, requires: ["plan"] }] : []),
+      ],
+    });
+    publication.readset.ordinaryDialogue = true;
+    publication.readset.positionedSceneSources = true;
+    publication.readset.continuityEffectRecovery = true;
+    const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+    assert.equal(result.held, dependency !== "none");
+    assert.equal(result.rejected[0].id, "plan");
+    assert.equal(f.state.continuity.versions.length, 0);
+    if (dependency === "none") assert(result.episode?.segments.length);
   }
 });
 
@@ -1578,12 +1605,12 @@ await runCase("narration-acceptance/conflicting-head", () => {
 });
 
 await runCase("narration-acceptance/combined-source-order", () => {
-  for (const independent of [true, false]) {
+  for (const kind of ["explicit", "passive", "required"] as const) {
     const f = fixture();
     const publication = f.publication({
       segments: [
         { kind: "dialogue", id: "first", speakerId: f.id, text: "I understand." },
-        { kind: "dialogue", id: "last", speakerId: f.id, text: "Thank you for telling me." },
+        { kind: "dialogue", id: "last", speakerId: f.id, text: "Thank you for telling me.", requires: ["remember"] },
       ],
       keep: [
         {
@@ -1591,7 +1618,7 @@ await runCase("narration-acceptance/combined-source-order", () => {
           for: ["player"],
           text: "I felt privately nervous.",
           class: "perspective",
-          ...(independent ? { independent: true } : {}),
+          ...(kind === "explicit" ? { independent: true } : {}),
           source: [
             { input: "I think privately that I am nervous.", ground: { kind: "private", at: { after: "last" } } },
           ],
@@ -1604,10 +1631,14 @@ await runCase("narration-acceptance/combined-source-order", () => {
         },
       ],
     });
+    if (kind === "passive") {
+      publication.readset.ordinaryDialogue = true;
+      publication.readset.continuityEffectRecovery = true;
+    }
     const before = structuredClone(f.state),
       result = acceptNarrationContinuity(f.state, publication, "submission", later);
-    assert.equal(result.held, !independent);
-    if (independent) {
+    assert.equal(result.held, kind === "required");
+    if (kind !== "required") {
       assert.deepEqual(result.acceptedIds, ["remember"]);
       assert.equal(
         result.rejected[0].id,

@@ -347,8 +347,8 @@ export const ORDINARY_SCENE_KEEP =
 
 export const ordinarySceneKeepSources = (positions: boolean) =>
   (positions
-    ? "Cite a line as {segment:1} (one-based) or an offer as exact {speakerId,quote} heard by all parties."
-    : 'Cite a line as {segment:"line-id"}.') +
+    ? 'Cite current lines with JSON objects, e.g. "source":[{"segment":2}] using one-based positions. An offer may cite {"speakerId":"resident-id","quote":"exact words"} heard by all parties.'
+    : 'Cite current lines with JSON objects, e.g. "source":[{"segment":"line-id"}].') +
   ' Other sources: supplied h: alias, "self" for own private state, or {input:exact excerpt,ground:{kind:"spoken",to:[hearers]}}. Use visible-action with observers or private for thoughts. Add occurrence for repeated text, delivery/targetId for whispers. Seen narration needs perceive:{kind:"seen",by:[witnesses]}. Separate offers use full terms, offer:{proposer,participants} and act:"offer" on segment citations.' +
   (positions
     ? ' On movement set ground.at to "start", {before:1} or {after:1}.'
