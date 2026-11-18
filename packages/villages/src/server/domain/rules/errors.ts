@@ -20,8 +20,8 @@ export function badRequest(message: string, code?: string): VillagesRequestError
   return new VillagesRequestError(400, message, code);
 }
 
-export function conflict(message: string): VillagesRequestError {
-  return new VillagesRequestError(409, message);
+export function conflict(message: string, code?: string): VillagesRequestError {
+  return new VillagesRequestError(409, message, code);
 }
 
 export function notFound(message: string): VillagesRequestError {

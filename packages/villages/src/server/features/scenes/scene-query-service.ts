@@ -1,13 +1,22 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { z } from "zod";
 import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.js";
-import type { ScenePlaybackWindow, ScenePlaybackMoment } from "../../../shared/contracts/scene-playback.js";
+import {
+  SCENE_PLAYBACK_CURSOR_STALE,
+  type ScenePlaybackWindow,
+  type ScenePlaybackMoment,
+} from "../../../shared/contracts/scene-playback.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import { publicSceneAuthority } from "../../domain/rules/scene-public.js";
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_KIND } from "../../adapters/storage/scene-slots.js";
-import { readSceneIndex, readSceneWorkIndex } from "../../adapters/storage/scene-history.js";
+import {
+  readSceneIndex,
+  readSceneWorkIndex,
+  SCENE_PUBLIC_HISTORY_POLICY,
+  upgradeScenePublicHistory,
+} from "../../adapters/storage/scene-history.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import {
@@ -28,7 +37,7 @@ import { readSceneMomentFrames, readSceneMomentRange } from "../../adapters/stor
 export interface SceneQueryPorts {
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
-  villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById">;
+  villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById" | "create" | "update">;
 }
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const historyQuery = z.object({ scope: hash, cursor: z.string().min(1).max(4096).optional() }).strict();
@@ -89,7 +98,11 @@ export function createSceneQueryService({ readSession, readVillageState, village
     if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
     const transcript = readSceneTranscriptHead(raw.transcript, scene),
       submissions = readSceneSubmissionHead(raw.submissionHistory, scene);
-    const head = readScenePublicHistoryHead(raw.publicHistory, scene, transcript, submissions);
+    const stored = readScenePublicHistoryHead(raw.publicHistory, scene, transcript, submissions);
+    const head =
+      raw.publicHistoryPolicy === SCENE_PUBLIC_HISTORY_POLICY
+        ? stored
+        : await upgradeScenePublicHistory(documents, row, transcript, submissions, stored);
     return { documents, scope, scene, transcript, head };
   }
   async function readHistoryPage(id: string, value: unknown): Promise<SceneHistoryPage> {
@@ -203,8 +216,10 @@ export function createSceneQueryService({ readSession, readVillageState, village
       } catch {
         throw badRequest("Invalid Scene playback cursor.");
       }
-      if (cursor.scope !== scope || cursor.sceneId !== id || cursor.index >= presentation.count)
+      if (cursor.scope !== scope || cursor.sceneId !== id)
         throw conflict("That reading position changed. Reopen the Scene.");
+      if (cursor.index >= presentation.count)
+        throw conflict("That reading position changed. Reopen the Scene.", SCENE_PLAYBACK_CURSOR_STALE);
       const [saved] = await readSceneMomentRange(
         documents,
         presentation,
@@ -213,7 +228,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
         cursor.index + 1,
       );
       if (saved.id !== cursor.id || saved.publicDigest !== cursor.digest)
-        throw conflict("That reading position changed. Reopen the Scene.");
+        throw conflict("That reading position changed. Reopen the Scene.", SCENE_PLAYBACK_CURSOR_STALE);
       direction = cursor.direction;
       anchor = cursor.index + (direction === "newer" ? 1 : 0);
     }

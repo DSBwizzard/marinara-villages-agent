@@ -128,6 +128,8 @@ function fixture(seed: string) {
     villagesDocuments() {
       note("documents");
       return {
+        create: () => assert.fail("Current queries do not create pages"),
+        update: () => assert.fail("Current queries do not update the Scene"),
         async getById(packageId, id) {
           note("get:" + id);
           assert.equal(packageId, "villages");
@@ -224,7 +226,7 @@ const backlogRow = (owner: string) => ({
   const history = await f.service.readHistoryPage("same", { scope: f.scope });
   assert.deepEqual(
     history.lines.map((entry) => entry.content),
-    ["current exact dialogue", scene.submissions[0].message],
+    ["current exact dialogue"],
   );
   assert(history.lines.every((entry) => !Object.hasOwn(entry, "heardBy")));
   assert.deepEqual(f.calls.slice(0, 3), ownerReads);
@@ -282,7 +284,7 @@ const backlogRow = (owner: string) => ({
   const bHistory = await b.run(() => sceneQueries().readHistoryPage("same", { scope: second.scope }));
   assert.deepEqual(
     bHistory.lines.map((entry) => entry.content),
-    ["B exact dialogue", "B exact input (private thought)"],
+    ["B exact dialogue"],
   );
   first.gate.resolve();
   assert.deepEqual(await inFlight, [backlogRow("A")]);
@@ -333,7 +335,7 @@ const backlogRow = (owner: string) => ({
   assert.equal(cResponse.sceneRevision, 2);
   assert.deepEqual(
     cResponse.lines.map((entry) => entry.content),
-    ["C exact dialogue", "C exact input (private thought)"],
+    ["C exact dialogue"],
   );
   assert.deepEqual(cResponse.latestTurn, { id: "proof", at: stamp, published: false });
   assert.deepEqual(older.calls.slice(0, 5), [...ownerReads, "session:same", "session-resumed"]);

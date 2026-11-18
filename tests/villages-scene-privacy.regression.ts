@@ -82,7 +82,7 @@ async function main() {
     const pending = pendingSceneSubmission(scene, "turn", exact, "unaccepted");
     scene.submissions.push({ ...pending, acceptance: { status: "held", rejected: [] } });
     const positions = publicSceneHistoryPositions(scene);
-    assert.deepEqual(positions, [0, 1001, 1002], "Hidden-only spans and unaccepted drafts add no public positions");
+    assert.deepEqual(positions, [0, 1001], "Hidden-only spans and unaccepted drafts add no public positions");
     const selected = positions.map((position) => publicSceneResponse([scene.lines[position]], new Set(["visible"]))[0]);
     assert.deepEqual(
       selected,
@@ -90,7 +90,7 @@ async function main() {
       "Indexed selected projection matches the complete privacy boundary",
     );
     assert.equal(selected[1].content, "A quiet knock.");
-    assert.equal(selected[2].content, exact);
+    assert(!JSON.stringify(publicSceneResponse(scene)).includes(exact));
     assert.deepEqual(scene.lines[1002].heardBy, []);
     assert(selected.every((line) => !Object.hasOwn(line, "heardBy")));
     assert(!JSON.stringify(selected).includes("private-knower"));

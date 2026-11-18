@@ -1273,7 +1273,8 @@ await runCase("scene-narration/private-projection", async () => {
     assert.equal(projection.processingSummary.failed, 1);
   }
   const publicScene = publicSceneResponse(f.scenes.get("scene")!);
-  assert.equal(publicScene.submissions[0].message, turn.message, "the player retains their own original submission");
+  assert(!Object.hasOwn(publicScene.submissions[0], "message"), "a held input stays in its private request");
+  assert.equal(f.turn().message, turn.message);
   assert.deepEqual(publicScene.lines, []);
 });
 

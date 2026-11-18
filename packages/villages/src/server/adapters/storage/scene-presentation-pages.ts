@@ -406,10 +406,16 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
     remember(head, entry);
     return entry;
   }
-  async function prepare(scene: VenueScene, positions: Position[], source: string, previous?: ScenePresentationHead) {
+  async function prepare(
+    scene: VenueScene,
+    positions: Position[],
+    source: string,
+    previous?: ScenePresentationHead,
+    refresh = false,
+  ) {
     if (previous) readScenePresentationHead(previous, scene);
     const old = previous ? await read(previous, scene, scene.lines.length) : undefined;
-    if (previous?.source === source) return previous;
+    if (!refresh && previous?.source === source) return previous;
     const { head, pages, ...entry } = encodeScenePresentations(scene, positions, source, previous, old, versions);
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {

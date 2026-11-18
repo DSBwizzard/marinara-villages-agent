@@ -120,7 +120,7 @@ The GM first tries to continue in character. Attempts, threats, ordinary refusal
 
 You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
 
-Once a Scene and its saved effects are settled, its playback can retire. Accepted exchanges and relevant Project evidence remain available to continuity and recovery. Scene playback includes your original submissions, including private thoughts, for anyone with access to this Engine instance. Characters learn only what they actually heard or witnessed.
+Once a Scene and its saved effects are settled, its playback can retire. Accepted exchanges and relevant Project evidence remain available to continuity and recovery. Scene playback includes the original input for each accepted exchange, including private thoughts, for anyone with access to this Engine instance. Characters learn only what they actually heard or witnessed.
 
 New Scenes follow the Village's current time. Residents can leave for commitments and others can arrive while you stay in the Venue. Each exchange keeps the time, participants and witnesses admitted for that request; a scheduled departure waits for that exchange to settle. Accepted changes count as you play, before **Conclude**.
 

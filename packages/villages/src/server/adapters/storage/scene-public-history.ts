@@ -317,7 +317,13 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
     const old = previous ? await read(previous, previous.lineCount) : undefined;
     const encoded = encodePositions(scene, transcript, submissions, old, versions);
     const { rows, layout, pages } = encoded;
-    const presentation = await presentations.prepare(scene, rows, encoded.head.source, previous?.presentation);
+    const presentation = await presentations.prepare(
+      scene,
+      rows,
+      encoded.head.source,
+      previous?.presentation,
+      previous?.source === encoded.head.source && previous.publicVersion !== encoded.head.publicVersion,
+    );
     const head = { ...encoded.head, presentation };
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {
@@ -354,7 +360,7 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
   return { prepare, readRange };
 }
 const stores = new WeakMap<object, ReturnType<typeof createScenePublicHistory>>();
-export function scenePublicHistoryStore(documents: CapabilityDocumentStore) {
+export function scenePublicHistoryStore(documents: Pick<CapabilityDocumentStore, "getById" | "create">) {
   let store = stores.get(documents);
   if (!store) stores.set(documents, (store = createScenePublicHistory(documents)));
   return store;

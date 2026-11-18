@@ -71,6 +71,7 @@ for (const rating of ["sfw", "nsfw"] as const)
       makeReply: typeof nextReply,
       retryInput: string,
       error: RegExp,
+      failTwice = false,
     ) {
       const start = completions;
       nextReply = makeReply;
@@ -78,16 +79,38 @@ for (const rating of ["sfw", "nsfw"] as const)
       assert(rejected.statusCode >= 400, rejected.body);
       assert.match(rejected.body, error);
       assert.equal(completions - start, 1);
-      const cached = await operation(id);
+      assert(!host.scene().lines.some((line) => line.inputOf === id));
+      let cached = await operation(id);
       assert.equal(cached.input.message, input);
       assert.notEqual(cached.acceptance, "applied");
+      if (failTwice) {
+        const repeat = payload(`${id}-repeat`, input);
+        const failed = await api("POST", "/rooms/turn", {
+          ...repeat,
+          ...sceneResend(cached, repeat, repeat.submissionId),
+        });
+        assert.match(failed.body, error);
+        assert.equal(completions - start, 2);
+        assert(!host.scene().lines.some((line) => line.inputOf === repeat.submissionId));
+        cached = await operation(repeat.submissionId);
+        assert.equal(cached.input.message, input);
+      }
       const retry = payload(`${id}-retry`, retryInput);
       nextReply = () => ({ segments: [narration("The room settles for a moment.")] });
-      await ok(api("POST", "/rooms/turn", { ...retry, ...sceneResend(cached, retry, retry.submissionId) }));
-      assert.equal(completions - start, 2);
+      const { session } = await ok(
+        api("POST", "/rooms/turn", { ...retry, ...sceneResend(cached, retry, retry.submissionId) }),
+      );
+      assert.equal(completions - start, failTwice ? 3 : 2);
       const saved = host.scene().submissions.at(-1)!;
       assert.equal(saved.acceptance.status, "applied");
       assert.equal(saved.message, retryInput);
+      if (failTwice)
+        assert.deepEqual(
+          session.lines
+            .filter((line: { kind: string; content: string }) => line.kind === "input" && line.content === input)
+            .map((line: { inputOf: string }) => line.inputOf),
+          [retry.submissionId],
+        );
     }
 
     try {
@@ -165,8 +188,9 @@ for (const rating of ["sfw", "nsfw"] as const)
             },
           ],
         }),
-        "I ask if the workshop is open to visitors.",
+        assumedPermission,
         /sav|recover|permission|decid/i,
+        true,
       );
       assert(!village().venues[0].access!.permissions.some((record) => record.visitorId === "player"));
 

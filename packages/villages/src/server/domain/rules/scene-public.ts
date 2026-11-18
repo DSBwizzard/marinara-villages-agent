@@ -65,6 +65,12 @@ function unpublishedLines(submissions: unknown[]) {
     }),
   );
 }
+function sceneLineVisibility(submissions: VenueSubmission[]) {
+  const unpublished = unpublishedLines(submissions),
+    published = new Set(submissions.filter(sceneTurnPublished).map((turn) => turn.id));
+  return (line: VenueScene["lines"][number]) =>
+    !unpublished.has(line.id) && (line.kind !== "input" || published.has(line.inputOf ?? ""));
+}
 function publicLine(value: unknown, visible?: Set<string>) {
   const line = asRecord(value),
     sound = asRecord(line.soundOnly);
@@ -123,8 +129,8 @@ function publicLine(value: unknown, visible?: Set<string>) {
   };
 }
 export function publicSceneHistoryPositions(scene: VenueScene) {
-  const hidden = unpublishedLines(scene.submissions);
-  return scene.lines.flatMap((line, position) => (!hidden.has(line.id) && publicLine(line) ? [position] : []));
+  const visible = sceneLineVisibility(scene.submissions);
+  return scene.lines.flatMap((line, position) => (visible(line) && publicLine(line) ? [position] : []));
 }
 export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
   const unpublished = unpublishedLines(scene.submissions);
@@ -139,7 +145,7 @@ export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
 export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
   const policy = (value: unknown) => {
     const turn = asRecord(value);
-    return [sceneTurnPublished(turn), turn.replyLineIds];
+    return [turn.id, sceneTurnPublished(turn), turn.replyLineIds];
   };
   return JSON.stringify(policy(before)) === JSON.stringify(policy(after));
 }
@@ -227,19 +233,17 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
   const row = asRecord(value);
   if (Array.isArray(row.lines) && Array.isArray(row.submissions)) {
     const scene = row as VenueScene,
-      hidden = unpublishedLines(scene.submissions),
+      visibleLine = sceneLineVisibility(scene.submissions),
       visible = new Set(scene.activeIds ?? []);
     return {
       ...authority(scene),
-      lines: scene.lines
-        .filter((line) => !hidden.has(line.id))
-        .flatMap((line) => {
-          const view = publicLine(line, visible);
-          return view ? [view] : [];
-        }),
+      lines: scene.lines.filter(visibleLine).flatMap((line) => {
+        const view = publicLine(line, visible);
+        return view ? [view] : [];
+      }),
       submissions: scene.submissions.map((turn) => ({
         id: turn.id,
-        message: turn.message,
+        ...(sceneTurnPublished(turn) ? { message: turn.message } : {}),
         mode: turn.mode,
         targetId: turn.targetId,
         at: turn.at,

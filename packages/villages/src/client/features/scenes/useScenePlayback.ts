@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
+import { SCENE_PLAYBACK_CURSOR_STALE, type ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
 import type { SceneView } from "../../../shared/contracts/village.js";
-import { request } from "../../shared/api.js";
+import { request, VillageApiError } from "../../shared/api.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
 
@@ -50,6 +50,12 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
         claim = ++current.generation;
       current.pending?.abort();
       const controller = new AbortController();
+      const owns = () =>
+        !controller.signal.aborted &&
+        current.generation === claim &&
+        latest.current.scope === scope &&
+        latest.current.sceneId === owner.sceneId &&
+        latest.current.version === owner.version;
       Object.assign(current, { pending: controller, cursor, entry });
       setBusy(true);
       setError(null);
@@ -59,20 +65,22 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
           `/rooms/${encodeURIComponent(owner.sceneId)}/playback?scope=${encodeURIComponent(scope)}${query}`,
           { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]) },
         );
-        if (
-          controller.signal.aborted ||
-          current.generation !== claim ||
-          latest.current.scope !== scope ||
-          latest.current.sceneId !== owner.sceneId ||
-          latest.current.version !== owner.version
-        )
-          return;
+        if (!owns()) return;
         if (result.scope !== scope || result.sceneId !== owner.sceneId || result.version !== owner.version)
           throw Error("The Scene changed. Reopen it to continue reading.");
         setSelected({ window: result, entry, cursor });
       } catch (cause) {
-        if (!controller.signal.aborted && current.generation === claim)
-          setError(sceneFailure(cause, "Could not load this passage.", "read"));
+        if (!owns()) return;
+        if (
+          entry === "bookmark" &&
+          cursor &&
+          reading.checkpoint.current.bookmark?.anchorCursor === cursor &&
+          cause instanceof VillageApiError &&
+          cause.code === SCENE_PLAYBACK_CURSOR_STALE
+        ) {
+          reading.checkpoint.current.bookmark = undefined;
+          setSelected({ window: { ...latest.current.window }, entry: "last" });
+        } else setError(sceneFailure(cause, "Could not load this passage.", "read"));
       } finally {
         if (current.generation === claim) {
           current.pending = null;
@@ -80,7 +88,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
         }
       }
     },
-    [scope, room.id, room.playback.version, reading.isFounded],
+    [scope, room.id, room.playback.version, reading.isFounded, reading.checkpoint],
   );
   const bookmark = reading.checkpoint.current.bookmark;
   const scopedBookmark = bookmark?.scope === scope && bookmark.sceneId === room.id ? bookmark : undefined;
@@ -107,7 +115,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
   const target = scopedBookmark?.anchorCursor
     ? window.moments.find((moment) => moment.id === scopedBookmark.lineId)
     : undefined;
-  const verifiedBookmark = !!target && target.anchorCursor === scopedBookmark?.anchorCursor;
+  const verifiedBookmark = !!target;
   const priorAnchor = previous?.moments.at(-1);
   const verifiedAppend =
     previous?.total === 0

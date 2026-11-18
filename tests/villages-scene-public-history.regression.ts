@@ -102,7 +102,7 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
   scene.submissions.push(pendingSceneSubmission(scene, "pending", exact, "pending-line"));
   let native = source(scene),
     head = await store.prepare(scene, native.transcript.head, native.submissions.head);
-  assert.equal(head.count, 3);
+  assert.equal(head.count, 2);
   readScenePublicHistoryHead(head, scene, native.transcript.head, native.submissions.head);
   const publicVersion = head.publicVersion,
     privateRoot = head.positions?.id;
@@ -145,13 +145,7 @@ function source(scene: VenueScene, previous?: HistoryPageTree) {
   );
   const projected = projectSceneHistoryPage(selected, entries, scene.participants);
   assert.deepEqual(projected, publicSceneResponse(scene).lines);
-  assert.equal(projected.find((row) => row.kind === "input")?.content, exact);
-  assert(
-    !Object.hasOwn(
-      projected.find((row) => row.kind === "input")!,
-      "heardBy",
-    ),
-  );
+  assert(!projected.some((row) => row.kind === "input"));
   assert(!JSON.stringify(projected).includes("Private cause sentinel"));
   assert(!JSON.stringify(projected).includes("pending-line"));
   assert.throws(

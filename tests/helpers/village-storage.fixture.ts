@@ -16,6 +16,7 @@ import {
 import { MEMORY_PAGE_KIND } from "../../packages/villages/src/server/adapters/storage/memory-pages.js";
 import {
   SCENE_STORAGE_FORMAT,
+  SCENE_PUBLIC_HISTORY_POLICY,
   readSceneHistoryRoot,
 } from "../../packages/villages/src/server/adapters/storage/scene-history.js";
 import { encodeScenePublicHistory } from "../../packages/villages/src/server/adapters/storage/scene-public-history.js";
@@ -150,6 +151,7 @@ export function authorSceneFixture(rows: Rows, raw: any, world?: { seed?: string
     transcript: transcript.head,
     submissionHistory: submissions.head,
     publicHistory: publicHistory.head,
+    publicHistoryPolicy: SCENE_PUBLIC_HISTORY_POLICY,
   };
   readSceneHistoryRoot(result);
   return result;

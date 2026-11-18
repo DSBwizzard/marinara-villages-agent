@@ -113,7 +113,6 @@ export function createSceneProgress({
             "saved narration changed during publication",
           );
           if (entry.acceptance.status === "applied") return;
-          appendSceneInput(saved, entry);
           if (abandoned) {
             entry.acceptance = { ...entry.acceptance, status: "abandoned" };
             return;
@@ -129,6 +128,7 @@ export function createSceneProgress({
           }
           memoryRequire(episode, "narration acceptance returned no episode");
           applyAcceptedSceneDelta(saved, episode);
+          appendSceneInput(saved, entry);
           for (const line of episode.segments) {
             const prior = saved.lines.find((row) => row.id === line.id);
             memoryRequire(!prior || memoryHash(prior) === memoryHash(line), "published Scene line identity changed");
@@ -187,7 +187,6 @@ export function createSceneProgress({
             (entry.acceptance.status === "pending" || entry.acceptance.status === "held") &&
             memoryHash(entry.narration) === identity
           ) {
-            if (matchesScene) appendSceneInput(saved, entry);
             entry.progressError = String(error).slice(0, 300);
             if (validationFailure === error)
               entry.acceptance = {
@@ -267,7 +266,6 @@ export function createSceneProgress({
           "saved narration changed during abandonment",
         );
         entry.acceptance = { ...entry.acceptance, status: "abandoned" };
-        appendSceneInput(saved, entry);
       });
       onSettled?.(sessionId);
       return "abandoned" as const;
