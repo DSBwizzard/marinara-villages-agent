@@ -12,6 +12,7 @@ import type { LoreInspection } from "../../shared/contracts/lore.js";
 import { readLoreUse } from "../../shared/helpers/lore.js";
 import type { villagesLogger } from "../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../adapters/models/language-models.js";
+import { ModelPurchasePaused } from "../domain/models/completion-model.js";
 import type { VillageState } from "../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../domain/rules/coerce.js";
 import { safeFailureMessage } from "../domain/rules/errors.js";
@@ -107,6 +108,7 @@ export interface PrivateSpacePreparationPorts {
   villagesConnectionIdFor: typeof villagesConnectionIdFor;
   mutateVillageState: typeof mutateVillageState;
   readVillageState: typeof readVillageState;
+  withPurchaseAuthority?(work: (state: VillageState) => void): Promise<void>;
 }
 /** One application owns the durable private-space preparation sequence. */
 export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPorts) {
@@ -122,14 +124,17 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
     readVillageState,
   } = ports;
   let preparation: Promise<void> | null = null;
-  function preparePrivateSpaces(signal?: AbortSignal): Promise<void> {
-    if (preparation) return preparation;
-    preparation = withVillageClockWork(() => prepare(signal)).finally(() => {
+  let preparingAutomatically = false;
+  function preparePrivateSpaces(signal?: AbortSignal, automatic = false): Promise<void> {
+    if (preparation)
+      return !automatic && preparingAutomatically ? preparation.then(() => preparePrivateSpaces(signal)) : preparation;
+    preparingAutomatically = automatic;
+    preparation = withVillageClockWork(() => prepare(signal, automatic)).finally(() => {
       preparation = null;
     });
     return preparation;
   }
-  async function prepare(signal?: AbortSignal): Promise<void> {
+  async function prepare(signal: AbortSignal | undefined, automatic: boolean): Promise<void> {
     const initial = await readVillageState();
     const seed = initial.seed;
     const interrupted = privatePreparationRooms(initial).find(
@@ -193,6 +198,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         if (!scope.renovating && !scope.canInitialize) throw new Error("This Room already has a prepared appearance.");
         const saved = zone.preparation?.basis ? await reopenSavedResponse(mutateDocument, requestKey) : undefined;
         if (saved) retainedLore = readLoreUse(extractModelJsonObject(saved)?.loreUse);
+        if (automatic && !saved && village.backgroundPace === "off") return;
         const prepareRequest = async () => {
           await progress("lore", { loreEntryCount: undefined });
           const room = scope.packet;
@@ -268,7 +274,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         await mutateVillageState(
           (state) => {
             claimed = false;
-            if (state.seed !== seed) return;
+            if (state.seed !== seed || (automatic && !saved && state.backgroundPace === "off")) return;
             const current = privatePreparationRooms(state).find(
               (entry) => entry.venue.id === venue.id && entry.zone.id === zone.id,
             );
@@ -317,6 +323,21 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         }
         const result = request
           ? await completeWithRoom(request.connection, request.messages, request.maxTokens, {
+              ...(automatic
+                ? {
+                    providerDispatch: async (start, signal) => {
+                      let result: ReturnType<typeof start> | undefined;
+                      const admit = (current: VillageState) => {
+                        if (current.backgroundPace === "off" || current.seed !== seed || signal?.aborted)
+                          throw new ModelPurchasePaused("Room generation paused before dispatch.");
+                        result = start();
+                      };
+                      if (ports.withPurchaseAuthority) await ports.withPurchaseAuthority(admit);
+                      else admit(await readVillageState());
+                      return result!;
+                    },
+                  }
+                : {}),
               savedRequest: {
                 key: requestKey,
                 retry: attempt > 1,
@@ -443,6 +464,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         if (stale)
           throw new Error("The Room changed during preparation. Revise its specification before preparing it again.");
       } catch (cause) {
+        const paused = cause instanceof ModelPurchasePaused;
         const detail = signal?.aborted
           ? "Preparation was interrupted. Retry deliberately; the previous request may have been charged."
           : safeFailureMessage(cause);
@@ -462,10 +484,13 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
                   (target.preparation.attempt ?? 0) === attempt - 1 &&
                   capturePrivateInterior(state, currentVenue, target, villageNow().toISOString()).basis === scope.basis)
             )
-              target.preparation = { ...target.preparation, status: "failed", attempt, error };
+              target.preparation = paused
+                ? zone.preparation
+                : { ...target.preparation, status: "failed", attempt, error };
           },
           { memories: true },
         );
+        if (paused) return;
         villagesLogger().warn("[villages] private-space preparation stopped: %s", error);
         throw new Error(error);
       }
@@ -483,7 +508,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
       .then((state) => {
         // Founding owns its sequence; activation must not race the venue phase.
         if (state.foundingPreparation && state.foundingPreparation.status !== "ready") return;
-        return preparePrivateSpaces(controller.signal);
+        return preparePrivateSpaces(controller.signal, true);
       })
       .catch(() => {});
     return () => controller.abort();

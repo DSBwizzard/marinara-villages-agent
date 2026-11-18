@@ -129,7 +129,8 @@ export async function claimSavedResponse(
   let cached: Completion | undefined;
   await mutate(id, slot, (receipt) => {
     cached = undefined;
-    if (receipt.fingerprint !== fingerprint)
+    if (!receipt.dispatched) receipt.fingerprint = fingerprint;
+    else if (receipt.fingerprint !== fingerprint)
       throw new Error("Saved generation inputs changed. The response is preserved.");
     if (receipt.selected) {
       cached = structuredClone(receipt.selected.result);
@@ -215,5 +216,14 @@ export async function claimSavedResponse(
     }
     return returned;
   }
-  return { cached, retain };
+  async function cancelUndispatched(): Promise<void> {
+    await mutate(id, slot, (receipt) => {
+      if (receipt.fingerprint !== fingerprint) throw new Error("Saved generation identity changed.");
+      const index = receipt.pending.indexOf(token);
+      if (index < 0) return false;
+      receipt.pending.splice(index, 1);
+      receipt.dispatched--;
+    });
+  }
+  return { cached, retain, cancelUndispatched };
 }

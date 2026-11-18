@@ -1,6 +1,9 @@
 import { bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
 import { type BackgroundContext } from "./background-context-service.js";
-import type { BackgroundCompletion } from "../../domain/models/background-completion-model.js";
+import type {
+  BackgroundCompletion,
+  BackgroundProviderDispatch,
+} from "../../domain/models/background-completion-model.js";
 export type { BackgroundCompletion, BackgroundContext } from "./background-context-service.js";
 const binding = createActivationBinding<BackgroundContext>("Villages background context is not configured.");
 
@@ -10,8 +13,8 @@ function backgroundContext(): BackgroundContext {
 export function configureBackgroundContext(service: BackgroundContext): () => void {
   return binding.configure(bindActivationService(service));
 }
-export function backgroundProviderDispatch(): (() => void) | undefined {
-  return binding.maybe()?.backgroundCalls.getStore()?.beforeProviderDispatch;
+export function backgroundProviderDispatch(): BackgroundProviderDispatch | undefined {
+  return binding.maybe()?.backgroundCalls.getStore()?.providerDispatch;
 }
 export const backgroundCalls = {
   getStore(): BackgroundCompletion | undefined {

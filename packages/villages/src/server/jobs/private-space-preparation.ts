@@ -7,8 +7,8 @@ const preparationBinding = createActivationBinding<PrivateSpacePreparationServic
 export function configurePrivateSpacePreparation(service: PrivateSpacePreparationService): () => void {
   return preparationBinding.configure(bindActivationService(service));
 }
-export function preparePrivateSpaces(signal?: AbortSignal): Promise<void> {
-  return preparationBinding.get().preparePrivateSpaces(signal);
+export function preparePrivateSpaces(signal?: AbortSignal, automatic = false): Promise<void> {
+  return preparationBinding.get().preparePrivateSpaces(signal, automatic);
 }
 export async function retryPrivateSpaces(): Promise<void> {
   return preparationBinding.get().retryPrivateSpaces();

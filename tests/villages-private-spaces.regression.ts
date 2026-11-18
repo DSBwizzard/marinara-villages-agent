@@ -221,6 +221,14 @@ let fail = true,
   lastInput: any;
 const inputs: any[] = [];
 const records = new Map<string, any>();
+let pauseOnUsageClaim = false;
+async function pauseBeforeRoomDispatch(id: string) {
+  if (!pauseOnUsageClaim || id !== "villages-ai-usage") return;
+  pauseOnUsageClaim = false;
+  await mutateVillageState((current) => {
+    current.backgroundPace = "off";
+  });
+}
 const restore = configureVillagesRuntime({
   projectId: "private-fixture",
   logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
@@ -239,11 +247,13 @@ const restore = configureVillagesRuntime({
         return [...records.values()].filter((v) => v.kind === kind);
       },
       async create(input: any) {
+        await pauseBeforeRoomDispatch(input.id);
         const row = { ...input, revision: 1 };
         records.set(input.id, row);
         return row;
       },
       async update(input: any) {
+        await pauseBeforeRoomDispatch(input.id);
         const prior = records.get(input.id);
         if (!prior || prior.revision !== input.expectedRevision) return null;
         const row = { ...prior, ...input, revision: prior.revision + 1 };
@@ -258,6 +268,7 @@ const restore = configureVillagesRuntime({
   languageModels: {
     async resolveForRequest() {
       return {
+        connectionId: "fixture",
         model: "fixture",
         maxOutputTokens: 4096,
         fitContext(messages: any[], options: any) {
@@ -295,6 +306,14 @@ async function main() {
     assert.equal(
       resolveVenueZone((await readVillageState({ memories: true })).venues[1]!, "private:player").image.id,
       "art",
+    );
+    pauseOnUsageClaim = true;
+    await preparePrivateSpaces(undefined, true);
+    assert.equal(calls, 0, "Pace Off during usage reservation blocks the physical Room request");
+    assert.equal(
+      resolveVenueZone((await readVillageState({ memories: true })).venues[0]!, "private:a")?.preparation?.claimId,
+      undefined,
+      "A refused request restores the pending Room claim",
     );
     await Promise.all([
       assert.rejects(preparePrivateSpaces(), /Offline/),
@@ -369,6 +388,7 @@ async function main() {
     };
     try {
       await mutateVillageState((current) => {
+        current.backgroundPace = "balanced";
         resolveVenueZone(current.venues[1], "private:player")!.image = null;
       });
       await generateFirstZoneImage("own", "player");
@@ -522,6 +542,14 @@ async function privateInteriorLifecycle() {
       };
     },
   } as any);
+  village.backgroundPace = "off";
+  await preparation.preparePrivateSpaces(undefined, true);
+  assert.equal(calls, 0, "Automatic Room preparation respects Pace Off");
+  assert.equal(
+    resolveVenueZone(home, "bedroom")?.preparation?.status,
+    "pending",
+    "The pending Room remains recoverable",
+  );
   await Promise.all([preparation.preparePrivateSpaces(), preparation.preparePrivateSpaces()]);
   assert.equal(calls, 1, "vacant room preparation is durable and coalesced");
   await preparation.preparePrivateSpaces();
@@ -547,6 +575,7 @@ async function privateInteriorLifecycle() {
     sceneryImageKey(village, home, village.setupAt, "bedroom"),
     sceneryImageKey(village, structuredClone(home), village.setupAt, "bedroom"),
   );
+  village.backgroundPace = "balanced";
   bedroom.image = null;
   let draws = 0;
   const images = createLocationImages({

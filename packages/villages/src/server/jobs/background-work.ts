@@ -1,7 +1,6 @@
 import { bindActivationService, createActivationBinding } from "../adapters/engine/activation-scope.js";
 import type { BackgroundWorkService } from "./background-service.js";
 import type {
-  BackgroundInput,
   BackgroundKind,
   BackgroundStatus,
   BackgroundSummary,
@@ -47,8 +46,8 @@ export async function villageBackgroundPresence<T = void>(
 ): Promise<T | undefined> {
   return binding.get().villageBackgroundPresence<T>(sessionId, visible, options);
 }
-export function queueBackgroundJob(work: BackgroundInput): Promise<void> {
-  return binding.get().queueBackgroundJob(work);
+export function queueBackgroundJob(...args: Parameters<BackgroundWorkService["queueBackgroundJob"]>): Promise<void> {
+  return binding.get().queueBackgroundJob(...args);
 }
 export function cancelReturnCatchup(batchId: string): Promise<void> {
   return binding.get().cancelReturnCatchup(batchId);

@@ -7,8 +7,13 @@ import { measureModel } from "../observability/pipeline-metrics.js";
 import { trackUsage } from "./usage-ledger.js";
 import { backgroundProviderDispatch } from "../operations/background-context.js";
 import type { CapabilityLanguageModelHost, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { ModelPurchasePaused, type ProviderDispatch } from "../../domain/models/completion-model.js";
 
 const trackedModels = new WeakSet<CapabilityResolvedLanguageModel>();
+const standaloneDispatch = new AsyncLocalStorage<ProviderDispatch>();
+export const withModelPurchaseCheck = <T>(dispatch: ProviderDispatch, work: () => T): T =>
+  standaloneDispatch.run(dispatch, work);
 export const tracksProviderDispatch = (model: CapabilityResolvedLanguageModel): boolean => trackedModels.has(model);
 
 export function villagesLanguageModels(): CapabilityLanguageModelHost {
@@ -21,7 +26,8 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
       ...model,
       chatComplete: (messages, requestOptions) => {
         requireHost();
-        const beforeDispatch = backgroundProviderDispatch();
+        const standalone = standaloneDispatch.getStore();
+        const beforeDispatch = standalone ?? backgroundProviderDispatch();
         let submitted = false;
         return guardedClockGeneration(() =>
           trackUsage(
@@ -35,13 +41,20 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
               requireHost();
               const result = await withProviderDeadline(
                 (signal) => {
-                  beforeDispatch?.();
-                  submitted = true;
-                  return measureModel(() => model.chatComplete(messages, { ...requestOptions, signal }));
+                  const start = () => {
+                    signal.throwIfAborted();
+                    submitted = true;
+                    return measureModel(() => model.chatComplete(messages, { ...requestOptions, signal }));
+                  };
+                  return beforeDispatch ? beforeDispatch(start, signal) : start();
                 },
                 requestOptions?.signal,
                 onLateResult,
-              );
+              ).catch((error) => {
+                if (standalone && !submitted && requestOptions?.signal?.aborted)
+                  throw new ModelPurchasePaused("Generation stopped before dispatch.", { cause: error });
+                throw error;
+              });
               await retainJsonRepair(model, result, requestOptions?.maxTokens);
               return result;
             },

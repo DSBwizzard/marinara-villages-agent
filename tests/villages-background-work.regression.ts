@@ -335,6 +335,7 @@ async function reset() {
       "week",
       "other",
       "a",
+      "pace-race",
       "b",
       "recurring",
       "finite",
@@ -414,6 +415,25 @@ async function main() {
     await villageBackgroundPresence("guarded-live", true);
     await settleBackgroundWork();
     assert.deepEqual(calls, ["guarded-live"]);
+    holdUsageClaim = true;
+    releaseUsageClaim = null;
+    await queueBackgroundJob(work("pace-race", ["unused"], true), undefined, true);
+    await until(() => !!releaseUsageClaim);
+    await mutateVillageState((state) => {
+      state.backgroundPace = "off";
+    });
+    releaseUsageClaim!();
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["guarded-live"], "Pace Off blocks a queued dispatch even after its usage claim");
+    assert.equal((await summary("pace-race")).status, "paused");
+    assert.equal((await summary("pace-race")).requests, 0);
+    stop();
+    await settleBackgroundWork();
+    stop = startBackgroundWork({ now: () => now });
+    await villageBackgroundPresence("pace-restarted", true);
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["guarded-live"], "Restart under Pace Off preserves the job without purchasing anything");
+    assert.equal((await summary("pace-race")).status, "paused");
     registerBackgroundHandler("agenda", agendaHandler);
     await reset();
     responsePlans.set("automatic", [

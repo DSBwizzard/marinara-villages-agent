@@ -1,9 +1,10 @@
 import { carryLateProviderResponse, retainLateProviderResponse } from "../../adapters/models/provider-deadline.js";
+import { tracksProviderDispatch, withModelPurchaseCheck } from "../../adapters/models/language-models.js";
 import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { inferredPurpose, withUsagePurpose } from "../../adapters/models/usage-ledger.js";
 import type { readRuntimeDebug, runtimeDebug } from "../../adapters/observability/runtime-debug.js";
 import type { BackgroundCompletion } from "../../domain/models/background-completion-model.js";
-import type { VillageCompletionOptions } from "../../domain/models/completion-model.js";
+import { ModelPurchasePaused, type VillageCompletionOptions } from "../../domain/models/completion-model.js";
 import { safeFailureMessage } from "../../domain/rules/errors.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import type { coordinatedCompletion } from "../../jobs/venue-coordinator.js";
@@ -104,11 +105,12 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
               options.reasoningEffort,
               options.verbosity,
               ...(options.responseFormat ? [options.responseFormat] : []),
+              ...(options.providerDispatch ? ["checked"] : []),
             ]),
           )
           .digest("hex"),
-        bindCallback((operationSignal?: AbortSignal) =>
-          withUsagePurpose(options.usagePurpose ?? inferredPurpose(), () =>
+        bindCallback(async (operationSignal?: AbortSignal) => {
+          const dispatch = () =>
             model
               .chatComplete(messages, {
                 // Left off entirely when the caller has no temperature to ask for, which is
@@ -126,7 +128,13 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                     : (operationSignal ?? options.signal),
               })
               .catch((error) => {
-                if (!options.responseFormat || operationSignal?.aborted || options.signal?.aborted) throw error;
+                if (
+                  error instanceof ModelPurchasePaused ||
+                  !options.responseFormat ||
+                  operationSignal?.aborted ||
+                  options.signal?.aborted
+                )
+                  throw error;
                 const message = safeFailureMessage(error);
                 const unsupported =
                   /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(message) &&
@@ -144,9 +152,17 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                 });
                 carryLateProviderResponse(error, failure);
                 throw failure;
-              }),
-          ),
-        ),
+              });
+          return withUsagePurpose(options.usagePurpose ?? inferredPurpose(), async () => {
+            if (!options.providerDispatch) return dispatch();
+            if (tracksProviderDispatch(model)) return withModelPurchaseCheck(options.providerDispatch, dispatch);
+            const signal =
+              operationSignal && options.signal
+                ? AbortSignal.any([operationSignal, options.signal])
+                : (operationSignal ?? options.signal);
+            return options.providerDispatch(dispatch, signal);
+          });
+        }),
       ).catch((error) => {
         try {
           villagesLogger().warn(
@@ -188,6 +204,7 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
       const result = await ask(maxTokens);
       return await receipt.retain(result, true);
     } catch (error) {
+      if (error instanceof ModelPurchasePaused) await receipt.cancelUndispatched();
       retainLateProviderResponse(error, async (value) => {
         await receipt.retain(value as CapabilityLanguageModelCompletion, false);
       });

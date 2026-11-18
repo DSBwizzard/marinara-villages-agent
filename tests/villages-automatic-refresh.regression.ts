@@ -241,6 +241,7 @@ async function main() {
             agenda: agendaFixture({
               day: [],
               generatedAt: start.toISOString(),
+              personalizationPending: true,
             }),
           },
         ] as any;
@@ -272,6 +273,7 @@ async function main() {
     assert.equal((await readVillageState()).simulatedThrough, later.toISOString());
     assert.equal((await readVillageState()).lastKnownTimeZone, quiet.village.timeZone);
     const retainedState = await readVillageState({ memories: true });
+    assert.equal(retainedState.villagers[0].agenda?.personalizationPending, true);
     assert.equal(
       continuityWishes(retainedState, "retained", true, later.toISOString())[0].text,
       "Share a conversation",

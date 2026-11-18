@@ -970,6 +970,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesConnectionIdFor,
       mutateVillageState,
       readVillageState,
+      withPurchaseAuthority: (work) =>
+        villageRepository.withAuthorityLock(async () => work(await villageRepository.readAuthority())),
     }),
   );
   const releaseFounding = configureFoundingPreparation(

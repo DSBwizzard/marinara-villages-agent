@@ -182,7 +182,7 @@ export function createWorldCoordination({
     // Discover optional paid work only after deterministic advancement has committed.
     // Initial space preparation retains the founding generation path; begin it only after local advancement.
     outsideVenueOperation(() => {
-      void preparePrivateSpaces().catch(() => {});
+      void preparePrivateSpaces(undefined, true).catch(() => {});
     });
     const withAgendas = await queuePendingAgendas(await readVillageState(), now);
     await refreshScheduleInfluence(withAgendas, now);
