@@ -597,7 +597,7 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-welcome-" + view.width + ".png"),
           });
-        const settingPanel = root.getByRole(phone ? "dialog" : "region", { name: "Your setting" });
+        const settingPanel = root.getByRole(phone ? "dialog" : "region", { name: "Your first Map" });
         const villageName = root.getByLabel("Village Name", { exact: true });
         const mapName = root.getByLabel("First map name", { exact: true });
         const mapDescription = root.getByLabel("Location description", { exact: true });
@@ -620,7 +620,7 @@ export async function verifyFoundingLayout(group) {
           await expect(villageName).toHaveValue("Handmade Harbor");
           assert.equal(settingCalls, 0, "Manual setup never dispatches a Mari draft");
           await villageName.fill(phone ? "Coastal Community" : "");
-          if (phone) await settingPanel.getByRole("button", { name: "Close Your setting" }).click();
+          if (phone) await button("Close Your setting").click();
           await scene.getByRole("button", { name: "Back", exact: true }).click();
         }
         await button("Draft with Mari").click();
@@ -794,7 +794,8 @@ export async function verifyFoundingLayout(group) {
         await expect(line).toHaveText(/^The Village is your whole community/);
         await expect(villageName).toBeHidden();
         await nextLine();
-        const namingDialog = root.getByRole("dialog", { name: "Name your Village", exact: true });
+        const namingDialog = root.getByRole("dialog", { name: "Your Village", exact: true });
+        const villageBrief = root.getByLabel("Tell Mari about your village", { exact: true });
         const finishNaming = () =>
           phone ? namingDialog.getByRole("button", { name: "Done", exact: true }).click() : nextLine();
         if (phone) {
@@ -808,8 +809,28 @@ export async function verifyFoundingLayout(group) {
           await page.keyboard.press("Tab");
           await expect(villageName).toBeFocused();
         }
+        await expect(villageBrief).toBeVisible();
+        if (view.width === 390 && view.height === 844) {
+          await villageBrief.focus();
+          await page.evaluate(() => {
+            window.visualViewport.height = innerHeight - 300;
+            window.visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await expect(root).toHaveAttribute("data-founding-keyboard", "true");
+          const description = await villageBrief.boundingBox();
+          assert.ok(description.y + description.height < view.height - 300, "The village field clears the keyboard");
+          await villageBrief.blur();
+          await page.evaluate(() => {
+            window.visualViewport.height = innerHeight;
+            window.visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await expect(root).not.toHaveAttribute("data-founding-keyboard", "true");
+        }
         await expect(mapName).toBeHidden();
-        await villageName.fill("Coastal Community");
+        const tryMissingName = view.width === 320 || view.width === 1366;
+        const chosenName = tryMissingName ? "" : "Coastal Community";
+        await villageName.fill(chosenName);
+        if (draftWithLore) await villageBrief.fill("Our village is a converted cargo ship.");
         await finishNaming();
         await layer("Map");
         const mapPose = await expectPose("happy-side");
@@ -819,9 +840,11 @@ export async function verifyFoundingLayout(group) {
         assert.ok(treeBox.x + treeBox.width <= mapPortrait.x + 0.5, "Mari’s left-facing gesture clears the chart");
         assert.ok(Math.abs(mapPortrait.y + mapPortrait.height - portraitBox.y - portraitBox.height) < 0.5);
         await expect(line).toHaveText(/^A Map is where we actually play/);
-        await expect(villageName).toBeHidden();
+        await expect(villageName).toHaveCount(0);
+        await expect(villageBrief).toHaveCount(0);
         await scene.getByRole("button", { name: "Back", exact: true }).click();
-        await expect(villageName).toHaveValue("Coastal Community");
+        await expect(villageName).toHaveValue(chosenName);
+        if (draftWithLore) await expect(villageBrief).toHaveValue("Our village is a converted cargo ship.");
         await finishNaming();
         await nextLine();
         await expect(line).toHaveText(/^Each Map covers one locale/);
@@ -829,64 +852,33 @@ export async function verifyFoundingLayout(group) {
         await expect(line).toHaveText(/^Where should your first Map take us/);
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
-        const draftPopup = root.getByRole("dialog", { name: "Draft with Mari", exact: true });
-        const villageBrief = root.getByLabel(phone ? "Village description" : "Tell Mari about your village", {
-          exact: true,
-        });
-        const openBrief = async (label) => {
-          if (phone) {
-            await expect(villageBrief).toHaveCount(0);
-            await scene.getByRole("button", { name: label, exact: true }).click();
-            await expect(draftPopup).toBeVisible();
-          }
-        };
-        const submitBrief = (label) =>
-          (phone ? draftPopup : scene).getByRole("button", { name: label, exact: true }).click();
+        await expect(villageBrief).toHaveCount(0);
+        await expect(villageName).toHaveCount(0);
         const closeSetting = () =>
-          settingPanel.getByRole("button", { name: "Close Your setting", exact: true }).click();
+          settingPanel.getByRole("button", { name: "Close Your first Map", exact: true }).click();
         if (phone) {
           await expect(settingPanel).toBeHidden();
           if (!draftWithLore) {
-            await button("Enter my setting").click();
+            await button("Enter Map details").click();
             await expect(settingPanel).toBeVisible();
-            await expect(villageName).toHaveValue("Coastal Community");
           }
         } else {
-          await expect(villageName).toHaveValue("Coastal Community");
-          await settingNext().click();
-          await expect(mapName).toBeFocused();
+          if (!tryMissingName) {
+            await settingNext().click();
+            await expect(mapName).toBeFocused();
+          }
           if (draftWithLore) await mapName.fill("My starting location");
         }
         if (draftWithLore) {
           const originalStage = phone ? null : await stage.boundingBox();
-          await openBrief("Draft with Mari");
-          if (view.width === 390 && view.height === 844) {
-            await expect(draftPopup.getByText("1 lorebook selected for drafting")).toBeVisible();
-            await villageBrief.focus();
-            await page.evaluate(() => {
-              window.visualViewport.height = innerHeight - 300;
-              window.visualViewport.dispatchEvent(new Event("resize"));
-            });
-            await expect(root).toHaveAttribute("data-founding-keyboard", "true");
-            const description = await villageBrief.boundingBox();
-            assert.ok(description.y + description.height < view.height - 300, "The village field clears the keyboard");
-            await villageBrief.blur();
-            await page.evaluate(() => {
-              window.visualViewport.height = innerHeight;
-              window.visualViewport.dispatchEvent(new Event("resize"));
-            });
-            await expect(root).not.toHaveAttribute("data-founding-keyboard", "true");
-          }
-          await villageBrief.fill("Our village is a converted cargo ship.");
-          await submitBrief("Draft with Mari");
+          await button("Draft Map with Mari").click();
           if (!phone) {
             await expect(line).toContainText("I’ll replace your first Map details");
             assert.equal(settingCalls, 0, "Mari asks before replacing existing map details");
-            await button("Keep my setting").click();
-            await expect(button("Draft with Mari")).toBeFocused();
-            await expect(villageName).toHaveValue("Coastal Community");
+            await button("Keep my Map").click();
+            await expect(button("Draft Map with Mari")).toBeFocused();
             assert.equal(settingCalls, 0, "Keeping the setting does not send a request");
-            await submitBrief("Draft with Mari");
+            await button("Draft Map with Mari").click();
             await button("Replace and draft").click();
           }
           await expect.poll(() => settingCalls).toBe(1);
@@ -895,20 +887,22 @@ export async function verifyFoundingLayout(group) {
           settingReady = true;
           if (phone) await expect(settingPanel).toBeVisible();
           await expect(mapDescription).toHaveValue("A shared galley aboard a cargo ship.");
-          await expect(villageName).toHaveValue("Coastal Community");
+          await expect(villageName).toHaveCount(0);
           await expect(mapName).toHaveValue(phone ? "Main Deck" : "");
           assert.equal(settingCalls, 1, "One explicit action dispatches one request");
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
           if (phone) await closeSetting();
-          await openBrief("Draft again with Mari");
+          await button("Back").click();
+          await expect(villageName).toHaveValue("Coastal Community");
           await villageBrief.fill("Our village is inside a dumpster.");
-          await submitBrief("Draft again with Mari");
+          await finishNaming();
+          await button("Draft Map again").click();
           await expect(line).toContainText("I’ll replace your first Map details");
           await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(2);
           if (phone) await expect(settingPanel).toBeVisible();
           else {
-            await expect(button("Draft again with Mari")).toBeEnabled();
+            await expect(button("Draft Map again")).toBeEnabled();
             assert.equal(
               (await stage.boundingBox()).height,
               originalStage?.height,
@@ -917,7 +911,8 @@ export async function verifyFoundingLayout(group) {
           }
           const updatedEditorHeight = (await settingPanel.boundingBox()).height;
           assert.ok(updatedEditorHeight <= originalEditorHeight + 1, "A long draft must not expand the editor");
-          await expect(villageName).toHaveValue("Coastal Community");
+          await expect(villageName).toHaveCount(0);
+          await expect(villageBrief).toHaveCount(0);
           await expect(mapName).toHaveValue("Scavenger Rim");
           await expect(mapDescription).toHaveValue("Lanterns hang from the lip of the bin. ".repeat(90));
           if (phone && view.height === 844) {
@@ -937,6 +932,17 @@ export async function verifyFoundingLayout(group) {
         await root
           .getByLabel("Location description", { exact: true })
           .fill("An oceanfront expanse between the cliffs and river.");
+        if (tryMissingName) {
+          await settingNext().click();
+          await expect(villageName).toHaveAttribute("aria-invalid", "true");
+          await villageName.fill("Coastal Community");
+          await expect(villageBrief).toBeVisible();
+          await finishNaming();
+          await nextLine();
+          await nextLine();
+          if (phone) await button("Enter Map details").click();
+          await expect(mapName).toHaveValue("Old Harbour");
+        }
         if (phone && process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-setting-editor-" + view.width + ".png"),

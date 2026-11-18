@@ -650,11 +650,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-setting-dialogue { position:relative; min-width:0; }
 .villages-setting-dialogue>strong { color:#efb6bc; font-size:.85rem; }
 .villages-setting-dialogue p { margin:.2rem 0 .35rem; line-height:1.4; }
-.villages-setting-dialogue form { margin-top:.7rem; border-top:1px solid #ad839b62; }
 .villages-setting-dialogue .villages-founding-field { margin:.5rem 0; }
-.villages-setting-lore-notice { color:#e8b9c2; font-size:.85rem; }
-.villages-setting-dialogue-actions .villages-founding-next-reply { margin-inline-start:auto; }
-.villages-setting-dialogue-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
 .villages-forging-v2 .villages-place-panels>.villages-founding-setting { height:auto; min-height:0; overflow:visible; margin:clamp(.35rem,5dvh,3rem) 0 0; }
 .villages-founding-setting h2 { font:500 clamp(1.45rem,3vw,2rem)/1.15 "village-letter-lora",Georgia,serif; color:#f4e5c8; margin:0; letter-spacing:-.035em; }
 .villages-forging-v2 .villages-place-panels .villages-founding-field+.villages-founding-field { border-top:0; padding-top:0; }
@@ -776,11 +772,11 @@ export const VILLAGES_FORGING_STYLES = `
   }
   .villages-chapter-menu>.villages-forging-body { overflow:auto; padding:.35rem; }
   .villages-forging-v2 .villages-chapter-menu [role=alert] { color:#ff9ba5; }
-  .villages-forging-v2 .villages-founding-overlay>dialog.villages-founding-world-dialog { padding:.65rem; overflow:hidden; }
-  .villages-founding-world-fields { min-height:0; overflow:auto; }
-  .villages-forging-v2 .villages-founding-world-fields>p { margin:.3rem 0 .5rem; line-height:1.35; }
-  .villages-founding-world-dialog .villages-founding-field { margin:.4rem 0; }
-  .villages-founding-world-dialog .villages-founding-field-heading label>small { margin-inline-start:.45em; }
+  .villages-forging-v2 .villages-founding-overlay>dialog.villages-setting-fields-dialog { padding:.65rem; overflow:hidden; }
+  .villages-setting-fields { min-height:0; overflow:auto; }
+  .villages-forging-v2 .villages-setting-fields>p { margin:.3rem 0 .5rem; line-height:1.35; }
+  .villages-setting-fields-dialog .villages-founding-field { margin:.4rem 0; }
+  .villages-setting-fields-dialog .villages-founding-field-heading label>small { margin-inline-start:.45em; }
   .villages-forging-v2[data-step] {
     --mari-floor:min(65cqh,max(33cqh,13rem));
     --founding-mobile-stage-height:calc(100cqh - var(--mari-floor));

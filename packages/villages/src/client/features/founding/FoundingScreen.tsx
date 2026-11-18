@@ -326,6 +326,7 @@ export function FoundingScreen({
   const focusedValidationAttempt = useRef(0);
   const [validatedFields, setValidatedFields] = useState<string[]>([]);
   const clearFieldValidation = (field: string) => setValidatedFields((fields) => fields.filter((key) => key !== field));
+  const villageNameError = validatedFields.includes("place-name") && !setupName.trim();
   const backgroundError = validatedFields.includes("playerBackground")
     ? playerBackgroundProblem(setupPlayerBackground)
     : "";
@@ -344,7 +345,7 @@ export function FoundingScreen({
     Object.values(CONNECTION_SETUP_PROBLEMS).includes(setupProblem);
   useEffect(() => {
     if (focusedValidationAttempt.current === validationAttempt) return;
-    if (setupStep === 0 && inlineProblem && !settingEditorOpen) {
+    if (setupStep === 0 && beat !== "village-overview" && inlineProblem && !settingEditorOpen) {
       setSettingEditorOpen(true);
       return;
     }
@@ -369,6 +370,7 @@ export function FoundingScreen({
     backgroundError,
     validationAttempt,
     setupStep,
+    beat,
     settingEditorOpen,
     setSettingEditorOpen,
   ]);
@@ -599,6 +601,12 @@ export function FoundingScreen({
         bodyRef.current?.scrollTo({ top: 0 });
         return;
       }
+      if (setupStep === 0 && beat === "village" && !setupName.trim()) {
+        setSetupProblem(PLACE_ERRORS.name);
+        setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "village-overview", settingEditorOpen: false }));
+        bodyRef.current?.scrollTo({ top: 0 });
+        return;
+      }
       if (setupStep === 2 && !setupMapSrc) {
         requestAnimationFrame(() =>
           bodyRef.current?.querySelector<HTMLElement>(".villages-forging-map-warning")?.focus(),
@@ -624,10 +632,7 @@ export function FoundingScreen({
       </button>
     );
     const villageNameField = (
-      <FoundingField
-        title="Village name"
-        error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
-      >
+      <FoundingField title="Village name" error={villageNameError ? PLACE_ERRORS.name : ""}>
         <input
           autoComplete="off"
           aria-label="Village Name"
@@ -641,9 +646,10 @@ export function FoundingScreen({
         />
       </FoundingField>
     );
+    const settingTitleLabel = manualSetting ? "Your setting" : "Your first Map";
     const settingFields = (
       <>
-        {villageNameField}
+        {manualSetting ? villageNameField : null}
         <FoundingField
           title="First map name"
           error={
@@ -839,12 +845,11 @@ export function FoundingScreen({
         ) : null}
         {phone && setupStep === 0 && settingEditorOpen && !prelude ? (
           <FoundingDialog
-            title="Your setting"
+            title={settingTitleLabel}
             onClose={() => setSettingEditorOpen(false)}
             dismissible={!busy}
             showCloseButton={!busy}
           >
-            {hasSettingDraft ? <p>Mari’s draft is ready to edit.</p> : null}
             {settingFields}
             <footer>{nextReply}</footer>
           </FoundingDialog>
@@ -940,6 +945,7 @@ export function FoundingScreen({
                 enteringScene={enteringScene}
                 title={title}
                 villageNameField={villageNameField}
+                villageNameError={villageNameError}
                 onConnections={openConnectionPicker}
                 onEditSetting={openSettingEditor}
                 onBeatChange={() => {
@@ -952,9 +958,9 @@ export function FoundingScreen({
               />
             ) : null}
             {!phone && beat !== "village-overview" ? (
-              <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
+              <section className="villages-founding-setting villages-forging-card" aria-label={settingTitleLabel}>
                 <h2 tabIndex={-1} ref={settingTitle}>
-                  Your setting
+                  {settingTitleLabel}
                 </h2>
                 {settingFields}
                 {beat === "village" ? <div className="villages-forging-actions">{nextReply}</div> : null}
