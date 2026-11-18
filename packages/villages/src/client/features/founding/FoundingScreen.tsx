@@ -31,6 +31,7 @@ import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-wor
 import { playerBackgroundProblem } from "./villages-player-background.js";
 const PLACE_ERRORS = {
   name: "Give the village a name.",
+  brief: "Tell Mari a little about your Village.",
   locationName: "Name the starting location.",
   setting: "Describe the starting location.",
 };
@@ -286,7 +287,6 @@ export function FoundingScreen({
   const reviewIndex = Math.min(reviewPage, Math.max(0, Math.ceil(setupVenues.length / 3) - 1));
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
-  const settingTitle = useRef<HTMLHeadingElement>(null);
   const connectionGate = useRef<HTMLElement>(null);
   const chapterLine = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -327,6 +327,8 @@ export function FoundingScreen({
   const [validatedFields, setValidatedFields] = useState<string[]>([]);
   const clearFieldValidation = (field: string) => setValidatedFields((fields) => fields.filter((key) => key !== field));
   const villageNameError = validatedFields.includes("place-name") && !setupName.trim();
+  const villageBrief = setupWorkspace.settingBrief?.trim();
+  const villageBriefError = validatedFields.includes("village-brief") && !villageBrief ? PLACE_ERRORS.brief : "";
   const backgroundError = validatedFields.includes("playerBackground")
     ? playerBackgroundProblem(setupPlayerBackground)
     : "";
@@ -444,10 +446,7 @@ export function FoundingScreen({
       connections.refresh();
       setConnectionPickerOpen(true);
     };
-    const openSettingEditor = () => {
-      setSettingEditorOpen(true);
-      if (!phone) requestAnimationFrame(() => settingTitle.current?.focus());
-    };
+    const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
       if (openMenu && step === 0) setSettingEditorOpen(true);
       if (phone && openMenu) {
@@ -576,10 +575,23 @@ export function FoundingScreen({
       setupVenueBusy ||
       !!draftSaveError ||
       (setupStep === 2 && (setupMapBusy || !!setupMapRequest));
+    const validateVillage = () => {
+      const problem = !setupName.trim() ? PLACE_ERRORS.name : !villageBrief ? PLACE_ERRORS.brief : "";
+      if (!problem) return true;
+      setValidatedFields((fields) => [...new Set([...fields, "place-name", "village-brief"])]);
+      setValidationAttempt((attempt) => attempt + 1);
+      setSetupProblem(problem);
+      return false;
+    };
     const advanceSetup = () => {
       if (spriteWorking.current) return;
       if (connectionSetupProblem) {
         openConnectionPicker();
+        return;
+      }
+      if (setupStep === 0 && beat === "village" && !validateVillage()) {
+        setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "village-overview", settingEditorOpen: false }));
+        bodyRef.current?.scrollTo({ top: 0 });
         return;
       }
       setValidationAttempt((attempt) => attempt + 1);
@@ -598,12 +610,6 @@ export function FoundingScreen({
       ]);
       if (setupStep === 0 && manualSetting && setupName.trim() && setupLocationName.trim() && setupSetting.trim()) {
         setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "world", settingEditorOpen: false }));
-        bodyRef.current?.scrollTo({ top: 0 });
-        return;
-      }
-      if (setupStep === 0 && beat === "village" && !setupName.trim()) {
-        setSetupProblem(PLACE_ERRORS.name);
-        setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "village-overview", settingEditorOpen: false }));
         bodyRef.current?.scrollTo({ top: 0 });
         return;
       }
@@ -930,12 +936,7 @@ export function FoundingScreen({
               </section>
             </div>
           </div>
-          <div
-            hidden={setupStep !== 0}
-            className="villages-place-panels"
-            data-editing={settingEditorOpen || undefined}
-            data-intro={(!manualSetting && (beat !== "village" || !settingEditorOpen)) || undefined}
-          >
+          <div hidden={setupStep !== 0} className="villages-place-panels" data-manual={manualSetting || undefined}>
             {setupStep === 0 ? (
               <FoundingSettingScene
                 controller={controller}
@@ -945,7 +946,10 @@ export function FoundingScreen({
                 enteringScene={enteringScene}
                 title={title}
                 villageNameField={villageNameField}
-                villageNameError={villageNameError}
+                villageInvalid={villageNameError || !!villageBriefError}
+                villageBriefError={villageBriefError}
+                mapFields={settingFields}
+                onValidateVillage={validateVillage}
                 onConnections={openConnectionPicker}
                 onEditSetting={openSettingEditor}
                 onBeatChange={() => {
@@ -957,13 +961,10 @@ export function FoundingScreen({
                 advanceDisabled={advanceDisabled}
               />
             ) : null}
-            {!phone && beat !== "village-overview" ? (
-              <section className="villages-founding-setting villages-forging-card" aria-label={settingTitleLabel}>
-                <h2 tabIndex={-1} ref={settingTitle}>
-                  {settingTitleLabel}
-                </h2>
+            {!phone && manualSetting ? (
+              <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
+                <h2>Your setting</h2>
                 {settingFields}
-                {beat === "village" ? <div className="villages-forging-actions">{nextReply}</div> : null}
               </section>
             ) : null}
           </div>

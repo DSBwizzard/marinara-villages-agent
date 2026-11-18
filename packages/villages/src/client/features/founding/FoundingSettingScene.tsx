@@ -55,7 +55,10 @@ export function FoundingSettingScene({
   enteringScene,
   title,
   villageNameField,
-  villageNameError,
+  villageInvalid,
+  villageBriefError,
+  mapFields,
+  onValidateVillage,
   onConnections,
   onEditSetting,
   onBeatChange,
@@ -70,7 +73,10 @@ export function FoundingSettingScene({
   enteringScene: boolean;
   title: ReactNode;
   villageNameField: ReactNode;
-  villageNameError: boolean;
+  villageInvalid: boolean;
+  villageBriefError: string;
+  mapFields: ReactNode;
+  onValidateVillage(): boolean;
   onConnections(): void;
   onEditSetting(): void;
   onBeatChange(): void;
@@ -98,10 +104,10 @@ export function FoundingSettingScene({
     if (confirmReplace) lineRef.current?.focus();
   }, [confirmReplace]);
   useEffect(() => {
-    if (beat !== "village-overview" || !villageNameError) return;
+    if (beat !== "village-overview" || !villageInvalid) return;
     setTurn({ beat, index: script[beat].length - 1 });
     if (phone) setPopup("village");
-  }, [beat, phone, villageNameError]);
+  }, [beat, phone, villageInvalid]);
   const moveTo = (settingBeat: SettingBeat, showLast = false) => {
     const openEditor =
       settingBeat === "manual" ||
@@ -140,6 +146,7 @@ export function FoundingSettingScene({
   const world = setupWorkspace.settingWorldBrief ?? "";
   const canDraft =
     !!brief.trim() &&
+    (!!controller.setupName.trim() || waitingForMari) &&
     !controller.busy &&
     !setupSuggestionsBusy &&
     !controller.draftSaveError &&
@@ -164,12 +171,15 @@ export function FoundingSettingScene({
     lines.length - 1,
     turn?.beat === beat
       ? turn.index
-      : (beat === "village" && setupWorkspace.settingEditorOpen) || (beat === "village-overview" && villageNameError)
+      : (beat === "village" && setupWorkspace.settingEditorOpen) || (beat === "village-overview" && villageInvalid)
         ? lines.length - 1
         : 0,
   );
   const lastLine = lineIndex === lines.length - 1;
   const namingVillage = beat === "village-overview" && lastLine;
+  const finishVillage = () => {
+    if (onValidateVillage()) moveTo("village");
+  };
   const showLine = (index: number) => {
     setTurn({ beat, index });
     if (!phone && beat === "village") {
@@ -256,7 +266,7 @@ export function FoundingSettingScene({
   const villageFields = (
     <>
       {villageNameField}
-      <FoundingField title="Tell Mari about your village">
+      <FoundingField title="Tell Mari about your village" error={villageBriefError}>
         <textarea
           rows={2}
           autoComplete="off"
@@ -321,6 +331,7 @@ export function FoundingSettingScene({
         <p aria-live="polite" tabIndex={-1} ref={lineRef}>
           {lines[lineIndex]}
         </p>
+        {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}
         {!lastLine ? (
           <div className="villages-founding-replies">
             {backReply}
@@ -399,7 +410,7 @@ export function FoundingSettingScene({
                 onClick={() => {
                   if (beat === "world-overview") moveTo("world");
                   else if (phone) setPopup("village");
-                  else moveTo("village");
+                  else finishVillage();
                 }}
               >
                 Next
@@ -441,13 +452,7 @@ export function FoundingSettingScene({
                 </button>
               ) : null}
               {brief.trim() || waitingForMari ? (
-                <button
-                  type="button"
-                  ref={draftButton}
-                  className={phone ? undefined : "villages-forging-primary"}
-                  disabled={!canDraft}
-                  onClick={submitBrief}
-                >
+                <button type="button" ref={draftButton} disabled={!canDraft} onClick={submitBrief}>
                   {draftLabel}
                 </button>
               ) : null}
@@ -457,6 +462,7 @@ export function FoundingSettingScene({
                 </button>
               ) : null}
               {dismiss}
+              {!phone ? next : null}
             </div>
           </>
         )}
@@ -497,7 +503,7 @@ export function FoundingSettingScene({
             {villageFields}
           </div>
           <footer>
-            <button type="button" className="villages-forging-primary" onClick={() => moveTo("village")}>
+            <button type="button" className="villages-forging-primary" onClick={finishVillage}>
               Done
             </button>
           </footer>

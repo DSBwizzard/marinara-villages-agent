@@ -617,7 +617,6 @@ export const VILLAGES_FORGING_STYLES = `
   min-height:100%; height:auto; max-width:84rem; margin-inline:auto; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start;
   gap:clamp(.75rem,2.5vw,1.75rem); padding:var(--scene-padding);
 }
-.villages-place-panels[data-intro]:not([data-editing])>.villages-founding-setting { display:none; }
 .villages-setting-guide { min-width:0; min-height:0; }
 .villages-setting-stage {
   position:absolute; left:var(--mari-x); bottom:var(--mari-floor); height:var(--mari-height); aspect-ratio:3 / 8;
@@ -738,12 +737,12 @@ export const VILLAGES_FORGING_STYLES = `
     .villages-forging-v2[data-step="2"] .villages-quick-map-panel .villages-quick-map { min-height:13rem; }
   }
   @container (width >= 44rem) {
-    .villages-forging-v2 .villages-forging-body>.villages-place-panels:is(:not([data-intro]),[data-editing]) {
+    .villages-forging-v2 .villages-forging-body>.villages-place-panels[data-manual] {
       grid-template-columns:minmax(0,1fr) minmax(16rem,.85fr);
     }
   }
   @container (width < 44rem) {
-    .villages-place-panels:is(:not([data-intro]),[data-editing])>.villages-setting-guide {
+    .villages-place-panels[data-manual]>.villages-setting-guide {
       --scene-height:min(58cqh,22rem);
     }
   }

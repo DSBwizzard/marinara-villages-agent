@@ -827,10 +827,22 @@ export async function verifyFoundingLayout(group) {
           await expect(root).not.toHaveAttribute("data-founding-keyboard", "true");
         }
         await expect(mapName).toBeHidden();
-        const tryMissingName = view.width === 320 || view.width === 1366;
-        const chosenName = tryMissingName ? "" : "Coastal Community";
-        await villageName.fill(chosenName);
-        if (draftWithLore) await villageBrief.fill("Our village is a converted cargo ship.");
+        const checkVillageValidation = view.width === 320 || view.width === 1366;
+        const initialBrief = draftWithLore ? "Our village is a converted cargo ship." : "A coastal community.";
+        if (checkVillageValidation) {
+          await expect(villageName).toHaveValue("");
+          await finishNaming();
+          await expect(villageName).toHaveAttribute("aria-invalid", "true");
+          await expect(villageBrief).toHaveAttribute("aria-invalid", "true");
+        }
+        await villageName.fill("Coastal Community");
+        if (checkVillageValidation) {
+          await villageBrief.fill("   ");
+          await finishNaming();
+          await expect(villageBrief).toHaveAttribute("aria-invalid", "true");
+          await expect(mapName).toBeHidden();
+        }
+        await villageBrief.fill(initialBrief);
         await finishNaming();
         await layer("Map");
         const mapPose = await expectPose("happy-side");
@@ -843,8 +855,8 @@ export async function verifyFoundingLayout(group) {
         await expect(villageName).toHaveCount(0);
         await expect(villageBrief).toHaveCount(0);
         await scene.getByRole("button", { name: "Back", exact: true }).click();
-        await expect(villageName).toHaveValue(chosenName);
-        if (draftWithLore) await expect(villageBrief).toHaveValue("Our village is a converted cargo ship.");
+        await expect(villageName).toHaveValue("Coastal Community");
+        await expect(villageBrief).toHaveValue(initialBrief);
         await finishNaming();
         await nextLine();
         await expect(line).toHaveText(/^Each Map covers one locale/);
@@ -863,10 +875,13 @@ export async function verifyFoundingLayout(group) {
             await expect(settingPanel).toBeVisible();
           }
         } else {
-          if (!tryMissingName) {
-            await settingNext().click();
-            await expect(mapName).toBeFocused();
-          }
+          const dialogue = scene.locator(".villages-setting-dialogue");
+          await expect(dialogue.getByRole("region", { name: "Your first Map" })).toBeVisible();
+          await expect(dialogue.getByRole("button", { name: "Back", exact: true })).toBeVisible();
+          await expect(dialogue.getByRole("button", { name: "Next", exact: true })).toBeVisible();
+          await expect(root.locator(".villages-place-panels > .villages-founding-setting")).toHaveCount(0);
+          await settingNext().click();
+          await expect(mapName).toBeFocused();
           if (draftWithLore) await mapName.fill("My starting location");
         }
         if (draftWithLore) {
@@ -932,11 +947,17 @@ export async function verifyFoundingLayout(group) {
         await root
           .getByLabel("Location description", { exact: true })
           .fill("An oceanfront expanse between the cliffs and river.");
-        if (tryMissingName) {
+        if (checkVillageValidation) {
+          // Older drafts could reach the Map without a Village description.
+          await page.evaluate(() =>
+            window.featureController.setSetupWorkspace((workspace) => ({ ...workspace, settingBrief: "" })),
+          );
           await settingNext().click();
-          await expect(villageName).toHaveAttribute("aria-invalid", "true");
-          await villageName.fill("Coastal Community");
-          await expect(villageBrief).toBeVisible();
+          await expect(villageBrief).toHaveAttribute("aria-invalid", "true");
+          await expect(villageName).toHaveValue("Coastal Community");
+          await finishNaming();
+          await expect(villageBrief).toHaveAttribute("aria-invalid", "true");
+          await villageBrief.fill(initialBrief);
           await finishNaming();
           await nextLine();
           await nextLine();
