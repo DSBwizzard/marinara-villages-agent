@@ -97,11 +97,9 @@ function FoundingChapter({
 
 export function FoundingScreen({
   controller,
-  host,
   storybookDaylight,
 }: {
   controller: FoundingScreenController;
-  host?: HTMLElement;
   storybookDaylight: boolean;
 }) {
   const {
