@@ -94,6 +94,31 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-picker-grid label:has(:checked) { border-color:var(--appearance-pick); background:var(--menu-selected,#875363); }
 .appearance-picker-grid img { display:block; width:100%; height:7rem; object-fit:contain; }
 .appearance-picker-grid :is(span,small) { text-align:center; font-size:.85rem; }
+.villages-forging-card .appearance-compact {
+  height:auto; overflow:visible; margin-top:.75rem; padding:.65rem;
+  background:transparent; border:1px solid var(--appearance-line); border-radius:.55rem;
+}
+.appearance-compact-row { display:flex; align-items:center; flex-wrap:wrap; gap:.55rem .85rem; }
+.appearance-compact-summary { display:flex; align-items:center; flex:1 1 9.5rem; gap:.55rem; }
+.villages-forging-card .appearance-compact-summary h3 { margin:0 0 .1rem; font-size:1rem; }
+.appearance-compact-summary [role=status] { white-space:nowrap; font-size:.85rem; }
+.appearance-compact-image,.appearance-compact-summary>.marinara-capability-villages-avatar {
+  display:block; width:2.9rem; height:2.9rem; flex:none; overflow:hidden; border-radius:.35rem;
+}
+.appearance-compact-image img { width:100%; height:100%; object-fit:contain; object-position:top; transform:scale(2.5); transform-origin:center top; }
+.appearance-compact-controls { display:grid; gap:.3rem; flex:1 1 11rem; }
+.appearance-compact-controls .appearance-mode { max-width:none; margin:0; }
+.appearance-compact-controls>button { width:100%; }
+.villages-forging-v2 .appearance-compact>.appearance-link { align-self:flex-start; background:transparent; }
+.villages-appearance dialog.appearance-move-picker[open] { display:flex; flex-direction:column; overflow:hidden; }
+.appearance-move-picker > :is(header,footer) { flex:none; }
+.appearance-move-picker > .appearance-picker-body { overscroll-behavior:contain; }
+.appearance-move-picker .appearance-picker-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.appearance-move-picker footer { flex-wrap:wrap; }
+.appearance-move-picker footer > p { flex:0 0 100%; }
+@media (max-width:727px) {
+  .appearance-move-picker .appearance-picker-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 @container (max-width:34rem) {
   .appearance-layout { grid-template-columns:1fr; }
   .appearance-expressions { max-height:9rem; }

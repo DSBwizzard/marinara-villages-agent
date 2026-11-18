@@ -44,6 +44,8 @@ const files = [
   { filename: "happy.png", label: "Happy_01", url: image, folderId: "body" },
   { filename: "bright.png", label: "Happy_02", url: image, folderId: "body" },
   { filename: "happy-side.png", label: "Happy_blush", url: image, folderId: "profile" },
+  { filename: "neutral-side.png", label: "Neutral_2", url: image, folderId: "profile" },
+  { filename: "thinking-side.png", label: "Thinking", url: image, folderId: "profile" },
   { filename: "neutral.png", label: "Neutral", url: image, folderId: "body" },
 ];
 const existing = {
@@ -61,10 +63,11 @@ await withBrowser(browser, async () => {
     { width: 1366, height: 850 },
     { width: 390, height: 844 },
   ]) {
-    const name = viewport.width > 600 ? "founding/sprites/desktop" : "founding/sprites/phone";
+    const phone = viewport.width <= 727;
+    const name = phone ? "founding/sprites/phone" : "founding/sprites/desktop";
     if (!wantsCase(name)) continue;
     await runCase(name, async () => {
-      const page = await browser.newPage({ viewport, hasTouch: viewport.width < 600 });
+      const page = await browser.newPage({ viewport, hasTouch: phone, reducedMotion: "reduce" });
       await mockEngineLookups(page);
       await page.route("**/api/characters/summaries", (route) =>
         route.fulfill({
@@ -79,7 +82,7 @@ await withBrowser(browser, async () => {
       );
       const writes = [];
       const opened = new Set();
-      let saved;
+      const receipts = new Map();
       const state = {
         revision: 1,
         token: "first",
@@ -120,14 +123,15 @@ await withBrowser(browser, async () => {
         if (path.endsWith("/sprites/setup/save")) {
           const body = route.request().postDataJSON();
           writes.push(body);
-          if (saved) {
-            assert.deepEqual(body, writes[0], "Retry repeats the exact admitted request");
-            return send(saved);
+          const prior = receipts.get(body.requestId);
+          if (prior) {
+            assert.deepEqual(body, prior.body, "Retry repeats the exact admitted request");
+            return send(prior.saved);
           }
-          assert.equal(body.token, "first");
+          assert.equal(body.token, state.token);
           assert.equal(body.resident, false);
-          assert.equal(body.automatic, true);
           state.revision++;
+          state.token = "revision-" + state.revision;
           const rows = body.expressions;
           state.manager.expressions = rows.map(({ id, name }) => ({ id, name }));
           state.manager.assignments = rows.flatMap((row) =>
@@ -147,12 +151,16 @@ await withBrowser(browser, async () => {
           );
           state.manager.useSprites = body.useSprites;
           state.manager.defaultExpressionId = body.defaultExpressionId;
-          saved = structuredClone(state);
-          return fulfill(route, {
-            status: 503,
-            contentType: "application/json",
-            body: JSON.stringify({ message: "Save response lost." }),
-          });
+          state.manager.defaultView = body.defaultView;
+          const saved = structuredClone(state);
+          receipts.set(body.requestId, { body, saved });
+          return writes.length === 2
+            ? fulfill(route, {
+                status: phone ? 200 : 503,
+                contentType: "application/json",
+                body: JSON.stringify(phone ? {} : { message: "Save response lost." }),
+              })
+            : send(saved);
         }
         if (method !== "GET") assert.fail("Unexpected mutation: " + method + " " + path);
         if (path.endsWith("/personas")) return send({ personas: [{ id: "driver", name: "You", isActive: true }] });
@@ -182,7 +190,6 @@ await withBrowser(browser, async () => {
       );
       await page.goto("http://founding-sprites.test/");
       await page.addScriptTag({ content: bundle });
-      const phone = viewport.width <= 727;
       const root = page.locator(".villages-forging-v2"),
         next = root.getByRole("button", { name: "Next", exact: true });
       for (const reply of ["START", "Next", "Next", "Next", "Next", "Set it up myself"])
@@ -204,7 +211,13 @@ await withBrowser(browser, async () => {
       const frontPreview = pane.getByRole("img", { name: "Front preview", exact: true });
       await expect(pane.getByRole("button", { name: "Sprites", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expect(frontPreview).toBeVisible();
-      await expect(pane.getByText("4 sprites", { exact: true })).toBeVisible();
+      await expect(pane.getByText("6 Front · 0 Side", { exact: true })).toBeVisible();
+      await expect(pane.getByText("Manage expressions")).toHaveCount(0);
+      await expect(pane.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+      const compactBounds = await pane.locator(".appearance-compact-row").boundingBox();
+      await page.screenshot({ path: ".build-tmp/founding-sprites/compact-" + viewport.width + ".png" });
+      assert.ok(compactBounds.height < (phone ? 200 : 155), `The compact People row is ${compactBounds.height}px tall`);
+      await expect(next).toBeInViewport({ ratio: 0.99 });
       await expect(next).toBeEnabled();
       await next.click();
       await expect(root).toHaveAttribute("data-step", "2");
@@ -213,70 +226,61 @@ await withBrowser(browser, async () => {
       await expect(root).toHaveAttribute("data-step", "1");
       if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
       await pane.getByRole("button", { name: "Review previous appearance", exact: true }).click();
-      await expect(pane.getByText("1 sprite", { exact: true })).toBeVisible();
+      await expect(pane.getByText("1 Front · 0 Side", { exact: true })).toBeVisible();
       await pane.getByRole("button", { name: "Reload appearance", exact: true }).click();
-      await expect(pane.getByText("4 sprites", { exact: true })).toBeVisible();
-      await pane.getByRole("button", { name: "Portrait", exact: true }).click();
-      const portrait = pane.locator(".appearance-portrait img");
-      await expect(portrait).toHaveJSProperty("complete", true);
-      const crop = await portrait.evaluate((image) => {
-        const frame = image.parentElement;
-        const bounds = frame.getBoundingClientRect();
-        return {
-          contained: image.offsetParent === frame && getComputedStyle(frame).overflow === "hidden",
-          square: Math.abs(bounds.width - bounds.height) < 1,
-          enlarged: image.getBoundingClientRect().width > bounds.width,
-          fits: bounds.width > 0 && bounds.width <= 176,
-        };
-      });
-      assert.deepEqual(crop, { contained: true, square: true, enlarged: true, fits: true });
+      await expect(pane.getByText("6 Front · 0 Side", { exact: true })).toBeVisible();
       assert.equal(
         await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua),
         undefined,
         "Opening an older character setup does not adopt it",
       );
-      await pane.getByRole("button", { name: "Sprites", exact: true }).click();
-      await pane.getByRole("button", { name: "Add right-facing sprites", exact: true }).click();
-      const sidePicker = page.getByRole("dialog", { name: "Add right-facing sprites", exact: true });
-      await sidePicker.getByRole("combobox", { name: "Sprite source" }).selectOption("profile");
-      if (phone) await sidePicker.getByRole("checkbox", { name: "Happy_blush", exact: true }).check();
-      else await sidePicker.getByRole("button", { name: "Select all", exact: true }).click();
-      await sidePicker.getByRole("button", { name: "Add 1 Right-facing sprite", exact: true }).click();
-      await expect(pane.getByText("3 sprites", { exact: true })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Right-facing preview" })).toBeVisible();
-      await pane.getByText("Manage expressions", { exact: true }).click();
-      await pane.getByRole("button", { name: "happy", exact: true }).click();
-      await expect(pane.getByRole("heading", { name: "Front · 2" })).toBeVisible();
-      await expect(pane.getByRole("heading", { name: "Right-facing · 1" })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Happy_01 · Front" })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Happy_blush · Right-facing" })).toBeVisible();
-      await pane
-        .getByRole("region", { name: "Front", exact: true })
-        .getByRole("button", { name: "Set as default" })
-        .click();
-      await expect(next).toBeDisabled();
+      const openPicker = () => pane.getByRole("button", { name: "Assign side-facing sprites" }).click();
+      await openPicker();
+      const sidePicker = page.getByRole("dialog", { name: "Assign side-facing sprites", exact: true });
+      await sidePicker.getByRole("combobox", { name: "Folder" }).selectOption("profile");
+      if (phone) {
+        for (const name of ["Happy_blush", "Neutral_2", "Thinking"])
+          await sidePicker.getByRole("checkbox", { name, exact: true }).check();
+      } else await sidePicker.getByRole("button", { name: "Select folder", exact: true }).click();
+      const move = sidePicker.getByRole("button", { name: "Move 3 to Side", exact: true });
+      await expect(move).toBeInViewport({ ratio: 0.99 });
       assert.equal(writes.length, 0);
-      await pane.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(pane.getByRole("button", { name: "Retry save", exact: true })).toBeEnabled();
-      await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toBeDisabled();
-      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), undefined);
-      await pane.getByRole("button", { name: "Retry save", exact: true }).click();
+      await move.click();
+      await expect(sidePicker).toBeHidden();
+      await expect(pane.getByText("3 Front · 3 Side", { exact: true })).toBeVisible();
       await expect(next).toBeEnabled();
+      assert.equal(writes.length, 1, "The whole batch is saved with one click");
       assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
-      assert.equal(writes[0].expressions.length, 4);
-      assert.equal(writes[0].expressions[0].front.filename, "happy.png");
-      assert.ok(writes[0].expressions.every((row) => row.front?.filename !== "happy-side.png"));
-      assert.equal(writes[0].expressions[3].side.filename, "happy-side.png");
-      if (viewport.width > 600) {
-        const removeButton = pane.getByRole("button", { name: "Remove Happy_01 from Front" });
-        await removeButton.scrollIntoViewIfNeeded();
-        const remove = await removeButton.boundingBox();
-        const footer = await pane.locator(".appearance-footer").boundingBox();
-        assert.ok(remove && footer && remove.y + remove.height <= footer.y, "Save should leave Remove visible");
-      }
+      assert.deepEqual(writes[0].expressions.flatMap((row) => (row.side ? [row.side.filename] : [])).sort(), [
+        "happy-side.png",
+        "neutral-side.png",
+        "thinking-side.png",
+      ]);
+      assert.equal(writes[0].expressions.filter((row) => row.front).length, 3);
       await page.screenshot({ path: ".build-tmp/founding-sprites/appearance-" + viewport.width + ".png" });
+      await openPicker();
+      await sidePicker.getByRole("button", { name: "Side (3)", exact: true }).click();
+      await sidePicker.getByRole("checkbox", { name: "Happy_blush", exact: true }).check();
+      await sidePicker.getByRole("button", { name: "Move 1 to Front", exact: true }).click();
+      const retry = sidePicker.getByRole("button", { name: "Retry save", exact: true });
+      await expect(retry).toBeEnabled();
+      await expect(sidePicker.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
+      await retry.click();
+      await expect(sidePicker).toBeHidden();
+      await expect(pane.getByText("4 Front · 2 Side", { exact: true })).toBeVisible();
+      await expect(next).toBeEnabled();
+      assert.equal(receipts.size, 2);
+      assert.equal(writes.length, 3);
+      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 3);
+
+      const portrait = pane.getByRole("button", { name: "Portrait", exact: true });
+      await portrait.click();
+      await expect(portrait).toHaveAttribute("aria-pressed", "true");
+      await expect(next).toBeEnabled();
+      assert.equal(writes[3].useSprites, false);
       await page.close();
     });
   }
 });
-console.log("Founding Appearance selects Engine sprites by facing and adopts only an acknowledged save.");
+console.log("Compact Founding Appearance proceeds untouched, saves a batch, and retries an unacknowledged move.");

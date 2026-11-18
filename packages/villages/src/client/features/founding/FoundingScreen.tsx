@@ -870,7 +870,7 @@ export function FoundingScreen({
           onCloseMenu={closeChapterMenu}
         >
           <div hidden={setupStep !== 1}>
-            <div className="villages-forging-columns villages-people-columns">
+            <div className="villages-people-panel">
               <section className="villages-forging-card">
                 <h3 aria-label="You">You</h3>
                 {personaError ? (
@@ -903,9 +903,7 @@ export function FoundingScreen({
                     setSpriteId(id);
                     requestAnimationFrame(() => {
                       const root = rootRef.current;
-                      root
-                        ?.querySelector<HTMLElement>(".villages-founding-sprites")
-                        ?.scrollIntoView({ block: "nearest" });
+                      root?.querySelector<HTMLElement>(".appearance-compact")?.scrollIntoView({ block: "nearest" });
                     });
                   }}
                   activeId={activeSpriteId}
@@ -915,12 +913,9 @@ export function FoundingScreen({
                   onChange={chooseRoster}
                   disabled={busy || spriteBusy}
                 />
-              </section>
-              <section className="villages-forging-card villages-founding-sprites" aria-label="Resident appearance">
                 {setupStep === 1 && activeSpriteId ? (
                   <Appearance
                     key={activeSpriteId}
-                    host={host}
                     characterId={activeSpriteId}
                     name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
                     portrait={portraits[activeSpriteId]}
@@ -928,11 +923,7 @@ export function FoundingScreen({
                     onSave={spriteSaved}
                     onBusyChange={spriteBusyChanged}
                   />
-                ) : (
-                  <>
-                    <h3>Appearance</h3>
-                  </>
-                )}
+                ) : null}
               </section>
             </div>
           </div>

@@ -15,6 +15,7 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 import type { Portrait } from "../../shared/types.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import { APPEARANCE_STYLES } from "./appearance-styles.js";
+import { SpriteMovePicker } from "./SpriteMovePicker.js";
 
 type Choice = {
   useSprites: boolean;
@@ -27,6 +28,7 @@ const views = ["front", "side"] as const;
 const viewLabels = { front: "Front", side: "Right-facing" };
 const addLabels = { front: "Add Front sprites", side: "Add right-facing sprites" };
 const empty: Choice = { useSprites: false, expressions: [], defaultExpressionId: "" };
+const spriteKey = (source: SpriteChoice) => (source.filename ? "engine:" + source.filename : "art:" + source.artworkId);
 
 function SpriteBatchPicker({
   view,
@@ -262,6 +264,7 @@ export function Appearance({
   const [choice, setChoice] = useState<Choice>(empty);
   const [selectedId, select] = useState("");
   const [picker, setPicker] = useState<SpriteView>();
+  const [moveOpen, setMoveOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -286,6 +289,8 @@ export function Appearance({
   const [reload, setReload] = useState(0);
   const [reviewPrevious, setReviewPrevious] = useState(false);
   const acknowledged = useRef(selectedRevision);
+  const filesByName = new Map(data?.files.map((file) => [file.filename, file]));
+  const ownedEngineFiles = new Map(data?.manager.artwork.map((art) => [art.id, art.engineSource?.filename]));
   const openCharacter = (host as (HTMLElement & { capabilityProps?: { openCharacter?: unknown } }) | undefined)
     ?.capabilityProps?.openCharacter;
 
@@ -349,10 +354,13 @@ export function Appearance({
 
   function image(source: SpriteChoice | undefined) {
     if (!source || !data) return "";
-    return source.filename
-      ? (data.files.find((file) => file.filename === source.filename && file.version === source.version)?.url ??
-          engineSpriteUrl(characterId, source.filename, source.version))
-      : (data.manager.artwork.find((art) => art.id === source.artworkId)?.rendered.url ?? "");
+    if (source.filename) {
+      const file = filesByName.get(source.filename);
+      return file && file.version === source.version
+        ? file.url
+        : engineSpriteUrl(characterId, source.filename, source.version);
+    }
+    return data.manager.artwork.find((art) => art.id === source.artworkId)?.rendered.url ?? "";
   }
 
   function assignedFiles(view: SpriteView) {
@@ -367,7 +375,7 @@ export function Appearance({
     return files;
   }
 
-  function updateSprites(expressions: AppearanceExpression[]) {
+  function choiceForSprites(expressions: AppearanceExpression[]): Choice {
     const current = expressions.find((row) => row.id === choice.defaultExpressionId);
     const front = expressions.filter((row) => row.front);
     const preferred = groupSpritesByMood(front).get("neutral")?.[0] ?? front[0];
@@ -381,14 +389,16 @@ export function Appearance({
         ? choice.defaultView
         : views.find((view) => row?.[view])
       : undefined;
-    edit({ useSprites: true, expressions, defaultExpressionId: row?.id ?? "", defaultView });
+    return { useSprites: true, expressions, defaultExpressionId: row?.id ?? "", defaultView };
   }
 
   function removeSprite(row: AppearanceExpression, view: SpriteView) {
     const remaining = { ...row, [view]: undefined };
-    updateSprites(
-      choice.expressions.flatMap((entry) =>
-        entry !== row ? [entry] : remaining.front || remaining.side ? [remaining] : [],
+    edit(
+      choiceForSprites(
+        choice.expressions.flatMap((entry) =>
+          entry !== row ? [entry] : remaining.front || remaining.side ? [remaining] : [],
+        ),
       ),
     );
   }
@@ -417,12 +427,14 @@ export function Appearance({
         .filter((slot) => slot.automatic)
         .map((slot) => [slot.expressionId, slot.engineFilename]),
     );
-    updateSprites(
-      expressions.flatMap((row) => {
-        const filename = row.front?.filename;
-        if (!filename || !reclassified.has(filename) || automaticFront.get(row.id) !== filename) return [row];
-        return row.side ? [{ ...row, front: undefined }] : [];
-      }),
+    edit(
+      choiceForSprites(
+        expressions.flatMap((row) => {
+          const filename = row.front?.filename;
+          if (!filename || !reclassified.has(filename) || automaticFront.get(row.id) !== filename) return [row];
+          return row.side ? [{ ...row, front: undefined }] : [];
+        }),
+      ),
     );
     if (first) select(first);
     setPicker(undefined);
@@ -445,12 +457,13 @@ export function Appearance({
         }).length,
       0,
     ) > 200;
-  async function save() {
-    if (!data || working.current) return;
-    const body = { ...choice, token: data.token, resident, ...(data.automatic ? { automatic: true } : {}) };
+  async function save(nextChoice = choice) {
+    if (!data || working.current) return false;
+    const body = { ...nextChoice, token: data.token, resident, ...(data.automatic ? { automatic: true } : {}) };
     const key = JSON.stringify(body);
     if (lastSave.current?.key !== key) lastSave.current = { key, id: createVillagesClientId() };
     working.current = true;
+    if (!resident) setChoice(nextChoice);
     setPending(true);
     setError("");
     try {
@@ -458,8 +471,19 @@ export function Appearance({
         method: "POST",
         body: JSON.stringify({ ...body, requestId: lastSave.current.id }),
       });
-      if (!alive.current) return;
-      const currentIndex = choice.expressions.findIndex((row) => row.id === selected?.id);
+      if (!alive.current) return false;
+      if (
+        !saved ||
+        typeof saved.token !== "string" ||
+        !saved.token ||
+        !Number.isSafeInteger(saved.revision) ||
+        saved.revision < 0 ||
+        !Array.isArray(saved.manager?.artwork) ||
+        !Array.isArray(saved.manager?.expressions) ||
+        !Array.isArray(saved.manager?.assignments)
+      )
+        throw new VillageApiError("Could not confirm the appearance save. Retry to check it.", 200, "INVALID_RESPONSE");
+      const currentIndex = nextChoice.expressions.findIndex((row) => row.id === selected?.id);
       const next = savedChoice(saved.manager, true);
       setData({ ...data, ...saved, automatic: undefined });
       setChoice(next);
@@ -474,6 +498,7 @@ export function Appearance({
       } catch {
         if (alive.current) setNotice("Saved. Reopen the profile to refresh its artwork.");
       }
+      return true;
     } catch (cause) {
       if (alive.current) {
         setError(messageFrom(cause, "Could not save appearance."));
@@ -481,6 +506,7 @@ export function Appearance({
           if (cause.status >= 400 && cause.status < 500 && cause.status !== 408) {
             setUncertain(false);
             if (cause.status === 409) setStale(true);
+            if (!resident) setChoice(baseline);
           }
           if (
             cause.status === 0 ||
@@ -490,15 +516,204 @@ export function Appearance({
             cause.code === "RESPONSE_READ_FAILED"
           )
             setUncertain(true);
-        }
+        } else if (!resident) setUncertain(true);
       }
+      return false;
     } finally {
       working.current = false;
       if (alive.current) setPending(false);
     }
   }
 
+  function reloadAppearance() {
+    if (!resident && acknowledged.current !== undefined && data && acknowledged.current !== data.revision) {
+      acknowledged.current = undefined;
+      setReviewPrevious(true);
+    } else if (!resident && acknowledged.current === undefined && reviewPrevious) {
+      setReviewPrevious(false);
+      void onSave(undefined);
+    }
+    setReload(reload + 1);
+  }
+
+  async function saveMove(nextChoice?: Choice) {
+    if (await save(nextChoice)) setMoveOpen(false);
+  }
+
+  function moveSprites(from: SpriteView, ids: Set<string>) {
+    const to = from === "front" ? "side" : "front";
+    const occupied = new Set(choice.expressions.flatMap((row) => (row[to] ? [spriteKey(row[to])] : [])));
+    const destinationFiles = new Set(
+      choice.expressions.flatMap((row) => {
+        const moving = ids.has(row.id) ? row[from] : undefined;
+        return [
+          row[to]?.filename,
+          ownedEngineFiles.get(row[to]?.artworkId ?? ""),
+          ownedEngineFiles.get(moving?.artworkId ?? ""),
+        ];
+      }),
+    );
+    const expressions = choice.expressions.flatMap((row) => {
+      const source = row[from];
+      if (!ids.has(row.id) || !source) return [row];
+      const file = source.filename ? filesByName.get(source.filename) : undefined;
+      if (source.filename && !file) return [row];
+      const remaining = { ...row, [from]: undefined };
+      const key = spriteKey(source);
+      if (occupied.has(key) || (source.filename && destinationFiles.has(source.filename)))
+        return remaining[to] ? [remaining] : [];
+      occupied.add(key);
+      const moved = {
+        id: remaining[to] ? "new-" + createVillagesClientId() : row.id,
+        name: file ? engineSpriteName(file.label ?? "", file.filename) : row.name,
+        [to]: file ? { filename: file.filename, version: file.version } : source,
+      };
+      return remaining[to] ? [remaining, moved] : [moved];
+    });
+    void saveMove(choiceForSprites(expressions));
+  }
+
   const title = name + "’s appearance";
+  const mode = (
+    <div className="appearance-mode" role="group" aria-label="Appearance mode">
+      {(["Portrait", "Sprites"] as const).map((label) => {
+        const useSprites = label === "Sprites";
+        const selected = (resident ? choice : baseline).useSprites === useSprites;
+        return (
+          <button
+            type="button"
+            key={label}
+            aria-pressed={selected}
+            disabled={locked || (!resident && ((stale && !!error) || (useSprites && !choice.expressions.length)))}
+            onClick={() => {
+              if (resident) edit({ ...choice, useSprites });
+              else if (!selected) void save({ ...choice, useSprites });
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+  const previousAppearance =
+    data?.automatic && data.revision > 0 && acknowledged.current === undefined ? (
+      <button
+        type="button"
+        className="appearance-link"
+        disabled={locked}
+        onClick={async () => {
+          if (await mayLeave()) setReviewPrevious(true);
+        }}
+      >
+        Review previous appearance
+      </button>
+    ) : null;
+  if (!resident) {
+    const front = baseline.expressions.filter((row) => row.front);
+    const side = baseline.expressions.filter((row) => row.side);
+    const preview = front.find((row) => row.id === baseline.defaultExpressionId) ?? front[0];
+    const previewUrl = baseline.useSprites ? image(preview?.front ?? side[0]?.side) : "";
+    const moveEntries = (view: SpriteView) =>
+      (view === "front" ? front : side).map((row) => {
+        const source = row[view]!;
+        const filename = source.filename ?? ownedEngineFiles.get(source.artworkId ?? "");
+        const file = filename ? filesByName.get(filename) : undefined;
+        return {
+          id: row.id,
+          name: row.name,
+          image: image(source),
+          folderId: file?.folderId,
+          unavailable: !!source.filename && !file,
+        };
+      });
+    return (
+      <section className="villages-appearance appearance-compact" aria-label={title}>
+        <style>{APPEARANCE_STYLES}</style>
+        <div className="appearance-compact-row">
+          <div className="appearance-compact-summary">
+            {previewUrl ? (
+              <span className="appearance-compact-image">
+                <img src={previewUrl} alt={front.length ? "Front preview" : "Side preview"} />
+              </span>
+            ) : (
+              <AvatarFace className={`${ELEMENT_TAG}-avatar`} name={name} portrait={portrait} />
+            )}
+            <div>
+              <h3>Appearance</h3>
+              <span role="status">
+                {data
+                  ? baseline.useSprites
+                    ? `${front.length} Front · ${side.length} Side`
+                    : "Portrait"
+                  : error
+                    ? "Unavailable"
+                    : "Loading…"}
+              </span>
+            </div>
+          </div>
+          {data ? (
+            <div className="appearance-compact-controls">
+              {mode}
+              {baseline.useSprites ? (
+                <button
+                  type="button"
+                  disabled={locked || stale}
+                  onClick={() => {
+                    setError("");
+                    setMoveOpen(true);
+                  }}
+                >
+                  Assign side-facing sprites
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        {moveOpen && data ? (
+          <SpriteMovePicker
+            sprites={{ front: moveEntries("front"), side: moveEntries("side") }}
+            folders={data.folders}
+            pending={pending}
+            uncertain={uncertain}
+            stale={stale}
+            error={error}
+            onMove={moveSprites}
+            onRetry={() => void saveMove()}
+            onReload={() => {
+              setMoveOpen(false);
+              reloadAppearance();
+            }}
+            onClose={() => {
+              setMoveOpen(false);
+              if (!stale) setError("");
+            }}
+          />
+        ) : (
+          <>
+            {error ? <p role="alert">{error}</p> : null}
+            {pending ? <p role="status">Saving appearance…</p> : null}
+            {uncertain ? (
+              <button type="button" className="appearance-primary" onClick={() => void save()}>
+                Retry save
+              </button>
+            ) : null}
+            {!uncertain && (stale || (!data && error)) ? (
+              <button type="button" onClick={reloadAppearance}>
+                Reload appearance
+              </button>
+            ) : null}
+            {stale && !error && !pending ? (
+              <button type="button" onClick={() => void save()}>
+                Use this appearance
+              </button>
+            ) : null}
+            {previousAppearance}
+          </>
+        )}
+      </section>
+    );
+  }
   return (
     <section className="villages-appearance" aria-label={title}>
       <style>{APPEARANCE_STYLES}</style>
@@ -527,31 +742,7 @@ export function Appearance({
         )
       ) : (
         <>
-          <div className="appearance-mode" role="group" aria-label="Appearance mode">
-            {(["Portrait", "Sprites"] as const).map((label) => (
-              <button
-                type="button"
-                key={label}
-                aria-pressed={choice.useSprites === (label === "Sprites")}
-                disabled={locked}
-                onClick={() => edit({ ...choice, useSprites: label === "Sprites" })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {data.automatic && data.revision > 0 && acknowledged.current === undefined ? (
-            <button
-              type="button"
-              className="appearance-link"
-              disabled={locked}
-              onClick={async () => {
-                if (await mayLeave()) setReviewPrevious(true);
-              }}
-            >
-              Review previous appearance
-            </button>
-          ) : null}
+          {mode}
           {choice.useSprites ? (
             <>
               {choice.expressions.length ? (
@@ -695,12 +886,7 @@ export function Appearance({
                 disabled={pending || uncertain}
                 onClick={() => {
                   if (stale || uncertain) {
-                    if (!resident) {
-                      acknowledged.current = undefined;
-                      setReviewPrevious(false);
-                      void onSave(undefined);
-                    }
-                    setReload(reload + 1);
+                    reloadAppearance();
                   } else edit(baseline);
                 }}
               >
