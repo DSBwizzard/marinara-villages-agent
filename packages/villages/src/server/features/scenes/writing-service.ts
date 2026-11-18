@@ -449,7 +449,7 @@ export function createSceneWriting({
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 5,
               optionalActorMemories: 5,
-              stripSceneReplyDecorations: 4,
+              stripSceneReplyDecorations: 5,
             }
           : {}),
       },
@@ -555,6 +555,7 @@ export function createSceneWriting({
       ...original,
       readset: {
         ...original.readset,
+        ...(original.readset.stripSceneReplyDecorations === 4 ? { stripSceneReplyDecorations: 5 as const } : {}),
         source: {
           ...source,
           episodeId,

@@ -27,6 +27,10 @@ const cases = [
   ["The model request outcome is unknown.", "The game couldn’t confirm whether the reply finished."],
   ["The model returned no answer.", "The AI returned an empty reply."],
   ["The saved update could not be applied to storage.", "The game couldn’t save the update."],
+  [
+    "The alternate reply failed validation. Your reply is kept.",
+    "The game kept your original reply because the alternate couldn’t be used.",
+  ],
   ["Insufficient credits", "The AI account has run out of credits or reached its usage limit."],
   ["Rate limit exceeded (429)", "The AI service received too many requests."],
   [

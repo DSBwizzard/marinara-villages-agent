@@ -103,7 +103,7 @@ await withBrowser({ close: server.stop }, async () => {
         content: JSON.stringify({
           segments:
             attempt === 1
-              ? [{ kind: "dialogue", speakerId: "mara", text: firstReply }]
+              ? [{ kind: "dialogue", speakerId: "mara", text: firstReply, delivery: "normal", textNote: "" }]
               : attempt === 2
                 ? [
                     { kind: "narration", text: "Rain patters on the mill roof." },

@@ -31,7 +31,7 @@ import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragra
 import { scenePlaybackSteps } from "./scene-playback.js";
 import { useScenePlayback } from "./useScenePlayback.js";
 import { mobileReadingCounter } from "./villages-mobile-scene.js";
-import { useReadingPages, useReplyReveal } from "./villages-reading-viewport.js";
+import { useReadingPages } from "./villages-reading-viewport.js";
 import { hasCompletedRoomSubmission } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { SceneHistory } from "./SceneHistory.js";
@@ -585,10 +585,7 @@ export function RoomPanel({
     step?.key ?? JSON.stringify([worldScope, room.id, "empty"]),
     readingRef,
     sceneReading,
-  );
-  const reveal = useReplyReveal(
-    readingPages.nodes,
-    !retrying && !playback.restoring && readingPages.index === 0 && step?.key === revealStep ? revealStep : undefined,
+    !retrying && !playback.restoring && revealStep !== undefined && step?.key === revealStep,
   );
   const emptyFrame = useMemo(
     () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
@@ -645,7 +642,13 @@ export function RoomPanel({
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !ended && room.status === "active";
   const canCompose =
-    canDraft && !busy && !reveal.active && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
+    canDraft &&
+    !busy &&
+    !readingPages.revealing &&
+    !canReadNext &&
+    !historyOpen &&
+    !playback.busy &&
+    !playback.restoring;
   const canSend =
     canCompose &&
     !contactRecovery &&
@@ -1148,7 +1151,7 @@ export function RoomPanel({
           ))}
         </div>
       ) : null}
-      {!dialogueHidden && !historyOpen && !retrying && !reveal.active && step && step.asides.length > 0 ? (
+      {!dialogueHidden && !historyOpen && !retrying && !readingPages.revealing && step && step.asides.length > 0 ? (
         <SceneAsides
           asides={step.asides}
           mobile={mobile}
@@ -1384,7 +1387,7 @@ export function RoomPanel({
                 role="region"
                 aria-label="Current paragraph"
                 aria-live="polite"
-                aria-busy={reveal.active}
+                aria-busy={readingPages.revealing}
                 tabIndex={0}
               >
                 {retrying ? (
@@ -1394,14 +1397,14 @@ export function RoomPanel({
                 ) : step ? (
                   register === "narration" ? (
                     <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
-                      {drawVillagesNodes(reveal.nodes, "vn-beat-")}
+                      {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
                     </p>
                   ) : (
                     <p
                       className={`${ELEMENT_TAG}-chat-vn-text`}
                       style={step.player ? undefined : speechStyle(step.speakerId)}
                     >
-                      {drawVillagesNodes(reveal.nodes, "vn-")}
+                      {drawVillagesNodes(readingPages.nodes, "vn-")}
                     </p>
                   )
                 ) : (
@@ -1449,8 +1452,8 @@ export function RoomPanel({
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}
                   onClick={() => {
-                    if (reveal.active) {
-                      reveal.finish();
+                    if (readingPages.revealing) {
+                      readingPages.finishReveal();
                       return;
                     }
                     if (!readingPages.move(1)) {
@@ -1459,7 +1462,7 @@ export function RoomPanel({
                         void playback.load(playback.window.newerCursor, "first");
                     }
                   }}
-                  disabled={(!canReadNext && !reveal.active) || playback.busy || retrying}
+                  disabled={(!canReadNext && !readingPages.revealing) || playback.busy || retrying}
                   aria-label="Next paragraph"
                 >
                   <span>Next</span> ›

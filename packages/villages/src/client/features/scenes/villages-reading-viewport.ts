@@ -53,6 +53,7 @@ export function useReadingPages(
   readingKey: string,
   readingRef: RefObject<HTMLDivElement | null>,
   position: Pick<SceneReadingSession, "checkpoint" | "reset" | "isFounded" | "anchor" | "enterAtEnd">,
+  reveal = false,
 ) {
   const nodes = useMemo(() => parseVillagesInlineMarkdown(text), [text]);
   const length = readingText(nodes).length;
@@ -178,11 +179,15 @@ export function useReadingPages(
     setCursor(anchor.current);
     return true;
   };
-  return { nodes: sliceReadingNodes(nodes, page.start, page.end), index, count: pages.length, move };
+  const passage = useReplyReveal(
+    sliceReadingNodes(nodes, page.start, page.end),
+    reveal && index === 0 ? readingKey : undefined,
+  );
+  return { ...passage, index, count: pages.length, move };
 }
 
 /** Reveal the opening passage of a retried reply at Game mode's default pace. */
-export function useReplyReveal(nodes: VillagesMarkdownNode[], key?: string) {
+function useReplyReveal(nodes: VillagesMarkdownNode[], key?: string) {
   const text = key ? readingText(nodes) : "";
   const ends = useMemo(
     () => Array.from(new Intl.Segmenter().segment(text), ({ index, segment }) => index + segment.length),
@@ -214,7 +219,7 @@ export function useReplyReveal(nodes: VillagesMarkdownNode[], key?: string) {
   }, [key, active, length]);
   return {
     nodes: active ? sliceReadingNodes(nodes, 0, ends[count - 1] ?? 0) : nodes,
-    active,
-    finish,
+    revealing: active,
+    finishReveal: finish,
   };
 }
