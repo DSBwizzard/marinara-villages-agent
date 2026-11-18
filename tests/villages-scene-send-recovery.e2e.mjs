@@ -464,6 +464,7 @@ await withBrowser(browser, async () => {
     const actionsBox = await page.getByRole("button", { name: "Venue actions", exact: true }).boundingBox();
     const panelBox = await failurePanel.boundingBox();
     assert(placeBox.x + placeBox.width <= chipBox.x, "the chip has space beside the place and time");
+    assert(chipBox.x - (placeBox.x + placeBox.width) <= 16, "the chip stays on the left beside the place badge");
     assert(chipBox.x + chipBox.width <= actionsBox.x, "the chip does not cover Venue actions");
     assert(
       panelBox.y > Math.max(placeBox.y + placeBox.height, chipBox.y + chipBox.height),
