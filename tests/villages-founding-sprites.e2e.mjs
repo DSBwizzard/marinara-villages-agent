@@ -78,6 +78,7 @@ await withBrowser(browser, async () => {
         }),
       );
       const writes = [];
+      const opened = new Set();
       let saved;
       const state = {
         revision: 1,
@@ -89,11 +90,33 @@ await withBrowser(browser, async () => {
           { id: "profile", name: "Profile artwork" },
         ],
       };
+      const automatic = {
+        ...structuredClone(state),
+        automatic: true,
+        manager: {
+          version: 1,
+          artwork: [],
+          expressions: files.map(({ filename, label }) => ({ id: filename, name: label })),
+          assignments: files.map(({ filename }) => ({
+            expressionId: filename,
+            view: "front",
+            engineFilename: filename,
+            automatic: true,
+          })),
+          defaultExpressionId: "neutral.png",
+          defaultView: "front",
+          framing: { mode: "full" },
+        },
+      };
       await page.route("**/api/villages**", async (route) => {
-        const path = new URL(route.request().url()).pathname;
+        const url = new URL(route.request().url());
+        const path = url.pathname;
         const method = route.request().method();
         const send = (value) => fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
-        if (path.endsWith("/sprites/setup/settled")) return send(state);
+        if (path.endsWith("/sprites/setup/settled")) {
+          opened.add(path.split("/").at(-4));
+          return send(url.searchParams.get("automatic") ? automatic : state);
+        }
         if (path.endsWith("/sprites/setup/save")) {
           const body = route.request().postDataJSON();
           writes.push(body);
@@ -103,6 +126,7 @@ await withBrowser(browser, async () => {
           }
           assert.equal(body.token, "first");
           assert.equal(body.resident, false);
+          assert.equal(body.automatic, true);
           state.revision++;
           const rows = body.expressions;
           state.manager.expressions = rows.map(({ id, name }) => ({ id, name }));
@@ -168,7 +192,7 @@ await withBrowser(browser, async () => {
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
       for (const reply of ["Next", "Next", "Next"])
         await root.getByRole("button", { name: reply, exact: true }).click();
-      if (phone) await next.click();
+      if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
         await page
@@ -177,8 +201,22 @@ await withBrowser(browser, async () => {
           .click();
       }
       const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
-      await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute("aria-pressed", "true");
-      await expect(pane.getByRole("button", { name: "Add Front sprites", exact: true })).toHaveCount(0);
+      const frontPreview = pane.getByRole("img", { name: "Front preview", exact: true });
+      await expect(pane.getByRole("button", { name: "Sprites", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(frontPreview).toBeVisible();
+      await expect(pane.getByText("4 sprites", { exact: true })).toBeVisible();
+      await expect(next).toBeEnabled();
+      await next.click();
+      await expect(root).toHaveAttribute("data-step", "2");
+      assert.deepEqual([...opened], ["aqua"], "No Appearance action or load for the other resident is needed");
+      await root.getByRole("button", { name: "Back", exact: true }).click();
+      await expect(root).toHaveAttribute("data-step", "1");
+      if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
+      await pane.getByRole("button", { name: "Review previous appearance", exact: true }).click();
+      await expect(pane.getByText("1 sprite", { exact: true })).toBeVisible();
+      await pane.getByRole("button", { name: "Reload appearance", exact: true }).click();
+      await expect(pane.getByText("4 sprites", { exact: true })).toBeVisible();
+      await pane.getByRole("button", { name: "Portrait", exact: true }).click();
       const portrait = pane.locator(".appearance-portrait img");
       await expect(portrait).toHaveJSProperty("complete", true);
       const crop = await portrait.evaluate((image) => {
@@ -198,23 +236,20 @@ await withBrowser(browser, async () => {
         "Opening an older character setup does not adopt it",
       );
       await pane.getByRole("button", { name: "Sprites", exact: true }).click();
-      await expect(pane.getByRole("img", { name: "Old Happy · Front" })).toBeVisible();
-      await pane.getByRole("button", { name: "Add Front sprites", exact: true }).click();
-      const frontPicker = page.getByRole("dialog", { name: "Add Front sprites", exact: true });
-      await frontPicker.getByRole("combobox", { name: "Sprite source" }).selectOption("body");
-      await frontPicker.getByRole("checkbox", { name: "Happy_01", exact: true }).check();
-      await frontPicker.getByRole("checkbox", { name: "Happy_02", exact: true }).check();
-      await frontPicker.getByRole("button", { name: "Add 2 Front sprites", exact: true }).click();
-      await pane.getByRole("button", { name: "Add Side sprites", exact: true }).click();
-      const sidePicker = page.getByRole("dialog", { name: "Add Side sprites", exact: true });
+      await pane.getByRole("button", { name: "Add right-facing sprites", exact: true }).click();
+      const sidePicker = page.getByRole("dialog", { name: "Add right-facing sprites", exact: true });
       await sidePicker.getByRole("combobox", { name: "Sprite source" }).selectOption("profile");
-      await sidePicker.getByRole("checkbox", { name: "Happy_blush", exact: true }).check();
-      await sidePicker.getByRole("button", { name: "Add 1 Side sprite", exact: true }).click();
+      if (phone) await sidePicker.getByRole("checkbox", { name: "Happy_blush", exact: true }).check();
+      else await sidePicker.getByRole("button", { name: "Select all", exact: true }).click();
+      await sidePicker.getByRole("button", { name: "Add 1 Right-facing sprite", exact: true }).click();
+      await expect(pane.getByText("3 sprites", { exact: true })).toBeVisible();
+      await expect(pane.getByRole("img", { name: "Right-facing preview" })).toBeVisible();
+      await pane.getByText("Manage expressions", { exact: true }).click();
       await pane.getByRole("button", { name: "happy", exact: true }).click();
       await expect(pane.getByRole("heading", { name: "Front · 2" })).toBeVisible();
-      await expect(pane.getByRole("heading", { name: "Side · 1" })).toBeVisible();
+      await expect(pane.getByRole("heading", { name: "Right-facing · 1" })).toBeVisible();
       await expect(pane.getByRole("img", { name: "Happy_01 · Front" })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Happy_blush · Side" })).toBeVisible();
+      await expect(pane.getByRole("img", { name: "Happy_blush · Right-facing" })).toBeVisible();
       await pane
         .getByRole("region", { name: "Front", exact: true })
         .getByRole("button", { name: "Set as default" })
@@ -229,7 +264,8 @@ await withBrowser(browser, async () => {
       await expect(next).toBeEnabled();
       assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
       assert.equal(writes[0].expressions.length, 4);
-      assert.equal(writes[0].expressions[0].front.artworkId, "old");
+      assert.equal(writes[0].expressions[0].front.filename, "happy.png");
+      assert.ok(writes[0].expressions.every((row) => row.front?.filename !== "happy-side.png"));
       assert.equal(writes[0].expressions[3].side.filename, "happy-side.png");
       if (viewport.width > 600) {
         const removeButton = pane.getByRole("button", { name: "Remove Happy_01 from Front" });

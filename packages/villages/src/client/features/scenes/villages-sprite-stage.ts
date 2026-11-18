@@ -27,11 +27,11 @@ export function selectSpriteImage(
       ? images.find((item) => item.view === "side" && (item.expressionId ?? item.label) === sideExpression)
       : undefined) ??
     images.find((item) => item.view === view && matches(item)) ??
+    (named && view === "side" ? variantView("side") : undefined) ??
     (named && current?.view === "side" ? current : undefined) ??
     (view === "side" ? current : variantView("front")) ??
     exactDefault ??
     images.find((item) => item.view === view && defaults(item)) ??
-    (named && !expression ? variantView(view) : undefined) ??
     images.find(matches) ??
     images.find(defaults);
   return image

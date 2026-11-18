@@ -114,9 +114,10 @@ await withBrowser(browser, async () => {
     });
     await expect(engineLink).toHaveCount(0);
     const addFront = screen.getByRole("button", { name: "Add Front sprites", exact: true });
-    const addSide = screen.getByRole("button", { name: "Add Side sprites", exact: true });
+    const addSide = screen.getByRole("button", { name: "Add right-facing sprites", exact: true });
     await expect(addFront).toHaveCount(0);
     await screen.getByRole("button", { name: "Sprites", exact: true }).click();
+    await screen.getByText("Manage expressions", { exact: true }).click();
     await expect(screen.getByText("No sprites added.")).toBeVisible();
     await addFront.click();
     const frontPicker = page.getByRole("dialog", { name: "Add Front sprites", exact: true });
@@ -127,11 +128,11 @@ await withBrowser(browser, async () => {
     await frontPicker.getByRole("checkbox", { name: "Happy_2", exact: true }).check();
     await frontPicker.getByRole("button", { name: "Add 2 Front sprites", exact: true }).click();
     const front = screen.getByRole("region", { name: "Front", exact: true });
-    const side = screen.getByRole("region", { name: "Side", exact: true });
+    const side = screen.getByRole("region", { name: "Right-facing", exact: true });
     await expect(front.getByRole("heading", { name: "Front · 2" })).toBeVisible();
-    await expect(side.getByRole("heading", { name: "Side · 0" })).toBeVisible();
+    await expect(side.getByRole("heading", { name: "Right-facing · 0" })).toBeVisible();
     await addSide.click();
-    const sidePicker = page.getByRole("dialog", { name: "Add Side sprites", exact: true });
+    const sidePicker = page.getByRole("dialog", { name: "Add right-facing sprites", exact: true });
     const source = sidePicker.getByRole("combobox", { name: "Sprite source" });
     await expect(source).toHaveValue("");
     await source.selectOption("side");
@@ -142,12 +143,12 @@ await withBrowser(browser, async () => {
         .getByRole("checkbox", { name: i === 17 ? "Happy side-17.png" : "Happy_" + i + "_side", exact: true })
         .check();
     }
-    await sidePicker.getByRole("button", { name: "Add 17 Side sprites", exact: true }).click();
-    await expect(side.getByRole("heading", { name: "Side · 17" })).toBeVisible();
+    await sidePicker.getByRole("button", { name: "Add 17 Right-facing sprites", exact: true }).click();
+    await expect(side.getByRole("heading", { name: "Right-facing · 17" })).toBeVisible();
     await expect(screen.getByRole("heading", { name: "happy", exact: true })).toBeVisible();
     await expect(front.getByRole("img", { name: "Happy · Front" })).toHaveAttribute("src", files[0].url);
     await side.getByRole("button", { name: "Happy", exact: true }).click();
-    await expect(side.getByRole("img", { name: "Happy · Side" })).toBeVisible();
+    await expect(side.getByRole("img", { name: "Happy · Right-facing" })).toBeVisible();
     await side.getByRole("button", { name: "Set as default", exact: true }).click();
     await expect(side.getByRole("button", { name: "Default", exact: true })).toBeDisabled();
     await expect(front.getByRole("button", { name: "Set as default", exact: true })).toBeEnabled();
@@ -172,12 +173,14 @@ await withBrowser(browser, async () => {
     await screen.getByRole("button", { name: "← Profile", exact: true }).click();
     await expect(entry).toBeFocused();
     await entry.click();
-    await expect(side.getByRole("heading", { name: "Side · 17" })).toBeVisible();
+    await expect(screen.getByRole("img", { name: "Right-facing preview" })).toBeVisible();
+    await screen.getByText("Manage expressions", { exact: true }).click();
+    await expect(side.getByRole("heading", { name: "Right-facing · 17" })).toBeVisible();
     await expect(side.getByRole("button", { name: "Default", exact: true })).toBeDisabled();
     await side.getByRole("button", { name: "Happy_1_side", exact: true }).click();
-    const remove = side.getByRole("button", { name: "Remove Happy_1_side from Side" });
+    const remove = side.getByRole("button", { name: "Remove Happy_1_side from Right-facing" });
     await remove.click();
-    await expect(side.getByRole("heading", { name: "Side · 16" })).toBeVisible();
+    await expect(side.getByRole("heading", { name: "Right-facing · 16" })).toBeVisible();
     await screen.getByRole("button", { name: "Discard changes" }).click();
     await expect(remove).toBeVisible();
     await remove.click();

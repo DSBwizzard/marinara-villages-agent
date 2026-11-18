@@ -145,10 +145,16 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       seenAssignments.add(entry.expressionId + ":" + entry.view);
       return true;
     })
-    .map(({ expressionId, view, artworkId, engineFilename, version }) => ({
-      expressionId,
-      view,
-      ...(engineFilename ? { engineFilename, ...(version ? { version } : {}) } : { artworkId: artworkId! }),
+    .map((slot) => ({
+      expressionId: slot.expressionId,
+      view: slot.view,
+      ...(slot.engineFilename
+        ? {
+            engineFilename: slot.engineFilename,
+            ...(slot.version ? { version: slot.version } : {}),
+            ...(slot.view === "front" && slot.automatic === true ? { automatic: true as const } : {}),
+          }
+        : { artworkId: slot.artworkId! }),
     }));
   const framing = state.framing;
   const folders = readSpriteFolders(state.folders);

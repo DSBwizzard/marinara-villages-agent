@@ -12,6 +12,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { DEFAULT_TOWN_MAP_VIEW } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import { emptySpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 import { createFoundingSetup } from "../packages/villages/src/server/features/founding/founding-setup-service.js";
 import {
   configureFoundingSetup,
@@ -160,13 +161,23 @@ function fixture(name: string) {
       note("cards");
       return [structuredClone(card)];
     },
-    async preparedSpriteManager(id) {
+    async preparedSpriteManager(id, revision) {
       note("sprites:" + id);
       assert(
         !state.villagers.some((resident) => resident.characterId === id),
         "Existing residents retain their sprites.",
       );
-      return null;
+      assert.equal(revision, undefined, "Automatic appearance needs no acknowledged draft");
+      const expression = { id: "e-adc201ed-e4b1-422b-8c79-4c6b09ba456d", name: "Neutral" };
+      return {
+        ...emptySpriteManager(),
+        expressions: [expression],
+        assignments: [
+          { expressionId: expression.id, view: "front", engineFilename: "full_neutral.png", automatic: true },
+        ],
+        defaultExpressionId: expression.id,
+        defaultView: "front",
+      };
     },
     async prepareFoundedVillage() {
       note("prepare");
@@ -351,6 +362,7 @@ assert.equal(result.village.name, "Direct");
 assert.equal(direct.state.maps[0].name, "Direct", "Older setup callers retain the original map name");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
 assert.equal(direct.state.villagers[0]!.cardSnapshot.description, "Private card Direct");
+assert.equal(direct.state.villagers[0]!.spriteManager?.assignments[0].automatic, true);
 assert.equal(direct.state.villagers[0]!.agenda!.personalizationPending, true);
 assert.equal(direct.state.foundingPreparation!.status, "pending");
 assert.equal(direct.state.venues.length, 4);

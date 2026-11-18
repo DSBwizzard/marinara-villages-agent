@@ -13,6 +13,7 @@ import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
 
 export interface ResidentRosterPorts {
   preparedSpriteManager?(
@@ -71,6 +72,8 @@ export function createResidentRoster({
       const incarnation = randomUUID();
       const letterFontId = chooseLetterFont(randomVillageSeed());
       await mutateVillageState((state) => {
+        if (villageWorldScope(state) !== villageWorldScope(village))
+          throw conflict("The Village changed. Open the resident list again.");
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
           throw badRequest(`A village holds at most ${MAX_VILLAGERS} villagers.`);

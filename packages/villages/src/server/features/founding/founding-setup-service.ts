@@ -36,6 +36,7 @@ import { loreText } from "../../domain/rules/lore-context.js";
 import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import { mapName } from "../../domain/rules/village-maps.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import type { prepareVillageMap } from "../media/town-map-review.js";
 import type { readVillageConnectionSettings, validateVillageSetupConnections } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
@@ -212,7 +213,8 @@ export function createFoundingSetup({
 
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
-      if (isVillageFounded(state)) throw conflict("The village changed during setup. Reload it before saving.");
+      if (isVillageFounded(state) || villageWorldScope(state) !== villageWorldScope(village))
+        throw conflict("The village changed during setup. Reload it before saving.");
       state.seed ||= randomVillageSeed();
       state.playerBackground = playerBackground;
       state.name = name;

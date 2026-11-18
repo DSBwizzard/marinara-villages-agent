@@ -24,7 +24,8 @@ type Choice = {
 };
 type SaveResult = Pick<SpriteAppearance, "revision" | "token" | "manager">;
 const views = ["front", "side"] as const;
-const viewLabels = { front: "Front", side: "Side" };
+const viewLabels = { front: "Front", side: "Right-facing" };
+const addLabels = { front: "Add Front sprites", side: "Add right-facing sprites" };
 const empty: Choice = { useSprites: false, expressions: [], defaultExpressionId: "" };
 
 function SpriteBatchPicker({
@@ -70,7 +71,7 @@ function SpriteBatchPicker({
   const selected = library?.files.filter((file) => checked.includes(file.filename)) ?? [];
   const available = visible.filter((file) => !assigned.get(file.filename)?.artworkId);
   return (
-    <ModalDialog title={`Add ${label} sprites`} onClose={onClose} className="appearance-picker" scrollBody>
+    <ModalDialog title={addLabels[view]} onClose={onClose} className="appearance-picker" scrollBody>
       <div className="appearance-picker-body">
         <div className="appearance-source">
           <label>
@@ -283,6 +284,7 @@ export function Appearance({
   const groups = groupSpritesByMood(choice.expressions);
   const selectedGroup = [...groups].find(([, members]) => members.includes(selected!));
   const [reload, setReload] = useState(0);
+  const [reviewPrevious, setReviewPrevious] = useState(false);
   const acknowledged = useRef(selectedRevision);
   const openCharacter = (host as (HTMLElement & { capabilityProps?: { openCharacter?: unknown } }) | undefined)
     ?.capabilityProps?.openCharacter;
@@ -298,28 +300,28 @@ export function Appearance({
   useEffect(() => {
     const controller = new AbortController();
     setData(null);
-    void request<SpriteAppearance>(readPath, { signal: controller.signal })
+    const path =
+      !resident && !reviewPrevious && acknowledged.current === undefined ? readPath + "?automatic=true" : readPath;
+    void request<SpriteAppearance>(path, { signal: controller.signal })
       .then((value) => {
         if (controller.signal.aborted) return;
-        const same = resident || acknowledged.current === value.revision;
+        const revisionMismatch =
+          !resident && acknowledged.current !== undefined && acknowledged.current !== value.revision;
+        const same = resident || !revisionMismatch;
         const next = savedChoice(value.manager, same);
         setData(value);
         setBaseline(next);
         setChoice(next);
         select(next.defaultExpressionId);
-        setStale(!resident && acknowledged.current !== undefined && !same);
+        setStale(revisionMismatch || (reviewPrevious && acknowledged.current === undefined && !value.automatic));
         setUncertain(false);
-        setError(
-          !resident && acknowledged.current !== undefined && !same
-            ? "Appearance changed. Review the sprites and save, or use Portrait."
-            : "",
-        );
+        setError(revisionMismatch ? "Appearance changed. Review the sprites and save, or use Portrait." : "");
       })
       .catch((cause) => {
         if (!controller.signal.aborted) setError(messageFrom(cause, "Could not load appearance."));
       });
     return () => controller.abort();
-  }, [readPath, reload, resident]);
+  }, [readPath, reload, resident, reviewPrevious]);
 
   useLayoutEffect(() => {
     onBusyChange?.(pending || dirty || stale || uncertain);
@@ -366,8 +368,12 @@ export function Appearance({
   }
 
   function updateSprites(expressions: AppearanceExpression[]) {
+    const current = expressions.find((row) => row.id === choice.defaultExpressionId);
+    const front = expressions.filter((row) => row.front);
+    const preferred = groupSpritesByMood(front).get("neutral")?.[0] ?? front[0];
     const row =
-      expressions.find((row) => row.id === choice.defaultExpressionId) ??
+      (choice.defaultView && !current?.[choice.defaultView] ? preferred : current) ??
+      preferred ??
       groupSpritesByMood(expressions).get("neutral")?.[0] ??
       expressions[0];
     const defaultView = choice.defaultView
@@ -390,9 +396,11 @@ export function Appearance({
   function addSprites(view: SpriteView, files: SpriteLibraryItem[]) {
     const expressions = [...choice.expressions];
     const existing = assignedFiles(view);
+    const reclassified = new Set<string>();
     let first = "";
     for (const { filename, label, version } of files) {
       if (existing.get(filename)?.artworkId) continue;
+      if (view === "side") reclassified.add(filename);
       const index = expressions.findIndex((row) => row[view]?.filename === filename);
       const row = {
         ...expressions[index],
@@ -404,7 +412,18 @@ export function Appearance({
       else expressions[index] = row;
       first ||= row.id;
     }
-    updateSprites(expressions);
+    const automaticFront = new Map(
+      data?.manager.assignments
+        .filter((slot) => slot.automatic)
+        .map((slot) => [slot.expressionId, slot.engineFilename]),
+    );
+    updateSprites(
+      expressions.flatMap((row) => {
+        const filename = row.front?.filename;
+        if (!filename || !reclassified.has(filename) || automaticFront.get(row.id) !== filename) return [row];
+        return row.side ? [{ ...row, front: undefined }] : [];
+      }),
+    );
     if (first) select(first);
     setPicker(undefined);
   }
@@ -428,7 +447,7 @@ export function Appearance({
     ) > 200;
   async function save() {
     if (!data || working.current) return;
-    const body = { ...choice, token: data.token, resident };
+    const body = { ...choice, token: data.token, resident, ...(data.automatic ? { automatic: true } : {}) };
     const key = JSON.stringify(body);
     if (lastSave.current?.key !== key) lastSave.current = { key, id: createVillagesClientId() };
     working.current = true;
@@ -442,7 +461,7 @@ export function Appearance({
       if (!alive.current) return;
       const currentIndex = choice.expressions.findIndex((row) => row.id === selected?.id);
       const next = savedChoice(saved.manager, true);
-      setData({ ...data, ...saved });
+      setData({ ...data, ...saved, automatic: undefined });
       setChoice(next);
       setBaseline(next);
       select(next.expressions[currentIndex]?.id ?? next.defaultExpressionId);
@@ -521,40 +540,78 @@ export function Appearance({
               </button>
             ))}
           </div>
+          {data.automatic && data.revision > 0 && acknowledged.current === undefined ? (
+            <button
+              type="button"
+              className="appearance-link"
+              disabled={locked}
+              onClick={async () => {
+                if (await mayLeave()) setReviewPrevious(true);
+              }}
+            >
+              Review previous appearance
+            </button>
+          ) : null}
           {choice.useSprites ? (
             <>
+              {choice.expressions.length ? (
+                <div className="appearance-views appearance-sprite-previews" aria-label="Sprite previews" role="group">
+                  {views.map((view) => {
+                    const rows = choice.expressions.filter((row) => row[view]);
+                    const row =
+                      rows.find((item) => item.id === choice.defaultExpressionId) ??
+                      groupSpritesByMood(rows).get("neutral")?.[0] ??
+                      rows[0];
+                    return row ? (
+                      <div key={view} className="appearance-view">
+                        <strong>{viewLabels[view]}</strong>
+                        <span>
+                          {rows.length} {rows.length === 1 ? "sprite" : "sprites"}
+                        </span>
+                        <img
+                          className="appearance-full-sprite"
+                          src={image(row[view]) || undefined}
+                          alt={viewLabels[view] + " preview"}
+                        />
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              ) : null}
               <div className="appearance-actions">
-                {views.map((view) => (
-                  <button key={view} type="button" disabled={locked} onClick={() => setPicker(view)}>
-                    Add {viewLabels[view]} sprites
-                  </button>
-                ))}
-                {typeof openCharacter === "function" ? (
-                  <button
-                    type="button"
-                    className="appearance-link"
-                    disabled={locked}
-                    onClick={async () => {
-                      if (await mayLeave(spriteEdits)) {
-                        edit(baseline);
-                        openCharacter(characterId, { tab: "sprites" });
-                      }
-                    }}
-                  >
-                    Open Character sprites
+                <button type="button" disabled={locked} onClick={() => setPicker("side")}>
+                  {addLabels.side}
+                </button>
+                {!choice.expressions.length ? (
+                  <button type="button" disabled={locked} onClick={() => setPicker("front")}>
+                    {addLabels.front}
                   </button>
                 ) : null}
               </div>
-              {picker ? (
-                <SpriteBatchPicker
-                  view={picker}
-                  readPath={readPath}
-                  assigned={assignedFiles(picker)}
-                  onClose={() => setPicker(undefined)}
-                  onAdd={(files) => addSprites(picker, files)}
-                />
-              ) : null}
-              <div className="appearance-sprite-body">
+              <details className="appearance-sprite-body">
+                <summary>Manage expressions</summary>
+                <div className="appearance-actions">
+                  {choice.expressions.length ? (
+                    <button type="button" disabled={locked} onClick={() => setPicker("front")}>
+                      {addLabels.front}
+                    </button>
+                  ) : null}
+                  {typeof openCharacter === "function" ? (
+                    <button
+                      type="button"
+                      className="appearance-link"
+                      disabled={locked}
+                      onClick={async () => {
+                        if (await mayLeave(spriteEdits)) {
+                          edit(baseline);
+                          openCharacter(characterId, { tab: "sprites" });
+                        }
+                      }}
+                    >
+                      Open Character sprites
+                    </button>
+                  ) : null}
+                </div>
                 {!selectedGroup ? (
                   <p>No sprites added.</p>
                 ) : (
@@ -611,7 +668,16 @@ export function Appearance({
                     </div>
                   </div>
                 )}
-              </div>
+              </details>
+              {picker ? (
+                <SpriteBatchPicker
+                  view={picker}
+                  readPath={readPath}
+                  assigned={assignedFiles(picker)}
+                  onClose={() => setPicker(undefined)}
+                  onAdd={(files) => addSprites(picker, files)}
+                />
+              ) : null}
             </>
           ) : null}
           {!choice.useSprites ? (
@@ -631,6 +697,7 @@ export function Appearance({
                   if (stale || uncertain) {
                     if (!resident) {
                       acknowledged.current = undefined;
+                      setReviewPrevious(false);
                       void onSave(undefined);
                     }
                     setReload(reload + 1);

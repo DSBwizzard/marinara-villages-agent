@@ -3,6 +3,7 @@ import type {
   SpriteAppearance,
   SpriteAssignment,
   SpriteLibraryFolder,
+  SpriteLibraryItem,
   SpriteManagerState,
   SpriteSetupDraft,
 } from "../../../shared/contracts/sprites.js";
@@ -17,7 +18,12 @@ import {
   isEngineSpriteFilename,
   isEngineSpriteVersion,
 } from "../../domain/rules/sprite-manager-model.js";
-import { engineSpriteName, engineSpriteUrl } from "../../../shared/helpers/sprite-variants.js";
+import {
+  engineSpriteName,
+  engineSpriteUrl,
+  spriteLabelKey,
+  spriteMood,
+} from "../../../shared/helpers/sprite-variants.js";
 import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, badGateway, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
@@ -37,6 +43,27 @@ const views = ["front", "side"] as const;
 const writeKey = (id: string, resident: boolean) => (resident ? "resident:" : "setup:") + id;
 const empty = () => ({ revision: 0, manager: { ...emptySpriteManager(), useSprites: false } });
 type Draft = { revision: number; manager: SpriteManagerState };
+type Library = Pick<SpriteAppearance, "files" | "folders" | "libraryError">;
+
+function automaticManager(library: Library): SpriteManagerState {
+  const folders = new Set(library.folders.filter((folder) => folder.category === "full-body").map(({ id }) => id));
+  const fullBody = library.files.filter(({ folderId, filename }) =>
+    folderId ? folders.has(folderId) : /^full_/i.test(filename),
+  );
+  const source = new Map((fullBody.length ? fullBody : library.files).map((file) => [file.filename, file]));
+  const manager = emptySpriteManager();
+  for (const { filename, label, version } of source.values()) {
+    const id = "e-" + hash(filename).slice(0, 36);
+    manager.expressions.push({ id, name: engineSpriteName(label ?? "", filename) });
+    manager.assignments.push({ expressionId: id, view: "front", engineFilename: filename, version, automatic: true });
+  }
+  const front =
+    manager.expressions.find(({ name }) => spriteLabelKey(name) === "neutral") ??
+    manager.expressions.find(({ name }) => spriteMood(name) === "neutral") ??
+    manager.expressions[0];
+  if (!front) return { ...manager, useSprites: false };
+  return { ...manager, defaultExpressionId: front.id, defaultView: "front" };
+}
 
 function readDraft(value: unknown): Draft {
   const raw = asRecord(value);
@@ -85,23 +112,14 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     return { person, manager, token: hash([villageWorldScope(world), person.incarnation, manager]) };
   }
 
-  async function appearanceState(id: string, resident: boolean) {
-    const world = await ports.readVillageState();
-    if (resident) {
-      const { manager, token } = residentState(world, id);
-      return { revision: 0, token, manager };
-    }
-    const current = await draft(id);
-    return { ...current, token: hash([villageWorldScope(world), current]) };
-  }
-
   async function files(id: string) {
     const key = encodeURIComponent(id);
-    await ports.villageEngineJson("/api/characters/" + key);
+    const signal = AbortSignal.timeout(5_000);
+    await ports.villageEngineJson("/api/characters/" + key, { signal });
     let response: unknown,
       folders: SpriteLibraryFolder[] = [];
     try {
-      const catalog = asRecord(await ports.villageEngineJson("/api/sprites/" + key + "/catalog"));
+      const catalog = asRecord(await ports.villageEngineJson("/api/sprites/" + key + "/catalog", { signal }));
       if (!Array.isArray(catalog.folders) || !Array.isArray(catalog.sprites))
         throw badGateway("The Engine returned invalid sprite folder information.");
       folders = catalog.folders
@@ -116,10 +134,10 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       response = catalog.sprites;
     } catch (error) {
       if (!(error instanceof VillagesRequestError) || !error.message.includes("(404)")) throw error;
-      response = await ports.villageEngineJson("/api/sprites/" + key);
+      response = await ports.villageEngineJson("/api/sprites/" + key, { signal });
     }
     if (!Array.isArray(response)) throw badGateway("The Engine returned an invalid sprite list.");
-    const items = response.map(asRecord).flatMap((file) => {
+    const items = response.map(asRecord).flatMap<SpriteLibraryItem>((file) => {
       const filename = asString(file.filename);
       if (!isEngineSpriteFilename(filename)) return [];
       const rawVersion = asString(file.url).match(/\?v=(\d+)$/)?.[1];
@@ -137,13 +155,34 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     return { files: items, folders };
   }
 
-  async function read(id: string, resident = false): Promise<SpriteAppearance> {
-    const state = await appearanceState(id, resident);
+  async function library(id: string): Promise<Library> {
     try {
-      return { ...state, ...(await files(id)) };
+      return await files(id);
     } catch {
-      return { ...state, files: [], folders: [], libraryError: "Engine sprites are unavailable." };
+      return { files: [], folders: [], libraryError: "Engine sprites are unavailable." };
     }
+  }
+
+  async function read(id: string, resident: boolean, automatic: boolean): Promise<SpriteAppearance> {
+    const world = await ports.readVillageState();
+    if (resident) {
+      const { manager, token } = residentState(world, id);
+      return { revision: 0, token, manager, ...(await library(id)) };
+    }
+    const scope = villageWorldScope(world);
+    const current = await draft(id);
+    const source = await library(id);
+    if (automatic || !current.revision) {
+      const manager = { ...automaticManager(source), artwork: current.manager.artwork };
+      return {
+        ...source,
+        revision: current.revision,
+        manager,
+        automatic: true,
+        token: hash([scope, current, manager]),
+      };
+    }
+    return { ...current, ...source, token: hash([scope, current]) };
   }
 
   function save(id: string, body: unknown, signal: AbortSignal) {
@@ -162,16 +201,19 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       const world = await ports.readVillageState();
       const scope = villageWorldScope(world);
       const current = resident ? { revision: 0, ...residentState(world, id) } : await draft(id);
-      const expected = "token" in current ? current.token : hash([scope, current]);
+      const savedToken = "token" in current ? current.token : hash([scope, current]);
       const digest = hash([scope, input]);
       if (current.manager.lastSave?.id === requestId) {
         if (current.manager.lastSave.digest !== digest)
           throw conflict("That Appearance save changed. Reload to continue.");
-        return { revision: current.revision, token: expected, manager: current.manager };
+        return { revision: current.revision, token: savedToken, manager: current.manager };
       }
+      const source = !resident && (input.automatic === true || !current.revision) ? await library(id) : undefined;
+      const base = source ? { ...automaticManager(source), artwork: current.manager.artwork } : current.manager;
+      const expected = source ? hash([scope, current, base]) : savedToken;
       if (expected !== input.token) throw conflict("Appearance changed. Reload to continue.");
 
-      const manager = structuredClone(current.manager);
+      const manager = structuredClone(base);
       const existingExpressions = new Map(manager.expressions.map((row) => [row.id, row.name]));
       const existingSlots = new Map(manager.assignments.map((slot) => [slot.expressionId + ":" + slot.view, slot]));
       const ids = new Map<string, string>();
@@ -211,7 +253,13 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           const prior = existingSlots.get(key + ":" + view);
           if (prior?.engineFilename !== filename || prior.version !== version || name !== existingExpressions.get(key))
             additions.push({ view, filename, version, name });
-          assignments.push({ expressionId, view, engineFilename: filename, ...(version ? { version } : {}) });
+          assignments.push({
+            expressionId,
+            view,
+            engineFilename: filename,
+            ...(version ? { version } : {}),
+            ...(prior?.automatic && prior.engineFilename === filename ? { automatic: true } : {}),
+          });
         }
       }
       const defaultExpressionId = ids.get(input.defaultExpressionId);
@@ -233,7 +281,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
             links.set(key, (links.get(key) ?? 0) + 1);
           }
         }
-        const byFilename = new Map((await files(id)).files.map((file) => [file.filename, file]));
+        const byFilename = new Map((source ?? (await files(id))).files.map((file) => [file.filename, file]));
         for (const { view, filename, version, name } of additions) {
           if (links.get(view + ":" + filename) !== 1) throw badRequest("Choose each sprite once per facing.");
           const file = byFilename.get(filename);
@@ -270,7 +318,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
         throw conflict("The Village changed. Reopen Appearance.");
       const revision = current.revision + 1;
       await ports.mutateDocument(documentId(id), slot, (prior) => {
-        if (hash([scope, prior]) !== expected) throw conflict("Appearance changed. Reload to continue.");
+        if (hash([scope, prior]) !== savedToken) throw conflict("Appearance changed. Reload to continue.");
         Object.assign(prior, { revision, manager });
       });
       const saved = { revision, manager };
@@ -279,14 +327,18 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
   }
 
   async function preparedManager(id: string, revision?: number): Promise<SpriteManagerState | null> {
-    if (revision === undefined) return null;
-    const current = await draft(id);
-    if (!Number.isSafeInteger(revision) || revision < 0 || current.revision !== revision)
-      throw conflict("Appearance changed. Review this resident before continuing.");
-    return current.revision ? current.manager : null;
+    return ports.writes.serialize(writeKey(id, false), async () => {
+      if (revision !== undefined) {
+        const current = await draft(id);
+        if (!Number.isSafeInteger(revision) || revision < 0 || current.revision !== revision)
+          throw conflict("Appearance changed. Review this resident before continuing.");
+        if (current.revision) return current.manager;
+      }
+      return automaticManager(await library(id));
+    });
   }
 
-  const settled = (id: string, resident = false) =>
-    ports.writes.serialize(writeKey(id, resident), () => read(id, resident));
+  const settled = (id: string, resident = false, automatic = false) =>
+    ports.writes.serialize(writeKey(id, resident), () => read(id, resident, automatic));
   return { settled, save, preparedManager };
 }
