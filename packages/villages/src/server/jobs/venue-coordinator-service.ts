@@ -801,13 +801,14 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                       : "complete";
                   operation.error = retryRefused ? "" : safeFailureMessage(error);
                   if (retryRefused) {
+                    operation.stage = "complete";
                     operation.snapshot = null;
                     operation.checkpoints = {};
                     operation.attempts = {};
                   }
                   operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
                   data.operation = await operationEvidenceStore(documents).encode(
-                    operation,
+                    retryRefused ? { ...operation, token: randomUUID() } : operation,
                     data as unknown as VenueScene,
                     data.operation,
                   );

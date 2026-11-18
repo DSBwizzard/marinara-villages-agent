@@ -1,4 +1,4 @@
-// Test cases: scene-retry/refusal, scene-retry/repeated, scene-retry/memory, scene-retry/wish, scene-retry/relationship, scene-retry/unrelated-place, scene-retry/unrelated-mail, scene-retry/unrelated-during-generation, scene-retry/history-changed, scene-retry/history-race, scene-retry/legacy, scene-retry/stale-token, scene-retry/inactive, scene-retry/attendance, scene-retry/malformed, scene-retry/native-alternate, scene-retry/duplicate, scene-retry/cancel, scene-retry/journal-village, scene-retry/journal-scene, scene-retry/lost-ack, scene-retry/cleanup, scene-retry/wish-follow, scene-retry/fitted-knowledge, scene-retry/missing-base, scene-retry/before-journal, scene-retry/checkpoint, scene-retry/appointment
+// Test cases: scene-retry/refusal, scene-retry/repeated, scene-retry/memory, scene-retry/wish, scene-retry/relationship, scene-retry/unrelated-place, scene-retry/unrelated-mail, scene-retry/unrelated-during-generation, scene-retry/history-changed, scene-retry/history-race, scene-retry/legacy, scene-retry/stale-token, scene-retry/inactive, scene-retry/attendance, scene-retry/offstage-attendance, scene-retry/malformed, scene-retry/native-alternate, scene-retry/duplicate, scene-retry/cancel, scene-retry/journal-village, scene-retry/journal-scene, scene-retry/lost-ack, scene-retry/cleanup, scene-retry/wish-follow, scene-retry/fitted-knowledge, scene-retry/missing-base, scene-retry/before-journal, scene-retry/checkpoint, scene-retry/appointment
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -357,6 +357,29 @@ await test("attendance", async (f) => {
   assert.equal(result.statusCode, 409, result.body);
   assert.match(result.body, /Scene changed/);
   assert.equal(f.latest().episodeId, id);
+});
+await test("offstage-attendance", async (f) => {
+  await f.repository.mutateAuthority((world) => {
+    const bryn = structuredClone(world.villagers[0]);
+    bryn.characterId = bryn.cardSnapshot.id = "bryn";
+    bryn.cardSnapshot.name = "Bryn";
+    bryn.incarnation = "bryn:fixture";
+    bryn.agenda!.activeDay!.blocks[0].zoneId = "exterior";
+    world.villagers.push(bryn);
+    world.startingHistory.reviewed.bryn = bryn.incarnation;
+  });
+  const first = await f.send();
+  assert.deepEqual(first.activeIds, ["mara"]);
+  const before = f.state().episodes.records.at(-1)!.actors;
+  assert(before.some((actor) => actor.id === "bryn" && actor.zoneId === "exterior"));
+  const next = await f.retry(first, async () => {
+    await f.repository.mutateAuthority((world) => {
+      world.villagers.find((actor) => actor.characterId === "bryn")!.agenda!.activeDay!.blocks[0].venueId = "away";
+    });
+    return alternate;
+  });
+  assert.deepEqual(f.state().episodes.records.at(-1)!.actors, before);
+  assert(!JSON.stringify(next).includes("Bryn"));
 });
 for (const [name, reply] of [
   ["malformed", "{{ invalid"],

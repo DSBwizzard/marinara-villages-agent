@@ -119,7 +119,7 @@ export function createSceneRetry(ports: RetryPorts) {
       scene.zoneId !== source.scene.zoneId ||
       source.actors.some((actor) => continuityActor(state, actor.id)?.incarnation !== actor.incarnation)
     )
-      unavailable("The original occupants or access changed.");
+      unavailable("The original Scene context is no longer available.");
     const now = villageNow(state.clock?.advanceMs ?? 0);
     const live = projectLiveAttendance(state, scene, venue, now);
     const projected = {
@@ -130,16 +130,20 @@ export function createSceneRetry(ports: RetryPorts) {
     };
     const before = sceneAccessContext(source.scene).positions!,
       after = sceneAccessContext(projected).positions!;
-    const witnesses = new Set([...source.actors.map((actor) => actor.id), ...source.scene.activeIds]);
+    const visible = new Set([
+      "player",
+      ...source.scene.activeIds,
+      ...(source.scene.doorwayContacts ?? []).map((contact) => contact.characterId),
+    ]);
     const local = (value: VenueScene) =>
       sceneZoneOccupants(value, venue, scene.zoneId!)
         .map((person) => person.characterId)
         .sort();
     if (
-      Array.from(witnesses).some((id) => before[id] !== after[id]) ||
+      Array.from(visible).some((id) => before[id] !== after[id]) ||
       memoryHash(local(projected)) !== memoryHash(local(source.scene)) ||
       memoryHash(live.attendance.layout) !== memoryHash(source.scene.sceneAttendance?.layout) ||
-      accessExits({ ...projected, continuity: undefined }, state, venue).some(({ actor }) => witnesses.has(actor))
+      accessExits({ ...projected, continuity: undefined }, state, venue).some(({ actor }) => visible.has(actor))
     )
       unavailable("The Scene changed after that reply.");
   }
