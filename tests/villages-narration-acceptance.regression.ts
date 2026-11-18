@@ -177,6 +177,8 @@ await runCase("narration-acceptance/requested-memory", () => {
   }
   for (const casual of [
     `Mara, please remember this for future visits: ${fact}.`,
+    `"Mara, "please remember this: ${fact}"`,
+    `“Mara, please remember this: ${fact}"`,
     "Mara, please remember that weaving memory.",
     "Mara, do you remember this: the weaving?",
     "Mara, remember this: I weave. How are you?",
@@ -184,7 +186,7 @@ await runCase("narration-acceptance/requested-memory", () => {
   ]) {
     assert.equal(fixture(casual).publication({}, "operation", true).readset.requestedMemory, undefined);
   }
-  const repeated = fixture(`  “Mara, remember this for ${fact}: ${fact}.”  `);
+  const repeated = fixture(`  “Mara, remember this for ${fact}: ${fact}. ”  `);
   const raw = { segments: repeated.response(["remember-fact"]) };
   const publication = repeated.publication(raw, "operation", true);
   const result = acceptNarrationContinuity(repeated.state, publication, "remember", later);
@@ -207,6 +209,20 @@ await runCase("narration-acceptance/requested-memory", () => {
       fixture(`"Mara, remember this: ${aside}"`).publication({}, "operation", true).readset.codeRequestedMemory,
       undefined,
     );
+  const saved = fixture(`Mara, remember this: ${fact}.`);
+  const captured = saved.publication({ segments: saved.response(["remember-fact"]) }, "saved-operation", true);
+  captured.readset.requestedMemory = {
+    start: saved.input.indexOf(fact),
+    end: saved.input.indexOf(fact) + fact.length,
+    recipientId: saved.id,
+  };
+  captured.readset.codeRequestedMemory = true;
+  assert.equal(
+    acceptNarrationContinuity(saved.state, captured, "saved-memory", later).held,
+    false,
+    "an older admitted request retains its captured speech and exact evidence",
+  );
+  assert.equal(saved.state.continuity.versions[0].text, "Player said: " + fact);
   const protectedWorld = fixture(input);
   acceptNarrationContinuity(
     protectedWorld.state,
