@@ -3,7 +3,7 @@ import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import { privateRejectedText } from "../../domain/rules/rejected-response.js";
 import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { UNWITNESSED_CONTINUITY_SUPPORT } from "../../domain/rules/continuity.js";
+import { MISSING_PRIVATE_STATE_EVIDENCE, UNWITNESSED_CONTINUITY_SUPPORT } from "../../domain/rules/continuity.js";
 import { ACTOR_MEMORY_TARGETS_ROOM } from "../../domain/rules/narration-acceptance.js";
 import { MISSING_CONTINUITY_TEXT } from "../../domain/rules/narration-contract.js";
 
@@ -12,6 +12,7 @@ const continuityChecks = new Map([
   ["continuity actor was not admitted", { code: "continuity_actor_not_admitted", path: ["for"] }],
   [ACTOR_MEMORY_TARGETS_ROOM, { code: "room_target_in_actor_memory", path: ["for"] }],
   [MISSING_CONTINUITY_TEXT, { code: "missing_continuity_text", path: ["text"] }],
+  [MISSING_PRIVATE_STATE_EVIDENCE, { code: "missing_private_state_evidence", path: ["source"] }],
 ]);
 
 function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknown[] {

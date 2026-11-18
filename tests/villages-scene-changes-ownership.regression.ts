@@ -166,6 +166,17 @@ function fixture(owner: string) {
 
 {
   const f = fixture("seed");
+  f.scene.submissions[1].acceptance.rejected = [
+    { id: "memory", reason: "Memory: private state needs its owner's evidence" },
+  ];
+  const changes = await f.service.readSceneChanges("same");
+  assert.deepEqual(changes.unresolved[0].diagnostic?.checks, [
+    { code: "missing_private_state_evidence", path: ["source"] },
+  ]);
+}
+
+{
+  const f = fixture("seed");
   assert.deepEqual(f.calls, [], "Construction is inert");
   const [first, held] = f.scene.submissions;
   held.acceptance.rejected.push({

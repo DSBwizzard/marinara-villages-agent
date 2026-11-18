@@ -4,6 +4,8 @@ export function heldSceneErrorMessage(value: unknown): string {
   const checks = sceneFailureDiagnostic(value)?.checks ?? [];
   if (checks.some(({ code }) => code === "continuity_evidence_not_witnessed"))
     return "The AI reply couldn’t show that a character witnessed the event.";
+  if (checks.some(({ code }) => code === "missing_private_state_evidence"))
+    return "The AI reply couldn’t show whose private memory it was recording.";
   if (checks.some(({ code }) => code === "room_target_in_actor_memory"))
     return "The AI reply tried to save a character’s memory to the room.";
   if (checks.some(({ code }) => code === "continuity_actor_not_admitted"))

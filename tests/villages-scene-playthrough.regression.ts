@@ -117,6 +117,25 @@ for (const rating of ["sfw", "nsfw"] as const)
       assert.equal(completions, 1, "a lost acknowledgment cannot cause duplicate generation");
       assert.equal(continuityRelationships(village(), new Date().toISOString())[0].scores[0].score, score);
 
+      const apology = "I hold out the item and offer to make things right.";
+      await send("score-with-text", apology, () => ({
+        segments: [dialogue("Thank you for offering.")],
+        keep: [
+          {
+            class: "perspective",
+            current: true,
+            owner: "mara",
+            for: ["mara"],
+            about: ["player"],
+            text: "Mara takes the offer as a first step toward putting things right.",
+            relationship: { impact: "small-positive" },
+            source: [inputEvidence(apology, "visible-action")],
+          },
+        ],
+      }));
+      assert(continuityRelationships(village(), new Date().toISOString())[0].scores[0].score > score);
+      assert(village().continuity.versions.every((row) => row.sources.every((source) => source.kind !== "self")));
+
       const denied = await api("POST", "/rooms/zone", {
         sessionId: "browser",
         zoneId: "workshop",
@@ -125,7 +144,7 @@ for (const rating of ["sfw", "nsfw"] as const)
       });
       assert(denied.statusCode >= 400, denied.body);
       assert.equal(host.scene().zoneId, "common");
-      assert.equal(completions, 1, "trying a private Zone spends no model request");
+      assert.equal(completions, 2, "trying a private Zone spends no model request");
 
       const assumedPermission = "I say, ‘Mara has already agreed to lend me the workshop key.’";
       await failAndSend(
@@ -287,7 +306,7 @@ for (const rating of ["sfw", "nsfw"] as const)
       assert.equal(host.scene().status, "closed");
       assert.equal(completions, finalCalls, "movement and conclusion are code-owned");
       const accepted = host.scene().submissions.filter((row) => row.acceptance.status === "applied").length;
-      assert.equal(accepted, 41);
+      assert.equal(accepted, 42);
       console.log(
         `${rating}: ${accepted} accepted exchanges, ${completions} mocked completions, max prompt ${promptBytes} bytes`,
       );

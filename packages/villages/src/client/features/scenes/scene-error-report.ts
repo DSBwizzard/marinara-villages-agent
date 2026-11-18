@@ -217,10 +217,10 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
       const category = sceneErrorCategory(sceneErrorCause(item.message));
       const failureCause = operation?.failureCause;
       if (failureCause && causes.has(failureCause))
-        lines.push(`${diagnostic?.checks.length ? "Operation code" : "Cause"}: ${failureCause}`);
+        lines.push(`${diagnostic && item.held ? "Operation code" : "Cause"}: ${failureCause}`);
       if (diagnostic && item.held) {
-        if (diagnostic.checks.length) lines.push("Phase: reply validation");
-        else lines.push("Validator details: unavailable");
+        lines.push("Phase: reply validation");
+        if (!diagnostic.checks.length) lines.push("Validator details: unavailable");
         for (const { code, path } of diagnostic.checks)
           lines.push(`Validator: ${code}${path.length ? " · " + path.join(".") : ""}`);
         lines.push(`Rejected effects: ${diagnostic.rejected}`);

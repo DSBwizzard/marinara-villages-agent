@@ -112,4 +112,15 @@ assert.doesNotMatch(
   report,
   /Elder Mills|private-|SECRET_AUTH_TOKEN|PRIVATE_CHAT_TEXT|Exact private dialogue|What I was trying/iu,
 );
+const heldReport = anonymousSceneErrorReport([
+  {
+    id: "held",
+    title: "Message failed",
+    message: "The game couldn’t apply the AI’s reply.",
+    held: true,
+    operation: { kind: "turn", status: "interrupted", failureCause: "missing_result" },
+    diagnostic: { rejected: 1, checks: [] },
+  },
+]);
+assert.match(heldReport, /Operation code: missing_result\nPhase: reply validation\nValidator details: unavailable/);
 console.log("Scene errors: player messages and actionable anonymous request traces passed.");

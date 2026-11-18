@@ -1330,6 +1330,14 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
     );
     assert.equal(f.state.continuity.versions.length, witnessed || roomFact ? 1 : 0, variant);
     if (witnessed) assert.equal(f.state.continuity.versions[0].relationshipScore, -10);
+    if (variant === "score-only") {
+      const changed = structuredClone(f.state.continuity);
+      const [source] = changed.versions[0].sources;
+      assert.equal(source.kind, "observation");
+      assert.equal(changed.versions[0].sources.length, 1);
+      source.perceptions = [];
+      assert.throws(() => assertContinuityRetention(changed, f.state.episodes), /lost its initial evidence/);
+    }
     if (roomFact)
       assert.equal(
         f.state.continuity.records[0].heads[continuityHolderKey(publication.readset.admission.room!)].current,
@@ -1356,10 +1364,7 @@ await runCase("narration-acceptance/romantic-interest", () => {
         text: "PRIVATE: Mara is newly interested in a date.",
         relationship: { romance: "grows" },
         independent: true,
-        source: [
-          { input: "I’ve been hoping we could go out sometime.", ground: { kind: "spoken", to: [f.id] } },
-          "self",
-        ],
+        source: [{ input: "I’ve been hoping we could go out sometime.", ground: { kind: "spoken", to: [f.id] } }],
       },
     ],
   });
