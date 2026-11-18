@@ -226,7 +226,13 @@ export function FoundingScreen({
         : beat === "village"
           ? "Map"
           : "World"
-      : undefined;
+      : setupStep === 2
+        ? "Map"
+        : setupStep === 3
+          ? "Venue"
+          : setupStep === 4
+            ? "Zone"
+            : undefined;
   const mariPose =
     prelude && !turning
       ? "looking-up"

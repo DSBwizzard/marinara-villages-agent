@@ -349,7 +349,7 @@ async function main() {
     releaseRuntime();
   }
   const client = await clientImplementation();
-  for (const step of ["Setting", "People", "Venues and Map", "Review"]) {
+  for (const step of ["Setting", "People", "Maps", "Venues", "Zones", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/maps/generate"'));

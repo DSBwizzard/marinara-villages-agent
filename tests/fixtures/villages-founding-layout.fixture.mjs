@@ -323,6 +323,17 @@ export async function verifyFoundingLayout(group) {
         const work = root.locator(".villages-forging-body");
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
+          if (!phone || !(await root.locator("dialog.villages-chapter-menu[open]").count())) {
+            const currentLayer = { 2: "Map", 3: "Venue", 4: "Zone" }[await root.getAttribute("data-step")];
+            if (currentLayer) {
+              await layer(currentLayer);
+              await expect(hierarchy).toBeInViewport({ ratio: 1 });
+              if (phone && process.env.VILLAGES_SCREENSHOT_DIR)
+                await page.screenshot({
+                  path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `hierarchy-${currentLayer}-${view.width}.png`),
+                });
+            }
+          }
           if (!phone || (await root.locator("dialog.villages-chapter-menu[open]").count())) return;
           await expect(work).toBeHidden();
           await expect(guide.getByText("Professor Mari", { exact: true })).toBeVisible();
@@ -669,14 +680,17 @@ export async function verifyFoundingLayout(group) {
         const layer = async (name) => {
           await expect(hierarchy).toHaveAccessibleName(`World, Village, Map, Venue, Zone. Current layer: ${name}`);
           await expect(hierarchy.locator("[data-active] text")).toHaveText(name);
-          await expect(hierarchy.locator("[data-active] .villages-founding-hierarchy-star path")).toHaveCSS(
-            "fill",
-            "rgb(255, 240, 195)",
+          const activeCount = name === "Venue" ? 2 : name === "Zone" ? 4 : 1;
+          assert.deepEqual(
+            await hierarchy
+              .locator("[data-active] .villages-founding-hierarchy-star path")
+              .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill)),
+            Array(activeCount).fill("rgb(255, 240, 195)"),
           );
           const inactiveStars = await hierarchy
             .locator("g:not([data-active]) > .villages-founding-hierarchy-star path")
             .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill));
-          assert.deepEqual(inactiveStars, Array(8).fill("rgb(212, 176, 199)"));
+          assert.deepEqual(inactiveStars, Array(9 - activeCount).fill("rgb(212, 176, 199)"));
           assert.deepEqual(await stage.boundingBox(), stageBounds, "The chart leaves Mari’s standing mark in place");
         };
         await layer("World");

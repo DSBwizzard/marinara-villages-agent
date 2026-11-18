@@ -1,7 +1,7 @@
 const levels = ["World", "Village", "Map", "Venue", "Zone"] as const;
 const links = ["M116 16V76", "M116 76 88 106 70 136M88 106 99 136", "M116 76 144 106 133 136M144 106 162 136"];
 
-export function FoundingHierarchy({ current }: { current: "World" | "Village" | "Map" }) {
+export function FoundingHierarchy({ current }: { current: (typeof levels)[number] }) {
   return (
     <svg
       className="villages-founding-hierarchy"
