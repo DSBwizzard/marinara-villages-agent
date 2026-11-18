@@ -69,7 +69,7 @@ await withBrowser(browser, async () => {
   await mkdir(".build-tmp/founding-sprites", { recursive: true });
   for (const viewport of [
     { width: 1366, height: 850 },
-    { width: 390, height: 844 },
+    { width: 390, height: 620 },
   ]) {
     const phone = viewport.width <= 727;
     const name = phone ? "founding/sprites/phone" : "founding/sprites/desktop";

@@ -52,6 +52,7 @@ function FoundingChapter({
   step,
   mobileScene,
   mobileTitle,
+  mobileReplies,
   onCloseMenu,
   canCloseMenu,
   guide,
@@ -61,6 +62,7 @@ function FoundingChapter({
   step: number;
   mobileScene: boolean;
   mobileTitle?: string;
+  mobileReplies: ReactNode;
   onCloseMenu(): void;
   canCloseMenu: boolean;
   guide: ReactNode;
@@ -86,6 +88,7 @@ function FoundingChapter({
             onClose={onCloseMenu}
           >
             {body}
+            <footer className="villages-founding-menu-actions">{mobileReplies}</footer>
           </FoundingDialog>
         )
       ) : (
@@ -864,6 +867,14 @@ export function FoundingScreen({
           guide={guide}
           mobileScene={mobileScene}
           mobileTitle={phone && chapterMenu ? SETUP_STEPS[setupStep] : undefined}
+          mobileReplies={
+            <>
+              <button type="button" disabled={!canCloseChapterMenu} onClick={closeChapterMenu}>
+                Back
+              </button>
+              {nextReply}
+            </>
+          }
           canCloseMenu={canCloseChapterMenu}
           onCloseMenu={closeChapterMenu}
         >
@@ -1246,14 +1257,6 @@ export function FoundingScreen({
             </div>
           ) : null}
           {settingsError ? <p role="alert">{settingsError}</p> : null}
-          {phone && chapterMenu ? (
-            <div className="villages-founding-menu-actions">
-              <button type="button" disabled={!canCloseChapterMenu} onClick={closeChapterMenu}>
-                Back
-              </button>
-              {nextReply}
-            </div>
-          ) : null}
         </FoundingChapter>
       </div>
     );

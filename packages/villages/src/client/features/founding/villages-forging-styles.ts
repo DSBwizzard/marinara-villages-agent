@@ -810,9 +810,9 @@ export const VILLAGES_FORGING_STYLES = `
   .villages-setting-guide .villages-founding-replies>button { padding:.33rem .68rem; }
   .villages-setting-guide .villages-founding-replies>button,
   .villages-forging-v2 .villages-founding-menu-actions>button { min-height:44px; }
-  .villages-founding-menu-actions {
-    display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem;
-    margin-top:.9rem; padding-top:.7rem; border-top:1px solid #ad839b62;
+  .villages-forging-v2 .villages-chapter-menu>footer.villages-founding-menu-actions {
+    justify-content:space-between; align-items:center; flex-wrap:wrap;
+    padding:.5rem .35rem 0; border-color:#ad839b62;
   }
   .villages-founding-menu-actions .villages-founding-next-reply { margin-inline-start:auto; }
   .villages-forging-v2[data-founding-keyboard=true] .villages-forging-body { margin-bottom:var(--founding-keyboard-inset) !important; }
