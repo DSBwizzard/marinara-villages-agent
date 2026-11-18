@@ -101,6 +101,7 @@ export function SpriteMovePicker({
               <label key={sprite.id}>
                 <input
                   type="checkbox"
+                  autoComplete="off"
                   checked={checked.includes(sprite.id)}
                   disabled={locked || sprite.unavailable}
                   onChange={(event) =>
