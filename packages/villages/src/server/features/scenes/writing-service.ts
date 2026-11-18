@@ -445,6 +445,7 @@ export function createSceneWriting({
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 5,
               optionalActorMemories: 5,
+              continuityEffectRecovery: true,
               stripSceneReplyDecorations: 4,
             }
           : {}),

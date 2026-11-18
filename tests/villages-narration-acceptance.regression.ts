@@ -1,4 +1,4 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/unwitnessed-relationship-and-room-target
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -1223,6 +1223,94 @@ await runCase("narration-acceptance/private-relationship-replay", () => {
     assert.equal(version.relationshipAnswer, undefined);
     assert.equal(acceptNarrationContinuity(f.state, publication, "submission", later).replayed, true);
     assert.equal(f.state.continuity.versions.length, 1);
+  }
+});
+
+await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", () => {
+  const action = "I knock the cup out of Mara’s hand.";
+  for (const variant of [
+    "standalone",
+    "required",
+    "legacy",
+    "witnessed",
+    "wrong-witness",
+    "wrong-subject",
+    "room-fact",
+    "room-required",
+  ]) {
+    const f = fixture(action);
+    f.state.villagers = [
+      { characterId: f.id, incarnation: "one", cardSnapshot: { name: "Mara" } },
+    ] as typeof f.state.villagers;
+    const roomFact = variant === "room-fact";
+    const hasImpact = !roomFact && variant !== "room-required";
+    const required = variant === "required" ? ["attitude"] : variant === "room-required" ? ["keep-0"] : [];
+    const body = {
+      segments: [
+        { kind: "narration", text: "The cup strikes the tiles." },
+        { ...f.response(required)[0], text: "Give me some space." },
+      ],
+      keep: [
+        ...(hasImpact
+          ? [
+              {
+                id: "attitude",
+                class: "perspective",
+                current: true,
+                owner: f.id,
+                for: [f.id],
+                about: variant === "wrong-subject" ? ["player", f.id] : ["player"],
+                text: "Mara trusts the player less.",
+                relationship: { impact: "turning-negative" },
+                source:
+                  variant === "witnessed" || variant === "wrong-witness"
+                    ? [
+                        {
+                          input: action,
+                          ground: { kind: "visible-action", to: [variant === "witnessed" ? f.id : "player"] },
+                        },
+                        "self",
+                      ]
+                    : [{ segment: 1 }],
+              },
+            ]
+          : []),
+        {
+          for: ["room"],
+          text: "A fallen cup is on the tiles.",
+          ...(roomFact ? {} : { class: "experience" }),
+          source: [{ segment: 1 }],
+        },
+      ],
+    };
+    const publication = f.publication(body);
+    publication.readset.ordinaryDialogue = true;
+    publication.readset.positionedSceneSources = true;
+    if (variant !== "legacy") publication.readset.continuityEffectRecovery = true;
+    const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+    assert.equal(
+      result.held,
+      ["required", "legacy", "wrong-subject", "room-required"].includes(variant),
+      variant + " " + JSON.stringify(result.rejected),
+    );
+    if (!result.held) assert.equal(result.episode?.segments[1].content, "Give me some space.");
+    assert.deepEqual(
+      result.rejected.map(({ reason }) => reason).sort(),
+      [
+        ...(variant !== "witnessed" && hasImpact ? ["Memory: unwitnessed continuity support"] : []),
+        ...(!roomFact
+          ? ["Memory: " + (variant === "legacy" ? "continuity actor was not admitted" : "actor memory targeted Room")]
+          : []),
+      ].sort(),
+      variant,
+    );
+    assert.equal(f.state.continuity.versions.length, variant === "witnessed" || roomFact ? 1 : 0, variant);
+    if (variant === "witnessed") assert.equal(f.state.continuity.versions[0].relationshipScore, -10);
+    if (roomFact)
+      assert.equal(
+        f.state.continuity.records[0].heads[continuityHolderKey(publication.readset.admission.room!)].current,
+        true,
+      );
   }
 });
 

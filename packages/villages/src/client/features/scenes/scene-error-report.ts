@@ -28,6 +28,8 @@ type SceneAction = keyof typeof actions;
 
 type RequestTrace = {
   action: SceneAction;
+  /** Client-only identity for matching a transport failure to its saved outcome. */
+  submissionId?: string;
   request?: string;
   status?: number;
   code?: string;
@@ -115,7 +117,12 @@ function requestLabel(method: string, path: string) {
     : undefined;
 }
 
-export function sceneFailure(cause: unknown, fallback: string, action: SceneAction): SceneFailure {
+export function sceneFailure(
+  cause: unknown,
+  fallback: string,
+  action: SceneAction,
+  submissionId?: string,
+): SceneFailure {
   const request = villageRequestFailure(cause);
   const api = cause instanceof VillageApiError ? cause : undefined;
   const code =
@@ -131,6 +138,7 @@ export function sceneFailure(cause: unknown, fallback: string, action: SceneActi
     message: messageFrom(cause, fallback),
     trace: {
       action,
+      submissionId,
       request: request && requestLabel(request.method, request.path),
       status: api?.status,
       code: code && codes.has(code) ? code : undefined,

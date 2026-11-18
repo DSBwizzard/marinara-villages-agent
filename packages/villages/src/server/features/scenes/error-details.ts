@@ -3,6 +3,14 @@ import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import { privateRejectedText } from "../../domain/rules/rejected-response.js";
 import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
 import { asRecord } from "../../domain/rules/coerce.js";
+import { UNWITNESSED_CONTINUITY_SUPPORT } from "../../domain/rules/continuity.js";
+import { ACTOR_MEMORY_TARGETS_ROOM } from "../../domain/rules/narration-acceptance.js";
+
+const continuityChecks = new Map([
+  [UNWITNESSED_CONTINUITY_SUPPORT, { code: "continuity_evidence_not_witnessed", path: ["source"] }],
+  ["continuity actor was not admitted", { code: "continuity_actor_not_admitted", path: ["for"] }],
+  [ACTOR_MEMORY_TARGETS_ROOM, { code: "room_target_in_actor_memory", path: ["for"] }],
+]);
 
 function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknown[] {
   if (!Array.isArray(value)) return [];
@@ -20,6 +28,8 @@ function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknow
 
 function rejectionChecks(reason: string): unknown[] {
   if (typeof reason !== "string" || reason.length > 2000) return [];
+  const continuityCheck = continuityChecks.get(reason.replace(/^(?:Error:\s*)?(?:Memory:\s*)?/u, ""));
+  if (continuityCheck) return [continuityCheck];
   if (reason.startsWith("Tentative movement routing failed:")) return [{ code: "invalid_movement_route", path: [] }];
   if (reason === "The required effect is missing.") return [{ code: "missing_required_effect", path: [] }];
   if (/^Required effect .+ did not validate\.$/u.test(reason)) return [{ code: "invalid_effect_dependency", path: [] }];

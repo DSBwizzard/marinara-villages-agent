@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import AdmZip from "adm-zip";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { abort, chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
 const archive = new AdmZip(receipt.retainedArchivePath);
@@ -53,11 +53,41 @@ await withBrowser({ close: server.stop }, async () => {
     );
     const turns = [];
     let rejectFirstReply;
+    let dropHeldResponse = false;
     const complete = server.model.chatComplete;
     server.model.chatComplete = (...args) => {
       if (!rejectFirstReply) return complete(...args);
       const rejected = rejectFirstReply;
       rejectFirstReply = undefined;
+      if (rejected === "continuity")
+        return {
+          finishReason: "stop",
+          content: JSON.stringify({
+            segments: [
+              { kind: "narration", text: "Private narration from the witness fixture." },
+              {
+                kind: "dialogue",
+                speakerId: "mara",
+                text: "Private fixture dialogue.",
+                requires: ["private-attitude-id"],
+              },
+            ],
+            keep: [
+              {
+                id: "private-attitude-id",
+                class: "perspective",
+                current: true,
+                for: ["mara"],
+                owner: "mara",
+                about: ["player"],
+                text: "Private relationship note.",
+                relationship: { impact: "turning-negative" },
+                source: [{ segment: 1 }],
+              },
+              { for: ["room"], class: "experience", text: "Private room note.", source: [{ segment: 1 }] },
+            ],
+          }),
+        };
       return {
         finishReason: "stop",
         content: JSON.stringify({
@@ -95,7 +125,14 @@ await withBrowser({ close: server.stop }, async () => {
         headers: request.headers(),
         ...(payload ? { payload } : {}),
       });
-      if (url.pathname.endsWith("/rooms/turn")) turns.push({ input: request.postDataJSON(), response });
+      if (url.pathname.endsWith("/rooms/turn")) {
+        turns.push({ input: request.postDataJSON(), response });
+        if (dropHeldResponse) {
+          dropHeldResponse = false;
+          assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "held", response.body);
+          return abort(route);
+        }
+      }
       if (response.statusCode !== 200)
         assert(
           (url.pathname.endsWith("/rooms/turn") &&
@@ -219,6 +256,27 @@ await withBrowser({ close: server.stop }, async () => {
     assert.doesNotMatch(report, /Private story text|The Mill|Mara|Original error|Scene ID/);
     await expect(composer).toHaveValue(oversized);
     assert.equal(server.calls(), 3, "the repeatable error occurs before buying another reply");
+    await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
+    await composer.fill("I knock the cup to the floor.");
+    rejectFirstReply = "continuity";
+    dropHeldResponse = true;
+    await send.click();
+    await expect(composer).toHaveValue("I knock the cup to the floor.");
+    await expect(send).toBeEnabled();
+    const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
+    await expect(chip).toHaveAccessibleName("1 Scene error");
+    await chip.click();
+    await expect(page.getByText("The AI reply couldn’t show that a character witnessed the event.")).toBeVisible();
+    await expect(page.getByText("The game couldn’t reach the server.")).toHaveCount(0);
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(page.getByText("Anonymous report copied.")).toBeVisible();
+    const heldReport = await page.evaluate(() => window.sceneReport);
+    assert.match(heldReport, /Result: No HTTP response · NETWORK_ERROR/);
+    assert.match(heldReport, /continuity_evidence_not_witnessed · source/);
+    assert.match(heldReport, /room_target_in_actor_memory · for/);
+    assert.match(heldReport, /Saved request: reply held/);
+    assert(!heldReport.includes(turns.at(-1).input.submissionId));
+    assert.doesNotMatch(heldReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");

@@ -73,6 +73,7 @@ const report = anonymousSceneErrorReport(
       message: "The reply used an invalid narrated sound. Exact private dialogue is here.",
       trace: {
         action: "move",
+        submissionId: "private-submission-id",
         request: "POST /api/villages/rooms/zone",
         status: 409,
         code: "SCENE_STALE",

@@ -103,6 +103,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     openVenue,
     snapshot,
   } = controller;
+  const sameFailedTurn =
+    room?.operation?.kind === "turn" &&
+    roomErrorTrace?.submissionId === room.operation.id &&
+    (room.operation.status === "interrupted" || (room.operation.status === "complete" && !!room.operation.error));
 
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
@@ -115,9 +119,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               {
                 id: "operation",
                 trace:
-                  roomErrorTrace &&
-                  room.operation?.error &&
-                  sceneErrorCause(roomError) === sceneErrorCause(room.operation.error)
+                  sameFailedTurn ||
+                  (roomErrorTrace &&
+                    room.operation?.error &&
+                    sceneErrorCause(roomError) === sceneErrorCause(room.operation.error))
                     ? roomErrorTrace
                     : undefined,
                 title:
@@ -150,7 +155,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 id: "room",
                 trace: roomErrorTrace,
                 title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
-                message: roomError,
+                message: sameFailedTurn ? "" : roomError,
               },
               {
                 id: "greeting",

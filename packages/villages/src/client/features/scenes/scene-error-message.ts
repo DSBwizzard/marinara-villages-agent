@@ -1,7 +1,14 @@
 import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
 export function heldSceneErrorMessage(value: unknown): string {
-  const check = sceneFailureDiagnostic(value)?.checks[0];
+  const checks = sceneFailureDiagnostic(value)?.checks ?? [];
+  if (checks.some(({ code }) => code === "continuity_evidence_not_witnessed"))
+    return "The AI reply couldn’t show that a character witnessed the event.";
+  if (checks.some(({ code }) => code === "room_target_in_actor_memory"))
+    return "The AI reply tried to save a character’s memory to the room.";
+  if (checks.some(({ code }) => code === "continuity_actor_not_admitted"))
+    return "The AI reply tried to update a character outside the Scene.";
+  const [check] = checks;
   if (!check) return "The game couldn’t apply the AI’s reply.";
   if (check.code === "invalid_format" && check.path.at(-1) === "segment")
     return "The AI reply contained an invalid Scene reference (invalid_format).";

@@ -697,7 +697,7 @@ export function useSendRoom(ports: {
         if (recovered) {
           const acceptedText = sceneSubmissionText(operation, submissionId);
           if (sharedIdentity && !rejectedInput && acceptedText === undefined) {
-            const failure = sceneFailure(cause, "The reply connection was interrupted.", "send");
+            const failure = sceneFailure(cause, "The reply connection was interrupted.", "send", submissionId);
             setRoom(currentRoom(recovered));
             beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
             return;
@@ -765,14 +765,21 @@ export function useSendRoom(ports: {
             ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "") ||
             keptUnconfirmedId);
         if (stillUncertain) {
-          const failure = sceneFailure(cause, "The reply connection was interrupted.", "send");
+          const failure = sceneFailure(cause, "The reply connection was interrupted.", "send", submissionId);
           beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
           setRoomError("");
         } else {
           finish();
           if (!composerEditVersionRef || composerEditVersionRef.current === editVersion)
             setRoomDraft((current) => current || text);
-          setRoomError(sceneFailure(cause, "That line could not be sent.", "send"));
+          setRoomError(
+            sceneFailure(
+              cause,
+              "That line could not be sent.",
+              "send",
+              confirmedFailure && !rejectedInput ? submissionId : undefined,
+            ),
+          );
         }
       } finally {
         if (lifetime.finish(claim)) setRoomBusy(false);
@@ -810,7 +817,7 @@ export function useSendRoom(ports: {
       beginRecovery,
     ],
   );
-  const trace = uncertain?.trace;
+  const trace = uncertain && { action: "send" as const, ...uncertain.trace, submissionId: uncertain.submissionId };
   return {
     sendRoom,
     turnRecovery: recovery.status && trace ? { message: recovery.status, trace } : recovery.status,

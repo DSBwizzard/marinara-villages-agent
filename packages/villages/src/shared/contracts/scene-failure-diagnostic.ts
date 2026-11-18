@@ -11,11 +11,15 @@ const validationCodes = new Set([
   "invalid_effect_dependency",
   "unwitnessed_requested_memory",
   "invalid_movement_route",
+  "continuity_evidence_not_witnessed",
+  "continuity_actor_not_admitted",
+  "room_target_in_actor_memory",
 ]);
 const schemaFields = new Set([
   "segment",
   "segments",
   "source",
+  "for",
   "keep",
   "commands",
   "at",

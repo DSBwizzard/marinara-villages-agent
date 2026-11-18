@@ -424,12 +424,16 @@ export function RoomPanel({
       message: error,
       actions: openingActions,
     });
-  if (turnRecovery)
+  const recoveryTrace = typeof turnRecovery === "string" ? undefined : turnRecovery?.trace;
+  const heldRecoveryId = unresolvedChanges?.find(
+    (change) => change.status === "held" && change.submissionId === recoveryTrace?.submissionId,
+  )?.submissionId;
+  if (turnRecovery && !heldRecoveryId)
     errorItems.push({
       id: "reply-recovery",
       title: "Reply connection interrupted",
       message: typeof turnRecovery === "string" ? turnRecovery : turnRecovery.message,
-      trace: typeof turnRecovery === "string" ? undefined : turnRecovery.trace,
+      trace: recoveryTrace,
       actions: (
         <button type="button" onClick={onCheckSavedReply}>
           Check saved reply
@@ -461,10 +465,12 @@ export function RoomPanel({
     });
   for (const change of unresolvedChanges ?? []) {
     if (change.status === "pending") continue;
+    const trace = change.submissionId === heldRecoveryId ? recoveryTrace : undefined;
     const operation = change.submissionId === room.operation?.id && errorItems.find((item) => item.id === "operation");
     if (operation) {
       operation.held = true;
       operation.diagnostic = change.diagnostic;
+      operation.trace ??= trace;
       continue;
     }
     errorItems.push({
@@ -473,6 +479,7 @@ export function RoomPanel({
       message: change.reason ?? "The saved reply could not be applied.",
       held: true,
       diagnostic: change.diagnostic,
+      trace,
     });
   }
 

@@ -190,6 +190,7 @@ function perceived(source: ContinuityEvidence, actorId: string) {
   if (source.kind === "native") return source.perceptions.some((row) => row.actorId === actorId);
   return source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId);
 }
+export const UNWITNESSED_CONTINUITY_SUPPORT = "unwitnessed continuity support";
 function heardWords(source: ContinuityEvidence, actorId: string) {
   return (
     (source.kind === "speech" || source.kind === "written") &&
@@ -460,7 +461,7 @@ export function applyContinuityWrite(
               (actor) => actor.id === holder.id && actor.incarnation === holder.incarnation,
             ),
         ),
-        "unwitnessed continuity support",
+        UNWITNESSED_CONTINUITY_SUPPORT,
       );
     } else
       memoryRequire(
