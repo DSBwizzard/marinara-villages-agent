@@ -774,12 +774,12 @@ export const VILLAGES_FORGING_STYLES = `
   .villages-setting-fields-dialog .villages-founding-field { margin:.4rem 0; }
   .villages-setting-fields-dialog .villages-founding-field-heading label>small { margin-inline-start:.45em; }
   .villages-forging-v2[data-step] {
-    --mari-floor:min(65cqh,max(33cqh,13rem));
+    --mari-floor:min(33cqh,max(29cqh,11.5rem));
     --founding-mobile-stage-height:calc(100cqh - var(--mari-floor));
-    --mari-x:67cqw;
-    --mari-height:min(57cqh,92cqw,24rem,max(0px,calc(var(--founding-mobile-stage-height) - 3.75rem)));
-    /* Keep the terrace under the standing mark, including when text uses more of the pane. */
-    --founding-mobile-backdrop-size:auto max(152%,58.5rem,63vw);
+    --mari-x:69cqw;
+    --mari-height:min(65cqh,107cqw,28rem,max(0px,calc(var(--founding-mobile-stage-height) - 2.75rem)));
+    /* The standing mark is on the paving, 21% from the bottom in both terrace paintings. */
+    --founding-mobile-backdrop-size:auto max(100%,63cqw,calc(var(--mari-floor) / .21));
     --founding-night-wash:linear-gradient(100deg,#271c350c,#271c3535 65%,#271c3580);
     background-position:center,left bottom;
     background-size:auto,var(--founding-mobile-backdrop-size);
@@ -788,10 +788,14 @@ export const VILLAGES_FORGING_STYLES = `
     background-position:center,center,left bottom;
     background-size:auto,auto,var(--founding-mobile-backdrop-size);
   }
+  .villages-setting-stage::before {
+    inset-block-end:-.3rem; width:100%; height:.9rem;
+    background:radial-gradient(ellipse,#231829b8,transparent 70%);
+  }
   .villages-forging-steps { position:absolute; inset:.65rem auto auto 50%; translate:-50% 0; margin:0; }
   .villages-founding-chapter>.villages-chapter-guide { margin:0 .65rem .65rem; }
   .villages-forging-v2 .villages-forging-body>.villages-place-panels {
-    display:block; height:100%; padding:calc(var(--founding-mobile-stage-height) + .6rem) .7rem .75rem;
+    display:block; height:100%; padding:calc(var(--founding-mobile-stage-height) + .35rem) .7rem .75rem;
   }
   .villages-founding-hierarchy {
     --chart-limit:min(13rem,calc(var(--founding-mobile-stage-height) * .9));
@@ -803,9 +807,9 @@ export const VILLAGES_FORGING_STYLES = `
     translate:0 50%; padding:0;
   }
   .villages-founding-logo { font-size:min(15cqi,2.75rem); }
-  .villages-setting-guide .villages-setting-dialogue { padding:.65rem .75rem; font-size:.91rem; backdrop-filter:blur(12px); }
+  .villages-setting-guide .villages-setting-dialogue { padding:.5rem .75rem; font-size:.91rem; backdrop-filter:blur(12px); }
   .villages-setting-guide .villages-setting-dialogue>strong { font-size:.82rem; }
-  .villages-forging-v2 .villages-setting-guide .villages-setting-dialogue>p { line-height:1.36; margin:.24rem 0 .42rem; }
+  .villages-forging-v2 .villages-setting-guide .villages-setting-dialogue>p { line-height:1.36; margin:.15rem 0 .3rem; }
   .villages-setting-guide .villages-founding-replies { margin-top:.18rem; }
   .villages-setting-guide .villages-founding-replies>button { padding:.33rem .68rem; }
   .villages-setting-guide .villages-founding-replies>button,

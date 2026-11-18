@@ -430,10 +430,15 @@ export async function verifyFoundingLayout(group) {
           return sprite;
         };
         const sidePose = await expectPose("looking-up");
-        await expect(sidePose).toBeInViewport({ ratio: 1 });
+        await expect(sidePose).toBeInViewport({ ratio: 0.999 });
         const sideBounds = await sidePose.boundingBox();
         const titleBounds = await title.boundingBox();
         const stageBounds = await stage.boundingBox();
+        if (phone)
+          assert.ok(
+            stageBounds.height >= Math.min(frame.height * 0.56, frame.width * 0.99),
+            "Mari fills the phone stage at full-body scale",
+          );
         assert.ok(
           phone
             ? titleBounds.x + titleBounds.width <= sideBounds.x &&

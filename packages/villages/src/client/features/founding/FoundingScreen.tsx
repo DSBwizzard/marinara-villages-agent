@@ -731,8 +731,8 @@ export function FoundingScreen({
             [
               "",
               "Now for the neighbors. Choose who you’ll play, then who already lives here and how they’ll look in Scenes. I’ve retired from the casting committee.",
-              "Let’s give everyone somewhere to go. A Venue is a place on the Map, and its Zones are the spots inside. Decide who can visit, where people get privacy, and where they sleep. Yes, the couch counts.",
-              "One last look. Check the Map and everyone’s sleeping spot. If you want something happening when you arrive, add it under First day. A quiet morning is a perfectly good plan.",
+              "A Venue is a place on the Map, and Zones are the spots inside. Set access, privacy, and beds. Yes, the couch counts.",
+              "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
             ][setupStep]!
           }
         </FoundingGuide>
