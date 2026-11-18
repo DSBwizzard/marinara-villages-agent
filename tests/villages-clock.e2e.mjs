@@ -131,6 +131,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);
       await expect(scene).toHaveAttribute("data-lighting", "day");
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      if (width === 390) await expect(scene).toHaveCSS("background-position", /, 0% 100%$/);
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
       const next = mari.getByRole("button", { name: "Next", exact: true });
       for (let line = 0; line < 3; line++) await next.click();
@@ -141,6 +142,7 @@ await withBrowser(browser, async () => {
       await page.clock.fastForward(3000);
       await expect(scene).toHaveAttribute("data-lighting", "night");
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook\.webp/);
+      if (width === 390) await expect(scene).toHaveCSS("background-position", /, 0% 100%$/);
       await expect(world).toHaveValue("A string of settlements along the coast");
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-night-" + width + ".png" });
       holdSnapshot = true;

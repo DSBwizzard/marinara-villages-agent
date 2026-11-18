@@ -326,18 +326,18 @@ export function FoundingVillagerPicker({
       {open ? (
         <FoundingDialog
           title="Choose founding villagers"
+          className="villages-founding-roster-dialog"
+          scrollBody
           onClose={() => setOpen(false)}
-          headerContent={
-            <input
-              autoComplete="off"
-              type="search"
-              aria-label="Search character cards by name"
-              placeholder="Search character cards..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          }
         >
+          <input
+            autoComplete="off"
+            type="search"
+            aria-label="Search character cards by name"
+            placeholder="Search character cards..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
           <div className="villages-people-choices" role="group" aria-label="Choose founding villagers">
             {choices.map((person) => (
               <FoundingIdentityRow
@@ -350,13 +350,7 @@ export function FoundingVillagerPicker({
                 disabled={disabled || (!selectedIds.includes(person.id) && selectedIds.length >= 3)}
                 action={selectedIds.includes(person.id) ? "✓" : "Add"}
                 actionButton
-                onClick={() => {
-                  if (selectedIds.includes(person.id)) toggle(person.id);
-                  else {
-                    setOpen(false);
-                    toggle(person.id);
-                  }
-                }}
+                onClick={() => toggle(person.id)}
               />
             ))}
             {!choices.length ? <p>No character cards match your search.</p> : null}

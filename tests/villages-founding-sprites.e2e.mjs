@@ -15,6 +15,14 @@ const people = [
   { id: "aqua", name: "Aqua", summary: "A coastal resident" },
   { id: "mari", name: "Professor Mari", summary: "A patient teacher" },
 ];
+const catalog = [
+  ...people,
+  ...Array.from({ length: 24 }, (_, index) => ({
+    id: "card-" + index,
+    name: "Card " + (index + 1),
+    summary: "Another coastal resident",
+  })),
+];
 const snapshot = {
   status: "ready",
   isFounded: false,
@@ -168,7 +176,7 @@ await withBrowser(browser, async () => {
           return send({ persona: { id: "driver", name: "You", description: "A visitor", identity: "A visitor" } });
         if (path.endsWith("/connections"))
           return send({ systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" });
-        if (path.endsWith("/catalog")) return send({ characters: people });
+        if (path.endsWith("/catalog")) return send({ characters: catalog });
         if (path.endsWith("/lorebooks")) return send({ books: [] });
         if (path.endsWith("/image-style-profiles")) return send({ defaultProfileId: "", profiles: [] });
         return send(snapshot);
@@ -202,10 +210,23 @@ await withBrowser(browser, async () => {
       if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
-        await page
-          .getByRole("dialog", { name: "Choose founding villagers", exact: true })
-          .getByRole("button", { name: person.name + " · Add", exact: true })
-          .click();
+        const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
+        await expect(picker.getByRole("button", { name: "Close Choose founding villagers" })).toBeFocused();
+        const add = picker.getByRole("button", { name: person.name + " · Add", exact: true });
+        if (person.id === "mari") {
+          const results = picker.getByRole("group", { name: "Choose founding villagers", exact: true });
+          await expect(add).not.toBeInViewport();
+          await results.hover();
+          await page.mouse.wheel(0, 4000);
+          await expect(add).toBeInViewport();
+          await page.evaluate(() => window.visualViewport.dispatchEvent(new Event("scroll")));
+          await expect(picker.getByRole("searchbox")).toBeInViewport({ ratio: 0.99 });
+          await expect(picker.getByRole("button", { name: "Done" })).toBeInViewport({ ratio: 0.99 });
+          await expect(add).toBeInViewport({ ratio: 0.99 });
+        }
+        await add.click();
+        await expect(picker).toBeHidden();
+        await expect(root.getByRole("button", { name: person.name, exact: true })).toBeVisible();
       }
       const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
       const frontPreview = pane.getByRole("img", { name: "Front preview", exact: true });

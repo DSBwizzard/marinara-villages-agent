@@ -536,7 +536,9 @@ export const VILLAGES_FORGING_STYLES = `
 /* Founding overlays belong to the capability pane, never the Engine window. */
 .villages-founding-overlay { position:absolute; inset:0; z-index:100; display:grid; grid-template:minmax(0,1fr) / minmax(0,1fr); place-items:center; padding:1rem; overflow:hidden; background:#090c1a99; }
 .villages-forging-v2 .villages-founding-overlay>dialog { position:relative; inset:auto; margin:0; width:min(42rem,100%); height:auto; max-width:100%; max-height:100%; }
-.villages-forging-v2 .villages-founding-overlay>dialog:not(.villages-quick-dialog) { overflow:auto; }
+.villages-forging-v2 .villages-founding-overlay>dialog:not(.villages-quick-dialog,.villages-founding-roster-dialog) { overflow:auto; }
+.villages-founding-roster-dialog>input { flex:none; }
+.villages-founding-roster-dialog>.villages-people-choices { min-height:0; overflow:auto; overscroll-behavior:contain; }
 .villages-forging-v2 .villages-founding-overlay>dialog[data-compact=true] { width:min(26rem,100%); max-height:100%; }
 .villages-forging-v2 .villages-founding-overlay>dialog.villages-quick-dialog { width:min(92rem,100%); height:min(48rem,100%); }
 @media(max-width:1000px) { .villages-founding-overlay { padding:0; } .villages-forging-v2 .villages-founding-overlay>dialog.villages-quick-dialog { width:100%; height:100%; } }
@@ -546,8 +548,9 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 button[aria-pressed=true] { background-color:#83576b; border-color:#d29399; }
 .villages-forging-v2 .villages-forging-primary { color:#292938; background:#a5ac8b; border-color:#a5ac8b; }
 .villages-forging-v2[data-step] {
+  --founding-night-wash:linear-gradient(100deg,#271c3530,#271c35a8 58%,#271c35ea);
   gap:0;
-  background:linear-gradient(100deg,#271c3530,#271c35a8 58%,#271c35ea),url('/api/capability-packages/villages/assets/mari-founding-overlook.webp') center 62% / cover no-repeat #302d47;
+  background:var(--founding-night-wash),url('/api/capability-packages/villages/assets/mari-founding-overlook.webp') center 62% / cover no-repeat #302d47;
 }
 .villages-forging-v2[data-lighting=day] {
   background:linear-gradient(180deg,#23364b9c,transparent 7rem),linear-gradient(100deg,#23364b14,#23364b55),url('/api/capability-packages/villages/assets/mari-founding-overlook-day.webp') center 62% / cover no-repeat #526b82;
@@ -773,15 +776,16 @@ export const VILLAGES_FORGING_STYLES = `
   .villages-forging-v2[data-step] {
     --mari-floor:min(65cqh,max(33cqh,13rem));
     --founding-mobile-stage-height:calc(100cqh - var(--mari-floor));
-    --mari-x:71cqw;
+    --mari-x:67cqw;
     --mari-height:min(57cqh,92cqw,24rem,max(0px,calc(var(--founding-mobile-stage-height) - 3.75rem)));
     /* Keep the terrace under the standing mark, including when text uses more of the pane. */
     --founding-mobile-backdrop-size:auto max(152%,58.5rem,63vw);
-    background-position:center,center bottom;
+    --founding-night-wash:linear-gradient(100deg,#271c350c,#271c3535 65%,#271c3580);
+    background-position:center,left bottom;
     background-size:auto,var(--founding-mobile-backdrop-size);
   }
   .villages-forging-v2[data-step][data-lighting=day] {
-    background-position:center,center,center bottom;
+    background-position:center,center,left bottom;
     background-size:auto,auto,var(--founding-mobile-backdrop-size);
   }
   .villages-forging-steps { position:absolute; inset:.65rem auto auto 50%; translate:-50% 0; margin:0; }
