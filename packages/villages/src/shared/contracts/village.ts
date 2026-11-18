@@ -685,12 +685,16 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  failureCause?: string;
+  acceptance?: "pending" | "held" | "applied" | "abandoned";
   committed?: boolean;
   replyReady?: boolean;
   /** The Scene has ended and its completed transcript is no longer retained. */
   terminal?: boolean;
   recordEvents?: RoomRecordEvent[];
   recoverable?: boolean;
+  /** Player input from an exact, published turn whose operation has since changed. */
+  submittedMessage?: string;
   id: string;
   kind: string;
   attemptId: string;
@@ -712,6 +716,7 @@ export type SceneChangeIssue = {
   status: "pending" | "held";
   at?: string;
   reason?: string;
+  diagnostic?: import("./scene-failure-diagnostic.js").SceneFailureDiagnostic;
 };
 
 export type SceneView = {

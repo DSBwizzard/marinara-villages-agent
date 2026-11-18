@@ -7,9 +7,7 @@ import {
 import { createVillagesClientId } from "../packages/villages/src/client/shared/request-id.js";
 
 const ui = clientImplementation();
-const sendButton = ui.match(
-  /className=\{`\$\{ELEMENT_TAG\}-chat-send`\}[\s\S]*?aria-label=\{busy \? "Sending" : "Send"\}/u,
-)?.[0];
+const sendButton = ui.match(/className=\{`\$\{ELEMENT_TAG\}-chat-send`\}[\s\S]*?aria-label=\{sendLabel\}/u)?.[0];
 assert.ok(sendButton, "the room has a native Send button");
 assert.match(sendButton, /onClick=\{submitComposer\}/u, "one click handler sends the room line");
 assert.doesNotMatch(sendButton, /onPointerDown|onTouchStart|onTouchEnd/u, "Send has no competing touch handlers");
@@ -31,6 +29,12 @@ const saved = {
   input: { message: "Hello", mode: "chat", targetId: "" },
 };
 assert.deepEqual(sceneResend(saved, saved.input, "new"), { submissionId: "original", retryOfAttemptId: "attempt" });
+for (const acceptance of ["held", "abandoned"])
+  assert.deepEqual(sceneResend({ ...saved, acceptance }, saved.input, "new"), {
+    submissionId: "new",
+    retryOfAttemptId: "attempt",
+    replaceOfOperationId: "original",
+  });
 assert.deepEqual(sceneResend(saved, { ...saved.input, message: "Hello again" }, "new"), {
   submissionId: "new",
   retryOfAttemptId: "attempt",
@@ -62,6 +66,7 @@ assert.throws(
   /Recover the saved request/,
 );
 assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
+assert.deepEqual(sceneResend({ ...saved, kind: "retry", input: {} }, saved.input, "new"), { submissionId: "new" });
 for (const mode of ["chat", "contact", "leave"])
   assert.deepEqual(sceneResend(saved, { message: "Edited", mode, targetId: "new-target" }, "new"), {
     submissionId: "new",

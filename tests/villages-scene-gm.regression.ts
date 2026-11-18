@@ -63,7 +63,7 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
       : "  *I privately think about the silver key.* I ask, “Tea?”\n  🪑  ";
     host.model.chatComplete = async (messages: any[]) => {
       calls++;
-      assert.equal(messages.at(-1).content, calls === 1 ? message : "Why?");
+      assert.equal(messages.at(-2).content, calls === 1 ? message : "Why?");
       const prompt = messages.map((row) => row.content).join("\n");
       assert.equal(prompt.includes("Scoped native access authority"), invited);
       assert.doesNotMatch(prompt, /Access commands use supplied venue and zone IDs/u);

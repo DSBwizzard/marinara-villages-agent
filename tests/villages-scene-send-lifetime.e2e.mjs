@@ -32,7 +32,7 @@ function Harness(){
  useEffect(()=>setRoom(scene('A')),[]);
  window.h={send:()=>{const promise=send();(window.promises??=[]).push(promise);return promise},setRoom,setDraft:value=>{editVersion.current++;submission.current=null;setDraft(value)},setBusy,setSnapshot,scene,inFlight,submission,completion,
  select:(id='B',newOwner=false)=>{setRoom(scene(id));setDraft(id+' draft');if(newOwner){setBusy(true);inFlight.current=true;submission.current=id+' submission';completion.current={roomId:id,submissionId:id+' submission'}}}};
- return <pre id='state'>{JSON.stringify({id:room?.id,revision:room?.sceneRevision,draft,busy,error,screen,founded:snapshot?.isFounded,ended})}</pre>;
+ return <pre id='state'>{JSON.stringify({id:room?.id,revision:room?.sceneRevision,operation:room?.operation,draft,busy,error,screen,founded:snapshot?.isFounded,ended})}</pre>;
 }
 const root=createRoot(document.getElementById('root'));window.loads=0;window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
 `,
@@ -185,7 +185,7 @@ async function mount({
     return index;
   };
   const settle = (index) => page.evaluate((index) => window.promises[index], index);
-  const release = async (id = "A", status = 200) => {
+  const release = async (id = "A", status = 200, operation) => {
     const at = held.findIndex((item) => item.id === id);
     assert(at >= 0);
     const item = held.splice(at, 1)[0],
@@ -200,7 +200,7 @@ async function mount({
             ? { session: archive ? null : saved }
             : item.kind === "archive"
               ? { visit: missingClosed ? { ...saved, status: "closed" } : saved }
-              : {};
+              : { operation };
     await fulfill(item.route, { status, contentType: "application/json", body: encode(body) });
   };
   return {
@@ -300,6 +300,41 @@ await withBrowser(browser, async () => {
           assert.deepEqual(f.errors, []);
         } finally {
           await f.page.close();
+        }
+      }
+      for (const revision of [0, 17]) {
+        const refreshed = await mount({ width, strict, hold: "operation" });
+        try {
+          const pending = await refreshed.send();
+          await expect.poll(() => refreshed.held.length).toBe(1);
+          await refreshed.page.evaluate(
+            (revision) =>
+              window.h.setRoom({
+                ...window.h.scene("A"),
+                sceneRevision: revision,
+                operation: { id: "newer", kind: "turn", attemptId: "newer-attempt", status: "complete" },
+              }),
+            revision,
+          );
+          await expect(refreshed.page.locator("#state")).toContainText('"id":"newer"');
+          await refreshed.release("A", 200, {
+            id: "older",
+            kind: "turn",
+            attemptId: "older-attempt",
+            status: "running",
+            input: { message: "Other tab message", mode: "chat", targetId: "" },
+          });
+          await refreshed.settle(pending);
+          const state = await refreshed.state();
+          assert.equal(state.revision, revision);
+          assert.equal(state.operation.id, "newer", "a delayed preflight cannot replace refreshed authority");
+          assert.equal(state.operation.status, "complete");
+          assert.equal(state.draft, "A draft");
+          assert.equal(state.busy, false);
+          assert.equal(refreshed.requests.filter((row) => row.path.endsWith("/turn")).length, 0);
+          assert.deepEqual(refreshed.errors, []);
+        } finally {
+          await refreshed.page.close();
         }
       }
       const callback = await mount({ width, strict, hold: "unused" });
@@ -417,7 +452,7 @@ await withBrowser(browser, async () => {
           assert.equal((await learned.state()).revision, 10, "recovery retains its highest observed Scene revision");
           assert.equal((await learned.state()).busy, false);
           assert.equal((await learned.refs()).flight, false);
-          assert.equal((await learned.state()).draft, learnedRecovery === "recovered-older" ? "" : "A draft");
+          assert.equal((await learned.state()).draft, "", "an unconfirmed outcome keeps the sent text in recovery");
           assert.equal(learned.requests.filter((row) => row.path.endsWith("/turn")).length, 1);
           assert.deepEqual(learned.errors, []);
         } finally {

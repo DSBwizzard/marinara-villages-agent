@@ -371,6 +371,7 @@ for (const count of [1000, 10_000, 25_000]) {
         committed: true,
         replyReady: true,
         acceptance: "applied",
+        submittedMessage: turn(count - 1).message,
       },
       "A later close operation cannot hide a saved turn outside the visible playback window",
     );
@@ -407,6 +408,7 @@ for (const count of [1000, 10_000, 25_000]) {
         committed: true,
         replyReady: true,
         acceptance: "applied",
+        submittedMessage: turn(count - 1).message,
       });
       assert.deepEqual(
         await coordinator.readVenueOperation(sceneId, "turn:0"),
@@ -417,6 +419,7 @@ for (const count of [1000, 10_000, 25_000]) {
           committed: true,
           replyReady: true,
           acceptance: "applied",
+          submittedMessage: turn(0).message,
         },
         "Explicit recovery of an older turn retains the complete evidence lookup",
       );

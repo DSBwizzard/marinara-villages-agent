@@ -165,9 +165,9 @@ export async function prepareScenePrompt(
   }
   if (mode === "chat")
     assert.deepEqual(
-      result.fitted.messages.at(-1),
+      result.fitted.messages.at(-2),
       { role: "user", content: message },
-      "the actual submitted player line remains a separate final user message",
+      "the exact submitted player line remains separate from the game’s reply reminder",
     );
   return { ...result, prompt };
 }

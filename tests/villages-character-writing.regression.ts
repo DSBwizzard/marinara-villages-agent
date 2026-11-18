@@ -93,7 +93,7 @@ assert.deepEqual(
   prefix(prepared),
   "Changing the source and time preserves the cacheable authored prefix",
 );
-assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+assert.deepEqual(next.fitted.messages.at(-2), { role: "user", content: "A different question?" });
 for (const tail of [
   "PLAYER IDENTITY TAIL",
   "PLAYER BACKGROUND TAIL",
@@ -126,6 +126,23 @@ assert.match(prepared.prompt, /Address the player as "you"/);
 assert.match(prepared.prompt, /Portray authored residents using what they know/);
 assert.match(prepared.prompt, /Residents can initiate within evidence and permissions/);
 assert.doesNotMatch(prepared.prompt, /UNRELATED SECRET FROM AN ABSENT RESIDENT|SCRIPTED TELL SECRET/);
+assert.match(prepared.prompt, /SFW: Mature themes, romance, and conflict can play out/);
+assert.match(prepared.prompt, /Keep violence non-graphic and leave explicit intimacy off-page/);
+assert.doesNotMatch(prepared.prompt, /NSFW: Explicit adult intimacy/);
+for (const mode of ["chat", "greet"] as const) {
+  const withRating = await prepareScenePrompt(
+    { ...state, narrationStyle: { ...state.narrationStyle, rating: "nsfw" } },
+    card,
+    mode,
+    "Is anyone here?",
+    scene,
+  );
+  assert.match(withRating.prompt, /NSFW: Explicit adult intimacy and graphic violence are permitted/);
+  assert.doesNotMatch(withRating.prompt, /SFW: Mature themes/);
+  assert.match(withRating.prompt, /mutual interest develop through words and actions/);
+  assert.match(withRating.prompt, /portray the conflict and its consequences within the rating/);
+  assert.doesNotMatch(withRating.prompt, /as binding on advances/);
+}
 assert(
   prepared.readset.admission.supplied.some((row) => row.id === wishId),
   "The purchased request can use only the fitted current desire",
@@ -211,7 +228,7 @@ state.playerBackground = "Neighbors know me through harbor projects.";
 const outside = await prepareScenePrompt(state, card, "greet", "", scene);
 assert.equal(scenePromptPacket(outside.prompt, "location").location.player.zone.id, "exterior");
 assert.match(outside.prompt, /Neighbors know me through harbor projects/);
-assert.deepEqual(outside.fitted.messages.at(-1), { role: "user", content: "" });
+assert.deepEqual(outside.fitted.messages.at(-2), { role: "user", content: "" });
 
 const background = buildResidentPlanningMessages({
   format: 1,

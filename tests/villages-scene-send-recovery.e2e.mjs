@@ -76,6 +76,8 @@ await withBrowser(browser, async () => {
     let hideReads = false;
     let loseOperationRead = false;
     let staleRecovery = null;
+    let dropTurn = false;
+    const undelivered = new Set();
     let savedChangeRecovery = null;
     let replays = 0;
     const turns = [];
@@ -85,18 +87,7 @@ await withBrowser(browser, async () => {
       const path = new URL(request.url()).pathname;
       let value = fixture;
       if (path.endsWith("/changes/replay")) {
-        assert.equal(request.method(), "POST");
-        assert.equal(request.postData(), null);
         replays++;
-        savedChangeRecovery = null;
-        value = {
-          processingSummary: { pending: 0, failed: 0, rejected: 0 },
-          unresolved: [],
-          notices: [],
-          changes: [],
-          hasMore: false,
-          nextCursor: "0",
-        };
       } else if (path.endsWith("/playback")) {
         const query = new URL(request.url()).searchParams;
         value = fixturePlaybackPage(
@@ -119,21 +110,6 @@ await withBrowser(browser, async () => {
           value = { session: staleRecovery };
           staleRecovery = null;
         }
-      } else if (path.endsWith("/error-details")) {
-        value = {
-          errors: [
-            {
-              id: `operation:${session.operation.id}:${session.operation.attemptId}`,
-              details: JSON.stringify({
-                failure: {
-                  cause: "missing_result",
-                  stage: "sound-witnesses",
-                  detail: "Exact sound validation field: attentionWitnesses.segment",
-                },
-              }),
-            },
-          ],
-        };
       } else if (path.endsWith("/changes")) {
         value = {
           changes: [],
@@ -151,7 +127,7 @@ await withBrowser(browser, async () => {
       } else if (/\/rooms\/[^/]+\/operations?/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         if (loseOperationRead) return fulfill(route, { status: 404, json: { error: "Operation unavailable" } });
-        value = { operation: session.operation };
+        value = { operation: undelivered.has(path.split("/").at(-1)) ? null : session.operation };
       } else if (/\/rooms\/[^/]+\/recovery$/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { visit: session };
@@ -166,6 +142,12 @@ await withBrowser(browser, async () => {
       } else if (path.endsWith("/rooms/turn") || path.endsWith("/rooms/leave")) {
         const input = request.postDataJSON();
         turns.push(input);
+        if (dropTurn) {
+          dropTurn = false;
+          undelivered.add(input.submissionId);
+          return abort(route, "failed");
+        }
+        undelivered.delete(input.submissionId);
         if (liveStale) {
           liveStale = false;
           session.activeIds = ["eli"];
@@ -204,6 +186,7 @@ await withBrowser(browser, async () => {
             status: "interrupted",
             attemptId: "failed-attempt",
             stage: "turn-reply",
+            failureCause: "missing_result",
             error: message,
             input: {
               message: input.message,
@@ -402,9 +385,7 @@ await withBrowser(browser, async () => {
       attemptId: "attempt-two",
       input: { ...session.operation.input, message: "A newer saved call" },
     };
-    const legacyErrors = await openSceneErrors(page);
-    await legacyErrors.getByRole("button", { name: "Retry original message", exact: true }).click();
-    await closeSceneErrors(page);
+    await page.getByRole("button", { name: "Retry original action", exact: true }).click();
     await expectSceneError(page, "The Scene changed during the request.");
     assert.equal(turns.length, beforeConflict, "a newer attempt is never retried silently");
     let releaseReview;
@@ -416,7 +397,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Retry original action", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Replace with draft", exact: true })).toHaveCount(0);
     const blockedErrors = await openSceneErrors(page);
-    await expect(blockedErrors.getByRole("button", { name: "Retry original message", exact: true })).toBeDisabled();
+    await expect(blockedErrors.getByRole("button", { name: "Retry original message", exact: true })).toHaveCount(0);
     await closeSceneErrors(page);
     releaseReview();
     await expect(page.getByText("A newer saved call", { exact: true })).toBeVisible();
@@ -451,6 +432,7 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue("My newer unsent draft");
     session.operation = null;
     turns.length = 0;
+    session.currentTime = "Tuesday, 17 November · 15:52";
     await load();
     await expect(composer).toBeVisible();
     await composer.fill("First line");
@@ -464,24 +446,37 @@ await withBrowser(browser, async () => {
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Original draft");
     const failurePanel = await openSceneErrors(page);
-    await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
+    const errorChip = page.getByRole("button", { name: "1 Scene error", exact: true });
+    await expect(errorChip).toBeVisible();
+    const placeBox = await page.locator("." + tag + "-room-place").boundingBox();
+    const chipBox = await errorChip.boundingBox();
+    const actionsBox = await page.getByRole("button", { name: "Venue actions", exact: true }).boundingBox();
+    const panelBox = await failurePanel.boundingBox();
+    assert(placeBox.x + placeBox.width <= chipBox.x, "the chip has space beside the place and time");
+    assert(chipBox.x - (placeBox.x + placeBox.width) <= 16, "the chip stays on the left beside the place badge");
+    assert(chipBox.x + chipBox.width <= actionsBox.x, "the chip does not cover Venue actions");
+    assert(
+      panelBox.y > Math.max(placeBox.y + placeBox.height, chipBox.y + chipBox.height),
+      "the report opens below the controls",
+    );
+    assert(panelBox.x >= 0 && panelBox.x + panelBox.width <= page.viewportSize().width, "the report fits the viewport");
     await expect(failurePanel.getByRole("group")).toHaveCount(1);
     await expect(
       failurePanel.getByText("The AI described a sound the game couldn’t place in the Scene.", { exact: true }),
     ).toHaveCount(1);
     const failedMessage = failurePanel.getByRole("group", { name: "Message failed", exact: true });
-    await expect(failedMessage.getByRole("button", { name: "Retry original message", exact: true })).toHaveCount(1);
+    await expect(failedMessage.getByRole("button", { name: "Retry original message", exact: true })).toHaveCount(0);
     await expect(failedMessage).toContainText("The AI described a sound the game couldn’t place in the Scene.");
     await expect(failedMessage).not.toContainText("invalid narrated sound");
     await expect(failurePanel).not.toContainText("send-recovery");
-    await failurePanel.getByRole("button", { name: "Copy details", exact: true }).click();
-    await expect(failurePanel.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
+    await failurePanel.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(failurePanel.getByText("Anonymous report copied.")).toBeVisible();
     const copied = await page.evaluate(() => window.copiedSceneError);
-    assert.match(copied, /Original error: The reply used an invalid narrated sound/u);
-    assert.ok(copied.includes("Request: " + turns[0].submissionId));
-    assert.match(copied, /Scene ID: send-recovery/u);
-    assert.match(copied, /Attempt: failed-attempt\nStage: turn-reply\nStatus: interrupted/u);
-    assert.match(copied, /Exact sound validation field: attentionWitnesses.segment/u);
+    assert.match(copied, /Send message\nRequest: POST \/api\/villages\/rooms\/turn\nResult: HTTP 400/u);
+    assert.match(copied, /Cause: missing_result/u);
+    assert.match(copied, /Saved request: interrupted · stage turn-reply/u);
+    assert(!copied.includes(turns[0].submissionId));
+    assert.doesNotMatch(copied, /send-recovery|failed-attempt|The Mill|Original draft|Original error/u);
     await page.screenshot({ path: `.build-tmp/scene-status/friendly-error-${mobile ? "mobile" : "desktop"}.png` });
     await closeSceneErrors(page);
     assert.equal(turns.length, 1, "no automatic resend");
@@ -502,9 +497,7 @@ await withBrowser(browser, async () => {
     await expect(composer).toBeEnabled();
     await page.waitForTimeout(1700);
     assert.equal(turns.length, 3, "recovery waits do not send");
-    const retryPanel = await openSceneErrors(page);
-    await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
-    await expect(retryPanel).toHaveCount(0);
+    await send.click();
     const retryNext = page.getByRole("button", { name: "Next paragraph", exact: true });
     await expect
       .poll(
@@ -651,13 +644,13 @@ await withBrowser(browser, async () => {
     await expect(composer).toBeVisible();
     await composer.fill("Keep this draft during recovery");
     const recoveryPanel = await openSceneErrors(page);
-    await expect(recoveryPanel.getByRole("button", { name: "Replay", exact: true })).toBeVisible();
-    await page.screenshot({ path: `.build-tmp/scene-status/native-replay-${mobile ? "mobile" : "desktop"}.png` });
-    await recoveryPanel.getByRole("button", { name: "Replay", exact: true }).click();
-    await expect(recoveryPanel).toHaveCount(0);
+    await expect(recoveryPanel.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: `.build-tmp/scene-status/held-reply-${mobile ? "mobile" : "desktop"}.png` });
+    await closeSceneErrors(page);
     await expect(send).toBeEnabled();
     await expect(composer).toHaveValue("Keep this draft during recovery");
-    assert.equal(replays, 1, "Replay is an explicit local request, never an automatic model retry");
+    assert.equal(replays, 0, "Viewing a held reply does not replay it");
+    savedChangeRecovery = null;
     session.operation = null;
     session.currentTime = "Monday, 2 November · 09:57";
     await load();
@@ -682,6 +675,59 @@ await withBrowser(browser, async () => {
     await send.click();
     await expect(composer).toHaveValue("");
     assert.equal(turns.at(-1).expectedSceneRevision, session.sceneRevision - 1);
+    const beforePreflight = turns.length;
+    const preflight = Promise.withResolvers();
+    await page.route(
+      "**/rooms/send-recovery/operation",
+      async (route) => {
+        await preflight.promise;
+        await route.fallback().catch(() => {});
+      },
+      { times: 1 },
+    );
+    await composer.fill("Draft with a stalled status read");
+    await send.click();
+    await expect(composer).toBeEditable();
+    await expect(send).toBeEnabled({ timeout: 12_000 });
+    assert.equal(turns.length, beforePreflight, "a timed-out preflight never posts a turn");
+    await expect(composer).toHaveValue("Draft with a stalled status read");
+    preflight.resolve();
+    for (const edit of [false, true]) {
+      const original = "Unadmitted draft " + edit;
+      const beforeDrop = turns.length;
+      dropTurn = true;
+      await composer.fill(original);
+      const staleStatus = Promise.withResolvers();
+      if (!edit)
+        await page.route(
+          "**/rooms/send-recovery/operations/*",
+          async (route) => {
+            await staleStatus.promise;
+            await route.fallback().catch(() => {});
+          },
+          { times: 1 },
+        );
+      await send.click();
+      await expect.poll(() => turns.length).toBe(beforeDrop + 1);
+      const dropped = turns.at(-1).submissionId;
+      await expect(composer).toBeEditable();
+      await expect(composer).toHaveValue("");
+      if (edit) {
+        await composer.fill(original + " with edits");
+        await load();
+      }
+      const message = edit ? original + " with edits" : original;
+      await expect(composer).toHaveValue(edit ? message : "");
+      const resend = edit ? send : page.getByRole("button", { name: "Resend", exact: true });
+      await expect(resend).toBeEnabled({ timeout: 12_000 });
+      staleStatus.resolve();
+      await resend.click();
+      await expect.poll(() => turns.length).toBe(beforeDrop + 2);
+      assert.equal(turns.at(-1).submissionId, dropped, "a delayed original can only claim the same submission");
+      assert.equal(turns.at(-1).message, message);
+      await expect(composer).toHaveValue("");
+      assert.equal(session.submissions.filter((item) => item.id === dropped).length, 1);
+    }
     assert.deepEqual(errors, []);
     await page.close();
   }

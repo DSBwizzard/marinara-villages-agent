@@ -82,6 +82,20 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   function hasVenueOperation(id: string): boolean {
     return live.has(id);
   }
+
+  async function interruptOrphan(id: string, operation: VenueOperation) {
+    if (live.get(id)?.token() === operation.token || ports.sceneWorkBusy?.(id)) return false;
+    const interrupt = () =>
+      update(id, (data) => {
+        const saved = data.operation as VenueOperation | undefined;
+        if (saved?.status !== "running" || saved.token !== operation.token) return;
+        saved.token = randomUUID();
+        saved.status = "interrupted";
+        saved.error = "The Scene request stopped before it finished. Review the saved reply or send again.";
+      });
+    await (ports.withSceneWork ? ports.withSceneWork(id, interrupt) : interrupt());
+    return true;
+  }
   function withResponseWork<T>(sessionId: string, work: () => Promise<T>) {
     return ports.operations.outsideVenueOperation(() => {
       const fenced = () => (ports.withLateResponseWork ? ports.withLateResponseWork(sessionId, work) : work());
@@ -535,7 +549,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       // Another activation may own this Scene even though this coordinator has no local live entry.
       // Refuse promptly instead of queueing behind a potentially long provider call.
       const saved = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + sessionId);
-      if (asRecord(asRecord(saved?.data).operation).status === "running")
+      const savedOperation = asRecord(saved?.data).operation as VenueOperation | undefined;
+      if (savedOperation?.status === "running" && !(await interruptOrphan(sessionId, savedOperation)))
         throw venueRefusal(
           "OPERATION_INTERRUPTED",
           "A Scene request is already running. Recover or retry it after it finishes.",
@@ -614,6 +629,22 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             // abandons it; the new token fences late results without replaying rejected output.
             retainAbandonedOperation(data);
             acknowledgeUnknownAttempts(data, prior);
+          }
+          if (
+            kind === "turn" &&
+            input.mode === "chat" &&
+            prior?.kind === "retry" &&
+            prior.status === "interrupted" &&
+            !options.replay &&
+            !options.recovery &&
+            !options.replaceOfOperationId &&
+            !retryOfAttemptId &&
+            expected !== undefined &&
+            expected === sceneRevision(data)
+          ) {
+            retainAbandonedOperation(data);
+            acknowledgeUnknownAttempts(data, prior);
+            abandoned = true;
           }
           if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId && !abandoned)
             throw venueRefusal(
@@ -947,6 +978,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     readSceneHistoryRoot(data);
     memoryRequire(data.id === id, "Scene operation owner identity changed");
     const operation = data.operation as VenueOperation | undefined;
+    if (operation?.status === "running" && (await interruptOrphan(id, operation)))
+      return readVenueOperationOnce(id, operationId);
     const requested = operationId ?? operation?.id;
     const header = readSceneIndex(data),
       head = readSceneSubmissionHead(data.submissionHistory, header);
@@ -966,10 +999,19 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             committed: sceneTurnPublished(latest),
             replyReady: sceneTurnPublished(latest),
             acceptance: latest.acceptance.status,
+            ...(operationId && latest.mode === "chat" && sceneTurnPublished(latest)
+              ? { submittedMessage: latest.message }
+              : {}),
           }
         : undefined;
     if (operationId && operation?.id !== operationId) {
-      if (publication) return { id: operationId, status: "complete", input: null, ...publication };
+      if (publication)
+        return {
+          id: operationId,
+          status: "complete",
+          input: null,
+          ...publication,
+        };
       const { submissions } = await readSceneWorkIndex(documents, data);
       const saved = submissions.find((item) => item.id === operationId),
         navigation = (data.navigationReceipts as { id: string }[] | undefined)?.some((item) => item.id === operationId);
@@ -980,9 +1022,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             input: null,
             committed: !!navigation || (!!saved && sceneTurnPublished(saved)),
             ...(saved ? { acceptance: saved.acceptance.status } : {}),
+            ...(saved?.mode === "chat" && sceneTurnPublished(saved) ? { submittedMessage: saved.message } : {}),
             replyReady: !saved || sceneTurnPublished(saved),
           }
-        : null;
+        : (data.abandonedOperations as VenueOperation[] | undefined)?.some((entry) => entry.id === operationId)
+          ? { id: operationId, status: "complete", input: null, acceptance: "abandoned", committed: false }
+          : null;
     }
     return operation
       ? {

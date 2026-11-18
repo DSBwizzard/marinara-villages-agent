@@ -155,6 +155,27 @@ const paid = (answer = "answer") =>
 
 async function main() {
   try {
+    seed("orphaned-status");
+    await assert.rejects(
+      coordinateVenue("orphaned-status", "first", "turn", {}, 0, undefined, async () => {
+        const original = documents.update;
+        const outage = mock.method(documents, "update", async (input) => {
+          if (input.id === row("orphaned-status").id) throw new Error("Storage unavailable");
+          return original(input);
+        });
+        setImmediate(() => outage.mock.restore());
+        throw new Error("Provider failed");
+      }),
+      /Provider failed/,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(row("orphaned-status").data.operation.status, "running");
+    const orphan = await readVenueOperation("orphaned-status", "first");
+    assert.equal(orphan?.status, "interrupted");
+    assert.equal(calls, 0, "reconciling an orphaned status buys no work");
+    await coordinateVenue("orphaned-status", "first", "turn", {}, 0, orphan?.attemptId, async () => {});
+    assert.equal((await readVenueOperation("orphaned-status"))?.status, "complete");
+
     seed("mismatched-owner");
     row("mismatched-owner").data.id = "another-scene";
     await assert.rejects(readVenueOperation("mismatched-owner"), /identity/);

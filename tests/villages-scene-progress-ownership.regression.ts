@@ -1273,7 +1273,8 @@ await runCase("scene-narration/private-projection", async () => {
     assert.equal(projection.processingSummary.failed, 1);
   }
   const publicScene = publicSceneResponse(f.scenes.get("scene")!);
-  assert.equal(publicScene.submissions[0].message, turn.message, "the player retains their own original submission");
+  assert(!Object.hasOwn(publicScene.submissions[0], "message"), "a held input stays in its private request");
+  assert.equal(f.turn().message, turn.message);
   assert.deepEqual(publicScene.lines, []);
 });
 
@@ -1367,7 +1368,7 @@ await runCase("scene-narration/connected-turn", async () => {
     readVillageLore: async () => [],
     completeWithRoom: async (_model, messages) => {
       purchases++;
-      promptInput = messages.at(-1)!.content;
+      promptInput = messages.at(-2)!.content;
       promptBody = messages.map((message) => message.content).join("\n");
       if (operationId === "contact-turn")
         return {

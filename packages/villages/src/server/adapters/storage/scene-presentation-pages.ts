@@ -415,10 +415,11 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
     positions: Position[],
     source: string,
     previous?: { head: ScenePresentationHead; lineCount: number },
+    refresh = false,
   ) {
     if (previous) readScenePresentationHead(previous.head, scene);
     const old = previous ? await read(previous.head, scene, previous.lineCount) : undefined;
-    if (previous?.head.source === source) return previous.head;
+    if (!refresh && previous?.head.source === source) return previous.head;
     const { head, pages, ...entry } = encodeScenePresentations(scene, positions, source, previous?.head, old, versions);
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue } from "../../../shared/contracts/village.js";
 import { useSceneReadingSession } from "./reading-session.js";
+import type { SceneFailure } from "./scene-error-report.js";
 
 export type ContactRecovery = { sceneId: string; operation: RoomOperation };
 
@@ -33,8 +34,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const dismissedRoomEventIdsRef = useRef(new Set<string>());
 
-  const [roomChangeStatus, setRoomChangeStatus] = useState({ pending: 0, failed: 0, rejected: 0 });
-
   const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<SceneChangeIssue[]>([]);
 
   const [debugDiscardEnabled, setDebugDiscardEnabled] = useState(false);
@@ -59,7 +58,7 @@ export function useScenesState(isFounded?: boolean) {
   const restoredSceneDraftRef = useRef("");
 
   /** What the room's last attempt had to say, and empty when it has nothing to. */
-  const [roomError, setRoomError] = useState("");
+  const [roomFailure, setRoomError] = useState<string | SceneFailure>("");
 
   const [roomGreetingError, setRoomGreetingError] = useState<{ sessionId: string; message: string } | null>(null);
 
@@ -103,8 +102,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomNotices,
     seenRoomEventIdsRef,
     dismissedRoomEventIdsRef,
-    roomChangeStatus,
-    setRoomChangeStatus,
     roomUnresolvedChanges,
     setRoomUnresolvedChanges,
     debugDiscardEnabled,
@@ -120,7 +117,8 @@ export function useScenesState(isFounded?: boolean) {
     roomSendInFlightRef,
     composerEditVersionRef,
     restoredSceneDraftRef,
-    roomError,
+    roomError: typeof roomFailure === "string" ? roomFailure : roomFailure.message,
+    roomErrorTrace: typeof roomFailure === "string" ? undefined : roomFailure.trace,
     setRoomError,
     roomGreetingError,
     setRoomGreetingError,

@@ -24,6 +24,7 @@ export function operationSummary(operation?: VenueOperation) {
     attemptId: operation.attemptId,
     status: operation.status,
     stage: operation.stage,
+    ...(operation.failure ? { failureCause: operation.failure.cause } : {}),
     error: operation.error,
   };
 }

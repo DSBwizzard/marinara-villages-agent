@@ -49,11 +49,11 @@ export type SceneScreenController = {
   readonly retrySavedScene: ReturnType<typeof useRetrySavedScene>;
   readonly room: import("../../../shared/contracts/village").SceneView;
   readonly roomBusy: ScenesState["roomBusy"];
-  readonly roomChangeStatus: ScenesState["roomChangeStatus"];
   readonly roomContactBoundary: ScenesState["roomContactBoundary"];
   readonly roomDraft: ScenesState["roomDraft"];
   readonly roomEnded: ScenesState["roomEnded"];
   readonly roomError: ScenesState["roomError"];
+  readonly roomErrorTrace?: ScenesState["roomErrorTrace"];
   readonly roomGreetingError: ScenesState["roomGreetingError"];
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
   readonly contactRecovery: ScenesState["contactRecovery"];
@@ -65,15 +65,14 @@ export type SceneScreenController = {
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
   readonly sendRoom: ReturnType<typeof useSendRoom>["sendRoom"];
-  readonly turnRecovery?: string;
-  readonly replyPending?: boolean;
+  readonly turnRecovery?: ReturnType<typeof useSendRoom>["turnRecovery"];
   readonly checkSavedReply?: () => Promise<void>;
   readonly setMailboxOpen: ScenesState["setMailboxOpen"];
   readonly setRoom: React.ActionDispatch<
     [next: React.SetStateAction<import("../../../shared/contracts/village").SceneView>]
   >;
-  readonly setRoomBusy: ScenesState["setRoomBusy"];
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
+  readonly setRoomBusy: ScenesState["setRoomBusy"];
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
   readonly setRoomError: ScenesState["setRoomError"];

@@ -36,7 +36,7 @@ Places and Venues contain Zones. A Scene continues across movement between Zones
 
 Source spans, witnesses, authority, revisions and physical receipts bind proposed effects to the saved interaction. Hearing, understanding, disclosure, entry and permission to change a space remain separate. Domain validation determines actual effects after model interpretation.
 
-Ordinary snapshots expose bounded playback, exact original submission rows and player-visible authority. Original submission rows have an empty resident audience. Private diagnostics, raw provider output, fitted readsets and undiscovered interiors stay server-side.
+Ordinary snapshots expose bounded playback, exact original inputs from accepted exchanges and player-visible authority. These inputs have an empty resident audience. Failed and unsettled input stays in the request receipt for recovery. Private diagnostics, raw provider output, fitted readsets and undiscovered interiors stay server-side.
 
 See [Scene privacy](scene-response-privacy.md), [System responsibilities](system-ownership.md) and [generation lifecycle](generation-pipeline.md) for the detailed contracts.
 

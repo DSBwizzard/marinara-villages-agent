@@ -23,3 +23,4 @@ export type ScenePlaybackWindow = {
   olderCursor?: string;
   newerCursor?: string;
 };
+export const SCENE_PLAYBACK_CURSOR_STALE = "SCENE_PLAYBACK_CURSOR_STALE";

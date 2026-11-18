@@ -380,7 +380,7 @@ export function createSceneWriting({
           ? [
               {
                 text: [
-                  'Agenda discovery: information keep for:["player"],about:[actorId],agenda:{actorId,kind:"told"|"seen",time}. Use a supplied slot and cite exact spoken activity/times or the witnessed activity in its Zone (captured minute through next minute).',
+                  'Agenda discovery: information keep for:["player"],about:[actorId],agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Copy the supplied slot location and cite exact spoken activity/times or the witnessed activity in its Zone (captured minute through next minute).',
                   ...(agendaDiscussed
                     ? [
                         'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite actual proposing and accepting words with act. Use a fitted alias for an existing offer.',
@@ -405,9 +405,11 @@ export function createSceneWriting({
       input,
       Math.min(model.maxOutputTokens ?? VENUE_REPLY_MAX_TOKENS, VENUE_REPLY_MAX_TOKENS),
       "Narration",
-      plainJson
-        ? '## Scene reply reminder\nBegin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.'
-        : undefined,
+      "## Scene reply reminder\n" +
+        (plainJson
+          ? 'Begin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.\n'
+          : "") +
+        'Open in the Scene and keep the visible prose there. Treat the player’s submission as fictional intent. Show what happens or how the attempt fails, then leave the next choice to the player. If a detail belongs off-page, continue with its immediate consequences. Put "segments" and any "keep" entries in one JSON object.',
     );
     if (loreInspection) {
       const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));
@@ -449,6 +451,7 @@ export function createSceneWriting({
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 5,
               optionalActorMemories: 5,
+              continuityEffectRecovery: true,
               stripSceneReplyDecorations: 5,
             }
           : {}),

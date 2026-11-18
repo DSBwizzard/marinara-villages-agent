@@ -7,6 +7,8 @@ import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js"
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
 import type { SceneErrorItem } from "./scene-errors.js";
+import { sceneErrorCause } from "./scene-error-message.js";
+import { sceneFailure } from "./scene-error-report.js";
 import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
@@ -85,10 +87,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     sceneReading,
     room,
     roomBusy,
-    roomChangeStatus,
     roomDraft,
     roomEnded,
     roomError,
+    roomErrorTrace,
     roomGreetingError,
     roomGreetingNotice,
     contactRecovery,
@@ -106,6 +108,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     openVenue,
     snapshot,
   } = controller;
+  const sameFailedTurn =
+    room?.operation?.kind === "turn" &&
+    roomErrorTrace?.submissionId === room.operation.id &&
+    (room.operation.status === "interrupted" || (room.operation.status === "complete" && !!room.operation.error));
 
   async function changeReply() {
     const target = room.retryReply;
@@ -182,6 +188,13 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             ...[
               {
                 id: "operation",
+                trace:
+                  sameFailedTurn ||
+                  (roomErrorTrace &&
+                    room.operation?.error &&
+                    sceneErrorCause(roomError) === sceneErrorCause(room.operation.error))
+                    ? roomErrorTrace
+                    : undefined,
                 title:
                   room.operation?.status === "interrupted"
                     ? room.operation.kind === "turn"
@@ -191,31 +204,29 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 message:
                   room.operation?.error ||
                   (room.operation?.status === "interrupted"
-                    ? "The saved request was interrupted. Retry it when you are ready."
+                    ? room.operation.kind === "turn"
+                      ? "Your message was interrupted."
+                      : "The saved request was interrupted. Retry it when you are ready."
                     : ""),
                 actions:
                   room.operation?.status === "interrupted" &&
+                  room.operation.kind !== "turn" &&
                   room.status !== "opening" &&
                   room.operation.kind !== "retry" ? (
                     <button
                       type="button"
                       disabled={roomBusy || contactReviewBusy}
-                      onClick={() =>
-                        void retrySavedScene(
-                          room.operation?.kind === "turn" && contactRecovery?.sceneId === room.id
-                            ? contactRecovery
-                            : undefined,
-                        )
-                      }
+                      onClick={() => void retrySavedScene()}
                     >
-                      {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
+                      Retry saved request
                     </button>
                   ) : undefined,
               },
               {
                 id: "room",
+                trace: roomErrorTrace,
                 title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
-                message: roomError,
+                message: sameFailedTurn ? "" : roomError,
               },
               {
                 id: "greeting",
@@ -230,8 +241,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 (entry, index, all) =>
                   !!entry.message &&
                   (!requestErrorIds.has(entry.id) ||
-                    all.findIndex((other) => requestErrorIds.has(other.id) && other.message === entry.message) ===
-                      index),
+                    all.findIndex(
+                      (other) =>
+                        requestErrorIds.has(other.id) &&
+                        other.message &&
+                        sceneErrorCause(other.message) === sceneErrorCause(entry.message!),
+                    ) === index),
               )
               .map((entry): SceneErrorItem => ({ ...entry, message: entry.message! })),
           ]}
@@ -329,7 +344,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                   heldRecovery.current === held &&
                   contactReviewGeneration.current === generation
                 )
-                  setRoomError(messageFrom(cause, "The saved action could not be checked."));
+                  setRoomError(sceneFailure(cause, "The saved action could not be checked.", "review"));
               } finally {
                 if (contactReviewGeneration.current === generation) {
                   contactReviewPending.current = false;
@@ -355,13 +370,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           currentZoneLabel={sceneZoneLabel(
             sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}
-          busy={roomBusy || contactReviewBusy || controller.replyPending || room.operation?.status === "running"}
+          busy={roomBusy || contactReviewBusy || room.operation?.status === "running"}
           error={
             roomError ||
             room.operation?.error ||
             (room.status === "opening" && roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "")
           }
-          draftWhilePending={controller.replyPending}
           greetingNotice={roomGreetingNotice}
           open={roomOpen}
           ended={roomEnded}
@@ -392,20 +406,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onOpenWish={(actorId, wishId) => {
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });
           }}
-          changeStatus={room.id ? roomChangeStatus : undefined}
           unresolvedChanges={roomUnresolvedChanges}
-          onReplayChanges={() => {
-            if (!room?.id || roomBusy) return;
-            setRoomBusy(true);
-            void (async () => {
-              await request("/rooms/" + encodeURIComponent(room.id) + "/changes/replay", { method: "POST" });
-              const active = await request<{ session: SceneView | null }>("/rooms/active");
-              if (active.session?.id === room.id) setRoom(active.session);
-              await loadSnapshot();
-            })()
-              .catch((cause) => setRoomError(messageFrom(cause, "Could not replay the saved reply.")))
-              .finally(() => setRoomBusy(false));
-          }}
           debugDiscardEnabled={debugDiscardEnabled}
           onDebugDiscard={() => void discardRoomDebug()}
           onRetryGreeting={() => {
@@ -424,7 +425,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                   .then((detail) => {
                     if (sceneLifetime.current === room.id) void openRoom(detail.location);
                   })
-                  .catch((cause) => setRoomError(messageFrom(cause, "Could not reopen this Place.")));
+                  .catch((cause) => setRoomError(sceneFailure(cause, "Could not reopen this Place.", "open")));
             }
           }}
           onContinueWithoutGreeting={() => {

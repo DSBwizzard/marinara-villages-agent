@@ -148,8 +148,56 @@ function fixture(owner: string) {
 
 {
   const f = fixture("seed");
+  f.scene.submissions[1].acceptance.rejected = [
+    {
+      id: "narration",
+      reason: JSON.stringify([{ code: "unrecognized_keys", path: [], keys: ["effects", "private-key"] }]),
+    },
+    { id: "memory", reason: "Memory: new continuity needs its complete text" },
+  ];
+  const changes = await f.service.readSceneChanges("same");
+  assert.deepEqual(changes.unresolved[0].diagnostic?.checks, [
+    { code: "unrecognized_keys", path: ["effects"] },
+    { code: "unrecognized_keys", path: ["?"] },
+    { code: "missing_continuity_text", path: ["text"] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(changes), /private-key/);
+}
+
+{
+  const f = fixture("seed");
+  f.scene.submissions[1].acceptance.rejected = [
+    { id: "memory", reason: "Memory: private state needs its owner's evidence" },
+  ];
+  const changes = await f.service.readSceneChanges("same");
+  assert.deepEqual(changes.unresolved[0].diagnostic?.checks, [
+    { code: "missing_private_state_evidence", path: ["source"] },
+  ]);
+}
+
+{
+  const f = fixture("seed");
   assert.deepEqual(f.calls, [], "Construction is inert");
   const [first, held] = f.scene.submissions;
+  held.acceptance.rejected.push({
+    id: "private-effect-id",
+    reason: JSON.stringify([
+      { code: "invalid_format", path: ["segment"], message: "private generated narration", pattern: "private pattern" },
+      {
+        code: "invalid_union",
+        path: ["source", 0],
+        errors: [[{ code: "invalid_type", path: ["private key"], input: "private player input" }]],
+      },
+    ]),
+  });
+  held.responseDiagnostics = {
+    model: "private model name",
+    connectionId: "private connection",
+    finishReason: "private finish reason",
+    parseStatus: "complete",
+    requestedOutputTokens: 320,
+    responseLength: 250,
+  };
   first.recordEvents!.push({ id: "dismissed", kind: "memory", text: "Dismissed delivered notice" });
   first.acceptance.rejected.push({ id: "optional", reason: "Independent optional update was rejected" });
   held.recordEvents = [{ id: "unpublished", kind: "memory", text: "Held notice" }];
@@ -162,8 +210,18 @@ function fixture(owner: string) {
   assert.deepEqual(page.notices, [first.recordEvents![0]]);
   assert.equal(page.nextCursor, "1");
   assert.equal(page.hasMore, true);
-  assert.deepEqual(page.processingSummary, { pending: 0, failed: 1, rejected: 2 });
+  assert.deepEqual(page.processingSummary, { pending: 0, failed: 1, rejected: 3 });
   assert.equal(page.unresolved[0].reason, "The saved reply needs review.");
+  assert.deepEqual(JSON.parse(JSON.stringify(page.unresolved[0].diagnostic)), {
+    checks: [
+      { code: "invalid_format", path: ["segment"] },
+      { code: "invalid_type", path: ["source", 0, "?"] },
+      { code: "invalid_union", path: ["source", 0] },
+    ],
+    rejected: 2,
+    parseStatus: "complete",
+    responseLength: 250,
+  });
   const next = await f.service.readSceneChanges("same", page.nextCursor, 1);
   assert.deepEqual(next.changes, [{ submissionId: "held", at: stamp, notices: [] }]);
   assert.deepEqual(next.notices, []);
@@ -176,7 +234,7 @@ function fixture(owner: string) {
   assert.deepEqual((await f.service.readSceneChanges("same", last.nextCursor)).changes, []);
   assert.doesNotMatch(
     JSON.stringify([page, next, last]),
-    /exact private submission|precise saved rejection|Held notice/,
+    /exact private submission|precise saved rejection|Held notice|private generated narration|private player input|private model name|private connection|private finish reason|private pattern|private key|private-effect-id/,
   );
   const details = await f.service.readSceneErrorDetails("same");
   assert.equal(details.errors.length, 2);

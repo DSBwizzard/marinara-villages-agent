@@ -4,6 +4,7 @@ import { deriveVillageMoment } from "./village-clock.js";
 import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { conflict } from "./errors.js";
+import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
@@ -37,6 +38,7 @@ export function publicSceneChanges(value: unknown) {
         at: issue.at,
         diagnosticId: issue.diagnosticId,
         reason: issue.reason,
+        diagnostic: sceneFailureDiagnostic(issue.diagnostic),
       };
     }),
     processingSummary: { pending: summary.pending, failed: summary.failed, rejected: summary.rejected },
@@ -62,6 +64,12 @@ function unpublishedLines(submissions: unknown[]) {
       return !sceneTurnPublished(turn) && Array.isArray(turn.replyLineIds) ? (turn.replyLineIds as string[]) : [];
     }),
   );
+}
+function sceneLineVisibility(submissions: VenueSubmission[]) {
+  const unpublished = unpublishedLines(submissions),
+    published = new Set(submissions.filter(sceneTurnPublished).map((turn) => turn.id));
+  return (line: VenueScene["lines"][number]) =>
+    !unpublished.has(line.id) && (line.kind !== "input" || published.has(line.inputOf ?? ""));
 }
 function publicLine(value: unknown, visible?: Set<string>) {
   const line = asRecord(value),
@@ -121,8 +129,8 @@ function publicLine(value: unknown, visible?: Set<string>) {
   };
 }
 export function publicSceneHistoryPositions(scene: VenueScene) {
-  const hidden = unpublishedLines(scene.submissions);
-  return scene.lines.flatMap((line, position) => (!hidden.has(line.id) && publicLine(line) ? [position] : []));
+  const visible = sceneLineVisibility(scene.submissions);
+  return scene.lines.flatMap((line, position) => (visible(line) && publicLine(line) ? [position] : []));
 }
 export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
   const unpublished = unpublishedLines(scene.submissions);
@@ -137,7 +145,7 @@ export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
 export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
   const policy = (value: unknown) => {
     const turn = asRecord(value);
-    return [sceneTurnPublished(turn), turn.replyLineIds];
+    return [turn.id, sceneTurnPublished(turn), turn.replyLineIds];
   };
   return JSON.stringify(policy(before)) === JSON.stringify(policy(after));
 }
@@ -225,19 +233,17 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
   const row = asRecord(value);
   if (Array.isArray(row.lines) && Array.isArray(row.submissions)) {
     const scene = row as VenueScene,
-      hidden = unpublishedLines(scene.submissions),
+      visibleLine = sceneLineVisibility(scene.submissions),
       visible = new Set(scene.activeIds ?? []);
     return {
       ...authority(scene),
-      lines: scene.lines
-        .filter((line) => !hidden.has(line.id))
-        .flatMap((line) => {
-          const view = publicLine(line, visible);
-          return view ? [view] : [];
-        }),
+      lines: scene.lines.filter(visibleLine).flatMap((line) => {
+        const view = publicLine(line, visible);
+        return view ? [view] : [];
+      }),
       submissions: scene.submissions.map((turn) => ({
         id: turn.id,
-        message: turn.message,
+        ...(sceneTurnPublished(turn) ? { message: turn.message } : {}),
         mode: turn.mode,
         targetId: turn.targetId,
         at: turn.at,

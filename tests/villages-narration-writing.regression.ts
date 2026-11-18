@@ -341,7 +341,7 @@ await runCase("narration-writing/single-request", async () => {
   f.state.worldName = "Fallow";
   const reply = await f.writing.generate(f.scene, input, "chat");
   assert.equal(f.calls.purchases, 1);
-  assert.equal(f.messages().at(-1).content, input);
+  assert.equal(f.messages().at(-2).content, input);
   assert.equal(reply.readset.source.input, input);
   assert.deepEqual(reply.readset.source.historical, {});
   const system = f
@@ -376,6 +376,9 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(messages[cut].content, /delivery:"whisper" with targetId or delivery:"shout" to connected Zones/u);
   assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
   assert.match(system, /Answer addressed hearers; one line can suffice/u);
+  assert.match(system, /Treat only quoted player text as spoken aloud/u);
+  assert.match(system, /Unquoted text is action, narration, or internal thoughts/u);
+  assert.match(system, /cannot be accessed by residents unless made observable/u);
   assert.match(system, /HALT only if no natural continuation/u);
   assert.match(system, /halt:\{reason,source\}/u);
   const identity = messages.slice(0, cut).find((row) => row.content.includes("AUTHORED IDENTITY"));
@@ -393,6 +396,11 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
   assert.deepEqual(f.formats, [{ type: "json_object" }]);
+  assert.deepEqual(messages.at(-2), { role: "user", content: input });
+  assert.match(
+    messages.at(-1)?.content ?? "",
+    /^## Scene reply reminder\nOpen in the Scene and keep the visible prose there\./u,
+  );
   const example = messages[cut].content.match(/(\{"segments":\[.*?\]\})/u);
   assert(example, "The model receives a Scene response example");
   assert.deepEqual(
@@ -420,18 +428,20 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
-  assert.equal(deepSeek.messages().at(-1).content, "");
+  assert.equal(deepSeek.messages().at(-2).content, "");
   const greeting = deepSeek
     .messages()
     .map((row) => row.content)
     .join("\n");
   assert.match(greeting, /Open the Scene from established presence/u);
+  assert.match(greeting, /Treat only quoted player text as spoken aloud/u);
   assert.match(greeting, /HALT only if no natural continuation/u);
   assert.match(greeting, /halt:\{reason,source\}/u);
   assert.doesNotMatch(greeting, /several substantial exchanges/u);
   const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
   const departure = leaving.fitted.messages.map((row) => row.content).join("\n");
   assert.match(departure, /close when it is complete/u);
+  assert.match(departure, /Treat only quoted player text as spoken aloud/u);
   assert.doesNotMatch(departure, /several substantial exchanges/u);
   const casual = await f.writing.prepareVenueTurnMessages(
     f.scene,
@@ -446,16 +456,23 @@ await runCase("narration-writing/single-request", async () => {
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
   );
-  const remember = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, please remember this: I knit.", "chat");
+  const remember = await f.writing.prepareVenueTurnMessages(f.scene, '"Mara, please remember this: I knit."', "chat");
   assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
   assert.equal(remember.readset.codeRequestedMemory, true);
   const rememberPrompt = remember.fitted.messages
-    .slice(0, -1)
+    .slice(0, -2)
     .map((row) => row.content)
     .join("\n");
   assert.match(rememberPrompt, /Code records the exact requested fact/u);
   assert.doesNotMatch(rememberPrompt, /"id":"remember-fact"/u);
   assert.doesNotMatch(rememberPrompt, /I knit/u);
+  const unspokenMemory = await f.writing.prepareVenueTurnMessages(
+    f.scene,
+    "Mara, please remember this: I knit.",
+    "chat",
+  );
+  assert.equal(unspokenMemory.readset.requestedMemory, undefined);
+  assert.equal(unspokenMemory.readset.codeRequestedMemory, undefined);
 
   const legacy = fixture(undefined, "deepseek-flash");
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
@@ -1660,8 +1677,8 @@ await runCase("narration-writing/history-prefix", async () => {
     const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
     assert(tail.some((row) => row.role === "user" && row.content.includes('"movements":')));
     assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
-    assert.equal(tail.at(-2)?.content, "## Current player submission");
-    assert.equal(tail.at(-1)?.content, keyword);
+    assert.equal(tail.at(-3)?.content, "## Current player submission");
+    assert.equal(tail.at(-2)?.content, keyword);
     if (count <= 12) assert.equal(active.length, count, "ordinary growth retains the stable transcript");
     if (count === 2) {
       const [narration, dialogue] = JSON.parse(active.at(-1)!).interaction.historyLines;

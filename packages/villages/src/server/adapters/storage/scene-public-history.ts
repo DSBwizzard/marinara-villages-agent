@@ -322,6 +322,7 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
       rows,
       encoded.head.source,
       previous && { head: previous.presentation, lineCount: previous.lineCount },
+      previous?.source === encoded.head.source && previous.publicVersion !== encoded.head.publicVersion,
     );
     const head = { ...encoded.head, presentation };
     const stamp = new Date().toISOString();
@@ -359,7 +360,7 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
   return { prepare, readRange };
 }
 const stores = new WeakMap<object, ReturnType<typeof createScenePublicHistory>>();
-export function scenePublicHistoryStore(documents: CapabilityDocumentStore) {
+export function scenePublicHistoryStore(documents: Pick<CapabilityDocumentStore, "getById" | "create">) {
   let store = stores.get(documents);
   if (!store) stores.set(documents, (store = createScenePublicHistory(documents)));
   return store;

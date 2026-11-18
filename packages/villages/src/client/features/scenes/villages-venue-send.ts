@@ -17,6 +17,7 @@ type SavedSceneRequest = {
   kind?: string;
   attemptId?: string;
   error?: string;
+  acceptance?: string;
   input?: SceneSendInput | null;
 };
 
@@ -26,7 +27,11 @@ export function sceneResend(
   input: SceneSendInput,
   submissionId: string,
 ): { submissionId: string; retryOfAttemptId?: string; replaceOfOperationId?: string } {
-  if (!saved?.input || (saved.status === "complete" && (!saved.error || saved.kind === "greet")))
+  if (
+    !saved?.input ||
+    (saved.kind === "retry" && saved.status === "interrupted") ||
+    (saved.status === "complete" && (!saved.error || saved.kind === "greet"))
+  )
     return { submissionId };
   if (saved.status === "running") throw new Error("This Scene is still responding. Your draft is preserved.");
   const prior = saved.input;
@@ -37,7 +42,8 @@ export function sceneResend(
     (prior.targetId || "") === (input.targetId || "") &&
     prior.contact?.kind === input.contact?.kind &&
     prior.contact?.boundaryZoneId === input.contact?.boundaryZoneId;
-  if (same) return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
+  if (same && saved.acceptance !== "held" && saved.acceptance !== "abandoned")
+    return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
   if (saved.kind !== "turn")
     throw new Error("Recover the saved request before changing this action. Your edits are preserved.");
   return {

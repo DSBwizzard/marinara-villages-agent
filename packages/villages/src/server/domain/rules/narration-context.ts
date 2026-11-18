@@ -302,15 +302,20 @@ export function narrationContinuityContext(
     : [];
   const recallQuery = addressed.length ? input.slice(comma + 1) : input;
   const memoryChange = requestsMemoryChange(recallQuery);
+  const speech = /^\s*(?:"([^"\r\n]*)"|“([^“”\r\n]*)”)\s*$/du.exec(input);
+  const speechRange = speech?.indices?.[1] ?? speech?.indices?.[2];
+  const rememberStart = addressed.length ? comma + 1 : (speechRange?.[0] ?? 0);
   const remember =
-    memoryChange && separateRecallFromEvidence && addressed.length < 2
-      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)\s*$/diu.exec(recallQuery)
+    memoryChange && separateRecallFromEvidence && addressed.length < 2 && speechRange
+      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)\s*$/diu.exec(
+          input.slice(rememberStart, speechRange[1]),
+        )
       : null;
   const fact = remember?.[1].replace(/[.!]+$/u, "").trimEnd();
   const factRange = remember?.indices?.[1];
   const recipientId = addressed[0]?.characterId;
   const local = (id: string) => id !== "player" && contactPosition(scene, id) === scene.zoneId;
-  // shortcut: gate only a single explicit “remember this:” fact until mixed-intent speech has a structured input.
+  // shortcut: gate only a single quoted “remember this:” fact until mixed-intent speech has a structured input.
   const requestedMemory =
     fact &&
     factRange &&
@@ -318,8 +323,8 @@ export function narrationContinuityContext(
     Buffer.byteLength("Player said: " + fact) < CONTINUITY_TEXT_BYTES &&
     actors.some(({ id }) => local(id) && (!recipientId || id === recipientId))
       ? {
-          start: input.length - recallQuery.length + factRange[0],
-          end: input.length - recallQuery.length + factRange[0] + fact.length,
+          start: rememberStart + factRange[0],
+          end: rememberStart + factRange[0] + fact.length,
           ...(recipientId ? { recipientId } : {}),
         }
       : undefined;

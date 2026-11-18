@@ -1,4 +1,4 @@
-// Test cases: scene-retry/refusal, scene-retry/repeated, scene-retry/shorter, scene-retry/failure, scene-retry/startup, scene-retry/failure-race, scene-retry/settlement-ack, scene-retry/memory, scene-retry/wish, scene-retry/relationship, scene-retry/unrelated-place, scene-retry/unrelated-mail, scene-retry/unrelated-during-generation, scene-retry/history-changed, scene-retry/history-race, scene-retry/legacy, scene-retry/stale-token, scene-retry/inactive, scene-retry/attendance, scene-retry/offstage-attendance, scene-retry/malformed, scene-retry/native-alternate, scene-retry/duplicate, scene-retry/journal-village, scene-retry/journal-scene, scene-retry/lost-ack, scene-retry/cleanup, scene-retry/wish-follow, scene-retry/fitted-knowledge, scene-retry/missing-base, scene-retry/before-journal, scene-retry/checkpoint, scene-retry/appointment
+// Test cases: scene-retry/refusal, scene-retry/repeated, scene-retry/shorter, scene-retry/failure, scene-retry/startup, scene-retry/continue-after-interruption, scene-retry/failure-race, scene-retry/settlement-ack, scene-retry/memory, scene-retry/wish, scene-retry/relationship, scene-retry/unrelated-place, scene-retry/unrelated-mail, scene-retry/unrelated-during-generation, scene-retry/history-changed, scene-retry/history-race, scene-retry/legacy, scene-retry/stale-token, scene-retry/inactive, scene-retry/attendance, scene-retry/offstage-attendance, scene-retry/malformed, scene-retry/native-alternate, scene-retry/duplicate, scene-retry/journal-village, scene-retry/journal-scene, scene-retry/lost-ack, scene-retry/cleanup, scene-retry/wish-follow, scene-retry/fitted-knowledge, scene-retry/missing-base, scene-retry/before-journal, scene-retry/checkpoint, scene-retry/appointment
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -276,6 +276,38 @@ await test("startup", async (f) => {
   } finally {
     await cold.stop();
   }
+});
+await test("continue-after-interruption", async (f) => {
+  const held = await interruptedRetry(f);
+  const original = f.latest().episodeId;
+  await f.changeHistory();
+  const unavailable = await f.active();
+  assert.equal(unavailable.retryReply, undefined);
+  const calls = f.prompts.length;
+  for (const invalid of [
+    { expectedSceneRevision: unavailable.sceneRevision - 1 },
+    { retryOfAttemptId: randomUUID() },
+    { replaceOfOperationId: randomUUID(), retryOfAttemptId: randomUUID() },
+  ]) {
+    const rejected = await f.post("/turn", {
+      sessionId: "browser",
+      submissionId: randomUUID(),
+      mode: "chat",
+      message: '"Let us keep talking."',
+      expectedSceneRevision: unavailable.sceneRevision,
+      ...invalid,
+    });
+    assert.equal(rejected.statusCode, 409);
+    assert.equal(f.scene().operation!.id, held.operation.id);
+    assert.equal(f.scene().operation!.status, "interrupted");
+    assert.equal(f.prompts.length, calls);
+  }
+  const next = await f.send(alternate, '"Let us keep talking."');
+  assert.equal(f.prompts.length, calls + 1, "only the new message buys a completion");
+  assert.equal(f.scene().submissions[0].episodeId, original);
+  assert.equal(f.scene().submissions.length, 2);
+  assert(f.scene().abandonedOperations?.some((operation) => operation.id === held.operation.id));
+  assert.equal(next.operation, null);
 });
 await test("failure-race", async (f) => {
   const held = await interruptedRetry(f);
