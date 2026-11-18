@@ -12,6 +12,7 @@ import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
 import {
   encodeContinuityPages,
   decodeContinuityPages,
+  readContinuityPageManifest,
   type ContinuityPageLayout,
   type ContinuityPayload,
 } from "./continuity-pages.js";
@@ -129,11 +130,25 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
       "history payload changed",
     );
   }
-  async function read(head: MemoryHead, state: Pick<VillageState, "seed" | "setupAt">): Promise<MemoryPayload | null> {
+  async function readRecord(head: MemoryHead, state: Pick<VillageState, "seed" | "setupAt">) {
     assertMemoryWorld(head, state);
     const record = await documents.getById(VILLAGES_PACKAGE_ID, head.id);
+    if (record) validateRecord(record, head);
+    return record;
+  }
+  async function readManifest(head: MemoryHead, state: Pick<VillageState, "seed" | "setupAt">) {
+    const record = await readRecord(head, state);
     if (!record) return null;
-    validateRecord(record, head);
+    const manifest = readContinuityPageManifest(JSON.parse((record.data as { payload: string }).payload));
+    memoryRequire(
+      manifest.revision + manifest.episodeRevision + manifest.placeRevision + manifest.mailRevision === head.revision,
+      "history revision changed",
+    );
+    return manifest;
+  }
+  async function read(head: MemoryHead, state: Pick<VillageState, "seed" | "setupAt">): Promise<MemoryPayload | null> {
+    const record = await readRecord(head, state);
+    if (!record) return null;
     if (!isRepairSimulation(documents) && cached?.head.id === head.id && cached.head.digest === head.digest) {
       memoryRequire(payloadRevision(cached.value) === head.revision, "history revision changed");
       return cached.value;
@@ -311,5 +326,5 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     candidateCache = undefined;
   }
   // Page deletion is owner-aware housekeeping, never a side effect of replacing one root.
-  return { read, prepare, cleanup, published };
+  return { read, readManifest, prepare, cleanup, published };
 }

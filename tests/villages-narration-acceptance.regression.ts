@@ -458,6 +458,26 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.deepEqual(p.raw, raw);
     assert.equal(f.state.continuity.versions.length, 1);
   }
+  {
+    const f = fixture();
+    const line = { ...f.response()[0], delivery: "normal", textNote: "" };
+    const raw = { segments: [line] };
+    const p = f.publication(raw);
+    p.readset.ordinaryFormatRecovery = 6;
+    p.readset.stripSceneReplyDecorations = 4;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-empty-note", later), /textNote/u);
+    p.readset.stripSceneReplyDecorations = 5;
+    for (const rejected of [
+      { segments: [{ ...line, textNote: "Something to keep." }] },
+      { ...raw, keep: [f.keep] },
+      { segments: [{ ...line, unrelated: "" }] },
+    ])
+      assert.throws(() => acceptNarrationContinuity(f.state, { ...p, raw: rejected }, "unrecognized-note", later));
+    const result = acceptNarrationContinuity(f.state, p, "empty-dialogue-note", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0]?.content, line.text);
+    assert.deepEqual(p.raw, raw);
+  }
   for (const delivery of ["normal", null]) {
     const f = fixture();
     const line = { ...f.response(["remember"])[0], delivery };

@@ -1,4 +1,5 @@
 import type { VillageState } from "./world.js";
+import type { SceneRetryCapture } from "./scene-retry.js";
 
 export type VillageMemoryRead = {
   memories?: boolean;
@@ -7,6 +8,7 @@ export type VillageMemoryWrite = Omit<VillageMemoryRead, "memories"> & {
   memories?: boolean | ((state: VillageState) => boolean);
   /** Publication hints only: the repository rechecks the physical saved job under repair admission. */
   sourceJobs?: readonly { slot: string; id: string; instanceId: string; attempt: number; owner: string }[];
+  captureSceneRetry?: () => SceneRetryCapture | null | undefined;
 };
 
 /** Native authority, with common history loaded explicitly by its consumers. */

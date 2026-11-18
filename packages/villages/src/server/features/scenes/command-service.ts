@@ -41,6 +41,7 @@ import { sceneTurnNotices } from "../../domain/rules/scene-public.js";
 import { visibleSceneNotices } from "../../domain/rules/narration-notices.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
 export interface SceneCommandPorts {
+  retry?: ReturnType<typeof import("./retry-service.js").createSceneRetry>;
   generate: typeof import("./writing.js").generate;
   processSavedExchange: typeof import("./progress.js").processSavedExchange;
   abandonSavedExchange: typeof import("./progress.js").abandonSavedExchange;
@@ -97,6 +98,7 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  retry,
   generate,
   processSavedExchange,
   abandonSavedExchange,
@@ -1063,6 +1065,7 @@ export function createSceneCommands({
           () => moveVenueZoneOnce(id, String(operation.input.zoneId)),
           { recovery: true },
         );
+      if (operation.kind === "retry") return cancelVenueOperation(id, operation);
       if (operation.kind === "turn") {
         assertSceneTurnMode(operation.input.mode);
         assertCurrentSceneGeneration(await readSession(id));
@@ -1112,6 +1115,10 @@ export function createSceneCommands({
     return owner ? owner.run(work) : work();
   }
   return {
+    async retryReply(id: string, operationId: string, token: string) {
+      if (!retry) throw conflict("Reply Retry is unavailable.");
+      return retry.retryReply(id, operationId, token);
+    },
     moveVenueZone,
     enterVenue,
     greetVenue,

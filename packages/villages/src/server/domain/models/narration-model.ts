@@ -16,6 +16,7 @@ export type NarrationReadset = {
   calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
   sceneRevision: number;
   continuityRevision: number;
+  retryEpisodeRevision?: number;
   presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
   source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves"> & { operationId: string };
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;
@@ -32,7 +33,7 @@ export type NarrationReadset = {
   stripOfferContributionEcho?: true;
   recognizeDirectOfferSpeech?: true | 2 | 3 | 4 | 5;
   optionalActorMemories?: true | 2 | 3 | 4 | 5;
-  stripSceneReplyDecorations?: true | 2 | 3 | 4;
+  stripSceneReplyDecorations?: true | 2 | 3 | 4 | 5;
   recoverCodeMemoryEcho?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;

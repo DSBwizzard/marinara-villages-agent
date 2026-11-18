@@ -116,6 +116,10 @@ export function sceneErrorMessage(original: string): string {
     [/Invalid changes cursor/iu, "The saved update list changed while the game read it."],
     [/No saved (?:live )?exchange/iu, "The game couldn’t find the saved exchange."],
     [
+      /^The alternate reply failed validation\./iu,
+      "The game kept your original reply because the alternate couldn’t be used.",
+    ],
+    [
       /submission ID|navigation ID|Village identity changed|request conflicts with the current saved state|request changed|action changed|Scene changed|Refresh the scene before/iu,
       "The Scene changed during the request.",
     ],

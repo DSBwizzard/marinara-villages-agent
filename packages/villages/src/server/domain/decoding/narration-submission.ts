@@ -115,6 +115,8 @@ const saved = z
             Number.isFinite(Date.parse(row.capturedAt)) &&
             Number.isSafeInteger(row.sceneRevision) &&
             Number.isSafeInteger(row.continuityRevision) &&
+            (row.retryEpisodeRevision === undefined ||
+              (Number.isSafeInteger(row.retryEpisodeRevision) && row.retryEpisodeRevision >= 0)) &&
             presentation.safeParse(row.presentation).success &&
             Array.isArray(row.projects) &&
             Array.isArray(row.access) &&

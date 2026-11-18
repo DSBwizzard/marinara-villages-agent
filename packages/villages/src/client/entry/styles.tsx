@@ -427,7 +427,6 @@ ${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(-
 .${ELEMENT_TAG}-chat-cast-rest > span { display: inline-flex; align-items: center; gap: .2rem; padding: .1rem .35rem; border-radius: .35rem; background: #000a; color: white; font-size: .625rem; }
 .${ELEMENT_TAG}-chat-cast-rest .${ELEMENT_TAG}-avatar { width: 1rem; height: 1rem; border-radius: 50%; overflow: hidden; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-activities { display: none; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-history-toggle { width: auto; height: auto; min-height: 2rem; align-self: center; padding: .2rem .65rem; border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: .5rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-text { font-size: .9375rem; line-height: 1.55; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-aside-text { font-size: .8125rem; line-height: 1.45; }
 
@@ -447,27 +446,6 @@ ${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(-
   background: var(--marinara-chat-chrome-panel-bg, color-mix(in srgb, var(--popover) 92%, transparent));
   backdrop-filter: blur(12px);
   box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .28);
-}
-
-.${ELEMENT_TAG}-chat-tab { display: flex; justify-content: center; }
-.${ELEMENT_TAG}-chat-history-toggle {
-  position: relative;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 2.5rem; height: 1.5rem; padding: 0; box-sizing: border-box;
-  border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border));
-  border-bottom: 0; border-radius: .5rem .5rem 0 0;
-  background: var(--marinara-chat-chrome-panel-bg, var(--popover));
-  color: var(--marinara-chat-chrome-button-text, var(--foreground));
-  backdrop-filter: blur(12px);
-  cursor: pointer; font-family: inherit;
-}
-.${ELEMENT_TAG}-chat-history-toggle::before { content: ""; position: absolute; inset: -.625rem -.25rem; }
-.${ELEMENT_TAG}-chat-history-toggle:hover { color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
-.${ELEMENT_TAG}-chat-history-toggle svg { width: .875rem; height: .875rem; }
-.${ELEMENT_TAG}-chat-history-toggle[aria-expanded="true"] {
-  margin-top: -1px;
-  border-top: 0; border-bottom: 1px solid var(--marinara-chat-chrome-panel-border, var(--border));
-  border-radius: 0 0 .5rem .5rem;
 }
 
 .${ELEMENT_TAG}-chat-vn-card {
@@ -1930,7 +1908,6 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-card { background: color-mix(in srgb, var(--background) 62%, transparent); box-shadow: none; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-reading { max-height: min(30cqh, 18rem); }
 .${ELEMENT_TAG}-room-panel-tools { display: flex; align-items: center; gap: .5rem; min-height: 2rem; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-history-toggle { min-height: 2rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { min-width: 0; }
 .${ELEMENT_TAG}-mailbox-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem; background: #0009; }
 .${ELEMENT_TAG}-mailbox { width: min(42rem, 100%); max-height: min(80vh, 48rem); overflow: auto; padding: 1.5rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--popover); box-shadow: 0 1rem 3rem #0009; }
@@ -2002,7 +1979,6 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-name,
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-label { align-self: flex-start; margin: 0; padding: 0; border-radius: 0; background: transparent; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); font-size: .72rem; font-weight: 650; line-height: 1.35; letter-spacing: 0; text-transform: none; }
 .${ELEMENT_TAG}-room-panel-tools { display: grid; grid-template-columns: minmax(4rem, 1fr) auto minmax(4rem, 1fr); gap: .4rem; min-height: 1.75rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); padding-top: .25rem; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-history-toggle { justify-self: start; min-height: 1.75rem; padding: .15rem .35rem; border: 0; background: transparent; font-size: .75rem; }
 .${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-counter { justify-self: center; }
 .${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-nav { justify-self: end; gap: .25rem; padding: 0; border: 0; }
 .${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-button { min-height: 1.75rem; padding: .2rem .4rem; border: 0; color: var(--foreground); }

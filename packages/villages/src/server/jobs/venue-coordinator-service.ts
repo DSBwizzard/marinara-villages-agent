@@ -491,6 +491,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       recovery?: boolean;
       replaceOfOperationId?: string;
       abandonOfOperationId?: string;
+      publish?: (operation: VenueOperation) => Promise<void>;
+      expectedOperation?: string | null;
     } = {},
   ): Promise<T> {
     const nested = context.getStore();
@@ -548,8 +550,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           villageSeed = typeof data.villageSeed === "string" ? data.villageSeed : undefined;
           controller.signal.throwIfAborted();
           const prior = await operationEvidenceStore(documents).decode(data.operation, data as unknown as VenueScene);
+          if (options.expectedOperation !== undefined && options.expectedOperation !== (prior?.token ?? null))
+            throw venueRefusal("SCENE_RETRY_UNAVAILABLE", "The Scene request changed. Check the latest reply.");
           if (
-            ["turn", "greet"].includes(kind) &&
+            ["turn", "greet", "retry"].includes(kind) &&
             ((data.abandonedOperations ?? []) as VenueOperation[]).some((row) => row.id === id) &&
             !submissions.some((turn) => turn.id === id && turn.acceptance.status === "applied")
           )
@@ -714,6 +718,20 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                 );
               operation.timing!.completedAt = new Date().toISOString();
               operation.timing!.elapsedMs = Math.round(performance.now() - runStarted);
+              if (options.publish) {
+                await options.publish({
+                  ...operation,
+                  token: randomUUID(),
+                  status: "complete",
+                  stage: "complete",
+                  error: "",
+                  snapshot: null,
+                  checkpoints: {},
+                  attempts: {},
+                  checkpointClaims: {},
+                });
+                return result;
+              }
               await updateWithSubmissions(sessionId, (data, submissions) => {
                 assertVenueOwnership(data);
                 const turn = mutableSceneSubmission({ submissions }, id);
@@ -759,26 +777,44 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                 /* Diagnostics cannot replace the request failure. */
               }
               // Revoked owners cannot overwrite a successor or resurrect a discarded visit.
-              await updateWithSubmissions(sessionId, async (data, submissions, documents) => {
-                if ((data.operation as VenueOperation | undefined)?.token !== operation.token) return;
-                operation.status =
-                  Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
-                  Object.keys(operation.checkpointClaims ?? {}).length > 0 ||
-                  Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
-                  Object.keys(operation.checkpoints).length > 0 ||
-                  (operation.kind === "close" && data.status === "closed") ||
-                  submissions.some((entry) => entry.id === operation.id) ||
-                  (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
-                    ? "interrupted"
-                    : "complete";
-                operation.error = safeFailureMessage(error);
-                operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
-                data.operation = await operationEvidenceStore(documents).encode(
-                  operation,
-                  data as unknown as VenueScene,
-                  data.operation,
-                );
-              }).catch(() => {});
+              const saveFailure = () =>
+                updateWithSubmissions(sessionId, async (data, submissions, documents) => {
+                  if ((data.operation as VenueOperation | undefined)?.token !== operation.token) return;
+                  const retryRefused =
+                    operation.kind === "retry" &&
+                    error instanceof VillagesRequestError &&
+                    error.code === "SCENE_RETRY_UNAVAILABLE" &&
+                    !Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") &&
+                    !Object.keys(operation.checkpointClaims ?? {}).length;
+                  operation.status = retryRefused
+                    ? "complete"
+                    : Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
+                        Object.keys(operation.checkpointClaims ?? {}).length > 0 ||
+                        Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
+                        Object.keys(operation.checkpoints).length > 0 ||
+                        (operation.kind === "close" && data.status === "closed") ||
+                        submissions.some((entry) => entry.id === operation.id) ||
+                        (data.navigationReceipts as { id: string }[] | undefined)?.some(
+                          (entry) => entry.id === operation.id,
+                        )
+                      ? "interrupted"
+                      : "complete";
+                  operation.error = retryRefused ? "" : safeFailureMessage(error);
+                  if (retryRefused) {
+                    operation.stage = "complete";
+                    operation.snapshot = null;
+                    operation.checkpoints = {};
+                    operation.attempts = {};
+                  }
+                  operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
+                  data.operation = await operationEvidenceStore(documents).encode(
+                    retryRefused ? { ...operation, token: randomUUID() } : operation,
+                    data as unknown as VenueScene,
+                    data.operation,
+                  );
+                });
+              // A journal may have advanced the admission epoch before losing its acknowledgement.
+              await (options.publish ? outsideRepairWork(saveFailure) : saveFailure()).catch(() => {});
               throw error;
             }
           }),
@@ -856,6 +892,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           ];
         operation.token = randomUUID();
         operation.status = "complete";
+        if (operation.kind === "retry") {
+          operation.error = "";
+          operation.stage = "complete";
+          operation.checkpointClaims = {};
+          delete operation.failure;
+        }
         operation.snapshot = null;
         operation.checkpoints = {};
         operation.attempts = {};
@@ -1037,3 +1079,4 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   };
 }
 export type VenueCoordinatorService = ReturnType<typeof createVenueCoordinator>;
+import { outsideRepairWork } from "../adapters/storage/repair-gate.js";

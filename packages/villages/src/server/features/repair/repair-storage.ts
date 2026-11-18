@@ -195,12 +195,16 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
             row.data.version === 18 && typeof row.data.seed === "string" && typeof row.data.setupAt === "string",
             "unsupported Village snapshot format",
           );
-          const head = readMemoryHead(row.data.memoryHead);
-          if (head)
-            memoryRequire(
-              await createMemoryPayloadStore(source as CapabilityDocumentStore).read(head, row.data as VillageState),
-              "snapshot continuity is missing",
-            );
+          const world = row.data as VillageState;
+          const retry = readSceneRetryRecord(world);
+          const payloads = createMemoryPayloadStore(source as CapabilityDocumentStore);
+          for (const head of [readMemoryHead(row.data.memoryHead), retry?.before, retry?.after])
+            if (head) memoryRequire(await payloads.read(head, world), "snapshot continuity is missing");
+          if (retry)
+            await createOperationEvidence(source as CapabilityDocumentStore).inspect(retry.request, {
+              id: retry.sceneId,
+              villageSeed: world.seed,
+            });
         }
     await validateSceneHistory(
       documents,
@@ -514,3 +518,5 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     worldSources,
   };
 }
+import { readSceneRetryRecord } from "../../adapters/storage/scene-retry-record.js";
+import { createOperationEvidence } from "../../adapters/storage/operation-evidence.js";

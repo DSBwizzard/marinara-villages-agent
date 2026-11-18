@@ -1,4 +1,4 @@
-import { findLocation } from "./places.js";
+import { findLocation, findNpc } from "./places.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
@@ -106,6 +106,38 @@ export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zon
       !session.departedIds?.includes(person.characterId) &&
       !positions.some((entry) => entry.characterId === person.characterId && entry.zoneId !== zoneId),
   );
+}
+
+export function projectLiveAttendance(village: VillageState, scene: VenueScene, venue: VillageVenue, now: Date) {
+  const sameRoutine = (id: string) => !!findNpc(village, id) || sameSceneRoutine(village, scene, id, now);
+  const accompanying = (scene.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
+  const positions = new Map(
+    accompanying.flatMap((row) => {
+      const zone = resolveVenueZone(venue, row.zoneId);
+      return zone
+        ? [
+            [
+              row.characterId,
+              {
+                id: venue.id,
+                name: venue.name,
+                kind: "venue" as const,
+                zoneId: zone.id,
+                zoneName: zone.name,
+                image: zone.image,
+              },
+            ] as const,
+          ]
+        : [];
+    }),
+  );
+  const attendance = captureSceneAttendance(village, venue.id, now, positions);
+  attendance.occupants.push(
+    ...(scene.sceneAttendance?.occupants ?? []).filter(
+      (person) => !!findNpc(village, person.characterId) && !scene.departedIds?.includes(person.characterId),
+    ),
+  );
+  return { attendance, accompanying, departedIds: (scene.departedIds ?? []).filter(sameRoutine), sameRoutine };
 }
 /** Iterate escort dependencies using actual Scene positions, never background schedules. */
 export function accessExits(session: VenueScene, village: VillageState, venue: VillageVenue) {

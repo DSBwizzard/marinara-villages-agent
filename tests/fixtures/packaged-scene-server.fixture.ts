@@ -18,6 +18,7 @@ export async function packagedSceneServer(
     configure?: (world: ReturnType<typeof defaultVillageState>, now: string) => void;
     configureScene?: (scene: VenueScene, world: ReturnType<typeof defaultVillageState>) => void;
     bundle?: string;
+    records?: Map<string, any>;
   } = {},
 ) {
   const now = new Date().toISOString();
@@ -119,23 +120,31 @@ export async function packagedSceneServer(
   });
   options.configureScene?.(scene, world);
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(now));
-  const records = new Map<string, any>([
-    ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world }],
-    [
-      "villages-active-venue",
-      {
-        id: "villages-active-venue",
-        packageId: "villages",
-        kind: "venue-active",
-        revision: 1,
-        data: { sessionId: scene.id, placeId: scene.placeId },
-      },
-    ],
-    [
-      "villages-venue-visit-browser",
-      { id: "villages-venue-visit-browser", packageId: "villages", kind: "venue-visit", revision: 1, data: scene },
-    ],
-  ]);
+  const records =
+    options.records ??
+    new Map<string, any>([
+      [
+        "villages-village",
+        { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world },
+      ],
+      [
+        "villages-active-venue",
+        {
+          id: "villages-active-venue",
+          packageId: "villages",
+          kind: "venue-active",
+          revision: 1,
+          data: { sessionId: scene.id, placeId: scene.placeId },
+        },
+      ],
+      [
+        "villages-venue-visit-browser",
+        { id: "villages-venue-visit-browser", packageId: "villages", kind: "venue-visit", revision: 1, data: scene },
+      ],
+    ]);
+  if (!options.records)
+    for (const row of records.values())
+      Object.assign(row, { name: row.id, description: "", createdAt: now, updatedAt: now });
   const documents = {
     getById: async (_pkg: string, id: string) => structuredClone(records.get(id) ?? null),
     list: async (_pkg: string, kind: string) =>
@@ -156,7 +165,7 @@ export async function packagedSceneServer(
     remove: async (_pkg: string, id: string, revision: number) =>
       records.get(id)?.revision === revision && records.delete(id),
   };
-  await seedVillageFixtureDocuments(documents as any);
+  if (!options.records) await seedVillageFixtureDocuments(documents as any);
   assert(Object.hasOwn(records.get("villages-village").data, "memoryHead"));
   assert(!Object.hasOwn(records.get("villages-village").data, "memories"));
   assert(!Object.hasOwn(records.get("villages-venue-visit-browser").data, "lines"));

@@ -4,6 +4,7 @@ import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.j
 import type { ScenePlaybackWindow, ScenePlaybackMoment } from "../../../shared/contracts/scene-playback.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import { publicSceneAuthority } from "../../domain/rules/scene-public.js";
+import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_KIND } from "../../adapters/storage/scene-slots.js";
@@ -26,6 +27,7 @@ import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import { readVillageRoot } from "../../adapters/storage/village-repository.js";
 import { readSceneMomentFrames, readSceneMomentRange } from "../../adapters/storage/scene-presentation-pages.js";
 export interface SceneQueryPorts {
+  retryTarget?: ReturnType<typeof import("./retry-service.js").createSceneRetry>["target"];
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById">;
@@ -59,7 +61,12 @@ const playbackCursor = z
   })
   .strict();
 /** Inert Scene history and backlog queries with explicit originating connections. */
-export function createSceneQueryService({ readSession, readVillageState, villagesDocuments }: SceneQueryPorts) {
+export function createSceneQueryService({
+  readSession,
+  readVillageState,
+  villagesDocuments,
+  retryTarget,
+}: SceneQueryPorts) {
   async function readPublicOwner(id: string, requestedScope?: string) {
     const documents = villagesDocuments();
     const rawWorld = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
@@ -177,7 +184,15 @@ export function createSceneQueryService({ readSession, readVillageState, village
       if (owner.scene.sceneRevision !== scene.sceneRevision)
         throw conflict("The Scene changed. Check the saved reply.");
     }
-    const { lines, participants, ...playback } = await playbackWindow(owner);
+    const turn = scene.submissions.at(-1);
+    const operation = scene.operation;
+    const replacement =
+      operation?.kind === "retry" &&
+      operation.status === "complete" &&
+      turn?.episodeId === sceneEpisodeId(scene.villageSeed, scene.id, operation.id)
+        ? new Set(turn.replyLineIds)
+        : undefined;
+    const { lines, participants, retryStart, ...playback } = await playbackWindow(owner, undefined, false, replacement);
     const cast = new Set([...scene.activeIds, ...participants.map((person) => person.characterId)]);
     return {
       ...publicSceneAuthority(scene),
@@ -185,13 +200,16 @@ export function createSceneQueryService({ readSession, readVillageState, village
       playback,
       participants: scene.participants.filter((person) => cast.has(person.characterId)),
       operation: operationSummary(scene.operation),
+      retryReply: await retryTarget?.(scene),
+      ...(retryStart ? { retryStart } : {}),
     };
   }
   async function playbackWindow(
     { documents, scope, scene, transcript, head }: Awaited<ReturnType<typeof readPublicOwner>>,
     encodedCursor?: string,
     fromBeginning = false,
-  ): Promise<ScenePlaybackWindow> {
+    replacement?: ReadonlySet<string>,
+  ): Promise<ScenePlaybackWindow & { retryStart?: Pick<ScenePlaybackMoment, "id" | "index" | "anchorCursor"> }> {
     const id = scene.id;
     const presentation = head.presentation;
     let direction: "older" | "newer" | "around" = fromBeginning ? "newer" : "older",
@@ -284,6 +302,10 @@ export function createSceneQueryService({ readSession, readVillageState, village
     }
     const visibleMoments = moments.slice(first, last),
       visibleLines = momentLines.slice(first, last).flat();
+    // The replaced reply is at the tail, but the byte limit can trim its first readable moment.
+    const retryStart =
+      replacement &&
+      moments.find((moment) => moment.paragraphs > 0 && moment.lineIds.some((id) => replacement.has(id)));
     const cast = new Set([
       ...visibleMoments.flatMap((moment) => [...moment.start.activeIds, ...moment.end.activeIds]),
       ...visibleLines.flatMap((line) => [line.speakerId, ...(line.targetId ? [line.targetId] : [])]),
@@ -299,6 +321,9 @@ export function createSceneQueryService({ readSession, readVillageState, village
       moments: visibleMoments,
       lines: visibleLines,
       participants: scene.participants.filter((person) => cast.has(person.characterId)),
+      ...(retryStart
+        ? { retryStart: { id: retryStart.id, index: retryStart.index, anchorCursor: retryStart.anchorCursor } }
+        : {}),
       ...(olderCursor ? { olderCursor } : {}),
       ...(newerCursor ? { newerCursor } : {}),
     };

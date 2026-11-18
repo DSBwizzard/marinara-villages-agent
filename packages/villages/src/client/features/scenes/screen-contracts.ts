@@ -77,6 +77,7 @@ export type SceneScreenController = {
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
   readonly setRoomError: ScenesState["setRoomError"];
+  readonly setRoomNotices: ScenesState["setRoomNotices"];
   readonly setRoomTargetId: ScenesState["setRoomTargetId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">

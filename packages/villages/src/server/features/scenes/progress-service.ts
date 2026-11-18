@@ -12,6 +12,9 @@ import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js"
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
+import type { SceneRetryCapture } from "../../domain/models/scene-retry.js";
+import { savedOperationReference } from "../../adapters/storage/operation-evidence.js";
+import { retryableEpisode, sceneRetryAuthority } from "../../domain/rules/scene-retry.js";
 
 export interface SceneProgressPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
@@ -70,11 +73,19 @@ export function createSceneProgress({
         else abandoned = narrationIsAbandoned(state, publication, turn.id);
         if (!result && !abandoned) return;
       }
-      if (!result && !abandoned)
+      if (!result && !abandoned) {
+        let capture: SceneRetryCapture | null | undefined;
+        const readset = publication.readset;
+        const original =
+          scene.operation?.id === readset.source.operationId &&
+          Object.entries(scene.operation.checkpoints).find(([stage]) => stage.startsWith("writing-request:"))?.[1];
+        const request = original && typeof original === "object" ? savedOperationReference(original, scene) : undefined;
         await mutateVillageState(
           (state) => {
+            capture = undefined;
             try {
-              if (!acceptedNarrationEpisode(state, publication, turn.id)) {
+              const prior = acceptedNarrationEpisode(state, publication, turn.id);
+              if (!prior) {
                 abandoned = narrationIsAbandoned(state, publication, turn.id);
                 if (abandoned) return;
                 assertVenueOwnership(scene);
@@ -89,19 +100,43 @@ export function createSceneProgress({
                   "the admitted Scene changed before narration acceptance",
                 );
               }
+              const authority =
+                !prior &&
+                request &&
+                turn.mode === "chat" &&
+                turn.id !== "greeting" &&
+                readset.continuityRevision === state.continuity.revision &&
+                readset.retryEpisodeRevision === state.episodes.revision
+                  ? sceneRetryAuthority(state)
+                  : undefined;
               result = acceptNarration(
                 state,
                 publication,
                 turn.id,
                 villageNow(state.clock?.advanceMs ?? 0).toISOString(),
               );
+              if (!prior && result.episode) {
+                const episode = result.episode;
+                capture =
+                  authority && request && retryableEpisode(state, episode, authority)
+                    ? {
+                        sceneId: scene.id,
+                        submissionId: turn.id,
+                        episodeId: episode.id,
+                        request,
+                        sceneRevision: scene.sceneRevision + 1,
+                        originalOperationId: readset.source.operationId,
+                      }
+                    : null;
+              }
             } catch (error) {
               validationFailure = error;
               throw error;
             }
           },
-          { memories: true },
+          { memories: true, captureSceneRetry: () => capture },
         );
+      }
       memoryRequire(result || abandoned, "narration acceptance returned no result");
       const accepted = result;
       const episode = accepted?.episode;

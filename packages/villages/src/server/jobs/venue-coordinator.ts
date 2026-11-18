@@ -45,7 +45,7 @@ export async function coordinateVenue<T>(
   expected: number | undefined,
   retryOfAttemptId: string | undefined,
   work: () => Promise<T>,
-  options: { replay?: boolean; recovery?: boolean; replaceOfOperationId?: string; abandonOfOperationId?: string } = {},
+  options: Parameters<VenueCoordinatorService["coordinateVenue"]>[7] = {},
 ): Promise<T> {
   return coordinatorBinding
     .get()

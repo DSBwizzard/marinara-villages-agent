@@ -9,6 +9,7 @@ export type SceneReadingBookmark = {
   momentIndex: number;
   anchorCursor?: string;
   atEnd: boolean;
+  reveal?: true;
 };
 type ReadingCheckpoint = {
   readStep: number;
