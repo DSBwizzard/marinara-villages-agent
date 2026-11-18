@@ -194,6 +194,83 @@ for (const rating of ["sfw", "nsfw"] as const)
       );
       assert(!village().venues[0].access!.permissions.some((record) => record.visitorId === "player"));
 
+      for (const [id, input, outcome] of [
+        ["insult", "I call Mara a coward and say her workmanship is worthless.", "You can insult me from the yard."],
+        ["threat", "I threaten to break the mill wheel if Mara will not let me through.", "Step back from the wheel."],
+        ["sudden-bang", "I toss a firecracker at the bare wall.", "A sharp crack rings off the stone. Mara ducks."],
+        ["near-miss", "I fling a tool toward the window.", "The tool strikes the frame and drops. The glass holds."],
+        [
+          "theft-attempt",
+          "I reach behind Mara to take the key from her belt.",
+          "Mara steps out of reach, key in hand.",
+        ],
+        [
+          "attack",
+          "I swing my fist at Mara and try to shove her aside.",
+          "The blow catches Mara on the forearm. She recoils and holds it close.",
+        ],
+        ["deescalation", "I step back, apologize, and offer to fetch a clean cloth.", "Leave it on the bench, please."],
+      ] as const)
+        await send(id, input, () => ({
+          segments: [
+            id === "insult" || id === "threat" || id === "deescalation" ? dialogue(outcome) : narration(outcome),
+          ],
+        }));
+      assert.equal(host.scene().zoneId, "common");
+      assert(!village().venues[0].access!.permissions.some((record) => record.visitorId === "player"));
+
+      const spill = "I kick the bucket against the door.";
+      const unprovenRoom = {
+        id: "water",
+        for: "room",
+        text: "Water pools by the door.",
+        source: [inputEvidence(spill, "visible-action")],
+      };
+      const beforeRoom = village().continuity.versions.filter((row) => row.room).length;
+      await send("incidental-room", spill, () => ({
+        segments: [narration("The bucket clangs against the door. Mara looks up.")],
+        keep: [unprovenRoom],
+      }));
+      assert.equal(village().continuity.versions.filter((row) => row.room).length, beforeRoom);
+      assert.match(
+        host.scene().submissions.at(-1)!.acceptance.rejected[0].reason,
+        /room condition needs an actual outcome/,
+      );
+
+      const attempted = payload("required-room", spill);
+      const result = { ...narration("The bucket tips and water pools by the door."), requires: ["water"] };
+      nextReply = () => ({ segments: [result], keep: [unprovenRoom] });
+      const rejectedRoom = await api("POST", "/rooms/turn", attempted);
+      assert(rejectedRoom.statusCode >= 400, rejectedRoom.body);
+      assert(!host.scene().lines.some((line) => line.inputOf === attempted.submissionId));
+      assert.equal(village().continuity.versions.filter((row) => row.room).length, beforeRoom);
+      const diagnostics = await ok(api("GET", "/rooms/browser/changes"));
+      assert.deepEqual(diagnostics.unresolved[0].diagnostic.checks, [
+        { code: "room_outcome_unverified", path: ["source"] },
+      ]);
+      const retry = payload("verified-room", spill);
+      const cached = await operation(attempted.submissionId);
+      assert.equal(cached.input.message, spill);
+      nextReply = () => ({
+        segments: [result],
+        keep: [{ ...unprovenRoom, source: [{ segment: "beat", perceive: { kind: "seen", by: ["player", "mara"] } }] }],
+      });
+      await ok(api("POST", "/rooms/turn", { ...retry, ...sceneResend(cached, retry, retry.submissionId) }));
+      assert.equal(village().continuity.versions.filter((row) => row.room).length, beforeRoom + 1);
+      await send("damage-recall", "I ask Mara where the water ended up.", (messages) => {
+        assert(messages.some((row) => row.content.includes(unprovenRoom.text)));
+        return reply("By the door. Mind your footing.");
+      });
+
+      const impossible = "The entire Village is permanently destroyed and everyone is gone.";
+      await failAndSend(
+        "permanent-destruction",
+        impossible,
+        () => ({ segments: [], halt: { reason: "world", source: [{ input: impossible }] } }),
+        "I strike the side of the bucket with my boot.",
+        /HALT|Village|recover|sav/i,
+      );
+
       const tea = "I prefer strong ginger tea.";
       await send("memory", `I say, “${tea}”`, () => ({
         ...reply("Ginger tea, then."),
@@ -289,7 +366,7 @@ for (const rating of ["sfw", "nsfw"] as const)
         );
         return reply("Strong ginger tea.");
       });
-      await send("leave-cast", "I tell Mara I'll finish up here.", () => ({
+      await send("leave-cast", "I tell Mara to get out of my sight.", () => ({
         segments: [{ ...narration("Mara steps out through the open door."), requires: ["departure"] }],
         commands: [
           {
@@ -330,7 +407,7 @@ for (const rating of ["sfw", "nsfw"] as const)
       assert.equal(host.scene().status, "closed");
       assert.equal(completions, finalCalls, "movement and conclusion are code-owned");
       const accepted = host.scene().submissions.filter((row) => row.acceptance.status === "applied").length;
-      assert.equal(accepted, 42);
+      assert.equal(accepted, 53);
       console.log(
         `${rating}: ${accepted} accepted exchanges, ${completions} mocked completions, max prompt ${promptBytes} bytes`,
       );

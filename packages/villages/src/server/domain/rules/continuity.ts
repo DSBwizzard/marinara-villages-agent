@@ -191,6 +191,7 @@ export function perceivedContinuitySource(source: ContinuityEvidence, actorId: s
   return source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId);
 }
 export const UNWITNESSED_CONTINUITY_SUPPORT = "unwitnessed continuity support";
+export const ROOM_OUTCOME_UNVERIFIED = "room condition needs an actual outcome";
 export const MISSING_PRIVATE_STATE_EVIDENCE = "private state needs its owner's evidence";
 export function isRelationshipEvent(source: ContinuityEvidence) {
   return ["speech", "written", "observation", "native"].includes(source.kind);
@@ -472,7 +473,7 @@ export function applyContinuityWrite(
         sources.every(
           (source) => source.kind === "native" || (source.kind === "observation" && source.unitId !== "input"),
         ) && sources.some((source) => source.episodeId === context.episodeId),
-        "room condition needs an actual outcome",
+        ROOM_OUTCOME_UNVERIFIED,
       );
   const original = write.target ? targetRecord(collection, write.target, context) : undefined;
   memoryRequire(

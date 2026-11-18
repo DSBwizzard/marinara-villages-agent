@@ -8,6 +8,8 @@ export function heldSceneErrorMessage(value: unknown): string {
     return "The AI reply couldn’t show whose private memory it was recording.";
   if (checks.some(({ code }) => code === "room_target_in_actor_memory"))
     return "The AI reply tried to save a character’s memory to the room.";
+  if (checks.some(({ code }) => code === "room_outcome_unverified"))
+    return "The AI reply couldn’t verify a change to the Room.";
   if (checks.some(({ code }) => code === "continuity_actor_not_admitted"))
     return "The AI reply tried to update a character outside the Scene.";
   const [check] = checks;

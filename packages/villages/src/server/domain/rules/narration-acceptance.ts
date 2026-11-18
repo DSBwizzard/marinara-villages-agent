@@ -58,18 +58,14 @@ export type NarrationPublication = {
 
 type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
 export const ACTOR_MEMORY_TARGETS_ROOM = "actor memory targeted Room";
+const roomNoteFields = new Set(["id", "for", "text", "source", "requires", "independent"]);
 const roomFactFields = new Set([
-  "id",
-  "for",
-  "text",
-  "source",
+  ...roomNoteFields,
   "replace",
   "visibility",
   "knownBy",
   "expiresInMinutes",
   "protection",
-  "requires",
-  "independent",
 ]);
 const actorNoteFields = new Set([
   "id",
@@ -337,7 +333,7 @@ export function acceptNarrationContinuity(
   const repeatedOfferDecisions = new Set<string>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
-  const passiveActorNotes = new Set<string>();
+  const incidentalNotes = new Set<string>();
   const memoryFallback = readset.optionalActorMemories;
   const optionalActorMemories =
     (memoryFallback === true ||
@@ -486,18 +482,33 @@ export function acceptNarrationContinuity(
       typeof note.text === "string" &&
       (note.class === "experience" || note.class === "information") &&
       Object.keys(note).every((key) => ["for", "text", "class", "source"].includes(key));
-    // Passive actor notes can be omitted unless the reply needs them to support an outcome.
-    const passiveActorNote =
+    const roomArray =
       readset.continuityEffectRecovery &&
-      allowTranscriptNotes &&
-      !requestedMemory &&
+      Array.isArray(note.for) &&
+      note.for.length === 1 &&
+      note.for[0] === "room" &&
+      !source.actors.some((actor) => actor.id === "room") &&
+      !state.villagers.some((actor) => actor.characterId === "room") &&
+      !findNpc(state, "room");
+    const passiveActorNote =
       Array.isArray(note.for) &&
       note.for.length > 0 &&
       note.for.every((id) => source.actors.some((actor) => actor.id === id)) &&
       (note.class === undefined ||
         ["experience", "information", "perspective", "open-matter"].includes(String(note.class))) &&
       Object.keys(note).every((field) => actorNoteFields.has(field));
-    if (passiveActorNote) passiveActorNotes.add(header.id);
+    const roomObservation =
+      (note.for === "room" || roomArray) &&
+      typeof note.text === "string" &&
+      note.text.trim() !== "" &&
+      Object.keys(note).every((field) => roomNoteFields.has(field));
+    if (
+      readset.continuityEffectRecovery &&
+      allowTranscriptNotes &&
+      !requestedMemory &&
+      (passiveActorNote || roomObservation)
+    )
+      incidentalNotes.add(header.id);
     const optionalAnswer =
       note.class === "perspective" &&
       typeof asRecord(note.relationship).answer === "string" &&
@@ -523,14 +534,6 @@ export function acceptNarrationContinuity(
       independent: openingOfferEcho || optionalNote || optionalAnswer || header.independent,
     };
     try {
-      const roomArray =
-        readset.continuityEffectRecovery &&
-        Array.isArray(note.for) &&
-        note.for.length === 1 &&
-        note.for[0] === "room" &&
-        !source.actors.some((actor) => actor.id === "room") &&
-        !state.villagers.some((actor) => actor.characterId === "room") &&
-        !findNpc(state, "room");
       memoryRequire(
         !roomArray || Object.keys(note).every((field) => roomFactFields.has(field)),
         ACTOR_MEMORY_TARGETS_ROOM,
@@ -722,7 +725,7 @@ export function acceptNarrationContinuity(
   let selection: ReturnType<typeof selectSceneEffects>;
   const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
   for (const effect of effects)
-    if (passiveActorNotes.has(effect.id) && !referenced.has(effect.id)) effect.independent = true;
+    if (incidentalNotes.has(effect.id) && !referenced.has(effect.id)) effect.independent = true;
   for (;;) {
     for (const effect of effects)
       if (effect.failure && !referenced.has(effect.id) && optionalActorMemories?.has(effect.id))
