@@ -57,6 +57,7 @@ try {
       "import.meta.env.DEV": "false",
       "import.meta.env.PROD": "true",
       "import.meta.env.MODE": '"production"',
+      VILLAGES_REPORT_VERSION: JSON.stringify(feature.version),
     },
   });
   if (

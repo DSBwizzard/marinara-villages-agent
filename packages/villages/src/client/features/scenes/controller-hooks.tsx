@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useSta
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue, SceneView } from "../../../shared/contracts/village.js";
 import { useFocusRevision } from "../../shared/activity.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
+import type { SceneFailure } from "./scene-error-report.js";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import {
   completedGreetingAfterFailure,
@@ -261,7 +262,7 @@ export function useSceneOperationPolling(ports: {
   roomBusy: boolean;
   setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomEnded: React.Dispatch<React.SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<React.SetStateAction<string>>;
+  setRoomError: React.Dispatch<React.SetStateAction<string | SceneFailure>>;
 }) {
   const { room, roomBusy, setRoom, setRoomEnded, setRoomError } = ports;
   const operationId = room?.operation?.id;
@@ -342,6 +343,8 @@ export function useSceneInterruptedSubmission(ports: {
   composerEditVersionRef: React.RefObject<number>;
   restoredSceneDraftRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
+  roomBusy: boolean;
+  recoveryPending: boolean;
   setContactRecovery: React.Dispatch<React.SetStateAction<import("./useScenesState.js").ContactRecovery | null>>;
   roomMoveOperationIdRef: React.RefObject<string>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
@@ -354,6 +357,8 @@ export function useSceneInterruptedSubmission(ports: {
     composerEditVersionRef,
     restoredSceneDraftRef,
     room,
+    roomBusy,
+    recoveryPending,
     setContactRecovery,
     roomMoveOperationIdRef,
     setRoomContactBoundary,
@@ -364,6 +369,8 @@ export function useSceneInterruptedSubmission(ports: {
   } = ports;
   useEffect(() => {
     if (
+      roomBusy ||
+      recoveryPending ||
       !room?.id ||
       (room.operation?.status !== "interrupted" && !room.operation?.error) ||
       hasPublishedRoomSubmission(room, room.operation?.id)
@@ -392,7 +399,9 @@ export function useSceneInterruptedSubmission(ports: {
         }
         if (!operation.input.message) return;
         restoredSceneDraftRef.current = restoreKey;
-        if (composerEditVersionRef.current !== editVersion) return;
+        // The live request owns restoration once the player has edited this composer.
+        if ((operation.input.mode !== "contact" && editVersion !== 0) || composerEditVersionRef.current !== editVersion)
+          return;
         setRoomDraft((current) => current || operation.input?.message || "");
       })
       .catch(() => {});
@@ -401,6 +410,8 @@ export function useSceneInterruptedSubmission(ports: {
     };
   }, [
     room,
+    roomBusy,
+    recoveryPending,
     restoredSceneDraftRef,
     composerEditVersionRef,
     setRoomDraft,

@@ -61,6 +61,16 @@ await withBrowser(browser, async () => {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
     await mockEngineLookups(context);
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            window.sceneReport = text;
+          },
+        },
+      });
+    });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await context.route("http://actions.test/", (route) =>
@@ -164,6 +174,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await contactStarted;
     await expect(composer).toBeEditable();
+    await expect(composer).toHaveValue("");
     await expect(page.getByRole("button", { name: "Sending", exact: true })).toBeDisabled();
     await composer.fill("Typed while the reply was pending");
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
@@ -215,6 +226,14 @@ await withBrowser(browser, async () => {
     await picker.getByRole("button", { name: "Entrance", exact: true }).click();
     await page.getByRole("button", { name: /^1 Scene error$/ }).click();
     await expect(page.getByText(/Scene changed/).last()).toBeVisible();
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(page.getByText("Anonymous report copied.")).toBeVisible();
+    const report = await page.evaluate(() => window.sceneReport);
+    assert.match(
+      report,
+      /Move between Zones\nRequest: POST \/api\/villages\/rooms\/zone\nResult: HTTP 409 · SCENE_STALE/,
+    );
+    assert.doesNotMatch(report, /The Mill|Entrance|Mara|Scene ID|Keep this draft/);
     await page.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(moves, 0);
     await selectMove();

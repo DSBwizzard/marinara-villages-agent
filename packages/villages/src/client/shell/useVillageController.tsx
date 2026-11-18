@@ -631,8 +631,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // recovery read failed; a delayed failure must not revive the old warning.
   useSceneOpeningWarning({ ...scenes, room });
 
-  useSceneInterruptedSubmission({ ...scenes, room });
-
   // An app reload does not end a Scene. The server owns the one active
   // session; the client restores it instead of opening another conversation.
   const sceneRestoration = useActiveSceneRestoration({
@@ -727,6 +725,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setScreen,
     snapshot,
   });
+  useSceneInterruptedSubmission({ ...scenes, room, recoveryPending: replyPending });
 
   /**
    * Everybody the village places in one place at this hour.
@@ -1381,6 +1380,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomDraft: scenes.roomDraft,
     roomEnded: scenes.roomEnded,
     roomError: scenes.roomError,
+    roomErrorTrace: scenes.roomErrorTrace,
     roomGreetingError: scenes.roomGreetingError,
     roomGreetingNotice: scenes.roomGreetingNotice,
     contactRecovery: scenes.contactRecovery,

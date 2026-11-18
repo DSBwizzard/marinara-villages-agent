@@ -8,6 +8,10 @@ export function sceneErrorCause(original: string): string {
 /** Returns only fixed strings safe to include in a shareable report. */
 export function sceneErrorCategory(message: string): string | undefined {
   const rules: [RegExp, string][] = [
+    [/^A line can be at most 4000 characters\.$/u, "A line can be at most 4000 characters."],
+    [/^This (?:Venue )?zone is closed for Renovation\./iu, "The destination Zone is closed for renovation."],
+    [/^There is no permitted connection route to that space;/u, "There is no permitted route to the destination Zone."],
+    [/^Five residents occupy this Zone/u, "The destination Zone is at capacity."],
     [/^Invalid request details/iu, "The request contains invalid details."],
     [/History temporarily unavailable|Could not load Scene history/iu, "The game couldn’t load the Scene history."],
     [/^Interrupted$|^Request interrupted$/iu, "The request stopped before it finished."],

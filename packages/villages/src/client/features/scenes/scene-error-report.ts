@@ -1,15 +1,62 @@
-import { sceneErrorCategory, sceneErrorCause, sceneErrorMessage } from "./scene-error-message.js";
+import type { RoomOperation } from "../../../shared/contracts/village.js";
+import { messageFrom, VillageApiError, villageRequestFailure } from "../../shared/api.js";
+import { sceneErrorCategory, sceneErrorCause } from "./scene-error-message.js";
 
-export type SceneErrorDiagnostic = { id: string; details: string };
-export type SceneErrorReportItem = {
-  id: string;
-  title: string;
-  message: string;
-  diagnosticId?: string;
-  fields?: { label: string; value: string }[];
+declare const VILLAGES_REPORT_VERSION: string;
+
+const actions = {
+  send: "Send message",
+  move: "Move between Zones",
+  open: "Open Scene",
+  greet: "Generate opening",
+  continue: "Continue without opening",
+  close: "Conclude Scene",
+  retry: "Retry saved request",
+  replay: "Replay saved reply",
+  notice: "Dismiss Scene notice",
+  discard: "Discard Scene",
+  read: "Read Scene playback",
+  history: "Read Scene history",
+  review: "Check saved action",
+} as const;
+type SceneAction = keyof typeof actions;
+
+type RequestTrace = {
+  action: SceneAction;
+  request?: string;
+  status?: number;
+  code?: string;
+  elapsedMs?: number;
 };
 
-const shareableStages = new Set([
+export type SceneFailure = { message: string; trace: RequestTrace };
+
+const codes = new Set([
+  "SCENE_MESSAGE_TOO_LONG",
+  "SCENE_BUSY",
+  "SCENE_STALE",
+  "SUBMISSION_MISMATCH",
+  "OPERATION_INTERRUPTED",
+  "NETWORK_ERROR",
+  "RESPONSE_READ_FAILED",
+  "INVALID_RESPONSE",
+  "TIMEOUT",
+  "ABORTED",
+]);
+const causes = new Set([
+  "empty_output",
+  "output_limit",
+  "invalid_json",
+  "missing_result",
+  "duplicate_result",
+  "unsupported_outcome",
+  "invalid_citation",
+  "provider_exception",
+  "unknown_request",
+  "storage_application",
+  "insufficient_budget",
+]);
+const stages = new Set([
   "admission",
   "scene-layout",
   "scene-response",
@@ -17,72 +64,152 @@ const shareableStages = new Set([
   "writing-completion",
   "greeting-reply",
   "turn-reply",
-  "greet",
-  "turn",
-  "move",
-  "close",
-  "running",
-  "interrupted",
+  "metadata",
   "complete",
+  "interrupted",
 ]);
-const reportAreas: Readonly<Record<string, string>> = {
-  room: "Scene request",
-  request: "Scene request",
-  operation: "Saved request",
-  greeting: "Opening",
-  "opening-notice": "Opening",
-  "reply-recovery": "Reply recovery",
-  reading: "Playback",
-  narration: "Saving a reply",
-  diagnostics: "Saved changes",
+const resultStates = new Set(["running", "interrupted", "complete"]);
+const sceneStates = new Set(["opening", "active", "closing", "closed"]);
+const operationLabels: Partial<Record<string, SceneAction>> = {
+  turn: "send",
+  move: "move",
+  greet: "greet",
+  close: "close",
 };
+const routes = new Set([
+  "/rooms",
+  "/rooms/turn",
+  "/rooms/zone",
+  "/rooms/leave",
+  "/rooms/end",
+  "/rooms/greet",
+  "/rooms/active",
+  "/rooms/continue",
+  "/rooms/debug/discard",
+  "/rooms/:scene/operation",
+  "/rooms/:scene/operations/:request",
+  "/rooms/:scene/changes/replay",
+  "/rooms/:scene/recovery",
+  "/rooms/:scene/playback",
+  "/rooms/:scene/history",
+  "/rooms/:scene/notices/dismiss",
+  "/places/:place",
+]);
 
-export function anonymousSceneErrorReport(items: SceneErrorReportItem[]) {
-  return [
-    "Villages Scene error report",
-    ...items.slice(0, 8).map((item) => {
-      const id = item.id.split(":")[0]!;
-      const area = Object.hasOwn(reportAreas, id) ? reportAreas[id] : "Scene controls";
-      const category = sceneErrorCategory(sceneErrorCause(item.message)) ?? "The action did not finish.";
-      const context = (item.fields ?? [])
-        .filter((field) => field.label === "Stage" || field.label === "Status")
-        .map(({ label, value }) => ({ label, value: value.split(":")[0]! }))
-        .filter(({ value }) => shareableStages.has(value))
-        .map(({ label, value }) => `${label}: ${value}`);
-      return [`${area}: ${category}`, ...context].join("\n");
-    }),
-    "\nWhat I was trying to do:",
-  ].join("\n");
+function requestLabel(method: string, path: string) {
+  const route = path
+    .replace(/^\/api\/villages/u, "")
+    .replace(
+      /^\/rooms\/[^/]+\/(operation|changes\/replay|recovery|playback|history|notices\/dismiss)$/u,
+      "/rooms/:scene/$1",
+    )
+    .replace(/^\/rooms\/[^/]+\/operations\/[^/]+$/u, "/rooms/:scene/operations/:request")
+    .replace(/^\/places\/[^/]+$/u, "/places/:place");
+  return (method === "GET" || method === "POST" || method === "DELETE") && routes.has(route)
+    ? method + " /api/villages" + route
+    : undefined;
 }
 
-/** Keep exact errors and request identities in the copied report, outside the player message. */
-export function sceneErrorReport(
-  items: SceneErrorReportItem[],
-  diagnostics: SceneErrorDiagnostic[] = [],
-  unavailable = "",
-) {
-  const shared =
-    items[0]?.fields?.filter((field) =>
-      items.every((item) => item.fields?.some((other) => other.label === field.label && other.value === field.value)),
-    ) ?? [];
-  return [
-    "Villages Scene errors",
-    ...shared.map((field) => `${field.label}: ${field.value}`),
-    ...items.map((item, index) =>
-      [
-        `\n${index + 1}. ${sceneErrorMessage(item.message)}`,
-        `Source: ${item.title}`,
-        `Original error: ${item.message}`,
-        ...(item.fields ?? [])
-          .filter((field) => !shared.some((common) => common.label === field.label && common.value === field.value))
-          .map((field) => `${field.label}: ${field.value}`),
-        ...(item.diagnosticId
-          ? [
-              diagnostics.find((row) => row.id === item.diagnosticId)?.details ??
-                `Saved details unavailable: ${unavailable || "the saved error no longer matches this request or attempt"}`,
-            ]
-          : []),
-      ].join("\n"),
-    ),
-  ].join("\n");
+export function sceneFailure(cause: unknown, fallback: string, action: SceneAction): SceneFailure {
+  const request = villageRequestFailure(cause);
+  const api = cause instanceof VillageApiError ? cause : undefined;
+  const code =
+    api?.code ??
+    (cause instanceof Error
+      ? cause.name === "TimeoutError"
+        ? "TIMEOUT"
+        : cause.name === "AbortError"
+          ? "ABORTED"
+          : undefined
+      : undefined);
+  return {
+    message: messageFrom(cause, fallback),
+    trace: {
+      action,
+      request: request && requestLabel(request.method, request.path),
+      status: api?.status,
+      code: code && codes.has(code) ? code : undefined,
+      elapsedMs: request?.elapsedMs,
+    },
+  };
+}
+
+export type SceneErrorReportItem = {
+  id: string;
+  title: string;
+  message: string;
+  trace?: RequestTrace;
+  operation?: Pick<RoomOperation, "kind" | "stage" | "status" | "failureCause"> | null;
+  held?: boolean;
+};
+
+type ReportContext = {
+  sceneStatus?: string;
+  revision?: number;
+  mobile?: boolean;
+  draftRetained?: boolean;
+};
+
+export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context?: ReportContext) {
+  const version = typeof VILLAGES_REPORT_VERSION === "string" ? VILLAGES_REPORT_VERSION : "development";
+  const lines = [`Villages Scene error trace · ${version}`];
+  const status = context?.sceneStatus;
+  if (status && sceneStates.has(status))
+    lines.push(`Scene: ${status}${Number.isSafeInteger(context?.revision) ? ` · revision ${context?.revision}` : ""}`);
+  if (context)
+    lines.push(
+      `View: ${context.mobile ? "phone" : "desktop"} · Draft: ${context.draftRetained ? "retained" : "empty"}`,
+    );
+
+  for (const [index, item] of items.slice(0, 8).entries()) {
+    const { trace, operation } = item;
+    const action =
+      trace?.action ??
+      (operation && Object.hasOwn(operationLabels, operation.kind) ? operationLabels[operation.kind] : undefined);
+    const label =
+      action && Object.hasOwn(actions, action)
+        ? actions[action]
+        : item.held
+          ? "Apply saved reply"
+          : item.id === "reply-recovery"
+            ? "Reconcile reply"
+            : item.id === "reading"
+              ? "Read Scene playback"
+              : item.id === "greeting" || item.id === "opening-notice"
+                ? "Open Scene"
+                : "Scene request";
+    lines.push("", `${index + 1}. ${label}`);
+    const [method, route] = typeof trace?.request === "string" ? trace.request.split(" ") : [];
+    const request = method && route ? requestLabel(method, route) : undefined;
+    if (request) lines.push(`Request: ${request}`);
+    const result = [
+      trace?.status === 0
+        ? "No HTTP response"
+        : typeof trace?.status === "number" &&
+            Number.isInteger(trace.status) &&
+            trace.status >= 100 &&
+            trace.status <= 599
+          ? `HTTP ${trace.status}`
+          : "",
+      trace?.code && codes.has(trace.code) ? trace.code : "",
+      Number.isSafeInteger(trace?.elapsedMs) && Number(trace?.elapsedMs) >= 0 ? `${trace?.elapsedMs} ms` : "",
+    ].filter(Boolean);
+    if (result.length) lines.push(`Result: ${result.join(" · ")}`);
+    if (trace?.code === "SCENE_MESSAGE_TOO_LONG")
+      lines.push("Cause: A line can be at most 4000 characters.", "Stage: input validation, before model dispatch");
+    else {
+      const category = sceneErrorCategory(sceneErrorCause(item.message));
+      const failureCause = operation?.failureCause;
+      if (failureCause && causes.has(failureCause)) lines.push(`Cause: ${failureCause}`);
+      if (category) lines.push(`Detail: ${category}`);
+    }
+    const stage = operation?.stage?.split(":")[0];
+    const saved = [
+      item.held ? "reply held" : operation?.status && resultStates.has(operation.status) ? operation.status : "",
+      stage && stages.has(stage) ? `stage ${stage}` : "",
+    ].filter(Boolean);
+    if (saved.length) lines.push(`Saved request: ${saved.join(" · ")}`);
+    if (item.id === "reply-recovery") lines.push("Recovery: checking for a saved reply");
+  }
+  return lines.join("\n");
 }

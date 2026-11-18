@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { renderVillagesMarkdown } from "../../shared/presentation.js";
 import { SceneErrorChip } from "./scene-errors.js";
+import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
 
 export function SceneHistory({
   sceneId,
@@ -21,7 +22,7 @@ export function SceneHistory({
 }) {
   const [page, setPage] = useState<SceneHistoryPage | null>(null),
     [busy, setBusy] = useState(true),
-    [error, setError] = useState("");
+    [error, setError] = useState<SceneFailure | null>(null);
   const [errorsOpen, setErrorsOpen] = useState(true);
   const lane = useRef({ generation: 0, pending: null as AbortController | null, path: "" });
   const load = useCallback(
@@ -32,7 +33,7 @@ export function SceneHistory({
       const controller = new AbortController();
       currentLane.pending = controller;
       setBusy(true);
-      setError("");
+      setError(null);
       try {
         currentLane.path = `/rooms/${encodeURIComponent(sceneId)}/history?scope=${encodeURIComponent(scope)}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
         const result = await request<SceneHistoryPage>(currentLane.path, { signal: controller.signal });
@@ -46,7 +47,7 @@ export function SceneHistory({
         setPage(result);
       } catch (cause) {
         if (!controller.signal.aborted && currentLane.generation === claim) {
-          setError(messageFrom(cause, "Could not load Scene history."));
+          setError(sceneFailure(cause, "Could not load Scene history.", "history"));
           setErrorsOpen(true);
         }
       } finally {
@@ -98,11 +99,7 @@ export function SceneHistory({
             {
               id: "history",
               title: "Scene history",
-              message: error,
-              fields: [
-                { label: "Scene ID", value: sceneId },
-                { label: "Request", value: lane.current.path },
-              ],
+              ...error,
             },
           ]}
           open={errorsOpen}

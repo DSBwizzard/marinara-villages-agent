@@ -26,7 +26,7 @@ export function readMessage(value: unknown): string {
   const message = typeof value === "string" ? value : "";
   if (message.trim().length === 0) throw badRequest("Write something before sending it.");
   if (message.length > 4000) {
-    throw badRequest("A line can be at most 4000 characters.");
+    throw badRequest("A line can be at most 4000 characters.", "SCENE_MESSAGE_TOO_LONG");
   }
   return message;
 }

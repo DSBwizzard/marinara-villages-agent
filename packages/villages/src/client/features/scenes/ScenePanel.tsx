@@ -26,6 +26,7 @@ import type { Portrait, PortraitMap, VillageBeatRegister } from "../../shared/ty
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
+import type { SceneFailure } from "./scene-error-report.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { scenePlaybackSteps } from "./scene-playback.js";
@@ -272,7 +273,7 @@ export function RoomPanel({
   busy: boolean;
   error: string;
   greetingNotice: string;
-  turnRecovery?: string;
+  turnRecovery?: string | SceneFailure;
   sceneErrors?: SceneErrorItem[];
   onCheckSavedReply?: () => void;
   open: boolean;
@@ -397,22 +398,6 @@ export function RoomPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeMemory, openMemory]);
 
-  const sceneFields = [
-    { label: "Scene", value: room.placeName },
-    { label: "Scene ID", value: room.id },
-    { label: "Scene revision", value: String(room.sceneRevision ?? "unknown") },
-  ];
-  const requestFields = [
-    ...sceneFields,
-    ...(room.operation
-      ? [
-          { label: "Request", value: room.operation.id },
-          { label: "Attempt", value: room.operation.attemptId },
-          { label: "Stage", value: room.operation.stage ?? room.operation.kind },
-          { label: "Status", value: room.operation.status },
-        ]
-      : []),
-  ];
   const openingActions =
     room.status === "opening" ? (
       <>
@@ -431,14 +416,7 @@ export function RoomPanel({
     ) : undefined;
   const errorItems: SceneErrorItem[] = sceneErrors.map((item) => ({
     ...item,
-    diagnosticId:
-      room.operation && (item.id === "operation" || item.message === room.operation.error)
-        ? `operation:${room.operation.id}:${room.operation.attemptId}`
-        : undefined,
-    fields:
-      item.id === "operation" || item.message === room.operation?.error
-        ? [...requestFields, ...(item.fields ?? [])]
-        : [...sceneFields, ...(item.fields ?? [])],
+    operation: item.id === "operation" || item.message === room.operation?.error ? room.operation : undefined,
     actions: item.actions ?? (["room", "greeting", "operation"].includes(item.id) ? openingActions : undefined),
   }));
   if (error && !sceneErrors.length)
@@ -446,15 +424,14 @@ export function RoomPanel({
       id: "request",
       title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
       message: error,
-      fields: sceneFields,
       actions: openingActions,
     });
   if (turnRecovery)
     errorItems.push({
       id: "reply-recovery",
       title: "Reply connection interrupted",
-      message: turnRecovery,
-      fields: sceneFields,
+      message: typeof turnRecovery === "string" ? turnRecovery : turnRecovery.message,
+      trace: typeof turnRecovery === "string" ? undefined : turnRecovery.trace,
       actions: (
         <button type="button" onClick={onCheckSavedReply}>
           Check saved reply
@@ -466,14 +443,13 @@ export function RoomPanel({
       id: "opening-notice",
       title: "Scene opening notice",
       message: greetingNotice,
-      fields: sceneFields,
     });
   if (playback.error)
     errorItems.push({
       id: "reading",
       title: "Scene reading",
       message: playback.error,
-      fields: sceneFields,
+      trace: playback.errorTrace,
       actions: (
         <>
           <button type="button" onClick={() => void playback.retry()}>
@@ -494,19 +470,15 @@ export function RoomPanel({
     ) : undefined;
     const operation = change.submissionId === room.operation?.id && errorItems.find((item) => item.id === "operation");
     if (operation) {
-      operation.diagnosticId = change.diagnosticId ?? operation.diagnosticId;
+      operation.held = true;
       operation.actions = replay ?? operation.actions;
       continue;
     }
     errorItems.push({
       id: "narration:" + change.submissionId,
-      diagnosticId: change.diagnosticId,
       title: "Saved reply needs review",
       message: change.reason ?? "The saved reply could not be applied.",
-      fields: [
-        { label: "Scene", value: room.placeName },
-        ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
-      ],
+      held: true,
       actions: replay,
     });
   }
@@ -639,6 +611,8 @@ export function RoomPanel({
     !historyOpen &&
     (!playback.restoring || !!playback.error);
   const canSend = canCompose && !busy && !playback.busy && !contactRecovery;
+  const resend = !draft.trim() && !!turnRecovery;
+  const sendLabel = busy ? "Sending" : resend ? "Resend" : "Send";
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -670,7 +644,7 @@ export function RoomPanel({
   }, [canCompose, resizeComposer]);
 
   const submitComposer = () => {
-    if (!canSend || !draft.trim()) return;
+    if (!canSend || (!draft.trim() && !resend)) return;
     setActionsView(null);
     onSend();
   };
@@ -761,11 +735,99 @@ export function RoomPanel({
           {room.placeName}
           {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
         </span>
+        <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
+          {!settingsOpen ? (
+            <SceneErrorChip
+              items={errorItems}
+              context={{ sceneStatus: room.status, revision: room.sceneRevision, mobile, draftRetained: !!draft }}
+              open={errorsOpen}
+              onOpen={(value) => {
+                setErrorsOpen(value);
+                if (value) {
+                  setNoticesOpen(false);
+                  setActionsView(null);
+                }
+              }}
+            />
+          ) : null}
+          {notices.length > 0 ? (
+            <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-room-notices-trigger`}
+                onClick={() => {
+                  setNoticesOpen((value) => !value);
+                  setErrorsOpen(false);
+                  setActionsView(null);
+                }}
+                aria-expanded={noticesOpen}
+                aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
+              >
+                <span aria-hidden="true">{presenceNotice ? roomNoticeIcon(presenceNotice) : "✦"}</span> {notices.length}
+              </button>
+              {noticesOpen ? (
+                <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
+                  {notices.map((notice) => (
+                    <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
+                      <span aria-hidden="true">{roomNoticeIcon(notice)}</span>
+                      {(notice.kind === "memory" ||
+                        notice.kind === "wish" ||
+                        notice.kind === "relationship-up" ||
+                        notice.kind === "relationship-down") &&
+                      (notice.detail || (notice.wishUpdate?.actorId && onOpenWish)) ? (
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-room-star-detail`}
+                          onClick={(event) => {
+                            if (notice.wishUpdate?.actorId && onOpenWish) {
+                              onOpenWish(notice.wishUpdate.actorId, notice.wishUpdate.wishId);
+                              return;
+                            }
+                            memoryTriggerRef.current = event.currentTarget;
+                            setOpenMemory(notice);
+                          }}
+                          aria-label={`View ${roomNoticeLabel(notice.kind)}: ${notice.text}`}
+                          title={
+                            notice.kind === "memory"
+                              ? "View saved memory"
+                              : notice.kind === "wish"
+                                ? "View Wish update"
+                                : "View relationship change"
+                          }
+                        >
+                          {notice.text}
+                        </button>
+                      ) : (
+                        <span>{notice.text}</span>
+                      )}
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-room-star-dismiss`}
+                        onClick={() => {
+                          if (openMemory?.id === notice.id) setOpenMemory(null);
+                          onDismissNotice(notice.id);
+                        }}
+                        aria-label={`Dismiss ${notice.text}`}
+                        title="Dismiss notice"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         <span ref={actionsRef} className={`${ELEMENT_TAG}-chat-actions`}>
           <button
             type="button"
             className={`${ELEMENT_TAG}-room-actions-trigger`}
-            onClick={() => setActionsView((value) => (value ? null : "menu"))}
+            onClick={() => {
+              setActionsView((value) => (value ? null : "menu"));
+              setErrorsOpen(false);
+              setNoticesOpen(false);
+            }}
             aria-label="Venue actions"
             aria-haspopup="menu"
             aria-expanded={actionsView === "menu"}
@@ -983,7 +1045,7 @@ export function RoomPanel({
                 items={errorItems}
                 open={errorsOpen}
                 onOpen={setErrorsOpen}
-                loadDetails={() => request(`/rooms/${encodeURIComponent(room.id)}/error-details`)}
+                context={{ sceneStatus: room.status, revision: room.sceneRevision, mobile, draftRetained: !!draft }}
               />
             </div>
             {sceneSettings}
@@ -997,86 +1059,6 @@ export function RoomPanel({
             : "You’re outside this Venue. You can speak in your own words, or leave whenever you like."}
         </p>
       ) : null}
-      <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
-        {!settingsOpen ? (
-          <SceneErrorChip
-            items={errorItems}
-            loadDetails={() => request(`/rooms/${encodeURIComponent(room.id)}/error-details`)}
-            open={errorsOpen}
-            onOpen={(value) => {
-              setErrorsOpen(value);
-              if (value) setNoticesOpen(false);
-            }}
-          />
-        ) : null}
-        {notices.length > 0 ? (
-          <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-room-notices-trigger`}
-              onClick={() => {
-                setNoticesOpen((value) => !value);
-                setErrorsOpen(false);
-              }}
-              aria-expanded={noticesOpen}
-              aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
-            >
-              <span aria-hidden="true">{presenceNotice ? roomNoticeIcon(presenceNotice) : "✦"}</span> {notices.length}
-            </button>
-            {noticesOpen ? (
-              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
-                {notices.map((notice) => (
-                  <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
-                    <span aria-hidden="true">{roomNoticeIcon(notice)}</span>
-                    {(notice.kind === "memory" ||
-                      notice.kind === "wish" ||
-                      notice.kind === "relationship-up" ||
-                      notice.kind === "relationship-down") &&
-                    (notice.detail || (notice.wishUpdate?.actorId && onOpenWish)) ? (
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-room-star-detail`}
-                        onClick={(event) => {
-                          if (notice.wishUpdate?.actorId && onOpenWish) {
-                            onOpenWish(notice.wishUpdate.actorId, notice.wishUpdate.wishId);
-                            return;
-                          }
-                          memoryTriggerRef.current = event.currentTarget;
-                          setOpenMemory(notice);
-                        }}
-                        aria-label={`View ${roomNoticeLabel(notice.kind)}: ${notice.text}`}
-                        title={
-                          notice.kind === "memory"
-                            ? "View saved memory"
-                            : notice.kind === "wish"
-                              ? "View Wish update"
-                              : "View relationship change"
-                        }
-                      >
-                        {notice.text}
-                      </button>
-                    ) : (
-                      <span>{notice.text}</span>
-                    )}
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-room-star-dismiss`}
-                      onClick={() => {
-                        if (openMemory?.id === notice.id) setOpenMemory(null);
-                        onDismissNotice(notice.id);
-                      }}
-                      aria-label={`Dismiss ${notice.text}`}
-                      title="Dismiss notice"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
       {openMemory?.detail ? (
         <div
           className={`${ELEMENT_TAG}-memory-backdrop`}
@@ -1493,11 +1475,11 @@ export function RoomPanel({
                   type="button"
                   className={`${ELEMENT_TAG}-chat-send`}
                   onClick={submitComposer}
-                  disabled={!canSend || !draft.trim()}
-                  aria-label={busy ? "Sending" : "Send"}
-                  title={busy ? "Sending" : "Send"}
+                  disabled={!canSend || (!draft.trim() && !resend)}
+                  aria-label={sendLabel}
+                  title={sendLabel}
                 >
-                  <SceneControlIcon name={busy ? "sending" : "send"} />
+                  {resend && !busy ? "Resend" : <SceneControlIcon name={busy ? "sending" : "send"} />}
                 </button>
               </span>
               <button

@@ -12,10 +12,10 @@ import React,{useState,useRef} from 'react';
 import {createRoot} from 'react-dom/client';
 import {useTurnRecovery} from './packages/villages/src/client/features/scenes/turn-recovery.js';
 function Harness(){
- const [room,setRoom]=useState(window.initial),[draft,setDraft]=useState('sent'),[error,setError]=useState(''),[ended,setEnded]=useState(false),[notices,setNotices]=useState([]),[refreshes,setRefreshes]=useState(0);
+ const [room,setRoom]=useState(window.initial),[draft,setDraft]=useState(''),[error,setError]=useState(''),[ended,setEnded]=useState(false),[notices,setNotices]=useState([]),[refreshes,setRefreshes]=useState(0);
  const submission=useRef('submission'),editVersion=useRef(0),[visible,setVisible]=useState(true);
  const recovery=useTurnRecovery({visible,room,setRoom,setRoomEnded:setEnded,setRoomError:setError,setRoomDraft:setDraft,submission,editVersion,receiveRoomRecordEvents:setNotices,refreshSnapshot:()=>setRefreshes(n=>n+1)});
- window.h={begin:()=>recovery.begin('submission','sent',0),check:recovery.check,select:()=>setRoom({...room,id:'B'}),
+ window.h={begin:(changed)=>recovery.begin('submission','sent',0,undefined,changed),check:recovery.check,select:()=>setRoom({...room,id:'B'}),
  visible:setVisible,edit:(value)=>{editVersion.current++;setDraft(value)}};
  return <pre id='state'>{JSON.stringify({room,draft,error,ended,notices,refreshes,status:recovery.status,pending:recovery.pending,submission:submission.current})}</pre>;
 }createRoot(document.getElementById('root')).render(<Harness/>);
@@ -41,6 +41,8 @@ await withBrowser(browser, async () => {
       "abandoned",
       "draft",
       "same-draft",
+      "cleared-during-failure",
+      "edited-lost",
       "selection",
       "unknown",
       "hidden-return",
@@ -51,7 +53,8 @@ await withBrowser(browser, async () => {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       await mockEngineLookups(page);
       let scene = structuredClone(initial),
-        unavailable = true;
+        unavailable = true,
+        exactUnavailable = false;
       const requests = [],
         errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
@@ -62,6 +65,8 @@ await withBrowser(browser, async () => {
         requests.push(r.request().method());
         if (unavailable) return fulfill(r, { status: 503, json: { error: "offline" } });
         const path = new URL(r.request().url()).pathname;
+        if (exactUnavailable && path.includes("/operations/"))
+          return fulfill(r, { status: 503, json: { error: "Exact receipt unavailable" } });
         if (mode === "status-only-error" && !path.includes("/operations/"))
           return fulfill(r, { status: 503, json: { error: "Scene read unavailable" } });
         if (mode.startsWith("retired") && path.includes("/archive/"))
@@ -83,10 +88,15 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect(page.locator("#state")).toContainText('"pending":false');
       if (mode === "unknown" || mode === "hidden-return") await page.clock.install();
-      await page.evaluate(() => window.h.begin());
+      await page.evaluate((changed) => window.h.begin(changed), mode === "edited-lost");
       await expect(page.locator("#state")).toContainText("Reconnecting");
       if (mode === "draft" || mode === "retired-draft") await page.evaluate(() => window.h.edit("new draft"));
       if (mode === "same-draft") await page.evaluate(() => window.h.edit("sent"));
+      if (mode === "cleared-during-failure")
+        await page.evaluate(() => {
+          window.h.edit("new draft");
+          window.h.edit("");
+        });
       if (mode === "selection") await page.evaluate(() => window.h.select());
       if (mode === "unknown") {
         await page.clock.fastForward(65000);
@@ -107,11 +117,28 @@ await withBrowser(browser, async () => {
           ...(mode === "retired-unknown" ? { error: "The request outcome is unavailable." } : {}),
         };
         scene.submissions = [];
-      } else if (mode === "error" || mode === "status-only-error")
+      } else if (["error", "status-only-error", "cleared-during-failure"].includes(mode))
         scene.operation = { id: "submission", status: "complete", error: "Confirmed validation failure" };
       else if (mode === "abandoned")
         scene.operation = { id: "submission", status: "complete", acceptance: "abandoned" };
-      else scene.submissions = [{ mode: "chat", id: "submission" }];
+      else if (mode === "edited-lost") {
+        scene.submissions = [{ mode: "chat", id: "submission" }];
+        exactUnavailable = true;
+        await page.evaluate(() => window.h.check());
+        await expect(page.locator("#state")).toContainText('"sceneRevision":2');
+        await expect(page.locator("#state")).toContainText('"pending":true');
+        await expect(page.locator("#state")).toContainText('"draft":""');
+        exactUnavailable = false;
+        scene.submissions = [{ mode: "chat", id: "later-turn-from-another-tab" }];
+        scene.operation = {
+          id: "submission",
+          status: "complete",
+          input: null,
+          committed: true,
+          replyReady: true,
+          submittedMessage: "earlier text",
+        };
+      } else scene.submissions = [{ mode: "chat", id: "submission" }];
       if (mode === "hidden-return") await page.evaluate(() => window.h.visible(true));
       else await page.evaluate(() => window.h.check());
       if (mode === "selection") {
@@ -123,21 +150,23 @@ await withBrowser(browser, async () => {
           state.draft,
           mode === "draft" || mode === "retired-draft"
             ? "new draft"
-            : ["error", "status-only-error", "abandoned", "same-draft", "retired-unknown"].includes(mode)
+            : ["error", "status-only-error", "abandoned", "same-draft", "edited-lost"].includes(mode)
               ? "sent"
               : "",
         );
         assert.equal(
           state.error,
-          mode === "error" || mode === "status-only-error"
+          ["error", "status-only-error", "cleared-during-failure"].includes(mode)
             ? "Confirmed validation failure"
             : mode === "abandoned"
-              ? "The saved request was replaced. Your draft is ready to send."
+              ? "The saved request was replaced."
               : mode === "retired-unknown"
                 ? "The request outcome is unavailable."
-                : mode.startsWith("retired")
-                  ? "The Scene ended. Your turn completed, but the reply text is no longer available."
-                  : "",
+                : mode === "edited-lost"
+                  ? "An earlier version of this message went through."
+                  : mode.startsWith("retired")
+                    ? "The Scene ended. Your turn completed, but the reply text is no longer available."
+                    : "",
         );
         if (mode !== "error" && mode !== "retired-unknown") assert.equal(state.submission, null);
         if (mode.startsWith("retired")) {

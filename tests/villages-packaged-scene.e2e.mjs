@@ -35,6 +35,16 @@ await withBrowser({ close: server.stop }, async () => {
   await withBrowser(browser, async () => {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     await mockEngineLookups(context);
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            window.sceneReport = text;
+          },
+        },
+      });
+    });
     await context.route("http://villages.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
@@ -68,7 +78,9 @@ await withBrowser({ close: server.stop }, async () => {
       if (url.pathname.endsWith("/rooms/turn")) turns.push({ input: request.postDataJSON(), response });
       if (response.statusCode !== 200)
         assert(
-          (url.pathname.endsWith("/rooms/turn") && server.scene().submissions.at(-1)?.acceptance.status === "held") ||
+          (url.pathname.endsWith("/rooms/turn") &&
+            (server.scene().submissions.at(-1)?.acceptance.status === "held" ||
+              response.json().code === "SCENE_MESSAGE_TOO_LONG")) ||
             (url.pathname.endsWith("/rooms/browser/recovery") && response.json().error === "That Scene is not closed."),
           `${request.method()} ${url.pathname}: ${response.body}`,
         );
@@ -139,6 +151,31 @@ await withBrowser({ close: server.stop }, async () => {
       await expect(composer).toHaveValue("");
     }
     assert.equal(server.calls(), 3, "each deliberate replacement makes one request");
+    const receipt = await server.app.inject({
+      method: "GET",
+      url: "/api/villages/rooms/browser/operations/" + turns[0].input.submissionId,
+    });
+    assert.equal(receipt.statusCode, 200, receipt.body);
+    assert.equal(receipt.json().operation.submittedMessage, turns[0].input.message);
+    assert.equal(receipt.json().operation.committed, true);
+    const oversized = "Private story text. ".repeat(220);
+    await composer.fill(oversized);
+    await send.click();
+    await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "1 Scene error", exact: true }).click();
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(page.getByText("Anonymous report copied.")).toBeVisible();
+    const report = await page.evaluate(() => window.sceneReport);
+    assert.match(report, /Villages Scene error trace · \d+\.\d+\.\d+/);
+    assert.match(
+      report,
+      /Send message\nRequest: POST \/api\/villages\/rooms\/turn\nResult: HTTP 400 · SCENE_MESSAGE_TOO_LONG/,
+    );
+    assert.match(report, /Cause: A line can be at most 4000 characters\./);
+    assert.match(report, /Stage: input validation, before model dispatch/);
+    assert.doesNotMatch(report, /Private story text|The Mill|Mara|Original error|Scene ID/);
+    await expect(composer).toHaveValue(oversized);
+    assert.equal(server.calls(), 3, "the repeatable error occurs before buying another reply");
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");

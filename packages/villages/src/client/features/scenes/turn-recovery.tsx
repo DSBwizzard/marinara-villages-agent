@@ -5,6 +5,7 @@ import { refreshSceneAfterFailure } from "./ScenePanel.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { request } from "../../shared/api.js";
 import type { RoomOperation } from "../../../shared/contracts/village.js";
+import type { SceneFailure } from "./scene-error-report.js";
 
 type Pending = {
   sceneId: string;
@@ -14,7 +15,12 @@ type Pending = {
   editVersion: number;
   changed?: boolean;
   failure?: string;
+  trace?: SceneFailure["trace"];
 };
+
+export function sceneSubmissionText(operation: RoomOperation | null, submissionId: string): string | undefined {
+  if (operation?.id === submissionId) return operation.submittedMessage ?? operation.input?.message;
+}
 function writeSession(key: string, text: string) {
   if (!key) return;
   try {
@@ -50,7 +56,7 @@ export function useTurnRecovery(ports: {
   room: SceneView;
   setRoom: React.Dispatch<React.SetStateAction<SceneView>>;
   setRoomEnded: React.Dispatch<React.SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<React.SetStateAction<string>>;
+  setRoomError: React.Dispatch<React.SetStateAction<string | SceneFailure>>;
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
   submission: React.RefObject<string | null>;
   editVersion?: React.RefObject<number>;
@@ -74,10 +80,6 @@ export function useTurnRecovery(ports: {
   useLayoutEffect(() => {
     owner.current = {};
     const draft = readSceneDraft(key);
-    if (draft) {
-      if (editVersion) editVersion.current = draft.editVersion;
-      setRoomDraft(draft.text);
-    }
     let saved: Pending | null = null;
     try {
       saved = JSON.parse(readSession(attemptKey) ?? "null");
@@ -86,6 +88,10 @@ export function useTurnRecovery(ports: {
     }
     if (saved?.sceneId !== sceneId || typeof saved?.text !== "string" || typeof saved.submissionId !== "string")
       saved = null;
+    if (editVersion) editVersion.current = draft?.editVersion ?? saved?.editVersion ?? 0;
+    if (draft) {
+      setRoomDraft(saved?.editVersion === draft.editVersion && saved.text === draft.text ? "" : draft.text);
+    }
     setPending(saved);
     setStatus(saved ? recoveryMessage(saved, "Reconnecting to check your saved reply…") : "");
     return () => {
@@ -108,7 +114,14 @@ export function useTurnRecovery(ports: {
   }, [attemptKey]);
   const track = useCallback((attempt: Pending) => writeSession(attemptKey, JSON.stringify(attempt)), [attemptKey]);
   const begin = useCallback(
-    (submissionId: string, text: string, editVersion: number, failure?: string, changed?: boolean) => {
+    (
+      submissionId: string,
+      text: string,
+      editVersion: number,
+      failure?: string,
+      changed?: boolean,
+      trace?: SceneFailure["trace"],
+    ) => {
       recordTurnTiming(latest.current.room.id, submissionId, "recoveryStarted");
       const attempt = {
         sceneId: latest.current.room.id,
@@ -118,17 +131,25 @@ export function useTurnRecovery(ports: {
         started: Date.now(),
         failure,
         changed,
+        trace,
       };
+      track({ ...attempt, failure: undefined });
       owner.current = {};
       setPending(attempt);
       setStatus(recoveryMessage(attempt, "Reconnecting to check your saved reply…"));
     },
-    [],
+    [track],
   );
   const check = useCallback(
     async function reconcile() {
       const token = owner.current;
       if (!pending || latest.current.room?.id !== pending.sceneId) return;
+      const restoreDraft = () => {
+        if (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion)
+          latest.current.setRoomDraft((current) => current || pending.text);
+      };
+      const reportFailure = (message: string) =>
+        latest.current.setRoomError(pending.trace ? { message, trace: pending.trace } : message);
       if (reading.current === token) {
         queued.current = token;
         return;
@@ -153,11 +174,6 @@ export function useTurnRecovery(ports: {
         );
         latest.current.setRoomEnded(true);
         latest.current.setRoomError("The Scene ended. Your turn completed, but the reply text is no longer available.");
-        if (
-          !pending.changed &&
-          (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion)
-        )
-          latest.current.setRoomDraft((current) => (current === pending.text ? "" : current));
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
         finish();
         return;
@@ -167,23 +183,24 @@ export function useTurnRecovery(ports: {
           current?.id === pending.sceneId ? { ...current, status: "closed" } : current,
         );
         latest.current.setRoomEnded(true);
-        latest.current.setRoomError(operation.error || "The Scene ended, but the request outcome is unavailable.");
+        reportFailure(operation.error || "The Scene ended, but the request outcome is unavailable.");
         finish();
         return;
       }
+      const acceptedText = sceneSubmissionText(operation, pending.submissionId);
       if (
-        hasPublishedRoomSubmission(scene, pending.submissionId) ||
-        (scene && operation?.id === pending.submissionId && operation.committed && operation.replyReady)
+        (!pending.changed || acceptedText !== undefined) &&
+        (hasPublishedRoomSubmission(scene, pending.submissionId) ||
+          (scene && operation?.id === pending.submissionId && operation.committed && operation.replyReady))
       ) {
         recordTurnTiming(pending.sceneId, pending.submissionId, "recovered");
         latest.current.setRoom(scene);
         latest.current.setRoomEnded(scene.status === "closed");
         latest.current.setRoomError("");
-        if (
-          !pending.changed &&
-          (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion)
-        )
-          latest.current.setRoomDraft((current) => (current === pending.text ? "" : current));
+        if (pending.changed && acceptedText !== pending.text) {
+          restoreDraft();
+          reportFailure("An earlier version of this message went through.");
+        }
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
         finish();
         return;
@@ -203,11 +220,10 @@ export function useTurnRecovery(ports: {
             : view;
         });
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
-        latest.current.setRoomError(
+        restoreDraft();
+        reportFailure(
           operation.error ||
-            (operation.acceptance === "abandoned"
-              ? "The saved request was replaced. Your draft is ready to send."
-              : "The saved request needs an explicit retry."),
+            (operation.acceptance === "abandoned" ? "The saved request was replaced." : "Your message did not finish."),
         );
         finish();
         return;

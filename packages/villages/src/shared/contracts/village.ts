@@ -685,6 +685,7 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  failureCause?: string;
   acceptance?: "pending" | "held" | "applied" | "abandoned";
   committed?: boolean;
   replyReady?: boolean;
@@ -692,6 +693,8 @@ export type RoomOperation = {
   terminal?: boolean;
   recordEvents?: RoomRecordEvent[];
   recoverable?: boolean;
+  /** Player input from an exact, published turn whose operation has since changed. */
+  submittedMessage?: string;
   id: string;
   kind: string;
   attemptId: string;

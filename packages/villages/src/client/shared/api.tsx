@@ -85,6 +85,11 @@ export class VillageApiError extends Error {
   }
 }
 
+const requestFailures = new WeakMap<Error, { method: string; path: string; elapsedMs: number }>();
+export function villageRequestFailure(error: unknown) {
+  return error instanceof Error ? requestFailures.get(error) : undefined;
+}
+
 export function invalidatesRead(cause: unknown): boolean {
   return cause instanceof VillageApiError && [401, 403, 404].includes(cause.status);
 }
@@ -199,17 +204,27 @@ async function readApiResponse(response: Response, path: string, init?: RequestI
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_PATH}${path}`;
-  let response: Response;
+  const started = performance.now();
   try {
-    response = await fetch(url, {
-      ...init,
-      headers: villagesRequestHeaders(init),
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...init,
+        headers: villagesRequestHeaders(init),
+      });
+    } catch (cause) {
+      return connectionFailure(cause, url, init);
+    }
+    return normalizeVillageSnapshot(await readApiResponse(response, url, init)) as T;
   } catch (cause) {
-    return connectionFailure(cause, url, init);
+    if (cause instanceof Error)
+      requestFailures.set(cause, {
+        method: init?.method?.toUpperCase() ?? "GET",
+        path: url.split("?")[0]!,
+        elapsedMs: Math.round(performance.now() - started),
+      });
+    throw cause;
   }
-  const payload = await readApiResponse(response, url, init);
-  return normalizeVillageSnapshot(payload) as T;
 }
 
 /**

@@ -16,8 +16,8 @@ export class VillagesRequestError extends Error {
   }
 }
 
-export function badRequest(message: string): VillagesRequestError {
-  return new VillagesRequestError(400, message);
+export function badRequest(message: string, code?: string): VillagesRequestError {
+  return new VillagesRequestError(400, message, code);
 }
 
 export function conflict(message: string): VillagesRequestError {

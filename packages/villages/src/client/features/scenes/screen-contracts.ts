@@ -53,6 +53,7 @@ export type SceneScreenController = {
   readonly roomDraft: ScenesState["roomDraft"];
   readonly roomEnded: ScenesState["roomEnded"];
   readonly roomError: ScenesState["roomError"];
+  readonly roomErrorTrace?: ScenesState["roomErrorTrace"];
   readonly roomGreetingError: ScenesState["roomGreetingError"];
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
   readonly contactRecovery: ScenesState["contactRecovery"];
@@ -64,7 +65,7 @@ export type SceneScreenController = {
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
   readonly sendRoom: ReturnType<typeof useSendRoom>["sendRoom"];
-  readonly turnRecovery?: string;
+  readonly turnRecovery?: ReturnType<typeof useSendRoom>["turnRecovery"];
   readonly checkSavedReply?: () => Promise<void>;
   readonly setMailboxOpen: ScenesState["setMailboxOpen"];
   readonly setRoom: React.ActionDispatch<

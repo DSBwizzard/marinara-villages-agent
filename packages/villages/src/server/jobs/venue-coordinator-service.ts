@@ -941,10 +941,19 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             committed: sceneTurnPublished(latest),
             replyReady: sceneTurnPublished(latest),
             acceptance: latest.acceptance.status,
+            ...(operationId && latest.mode === "chat" && sceneTurnPublished(latest)
+              ? { submittedMessage: latest.message }
+              : {}),
           }
         : undefined;
     if (operationId && operation?.id !== operationId) {
-      if (publication) return { id: operationId, status: "complete", input: null, ...publication };
+      if (publication)
+        return {
+          id: operationId,
+          status: "complete",
+          input: null,
+          ...publication,
+        };
       const { submissions } = await readSceneWorkIndex(documents, data);
       const saved = submissions.find((item) => item.id === operationId),
         navigation = (data.navigationReceipts as { id: string }[] | undefined)?.some((item) => item.id === operationId);
@@ -955,6 +964,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             input: null,
             committed: !!navigation || (!!saved && sceneTurnPublished(saved)),
             ...(saved ? { acceptance: saved.acceptance.status } : {}),
+            ...(saved?.mode === "chat" && sceneTurnPublished(saved) ? { submittedMessage: saved.message } : {}),
             replyReady: !saved || sceneTurnPublished(saved),
           }
         : (data.abandonedOperations as VenueOperation[] | undefined)?.some((entry) => entry.id === operationId)

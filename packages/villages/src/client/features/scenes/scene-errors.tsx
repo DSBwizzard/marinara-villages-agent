@@ -1,11 +1,6 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { sceneErrorMessage } from "./scene-error-message.js";
-import {
-  anonymousSceneErrorReport,
-  sceneErrorReport,
-  type SceneErrorDiagnostic,
-  type SceneErrorReportItem,
-} from "./scene-error-report.js";
+import { anonymousSceneErrorReport, type SceneErrorReportItem } from "./scene-error-report.js";
 import { ELEMENT_TAG as tag } from "../../shared/constants.js";
 
 export type SceneErrorItem = SceneErrorReportItem & {
@@ -13,18 +8,16 @@ export type SceneErrorItem = SceneErrorReportItem & {
 };
 
 /** Presentation only. Opening details never starts recovery, replay or generation. */
-export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipProps) {
+export function SceneErrorChip({ items, open, onOpen, context }: SceneChipProps) {
   const label = "Scene errors";
   const id = useId();
   const anchor = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
   const [shareState, setShareState] = useState<"idle" | "copied" | "manual">("idle");
   const copyOwner = useRef(0);
-  const errorKey = items.map((item) => `${item.id}:${item.diagnosticId ?? ""}:${item.message}`).join("\n");
+  const errorKey = items.map((item) => `${item.id}:${item.message}`).join("\n");
   useEffect(() => {
     copyOwner.current++;
-    setCopyState("idle");
     setShareState("idle");
   }, [errorKey]);
   useEffect(() => {
@@ -112,7 +105,7 @@ export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipPr
               type="button"
               onClick={() => {
                 const owner = copyOwner.current;
-                const text = anonymousSceneErrorReport(items);
+                const text = anonymousSceneErrorReport(items, context);
                 const update = (state: "copied" | "manual") => {
                   if (copyOwner.current === owner) setShareState(state);
                 };
@@ -133,64 +126,10 @@ export function SceneErrorChip({ items, open, onOpen, loadDetails }: SceneChipPr
               <textarea
                 aria-label="Anonymous Discord report"
                 readOnly
-                value={anonymousSceneErrorReport(items)}
+                value={anonymousSceneErrorReport(items, context)}
                 onFocus={(event) => event.currentTarget.select()}
               />
             ) : null}
-            <button
-              type="button"
-              disabled={copyState === "copying"}
-              onClick={() => {
-                setCopyState("copying");
-                const captured = items;
-                const owner = ++copyOwner.current;
-                const report = (async () => {
-                  let diagnostics: SceneErrorDiagnostic[] = [],
-                    unavailable = "",
-                    omittedErrors = 0;
-                  if (loadDetails && captured.some((item) => item.diagnosticId)) {
-                    try {
-                      const details = await loadDetails();
-                      diagnostics = details.errors;
-                      omittedErrors = details.omittedErrors ?? 0;
-                    } catch (cause) {
-                      unavailable = cause instanceof Error ? cause.message : String(cause);
-                    }
-                  }
-                  return (
-                    sceneErrorReport(captured, diagnostics, unavailable) +
-                    (omittedErrors
-                      ? `\nSaved diagnostic limit: ${omittedErrors} additional update errors exist beyond the 50-error window.`
-                      : "")
-                  );
-                })();
-                try {
-                  const clipboard = navigator.clipboard;
-                  if (!clipboard) throw new Error("Clipboard unavailable");
-                  // Safari requires the clipboard call itself to stay inside the click gesture.
-                  const copied =
-                    clipboard.write && typeof ClipboardItem !== "undefined"
-                      ? clipboard.write([
-                          new ClipboardItem({
-                            "text/plain": report.then((text) => new Blob([text], { type: "text/plain" })),
-                          }),
-                        ])
-                      : report.then((text) => clipboard.writeText(text));
-                  void copied
-                    .then(() => {
-                      if (copyOwner.current === owner) setCopyState("copied");
-                    })
-                    .catch(() => {
-                      if (copyOwner.current === owner) setCopyState("failed");
-                    });
-                } catch {
-                  if (copyOwner.current === owner) setCopyState("failed");
-                }
-              }}
-            >
-              {copyState === "copying" ? "Copying…" : copyState === "copied" ? "Copied" : "Copy private details"}
-            </button>
-            {copyState === "failed" ? <p role="status">The browser couldn’t copy the details.</p> : null}
           </div>
         </section>
       ) : null}
@@ -202,5 +141,5 @@ type SceneChipProps = {
   items: SceneErrorItem[];
   open: boolean;
   onOpen: (open: boolean) => void;
-  loadDetails?: () => Promise<{ errors: SceneErrorDiagnostic[]; omittedErrors?: number }>;
+  context?: Parameters<typeof anonymousSceneErrorReport>[1];
 };

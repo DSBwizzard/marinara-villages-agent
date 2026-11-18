@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
 import type { SceneView } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { request } from "../../shared/api.js";
 import type { SceneReadingSession } from "./reading-session.js";
+import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
 
 type Entry = "first" | "last" | "bookmark";
 /** Historical reads own their lane and can never replace current Scene authority. */
@@ -18,7 +19,8 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
     },
   );
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [failure, setError] = useState<SceneFailure | null>(null);
+  const error = failure?.message ?? "";
   const lane = useRef({
     generation: 0,
     pending: null as AbortController | null,
@@ -50,7 +52,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
       const controller = new AbortController();
       Object.assign(current, { pending: controller, cursor, entry });
       setBusy(true);
-      setError("");
+      setError(null);
       try {
         const query = cursor ? "&cursor=" + encodeURIComponent(cursor) : entry === "first" ? "&first=1" : "";
         const result = await request<ScenePlaybackWindow>(
@@ -70,7 +72,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
         setSelected({ window: result, entry, cursor });
       } catch (cause) {
         if (!controller.signal.aborted && current.generation === claim)
-          setError(messageFrom(cause, "Could not load this passage."));
+          setError(sceneFailure(cause, "Could not load this passage.", "read"));
       } finally {
         if (current.generation === claim) {
           current.pending = null;
@@ -133,7 +135,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
     current.generation++;
     current.pending?.abort();
     setBusy(false);
-    setError("");
+    setError(null);
     if (latest.current.founded === false) {
       previousAuthority.current = null;
       setSelected(null);
@@ -160,6 +162,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
     entry: chosen?.entry ?? initialEntry,
     busy,
     error,
+    errorTrace: failure?.trace,
     restoring,
     atLatest,
     load,
@@ -171,7 +174,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
       reading.checkpoint.current.window = authority;
       previousAuthority.current = authority;
       setSelected({ window: { ...authority }, entry: "last" });
-      setError("");
+      setError(null);
     },
   };
 }
