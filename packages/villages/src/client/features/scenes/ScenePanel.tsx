@@ -471,6 +471,7 @@ export function RoomPanel({
     const operation = change.submissionId === room.operation?.id && errorItems.find((item) => item.id === "operation");
     if (operation) {
       operation.held = true;
+      operation.diagnostic = change.diagnostic;
       operation.actions = replay ?? operation.actions;
       continue;
     }
@@ -479,6 +480,7 @@ export function RoomPanel({
       title: "Saved reply needs review",
       message: change.reason ?? "The saved reply could not be applied.",
       held: true,
+      diagnostic: change.diagnostic,
       actions: replay,
     });
   }

@@ -4,6 +4,7 @@ import { deriveVillageMoment } from "./village-clock.js";
 import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { conflict } from "./errors.js";
+import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
@@ -37,6 +38,7 @@ export function publicSceneChanges(value: unknown) {
         at: issue.at,
         diagnosticId: issue.diagnosticId,
         reason: issue.reason,
+        diagnostic: sceneFailureDiagnostic(issue.diagnostic),
       };
     }),
     processingSummary: { pending: summary.pending, failed: summary.failed, rejected: summary.rejected },

@@ -1,3 +1,13 @@
+import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
+
+export function heldSceneErrorMessage(value: unknown): string {
+  const check = sceneFailureDiagnostic(value)?.checks[0];
+  if (!check) return "The game couldn’t apply the AI’s reply.";
+  if (check.code === "invalid_format" && check.path.at(-1) === "segment")
+    return "The AI reply contained an invalid Scene reference (invalid_format).";
+  return `The AI reply failed validation (${check.code}).`;
+}
+
 export function sceneErrorCause(original: string): string {
   return original
     .trim()

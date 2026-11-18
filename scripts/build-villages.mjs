@@ -58,6 +58,9 @@ try {
       "import.meta.env.PROD": "true",
       "import.meta.env.MODE": '"production"',
       VILLAGES_REPORT_VERSION: JSON.stringify(feature.version),
+      VILLAGES_REPORT_SERVER_BUILD: JSON.stringify(
+        sha256(await readFile(join(packageRoot, feature.entrypoints.server))).slice(0, 16),
+      ),
     },
   });
   if (

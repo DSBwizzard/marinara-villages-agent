@@ -1,8 +1,13 @@
 import type { RoomOperation } from "../../../shared/contracts/village.js";
 import { messageFrom, VillageApiError, villageRequestFailure } from "../../shared/api.js";
 import { sceneErrorCategory, sceneErrorCause } from "./scene-error-message.js";
+import {
+  sceneFailureDiagnostic,
+  type SceneFailureDiagnostic,
+} from "../../../shared/contracts/scene-failure-diagnostic.js";
 
 declare const VILLAGES_REPORT_VERSION: string;
+declare const VILLAGES_REPORT_SERVER_BUILD: string;
 
 const actions = {
   send: "Send message",
@@ -141,6 +146,7 @@ export type SceneErrorReportItem = {
   trace?: RequestTrace;
   operation?: Pick<RoomOperation, "kind" | "stage" | "status" | "failureCause"> | null;
   held?: boolean;
+  diagnostic?: SceneFailureDiagnostic;
 };
 
 type ReportContext = {
@@ -153,6 +159,7 @@ type ReportContext = {
 export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context?: ReportContext) {
   const version = typeof VILLAGES_REPORT_VERSION === "string" ? VILLAGES_REPORT_VERSION : "development";
   const lines = [`Villages Scene error trace · ${version}`];
+  if (typeof VILLAGES_REPORT_SERVER_BUILD === "string") lines.push(`Server build: ${VILLAGES_REPORT_SERVER_BUILD}`);
   const status = context?.sceneStatus;
   if (status && sceneStates.has(status))
     lines.push(`Scene: ${status}${Number.isSafeInteger(context?.revision) ? ` · revision ${context?.revision}` : ""}`);
@@ -163,6 +170,7 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
 
   for (const [index, item] of items.slice(0, 8).entries()) {
     const { trace, operation } = item;
+    const diagnostic = sceneFailureDiagnostic(item.diagnostic);
     const action =
       trace?.action ??
       (operation && Object.hasOwn(operationLabels, operation.kind) ? operationLabels[operation.kind] : undefined);
@@ -200,16 +208,31 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
     else {
       const category = sceneErrorCategory(sceneErrorCause(item.message));
       const failureCause = operation?.failureCause;
-      if (failureCause && causes.has(failureCause)) lines.push(`Cause: ${failureCause}`);
-      if (category) lines.push(`Detail: ${category}`);
+      if (failureCause && causes.has(failureCause))
+        lines.push(`${diagnostic?.checks.length ? "Operation code" : "Cause"}: ${failureCause}`);
+      if (diagnostic && item.held) {
+        if (diagnostic.checks.length) lines.push("Phase: reply validation");
+        else lines.push("Validator details: unavailable");
+        for (const { code, path } of diagnostic.checks)
+          lines.push(`Validator: ${code}${path.length ? " · " + path.join(".") : ""}`);
+        lines.push(`Rejected effects: ${diagnostic.rejected}`);
+        const completion = [
+          diagnostic.parseStatus && `parse ${diagnostic.parseStatus}`,
+          diagnostic.finishReason && `finish ${diagnostic.finishReason}`,
+          diagnostic.responseLength !== undefined && `${diagnostic.responseLength} response characters`,
+          diagnostic.modelAttempts !== undefined && `${diagnostic.modelAttempts} recorded model attempts`,
+        ].filter(Boolean);
+        if (completion.length) lines.push(`Completion: ${completion.join(" · ")}`);
+      } else if (category) lines.push(`Detail: ${category}`);
     }
     const stage = operation?.stage?.split(":")[0];
     const saved = [
       item.held ? "reply held" : operation?.status && resultStates.has(operation.status) ? operation.status : "",
-      stage && stages.has(stage) ? `stage ${stage}` : "",
+      stage && stages.has(stage) ? `${diagnostic ? "last checkpoint" : "stage"} ${stage}` : "",
     ].filter(Boolean);
     if (saved.length) lines.push(`Saved request: ${saved.join(" · ")}`);
     if (item.id === "reply-recovery") lines.push("Recovery: checking for a saved reply");
   }
-  return lines.join("\n");
+  const report = lines.join("\n");
+  return report.length <= 1900 ? report : report.slice(0, report.lastIndexOf("\n", 1880)) + "\n[More omitted]";
 }

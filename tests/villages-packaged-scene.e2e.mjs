@@ -52,16 +52,36 @@ await withBrowser({ close: server.stop }, async () => {
       }),
     );
     const turns = [];
-    let rejectFirstReply = false;
+    let rejectFirstReply;
     const complete = server.model.chatComplete;
     server.model.chatComplete = (...args) => {
       if (!rejectFirstReply) return complete(...args);
-      rejectFirstReply = false;
+      const rejected = rejectFirstReply;
+      rejectFirstReply = undefined;
       return {
         finishReason: "stop",
         content: JSON.stringify({
-          input: [{ kind: "speech", text: "Unsupported inventory" }],
-          segments: [{ kind: "dialogue", speakerId: "mara", text: "Retired reply shape." }],
+          segments: [
+            {
+              kind: "dialogue",
+              speakerId: "mara",
+              text: "Private model narration.",
+              ...(rejected === "format" ? { requires: ["private-effect-id"] } : {}),
+            },
+          ],
+          ...(rejected === "format"
+            ? {
+                keep: [
+                  {
+                    id: "private-effect-id",
+                    for: ["mara"],
+                    class: "information",
+                    text: "Private continuity note.",
+                    source: [{ segment: "private malformed reference" }],
+                  },
+                ],
+              }
+            : { input: [{ kind: "speech", text: "Unsupported inventory" }] }),
         }),
       };
     };
@@ -123,7 +143,7 @@ await withBrowser({ close: server.stop }, async () => {
     assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
     const send = page.getByRole("button", { name: "Send", exact: true });
     for (const edit of [false, true]) {
-      rejectFirstReply = true;
+      rejectFirstReply = edit ? "format" : "legacy";
       const original = "An ordinary line " + edit;
       const beforeHold = turns.length;
       await composer.fill(original);
@@ -135,7 +155,29 @@ await withBrowser({ close: server.stop }, async () => {
       const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
       await expect(chip).toHaveCount(1);
       await expect(chip).toHaveAccessibleName("1 Scene error");
-      if (edit) await composer.fill(original + " with edits");
+      if (edit) {
+        await chip.click();
+        await expect(
+          page.getByText("The AI reply contained an invalid Scene reference (invalid_format)."),
+        ).toBeVisible();
+        await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+        await expect(page.getByText("Anonymous report copied.")).toBeVisible();
+        const report = await page.evaluate(() => window.sceneReport);
+        assert.match(report, /Server build: [a-f0-9]{16}/);
+        assert.match(
+          report,
+          /Operation code: missing_result\nPhase: reply validation\nValidator: invalid_format · source\.0\.segment/,
+        );
+        assert.match(report, /Completion: parse complete · finish stop · \d+ response characters/);
+        assert.match(report, /Saved request: reply held · last checkpoint writing-completion/);
+        assert(!report.includes(held));
+        assert.doesNotMatch(
+          report,
+          /Private model narration|Private continuity note|private malformed reference|private-effect-id|An ordinary line|Mara|The Mill/iu,
+        );
+        await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
+        await composer.fill(original + " with edits");
+      }
       await send.click();
       await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");
       assert.equal(turns.at(-1).input.replaceOfOperationId, held);

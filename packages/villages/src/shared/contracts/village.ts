@@ -716,6 +716,7 @@ export type SceneChangeIssue = {
   status: "pending" | "held";
   at?: string;
   reason?: string;
+  diagnostic?: import("./scene-failure-diagnostic.js").SceneFailureDiagnostic;
 };
 
 export type SceneView = {

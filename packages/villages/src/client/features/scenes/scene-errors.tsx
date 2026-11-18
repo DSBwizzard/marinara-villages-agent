@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { sceneErrorMessage } from "./scene-error-message.js";
+import { heldSceneErrorMessage, sceneErrorMessage } from "./scene-error-message.js";
 import { anonymousSceneErrorReport, type SceneErrorReportItem } from "./scene-error-report.js";
 import { ELEMENT_TAG as tag } from "../../shared/constants.js";
 
@@ -15,7 +15,7 @@ export function SceneErrorChip({ items, open, onOpen, context }: SceneChipProps)
   const trigger = useRef<HTMLButtonElement>(null);
   const [shareState, setShareState] = useState<"idle" | "copied" | "manual">("idle");
   const copyOwner = useRef(0);
-  const errorKey = items.map((item) => `${item.id}:${item.message}`).join("\n");
+  const errorKey = items.map((item) => `${item.id}:${item.message}:${JSON.stringify(item.diagnostic)}`).join("\n");
   useEffect(() => {
     copyOwner.current++;
     setShareState("idle");
@@ -93,7 +93,11 @@ export function SceneErrorChip({ items, open, onOpen, context }: SceneChipProps)
           {items.map((item) => (
             <div key={item.id} className={`${tag}-scene-error-item`} role="group" aria-label={item.title}>
               <div className={`${tag}-scene-error-message`}>
-                <span>{sceneErrorMessage(item.message)}</span>
+                <span>
+                  {item.held && item.diagnostic
+                    ? heldSceneErrorMessage(item.diagnostic)
+                    : sceneErrorMessage(item.message)}
+                </span>
               </div>
               {item.actions ? (
                 <div className={`${tag}-scene-error-detail ${tag}-scene-error-actions`}>{item.actions}</div>
