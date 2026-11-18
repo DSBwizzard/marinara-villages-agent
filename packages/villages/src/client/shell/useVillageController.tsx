@@ -1388,6 +1388,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setContactRecovery: scenes.setContactRecovery,
     roomMoveOperationIdRef: scenes.roomMoveOperationIdRef,
     roomNotices: scenes.roomNotices,
+    setRoomNotices: scenes.setRoomNotices,
     sceneReading: scenes.sceneReading,
     roomOpen: scenes.roomOpen,
     roomSubmissionIdRef: scenes.roomSubmissionIdRef,

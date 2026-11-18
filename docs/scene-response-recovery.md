@@ -20,6 +20,12 @@ A visible playback page is not the submission ledger. The latest saved submissio
 
 Late replies preserve newer composer edits, including edits with identical text, and retain the reading position. Pending reconciliation allows draft editing while preventing another submission until the outcome is known. Confirmed failure preserves the draft and explicit recovery controls.
 
+## Retry an accepted reply
+
+**Retry reply** replaces the latest ordinary reply in the active Scene using the original message, positions, witnesses and Village day. The original stays readable until an alternate and its effects commit together. Memories, Wishes, relationship scores and daily limits are evaluated from before the replaced reply. Explicit Retry makes one new Narration request. Recovery of a saved alternate reuses its purchase.
+
+A reply needs its retained original request and unchanged continuity and Episode history. Later Scene activity, changed attendance or access, and work that already depends on the reply can close the window. Unrelated Village settings, Place records and pending mail can advance independently. Appointments and other native effects are outside Retry. A rejected alternate leaves the accepted turn in place. A Retry interrupted after dispatch can be recovered or cancelled from the Scene.
+
 ## Hearing evidence and citations
 
 Current nonverbal sounds use metadata on an ordinary narration segment. Full narration stays local; remote listeners receive only the permitted audible cue through soundOnly under the same line ID. Raised voices likewise distinguish heard words from indistinct sound. Routing creates no extra evidence line and grants no unseen visuals, attendance, access or movement.

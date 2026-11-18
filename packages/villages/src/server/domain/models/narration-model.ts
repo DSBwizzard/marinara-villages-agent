@@ -16,6 +16,7 @@ export type NarrationReadset = {
   calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
   sceneRevision: number;
   continuityRevision: number;
+  retryEpisodeRevision?: number;
   presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
   source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves"> & { operationId: string };
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;

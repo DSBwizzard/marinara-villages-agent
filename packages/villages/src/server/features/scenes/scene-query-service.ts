@@ -26,6 +26,7 @@ import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import { readVillageRoot } from "../../adapters/storage/village-repository.js";
 import { readSceneMomentFrames, readSceneMomentRange } from "../../adapters/storage/scene-presentation-pages.js";
 export interface SceneQueryPorts {
+  retryTarget?: ReturnType<typeof import("./retry-service.js").createSceneRetry>["target"];
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById">;
@@ -59,7 +60,12 @@ const playbackCursor = z
   })
   .strict();
 /** Inert Scene history and backlog queries with explicit originating connections. */
-export function createSceneQueryService({ readSession, readVillageState, villagesDocuments }: SceneQueryPorts) {
+export function createSceneQueryService({
+  readSession,
+  readVillageState,
+  villagesDocuments,
+  retryTarget,
+}: SceneQueryPorts) {
   async function readPublicOwner(id: string, requestedScope?: string) {
     const documents = villagesDocuments();
     const rawWorld = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
@@ -185,6 +191,7 @@ export function createSceneQueryService({ readSession, readVillageState, village
       playback,
       participants: scene.participants.filter((person) => cast.has(person.characterId)),
       operation: operationSummary(scene.operation),
+      retryReply: await retryTarget?.(scene),
     };
   }
   async function playbackWindow(

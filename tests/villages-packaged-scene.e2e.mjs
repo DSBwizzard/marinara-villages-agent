@@ -91,6 +91,37 @@ await withBrowser({ close: server.stop }, async () => {
       })
       .toContain("Hello there.");
     assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
+
+    let retries = 0;
+    server.model.chatComplete = async () => ({
+      content: JSON.stringify({
+        segments:
+          ++retries === 1
+            ? [{ kind: "dialogue", speakerId: "mara", text: "Good to see you by the window." }]
+            : [
+                { kind: "narration", text: "Rain patters on the mill roof." },
+                { kind: "dialogue", speakerId: "mara", text: "Let's wait for the shower to pass." },
+              ],
+      }),
+      finishReason: "stop",
+    });
+    await composer.fill("Keep this unsent draft");
+    await page.getByRole("button", { name: "Retry reply", exact: true }).click();
+    await expect(page.getByText("Good to see you by the window.", { exact: true })).toBeVisible();
+    await expect(composer).toHaveValue("Keep this unsent draft");
+    await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
+    assert.equal(retries, 1);
+
+    const phone = await context.newPage();
+    await phone.setViewportSize({ width: 390, height: 844 });
+    await phone.goto("http://villages.test/");
+    await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
+    const retryReply = phone.getByRole("button", { name: "Retry reply", exact: true });
+    await expect(retryReply).toBeInViewport();
+    await retryReply.click();
+    await expect(phone.getByText("Let's wait for the shower to pass.", { exact: true })).toBeVisible();
+    await expect(phone.getByText("Good to see you by the window.", { exact: true })).toHaveCount(0);
+    assert.equal(retries, 2);
   });
 });
-console.log("Packaged browser send, native persistence, replay and reload passed.");
+console.log("Packaged browser send, persistence, replay, reload and desktop/phone Retry passed.");

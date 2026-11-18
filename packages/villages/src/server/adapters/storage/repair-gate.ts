@@ -2,7 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 import { createActivationBinding } from "../engine/activation-scope.js";
-import { conflict } from "../../domain/rules/errors.js";
+import { conflict, VillagesRequestError } from "../../domain/rules/errors.js";
+import { setTimeout as delay } from "node:timers/promises";
 import { createRepairTransactionCodec, type ReplayWrite } from "./repair-transaction-codec.js";
 import { BACKGROUND_COMPLETION_KIND, retainReplacedBackgroundReceipts } from "./background-completions.js";
 import {
@@ -461,7 +462,7 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       return true;
     },
   };
-  async function alone<T>(fn: () => Promise<T>, mode: "repair" | "cleanup" = "repair") {
+  async function alone<T>(fn: () => Promise<T>, mode: "repair" | "cleanup" | "scene-retry" = "repair") {
     await ensureReady();
     while (
       readyEpoch !== admission.epoch ||
@@ -475,8 +476,15 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       throw conflict("The world was restored. This older action cannot change it.");
     const owned = context.getStore()?.owners?.filter((owner) => owner.active).length ?? 0;
     requireAlive();
-    if (admission.exclusive || admission.active > owned)
+    if (admission.exclusive || admission.active > owned) {
+      if (mode === "scene-retry")
+        throw new VillagesRequestError(
+          409,
+          "Other Village work is saving. Recover the saved alternate reply shortly.",
+          "SCENE_RETRY_BUSY",
+        );
       throw conflict("Other Village work is active. Let it finish, then try REPAIR again.");
+    }
     admission.exclusive = activation;
     let cleanup: RepairAdmission["maintenance"] = null;
     if (mode === "cleanup") {
@@ -510,65 +518,81 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     fn: () => Promise<T>,
     reviewed?: RepairTransaction,
   ): Promise<{ value: T; transaction: RepairTransaction }> {
-    return alone(async () => {
-      if (reviewed) await guards(reviewed);
-      const staged = new Map<string, RepairWrite>();
-      readSet = new Map(reviewed?.reads.map((row) => [row.id, row]));
-      listSet = new Map(reviewed?.lists.map((row) => [row.kind, row.digest]));
-      try {
-        const revisions = new Map<string, number>();
-        const value = await context.run(
-          {
-            epoch: admission.epoch,
-            administrative: true,
-            transaction: staged,
-            revisions,
-            inventory: context.getStore()?.inventory,
-          },
-          async () => {
-            for (const write of reviewed?.writes ?? []) {
-              const id = (write.after ?? write.before)!.id,
-                current = await get(PACKAGE, id);
-              if (repairDocumentDigest(clean(current)) !== repairDocumentDigest(write.before))
-                throw conflict("A reviewed record changed. Review the repair again.");
-              const after = write.after ? structuredClone(write.after) : null;
-              if (after?.id === "villages-village" && current)
-                after.data = { ...(after.data as object), clock: (current.data as Record<string, unknown>).clock };
-              staged.set(id, { before: clean(current), after });
-              if (after) revisions.set(id, (current?.revision ?? 0) + 1);
-            }
-            return fn();
-          },
-        );
-        return {
-          value,
-          transaction: {
-            reads: [...readSet.values()],
-            lists: [...listSet].map(([kind, digest]) => ({ kind, digest })),
-            writes: [...staged.values()].filter(
-              (w) => repairDocumentDigest(w.before) !== repairDocumentDigest(w.after),
-            ),
-          },
-        };
-      } finally {
-        readSet = undefined;
-        listSet = undefined;
-      }
-    });
+    return alone(() => stage(fn, reviewed));
+  }
+  async function stage<T>(fn: () => Promise<T>, reviewed?: RepairTransaction) {
+    if (reviewed) await guards(reviewed);
+    const staged = new Map<string, RepairWrite>();
+    readSet = new Map(reviewed?.reads.map((row) => [row.id, row]));
+    listSet = new Map(reviewed?.lists.map((row) => [row.kind, row.digest]));
+    try {
+      const revisions = new Map<string, number>();
+      const value = await context.run(
+        {
+          epoch: admission.epoch,
+          administrative: true,
+          transaction: staged,
+          revisions,
+          inventory: context.getStore()?.inventory,
+        },
+        async () => {
+          for (const write of reviewed?.writes ?? []) {
+            const id = (write.after ?? write.before)!.id,
+              current = await get(PACKAGE, id);
+            if (repairDocumentDigest(clean(current)) !== repairDocumentDigest(write.before))
+              throw conflict("A reviewed record changed. Review the repair again.");
+            const after = write.after ? structuredClone(write.after) : null;
+            if (after?.id === "villages-village" && current)
+              after.data = { ...(after.data as object), clock: (current.data as Record<string, unknown>).clock };
+            staged.set(id, { before: clean(current), after });
+            if (after) revisions.set(id, (current?.revision ?? 0) + 1);
+          }
+          return fn();
+        },
+      );
+      return {
+        value,
+        transaction: {
+          reads: [...readSet.values()],
+          lists: [...listSet].map(([kind, digest]) => ({ kind, digest })),
+          writes: [...staged.values()].filter((w) => repairDocumentDigest(w.before) !== repairDocumentDigest(w.after)),
+        },
+      };
+    } finally {
+      readSet = undefined;
+      listSet = undefined;
+    }
+  }
+  async function publish(id: string, transaction: RepairTransaction) {
+    const writes = transaction.writes;
+    admission.epoch++;
+    try {
+      const saved = await saveControl({ version: 3, epoch: admission.epoch, pending: { id, writes } });
+      await replay({ id, writes: await codec.decodeWrites(saved.pending!.writes) });
+    } catch (error) {
+      ready = undefined;
+      throw error;
+    }
   }
   async function commit(id: string, transaction: RepairTransaction) {
     return alone(async () => {
       await guards(transaction);
-      const writes = transaction.writes;
-      admission.epoch++;
-      try {
-        const saved = await saveControl({ version: 3, epoch: admission.epoch, pending: { id, writes } });
-        await replay({ id, writes: await codec.decodeWrites(saved.pending!.writes) });
-      } catch (error) {
-        ready = undefined;
-        throw error;
-      }
+      await publish(id, transaction);
     });
+  }
+  async function commitSceneRetry(id: string, plan: () => Promise<void>, signal?: AbortSignal) {
+    for (const wait of [0, 30, 70, 150, 300]) {
+      if (wait) await delay(wait, undefined, { signal });
+      try {
+        return await alone(async () => {
+          const { transaction } = await stage(plan);
+          signal?.throwIfAborted();
+          await publish(id, transaction);
+        }, "scene-retry");
+      } catch (error) {
+        if (!(error instanceof VillagesRequestError) || error.code !== "SCENE_RETRY_BUSY" || wait === 300) throw error;
+      }
+    }
   }
   const guardedDocuments = new Proxy(documents, {
     get(target, key) {
@@ -587,6 +611,8 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     work,
     simulate,
     commit,
+    commitSceneRetry,
+    outside: <T>(work: () => T) => context.exit(work),
     alone,
     raw,
     assertGeneration,
@@ -614,4 +640,8 @@ const binding = createActivationBinding<RepairGate>("Repair storage is unavailab
 export const configureRepairGate = binding.configure;
 export const repairGate = () => binding.get();
 export const withRepairWork = <T>(fn: () => Promise<T>): Promise<T> => binding.maybe()?.work(fn) ?? fn();
+export function outsideRepairWork<T>(fn: () => T): T {
+  const gate = binding.maybe();
+  return gate ? gate.outside(fn) : fn();
+}
 export const assertRepairGeneration = () => binding.maybe()?.assertGeneration();

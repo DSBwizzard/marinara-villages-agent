@@ -234,6 +234,9 @@ export function RoomPanel({
   sprites,
   onDraft,
   onSend,
+  onRetryReply,
+  onCancelRetry,
+  retryPending,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
@@ -286,6 +289,9 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onSend: () => void;
+  onRetryReply?: () => void;
+  onCancelRetry?: () => void;
+  retryPending?: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
@@ -631,7 +637,11 @@ export function RoomPanel({
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !ended && room.status === "active";
   const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
-  const canSend = canCompose && !contactRecovery && !(changeStatus && changeStatus.pending + changeStatus.failed > 0);
+  const canSend =
+    canCompose &&
+    !contactRecovery &&
+    !(room.operation?.kind === "retry" && room.operation.status === "interrupted") &&
+    !(changeStatus && changeStatus.pending + changeStatus.failed > 0);
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -1445,6 +1455,18 @@ export function RoomPanel({
           </div>
         </div>
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
+
+        {canCompose && room.retryReply && onRetryReply ? (
+          <button type="button" className={ELEMENT_TAG + "-chat-vn-button"} onClick={onRetryReply}>
+            {room.retryReply.requestId ? "Recover reply" : "Retry reply"}
+          </button>
+        ) : null}
+        {(retryPending || (room.operation?.kind === "retry" && room.operation.status !== "complete")) &&
+        onCancelRetry ? (
+          <button type="button" className={ELEMENT_TAG + "-chat-vn-button"} onClick={onCancelRetry}>
+            Cancel retry
+          </button>
+        ) : null}
 
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>

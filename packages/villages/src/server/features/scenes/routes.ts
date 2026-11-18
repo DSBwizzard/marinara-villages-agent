@@ -16,12 +16,14 @@ import { readVenueOperation } from "../../jobs/venue-coordinator.js";
 import { assertFoundedVillageReady } from "../founding/preparation.js";
 import {
   closeVenueSessionWithReceipts,
+  cancelRetry,
   continueVenueWithoutGreeting,
   discardVenueVisitDebug,
   enterVenue,
   greetVenue,
   leaveVenueSession,
   moveVenueZone,
+  retryReply,
   sendVenueTurn,
 } from "./venue-session.js";
 import { dismissSceneNotice, readSceneChanges, readSceneErrorDetails, replaySceneChanges } from "./changes.js";
@@ -262,6 +264,36 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       return fail(reply, error, "sending a venue turn");
     }
   });
+  app.post<{ Body: { sessionId?: unknown; requestId?: unknown; token?: unknown } }>(
+    "/rooms/retry",
+    async (request, reply) => {
+      try {
+        await assertFoundedVillageReady();
+        const token = request.body?.token;
+        if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) throw badRequest("Invalid Retry target.");
+        return await retryReply(readChatId(request.body?.sessionId), readSubmissionId(request.body?.requestId), token);
+      } catch (error) {
+        return fail(reply, error, "retrying a Scene reply");
+      }
+    },
+  );
+  app.post<{ Body: { sessionId?: unknown; operationId?: unknown; token?: unknown } }>(
+    "/rooms/retry/cancel",
+    async (request, reply) => {
+      try {
+        const token = request.body?.token;
+        if (token !== undefined && (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)))
+          throw badRequest("Invalid Retry target.");
+        return await cancelRetry(
+          readChatId(request.body?.sessionId),
+          readSubmissionId(request.body?.operationId),
+          typeof token === "string" ? token : undefined,
+        );
+      } catch (error) {
+        return fail(reply, error, "cancelling a Scene Retry");
+      }
+    },
+  );
   app.post<{
     Body: {
       sessionId?: unknown;

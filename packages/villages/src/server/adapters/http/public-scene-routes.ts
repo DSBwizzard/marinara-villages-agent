@@ -9,6 +9,7 @@ export function publicSceneRoutes(
   projectScene: (scene: Record<string, unknown>) => Promise<unknown>,
   guard?: (method: string, path: string, body: unknown) => Promise<string | null>,
   clockIndependentRoutes: readonly string[] = [],
+  repairIndependentRoutes: readonly string[] = [],
 ): FastifyInstance {
   const owner = activationScope();
   const surface = Object.create(engine) as FastifyInstance;
@@ -35,9 +36,9 @@ export function publicSceneRoutes(
           }
           return result;
         };
-        return withRepairWork(() =>
-          clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work),
-        );
+        const key = `${method} ${path}`;
+        const run = () => (clockIndependentRoutes.includes(key) ? work() : withVillageClockWork(work));
+        return repairIndependentRoutes.includes(key) ? run() : withRepairWork(run);
       };
       return owner ? owner.bind(wrapped) : wrapped;
     };

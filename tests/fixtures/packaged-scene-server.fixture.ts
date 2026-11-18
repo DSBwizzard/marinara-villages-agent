@@ -136,6 +136,8 @@ export async function packagedSceneServer(
       { id: "villages-venue-visit-browser", packageId: "villages", kind: "venue-visit", revision: 1, data: scene },
     ],
   ]);
+  for (const row of records.values())
+    Object.assign(row, { name: row.id, description: "", createdAt: now, updatedAt: now });
   const documents = {
     getById: async (_pkg: string, id: string) => structuredClone(records.get(id) ?? null),
     list: async (_pkg: string, kind: string) =>
