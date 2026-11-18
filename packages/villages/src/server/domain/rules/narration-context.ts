@@ -303,14 +303,16 @@ export function narrationContinuityContext(
   const recallQuery = addressed.length ? input.slice(comma + 1) : input;
   const memoryChange = requestsMemoryChange(recallQuery);
   const remember =
-    memoryChange && separateRecallFromEvidence && addressed.length < 2
-      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)\s*$/diu.exec(recallQuery)
+    memoryChange && separateRecallFromEvidence && addressed.length < 2 && /^\s*["“]/u.test(input)
+      ? /^\s*["“]?\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)["”]\s*$/diu.exec(
+          recallQuery,
+        )
       : null;
   const fact = remember?.[1].replace(/[.!]+$/u, "").trimEnd();
   const factRange = remember?.indices?.[1];
   const recipientId = addressed[0]?.characterId;
   const local = (id: string) => id !== "player" && contactPosition(scene, id) === scene.zoneId;
-  // shortcut: gate only a single explicit “remember this:” fact until mixed-intent speech has a structured input.
+  // shortcut: gate only a single quoted “remember this:” fact until mixed-intent speech has a structured input.
   const requestedMemory =
     fact &&
     factRange &&

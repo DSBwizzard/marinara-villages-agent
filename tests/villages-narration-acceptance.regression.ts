@@ -137,7 +137,7 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
 
 await runCase("narration-acceptance/requested-memory", () => {
   const fact = "My mother taught me weaving";
-  const input = `Mara, please remember this for future visits: ${fact}.`;
+  const input = `"Mara, please remember this for future visits: ${fact}."`;
   for (const variant of ["missing", "wrong-text", "wrong-recipient", "wrong-source", "valid", "legacy"] as const) {
     const f = fixture(input);
     const keep = {
@@ -176,6 +176,7 @@ await runCase("narration-acceptance/requested-memory", () => {
       assert.equal(acceptNarrationContinuity(f.state, publication, "memory", later).episode?.id, result.episode?.id);
   }
   for (const casual of [
+    `Mara, please remember this for future visits: ${fact}.`,
     "Mara, please remember that weaving memory.",
     "Mara, do you remember this: the weaving?",
     "Mara, remember this: I weave. How are you?",
@@ -183,7 +184,7 @@ await runCase("narration-acceptance/requested-memory", () => {
   ]) {
     assert.equal(fixture(casual).publication({}, "operation", true).readset.requestedMemory, undefined);
   }
-  const repeated = fixture(`Mara, remember this for ${fact}: ${fact}.`);
+  const repeated = fixture(`  “Mara, remember this for ${fact}: ${fact}.”  `);
   const raw = { segments: repeated.response(["remember-fact"]) };
   const publication = repeated.publication(raw, "operation", true);
   const result = acceptNarrationContinuity(repeated.state, publication, "remember", later);
@@ -198,12 +199,12 @@ await runCase("narration-acceptance/requested-memory", () => {
   assert.equal(Object.hasOwn(raw, "keep"), false);
   acceptNarrationContinuity(repeated.state, publication, "remember", later);
   assert.equal(repeated.state.continuity.versions.length, 1);
-  const unnamed = fixture(`Remember this: ${fact}.`).publication({}, "operation", true).readset;
+  const unnamed = fixture(`"Remember this: ${fact}."`).publication({}, "operation", true).readset;
   assert(unnamed.requestedMemory);
   assert.equal(unnamed.codeRequestedMemory, undefined);
   for (const aside of ["*I use the west peg*", "I think privately that I use the west peg", "[I use the west peg]"])
     assert.equal(
-      fixture(`Mara, remember this: ${aside}`).publication({}, "operation", true).readset.codeRequestedMemory,
+      fixture(`"Mara, remember this: ${aside}"`).publication({}, "operation", true).readset.codeRequestedMemory,
       undefined,
     );
   const protectedWorld = fixture(input);
@@ -1092,7 +1093,7 @@ await runCase("narration-acceptance/independent-failure", () => {
     "missing-owner-legacy",
     "missing-owner-asserted",
   ]) {
-    const f = fixture(variant === "remember" ? "Mara, please remember this: I use the west peg." : undefined);
+    const f = fixture(variant === "remember" ? '"Mara, please remember this: I use the west peg."' : undefined);
     const line = "I mean to read the two entries tonight.";
     const current = variant.startsWith("current-");
     const openMatter = variant.startsWith("open-matter-");

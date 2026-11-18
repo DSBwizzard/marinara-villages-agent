@@ -193,7 +193,7 @@ await runCase("scene-prefix/current-native-context", async () => {
       for (const [submissionId, message] of [
         ["f2222222-2222-4222-8222-222222222222", "Hello."],
         ["f3333333-3333-4333-8333-333333333333", "Good morning."],
-        ["f4444444-4444-4444-8444-444444444444", "Mara, please remember this: I knit."],
+        ["f4444444-4444-4444-8444-444444444444", '"Mara, please remember this: I knit."'],
       ]) {
         const active = await group.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
         assert.equal(active.statusCode, 200, active.body);

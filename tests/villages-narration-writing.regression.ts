@@ -456,7 +456,7 @@ await runCase("narration-writing/single-request", async () => {
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
   );
-  const remember = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, please remember this: I knit.", "chat");
+  const remember = await f.writing.prepareVenueTurnMessages(f.scene, '"Mara, please remember this: I knit."', "chat");
   assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
   assert.equal(remember.readset.codeRequestedMemory, true);
   const rememberPrompt = remember.fitted.messages
@@ -466,6 +466,13 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(rememberPrompt, /Code records the exact requested fact/u);
   assert.doesNotMatch(rememberPrompt, /"id":"remember-fact"/u);
   assert.doesNotMatch(rememberPrompt, /I knit/u);
+  const unspokenMemory = await f.writing.prepareVenueTurnMessages(
+    f.scene,
+    "Mara, please remember this: I knit.",
+    "chat",
+  );
+  assert.equal(unspokenMemory.readset.requestedMemory, undefined);
+  assert.equal(unspokenMemory.readset.codeRequestedMemory, undefined);
 
   const legacy = fixture(undefined, "deepseek-flash");
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
