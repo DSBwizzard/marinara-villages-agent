@@ -566,6 +566,17 @@ export function useSendRoom(ports: {
           { signal: AbortSignal.timeout(5_000) },
         );
         if (!owns()) return;
+        if (operation?.status === "running")
+          setRoom((current) =>
+            current?.id === room.id &&
+            current.status === room.status &&
+            current.sceneRevision === room.sceneRevision &&
+            current.operation?.id === room.operation?.id &&
+            current.operation?.attemptId === room.operation?.attemptId &&
+            current.operation?.status === room.operation?.status
+              ? { ...current, operation }
+              : current,
+          );
         if (uncertain) {
           const previous =
             operation?.id === uncertain.submissionId

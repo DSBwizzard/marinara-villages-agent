@@ -128,6 +128,7 @@ export function SceneErrorChip({ items, open, onOpen, context }: SceneChipProps)
             {shareState === "copied" ? <p role="status">Anonymous report copied.</p> : null}
             {shareState === "manual" ? (
               <textarea
+                autoComplete="off"
                 aria-label="Anonymous Discord report"
                 readOnly
                 value={anonymousSceneErrorReport(items, context)}
