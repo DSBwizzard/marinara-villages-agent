@@ -434,11 +434,32 @@ export async function verifyFoundingLayout(group) {
         const sideBounds = await sidePose.boundingBox();
         const titleBounds = await title.boundingBox();
         const stageBounds = await stage.boundingBox();
-        if (phone)
+        if (phone) {
           assert.ok(
             stageBounds.height >= Math.min(frame.height * 0.56, frame.width * 0.99),
             "Mari fills the phone stage at full-body scale",
           );
+          const backdropHeight = await root.evaluate((element) => {
+            const probe = document.createElement("div");
+            probe.style.cssText = "position:absolute;visibility:hidden";
+            probe.style.height = getComputedStyle(element)
+              .backgroundSize.split(/,\s*auto /)
+              .at(-1);
+            element.append(probe);
+            const height = probe.getBoundingClientRect().height;
+            probe.remove();
+            return height;
+          });
+          assert.ok(backdropHeight >= frame.height);
+          const frameBottom = frame.y + frame.height;
+          const lampBase = frameBottom - (backdropHeight * (820 - 455)) / 820;
+          const wallBase = frameBottom - (backdropHeight * (820 - 648)) / 820;
+          assert.ok(titleBounds.y >= lampBase + 4, "The logo and Start clear the lamp");
+          assert.ok(
+            stageBounds.y + stageBounds.height >= wallBase + 8,
+            "Mari stands forward of the wall on the paving",
+          );
+        }
         assert.ok(
           phone
             ? titleBounds.x + titleBounds.width <= sideBounds.x &&
