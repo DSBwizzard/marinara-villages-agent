@@ -266,6 +266,14 @@
     },
     {
       "method": "post",
+      "path": "/rooms/retry"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/retry/cancel"
+    },
+    {
+      "method": "post",
       "path": "/rooms/leave"
     },
     {
