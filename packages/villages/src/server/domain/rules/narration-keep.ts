@@ -60,9 +60,10 @@ export function prepareContinuityKeep(
     bindSource(ref: unknown, owner: NarrationSourceOwner): ContinuityEvidence;
     resolveTarget?(id: string): string;
     ordinaryDialogue?: true;
+    ordinaryReplyRecovery?: true;
   },
 ) {
-  const proposal = readContinuityProposal(raw),
+  const proposal = readContinuityProposal(raw, sourceContext.ordinaryReplyRecovery),
     header = readNarrationEffectHeader(raw, "keep-" + ordinal);
   for (const field of ["replace", "parent"] as const)
     if (proposal[field] && sourceContext.resolveTarget) proposal[field] = sourceContext.resolveTarget(proposal[field]);
@@ -335,7 +336,7 @@ export function prepareNarrationKeep(
         ? { ...canonical, for: [canonical.for] }
         : canonical;
     raw = keep;
-    const proposal = readContinuityProposal(keep);
+    const proposal = readContinuityProposal(keep, true);
     const ref = proposal.source[0];
     const segment =
       typeof ref === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u.test(ref) && ref !== "self"
@@ -395,6 +396,7 @@ export function prepareNarrationKeep(
     ...sourceContext,
     operationId: sourceContext.episodeId,
     ordinaryDialogue,
+    ordinaryReplyRecovery,
     bindSource: (ref, owner) => bindNarrationSource(ref, sourceContext, owner),
     resolveTarget: (id) => {
       if (!id.startsWith("h:")) return id;

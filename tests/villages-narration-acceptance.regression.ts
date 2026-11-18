@@ -1252,6 +1252,8 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
     "required",
     "legacy",
     "witnessed",
+    "score-only",
+    "score-only-unwitnessed",
     "wrong-witness",
     "wrong-subject",
     "room-fact",
@@ -1263,6 +1265,8 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
     ] as typeof f.state.villagers;
     const roomFact = variant === "room-fact";
     const hasImpact = !roomFact && variant !== "room-required";
+    const witnessed = variant === "witnessed" || variant === "score-only";
+    const scoreOnly = variant.startsWith("score-only");
     const required = variant === "required" ? ["attitude"] : variant === "room-required" ? ["keep-0"] : [];
     const body = {
       segments: [
@@ -1279,16 +1283,16 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
                 owner: f.id,
                 for: [f.id],
                 about: variant === "wrong-subject" ? ["player", f.id] : ["player"],
-                text: "Mara trusts the player less.",
+                ...(scoreOnly ? {} : { text: "Mara trusts the player less." }),
                 relationship: { impact: "turning-negative" },
                 source:
-                  variant === "witnessed" || variant === "wrong-witness"
+                  witnessed || variant === "wrong-witness" || variant === "score-only-unwitnessed"
                     ? [
                         {
                           input: action,
-                          ground: { kind: "visible-action", to: [variant === "witnessed" ? f.id : "player"] },
+                          ground: { kind: "visible-action", to: [witnessed ? f.id : "player"] },
                         },
-                        "self",
+                        ...(scoreOnly ? [] : ["self"]),
                       ]
                     : [{ segment: 1 }],
               },
@@ -1305,6 +1309,7 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
     const publication = f.publication(body);
     publication.readset.ordinaryDialogue = true;
     publication.readset.positionedSceneSources = true;
+    if (scoreOnly) publication.readset.ordinaryReplyRecovery = true;
     if (variant !== "legacy") publication.readset.continuityEffectRecovery = true;
     const result = acceptNarrationContinuity(f.state, publication, "submission", later);
     assert.equal(
@@ -1316,15 +1321,15 @@ await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", (
     assert.deepEqual(
       result.rejected.map(({ reason }) => reason).sort(),
       [
-        ...(variant !== "witnessed" && hasImpact ? ["Memory: unwitnessed continuity support"] : []),
+        ...(!witnessed && hasImpact ? ["Memory: unwitnessed continuity support"] : []),
         ...(!roomFact
           ? ["Memory: " + (variant === "legacy" ? "continuity actor was not admitted" : "actor memory targeted Room")]
           : []),
       ].sort(),
       variant,
     );
-    assert.equal(f.state.continuity.versions.length, variant === "witnessed" || roomFact ? 1 : 0, variant);
-    if (variant === "witnessed") assert.equal(f.state.continuity.versions[0].relationshipScore, -10);
+    assert.equal(f.state.continuity.versions.length, witnessed || roomFact ? 1 : 0, variant);
+    if (witnessed) assert.equal(f.state.continuity.versions[0].relationshipScore, -10);
     if (roomFact)
       assert.equal(
         f.state.continuity.records[0].heads[continuityHolderKey(publication.readset.admission.room!)].current,

@@ -153,11 +153,13 @@ function fixture(owner: string) {
       id: "narration",
       reason: JSON.stringify([{ code: "unrecognized_keys", path: [], keys: ["effects", "private-key"] }]),
     },
+    { id: "memory", reason: "Memory: new continuity needs its complete text" },
   ];
   const changes = await f.service.readSceneChanges("same");
   assert.deepEqual(changes.unresolved[0].diagnostic?.checks, [
     { code: "unrecognized_keys", path: ["effects"] },
     { code: "unrecognized_keys", path: ["?"] },
+    { code: "missing_continuity_text", path: ["text"] },
   ]);
   assert.doesNotMatch(JSON.stringify(changes), /private-key/);
 }

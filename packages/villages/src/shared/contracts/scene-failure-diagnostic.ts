@@ -14,6 +14,7 @@ const validationCodes = new Set([
   "continuity_evidence_not_witnessed",
   "continuity_actor_not_admitted",
   "room_target_in_actor_memory",
+  "missing_continuity_text",
 ]);
 const schemaFields = new Set([
   "segment",

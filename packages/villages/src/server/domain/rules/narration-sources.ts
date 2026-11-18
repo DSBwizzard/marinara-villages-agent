@@ -101,7 +101,7 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
     if (kind !== "keep" || field !== "effects") return value;
     const candidate = positions ? bindSceneSourcePositions({ segments, keep: [fields] }, quotes).keep : [fields];
     try {
-      readContinuityProposal((candidate as unknown[])[0]);
+      readContinuityProposal((candidate as unknown[])[0], true);
       return fields;
     } catch {
       return value;

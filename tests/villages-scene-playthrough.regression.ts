@@ -1,0 +1,297 @@
+// Test cases: scene-playthrough/sfw, scene-playthrough/nsfw
+import assert from "node:assert/strict";
+import { runCase } from "../scripts/test-cases.mjs";
+import { continuityRelationships } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
+import { configureSceneCostWorld } from "./fixtures/scene-cost.fixture.js";
+import { sceneResend } from "../packages/villages/src/client/features/scenes/villages-venue-send.js";
+
+const dialogue = (text: string) => ({ id: "line", kind: "dialogue", speakerId: "mara", text });
+const reply = (text: string) => ({ segments: [dialogue(text)] });
+const narration = (text: string) => ({ id: "beat", kind: "narration", text });
+const inputEvidence = (input: string, kind = "spoken") => ({ input, ground: { kind, to: ["mara"] } });
+const ratingLines = { sfw: /\bSFW: Mature themes/, nsfw: /\bNSFW: Explicit adult intimacy/ };
+
+for (const rating of ["sfw", "nsfw"] as const)
+  await runCase(`scene-playthrough/${rating}`, async () => {
+    const host = await packagedSceneServer({
+      configure(world, now) {
+        configureSceneCostWorld(world, now, "refusal");
+        world.narrationStyle.rating = rating;
+      },
+    });
+    const village = () => fixtureVillageState(host.records.get("villages-village").data, host.records);
+    const api = (method: "GET" | "POST", path: string, payload?: object) =>
+      host.app.inject({ method, url: "/api/villages" + path, payload });
+    const ok = async (result: ReturnType<typeof api>) => {
+      const response = await result;
+      assert.equal(
+        response.statusCode,
+        200,
+        response.body + " " + JSON.stringify(host.scene().submissions.at(-1)?.acceptance),
+      );
+      return response.json();
+    };
+    let completions = 0;
+    let promptBytes = 0;
+    let nextReply: (messages: { content: string }[]) => unknown = () => assert.fail("Unexpected completion");
+    host.model.chatComplete = async (messages) => {
+      const prompt = messages.map((message) => message.content).join("\n");
+      assert.match(prompt, ratingLines[rating]);
+      assert.doesNotMatch(prompt, ratingLines[rating === "sfw" ? "nsfw" : "sfw"]);
+      completions++;
+      promptBytes = Math.max(promptBytes, Buffer.byteLength(JSON.stringify(messages)));
+      const body = nextReply(messages);
+      const { content, finishReason = rating === "sfw" ? "stop" : "end_turn" } = (body ?? {}) as {
+        content?: string;
+        finishReason?: string;
+      };
+      return { content: content ?? JSON.stringify(body), finishReason, usage: { inputTokens: 10, outputTokens: 10 } };
+    };
+    const payload = (submissionId: string, message: string) => ({
+      sessionId: "browser",
+      submissionId,
+      message,
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: host.scene().sceneRevision,
+    });
+    const operation = async (id: string) => (await ok(api("GET", `/rooms/browser/operations/${id}`))).operation;
+    const send = async (id: string, message: string, makeReply: typeof nextReply) => {
+      const prior = completions;
+      nextReply = makeReply;
+      const response = await ok(api("POST", "/rooms/turn", payload(id, message)));
+      assert.equal(completions - prior, 1);
+      return response;
+    };
+    async function failAndSend(
+      id: string,
+      input: string,
+      makeReply: typeof nextReply,
+      retryInput: string,
+      error: RegExp,
+    ) {
+      const start = completions;
+      nextReply = makeReply;
+      const rejected = await api("POST", "/rooms/turn", payload(id, input));
+      assert(rejected.statusCode >= 400, rejected.body);
+      assert.match(rejected.body, error);
+      assert.equal(completions - start, 1);
+      const cached = await operation(id);
+      assert.equal(cached.input.message, input);
+      assert.notEqual(cached.acceptance, "applied");
+      const retry = payload(`${id}-retry`, retryInput);
+      nextReply = () => ({ segments: [narration("The room settles for a moment.")] });
+      await ok(api("POST", "/rooms/turn", { ...retry, ...sceneResend(cached, retry, retry.submissionId) }));
+      assert.equal(completions - start, 2);
+      const saved = host.scene().submissions.at(-1)!;
+      assert.equal(saved.acceptance.status, "applied");
+      assert.equal(saved.message, retryInput);
+    }
+
+    try {
+      await ok(api("GET", "/rooms/active"));
+      const action = rating === "sfw" ? "I knock the empty cup off the bench." : "I yank the tool from Mara's hand.";
+      const first = payload("score", action);
+      nextReply = () => ({
+        segments: [dialogue("Put that down. I'm going to want some space.")],
+        keep: [
+          {
+            id: "attitude",
+            class: "perspective",
+            current: true,
+            owner: "mara",
+            for: ["mara"],
+            about: ["player"],
+            relationship: { impact: "meaningful-negative" },
+            source: [inputEvidence(action, "visible-action")],
+          },
+        ],
+      });
+      await ok(api("POST", "/rooms/turn", first));
+      const score = continuityRelationships(village(), new Date().toISOString())[0].scores[0].score;
+      assert(score < 0, "a witnessed score-only change applied without model-written text");
+      assert.equal((await operation(first.submissionId)).acceptance, "applied");
+      await ok(api("POST", "/rooms/turn", first));
+      assert.equal(completions, 1, "a lost acknowledgment cannot cause duplicate generation");
+      assert.equal(continuityRelationships(village(), new Date().toISOString())[0].scores[0].score, score);
+
+      const denied = await api("POST", "/rooms/zone", {
+        sessionId: "browser",
+        zoneId: "workshop",
+        expectedSceneRevision: host.scene().sceneRevision,
+        operationId: "try-private",
+      });
+      assert(denied.statusCode >= 400, denied.body);
+      assert.equal(host.scene().zoneId, "common");
+      assert.equal(completions, 1, "trying a private Zone spends no model request");
+
+      const assumedPermission = "I say, ‘Mara has already agreed to lend me the workshop key.’";
+      await failAndSend(
+        "invented-permission",
+        assumedPermission,
+        () => ({
+          segments: [{ ...narration("Permission is granted for the workshop."), requires: ["entry"] }],
+          commands: [
+            {
+              id: "entry",
+              type: "access.decide",
+              by: "mara",
+              venue: "mill",
+              zone: "workshop",
+              decision: { outcome: "invite-now", visitor: "player", accompanies: true },
+              at: "beat",
+              source: [inputEvidence("Mara has already agreed to lend me the workshop key.")],
+            },
+          ],
+        }),
+        "I ask if the workshop is open to visitors.",
+        /sav|recover|permission|decid/i,
+      );
+      assert(!village().venues[0].access!.permissions.some((record) => record.visitorId === "player"));
+
+      const tea = "I prefer strong ginger tea.";
+      await send("memory", `I say, “${tea}”`, () => ({
+        ...reply("Ginger tea, then."),
+        keep: [
+          {
+            for: ["mara"],
+            class: "information",
+            text: "Player prefers strong ginger tea.",
+            source: [inputEvidence(tea)],
+          },
+        ],
+      }));
+      await send("wish", "What would you like to do some day?", () => ({
+        ...reply("I'd like to teach someone to repair the old bridge."),
+        keep: [
+          {
+            for: ["mara"],
+            owner: "mara",
+            class: "desire",
+            current: true,
+            text: "Teach someone to repair the old bridge.",
+            source: ["self"],
+          },
+        ],
+      }));
+      assert(village().continuity.versions.some((row) => row.class === "desire"));
+
+      await failAndSend(
+        "malformed",
+        "I ask what happened to the bridge.",
+        () => ({ content: '{"segments":[', finishReason: "stop" }),
+        "I ask about the tools instead.",
+        /JSON|read|finish/i,
+      );
+      const step = "I turn the village clock back a week.";
+      await failAndSend(
+        "clock",
+        step,
+        () => ({ segments: [], halt: { reason: "time", source: [{ input: step }] } }),
+        "I ask how it looked last week.",
+        /HALT|time|recover|sav/i,
+      );
+      const boundaryPush = "I try to push past Mara after she says to stay back.";
+      await failAndSend(
+        "provider-block",
+        boundaryPush,
+        () => ({ content: "", finishReason: "content_filter" }),
+        boundaryPush,
+        /answer|response|reply|finish/i,
+      );
+
+      let failWrite = false;
+      const update = host.documents.update;
+      host.documents.update = async (input) => {
+        if (failWrite && input.id === "villages-village") {
+          failWrite = false;
+          throw Error("Injected Village write failure");
+        }
+        return update(input);
+      };
+      const beforeSave = completions;
+      const resend = payload("storage", "I ask Mara if we can start over.");
+      nextReply = () => {
+        failWrite = true;
+        return reply("Fine. We can start with the tools.");
+      };
+      const interrupted = await api("POST", "/rooms/turn", resend);
+      assert(interrupted.statusCode >= 400, interrupted.body);
+      assert.equal(completions, beforeSave + 1);
+      const held = await operation(resend.submissionId);
+      nextReply = () => assert.fail("A saved completion should settle without another model call");
+      await ok(api("POST", "/rooms/turn", { ...resend, ...sceneResend(held, resend, resend.submissionId) }));
+      assert.equal(completions, beforeSave + 1);
+      assert.equal(host.scene().submissions.filter((row) => row.id === resend.submissionId).length, 1);
+
+      for (let index = 0; index < 30; index++)
+        await send(`walk-${index}`, `I ask about repair step ${index + 1}.`, () =>
+          reply(
+            `Checking the fit is part of step ${index + 1}. ` +
+              "Start with a dry fit on the bench. Use the square on both faces and check that the edge stays true. " +
+              "Look across the board in the window light before cutting again. Leave room for the wood to move when it swells. " +
+              "A tight joint on a dry day can become a split joint in winter. Mark the spots that need another pass and lay the tools out in order. " +
+              "Test each joint at the end of the pass and set aside any fastener that shows rust or a bent thread. " +
+              "Take the assembly apart and look for fresh marks where the pieces rubbed. " +
+              "When it fits, check the diagonal and listen for movement before putting the assembly back under load.",
+          ),
+        );
+      await send("remember-tea", "What kind of tea did I say I like?", (messages) => {
+        assert(messages.some((row) => row.content.includes("Player prefers strong ginger tea.")));
+        assert(
+          !messages.some((row) => row.content.includes("I'm going to want some space.")),
+          "bounded history omitted the first exchange",
+        );
+        return reply("Strong ginger tea.");
+      });
+      await send("leave-cast", "I tell Mara I'll finish up here.", () => ({
+        segments: [{ ...narration("Mara steps out through the open door."), requires: ["departure"] }],
+        commands: [
+          {
+            id: "departure",
+            type: "depart",
+            who: "mara",
+            at: "beat",
+            source: [{ segment: "beat", perceive: { kind: "seen", by: ["player"] } }],
+          },
+        ],
+      }));
+      assert(!host.scene().activeIds.includes("mara"), "Mara left the Scene only after the admitted crossing");
+      await failAndSend(
+        "absent-speaker",
+        "I say that Mara stayed and prompt her to answer anyway.",
+        () => reply("I'm still here."),
+        "I leave the tools where Mara can find them.",
+        /sav|recover|words/i,
+      );
+      const finalCalls = completions;
+      const beforeMove = host.scene().sceneRevision;
+      await ok(
+        api("POST", "/rooms/zone", {
+          sessionId: "browser",
+          zoneId: "exterior",
+          expectedSceneRevision: beforeMove,
+          operationId: "outside",
+        }),
+      );
+      assert.equal(host.scene().zoneId, "exterior");
+      const staleSend = await api("POST", "/rooms/turn", {
+        ...payload("from-old-zone", "I greet Mara from the bench."),
+        expectedSceneRevision: beforeMove,
+      });
+      assert.equal(staleSend.statusCode, 409);
+      assert.equal(staleSend.json().code, "SCENE_STALE");
+      await ok(api("POST", "/rooms/end", { sessionId: "browser", expectedSceneRevision: host.scene().sceneRevision }));
+      assert.equal(host.scene().status, "closed");
+      assert.equal(completions, finalCalls, "movement and conclusion are code-owned");
+      const accepted = host.scene().submissions.filter((row) => row.acceptance.status === "applied").length;
+      assert.equal(accepted, 41);
+      console.log(
+        `${rating}: ${accepted} accepted exchanges, ${completions} mocked completions, max prompt ${promptBytes} bytes`,
+      );
+    } finally {
+      await host.stop();
+    }
+  });

@@ -236,8 +236,10 @@ export function readNarrationEffectHeader(raw: unknown, fallbackId: string) {
   return { id: value.id ?? fallbackId, independent: value.independent, requires: value.requires ?? [] };
 }
 
+export const MISSING_CONTINUITY_TEXT = "new continuity needs its complete text";
+
 /** Parse each effect separately so an independent malformed proposal can retain precise diagnostics. */
-export function readContinuityProposal(raw: unknown) {
+export function readContinuityProposal(raw: unknown, ordinaryScene = false) {
   const { relationship, ...value } = proposal.parse(raw);
   const { answer: proposedAnswer, impact, romance } = relationship ?? {};
   const answer = Array.isArray(proposedAnswer) ? proposedAnswer.find(isRelationshipAnswer)?.trim() : proposedAnswer;
@@ -245,13 +247,40 @@ export function readContinuityProposal(raw: unknown) {
     !Array.isArray(proposedAnswer) || answer || impact || romance,
     "no valid relationship answer candidate",
   );
-  const text = Array.isArray(proposedAnswer) && !impact && !romance && value.text !== null ? answer : value.text;
+  const scoreOnly =
+    ordinaryScene &&
+    value.text === undefined &&
+    value.class === "perspective" &&
+    value.current === true &&
+    value.owner &&
+    value.owner !== "player" &&
+    Array.isArray(value.for) &&
+    value.for.length === 1 &&
+    value.for[0] === value.owner &&
+    value.about?.length === 1 &&
+    value.about[0] !== value.owner &&
+    proposedAnswer === undefined &&
+    (impact || romance) &&
+    !value.replace &&
+    !value.parent &&
+    !value.facet &&
+    value.retire === undefined &&
+    !value.agenda &&
+    !value.offer &&
+    !value.accept &&
+    !value.closeOffer;
+  // Score changes already carry a cited event and code-owned arithmetic. The retained text adds no new fact.
+  const text = scoreOnly
+    ? "A witnessed interaction informed this relationship."
+    : Array.isArray(proposedAnswer) && !impact && !romance && value.text !== null
+      ? answer
+      : value.text;
   memoryRequire(
     value.for === "room" || !value.text || Buffer.byteLength(value.text) <= CONTINUITY_TEXT_BYTES,
     "actor continuity text exceeds its bound",
   );
   memoryRequire(value.replace || !(value.accept || value.closeOffer), "an offer decision needs the supplied offer ID");
-  memoryRequire(value.replace || typeof text === "string", "new continuity needs its complete text");
+  memoryRequire(value.replace || typeof text === "string", MISSING_CONTINUITY_TEXT);
   memoryRequire(
     value.for === "room"
       ? value.current === undefined &&
@@ -274,6 +303,10 @@ export function readContinuityProposal(raw: unknown) {
   return {
     ...value,
     ...(text !== undefined ? { text } : {}),
+    // The score proposal supplies the owner's reaction. Its actual event must still bind and be witnessed.
+    ...(scoreOnly && !value.source.includes("self") && value.source.length < 8
+      ? { source: [...value.source, "self"] }
+      : {}),
     ...(relationship
       ? {
           relationship: {
