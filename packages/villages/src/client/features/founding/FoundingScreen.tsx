@@ -37,7 +37,7 @@ const PLACE_ERRORS = {
 };
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 const PHONE_LAYOUT = "(max-width:727px)";
-const CHAPTER_MENUS = [undefined, "people", "venues", "review"] as const;
+const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "zones", "review"] as const;
 const SETTING_MARI_POSES = {
   welcome: "wave",
   manual: "neutral",
@@ -180,12 +180,12 @@ export function FoundingScreen({
   const pendingSetting = setupWorkspace.suggestionRequest?.draftSetting && !setupWorkspace.suggestionRequest.failure;
   const rawSetupProblem =
     currentSetupProblem ||
-    (setupStep === 2 && !setupWorkspace.suggestionRequest?.draftSetting
+    (setupStep === 3 && !setupWorkspace.suggestionRequest?.draftSetting
       ? setupWorkspace.suggestionRequest?.failure
       : "") ||
     "";
   const venueConnectionUnavailable =
-    setupStep === 2 && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
+    setupStep === 3 && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
   const setupProblem = venueConnectionUnavailable
     ? "The System connection is unavailable. Choose another model or review it in Engine."
     : rawSetupProblem;
@@ -234,7 +234,7 @@ export function FoundingScreen({
         ? SETTING_MARI_POSES[beat]
         : setupStep === 1
           ? "happy"
-          : setupStep === 3
+          : setupStep === 5
             ? "proud"
             : "playful";
   const mariFacing = mariPose === "happy-side" ? "left" : mariPose === "looking-up" ? "right" : "front";
@@ -449,6 +449,7 @@ export function FoundingScreen({
     };
     const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
+      setSetupFocusIssue(null);
       if (openMenu && step === 0) setSettingEditorOpen(true);
       if (phone && openMenu) {
         setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: CHAPTER_MENUS[step] }));
@@ -461,7 +462,9 @@ export function FoundingScreen({
     }));
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);
-    const setupIssues = foundingVenueIssues(setupVenues, false);
+    const setupIssues = foundingVenueIssues(setupVenues, false).filter((issue) =>
+      setupStep === 3 ? ["placement", "name", "form", "description", "assignment"].includes(issue.field) : true,
+    );
     const openIssue = (issue: FoundingIssue) => {
       setSelectedSetupVenueId(issue.venueId);
       setSetupFocusIssue(issue);
@@ -491,7 +494,7 @@ export function FoundingScreen({
           <MapStage
             src={setupMapSrc || simpleFoundingMap()}
             alt={`Map of ${setupLocationName || "your starting location"}`}
-            pins={draftPins.map((pin) => ({
+            pins={(setupStep === 2 ? [] : draftPins).map((pin) => ({
               ...pin,
               selected: selectedSetupVenueId === pin.id,
               onSelect:
@@ -620,12 +623,12 @@ export function FoundingScreen({
         );
         return;
       }
-      if (setupStep === 2 && setupIssues.length) {
+      if ((setupStep === 3 || setupStep === 4) && setupIssues.length) {
         setSetupShowIssues(true);
         openIssue(setupIssues[0]);
         return;
       }
-      if (setupStep === 3) void foundVillage();
+      if (setupStep === 5) void foundVillage();
       else changeStep(setupStep + 1);
     };
     const nextReply = (
@@ -635,7 +638,7 @@ export function FoundingScreen({
         disabled={advanceDisabled}
         onClick={advanceSetup}
       >
-        {busy ? "Saving village…" : setupStep === 3 ? "Found village" : "Next"}
+        {busy ? "Saving village…" : setupStep === 5 ? "Found village" : "Next"}
       </button>
     );
     const villageNameField = (
@@ -731,7 +734,9 @@ export function FoundingScreen({
             [
               "",
               "Now for the neighbors. Choose who you’ll play, then who already lives here and how they’ll look in Scenes. I’ve retired from the casting committee.",
-              "A Venue is a place on the Map, and Zones are the spots inside. Set access, privacy, and beds. Yes, the couch counts.",
+              "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
+              "A Venue is a place your community uses. Name the homes and the Community Venue, then place them on your Map. I’ll mind the pins.",
+              "Now let’s step inside. Zones are the spots within each Venue. Set their connections, access, and sleeping places. Yes, the couch counts.",
               "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
             ][setupStep]!
           }
@@ -969,76 +974,102 @@ export function FoundingScreen({
             ) : null}
           </div>
           {setupStep === 2 ? (
-            <div className="villages-founding-places">
+            <section
+              className="villages-forging-card villages-quick-map-panel villages-founding-map-artwork"
+              aria-label="Map artwork"
+            >
+              <div className="villages-quick-map-toolbar">
+                <h2>{setupLocationName || "Your first Map"}</h2>
+                <>
+                  <button
+                    type="button"
+                    disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
+                    onClick={() => setArtSettingsOpen(true)}
+                  >
+                    Art settings
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
+                    onClick={() => {
+                      if (setupMapRequest?.phase === "paused") {
+                        setSetupMapProblem("");
+                        setSetupMapBusy(true);
+                        updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
+                      } else void generateSetupTownMap();
+                    }}
+                  >
+                    {setupMapBusy
+                      ? "Generating map…"
+                      : setupMapRequest?.phase === "paused"
+                        ? "Check map status"
+                        : "Generate artwork"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || setupMapBusy || !!setupMapRequest || setupVenueBusy || setupSuggestionsBusy}
+                    onClick={() => mapUpload.current?.click()}
+                  >
+                    Upload image
+                  </button>
+                  <input
+                    ref={mapUpload}
+                    autoComplete="off"
+                    hidden
+                    aria-label="Upload map image"
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void pickSetupTownMap(file);
+                    }}
+                  />
+                </>
+              </div>
               {validatedFields.includes("map") && !setupMapSrc ? (
                 <p role="alert" className="villages-forging-map-warning" tabIndex={-1}>
                   Upload or generate a map image before continuing.
                 </p>
               ) : null}
+              {!setupMapSrc && setupMapProblem ? (
+                <p className={`${ELEMENT_TAG}-error`} role="alert">
+                  {setupMapProblem}
+                </p>
+              ) : null}
+              {setupMapSrc ? (
+                <section className="villages-quick-map" aria-label="Map artwork preview">
+                  {map(false)}
+                </section>
+              ) : (
+                <p>Upload or generate your first Map.</p>
+              )}
+            </section>
+          ) : null}
+          {setupStep === 3 || setupStep === 4 ? (
+            <div className="villages-founding-places">
               <QuickStartVenues
+                key={setupStep}
+                phase={setupStep === 3 ? "venues" : "zones"}
                 venues={setupVenues}
                 locationName={setupLocationName}
                 onRetrySaving={() => void retrySetupSaving()}
                 actions={
-                  <QuickStartButton
-                    busy={busy || setupSuggestionsBusy}
-                    disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
-                    pending={
-                      !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
-                    }
-                    failed={
-                      !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
-                    }
-                    onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
-                  />
-                }
-                mapArtwork={
-                  <>
-                    <button
-                      type="button"
-                      disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
-                      onClick={() => setArtSettingsOpen(true)}
-                    >
-                      Art settings
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
-                      onClick={() => {
-                        if (setupMapRequest?.phase === "paused") {
-                          setSetupMapProblem("");
-                          setSetupMapBusy(true);
-                          updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
-                        } else void generateSetupTownMap();
-                      }}
-                    >
-                      {setupMapBusy
-                        ? "Generating map…"
-                        : setupMapRequest?.phase === "paused"
-                          ? "Check map status"
-                          : "Generate artwork"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy || setupMapBusy || !!setupMapRequest || setupVenueBusy || setupSuggestionsBusy}
-                      onClick={() => mapUpload.current?.click()}
-                    >
-                      Upload image
-                    </button>
-                    <input
-                      ref={mapUpload}
-                      autoComplete="off"
-                      hidden
-                      aria-label="Upload map image"
-                      type="file"
-                      accept="image/*"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        if (file) void pickSetupTownMap(file);
-                      }}
+                  setupStep === 3 ? (
+                    <QuickStartButton
+                      busy={busy || setupSuggestionsBusy}
+                      disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
+                      pending={
+                        !!setupWorkspace.suggestionRequest &&
+                        !pendingSetting &&
+                        !setupWorkspace.suggestionRequest.failure
+                      }
+                      failed={
+                        !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
+                      }
+                      onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
                     />
-                  </>
+                  ) : undefined
                 }
                 openingVenueId={setupContext.openingVenueId}
                 onOpeningVenue={(openingVenueId) => setSetupContext({ ...setupContext, openingVenueId })}
@@ -1059,10 +1090,14 @@ export function FoundingScreen({
                     </button>
                   ) : undefined
                 }
-                map=<>
-                  {map(true)}
-                  {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
-                </>
+                map={
+                  setupStep === 3 ? (
+                    <>
+                      {map(true)}
+                      {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+                    </>
+                  ) : undefined
+                }
                 onSelect={(venue) => {
                   setSelectedSetupVenueId(venue.id);
                   setSetupFocusIssue(null);
@@ -1085,7 +1120,7 @@ export function FoundingScreen({
               />
             </div>
           ) : null}
-          {setupStep === 3 ? (
+          {setupStep === 5 ? (
             <>
               {!phone ? <h2>Review {setupName}</h2> : null}
               <div className="villages-forging-columns">
@@ -1144,7 +1179,7 @@ export function FoundingScreen({
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
                       <h3>Starting Venues</h3>
-                      <button type="button" onClick={() => changeStep(2, true)}>
+                      <button type="button" onClick={() => changeStep(3, true)}>
                         Change starting Venues
                       </button>
                     </div>
@@ -1226,12 +1261,12 @@ export function FoundingScreen({
           {setupProblem &&
           !inlineProblem &&
           !venueConnectionUnavailable &&
-          !(setupStep === 2 && setupWorkspace.view === "details") ? (
+          !((setupStep === 3 || setupStep === 4) && setupWorkspace.view === "details") ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupProblem}
             </p>
           ) : null}
-          {setupMapProblem && setupStep !== 2 && setupStep !== 3 ? (
+          {setupMapProblem && setupStep !== 2 && setupStep !== 5 ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupMapProblem}
             </p>

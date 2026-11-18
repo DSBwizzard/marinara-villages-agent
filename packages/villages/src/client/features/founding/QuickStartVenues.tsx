@@ -17,12 +17,13 @@ import { ArtworkImage } from "../../shared/ArtworkImage.js";
 import { VENUE_FALLBACK_URL } from "../../shared/desk-art.js";
 import { DESK_STYLES } from "../../shared/desk-styles.js";
 import { StorybookHeading } from "../../shared/StorybookHeading.js";
-import { VenueSections, VenueZoneRow, type VenueSection } from "../../shared/VenueNavigation.js";
+import { VenueZoneRow, type VenueSection } from "../../shared/VenueNavigation.js";
 import { QuickStartZoneArtwork } from "./QuickStartZoneArtwork.js";
 import { draftZonePolicy, FoundingConnections } from "./villages-founding-zones.js";
 import { foundingVenueIssues, type FoundingIssue } from "./villages-founding-workspace-state.js";
 
 export function QuickStartVenues({
+  phase,
   venues,
   locationName,
   people,
@@ -44,9 +45,9 @@ export function QuickStartVenues({
   openingVenueId,
   onOpeningVenue,
   actions,
-  mapArtwork,
   onRetrySaving,
 }: {
+  phase: "venues" | "zones";
   venues: SetupVenueDraft[];
   locationName: string;
   people: { id: string; name: string }[];
@@ -57,7 +58,7 @@ export function QuickStartVenues({
   saveError?: string;
   problem?: string;
   problemAction?: ReactNode;
-  map: ReactNode;
+  map?: ReactNode;
   onSelect(venue: SetupVenueDraft): void;
   onPatch(venue: SetupVenueDraft): void;
   onMoveResident?(venueId: string, actorId: string): string;
@@ -68,11 +69,10 @@ export function QuickStartVenues({
   openingVenueId?: string;
   onOpeningVenue?(venueId: string): void;
   actions?: ReactNode;
-  mapArtwork?: ReactNode;
   onRetrySaving?(): void;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
-  const [section, setSection] = useState<VenueSection>("about");
+  const [section, setSection] = useState<VenueSection>(phase === "zones" ? "zones" : "about");
   const [zoneDetails, setZoneDetails] = useState(false);
   const [choiceError, setChoiceError] = useState("");
   const zoneBack = useRef<HTMLButtonElement>(null);
@@ -123,12 +123,10 @@ export function QuickStartVenues({
   }, [zoneId, zone]);
   useEffect(() => {
     if (!focusIssue || focusIssue.field === "placement") return;
-    setSection(
-      focusIssue.field === "layout" ? "manage" : focusIssue.zoneId || focusIssue.field === "sleep" ? "zones" : "about",
-    );
+    setSection(phase === "venues" ? "about" : focusIssue.field === "layout" ? "manage" : "zones");
     setZoneDetails(!!focusIssue.zoneId);
     setEditorOpen(true);
-  }, [focusIssue]);
+  }, [focusIssue, phase]);
   useEffect(() => {
     if (!openFromMap || selected?.id !== openFromMap.id) return;
     selectSection("about");
@@ -170,7 +168,7 @@ export function QuickStartVenues({
   useEffect(() => {
     const venue = selectedRef.current;
     if (!venue || !open) return;
-    const target = focusIssue?.venueId === venue.id ? focusIssue.zoneId : undefined;
+    const target = phase === "zones" && focusIssue?.venueId === venue.id ? focusIssue.zoneId : undefined;
     setZoneId(
       target === "common"
         ? (venue.spaces?.[0]?.id ?? "exterior")
@@ -178,7 +176,7 @@ export function QuickStartVenues({
           ? (venue.privateSpaces?.[0]?.id ?? "exterior")
           : (target ?? "exterior"),
     );
-  }, [open, selectedId, focusIssue]);
+  }, [open, selectedId, focusIssue, phase]);
   const patchZone = (change: Partial<NonNullable<VillageVenue["spaces"]>[number]>) => {
     if (!selected) return;
     const key = personal ? "privateSpaces" : "spaces";
@@ -194,10 +192,10 @@ export function QuickStartVenues({
     }
   };
   return (
-    <section className="villages-quick-start" aria-label="Venues">
+    <section className="villages-quick-start" aria-label={phase === "zones" ? "Zones" : "Venues"} data-phase={phase}>
       <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
         <header className="villages-venue-heading">
-          <h2>Starting Venues</h2>
+          <h2>{phase === "zones" ? "Zones by Venue" : "Starting Venues"}</h2>
           <div className="villages-quick-venue-actions">{actions}</div>
         </header>
         <FoundingVenuePages selectedId={selectedId}>
@@ -225,7 +223,7 @@ export function QuickStartVenues({
                 }
                 onClick={() => {
                   onSelect(venue);
-                  selectSection("about");
+                  selectSection(phase === "zones" ? "zones" : "about");
                   setEditorOpen(true);
                 }}
               >
@@ -249,7 +247,7 @@ export function QuickStartVenues({
       </section>
       {open && selected ? (
         <FoundingDialog
-          title="Edit Venue"
+          title={phase === "zones" ? "Edit Zones" : "Edit Venue"}
           headerless
           className="villages-quick-dialog villages-founding-venue-dialog"
           onClose={() => setEditorOpen(false)}
@@ -273,7 +271,7 @@ export function QuickStartVenues({
               </figure>
               <div className={`${P}-venue-navigation`}>
                 <button className={`${P}-venue-back`} type="button" onClick={() => setEditorOpen(false)}>
-                  ← Map
+                  ← {phase === "zones" ? "Venues" : "Map"}
                 </button>
               </div>
               <div className={`${P}-workspace-venue-header`}>
@@ -291,11 +289,24 @@ export function QuickStartVenues({
                   </div>
                 </dl>
               </div>
-              <VenueSections section={section} onSelect={selectSection} />
+              {phase === "zones" ? (
+                <nav className={`${P}-venue-sections`} aria-label="Zone sections">
+                  {(["zones", "manage"] as const).map((entry) => (
+                    <button
+                      type="button"
+                      key={entry}
+                      aria-pressed={section === entry}
+                      onClick={() => selectSection(entry)}
+                    >
+                      {entry === "zones" ? "Zones" : "Connections"}
+                    </button>
+                  ))}
+                </nav>
+              ) : null}
               <div className={`${P}-venue-profile-body`}>
                 <FoundingGuide>
                   {section === "about"
-                    ? "Open Zones to edit the spaces inside this Venue. Yes, even the suspicious little cupboard."
+                    ? "Give this place a name, an appearance, and a household. We’ll step inside on Zones."
                     : section === "manage"
                       ? "Connect the Zones so people can get there from the entrance. Walls are famously uncooperative."
                       : zoneDetails
@@ -400,7 +411,7 @@ export function QuickStartVenues({
                     ))}
                   </section>
                 ) : null}
-                {section === "zones" && zoneDetails ? (
+                {(section === "zones" && zoneDetails) || phase === "venues" ? (
                   <fieldset
                     className="villages-quick-selected-zone"
                     aria-label="Selected Zone"
@@ -408,9 +419,11 @@ export function QuickStartVenues({
                     disabled={busy || imageBusy}
                   >
                     <div className={`${P}-venue-zone-toolbar`}>
-                      <button ref={zoneBack} className={`${P}-venue-back`} type="button" onClick={backToZones}>
-                        ← Zones
-                      </button>
+                      {phase === "zones" ? (
+                        <button ref={zoneBack} className={`${P}-venue-back`} type="button" onClick={backToZones}>
+                          ← Zones
+                        </button>
+                      ) : null}
                       <header className="villages-quick-zone-heading">
                         <h3 aria-label={zone ? zone.name || "Zone" : "Entrance"}>
                           {zone ? (
@@ -467,7 +480,7 @@ export function QuickStartVenues({
                     <div className="villages-quick-zone-content">
                       <div className="villages-quick-zone-fields">
                         <label className="villages-quick-zone-description">
-                          <span>Zone description</span>
+                          <span>{phase === "venues" ? "Exterior description" : "Zone description"}</span>
                           <textarea
                             autoComplete="off"
                             aria-label="Zone description"
@@ -646,15 +659,16 @@ export function QuickStartVenues({
           </footer>
         </FoundingDialog>
       ) : null}
-      <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
-        <div className="villages-quick-map-toolbar">
-          <h2>{locationName || "Starting location"}</h2>
-          {mapArtwork}
-        </div>
-        <section className="villages-quick-map" aria-label="Venue placement">
-          {map}
+      {map ? (
+        <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
+          <div className="villages-quick-map-toolbar">
+            <h2>{locationName || "Starting location"}</h2>
+          </div>
+          <section className="villages-quick-map" aria-label="Venue placement">
+            {map}
+          </section>
         </section>
-      </section>
+      ) : null}
     </section>
   );
 }

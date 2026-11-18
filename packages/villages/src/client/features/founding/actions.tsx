@@ -485,7 +485,7 @@ export function useFoundVillage(ports: {
               ? "exterior-description"
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
-        setSetupStep(2);
+        setSetupStep(!incomplete.description.trim() || !incomplete.name.trim() || !incomplete.form?.trim() ? 3 : 4);
         window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);

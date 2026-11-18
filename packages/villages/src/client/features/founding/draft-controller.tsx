@@ -211,7 +211,13 @@ export function createFoundingRestoreSetupDraft(ports: {
     ) {
       return false;
     }
-    setSetupStep(savedFoundingStep(data));
+    const step = savedFoundingStep(data);
+    const hasMap =
+      data.mapSource === "existing" ||
+      ((data.mapSource === "generate" || data.mapSource === "upload") &&
+        data.mapImageSource === data.mapSource &&
+        !!data.mapImage);
+    setSetupStep(step > 2 && !hasMap ? 2 : step);
     setSetupName(data.name);
     setSetupLocationName(data.startingLocationName ?? data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");

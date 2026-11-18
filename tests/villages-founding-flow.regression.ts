@@ -35,7 +35,7 @@ async function reviewNavigation() {
   const { createFoundingGotoSetupStep } =
     await import("../packages/villages/src/client/features/founding/setup-controller.js");
   let reviewed = false,
-    step = 3,
+    step = 5,
     problem = "",
     blocked = "Place every starting Venue photograph.";
   const ports = {
@@ -71,19 +71,19 @@ async function reviewNavigation() {
     setupLocationName: "Old Harbour",
     setupPlayerBackground: "I came to help the community.",
     setupSetting: "Coastal rooms",
-    setupStep: 3,
+    setupStep: 5,
     setupSuggestionsBusy: false,
     setupVenueBusy: false,
     snapshot: { isFounded: true },
   };
   const goto = createFoundingGotoSetupStep(ports as any);
-  goto(3);
+  goto(5);
   assert.equal(reviewed, false, "re-entering restored Review cannot acknowledge an invalid map");
   assert.match(problem, /Place every/);
   blocked = "";
-  goto(3);
+  goto(5);
   assert.equal(reviewed, true, "successful Review navigation incorporates map acknowledgment");
-  assert.equal(step, 3);
+  assert.equal(step, 5);
   assert.equal(problem, "");
   ports.setupStep = 0;
   ports.connectionSetupProblem = "Choose a System connection.";
@@ -117,9 +117,26 @@ async function reviewNavigation() {
   reviewed = false;
   ports.setupMapSrc = "";
   ports.snapshot.isFounded = false;
-  goto(3);
+  goto(5);
   assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
   assert.match(problem, /Generate or upload map artwork/);
+  assert.equal(step, 2, "Missing artwork returns to Maps");
+  ports.setupStep = 2;
+  for (const target of [3, 4, 5]) {
+    goto(target);
+    assert.equal(step, 2, "No later chapter can bypass missing map artwork");
+  }
+  ports.setupMapSrc = "uploaded-map";
+  ports.setupMapBusy = true;
+  goto(3);
+  assert.equal(step, 2, "Replacement artwork must finish before Venues");
+  assert.match(problem, /Wait for the requested map/);
+  ports.setupMapBusy = false;
+  goto(3);
+  assert.equal(step, 3, "Completed artwork unlocks Venues without validating future Zones");
+  ports.setupStep = 3;
+  goto(4);
+  assert.equal(step, 4, "Venues advances to Zones without acknowledging Review");
   const admissionPorts: any = {
     ...ports,
     setupStep: 1,
@@ -139,10 +156,14 @@ async function reviewNavigation() {
 async function main() {
   const { savedFoundingStep, SETUP_STEPS } =
     await import("../packages/villages/src/client/features/founding/founding-steps.js");
-  assert.deepEqual(SETUP_STEPS, ["Setting", "People", "Venues and Map", "Review"]);
-  for (let step = 0; step < 4; step++) assert.equal(savedFoundingStep({ step }), step);
+  assert.deepEqual(SETUP_STEPS, ["Setting", "People", "Maps", "Venues", "Zones", "Review"]);
+  for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
+  assert.equal(savedFoundingStep({ step: 2, phase: "Venues and Map" }), 2);
+  assert.equal(savedFoundingStep({ step: 3 }), 5, "Old Review resumes at Review");
+  assert.equal(savedFoundingStep({ step: 3, phase: "Review" }), 5);
+  assert.equal(savedFoundingStep({ step: 0, phase: "Zones" }), 4, "Named chapters survive changed numbering");
   assert.equal(savedFoundingStep({ step: NaN }), 0);
-  assert.equal(savedFoundingStep({ step: 8 }), 3);
+  assert.equal(savedFoundingStep({ step: 8 }), 5);
   const { readPersona } = await import("../packages/villages/src/server/adapters/engine/catalog.js");
   const { validateFoundingRoster } = await import("../packages/villages/src/server/domain/rules/founding-record.js");
   const { parseFoundingVenueSuggestions } =
@@ -943,6 +964,19 @@ await main()
     assert.equal(values.setSetupLocationName, startingLocationName, "Authored location names restore without backfill");
   }
   assert.equal(values.setScreen, "setup", "A freshly serialized v2 draft resumes without old-format backfill");
+  for (const phase of ["Venues", "Zones", "Review"]) {
+    restore({ ...draft, step: 3, phase });
+    assert.equal(values.setSetupStep, 2, "Missing artwork resumes on Maps without discarding the draft");
+  }
+  restore({
+    ...draft,
+    step: 3,
+    phase: "Review",
+    mapSource: "upload",
+    mapImageSource: "upload",
+    mapImage: "/saved-map.png",
+  });
+  assert.equal(values.setSetupStep, 5, "Old Review preserves its chapter once artwork exists");
   assert.deepEqual(values.setSetupWorkspace, draft.workspace);
   assert.equal(
     Object.hasOwn(values.setSetupContext, "households"),

@@ -397,11 +397,11 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === 5 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep || step === 3) {
+    if (step > setupStep || step === 5) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
@@ -421,15 +421,17 @@ export function createFoundingGotoSetupStep(ports: {
             ? "Describe the starting location."
             : "";
       const mapProblem =
-        !snapshot?.isFounded && !setupMapSrc && !setupMapBusy
-          ? "Generate or upload map artwork on Map before continuing."
+        !snapshot?.isFounded && (setupMapBusy || !setupMapSrc)
+          ? setupMapBusy
+            ? "Wait for the requested map artwork."
+            : "Generate or upload map artwork on Maps before continuing."
           : "";
       const problem =
         placeProblem ||
         connectionSetupProblem ||
         (step >= 2 ? peopleProblem : "") ||
         (step >= 3 ? mapProblem : "") ||
-        (step >= 3 ? setupBlocker(step === 3) : "");
+        (step === 5 ? setupBlocker(true) : "");
       if (problem) {
         if (placeProblem || problem === connectionSetupProblem) setSetupStep(0);
         else if (step >= 2 && peopleProblem) setSetupStep(1);
@@ -439,7 +441,7 @@ export function createFoundingGotoSetupStep(ports: {
       }
     }
     setSetupProblem("");
-    if (step === 3) setSetupMapReviewed(true);
+    if (step === 5) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();
