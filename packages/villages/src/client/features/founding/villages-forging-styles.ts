@@ -780,14 +780,14 @@ export const VILLAGES_FORGING_STYLES = `
     --mari-x:69cqw;
     --mari-height:min(65cqh,107cqw,28rem,max(0px,calc(var(--founding-mobile-stage-height) - 2.75rem)));
     /* The paving beside Mari starts about 22.5% from the bottom of the painting. */
-    --founding-mobile-backdrop-size:auto max(100%,63cqw,calc(var(--founding-mobile-wall-base) / .225));
+    --founding-mobile-backdrop-height:max(100cqh,63cqw,calc(var(--founding-mobile-wall-base) / .225));
     --founding-night-wash:linear-gradient(100deg,#271c350c,#271c3535 65%,#271c3580);
     background-position:center,left bottom;
-    background-size:auto,var(--founding-mobile-backdrop-size);
+    background-size:auto,auto var(--founding-mobile-backdrop-height);
   }
   .villages-forging-v2[data-step][data-lighting=day] {
     background-position:center,center,left bottom;
-    background-size:auto,auto,var(--founding-mobile-backdrop-size);
+    background-size:auto,auto,auto var(--founding-mobile-backdrop-height);
   }
   .villages-setting-stage::before {
     inset-block-end:-.3rem; width:100%; height:.9rem;
@@ -803,9 +803,10 @@ export const VILLAGES_FORGING_STYLES = `
     bottom:min(calc(var(--mari-floor) + var(--mari-height) * .4),calc(100cqh - 3.5rem - var(--chart-width) * .88));
   }
   .villages-founding-title {
-    position:absolute; inset:auto auto calc(var(--mari-floor) + var(--mari-height) * .33) .65rem;
+    /* The lantern ends 44.5% from the bottom of the painting. */
+    position:absolute; inset:calc(100% - var(--founding-mobile-backdrop-height) * .445 + 1rem) auto auto .65rem;
     width:calc(var(--mari-x) - var(--mari-height) * .17 - 1.3rem);
-    translate:0 50%; padding:0;
+    padding:0;
   }
   .villages-founding-logo { font-size:min(15cqi,2.75rem); }
   .villages-setting-guide .villages-setting-dialogue { padding:.4rem .75rem; font-size:.91rem; backdrop-filter:blur(12px); }
