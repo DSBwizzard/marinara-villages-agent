@@ -779,8 +779,8 @@ export const VILLAGES_FORGING_STYLES = `
     --founding-mobile-stage-height:calc(100cqh - var(--mari-floor));
     --mari-x:69cqw;
     --mari-height:min(65cqh,107cqw,28rem,max(0px,calc(var(--founding-mobile-stage-height) - 2.75rem)));
-    /* The wall meets the paving about 21% from the bottom in both paintings. */
-    --founding-mobile-backdrop-size:auto max(100%,63cqw,calc(var(--founding-mobile-wall-base) / .21));
+    /* The paving beside Mari starts about 22.5% from the bottom of the painting. */
+    --founding-mobile-backdrop-size:auto max(100%,63cqw,calc(var(--founding-mobile-wall-base) / .225));
     --founding-night-wash:linear-gradient(100deg,#271c350c,#271c3535 65%,#271c3580);
     background-position:center,left bottom;
     background-size:auto,var(--founding-mobile-backdrop-size);
@@ -803,7 +803,7 @@ export const VILLAGES_FORGING_STYLES = `
     bottom:min(calc(var(--mari-floor) + var(--mari-height) * .4),calc(100cqh - 3.5rem - var(--chart-width) * .88));
   }
   .villages-founding-title {
-    position:absolute; inset:auto auto calc(var(--mari-floor) + var(--mari-height) * .38) .65rem;
+    position:absolute; inset:auto auto calc(var(--mari-floor) + var(--mari-height) * .33) .65rem;
     width:calc(var(--mari-x) - var(--mari-height) * .17 - 1.3rem);
     translate:0 50%; padding:0;
   }
@@ -813,6 +813,12 @@ export const VILLAGES_FORGING_STYLES = `
   .villages-forging-v2 .villages-setting-guide .villages-setting-dialogue>p { line-height:1.31; margin:.05rem 0 .24rem; }
   .villages-setting-guide .villages-founding-replies { margin-top:.18rem; }
   .villages-setting-guide .villages-founding-replies>button { padding:.33rem .68rem; }
+  .villages-setting-guide .villages-founding-replies[data-setting-choices] {
+    display:grid; grid-template-columns:auto repeat(2,minmax(0,1fr)); align-items:stretch;
+  }
+  .villages-setting-guide .villages-founding-replies[data-setting-choices]>button {
+    min-width:0; padding-inline:.3rem; line-height:1.15; text-wrap:balance;
+  }
   .villages-setting-guide .villages-founding-replies>button,
   .villages-forging-v2 .villages-founding-menu-actions>button { min-height:44px; }
   .villages-forging-v2 .villages-chapter-menu>footer.villages-founding-menu-actions {

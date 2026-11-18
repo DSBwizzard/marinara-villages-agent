@@ -453,7 +453,9 @@ export async function verifyFoundingLayout(group) {
           assert.ok(backdropHeight >= frame.height);
           const frameBottom = frame.y + frame.height;
           const lampBase = frameBottom - (backdropHeight * (820 - 455)) / 820;
-          const wallBase = frameBottom - (backdropHeight * (820 - 648)) / 820;
+          const wallBase = frameBottom - (backdropHeight * (820 - 635)) / 820;
+          const skyline = frameBottom - (backdropHeight * (820 - 425)) / 820;
+          assert.ok(skyline >= frame.y + frame.height * 0.28, "The phone crop leaves room for the sky");
           assert.ok(titleBounds.y >= lampBase + 4, "The logo and Start clear the lamp");
           assert.ok(
             stageBounds.y + stageBounds.height >= wallBase + 8,
@@ -601,6 +603,10 @@ export async function verifyFoundingLayout(group) {
         await expect(line).toHaveText(/Want to build it together/);
         await expect(button("Draft with Mari")).toBeVisible();
         await expect(button("Set it up myself")).toBeVisible();
+        if (phone) {
+          for (const reply of ["Back", "Draft with Mari", "Set it up myself"])
+            await expect(scene.getByRole("button", { name: reply, exact: true })).toBeInViewport({ ratio: 0.99 });
+        }
         if (!phone) {
           const portrait = await greetingPose.boundingBox();
           const dialogue = await scene.locator(".villages-setting-dialogue").boundingBox();

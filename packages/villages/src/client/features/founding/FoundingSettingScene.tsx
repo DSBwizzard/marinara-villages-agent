@@ -340,7 +340,7 @@ export function FoundingSettingScene({
             </button>
           </div>
         ) : beat === "welcome" ? (
-          <div className="villages-founding-replies">
+          <div className="villages-founding-replies" data-setting-choices>
             {backReply}
             <button type="button" className="villages-forging-primary" onClick={() => moveTo("world-overview")}>
               Draft with Mari
