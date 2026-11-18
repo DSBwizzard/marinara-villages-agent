@@ -72,7 +72,20 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
   }
   const field = fields[0];
   if (field && misplaced.length) return raw;
-  const keep = field ? (raw[field] as unknown[]) : misplaced;
+  let keep = field ? (raw[field] as unknown[]) : misplaced;
+  if (field === "effects" && keep.length === 1) {
+    const { kind, id, keep: wrapped, ...other } = asRecord(keep[0]);
+    if (
+      kind === "keep" &&
+      typeof id === "string" &&
+      Array.isArray(wrapped) &&
+      wrapped.length === 1 &&
+      !Object.keys(other).length
+    ) {
+      const proposal = asRecord(wrapped[0]);
+      if (!Object.hasOwn(proposal, "id") || proposal.id === id) keep = [{ ...proposal, id }];
+    }
+  }
   if (
     (field === "effects" || field === "keeps" || misplaced.length > 0) &&
     keep.some((value) => {

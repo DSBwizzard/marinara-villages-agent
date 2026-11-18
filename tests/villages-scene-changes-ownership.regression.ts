@@ -148,6 +148,22 @@ function fixture(owner: string) {
 
 {
   const f = fixture("seed");
+  f.scene.submissions[1].acceptance.rejected = [
+    {
+      id: "narration",
+      reason: JSON.stringify([{ code: "unrecognized_keys", path: [], keys: ["effects", "private-key"] }]),
+    },
+  ];
+  const changes = await f.service.readSceneChanges("same");
+  assert.deepEqual(changes.unresolved[0].diagnostic?.checks, [
+    { code: "unrecognized_keys", path: ["effects"] },
+    { code: "unrecognized_keys", path: ["?"] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(changes), /private-key/);
+}
+
+{
+  const f = fixture("seed");
   assert.deepEqual(f.calls, [], "Construction is inert");
   const [first, held] = f.scene.submissions;
   held.acceptance.rejected.push({

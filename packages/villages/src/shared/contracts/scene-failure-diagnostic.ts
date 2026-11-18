@@ -21,6 +21,7 @@ const schemaFields = new Set([
   "source",
   "for",
   "keep",
+  "effects",
   "commands",
   "at",
   "id",

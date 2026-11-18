@@ -568,13 +568,23 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.equal(result.held, held);
     assert.equal(f.state.continuity.records[0]?.offer?.events[0].act, held ? undefined : "offer");
   }
-  for (const layout of ["embedded", "effects", "whisper", "mixed", "redundant-owner", "different-owner"]) {
+  for (const layout of [
+    "embedded",
+    "effects",
+    "wrapped",
+    "wrapped-conflict",
+    "whisper",
+    "mixed",
+    "redundant-owner",
+    "different-owner",
+  ]) {
     const f = fixture();
     const text = "Come to the bench and I'll show you.";
     const reply = {
       ...f.response()[0],
       text,
       color: "",
+      ...(layout.startsWith("wrapped") ? { requires: [f.keep.id] } : {}),
       ...(layout === "whisper" ? { delivery: "whisper", targetId: "player" } : {}),
     };
     const proposal = {
@@ -587,12 +597,21 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       source: layout.endsWith("-owner") ? [{ segment: "reply", act: "offer" }] : ["reply"],
       ...(layout.endsWith("-owner") ? { owner: layout === "redundant-owner" ? f.id : "player" } : {}),
     };
+    const { kind, id, ...wrapped } = proposal;
     const p = f.publication({
       segments: [reply, ...(layout === "embedded" || layout === "mixed" ? [proposal] : [])],
-      ...(layout !== "embedded" ? { effects: [proposal] } : {}),
+      ...(layout !== "embedded"
+        ? {
+            effects: [
+              layout.startsWith("wrapped")
+                ? { kind, id, keep: [{ ...wrapped, ...(layout === "wrapped-conflict" ? { id: "other" } : {}) }] }
+                : proposal,
+            ],
+          }
+        : {}),
     });
     p.readset.ordinaryReplyRecovery = true;
-    if (layout === "mixed") {
+    if (layout === "mixed" || layout === "wrapped-conflict") {
       assert.throws(() => acceptNarrationContinuity(f.state, p, "layout", later));
       continue;
     }

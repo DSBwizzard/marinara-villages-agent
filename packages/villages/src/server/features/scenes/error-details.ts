@@ -22,6 +22,8 @@ function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknow
       const nested = issue.errors.slice(0, 4).flatMap((branch) => schemaChecks(branch, depth + 1, path));
       return [...nested, check];
     }
+    if (issue.code === "unrecognized_keys" && Array.isArray(issue.keys) && issue.keys.length)
+      return issue.keys.slice(0, 3).map((key) => ({ ...check, path: [...path, key] }));
     return [check];
   });
 }

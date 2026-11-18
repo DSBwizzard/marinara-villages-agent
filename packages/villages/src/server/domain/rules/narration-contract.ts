@@ -333,7 +333,7 @@ export const SCENE_NARRATION_FORMAT =
 export const ORDINARY_SCENE_FORMAT =
   'One JSON object: {"segments":[{"kind":"dialogue","speakerId":"resident-id","text":"…"}]}. Copy supplied speaker IDs; leadSpeakerId is context. Narration: {kind:"narration",text}. Local speech by default. Dialogue can use delivery:"whisper" with targetId or delivery:"shout" to connected Zones. Place presentation:"aside" after its main line (max ' +
   MAX_SCENE_ASIDES +
-  "). Omit unused fields. Sources belong on effects. Confirm only with requires:[effect ID]; independent:true only if prose survives rejection. Native changes need game confirmation.";
+  "). Omit unused fields. Put lasting updates and their sources in the top-level keep array. Confirm only with requires:[effect ID]; independent:true only if prose survives rejection. Native changes need game confirmation.";
 export const ordinarySceneCitationIds = (positions: boolean) =>
   `Give cited ${positions ? "effects" : "lines and effects"} fresh IDs (start with a letter, up to 48 letters/digits/_/-).`;
 
