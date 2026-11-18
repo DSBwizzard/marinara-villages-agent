@@ -93,35 +93,81 @@ await withBrowser({ close: server.stop }, async () => {
     assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
 
     let retries = 0;
-    server.model.chatComplete = async () => ({
-      content: JSON.stringify({
-        segments:
-          ++retries === 1
-            ? [{ kind: "dialogue", speakerId: "mara", text: "Good to see you by the window." }]
-            : [
-                { kind: "narration", text: "Rain patters on the mill roof." },
-                { kind: "dialogue", speakerId: "mara", text: "Let's wait for the shower to pass." },
-              ],
-      }),
-      finishReason: "stop",
-    });
+    const firstRetry = Promise.withResolvers();
+    const firstReply =
+      "Good to see you by the window. I just set out a fresh pot of tea, and there is an extra cup on the bench.";
+    server.model.chatComplete = async () => {
+      const attempt = ++retries;
+      if (attempt === 1) await firstRetry.promise;
+      return {
+        content: JSON.stringify({
+          segments:
+            attempt === 1
+              ? [{ kind: "dialogue", speakerId: "mara", text: firstReply }]
+              : attempt === 2
+                ? [
+                    { kind: "narration", text: "Rain patters on the mill roof." },
+                    { kind: "dialogue", speakerId: "mara", text: "Let's wait for the shower to pass." },
+                  ]
+                : [
+                    { kind: "narration", text: "The rain eases over the mill." },
+                    ...Array.from({ length: 23 }, (_, index) => ({
+                      kind: "narration",
+                      text: `Passage ${index + 1}. ${"霧".repeat(1900)}`,
+                    })),
+                  ],
+        }),
+        finishReason: "stop",
+      };
+    };
     await composer.fill("Keep this unsent draft");
-    await page.getByRole("button", { name: "Retry reply", exact: true }).click();
-    await expect(page.getByText("Good to see you by the window.", { exact: true })).toBeVisible();
+    const current = page.getByRole("region", { name: "Current paragraph" });
+    try {
+      await page.getByRole("button", { name: "Retry reply", exact: true }).click();
+      await expect(current).toHaveText("Retrying reply…");
+      await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
+    } finally {
+      firstRetry.resolve();
+    }
+    await expect(current).toHaveAttribute("aria-busy", "true");
+    await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    await expect(current).toHaveText(firstReply);
     await expect(composer).toHaveValue("Keep this unsent draft");
-    await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
     assert.equal(retries, 1);
 
     const phone = await context.newPage();
     await phone.setViewportSize({ width: 390, height: 844 });
+    await phone.emulateMedia({ reducedMotion: "reduce" });
     await phone.goto("http://villages.test/");
     await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
     const retryReply = phone.getByRole("button", { name: "Retry reply", exact: true });
+    const phoneCurrent = phone.getByRole("region", { name: "Current paragraph" });
+    const phoneNext = phone.getByRole("button", { name: "Next paragraph", exact: true });
+    await expect
+      .poll(async () => {
+        if (await retryReply.isVisible()) return true;
+        if ((await phoneNext.isVisible()) && (await phoneNext.isEnabled())) await phoneNext.click();
+        return retryReply.isVisible();
+      })
+      .toBe(true);
     await expect(retryReply).toBeInViewport();
     await retryReply.click();
-    await expect(phone.getByText("Let's wait for the shower to pass.", { exact: true })).toBeVisible();
-    await expect(phone.getByText("Good to see you by the window.", { exact: true })).toHaveCount(0);
+    await expect(phoneCurrent).toHaveText("Rain patters on the mill roof.");
+    await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
+    await phoneNext.click();
+    await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
     assert.equal(retries, 2);
+
+    await retryReply.click();
+    await expect(phoneCurrent).toHaveText("The rain eases over the mill.");
+    assert.equal(retries, 3);
+    const active = await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const { session } = active.json();
+    assert.ok(session.retryStart, "the retried reply has a public reading anchor");
+    assert.ok(
+      session.retryStart.index < session.playback.moments[0].index,
+      "the reader found the start of the replacement outside the latest playback window",
+    );
   });
 });
 console.log("Packaged browser send, persistence, replay, reload and desktop/phone Retry passed.");

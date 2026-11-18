@@ -166,7 +166,19 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           scene.latestTurn?.id === room.latestTurn?.id &&
           scene.playback.version !== room.playback.version
         ) {
-          sceneReading.checkpoint.current.bookmark = undefined;
+          const start = scene.retryStart;
+          sceneReading.checkpoint.current.bookmark = start
+            ? {
+                scope: scene.playback.scope,
+                sceneId: scene.id,
+                lineId: start.id,
+                paragraph: 0,
+                momentIndex: start.index,
+                anchorCursor: start.anchorCursor,
+                atEnd: false,
+                reveal: true,
+              }
+            : undefined;
           sceneReading.checkpoint.current.window = {
             ...scene.playback,
             lines: scene.lines,

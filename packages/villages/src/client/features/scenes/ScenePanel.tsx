@@ -31,7 +31,7 @@ import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragra
 import { scenePlaybackSteps } from "./scene-playback.js";
 import { useScenePlayback } from "./useScenePlayback.js";
 import { mobileReadingCounter } from "./villages-mobile-scene.js";
-import { useReadingPages } from "./villages-reading-viewport.js";
+import { useReadingPages, useReplyReveal } from "./villages-reading-viewport.js";
 import { hasCompletedRoomSubmission } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { SceneHistory } from "./SceneHistory.js";
@@ -318,7 +318,9 @@ export function RoomPanel({
   /** The current paragraph in this Scene's ordered reading. */
   const { checkpoint, reset, isFounded } = sceneReading;
   const [readStep, setReadStep] = useState(() => checkpoint.current.readStep);
+  const [revealStep, setRevealStep] = useState<string>();
   const playback = useScenePlayback(room, worldScope, sceneReading);
+  const retrying = !!retryPending || (room.operation?.kind === "retry" && room.operation.status === "running");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsView, setActionsView] = useState<"menu" | "move" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -550,8 +552,10 @@ export function RoomPanel({
           ? steps.findIndex((step) => step.momentIndex > (playback.advanceFrom ?? bookmark.momentIndex))
           : -1;
       if (newer >= 0) select(newer);
-      else if (saved >= 0) select(saved);
-      else if (!playback.restoring) select(Math.max(0, steps.length - 1));
+      else if (saved >= 0) {
+        if (bookmark.reveal) setRevealStep(steps[saved]?.key);
+        select(saved);
+      } else if (!playback.restoring) select(Math.max(0, steps.length - 1));
     } else select(Math.max(0, steps.length - 1));
   }, [
     room.id,
@@ -581,6 +585,10 @@ export function RoomPanel({
     step?.key ?? JSON.stringify([worldScope, room.id, "empty"]),
     readingRef,
     sceneReading,
+  );
+  const reveal = useReplyReveal(
+    readingPages.nodes,
+    !retrying && !playback.restoring && readingPages.index === 0 && step?.key === revealStep ? revealStep : undefined,
   );
   const emptyFrame = useMemo(
     () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
@@ -636,7 +644,8 @@ export function RoomPanel({
     checkpoint.current.window = playback.window;
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !ended && room.status === "active";
-  const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
+  const canCompose =
+    canDraft && !busy && !reveal.active && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
   const canSend =
     canCompose &&
     !contactRecovery &&
@@ -709,13 +718,15 @@ export function RoomPanel({
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
       <span className={`${ELEMENT_TAG}-chat-pending-label`}>
-        {room.status === "opening"
-          ? "Opening the Scene…"
-          : room.status === "closing"
-            ? "Saving this Scene…"
-            : room.operation?.kind === "move"
-              ? "Moving…"
-              : "This Scene is responding. Your draft stays here."}
+        {retrying
+          ? "Retrying reply…"
+          : room.status === "opening"
+            ? "Opening the Scene…"
+            : room.status === "closing"
+              ? "Saving this Scene…"
+              : room.operation?.kind === "move"
+                ? "Moving…"
+                : "This Scene is responding. Your draft stays here."}
       </span>
     </p>
   );
@@ -1137,7 +1148,7 @@ export function RoomPanel({
           ))}
         </div>
       ) : null}
-      {!dialogueHidden && !historyOpen && step && step.asides.length > 0 ? (
+      {!dialogueHidden && !historyOpen && !retrying && !reveal.active && step && step.asides.length > 0 ? (
         <SceneAsides
           asides={step.asides}
           mobile={mobile}
@@ -1338,7 +1349,7 @@ export function RoomPanel({
           hidden={historyOpen}
         >
           <div className={`${ELEMENT_TAG}-chat-vn-row`}>
-            {register === "narration" ? (
+            {retrying ? null : register === "narration" ? (
               <div className={ELEMENT_TAG + "-chat-vn-portrait"} aria-hidden="true">
                 <SceneControlIcon name="narrator" />
               </div>
@@ -1352,7 +1363,7 @@ export function RoomPanel({
               />
             )}
             <div className={`${ELEMENT_TAG}-chat-vn-column`}>
-              {register === "narration" ? (
+              {retrying ? null : register === "narration" ? (
                 <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
               ) : (
                 <p
@@ -1373,21 +1384,24 @@ export function RoomPanel({
                 role="region"
                 aria-label="Current paragraph"
                 aria-live="polite"
+                aria-busy={reveal.active}
                 tabIndex={0}
               >
-                {playback.restoring ? (
+                {retrying ? (
+                  waiting
+                ) : playback.restoring ? (
                   <p role="status">{playback.error ? "Passage unavailable." : "Loading…"}</p>
                 ) : step ? (
                   register === "narration" ? (
                     <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
-                      {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
+                      {drawVillagesNodes(reveal.nodes, "vn-beat-")}
                     </p>
                   ) : (
                     <p
                       className={`${ELEMENT_TAG}-chat-vn-text`}
                       style={step.player ? undefined : speechStyle(step.speakerId)}
                     >
-                      {drawVillagesNodes(readingPages.nodes, "vn-")}
+                      {drawVillagesNodes(reveal.nodes, "vn-")}
                     </p>
                   )
                 ) : (
@@ -1403,12 +1417,12 @@ export function RoomPanel({
                         : "…"}
                   </p>
                 )}
-                {!ended && busy ? waiting : null}
+                {!ended && busy && !retrying ? waiting : null}
               </div>
             </div>
           </div>
           <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            {step ? (
+            {step && !retrying ? (
               <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
                 {mobile
                   ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
@@ -1425,7 +1439,7 @@ export function RoomPanel({
                     else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
                   }
                 }}
-                disabled={!canReadPrevious || playback.busy}
+                disabled={!canReadPrevious || playback.busy || retrying}
                 aria-label="Previous paragraph"
               >
                 ‹ <span>Previous</span>
@@ -1435,13 +1449,17 @@ export function RoomPanel({
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}
                   onClick={() => {
+                    if (reveal.active) {
+                      reveal.finish();
+                      return;
+                    }
                     if (!readingPages.move(1)) {
                       if (at < steps.length - 1) setReadStep(at + 1);
                       else if (!playback.atLatest && playback.window.newerCursor)
                         void playback.load(playback.window.newerCursor, "first");
                     }
                   }}
-                  disabled={!canReadNext || playback.busy}
+                  disabled={(!canReadNext && !reveal.active) || playback.busy || retrying}
                   aria-label="Next paragraph"
                 >
                   <span>Next</span> ›
