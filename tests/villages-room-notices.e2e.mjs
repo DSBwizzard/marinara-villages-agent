@@ -125,7 +125,6 @@ const api = async (route) => {
     return fulfill(route, { status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
   } else if (path.endsWith("/changes/replay")) {
     replays++;
-    failed = false;
     value = {};
   } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
     closingReviews++;
@@ -310,9 +309,10 @@ await withBrowser(browser, async () => {
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/memory-cause-desktop.png" });
-  await status.getByRole("button", { name: "Replay" }).click();
-  await expect.poll(() => replays).toBe(1);
+  await expect(status.getByRole("button", { name: "Replay" })).toHaveCount(0);
+  assert.equal(replays, 0);
   assert.equal(interpretations, 0);
+  failed = false;
   await refresh();
   await expect(chip).toHaveCount(0);
   assert.equal(diagnosticReads, 0, "Ordinary feed polling never requests owner diagnostics");

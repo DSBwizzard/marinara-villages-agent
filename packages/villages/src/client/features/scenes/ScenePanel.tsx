@@ -243,7 +243,6 @@ export function RoomPanel({
   notices,
   onDismissNotice,
   onOpenWish,
-  onReplayChanges,
   unresolvedChanges,
   debugDiscardEnabled,
   onDebugDiscard,
@@ -293,7 +292,6 @@ export function RoomPanel({
   notices: RoomRecordEvent[];
   onDismissNotice: (id: string) => void;
   onOpenWish?: (actorId: string, wishId: string) => void;
-  onReplayChanges?: () => void;
   unresolvedChanges?: SceneChangeIssue[];
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
@@ -463,16 +461,10 @@ export function RoomPanel({
     });
   for (const change of unresolvedChanges ?? []) {
     if (change.status === "pending") continue;
-    const replay = onReplayChanges ? (
-      <button type="button" disabled={busy} onClick={onReplayChanges}>
-        Replay
-      </button>
-    ) : undefined;
     const operation = change.submissionId === room.operation?.id && errorItems.find((item) => item.id === "operation");
     if (operation) {
       operation.held = true;
       operation.diagnostic = change.diagnostic;
-      operation.actions = replay ?? operation.actions;
       continue;
     }
     errorItems.push({
@@ -481,7 +473,6 @@ export function RoomPanel({
       message: change.reason ?? "The saved reply could not be applied.",
       held: true,
       diagnostic: change.diagnostic,
-      actions: replay,
     });
   }
 

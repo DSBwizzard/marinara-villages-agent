@@ -1441,7 +1441,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRequestEdits,
     setResetArmed,
     setRoom,
-    setRoomBusy: scenes.setRoomBusy,
     setRoomContactBoundary: scenes.setRoomContactBoundary,
     setRoomContactKind: scenes.setRoomContactKind,
     setRoomDraft: scenes.setRoomDraft,

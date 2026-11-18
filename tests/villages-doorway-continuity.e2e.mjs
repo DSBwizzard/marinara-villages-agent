@@ -152,7 +152,7 @@ await withBrowser(browser, async () => {
     const status = await openSceneErrors(page);
     await expect(status.getByRole("group", { name: "Saved reply needs review", exact: true })).toBeVisible();
     await expect(status).not.toContainText(/Applying the saved reply|Scene ID/);
-    await expect(status.getByRole("button", { name: "Replay", exact: true })).toBeEnabled();
+    await expect(status.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
     await expect(status.getByRole("button", { name: /Retry/ })).toHaveCount(0);
     await page.screenshot({ path: `.build-tmp/doorway-continuity/errors-${width}.png` });
     issues = [];

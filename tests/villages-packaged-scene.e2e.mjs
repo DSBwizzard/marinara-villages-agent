@@ -157,6 +157,7 @@ await withBrowser({ close: server.stop }, async () => {
       await expect(chip).toHaveAccessibleName("1 Scene error");
       if (edit) {
         await chip.click();
+        await expect(page.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
         await expect(
           page.getByText("The AI reply contained an invalid Scene reference (invalid_format)."),
         ).toBeVisible();

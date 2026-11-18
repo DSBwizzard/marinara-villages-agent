@@ -6,7 +6,7 @@ The extractor requires one complete current object and a normal finish, optional
 
 ## Saved responses and diagnostics
 
-Villages saves the fitted request and its exact evidence before dispatch, then checkpoints the response before validation. Parser rejection preserves the original input and reply for explicit recovery. Local Replay reuses the saved response. A late callback retains evidence under its original request identity.
+Villages saves the fitted request and its exact evidence before dispatch, then checkpoints the response before validation. Parser rejection preserves the original input and reply for recovery. A late callback retains evidence under its original request identity.
 
 Ordinary diagnostics share one server-only log of 100 recent entries, each capped at 24,000 characters of redacted response text. Prompts and connection configuration are excluded. The opaque diagnostic envelope owns no Gallery media and has no recovery authority. Eviction cannot release unfinished work, purchased responses or unknown accounting. Publication is best effort and cannot change the original failure. Redaction does not guarantee that story text contains no private information.
 
@@ -18,7 +18,7 @@ A failed browser connection can outlive the request while the server finishes a 
 
 A visible playback page is not the submission ledger. The latest saved submission provides committed/publication proof even when its reply falls outside the current page or a later close replaced the operation. Unpublished consequential effects remain held. Clarifications must match both submitted text and submission identity; reconciliation never sends a duplicate turn.
 
-Send clears the composer at dispatch. A confirmed failure restores the submitted text if the player has made no newer edits. The composer stays editable while the Scene responds, and late replies retain the reading position. A held reply can be replayed locally or explicitly replaced by sending the restored draft with or without edits. Replacement checks for already committed effects, retains the old evidence and fences late results before starting new work. If a failed status write leaves a request marked running, the coordinator can interrupt that exact owner once the Scene work fence is idle.
+Send clears the composer at dispatch. A confirmed failure restores the submitted text if the player has made no newer edits. The composer stays editable while the Scene responds, and late replies retain the reading position. Replace a held reply by sending the restored draft with or without edits. Replacement checks for already committed effects, retains the old evidence and fences late results before starting new work. If a failed status write leaves a request marked running, the coordinator can interrupt that exact owner once the Scene work fence is idle.
 
 ## Hearing evidence and citations
 

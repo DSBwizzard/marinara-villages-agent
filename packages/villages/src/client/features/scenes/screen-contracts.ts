@@ -71,7 +71,6 @@ export type SceneScreenController = {
   readonly setRoom: React.ActionDispatch<
     [next: React.SetStateAction<import("../../../shared/contracts/village").SceneView>]
   >;
-  readonly setRoomBusy: ScenesState["setRoomBusy"];
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];

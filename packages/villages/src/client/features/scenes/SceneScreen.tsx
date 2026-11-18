@@ -98,7 +98,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     sendRoom,
     setMailboxOpen,
     setRoom,
-    setRoomBusy,
     setRoomDraft,
     setRoomError,
     openVenue,
@@ -330,23 +329,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });
           }}
           unresolvedChanges={roomUnresolvedChanges}
-          onReplayChanges={() => {
-            if (!room?.id || roomBusy) return;
-            setRoomBusy(true);
-            void (async () => {
-              await request("/rooms/" + encodeURIComponent(room.id) + "/changes/replay", {
-                method: "POST",
-                signal: AbortSignal.timeout(15_000),
-              });
-              const active = await request<{ session: SceneView | null }>("/rooms/active", {
-                signal: AbortSignal.timeout(5_000),
-              });
-              if (active.session?.id === room.id) setRoom(active.session);
-              void loadSnapshot({ quiet: true });
-            })()
-              .catch((cause) => setRoomError(sceneFailure(cause, "Could not replay the saved reply.", "replay")))
-              .finally(() => setRoomBusy(false));
-          }}
           debugDiscardEnabled={debugDiscardEnabled}
           onDebugDiscard={() => void discardRoomDebug()}
           onRetryGreeting={() => {

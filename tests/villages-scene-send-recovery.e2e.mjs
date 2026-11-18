@@ -87,18 +87,7 @@ await withBrowser(browser, async () => {
       const path = new URL(request.url()).pathname;
       let value = fixture;
       if (path.endsWith("/changes/replay")) {
-        assert.equal(request.method(), "POST");
-        assert.equal(request.postData(), null);
         replays++;
-        savedChangeRecovery = null;
-        value = {
-          processingSummary: { pending: 0, failed: 0, rejected: 0 },
-          unresolved: [],
-          notices: [],
-          changes: [],
-          hasMore: false,
-          nextCursor: "0",
-        };
       } else if (path.endsWith("/playback")) {
         const query = new URL(request.url()).searchParams;
         value = fixturePlaybackPage(
@@ -655,13 +644,13 @@ await withBrowser(browser, async () => {
     await expect(composer).toBeVisible();
     await composer.fill("Keep this draft during recovery");
     const recoveryPanel = await openSceneErrors(page);
-    await expect(recoveryPanel.getByRole("button", { name: "Replay", exact: true })).toBeVisible();
-    await page.screenshot({ path: `.build-tmp/scene-status/native-replay-${mobile ? "mobile" : "desktop"}.png` });
-    await recoveryPanel.getByRole("button", { name: "Replay", exact: true }).click();
-    await expect(recoveryPanel).toHaveCount(0);
+    await expect(recoveryPanel.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: `.build-tmp/scene-status/held-reply-${mobile ? "mobile" : "desktop"}.png` });
+    await closeSceneErrors(page);
     await expect(send).toBeEnabled();
     await expect(composer).toHaveValue("Keep this draft during recovery");
-    assert.equal(replays, 1, "Replay is an explicit local request, never an automatic model retry");
+    assert.equal(replays, 0, "Viewing a held reply does not replay it");
+    savedChangeRecovery = null;
     session.operation = null;
     session.currentTime = "Monday, 2 November · 09:57";
     await load();
