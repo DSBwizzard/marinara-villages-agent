@@ -365,7 +365,9 @@ export function readSceneNarrationReply(
       }),
     };
   }
-  if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readReply(raw);
+  const proseOnly = Object.keys(raw).length === 1;
+  const recoverMixedAside = format === 6 && Object.keys(raw).every((key) => key === "segments" || key === "keep");
+  if ((!proseOnly && !recoverMixedAside) || !Array.isArray(raw.segments)) return readReply(raw);
   const {
     source: { historical, seed },
     admission,
@@ -374,6 +376,7 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
+      proseOnly &&
       knownDecorations &&
       line.kind === "narration" &&
       Object.keys(line).every((key) => ["kind", "text", "place"].includes(key)) &&
@@ -395,6 +398,7 @@ export function readSceneNarrationReply(
       const { delivery: _delivery, ...prose } = line;
       return { ...prose, presentation: "aside" };
     }
+    if (!proseOnly) return value;
     if (
       readset.stripSceneHistoryDecoration &&
       line.kind === "dialogue" &&
@@ -458,7 +462,7 @@ export function readSceneNarrationReply(
     const { source: _citation, ...prose } = line;
     return prose;
   });
-  return readReply({ segments });
+  return readReply({ ...raw, segments });
 }
 export type NarrationCommunication = Pick<
   NarrationSourceContext,

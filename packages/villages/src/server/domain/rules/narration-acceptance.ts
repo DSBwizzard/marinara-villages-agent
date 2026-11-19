@@ -335,15 +335,21 @@ export function acceptNarrationContinuity(
   const requestedMemory = readset.requestedMemory;
   const incidentalNotes = new Set<string>();
   const memoryFallback = readset.optionalActorMemories;
+  const onlyResidentCrossings =
+    memoryFallback === 5 &&
+    readset.ordinaryDialogue &&
+    readset.sceneResidentMovement &&
+    !admission.protectedRoots.length &&
+    native.moves.length > 0 &&
+    native.effects.length === native.moves.length;
   const optionalActorMemories =
     (memoryFallback === true ||
       memoryFallback === 2 ||
       memoryFallback === 3 ||
       memoryFallback === 4 ||
       memoryFallback === 5) &&
-    allowTranscriptNotes &&
+    ((allowTranscriptNotes && !native.effects.length) || onlyResidentCrossings) &&
     !requestedMemory &&
-    !native.effects.length &&
     !native.admissions.length
       ? new Set<string>()
       : undefined;
@@ -433,8 +439,17 @@ export function acceptNarrationContinuity(
       note.about.length === 2 &&
       note.about.includes(note.owner) &&
       note.about.includes("room");
+    const optionalCrossingPerspective =
+      onlyResidentCrossings &&
+      note.class === "perspective" &&
+      note.current === true &&
+      typeof note.owner === "string" &&
+      Array.isArray(note.for) &&
+      note.for.length === 1 &&
+      note.for[0] === note.owner;
     if (
       optionalActorMemories &&
+      (allowTranscriptNotes || optionalCrossingPerspective) &&
       typeof note.text === "string" &&
       note.text.trim() &&
       Array.isArray(note.for) &&
@@ -457,6 +472,7 @@ export function acceptNarrationContinuity(
             typeof note.current === "boolean" &&
             (note.class === "information" ||
               note.class === "experience" ||
+              optionalCrossingPerspective ||
               (optionalCurrentOpenMatter && note.current === true))),
       ) &&
       Array.isArray(note.source) &&

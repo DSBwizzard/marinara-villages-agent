@@ -187,6 +187,9 @@ for (const scenario of [
           content: JSON.stringify({
             segments: [
               { kind: "dialogue", speakerId: "mara", text: "I'll go check on something." },
+              ...(residentCrossing
+                ? [{ kind: "dialogue", speakerId: "ella", text: "Bring us something good.", delivery: "aside" }]
+                : []),
               residentCrossing
                 ? { kind: "crossing", who: "mara", to: "exterior", text: "Gidget slips out through the door." }
                 : { kind: "departure", who: "mara", text: "Gidget waves and heads home." },
@@ -206,6 +209,15 @@ for (const scenario of [
                       text: "I want to spend more time outdoors.",
                       independent: true,
                       source: ["self"],
+                    },
+                    {
+                      for: ["mara"],
+                      owner: "mara",
+                      class: "perspective",
+                      current: true,
+                      about: ["player"],
+                      text: "Gidget is pleased the player asked.",
+                      source: [{ segment: "missing-note-source" }],
                     },
                   ],
                 }
@@ -375,6 +387,11 @@ for (const scenario of [
         const receipt = world.episodes.records.at(-1)!.commandReceipts[0];
         if (residentCrossing) {
           assert.equal(receipt.movement?.zoneId, "exterior");
+          const aside = saved.lines.find((line) => line.content === "Bring us something good.");
+          assert.equal(aside?.presentation, "aside");
+          assert.equal(aside.asideFor, saved.lines.find((line) => line.content === "I'll go check on something.")?.id);
+          assert.deepEqual(aside.heardBy.toSorted(), ["ella", "mara", "player"]);
+          assert.equal(saved.submissions.at(-1)?.acceptance.rejected[0]?.id, "keep-1");
           assert(!outcome.body.includes("A remark only heard outside."));
           assert(
             !saved.lines.find((line) => line.content === "A remark only heard outside.")?.heardBy.includes("player"),
