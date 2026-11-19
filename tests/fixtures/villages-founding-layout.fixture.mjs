@@ -537,7 +537,7 @@ export async function verifyFoundingLayout(group) {
           titlePose,
           "Mari holds her START position while models are chosen",
         );
-        await expect(models.getByRole("button", { name: /^Images / })).toHaveCount(0);
+        await expect(models.getByRole("button", { name: /^Images / })).toContainText("Image model");
         await expect(models.getByRole("button", { name: /^GM / })).toContainText("Language model");
         await expect(models.getByRole("button", { name: /^GM / })).toContainText("Scenes and dialogue");
         await expect(system).toContainText("Language model");
@@ -1174,6 +1174,28 @@ export async function verifyFoundingLayout(group) {
         }
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();
+        await button("Model Connections").click();
+        const modelSettings = root.getByRole("dialog", { name: "Model Connections", exact: true });
+        await modelSettings.getByRole("button", { name: /^GM / }).click();
+        const gmPicker = page.getByRole("dialog", { name: "GM", exact: true });
+        await expect(gmPicker.getByRole("button", { name: "Use Engine default", exact: true })).toHaveCount(0);
+        await gmPicker.getByRole("button", { name: /^Draft model/ }).click();
+        await expect(modelSettings.getByRole("button", { name: /^GM / })).toContainText("Draft model");
+        await modelSettings.getByRole("button", { name: /^Images / }).click();
+        const imagePicker = page.getByRole("dialog", { name: "Images", exact: true });
+        await expect(imagePicker.getByRole("button", { name: "Use Engine default", exact: true })).toBeVisible();
+        await imagePicker.getByRole("button", { name: "Disabled", exact: true }).click();
+        await expect(modelSettings.getByRole("button", { name: /^Images / })).toContainText("Disabled");
+        await modelSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await button("Model Connections").click();
+        await expect(modelSettings.getByRole("button", { name: /^GM / })).toContainText("Draft model");
+        await expect(modelSettings.getByRole("button", { name: /^Images / })).toContainText("Disabled");
+        await modelSettings.getByRole("button", { name: /^GM / }).click();
+        await gmPicker.getByRole("button", { name: /^Language model/ }).click();
+        await modelSettings.getByRole("button", { name: /^Images / }).click();
+        await imagePicker.getByRole("button", { name: /^Image model/ }).click();
+        await modelSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(button("Model Connections")).toBeFocused();
         await resident.getByRole("button", { name: characters[0].name, exact: true }).click();
         await expect(resident.getByRole("button", { name: characters[0].name, exact: true })).toHaveAttribute(
           "aria-pressed",

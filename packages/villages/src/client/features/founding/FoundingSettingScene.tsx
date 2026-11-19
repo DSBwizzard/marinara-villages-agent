@@ -59,7 +59,6 @@ export function FoundingSettingScene({
   villageBriefError,
   mapFields,
   onValidateVillage,
-  onConnections,
   onEditSetting,
   onBeatChange,
   next,
@@ -77,7 +76,6 @@ export function FoundingSettingScene({
   villageBriefError: string;
   mapFields: ReactNode;
   onValidateVillage(): boolean;
-  onConnections(): void;
   onEditSetting(): void;
   onBeatChange(): void;
   next: ReactNode;
@@ -140,7 +138,6 @@ export function FoundingSettingScene({
   const pending = request && !request.failure;
   const waitingForMari = pending && request.draftSetting;
   const error = setupWorkspace.settingProblem || (request?.draftSetting ? request.failure : "");
-  const connectionError = !!connectionProblem || (!!error && /connection|model.*not found/iu.test(error));
   const drafted = !!setupWorkspace.settingDraft && !waitingForMari;
   const brief = setupWorkspace.settingBrief ?? "";
   const world = setupWorkspace.settingWorldBrief ?? "";
@@ -454,11 +451,6 @@ export function FoundingSettingScene({
               {brief.trim() || waitingForMari ? (
                 <button type="button" ref={draftButton} disabled={!canDraft} onClick={submitBrief}>
                   {draftLabel}
-                </button>
-              ) : null}
-              {connectionError ? (
-                <button type="button" onClick={onConnections}>
-                  Model Connections
                 </button>
               ) : null}
               {dismiss}

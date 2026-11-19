@@ -32,7 +32,7 @@ Create or check your model connections in Engine before founding. Choose them on
 | **GM**     | Writes new Scenes and proposes their gameplay updates.                    |
 | **Images** | Generates artwork when requested. Choose **Disabled** to supply your own. |
 
-Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. In **Settings → General Preferences → Model Connections**, select a job to change its model or replace a missing connection. Set up providers and keys in Engine's **Connections** panel.
+Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. Founding shows **Images** alongside them. Use the **Model Connections** gear beside the progress stars or in a mobile form's header to change these choices during Founding. After founding, use **Settings → General Preferences → Model Connections**. Set up providers and keys in Engine's **Connections** panel.
 
 An image connection is optional if you upload your map. Founding requires an uploaded or generated map; the initial grid is a placeholder. Sprite setup makes no model requests.
 

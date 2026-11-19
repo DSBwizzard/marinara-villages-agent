@@ -9,6 +9,7 @@ import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { MobileMapView } from "../exploration/MapStage.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnectionsControls, useAgentConnections } from "../settings/AgentConnections.js";
+import { VillageIcon } from "../../shared/VillageIcon.js";
 import { Appearance } from "../residents/Appearance.js";
 import { FoundingPagination } from "./FoundingPagination.js";
 import { FoundingDialog } from "./FoundingDialog.js";
@@ -54,6 +55,7 @@ function FoundingChapter({
   step,
   mobileScene,
   mobileTitle,
+  mobileHeader,
   mobileReplies,
   onCloseMenu,
   canCloseMenu,
@@ -64,6 +66,7 @@ function FoundingChapter({
   step: number;
   mobileScene: boolean;
   mobileTitle?: string;
+  mobileHeader?: ReactNode;
   mobileReplies: ReactNode;
   onCloseMenu(): void;
   canCloseMenu: boolean;
@@ -83,6 +86,7 @@ function FoundingChapter({
         mobileScene ? null : (
           <FoundingDialog
             title={mobileTitle}
+            headerContent={mobileHeader}
             className="villages-chapter-menu"
             scrollBody
             dismissible={canCloseMenu}
@@ -394,7 +398,7 @@ export function FoundingScreen({
   if (screen === "setup") {
     const connectionPrompt = (
       <>
-        <AgentConnectionsControls connections={connections} kind="language" compact />
+        <AgentConnectionsControls connections={connections} kind="founding" compact />
         <button
           type="button"
           className="villages-forging-primary"
@@ -461,6 +465,18 @@ export function FoundingScreen({
       connections.refresh();
       setConnectionPickerOpen(true);
     };
+    const modelButton = (
+      <button
+        type="button"
+        className="villages-founding-models"
+        aria-label="Model Connections"
+        title="Model Connections"
+        aria-haspopup="dialog"
+        onClick={openConnectionPicker}
+      >
+        <VillageIcon name="settings" />
+      </button>
+    );
     const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
       setSetupFocusIssue(null);
@@ -845,6 +861,7 @@ export function FoundingScreen({
             </li>
           ))}
         </ol>
+        {!prelude && (!phone || (!settingEditorOpen && (!chapterMenu || mobileScene))) ? modelButton : null}
         {connectionPickerOpen ? (
           <FoundingDialog
             title="Model Connections"
@@ -853,7 +870,7 @@ export function FoundingScreen({
             showCloseButton={!connections.saving}
           >
             <div className="villages-founding-editor-body">
-              <AgentConnectionsControls connections={connections} kind="language" compact />
+              <AgentConnectionsControls connections={connections} kind="founding" compact />
             </div>
             <footer>
               <button type="button" disabled={connections.saving} onClick={() => setConnectionPickerOpen(false)}>
@@ -914,6 +931,12 @@ export function FoundingScreen({
         {phone && setupStep === FOUNDING_STEP.Setting && settingEditorOpen && !prelude ? (
           <FoundingDialog
             title={settingTitleLabel}
+            headerContent={
+              <>
+                <h3>{settingTitleLabel}</h3>
+                {modelButton}
+              </>
+            }
             onClose={() => setSettingEditorOpen(false)}
             dismissible={!busy}
             showCloseButton={!busy}
@@ -928,6 +951,12 @@ export function FoundingScreen({
           guide={guide}
           mobileScene={mobileScene}
           mobileTitle={phone && chapterMenu ? SETUP_STEPS[setupStep] : undefined}
+          mobileHeader={
+            <>
+              <h3>{SETUP_STEPS[setupStep]}</h3>
+              {modelButton}
+            </>
+          }
           mobileReplies={
             <>
               <button type="button" disabled={!canCloseChapterMenu} onClick={closeChapterMenu}>
@@ -1011,7 +1040,6 @@ export function FoundingScreen({
                 villageBriefError={villageBriefError}
                 mapFields={settingFields}
                 onValidateVillage={validateVillage}
-                onConnections={openConnectionPicker}
                 onEditSetting={openSettingEditor}
                 onBeatChange={() => {
                   setArrival(undefined);
