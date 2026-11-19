@@ -198,16 +198,25 @@ export function createFoundingRestoreSetupDraft(ports: {
         )) ||
       !data.zoneDrafts ||
       !Array.isArray(data.venues) ||
+      (data.workspace.unusedHomes !== undefined && !Array.isArray(data.workspace.unusedHomes)) ||
       !Array.isArray(data.roster) ||
       data.roster.length > 3 ||
       data.venues.length > 16 ||
-      data.venues.some(
+      [...data.venues, ...(data.workspace.unusedHomes ?? [])].some(
         (row) =>
           !row?.id ||
           !row.presentation ||
           !row.occupancy ||
           typeof row.name !== "string" ||
           typeof row.description !== "string",
+      ) ||
+      data.workspace.unusedHomes?.some(
+        (row) =>
+          row.classes?.length !== 1 ||
+          row.classes[0] !== "residence" ||
+          data.venues.some((venue) => venue.id === row.id) ||
+          data.workspace.unusedHomes!.filter((venue) => venue.id === row.id).length !== 1 ||
+          Number(row.occupancy.playerHome) + (row.residentIds?.length ?? 0) !== 1,
       )
     ) {
       return false;

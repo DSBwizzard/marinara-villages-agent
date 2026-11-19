@@ -186,7 +186,11 @@ export function createFoundingSuggestSetupVenues(ports: {
     const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData.roster ?? [];
     const replacementSource = JSON.stringify(setupVenues);
     const rows = options.separateHomes
-      ? separateFoundingTemplates(roster, ports.setupContext?.openingVenueId ?? "founding-community")
+      ? separateFoundingTemplates(
+          roster,
+          ports.setupContext?.openingVenueId ?? "founding-community",
+          ports.setupDraftData.workspace?.unusedHomes?.map((venue) => venue.id),
+        )
       : replacing
         ? quickStartTemplates(setupVenues)
         : setupVenues;

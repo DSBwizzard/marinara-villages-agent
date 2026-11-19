@@ -136,9 +136,13 @@ export function upgradeUntouchedStartingLayout(venue: SetupVenueDraft): SetupVen
 }
 
 /** Only an explicit replacement creates the simplified starting set. */
-export function separateFoundingTemplates(residentIds: readonly string[], communityId: string): SetupVenueDraft[] {
+export function separateFoundingTemplates(
+  residentIds: readonly string[],
+  communityId: string,
+  reservedIds: readonly string[] = [],
+): SetupVenueDraft[] {
   const secondId = communityId === "founding-garden" ? "founding-community" : "founding-garden";
-  const used = new Set([communityId, secondId]);
+  const used = new Set([communityId, secondId, ...reservedIds]);
   return quickStartTemplates([
     ...["player", ...residentIds].map((actor, index) => {
       let id = `founding-home:${actor}`;

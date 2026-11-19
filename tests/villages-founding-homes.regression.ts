@@ -8,6 +8,7 @@ import {
   foundingSleepZones,
   reconcileFoundingHome,
   reconcileFoundingRoster,
+  selectFoundingHomes,
 } from "../packages/villages/src/client/features/founding/founding-homes.js";
 import { parsePlace, parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
 
@@ -117,9 +118,10 @@ const placed = restored.map((row: any, index: number) => ({
   ...row,
   presentation: { ...row.presentation, x: 0.1 + index * 0.2, y: 0.5 },
 }));
-const founded = parsePlaces(placed, new Set(["a", "b"]), true, "community");
-assert.equal(founded[0].destinations!.a.sleep, "ada-room");
-assert.equal(founded[0].destinations!.player.sleep, "common:base");
+const establishedHome = parsePlace(placed[0]);
+assert.equal(establishedHome.destinations!.a.sleep, "ada-room");
+assert.equal(establishedHome.destinations!.player.sleep, "common:base");
+assert.throws(() => parsePlaces(placed, new Set(["a", "b"]), true, "community"), /one assigned resident/);
 const shared = changeFoundingZoneOwner(restored[0], "ada-room", "");
 assert.equal(shared.destinations!.a.sleep, "ada-room");
 assert.equal(shared.spaces!.find((zone) => zone.id === "ada-room")!.access!.mode, "permission-required");
@@ -135,10 +137,6 @@ const throughCabin = {
   privateSpaces: personal.privateSpaces!.map((zone) => ({ ...zone, connectedTo: ["exterior", "common:base"] })),
 };
 assert.equal(foundingSleepZones(throughCabin, "player").length, 0, "A private passage can block a shared room");
-assert.throws(
-  () => parsePlaces([throughCabin, ...placed.slice(1)], new Set(["a", "b"]), true, "community"),
-  /accessible sleeping destination/,
-);
 const saved = restored.map((row: any, index: number) =>
   parsePlace({
     ...row,
@@ -183,6 +181,56 @@ assert.equal(
   3,
   "An existing draft retains an unknown capacity choice until explicitly set to Automatic",
 );
-console.log(
-  "Founding homes: shared defaults, automatic/fixed capacity, private ownership, sleeping and draft/founding persistence passed.",
+const starting = selectFoundingHomes([], [], actors, "community");
+const authored = starting.venues.find((venue) => venue.id === "founding-home:a")!;
+authored.name = "Ada's canal loft";
+authored.privateSpaces![0].description = "Ada's blue quilt.";
+const replacementActors = [actors[0]!, actors[2]!, { id: "c", name: "Cleo" }];
+const replacement = selectFoundingHomes(starting.venues, starting.unusedHomes, replacementActors, "community");
+assert.equal(
+  replacement.venues.some((venue) => venue.id === authored.id),
+  false,
 );
+assert.deepEqual(replacement.unusedHomes, [authored]);
+const returned = selectFoundingHomes(replacement.venues, replacement.unusedHomes, actors, "community");
+assert.deepEqual(
+  returned.venues.find((venue) => venue.id === authored.id),
+  authored,
+);
+assert.equal(returned.venues.find((venue) => venue.id === authored.id)!.destinations!.a.sleep, "private:base");
+const legacyArchive = { ...authored, id: "founding-home:c" };
+const withoutAda = starting.venues.filter((venue) => venue !== authored);
+const withCleo = selectFoundingHomes(withoutAda, [legacyArchive], replacementActors, "community");
+assert.notEqual(withCleo.venues.find((venue) => venue.residentIds?.includes("c"))!.id, legacyArchive.id);
+const restoredHome = selectFoundingHomes(withCleo.venues, withCleo.unusedHomes, actors, "community");
+assert.deepEqual(
+  restoredHome.venues.find((venue) => venue.id === legacyArchive.id),
+  legacyArchive,
+);
+const { activeFoundingCircumstances } =
+  await import("../packages/villages/src/client/features/founding/draft-model.js");
+const fact = {
+  scope: "zone" as const,
+  venueId: legacyArchive.id,
+  zoneId: "private:base",
+  summary: "Ada stores quilts here.",
+};
+assert.deepEqual(activeFoundingCircumstances([fact], withCleo.venues), []);
+assert.deepEqual(activeFoundingCircumstances([fact], restoredHome.venues), [fact]);
+assert.ok(
+  returned.venues
+    .filter((venue) => venue.id !== "community")
+    .every((venue) => Number(venue.occupancy.playerHome) + venue.residentIds!.length === 1),
+);
+assert.doesNotThrow(() =>
+  parsePlaces(
+    returned.venues.map((venue, index) => ({
+      ...venue,
+      presentation: { ...venue.presentation, x: 0.1 + index * 0.15, y: 0.5 },
+    })),
+    new Set(["a", "b"]),
+    true,
+    "community",
+  ),
+);
+console.log("Founding homes: fixed starting households, legacy access, sleeping and draft persistence passed.");

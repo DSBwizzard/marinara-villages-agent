@@ -1,7 +1,7 @@
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { newSetupVenue } from "./FoundingPanels.js";
-import { quickStartTemplates } from "./quick-start-drafts.js";
+import { quickStartTemplates, separateFoundingTemplates } from "./quick-start-drafts.js";
 import { draftZonePolicy, foundingLayoutZones } from "./villages-founding-zones.js";
 
 export const foundingHomeMembers = (venue: SetupVenueDraft): string[] => [
@@ -197,6 +197,44 @@ export function reconcileFoundingRoster(
     next.push(venue);
   }
   return next;
+}
+
+/** People changes keep a former resident's authored home available if that resident returns. */
+export function selectFoundingHomes(
+  venues: SetupVenueDraft[],
+  unusedHomes: SetupVenueDraft[],
+  actors: { id: string; name: string }[],
+  communityId: string,
+) {
+  const chosen = new Set(actors.map((actor) => actor.id));
+  const active = venues.filter(
+    (venue) => venue.id === communityId || foundingHomeMembers(venue).some((id) => chosen.has(id)),
+  );
+  const unused = [...unusedHomes, ...venues.filter((venue) => !active.includes(venue))];
+  const templates = separateFoundingTemplates(
+    actors.filter((actor) => actor.id !== "player").map((actor) => actor.id),
+    communityId,
+    [...venues, ...unusedHomes].map((venue) => venue.id),
+  );
+  for (const actor of actors) {
+    if (active.some((venue) => foundingHomeMembers(venue).includes(actor.id))) continue;
+    const index = unused.findIndex((venue) => foundingHomeMembers(venue)[0] === actor.id);
+    const template = templates.find((venue) => foundingHomeMembers(venue)[0] === actor.id)!;
+    const home =
+      index >= 0
+        ? unused.splice(index, 1)[0]!
+        : reconcileFoundingHome({
+            ...template,
+            name: `${actor.name} home`,
+            presentation: { ...template.presentation, x: null, y: null },
+          });
+    active.push(home);
+  }
+  if (!active.some((venue) => venue.id === communityId)) {
+    const community = templates.find((venue) => venue.id === communityId)!;
+    active.push({ ...community, presentation: { ...community.presentation, x: null, y: null } });
+  }
+  return { venues: active, unusedHomes: unused };
 }
 
 export function changeFoundingZoneOwner(venue: SetupVenueDraft, zoneId: string, ownerId: string): SetupVenueDraft {

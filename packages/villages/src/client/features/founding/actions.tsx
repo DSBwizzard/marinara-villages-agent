@@ -14,6 +14,7 @@ import { measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
+import { activeFoundingCircumstances } from "./draft-model.js";
 import { venueHasCommon } from "./villages-founding-editor";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
@@ -506,7 +507,7 @@ export function useFoundVillage(ports: {
           worldRules: ports.setupContext.rules,
           openingVenueId: ports.setupContext.openingVenueId,
           playerBackground: setupPlayerBackground,
-          circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),
+          circumstances: activeFoundingCircumstances(ports.setupContext.circumstances, setupVenues),
           selectedLorebookIds: setupLorebookDraft,
           personalizeVenueImagesByDefault: personalizeHomes,
           sceneryArtStyle: sceneryStyle,

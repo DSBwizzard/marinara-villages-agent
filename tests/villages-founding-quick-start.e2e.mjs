@@ -152,6 +152,12 @@ await withBrowser(browser, async () => {
       await page.goto("http://page-three.test/");
       const sheet = page.locator(".villages-quick-dialog");
       const button = (name) => page.getByRole("button", { name, exact: true });
+      const closeVenue = () => sheet.getByRole("button", { name: "← Venues", exact: true }).click();
+      const manage = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
+      const connections = async () => {
+        await manage();
+        await sheet.getByRole("button", { name: /Zone connections/ }).click();
+      };
       await expect(sheet).toHaveCount(0);
       const first = page.locator('[data-venue-id="founding-home:player"]');
       const engine = page.locator("#engine-controls");
@@ -190,18 +196,14 @@ await withBrowser(browser, async () => {
       await expect(button("Engine navigation")).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(sheet).toBeVisible();
+      await manage();
       await sheet.getByLabel("Venue form", { exact: true }).fill("A timber cottage");
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await closeVenue();
       await expect(sheet).toHaveCount(0);
       await expect(first).toBeFocused();
       await expect(page.locator(".villages-forging-body")).toHaveJSProperty("inert", false);
       await first.click();
-      if (viewport.width > 600) {
-        await page.locator(".villages-founding-overlay").click({ position: { x: 2, y: 2 } });
-        await expect(sheet).toHaveCount(0);
-        await expect(first).toBeFocused();
-        await first.click();
-      }
+      await manage();
       await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveValue("A timber cottage");
       await page.keyboard.press("Escape");
       await expect(sheet).toHaveCount(0);
@@ -212,21 +214,22 @@ await withBrowser(browser, async () => {
       await expect(button("+ Add Venue")).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("combobox")).toHaveCount(0);
-      await expect(button("Zones")).toHaveCount(0);
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await expect(button("Zones")).toBeVisible();
+      await expect(sheet.getByText("Resident · Fixed for Founding", { exact: true })).toBeVisible();
+      await closeVenue();
       await page.evaluate(() => window.setQuickPhase("zones"));
       await first.click();
       await expect(button("Zones")).toBeVisible();
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("switch")).toHaveCount(0);
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
-      await expect(button("Connections")).toBeVisible();
+      await expect(button("Manage")).toBeVisible();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Remove Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
       await expect(sheet.locator(".villages-zone-map")).toHaveCount(0);
       const originalVenues = await page.evaluate(() => window.quickState.venues);
-      await button("Connections").click();
+      await connections();
       await expect(sheet.locator(".villages-zone-map")).toBeVisible();
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues),
@@ -341,7 +344,13 @@ await withBrowser(browser, async () => {
       await page.mouse.up();
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["compact:4"].y)).toBe(86);
       await assertGraph();
-      await page.evaluate((rows) => window.replaceQuickVenues(rows), originalVenues);
+      const sparse = structuredClone(originalVenues);
+      sparse[0].zoneLayout = {
+        exterior: { x: 0, y: 0 },
+        "common:base": { x: 34, y: 42 },
+        "private:base": { x: 68, y: 70 },
+      };
+      await page.evaluate((rows) => window.replaceQuickVenues(rows), sparse);
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
       assert.equal((await canvas.boundingBox()).height, canvasHeight, "Sparse graphs keep the full canvas height");
       await zone("common:base").scrollIntoViewIfNeeded();
@@ -349,7 +358,7 @@ await withBrowser(browser, async () => {
       const entrance = await zone("exterior").boundingBox();
       await page.mouse.move(room.x + room.width / 2, room.y + room.height / 2);
       await page.mouse.down();
-      await page.mouse.move(room.x + room.width * 1.51, entrance.y + entrance.height / 2 - 2, { steps: 1 });
+      await page.mouse.move(entrance.x + entrance.width + room.width / 2 + 1, entrance.y + entrance.height / 2 - 2);
       await page.mouse.up();
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["common:base"].y)).toBe(0);
       const adjacent = await zone("common:base").boundingBox();
@@ -358,6 +367,20 @@ await withBrowser(browser, async () => {
         "Zones can sit immediately beside another visible Zone without an invisible blocked margin",
       );
       await assertGraph();
+      await zone("common:base").click();
+      await button("Remove Zone").click();
+      await expect
+        .poll(() => page.evaluate(() => window.quickState.venues[0].destinations.player?.sleep ?? null))
+        .toBe(null);
+      await button("Modify Zone Connections").click();
+      await zone("exterior").click();
+      await zone("private:base").click();
+      await expect
+        .poll(() => page.evaluate(() => window.quickState.venues[0].destinations.player.sleep))
+        .toBe("private:base");
+      await sheet.locator(".villages-zone-map").getByRole("button", { name: "Done", exact: true }).click();
+      await page.evaluate((rows) => window.replaceQuickVenues(rows), sparse);
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
       await button("Add Zone").click();
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(4);
       const addedZone = await page.evaluate(() => window.quickState.venues[0].spaces.at(-1).id);
@@ -368,7 +391,7 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByRole("heading", { name: "Reading nook", exact: true })).toBeVisible();
       await button("Rename Zone").click();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
-      await button("Connections").click();
+      await connections();
       const beforeConnect = await page.evaluate(() => window.quickState.venues);
       await button("Modify Zone Connections").click();
       assert.deepEqual(
@@ -426,11 +449,12 @@ await withBrowser(browser, async () => {
       );
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
       expected.spaces[0].name = "Front Office";
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await closeVenue();
       await page.evaluate(() => window.setQuickPhase("venues"));
       await first.click();
+      await manage();
       await sheet.getByLabel("Venue form", { exact: true }).fill("A converted school bus");
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await closeVenue();
       await page.evaluate(() => window.setQuickPhase("zones"));
       await first.click();
       await zone("common:base").click();
@@ -453,11 +477,11 @@ await withBrowser(browser, async () => {
       await expect.poll(() => first.evaluate((node) => node.style.backgroundImage)).not.toContain("data:image");
       await expect(first.locator("img")).toHaveCount(0);
       const confirm = async () => {
-        if (await sheet.count()) await sheet.getByRole("button", { name: "Done", exact: true }).click();
+        if (await sheet.count()) await closeVenue();
         await button(calls && receipt?.status === "failed" ? "Retry" : "Suggest").click();
         await page.getByRole("dialog").getByRole("button", { name: "Replace and suggest", exact: true }).click();
       };
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await closeVenue();
       await button("Suggest").click();
       await page.setViewportSize({ width: viewport.width, height: 260 });
       const confirmation = page.getByRole("dialog", { name: "Suggest", exact: true });

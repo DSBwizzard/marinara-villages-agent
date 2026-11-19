@@ -15,6 +15,7 @@ export type FoundingWorkspaceState = {
   settingEditorOpen?: boolean;
   mobileMenu?: "people" | "maps" | "venues" | "zones" | "review";
   settingProblem?: string;
+  unusedHomes?: VillageVenue[];
   suggestionRequest?: {
     id: string;
     sourceKey: string;

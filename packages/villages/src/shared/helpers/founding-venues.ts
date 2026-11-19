@@ -17,5 +17,13 @@ export function foundingVenueShapeProblem(venues: readonly VillageVenue[], openi
     ).length < 2
   )
     return "Provide public shared Zones in at least two Venues.";
+  if (
+    venues.some(
+      (venue) =>
+        venue.classes?.includes("residence") &&
+        Number(venue.occupancy.playerHome) + (venue.residentIds?.length ?? 0) !== 1,
+    )
+  )
+    return "Each starting Residence needs one assigned resident.";
   return "";
 }

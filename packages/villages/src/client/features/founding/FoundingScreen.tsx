@@ -1,6 +1,7 @@
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { simpleFoundingMap } from "./simple-map.js";
-import { assignFoundingHome, foundingHomeMembers, reconcileFoundingRoster } from "./founding-homes.js";
+import { foundingHomeMembers, selectFoundingHomes } from "./founding-homes.js";
+import { useConfirmation } from "../../shared/confirmation.js";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { CONNECTION_SETUP_PROBLEMS, ELEMENT_TAG } from "../../shared/constants.js";
@@ -203,6 +204,7 @@ export function FoundingScreen({
     return () => layout.removeEventListener("change", update);
   }, []);
   const chapterMenu = CHAPTER_MENUS[setupStep];
+  const confirmStarterHomes = useConfirmation(setupVenues);
   const mobileScene = phone && !!chapterMenu && setupWorkspace.mobileMenu !== chapterMenu && !draftSaveError;
   const beat = settingBeat(setupWorkspace);
   const manualSetting = beat === "manual";
@@ -566,14 +568,46 @@ export function FoundingScreen({
           name: catalog?.find((person) => person.id === id)?.name ?? "Villager",
         })),
       ];
-      const added = ids.filter((id) => !setupFoundingVillagerIds.includes(id));
-      if (!setupFoundingVillagerIds.length) added.push("player");
-      setSetupVenues((rows) =>
-        rows.length && foundingVenueShapeProblem(rows, setupContext.openingVenueId)
-          ? rows
-          : arrangeQuickStartVenues(reconcileFoundingRoster(rows, actors, added, setupContext.openingVenueId)),
-      );
+      if (!setupVenues.length || !venueShapeProblem) {
+        const homes = selectFoundingHomes(
+          setupVenues,
+          setupWorkspace.unusedHomes ?? [],
+          actors,
+          setupContext.openingVenueId,
+        );
+        setSetupVenues(arrangeQuickStartVenues(homes.venues));
+        setSetupWorkspace((workspace) => ({ ...workspace, unusedHomes: homes.unusedHomes }));
+      }
       setSetupFoundingVillagerIds(ids);
+      setSetupMapReviewed(false);
+      setSetupProblem("");
+    };
+    const replaceLegacyHomes = async () => {
+      const id = setupContext.communityVenueId;
+      const community = setupVenues.filter((venue) => venue.id === id);
+      const retained = foundingVenueShapeProblem(community, id) ? [] : community;
+      if (
+        !(await confirmStarterHomes(
+          "Replace the old Residences and their room details and artwork with one starter home per resident?",
+          { cancel: "Cancel", confirm: "Replace Residences" },
+        ))
+      )
+        return;
+      const homes = selectFoundingHomes(
+        retained,
+        setupWorkspace.unusedHomes ?? [],
+        [{ id: "player", name: "Your" }, ...wizardVillagers],
+        id,
+      );
+      const replacedIds = new Set(setupVenues.filter((venue) => !retained.includes(venue)).map((venue) => venue.id));
+      setSetupContext((context) => ({
+        ...context,
+        circumstances: context.circumstances.filter((row) => row.scope !== "zone" || !replacedIds.has(row.venueId)),
+      }));
+      setSetupVenues(arrangeQuickStartVenues(homes.venues));
+      setSetupWorkspace((workspace) => ({ ...workspace, unusedHomes: homes.unusedHomes }));
+      setSelectedSetupVenueId(null);
+      setSetupFocusIssue(null);
       setSetupMapReviewed(false);
       setSetupProblem("");
     };
@@ -627,6 +661,10 @@ export function FoundingScreen({
         requestAnimationFrame(() =>
           bodyRef.current?.querySelector<HTMLElement>(".villages-forging-map-warning")?.focus(),
         );
+        return;
+      }
+      if ((setupStep === 3 || setupStep === 4) && venueShapeProblem) {
+        setSetupProblem(venueShapeProblem);
         return;
       }
       if ((setupStep === 3 || setupStep === 4) && setupIssues.length) {
@@ -1085,12 +1123,23 @@ export function FoundingScreen({
                 imageBusy={setupVenueBusy || setupSuggestionsBusy}
                 focusIssue={setupFocusIssue}
                 saveError={draftSaveError || undefined}
-                problem={
-                  setupProblem ||
-                  (venueShapeProblem ? venueShapeProblem + " Use Suggest to replace this older draft." : undefined)
-                }
+                problem={setupProblem || venueShapeProblem}
                 problemAction={
-                  venueConnectionUnavailable ? (
+                  venueShapeProblem ? (
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        !!draftSaveError ||
+                        setupVenueBusy ||
+                        setupSuggestionsBusy ||
+                        (!!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure)
+                      }
+                      onClick={() => void replaceLegacyHomes()}
+                    >
+                      Use starter homes
+                    </button>
+                  ) : venueConnectionUnavailable ? (
                     <button type="button" onClick={openConnectionPicker}>
                       Check Model Connections
                     </button>
@@ -1113,14 +1162,6 @@ export function FoundingScreen({
                 onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
                 openFromMap={openVenueFromMap}
                 onMapOpened={() => setOpenVenueFromMap(undefined)}
-                onMoveResident={(venueId, actorId) => {
-                  try {
-                    setSetupVenues(assignFoundingHome(setupVenues, venueId, actorId, true));
-                    return "";
-                  } catch (cause) {
-                    return cause instanceof Error ? cause.message : "Could not move this resident.";
-                  }
-                }}
                 onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
                 onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
               />

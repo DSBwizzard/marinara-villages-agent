@@ -1,4 +1,5 @@
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
+import { activeFoundingCircumstances } from "./draft-model.js";
 import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import type { AreaDraftCache } from "./villages-founding-editor.js";
 import { SETUP_STEPS } from "./founding-steps.js";
@@ -413,7 +414,9 @@ export function useFoundingSetupBlocker(ports: {
       if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
       if (!snapshot?.isFounded && playerBackgroundProblem(setupPlayerBackground))
         return playerBackgroundProblem(setupPlayerBackground);
-      const presentFacts = setupContext.circumstances.map((line) => line.summary.trim()).filter(Boolean);
+      const presentFacts = activeFoundingCircumstances(setupContext.circumstances, setupVenues).map((line) =>
+        line.summary.trim(),
+      );
       if (presentFacts.length > 4 || presentFacts.some((line) => line.length > FOUNDING_CIRCUMSTANCE_MAX_LENGTH))
         return "Use at most four starting circumstances of 4000 characters each.";
       if (setupSetting.trim().length === 0) return "Describe the starting location.";
