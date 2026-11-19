@@ -238,6 +238,19 @@ export function QuickStartVenues({
       data-phase={phase}
       data-map-open={mapOpen || undefined}
     >
+      {map ? (
+        <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
+          <div className="villages-quick-map-toolbar">
+            <h2>{locationName || "Starting location"}</h2>
+            <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
+              ← Venues
+            </button>
+          </div>
+          <section className="villages-quick-map" aria-label="Venue placement">
+            {map}
+          </section>
+        </section>
+      ) : null}
       <section
         className="villages-forging-card villages-quick-venue-list"
         aria-label={phase === "zones" ? "Starter layouts" : "Starting Venues"}
@@ -555,19 +568,6 @@ export function QuickStartVenues({
             </VenueProfile>
           </div>
         </FoundingDialog>
-      ) : null}
-      {map ? (
-        <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
-          <div className="villages-quick-map-toolbar">
-            <h2>{locationName || "Starting location"}</h2>
-            <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
-              ← Venues
-            </button>
-          </div>
-          <section className="villages-quick-map" aria-label="Venue placement">
-            {map}
-          </section>
-        </section>
       ) : null}
     </section>
   );

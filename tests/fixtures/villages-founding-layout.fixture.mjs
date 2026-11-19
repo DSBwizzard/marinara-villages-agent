@@ -310,7 +310,7 @@ export async function verifyFoundingLayout(group) {
             status: 200,
             contentType: "text/html",
             body:
-              '<meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{font-size:' +
+              '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>:root{font-size:' +
               view.fontSize +
               "px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
           }),
@@ -325,7 +325,9 @@ export async function verifyFoundingLayout(group) {
           const guide = root.locator(".villages-chapter-guide");
           if (!phone || !(await root.locator("dialog.villages-chapter-menu[open]").count())) {
             const currentLayer = { 2: "Map", 3: "Venue", 4: "Zone" }[await root.getAttribute("data-step")];
-            if (currentLayer) {
+            if (!phone && (currentLayer === "Map" || currentLayer === "Venue")) {
+              await expect(hierarchy).toHaveCount(0);
+            } else if (currentLayer) {
               await layer(currentLayer);
               await expect(hierarchy).toBeInViewport({ ratio: 1 });
               if (phone && process.env.VILLAGES_SCREENSHOT_DIR)
@@ -374,22 +376,27 @@ export async function verifyFoundingLayout(group) {
             true,
             "No horizontal overflow on " + phase,
           );
-          assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari keeps her standing mark between phases");
+          const desktopMap = !phone && (phase === "maps" || phase === "venues");
+          if (!desktopMap)
+            assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari returns to her teaching mark");
           if (phase !== "setting" && !phone) {
             const guide = root.locator(".villages-chapter-guide");
             const sprite = await expectPose(
               { people: "happy", maps: "playful", venues: "playful", zones: "playful", review: "proud" }[phase],
             );
-            const guideBox = await guide.boundingBox();
             const workBox = await root.locator(".villages-forging-body").boundingBox();
             const spriteBox = await sprite.boundingBox();
             const dialogueBox = await guide.locator(".villages-setting-dialogue").boundingBox();
-            assert.ok(spriteBox.x + spriteBox.width <= dialogueBox.x + 1, "Mari stands beside her dialogue");
-            assert.ok(
-              guideBox.x + guideBox.width <= workBox.x + 1 ||
-                (phase === "venues" && guideBox.y + guideBox.height <= workBox.y + 1),
-              "The dialogue leaves room for the desktop workspace",
-            );
+            assert.ok(dialogueBox.x + dialogueBox.width < workBox.x, "The dialogue stays clear of the workspace");
+            if (desktopMap) {
+              const stageBox = await stage.boundingBox();
+              assert.ok(stageBox.x + stageBox.width / 2 < stageBounds.x + stageBounds.width / 2 - frame.width * 0.06);
+              assert.ok(spriteBox.x + spriteBox.width < workBox.x, "Mari leaves the map workspace clear");
+              assert.ok(spriteBox.y + spriteBox.height >= frame.y + frame.height * 0.88, "Mari stands on the terrace");
+              assert.ok(dialogueBox.y + dialogueBox.height <= spriteBox.y + 4, "The dialogue stays above Mari’s face");
+            } else {
+              assert.ok(spriteBox.x + spriteBox.width <= dialogueBox.x + 1, "Mari stands beside her dialogue");
+            }
             if (process.env.VILLAGES_SCREENSHOT_DIR)
               await page.screenshot({
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${phase}-mari-${view.width}.png`),
@@ -1170,7 +1177,17 @@ export async function verifyFoundingLayout(group) {
           .getByRole("heading")
           .boundingBox();
         const mapActions = await button("Art settings").boundingBox();
-        assert.ok(mapTitle.y + mapTitle.height <= mapActions.y, "The map title stays above its artwork controls");
+        if (phone) {
+          assert.ok(mapTitle.y + mapTitle.height <= mapActions.y, "The map title stays above its artwork controls");
+        } else {
+          assert.ok(
+            mapTitle.y + mapTitle.height <= mapActions.y || mapTitle.x + mapTitle.width <= mapActions.x,
+            "The map title and artwork controls stay separate",
+          );
+          const map = await root.getByRole("region", { name: "Map artwork preview" }).boundingBox();
+          assert.ok(map.width >= frame.width * 0.55, "Artwork previews use most of the desktop width");
+          assert.ok(map.height >= frame.height * 0.48, "Artwork previews use most of the available height");
+        }
         await bounds("maps");
         await settingNext().click();
         await expect(root).toHaveAttribute("data-step", "3");
@@ -1185,6 +1202,14 @@ export async function verifyFoundingLayout(group) {
         await expect(
           root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
         ).toBeVisible();
+        if (!phone) {
+          const options = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
+          const map = await root.getByRole("region", { name: "Venue placement", exact: true }).boundingBox();
+          assert.ok(map.x + map.width <= options.x, "Starting Venues sits to the right of the map");
+          assert.ok(map.width >= options.width * 1.65, "The map gets most of the desktop workspace");
+          assert.ok(Math.abs(map.y - options.y) <= 1, "Starting Venues aligns with the map artwork");
+          await bounds("venues");
+        }
         await editVenue("founding-home:player");
         await expect(sheet.getByRole("navigation", { name: "Venue sections" })).toBeVisible();
         await expect(sheet.getByText("Resident · Fixed for Founding", { exact: true })).toBeVisible();
@@ -1236,8 +1261,9 @@ export async function verifyFoundingLayout(group) {
         assert.ok(afterDrag.y > beforeDrag.y);
         await expect(sheet).toHaveCount(0);
         if (view.width >= 1000) {
-          const frameBeforeBadDrop = await marker.boundingBox();
-          await drag(-frameBeforeBadDrop.x - 100, 0);
+          const point = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
+          const leftOfMap = (await mapCanvas.getByRole("img", { name: "Map of Old Harbour" }).boundingBox()).x - 24;
+          await drag(leftOfMap - point.x - point.width / 2, 0);
           await expect(root.getByRole("alert")).toContainText("inside the map");
           assert.deepEqual(
             await page.evaluate(
@@ -1459,14 +1485,6 @@ export async function verifyFoundingLayout(group) {
               .every((row) => row.residentIds.length + Number(row.occupancy.playerHome) === 1),
           ),
         );
-        if (view.width > 1100) {
-          const options = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
-          const map = await root.getByRole("region", { name: "Starting location map", exact: true }).boundingBox();
-          await expect(sheet).toHaveCount(0);
-          assert.ok(map.x >= options.x + options.width, "The map sits beside Starting Venues");
-          assert.ok(map.width > options.width * 2, "The overview gives the map most of the room");
-          assert.ok(Math.abs(map.height - options.height) <= 1, "Both overview panels use the whole available height");
-        }
         await editVenue("founding-home:player");
         await manageVenue();
         const appearance = sheet.getByLabel("Venue form", { exact: true });

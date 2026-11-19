@@ -221,8 +221,10 @@ export function FoundingScreen({
       !draftSaveError);
   const chooseConnections = setupStep === 0 && setupWorkspace.settingIntroPending === "connections" && !fading;
   const prelude = showTitle || chooseConnections || turning;
-  const hierarchyLayer =
-    setupStep === 0 && !prelude && !setupWorkspace.settingManual && beat !== "welcome" && !manualSetting
+  const desktopMap = !phone && (setupStep === 2 || setupStep === 3);
+  const hierarchyLayer = desktopMap
+    ? undefined
+    : setupStep === 0 && !prelude && !setupWorkspace.settingManual && beat !== "welcome" && !manualSetting
       ? beat === "village-overview"
         ? "Village"
         : beat === "village"
@@ -778,8 +780,12 @@ export function FoundingScreen({
             [
               "",
               "Now for the neighbors. Choose who you’ll play, then who already lives here and how they’ll look in Scenes. I’ve retired from the casting committee.",
-              "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
-              "I’ve penciled in a home for each of you and a Community Venue. Give them names or move their pins if you like.",
+              desktopMap
+                ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
+                : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
+              desktopMap
+                ? "I’ve penciled in a home for each of you and a Community Venue. Move their pins if you like."
+                : "I’ve penciled in a home for each of you and a Community Venue. Give them names or move their pins if you like.",
               "For Founding, each home starts with a common room and a private room. The Community Venue gets two public spaces. You can change the layouts later.",
               "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
             ][setupStep]!
@@ -790,6 +796,7 @@ export function FoundingScreen({
       <div
         className={FOUNDING_ROOT}
         data-step={setupStep}
+        data-desktop-map={desktopMap || undefined}
         data-lighting={storybookDaylight ? "day" : "night"}
         data-scene-arrival={enteringScene || undefined}
         data-title={showTitle || undefined}
