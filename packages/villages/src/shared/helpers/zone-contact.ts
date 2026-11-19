@@ -1,4 +1,3 @@
-/** Structural doorways carry no information about attendance or entry permission. */
 function initialContactNeighborIds(
   zones: readonly { id: string; kind: string; venueClass?: string }[],
   zoneId: string,
@@ -17,7 +16,7 @@ function initialContactNeighborIds(
 
 export type ConnectedSpace = { id: string; kind?: string; venueClass?: string; connectedTo?: string[] };
 
-/** Connections are undirected physical passages, independent of access policy. */
+/** Connections are two-way routes. The surroundings establish their physical form. */
 export function contactNeighborIds(zones: readonly ConnectedSpace[], zoneId: string): string[] {
   const ids = new Set(zones.map((zone) => zone.id));
   return [

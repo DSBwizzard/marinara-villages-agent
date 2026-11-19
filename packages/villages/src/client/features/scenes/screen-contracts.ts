@@ -73,7 +73,6 @@ export type SceneScreenController = {
   >;
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
   readonly setRoomBusy: ScenesState["setRoomBusy"];
-  readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
   readonly setRoomError: ScenesState["setRoomError"];
   readonly setRoomNotices: ScenesState["setRoomNotices"];

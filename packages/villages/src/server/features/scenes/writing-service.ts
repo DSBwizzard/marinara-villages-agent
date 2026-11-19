@@ -383,7 +383,7 @@ export function createSceneWriting({
             calendar,
             leadSpeakerId,
             movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
-            doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
+            zoneContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
             protections: context.protections,
             roomReferences: context.roomReferences,
             circumstance: narrationCircumstancePrompt(context.circumstance, nativeCommands),
