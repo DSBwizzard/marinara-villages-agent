@@ -166,14 +166,14 @@ await runCase("gm-effects/relationship-answer", async () => {
       };
     };
     const send = (ending: boolean) => {
-      const conclude = ending && !native;
+      const conclude = ending;
       return host.app.inject({
         method: "POST",
         url: "/api/villages/rooms/" + (conclude ? "leave" : "turn"),
         payload: {
           sessionId: "browser",
           submissionId: ending ? "finish-meeting" : "first-meeting",
-          message: conclude ? "" : ending ? departure : "I'd like to hear about your work.",
+          message: ending ? (native ? departure : "") : "I'd like to hear about your work.",
           mode: conclude ? "leave" : "chat",
           targetId: "",
           expectedSceneRevision: host.scene().sceneRevision,

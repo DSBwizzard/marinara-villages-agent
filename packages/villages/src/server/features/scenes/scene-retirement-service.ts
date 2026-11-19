@@ -34,6 +34,7 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         if (
           ports.hasVenueOperation(id) ||
           active.playbackSceneId === id ||
+          active.settlingSourceId === id ||
           !sceneReadyForRetirement(scene, village, active.sessionId)
         )
           return false;
@@ -55,7 +56,12 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         }
         await ports.saveTerminal(scene, saved.revision);
         const currentPointer = await ports.readActive();
-        if (ports.hasVenueOperation(id) || currentPointer.sessionId === id || currentPointer.playbackSceneId === id)
+        if (
+          ports.hasVenueOperation(id) ||
+          currentPointer.sessionId === id ||
+          currentPointer.playbackSceneId === id ||
+          currentPointer.settlingSourceId === id
+        )
           return false;
         if (!sceneReadyForRetirement(scene, await ports.readVillageState(), currentPointer.sessionId)) return false;
         const removed = await ports.withLateResponseWork(id, async () => {

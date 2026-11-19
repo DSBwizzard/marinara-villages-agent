@@ -138,6 +138,14 @@ export function coerceSession(value: unknown): VenueScene {
     ...(raw.visitEvent === "waiting" || raw.visitEvent === "opening" || raw.visitEvent === "place"
       ? { visitEvent: raw.visitEvent }
       : {}),
+    arrival:
+      typeof asRecord(raw.arrival).sourceId === "string" && typeof asRecord(raw.arrival).offerId === "string"
+        ? {
+            sourceId: asTrimmedString(asRecord(raw.arrival).sourceId),
+            offerId: asTrimmedString(asRecord(raw.arrival).offerId),
+            ...(asRecord(raw.arrival).settled === true ? { settled: true as const } : {}),
+          }
+        : undefined,
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),

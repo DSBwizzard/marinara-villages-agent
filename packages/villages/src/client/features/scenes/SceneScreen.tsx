@@ -367,6 +367,38 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               }));
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
+          onTravel={() => {
+            if (!room.travel || roomBusy || contactReviewPending.current || sceneLifetime.current !== room.id) return;
+            const source = room.id;
+            contactReviewPending.current = true;
+            setRoomBusy(true);
+            setRoomError("");
+            void request<{ session: SceneView }>("/rooms", {
+              method: "POST",
+              body: JSON.stringify({
+                travel: { sourceId: source, offerId: room.travel.id },
+                expectedSceneRevision: room.sceneRevision ?? 0,
+              }),
+              signal: AbortSignal.timeout(20000),
+            })
+              .then(({ session }) => {
+                if (sceneLifetime.current !== source) return;
+                roomSubmissionIdRef.current = null;
+                contactReviewPending.current = false;
+                setRoomBusy(false);
+                setRoom(currentRoom(session));
+                void loadSnapshot();
+              })
+              .catch((cause) => {
+                if (sceneLifetime.current === source)
+                  setRoomError(messageFrom(cause, "Could not use this invitation."));
+              })
+              .finally(() => {
+                if (sceneLifetime.current !== source) return;
+                contactReviewPending.current = false;
+                setRoomBusy(false);
+              });
+          }}
           currentZoneLabel={sceneZoneLabel(
             sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}

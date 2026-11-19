@@ -101,6 +101,16 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-notice-chips:empty { display: none; }
 .${tag}-room-screen .${tag}-scene-notice-chips .${tag}-room-notices { position: static; }
 .${tag}-room-screen .${tag}-scene-notice-chips :is(.${tag}-room-stars, .${tag}-scene-error-panel) { top: calc(100% + .5rem); left: 0; max-width: 100%; }
+.${tag}-room-screen .${tag}-scene-travel-card {
+  position: absolute; z-index: 19; top: clamp(4.25rem, 28%, calc(100% - 4.75rem)); left: 50%; transform: translateX(-50%);
+  width: min(19rem, calc(100% - 2rem)); box-sizing: border-box; align-items: center; gap: .65rem; padding: .5rem .65rem;
+}
+.${tag}-scene-travel-card strong { flex: 1; overflow-wrap: anywhere; font-size: .875rem; font-weight: 600; }
+.${tag}-scene-travel-card button { flex: 0 0 auto; min-height: 2rem; }
+.${tag}-scene-travel-card button.${tag}-scene-visit { padding: .25rem .65rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--background); }
+.${tag}-scene-travel-card button:disabled { cursor: default; opacity: .5; }
+.${tag}-scene-travel-card button:last-child { min-width: 1.5rem; padding: 0; font-size: 1rem; color: var(--muted-foreground); }
+.${tag}-room-screen[data-mobile="true"] .${tag}-scene-travel-card button { min-width: 44px; min-height: 44px; }
 .${tag}-scene-error-trigger { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; min-width: 3.5rem; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 1.5rem; background: var(--popover); color: var(--foreground); font: inherit; font-size: .75rem; cursor: pointer; }
 .${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #ed6689; }
 .${tag}-scene-error-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #ed6689; color: #2c101a; font-weight: 750; font-size: .875rem; line-height: 1; }

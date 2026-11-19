@@ -104,9 +104,11 @@ Scenes use one GM response for dialogue and gameplay updates. This build require
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
-Ordinary visits can open quietly so you can look around or move without a narration request. Turn on **Spontaneous events** in Settings to allow a fresh visit to roll for a brief surprise opening. A development can start at the entrance, or a resident can take the initiative when you reach their Zone. A visit can spend one automatic GM call, and a short Village-time cooldown applies at each Venue.
+Ordinary visits can open quietly so you can look around or move without a narration request. Turn on **Spontaneous events** in Settings to allow a fresh visit to roll for a brief surprise opening. A development can start at the entrance, or a resident can take the initiative when you reach their Zone. An ordinary visit can spend one automatic GM call, and a short Village-time cooldown applies at each Venue.
 
-Write dialogue, actions, thoughts, or a mixture in the message box and choose **Send**. Put spoken dialogue in quotation marks. Unquoted text describes actions, narration, or thoughts, and residents can respond to what they observe. Open **Venue actions** for **Move** or **Conclude**. Move goes to a permitted Zone and can play a pending spontaneous opening. Conclude archives the Scene without generating a reply. Send any farewell or departure as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
+A resident’s invitation to another Venue can show a destination card. Select **Visit** to start a new Scene under the destination’s current access, escort and attendance rules. The invitation handoff generates no goodbye or greeting.
+
+**Send** takes place in the Zone shown in the Scene header. Put spoken dialogue in quotation marks. Unquoted text describes actions, narration, or thoughts, and residents can respond to what they observe. If you describe heading to another Zone, the GM can write up to the crossing. Choose **Venue actions → Move** to enter a permitted Zone. A pending spontaneous opening can play when you arrive. Villagers can cross Zones or leave on their own in a GM reply. **Conclude** archives the Scene without a generated reply. Send any farewell as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 

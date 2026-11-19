@@ -583,6 +583,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       hasVenueOperation,
       recoverVenueOperations,
       rollActiveAgendas,
+      withVillageSceneAcceptance,
       mutateVillageState: mutateVillageMemoryState,
       readVillageState: readVillageMemoryState,
     }),

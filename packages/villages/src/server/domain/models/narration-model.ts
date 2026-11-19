@@ -22,6 +22,9 @@ export type NarrationReadset = {
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;
   readOnlyKnowledge?: ContinuityEvidence[];
   ordinaryDialogue?: true;
+  playerNavigation?: "explicit" | "conclude";
+  sceneResidentMovement?: true;
+  sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string }[];
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;

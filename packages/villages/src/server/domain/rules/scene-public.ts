@@ -5,6 +5,7 @@ import { villageLighting } from "../../../shared/helpers/village-lighting.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { conflict } from "./errors.js";
 import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
+import { findLocation } from "./places.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
@@ -56,6 +57,12 @@ export function sceneTurnPublished(value: unknown) {
 }
 export function sceneTurnNotices(turn?: VenueSubmission): VenueRecordEvent[] {
   return turn?.acceptance.status === "applied" ? (turn.recordEvents ?? []) : [];
+}
+export function sceneTravelOffer(scene: VenueScene) {
+  if (scene.status !== "active") return undefined;
+  return scene.submissions
+    .findLast((turn) => sceneTurnNotices(turn).some((event) => event.travel))
+    ?.recordEvents?.findLast((event) => event.travel);
 }
 function unpublishedLines(submissions: unknown[]) {
   return new Set(
@@ -176,10 +183,22 @@ function authority(scene: VenueScene) {
   if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
   const facts = scene.continuity?.facts;
   const visible = new Set(scene.activeIds);
+  const travel = sceneTravelOffer(scene);
+  const destination = travel?.travel;
   return {
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
     version: 1 as const,
     ...(scene.status === "opening" && scene.visitEvent ? { visitEventOpening: true as const } : {}),
+    ...(travel && destination
+      ? {
+          travel: {
+            id: travel.id,
+            label: /^(Go with |Go to )/.test(destination.label)
+              ? (findLocation(facts, destination.venueId)?.name ?? "Destination")
+              : destination.label,
+          },
+        }
+      : {}),
     activeIds: [...scene.activeIds],
     participants: scene.participants
       .filter((person) => visible.has(person.characterId))

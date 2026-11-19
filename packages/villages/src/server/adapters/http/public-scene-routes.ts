@@ -23,6 +23,10 @@ export function publicSceneRoutes(
           const result = await handler(request, reply);
           if (result && typeof result === "object") {
             const payload = result as Record<string, unknown>;
+            for (const container of [payload, payload.operation as Record<string, unknown> | undefined]) {
+              if (Array.isArray(container?.recordEvents))
+                container.recordEvents = container.recordEvents.map(({ travel: _travel, ...event }) => event);
+            }
             for (const key of ["session", "visit"]) {
               const saved = payload[key] as Record<string, unknown> | undefined;
               if (saved) {

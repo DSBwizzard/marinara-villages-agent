@@ -349,6 +349,25 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
   }
   {
     const f = fixture();
+    const aside = { kind: "dialogue", speakerId: f.id, text: "A brief aside.", delivery: "aside" };
+    const mixed = { segments: [aside], keep: [f.keep] };
+    const p = f.publication(mixed);
+    p.readset.ordinaryFormatRecovery = 5;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "saved-mixed-aside", later), /delivery/u);
+    p.readset.ordinaryFormatRecovery = 6;
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...mixed, segments: [{ ...aside, targetId: "player" }] } },
+          "mixed-targeted-aside",
+          later,
+        ),
+      /delivery/u,
+    );
+  }
+  {
+    const f = fixture();
     const line = { ...f.response()[0], witnessedWords: { ref: "h:1515.1" } };
     const { requires: _requires, ...ordinary } = line;
     const p = f.publication({ segments: [ordinary] });

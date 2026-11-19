@@ -256,6 +256,7 @@ export function RoomPanel({
   sceneSettings,
   movementZones,
   onMovementTarget,
+  onTravel,
   currentZoneLabel,
 }: {
   room: SceneView;
@@ -307,6 +308,7 @@ export function RoomPanel({
   sceneSettings: ReactNode;
   movementZones: { id: string; label: string }[];
   onMovementTarget: (id: string) => void;
+  onTravel?: () => void;
   currentZoneLabel: string;
 }) {
   /** The current paragraph in this Scene's ordered reading. */
@@ -320,6 +322,7 @@ export function RoomPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [dismissedTravelId, setDismissedTravelId] = useState<string>();
   const [errorsOpen, setErrorsOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -333,6 +336,8 @@ export function RoomPanel({
   const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
   const presenceNotice = notices.find((notice) => notice.id.startsWith("presence:"));
+  const previousLocation = useRef({ scope: worldScope, sceneId: room.id, zoneId: room.zoneId });
+  const newest = playback.newest;
 
   useEffect(() => {
     if (settingsOpen) settingsRef.current?.focus();
@@ -566,16 +571,22 @@ export function RoomPanel({
     sceneReading,
     !retrying && !playback.restoring && revealStep !== undefined && step?.key === revealStep,
   );
-  const emptyFrame = useMemo(
+  const liveFrame = useMemo(
     () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
     [room.activeIds],
   );
-  const tailMoment = playback.window.moments.at(-1);
-  const stagingFrame = playback.restoring
-    ? emptyFrame
-    : (playback.atLatest && at === steps.length - 1) || !step
-      ? (tailMoment?.end ?? step?.presentation ?? emptyFrame)
-      : step.presentation;
+  const atLatestParagraph = !step || (playback.atLatest && at === steps.length - 1);
+  const showLiveCast = atLatestParagraph && !historyOpen && !ended;
+  const tailFrame = playback.window.moments.at(-1)?.end ?? step?.presentation ?? liveFrame;
+  const tailMatchesLive =
+    tailFrame.activeIds.length === room.activeIds.length &&
+    room.activeIds.every((id) => tailFrame.activeIds.includes(id));
+  const stagingFrame =
+    playback.restoring || (showLiveCast && !tailMatchesLive)
+      ? liveFrame
+      : step && !atLatestParagraph
+        ? step.presentation
+        : tailFrame;
   const stagingState = stagingFrame.state;
   const previousStageReading = useRef<{ roomId: string; key?: string; at: number; restoring: boolean } | null>(null);
   const animateStaging = useMemo(
@@ -619,6 +630,14 @@ export function RoomPanel({
     };
     checkpoint.current.window = playback.window;
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
+  useLayoutEffect(() => {
+    const previous = previousLocation.current;
+    previousLocation.current = { scope: worldScope, sceneId: room.id, zoneId: room.zoneId };
+    if (previous.scope === worldScope && previous.sceneId === room.id && previous.zoneId !== room.zoneId) {
+      setHistoryOpen(false);
+      newest();
+    }
+  }, [worldScope, room.id, room.zoneId, newest]);
   const canDraft = !ended && room.status === "active";
   const canCompose =
     canDraft &&
@@ -637,6 +656,7 @@ export function RoomPanel({
   const canSend = canCompose && !busy && !playback.busy && !contactRecovery;
   const resend = !draft.trim() && !!turnRecovery;
   const sendLabel = busy ? "Sending" : resend ? "Resend" : "Send";
+  const travel = room.travel;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -688,10 +708,9 @@ export function RoomPanel({
 
   const speakerPortrait = step === undefined ? undefined : step.player ? playerPortrait : portraits[step.speakerId];
   const activeParticipants = room.participants.filter((person) => room.activeIds.includes(person.characterId));
-  const cast =
-    !canReadNext && !historyOpen && !ended
-      ? activeParticipants
-      : playback.window.participants.filter((person) => stagingFrame.activeIds.includes(person.characterId));
+  const cast = showLiveCast
+    ? activeParticipants
+    : playback.window.participants.filter((person) => stagingFrame.activeIds.includes(person.characterId));
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
@@ -1296,6 +1315,28 @@ export function RoomPanel({
         ) : null}
       </div>
 
+      {canCompose &&
+      !canReadNext &&
+      !turnRecovery &&
+      !settingsOpen &&
+      !openMemory &&
+      travel &&
+      onTravel &&
+      dismissedTravelId !== travel.id ? (
+        <div
+          className={`${ELEMENT_TAG}-room-star ${ELEMENT_TAG}-scene-travel-card`}
+          aria-label="Travel offer"
+          role="group"
+        >
+          <strong aria-live="polite">{travel.label}</strong>
+          <button type="button" className={`${ELEMENT_TAG}-scene-visit`} disabled={!canSend} onClick={onTravel}>
+            Visit <span aria-hidden="true">›</span>
+          </button>
+          <button type="button" aria-label="Dismiss travel offer" onClick={() => setDismissedTravelId(travel.id)}>
+            ×
+          </button>
+        </div>
+      ) : null}
       <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
         {historyOpen ? (
           <div

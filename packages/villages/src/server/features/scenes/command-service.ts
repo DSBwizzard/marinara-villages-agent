@@ -15,7 +15,7 @@ import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { completeOpeningGathering, matchesOpeningGathering } from "../../domain/rules/opening-project.js";
-import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
+import { captureSceneAttendance, sameSceneRoutine, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
 import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
@@ -36,7 +36,7 @@ import { MAX_ZONE_VILLAGERS, venueClasses } from "../../domain/rules/venue-model
 import { defaultVenueZoneId, resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { metadataFailure } from "../../domain/rules/work-failure.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
-import { sceneTurnNotices } from "../../domain/rules/scene-public.js";
+import { sceneTravelOffer, sceneTurnNotices } from "../../domain/rules/scene-public.js";
 import { visibleSceneNotices } from "../../domain/rules/narration-notices.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
 import { activeNarrativeConditions } from "../../domain/rules/narrative-environment.js";
@@ -105,6 +105,7 @@ export interface SceneCommandPorts {
   hasVenueOperation: typeof import("../../jobs/venue-coordinator.js").hasVenueOperation;
   recoverVenueOperations: typeof import("../../jobs/venue-coordinator.js").recoverVenueOperations;
   rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
+  withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
 }
@@ -148,6 +149,7 @@ export function createSceneCommands({
   hasVenueOperation,
   recoverVenueOperations,
   rollActiveAgendas,
+  withVillageSceneAcceptance,
   mutateVillageState: mutateVillageStateWithoutPlaces,
   readVillageState: readVillageStateWithoutPlaces,
 }: SceneCommandPorts) {
@@ -446,22 +448,66 @@ export function createSceneCommands({
       serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision)),
     );
   }
+  function travelVenue(sourceId: string, offerId: string, expectedRevision: number): Promise<VenueScene> {
+    return withSceneActivation(async () => {
+      const destinationId = await withSceneWork(sourceId, async () => {
+        const pointer = await readActive();
+        if (!pointer.sessionId) throw conflict("That Scene is no longer active.");
+        const current = await readSession(pointer.sessionId);
+        if (current.id !== sourceId) {
+          if (current.arrival?.sourceId === sourceId && current.arrival.offerId === offerId) return current.id;
+          throw conflict("That Scene is no longer active.");
+        }
+        if (
+          current.status !== "active" ||
+          (current.arrival && !current.arrival.settled) ||
+          hasVenueOperation(sourceId) ||
+          current.pendingAccessClaim ||
+          (current.operation && current.operation.status !== "complete") ||
+          narrationBlocker(current)
+        )
+          throw conflict("Finish the current Scene action before travelling.");
+        if (current.sceneRevision !== expectedRevision) throw conflict("The Scene changed. Refresh before travelling.");
+        const offer = sceneTravelOffer(current);
+        if (!offer?.travel || offer.id !== offerId) throw conflict("That invitation is no longer offered here.");
+        const { venueId, zoneId, grantId } = offer.travel;
+        const session = await withVillageSceneAcceptance(
+          (village) =>
+            enterVenueOnce(venueId, zoneId, undefined, {
+              source: current,
+              offerId,
+              grantId,
+              village,
+            }),
+          { memories: true },
+        );
+        return session.id;
+      });
+      const arrived = await activeVenueSession();
+      if (arrived?.id !== destinationId) throw conflict("The active Scene changed. Refresh before travelling.");
+      return arrived;
+    });
+  }
+
   async function enterVenueOnce(
     placeId: string,
     requestedZoneId?: string,
     expectedSceneRevision?: number,
+    travel?: { source: VenueScene; offerId: string; grantId: string; village: VillageState },
   ): Promise<VenueScene> {
     const pointer = await readActive();
     if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
       throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
-    const existing = await activeVenueSession();
-    if (!existing) {
+    const existing = travel ? null : await activeVenueSession();
+    if (!existing && !travel) {
       await rollActiveAgendas();
     }
-    const live = await readVillageState();
+    const live = travel?.village ?? (await readVillageState());
     const village = existing ? sceneContinuityView(live, existing) : live;
     const place = findLocation(village, placeId);
     if (!place) throw notFound("That place is not in this village.");
+    if (travel && (travel.source.placeId === placeId || travel.source.villageSeed !== live.seed))
+      throw conflict("That invitation belongs to a different Scene.");
     if (!place.access) throw conflict("That Place has no native access record.");
     const discovery = live.worldPlaces.places[placeId];
     if (discovery && (!discovery.knownBy.includes("player") || !discovery.prepared))
@@ -479,6 +525,7 @@ export function createSceneCommands({
     if (zoneClosed(village, place, zone)) {
       if (
         !existing &&
+        !travel &&
         (place.constructionStatus === "worksite" ||
           village.projects.some(
             (project) =>
@@ -505,8 +552,10 @@ export function createSceneCommands({
         () => moveVenueZoneOnce(existing.id, zone.id),
       );
     }
-    const gathering = village.opening?.stage === "gathering" && village.opening.communityVenueId === placeId;
-    const id = gathering && village.opening!.gatheringSceneId ? village.opening!.gatheringSceneId : randomUUID();
+    const gathering = !travel && village.opening?.stage === "gathering" && village.opening.communityVenueId === placeId;
+    const id = travel
+      ? "travel-" + memoryHash([travel.source.id, travel.offerId]).slice(0, 32)
+      : (gathering && village.opening!.gatheringSceneId) || randomUUID();
     if (gathering) {
       const existingGathering = await withSceneWork(id, async () => {
         const current = await mutateVillageState((state) => {
@@ -537,7 +586,59 @@ export function createSceneCommands({
           ? existingGathering
           : refreshZoneParticipants(existingGathering);
     }
-    const sceneAttendance = captureSceneAttendance(village, placeId, villageNow());
+    const now = villageNow();
+    const entryAt = new ZonedDate(now, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const invitation =
+      travel &&
+      place.access.permissions.find(
+        (grant) =>
+          grant.id === travel.grantId &&
+          grant.zoneId === zone.id &&
+          grant.visitorId === "player" &&
+          grant.duration === "visit" &&
+          !grant.revoked &&
+          grant.sceneId === null,
+      );
+    if (travel && !invitation) throw conflict("That invitation is no longer available.");
+    const escort = invitation
+      ? (invitation.accompaniedBy ?? (zone.access?.accompanied ? invitation.issuerId : null))
+      : null;
+    if (
+      escort &&
+      travel &&
+      (contactPosition(travel.source, escort) !== travel.source.zoneId ||
+        !sameSceneRoutine(village, travel.source, escort, now) ||
+        !contactPath(village, place, "exterior", zone.id, escort, undefined, entryAt))
+    )
+      throw conflict("Your escort is no longer available to take you there.");
+    const accompanying = escort ? [{ characterId: escort, zoneId: zone.id }] : [];
+    if (
+      escort &&
+      captureSceneAttendance(village, placeId, now).occupants.filter(
+        (resident) => resident.zoneId === zone.id && resident.characterId !== escort,
+      ).length >= MAX_ZONE_VILLAGERS
+    )
+      throw conflict("That Zone is full.");
+    const sceneAttendance = captureSceneAttendance(
+      village,
+      placeId,
+      now,
+      escort
+        ? new Map([
+            [
+              escort,
+              {
+                id: place.id,
+                name: place.name,
+                kind: "venue",
+                zoneId: zone.id,
+                zoneName: zone.name,
+                image: zone.image,
+              },
+            ],
+          ])
+        : undefined,
+    );
     if (gathering)
       sceneAttendance.occupants = village.villagers
         .filter((resident) => village.opening!.residentIds.includes(resident.characterId))
@@ -558,12 +659,10 @@ export function createSceneCommands({
       throw conflict("Starting relationship history needs preparation or clarification before a Scene can begin.");
     const entryAccessContext = {
       sceneId: id,
-      at: new ZonedDate(
-        sceneAttendance.capturedAt,
-        village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      ),
+      at: entryAt,
       positions: Object.fromEntries(sceneAttendance.occupants.map((person) => [person.characterId, person.zoneId])),
       accepting: true,
+      permissionId: travel?.grantId,
     };
     let initialPermissionId: string | undefined;
     const decision = evaluateZoneAccess(place, zone, "player", {
@@ -574,8 +673,42 @@ export function createSceneCommands({
       zone = resolveVenueZone(place, "exterior")!;
     } else
       await mutateVillageState((state) => {
-        const current = findLocation(state, place.id)!;
-        const target = resolveVenueZone(current, zone!.id)!;
+        const current = findLocation(state, place.id);
+        const target = current && resolveVenueZone(current, zone!.id);
+        if (!current || !target) throw conflict("That Zone is no longer available.");
+        if (
+          travel &&
+          (state.seed !== live.seed ||
+            state.setupAt !== live.setupAt ||
+            !current.access?.permissions.some(
+              (grant) =>
+                grant.id === travel.grantId &&
+                !grant.revoked &&
+                grant.sceneId === null &&
+                grant.zoneId === target.id &&
+                grant.visitorId === "player" &&
+                grant.duration === "visit",
+            ) ||
+            (escort &&
+              (!sameSceneRoutine(state, travel.source, escort, now) ||
+                !contactPath(state, current, "exterior", target.id, escort, undefined, entryAt))) ||
+            !contactPath(
+              state,
+              current,
+              "exterior",
+              target.id,
+              "player",
+              {
+                id,
+                startedAt: sceneAttendance.capturedAt,
+                zoneId: "exterior",
+                sceneAttendance,
+                accompanying,
+              } as VenueScene,
+              entryAt,
+            ))
+        )
+          throw conflict("That route or invitation is no longer available.");
         const checked = evaluateZoneAccess(current, target, "player", {
           ...entryAccessContext,
           unavailable: zoneClosed(state, current, target),
@@ -598,7 +731,7 @@ export function createSceneCommands({
       throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
     const authoredOpening = gathering || !!discovery || hasAssociatedNpc(village, placeId);
     let visitEvent: VenueScene["visitEvent"];
-    if (!authoredOpening && village.spontaneousEvents) {
+    if (!travel && !authoredOpening && village.spontaneousEvents) {
       const at = Date.parse(sceneAttendance.capturedAt);
       let roll: ReturnType<typeof rollVisitEvent> | undefined;
       await mutateVillageStateWithoutPlaces((state) => {
@@ -622,6 +755,7 @@ export function createSceneCommands({
     const session: VenueScene = {
       openingGatheringId: gathering ? village.opening!.id : undefined,
       visitEvent,
+      arrival: travel && { sourceId: travel.source.id, offerId: travel.offerId },
       pendingAccessClaim: initialPermissionId,
       version: 5,
       sceneRevision: 0,
@@ -630,7 +764,7 @@ export function createSceneCommands({
       placeId,
       placeName: place.name,
       zoneId: zone.id,
-      accompanying: [],
+      accompanying,
       departedIds: [],
       spaceClass: zone.venueClass,
       area: zoneArea(zone),
@@ -640,7 +774,7 @@ export function createSceneCommands({
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
       endReason: "",
-      status: authoredOpening || visitEvent === "opening" || visitEvent === "place" ? "opening" : "active",
+      status: !travel && (authoredOpening || visitEvent === "opening" || visitEvent === "place") ? "opening" : "active",
       // Pending entry cannot put the private cast into the playback index.
       participants: initialPermissionId ? [] : participants,
       sceneAttendance,
@@ -657,10 +791,11 @@ export function createSceneCommands({
         }
         Object.assign(value, session);
       });
-      await selectActiveScene(id, placeId);
+      await selectActiveScene(id, placeId, travel?.source.id);
     };
     if (gathering) await withSceneWork(id, create);
     else await create();
+    if (travel) return session;
     const settled = await refreshZoneParticipants(session);
     if (!participants.length && !authoredOpening) await queueZonePicture(settled);
     return settled;
@@ -864,6 +999,8 @@ export function createSceneCommands({
     assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
     if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
+    if (!prior && scene.navigationReceipts?.some(({ id }) => id === input.submissionId))
+      throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID already belongs to a Zone move.");
     if (!prior) await requireLiveVenueSession(input.sessionId);
     const payload = venueTurnPayload(input);
     if (prior && prior.requestFingerprint !== requestFingerprint(input))
@@ -1059,6 +1196,7 @@ export function createSceneCommands({
   }
   async function closeVenueSessionOnce(id: string): Promise<VenueScene> {
     const session = await readSession(id);
+    if (session.arrival && !session.arrival.settled) throw conflict("Travel is settling. Refresh the Scene.");
     for (const turn of session.submissions.filter((turn) => turn.acceptance.status === "pending")) {
       await processSavedExchange(id, turn.id).catch((error) =>
         villagesLogger().warn("[villages] deferred Scene recovery: %s", String(error)),
@@ -1196,6 +1334,7 @@ export function createSceneCommands({
     },
     moveVenueZone,
     enterVenue,
+    travelVenue,
     greetVenue,
     continueVenueWithoutGreeting,
     sendVenueTurn,
