@@ -12,7 +12,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { startingZone } from "./founding-template.js";
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it
@@ -239,6 +239,7 @@ export function FoundingPersonaSelector({
 export function FoundingVillagerPicker({
   onEditSprites,
   activeId,
+  activeAppearance,
   catalog,
   portraits,
   selectedIds,
@@ -252,6 +253,7 @@ export function FoundingVillagerPicker({
   disabled: boolean;
   onEditSprites(id: string): void;
   activeId?: string | null;
+  activeAppearance?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -302,6 +304,7 @@ export function FoundingVillagerPicker({
             >
               ×
             </button>
+            {activeId === person.id ? activeAppearance : null}
           </div>
         ))}
       </div>

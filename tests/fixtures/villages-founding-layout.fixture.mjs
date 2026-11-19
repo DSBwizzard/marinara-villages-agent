@@ -1175,12 +1175,12 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();
         await resident.getByRole("button", { name: characters[0].name, exact: true }).click();
-        const spritePane = page.getByRole("region", { name: characters[0].name + "’s appearance", exact: true });
+        const spritePane = resident.getByRole("region", { name: characters[0].name + "’s appearance", exact: true });
         await expect(spritePane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute(
           "aria-pressed",
           "true",
         );
-        await expect(resident.getByRole("button", { name: "Sprites", exact: true })).toHaveCount(0);
+        await expect(spritePane.getByRole("button", { name: "Sprites", exact: true })).toBeDisabled();
         await expect(settingNext()).toBeEnabled();
         await bounds("people");
         await settingNext().click();

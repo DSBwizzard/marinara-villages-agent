@@ -969,31 +969,27 @@ export function FoundingScreen({
                 ) : null}
                 <FoundingVillagerPicker
                   onEditSprites={(id) => {
-                    if (spriteWorking.current) return;
-                    setSpriteId(id);
-                    requestAnimationFrame(() => {
-                      const root = rootRef.current;
-                      root?.querySelector<HTMLElement>(".appearance-compact")?.scrollIntoView({ block: "nearest" });
-                    });
+                    if (!spriteWorking.current) setSpriteId(id);
                   }}
                   activeId={activeSpriteId}
+                  activeAppearance={
+                    setupStep === FOUNDING_STEP.People && activeSpriteId ? (
+                      <Appearance
+                        key={activeSpriteId}
+                        characterId={activeSpriteId}
+                        name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
+                        selectedRevision={setupSpriteRevisions[activeSpriteId]}
+                        onSave={spriteSaved}
+                        onBusyChange={spriteBusyChanged}
+                      />
+                    ) : null
+                  }
                   catalog={catalog}
                   portraits={portraits}
                   selectedIds={setupFoundingVillagerIds}
                   onChange={chooseRoster}
                   disabled={busy || spriteBusy}
                 />
-                {setupStep === FOUNDING_STEP.People && activeSpriteId ? (
-                  <Appearance
-                    key={activeSpriteId}
-                    characterId={activeSpriteId}
-                    name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
-                    portrait={portraits[activeSpriteId]}
-                    selectedRevision={setupSpriteRevisions[activeSpriteId]}
-                    onSave={spriteSaved}
-                    onBusyChange={spriteBusyChanged}
-                  />
-                ) : null}
               </section>
             </div>
           </div>

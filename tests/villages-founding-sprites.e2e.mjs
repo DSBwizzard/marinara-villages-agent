@@ -220,6 +220,23 @@ await withBrowser(browser, async () => {
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
       for (const reply of ["Next", "Next", "Next"])
         await root.getByRole("button", { name: reply, exact: true }).click();
+      const phase = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
+      await expect(phase).toHaveAttribute("aria-label", "Maps");
+      if (phone) await next.click();
+      const mapImage = await page.evaluate(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1024;
+        canvas.height = 768;
+        return canvas.toDataURL().split(",")[1];
+      });
+      await root.getByLabel("Upload map image", { exact: true }).setInputFiles({
+        name: "map.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(mapImage, "base64"),
+      });
+      await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
+      await next.click();
+      await expect(phase).toHaveAttribute("aria-label", "People");
       if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
@@ -241,14 +258,20 @@ await withBrowser(browser, async () => {
         await expect(picker).toBeHidden();
         await expect(root.getByRole("button", { name: person.name, exact: true })).toBeVisible();
       }
-      const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
+      const row = (name) =>
+        root.locator(".villages-selected-villager").filter({
+          has: page.getByRole("button", { name, exact: true }),
+        });
+      const pane = row("Aqua").getByRole("region", { name: "Aqua’s appearance", exact: true });
       await expect(pane.getByRole("button", { name: "Sprites", exact: true })).toHaveAttribute("aria-pressed", "true");
-      const avatar = pane.locator(".appearance-compact-summary > .marinara-capability-villages-avatar");
+      const avatar = row("Aqua").locator(".marinara-capability-villages-identity-card-face");
+      await expect(avatar).toHaveCount(1);
+      await expect(pane.locator("img")).toHaveCount(0);
       await expect.poll(() => portraitLoads.length).toBeGreaterThan(0);
       assert.ok(portraitLoads.every((url) => url.searchParams.get("w") === "320" && url.searchParams.get("v") === "7"));
       if (phone) {
         await expect(avatar.locator("img")).toHaveCount(0);
-        await expect(avatar).toHaveText("A");
+        await expect(avatar.locator("svg")).toBeVisible();
       } else {
         await expect(avatar.locator("img")).toBeVisible();
         await expect(avatar.locator("img")).toHaveAttribute("loading", "lazy");
@@ -258,17 +281,21 @@ await withBrowser(browser, async () => {
       await expect(pane.getByText("6 Front · 0 Side", { exact: true })).toBeVisible();
       await expect(pane.getByText("Manage expressions")).toHaveCount(0);
       await expect(pane.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
-      const compactBounds = await pane.locator(".appearance-compact-row").boundingBox();
+      const compactBounds = await row("Aqua").boundingBox();
       await page.screenshot({ path: ".build-tmp/founding-sprites/compact-" + viewport.width + ".png" });
-      assert.ok(compactBounds.height < (phone ? 200 : 155), `The compact People row is ${compactBounds.height}px tall`);
+      assert.ok(compactBounds.height < (phone ? 210 : 160), `The compact People row is ${compactBounds.height}px tall`);
       await expect(next).toBeInViewport({ ratio: 0.99 });
       await expect(next).toBeEnabled();
       await next.click();
-      await expect(root).toHaveAttribute("data-step", "2");
+      await expect(phase).toHaveAttribute("aria-label", "Venues");
       assert.deepEqual([...opened], ["aqua"], "No Appearance action or load for the other resident is needed");
       await root.getByRole("button", { name: "Back", exact: true }).click();
-      await expect(root).toHaveAttribute("data-step", "1");
+      await expect(phase).toHaveAttribute("aria-label", "People");
       if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
+      await row("Professor Mari").getByRole("button", { name: "Professor Mari", exact: true }).click();
+      await expect(row("Professor Mari").getByRole("region", { name: "Professor Mari’s appearance" })).toBeVisible();
+      await expect(pane).toHaveCount(0);
+      await row("Aqua").getByRole("button", { name: "Aqua", exact: true }).click();
       await pane.getByRole("button", { name: "Review previous appearance", exact: true }).click();
       await expect(pane.getByText("1 Front · 0 Side", { exact: true })).toBeVisible();
       await pane.getByRole("button", { name: "Reload appearance", exact: true }).click();

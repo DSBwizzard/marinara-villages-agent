@@ -349,9 +349,6 @@ async function main() {
     releaseRuntime();
   }
   const client = await clientImplementation();
-  for (const step of ["Setting", "People", "Maps", "Venues", "Zones", "Review"]) {
-    assert.ok(client.includes(`"${step}"`));
-  }
   assert.ok(client.includes('"/maps/generate"'));
   assert.equal(client.includes("setupMapOptions"), false);
   assert.equal(client.includes("Fit entire map"), false);

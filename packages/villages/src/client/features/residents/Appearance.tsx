@@ -628,26 +628,12 @@ export function Appearance({
     return (
       <section className="villages-appearance appearance-compact" aria-label={title}>
         <style>{APPEARANCE_STYLES}</style>
-        <div className="appearance-compact-row">
-          <div className="appearance-compact-summary">
-            <AvatarFace className={`${ELEMENT_TAG}-avatar`} name={name} portrait={portrait} />
-            <div>
-              <h3>Appearance</h3>
-              <span role="status">
-                {data
-                  ? baseline.useSprites
-                    ? `${front.length} Front · ${side.length} Side`
-                    : "Portrait"
-                  : error
-                    ? "Unavailable"
-                    : "Loading…"}
-              </span>
-            </div>
-          </div>
-          {data ? (
-            <div className="appearance-compact-controls">
-              {mode}
-              {baseline.useSprites ? (
+        {data ? (
+          <div className="appearance-compact-row">
+            {mode}
+            {baseline.useSprites ? (
+              <div className="appearance-compact-sprites">
+                <span role="status">{`${front.length} Front · ${side.length} Side`}</span>
                 <button
                   type="button"
                   disabled={locked || stale}
@@ -658,10 +644,12 @@ export function Appearance({
                 >
                   Assign side-facing sprites
                 </button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+              </div>
+            ) : null}
+          </div>
+        ) : !error ? (
+          <span role="status">Loading appearance…</span>
+        ) : null}
         {moveOpen && data ? (
           <SpriteMovePicker
             sprites={{ front: moveEntries("front"), side: moveEntries("side") }}

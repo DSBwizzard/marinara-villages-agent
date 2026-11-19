@@ -95,19 +95,13 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-picker-grid img { display:block; width:100%; height:7rem; object-fit:contain; }
 .appearance-picker-grid :is(span,small) { text-align:center; font-size:.85rem; }
 .villages-forging-card .appearance-compact {
-  height:auto; overflow:visible; margin-top:.75rem; padding:.65rem;
-  background:transparent; border:1px solid var(--appearance-line); border-radius:.55rem;
+  height:auto; overflow:visible; padding:0; background:transparent;
 }
-.appearance-compact-row { display:flex; align-items:center; flex-wrap:wrap; gap:.55rem .85rem; }
-.appearance-compact-summary { display:flex; align-items:center; flex:1 1 9.5rem; gap:.55rem; }
-.villages-forging-card .appearance-compact-summary h3 { margin:0 0 .1rem; font-size:1rem; }
-.appearance-compact-summary [role=status] { white-space:nowrap; font-size:.85rem; }
-.appearance-compact-summary>.marinara-capability-villages-avatar {
-  display:block; width:2.9rem; height:2.9rem; flex:none; overflow:hidden; border-radius:.35rem;
-}
-.appearance-compact-controls { display:grid; gap:.3rem; flex:1 1 11rem; }
-.appearance-compact-controls .appearance-mode { max-width:none; margin:0; }
-.appearance-compact-controls>button { width:100%; }
+.appearance-compact-row,.appearance-compact-sprites { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem .65rem; }
+.appearance-compact-row .appearance-mode { flex:1 1 10rem; margin:0; }
+.appearance-compact-sprites { flex:1 1 auto; }
+.appearance-compact-sprites>button { flex:1; }
+.appearance-compact-sprites [role=status] { font-size:.85rem; }
 .villages-forging-v2 .appearance-compact>.appearance-link { align-self:flex-start; background:transparent; }
 .villages-appearance dialog.appearance-move-picker[open] { display:flex; flex-direction:column; overflow:hidden; }
 .appearance-move-picker > :is(header,footer) { flex:none; }
