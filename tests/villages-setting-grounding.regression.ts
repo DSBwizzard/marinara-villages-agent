@@ -244,11 +244,11 @@ async function main() {
     const map = buildTownMapPrompt("No water or decorative buildings.", scenarios[4][1]);
     assert.match(map, /Map details take priority over conflicting Village description/);
     assert.match(map, /Map details: No water or decorative buildings/);
-    assert.throws(
-      () => buildTownMapPrompt(undefined, "x".repeat(4000), "", undefined, "s".repeat(600)),
-      /characters over.*no image request was made/,
-      "individually valid maximum inputs share a final allowance",
-    );
+    const maximumMap = buildTownMapPrompt("m".repeat(1500), "x".repeat(4096), "", "r".repeat(4096), "s".repeat(600));
+    assert.ok(maximumMap.length <= 8000, "individually valid maximum inputs fit the image allowance");
+    assert.ok(maximumMap.includes("m".repeat(1500)), "Map details stay complete");
+    assert.ok(maximumMap.includes("r".repeat(4096)), "Standing rules stay complete");
+    assert.ok(maximumMap.includes("s".repeat(600)), "Art style stays complete");
     // Later physical receipts remain authoritative even when the starting description is unchanged.
     const common = defaultVenueSpace("community", "A farmhouse kitchen");
     common.description += ". The roof leaks";

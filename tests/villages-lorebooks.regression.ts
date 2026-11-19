@@ -218,7 +218,7 @@ async function main() {
       buildTownMapPrompt(undefined, "harbor village", visual).includes(JSON.stringify(visual)),
       "Maps retain the complete selected reference as data",
     );
-    assert.throws(() => buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)), /4,000-character allowance/);
+    assert.ok(buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)).includes("y".repeat(500)));
     globalThis.fetch = async () => new Response(JSON.stringify({ secret: "private-book-title" }), { status: 503 });
     await assert.rejects(readVillageLore(["world"], "harbor"), (error: any) => {
       assert.doesNotMatch(error.message, /private-book-title|503/);
