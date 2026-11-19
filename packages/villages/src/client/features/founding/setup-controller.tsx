@@ -89,7 +89,6 @@ export function createFoundingDraftSetting(
       setSetupWorkspace((workspace) => ({
         ...workspace,
         settingBeat: "village",
-        settingManual: undefined,
         suggestionRequest: undefined,
         settingDraft: setting,
         settingEditorOpen: true,
@@ -97,7 +96,7 @@ export function createFoundingDraftSetting(
       }));
     } catch (cause) {
       if (!signal?.aborted && !(cause instanceof Error && cause.name === "AbortError")) {
-        const problem = messageFrom(cause, "Mari couldn’t draft the setting. You can fill it in yourself.");
+        const problem = messageFrom(cause, "Mari couldn’t draft the Map. Try again or edit the Map details here.");
         setSetupWorkspace((workspace) =>
           workspace.settingProblem === problem ? workspace : { ...workspace, settingProblem: problem },
         );

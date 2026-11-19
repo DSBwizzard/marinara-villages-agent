@@ -43,7 +43,6 @@ const PHONE_LAYOUT = "(max-width:727px)";
 const CHAPTER_MENUS = [undefined, "maps", "people", "venues", "review"] as const;
 const SETTING_MARI_POSES = {
   welcome: "wave",
-  manual: "neutral",
   "world-overview": "presenting",
   world: "thoughtful",
   lorebooks: "happy",
@@ -221,7 +220,6 @@ export function FoundingScreen({
   const mobileScene =
     phone && !!chapterMenu && (explainingVenues || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
   const beat = settingBeat(setupWorkspace);
-  const manualSetting = beat === "manual";
   const [arrival, setArrival] = useState<"fading" | "turning" | "greeting">();
   const fading = arrival === "fading";
   const turning = arrival === "turning";
@@ -240,11 +238,7 @@ export function FoundingScreen({
     !phone && !explainingVenues && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
   const hierarchyLayer = desktopMap
     ? undefined
-    : setupStep === FOUNDING_STEP.Setting &&
-        !prelude &&
-        !setupWorkspace.settingManual &&
-        beat !== "welcome" &&
-        !manualSetting
+    : setupStep === FOUNDING_STEP.Setting && !prelude && beat !== "welcome"
       ? beat === "village-overview"
         ? "Village"
         : beat === "village"
@@ -277,11 +271,10 @@ export function FoundingScreen({
   const hasSettingDraft = !!setupWorkspace.settingDraft;
   const settingEditorOpen =
     setupWorkspace.settingEditorOpen ??
-    (manualSetting ||
-      (beat === "village" &&
-        hasSettingDraft &&
-        !setupWorkspace.suggestionRequest?.draftSetting &&
-        !setupWorkspace.settingProblem));
+    (beat === "village" &&
+      hasSettingDraft &&
+      !setupWorkspace.suggestionRequest?.draftSetting &&
+      !setupWorkspace.settingProblem);
   const setSettingEditorOpen = useCallback(
     (open: boolean) =>
       setSetupWorkspace((workspace) =>
@@ -731,17 +724,6 @@ export function FoundingScreen({
             : []),
         ]),
       ]);
-      if (
-        setupStep === FOUNDING_STEP.Setting &&
-        manualSetting &&
-        setupName.trim() &&
-        setupLocationName.trim() &&
-        setupSetting.trim()
-      ) {
-        setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "world", settingEditorOpen: false }));
-        bodyRef.current?.scrollTo({ top: 0 });
-        return;
-      }
       if (setupStep === FOUNDING_STEP.Maps && !setupMapSrc) {
         requestAnimationFrame(() =>
           bodyRef.current?.querySelector<HTMLElement>(".villages-forging-map-warning")?.focus(),
@@ -785,10 +767,9 @@ export function FoundingScreen({
         />
       </FoundingField>
     );
-    const settingTitleLabel = manualSetting ? "Your setting" : "Your first Map";
+    const settingTitleLabel = "Your first Map";
     const settingFields = (
       <>
-        {manualSetting ? villageNameField : null}
         <FoundingField
           title="First map name"
           error={
@@ -1093,11 +1074,7 @@ export function FoundingScreen({
               </section>
             </div>
           </div>
-          <div
-            hidden={setupStep !== FOUNDING_STEP.Setting}
-            className="villages-place-panels"
-            data-manual={manualSetting || undefined}
-          >
+          <div hidden={setupStep !== FOUNDING_STEP.Setting} className="villages-place-panels">
             {setupStep === FOUNDING_STEP.Setting ? (
               <FoundingSettingScene
                 controller={controller}
@@ -1117,15 +1094,7 @@ export function FoundingScreen({
                   bodyRef.current?.scrollTo({ top: 0 });
                 }}
                 next={nextReply}
-                advanceSetup={advanceSetup}
-                advanceDisabled={advanceDisabled}
               />
-            ) : null}
-            {!phone && manualSetting ? (
-              <section className="villages-founding-setting villages-forging-card" aria-label="Your setting">
-                <h2>Your setting</h2>
-                {settingFields}
-              </section>
             ) : null}
           </div>
           {setupStep === FOUNDING_STEP.Maps ? (

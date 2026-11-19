@@ -213,13 +213,35 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ content: bundle });
       const root = page.locator(".villages-forging-v2"),
         next = root.getByRole("button", { name: "Next", exact: true });
-      for (const reply of ["START", "Next", "Next", "Next", "Next", "Set it up myself"])
+      for (const reply of ["START", "Next", "Next", "Next", "Next", "Next", "Next", "Next"])
         await root.getByRole("button", { name: reply, exact: true }).click();
+      if (phone)
+        await root
+          .getByRole("dialog", { name: "The wider world", exact: true })
+          .getByRole("button", { name: "Done", exact: true })
+          .click();
+      else await next.click();
+      await next.click();
+      const lore = root.getByRole(phone ? "dialog" : "region", {
+        name: phone ? "Choose Lorebooks" : "Village Lorebooks",
+        exact: true,
+      });
+      await lore.getByRole("button", { name: phone ? "Done" : "Next", exact: true }).click();
+      await next.click();
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
+      await root.getByLabel("Tell Mari about your village", { exact: true }).fill("A village beside the sea.");
+      if (phone)
+        await root
+          .getByRole("dialog", { name: "Your Village", exact: true })
+          .getByRole("button", { name: "Done", exact: true })
+          .click();
+      else await next.click();
+      await next.click();
+      await next.click();
+      if (phone) await root.getByRole("button", { name: "Enter Map details", exact: true }).click();
       await root.getByLabel("First map name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      for (const reply of ["Next", "Next", "Next"])
-        await root.getByRole("button", { name: reply, exact: true }).click();
+      await next.click();
       const phase = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
       await expect(phase).toHaveAttribute("aria-label", "Maps");
       if (phone) await next.click();

@@ -666,11 +666,11 @@ export async function verifyFoundingLayout(group) {
         await nextLine();
         await expect(line).toHaveText(/make a life with a community/);
         await nextLine();
-        await expect(line).toHaveText(/Want to build it together/);
-        await expect(button("Draft with Mari")).toBeVisible();
-        await expect(button("Set it up myself")).toBeVisible();
+        await expect(line).toHaveText(/I’ll walk you through the World, your Village, and your first Map/);
+        await expect(button("Set it up myself")).toHaveCount(0);
+        await expect(button("Draft with Mari")).toHaveCount(0);
         if (phone) {
-          for (const reply of ["Back", "Draft with Mari", "Set it up myself"])
+          for (const reply of ["Back", "Next"])
             await expect(scene.getByRole("button", { name: reply, exact: true })).toBeInViewport({ ratio: 0.99 });
         }
         if (!phone) {
@@ -690,7 +690,7 @@ export async function verifyFoundingLayout(group) {
           );
           assert.ok(dialogue.x >= portrait.x + portrait.width, "Dialogue sits beside Mari");
         }
-        await expect(button("Draft with Mari")).toBeInViewport({ ratio: 1 });
+        await expect(button("Next")).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-welcome-" + view.width + ".png"),
@@ -699,29 +699,7 @@ export async function verifyFoundingLayout(group) {
         const villageName = root.getByLabel("Village Name", { exact: true });
         const mapName = root.getByLabel("First map name", { exact: true });
         const mapDescription = root.getByLabel("Location description", { exact: true });
-        if (view.width === 390 || view.width === 1366) {
-          await button("Set it up myself").click();
-          await expect(villageName).toBeVisible();
-          if (phone) await expect(scene).toHaveCount(0);
-          await expect(root.getByLabel("Tell Mari about your village")).toHaveCount(0);
-          await villageName.fill("Handmade Harbor");
-          await expect
-            .poll(() =>
-              page.evaluate(() => {
-                const saved = window.featureController.savedSetupDraft?.data;
-                return [saved?.workspace?.settingManual, saved?.name];
-              }),
-            )
-            .toEqual([true, "Handmade Harbor"]);
-          await page.reload();
-          await page.addScriptTag({ content: foundingBundle });
-          await expect(villageName).toHaveValue("Handmade Harbor");
-          assert.equal(settingCalls, 0, "Manual setup never dispatches a Mari draft");
-          await villageName.fill(phone ? "Coastal Community" : "");
-          if (phone) await button("Close Your setting").click();
-          await scene.getByRole("button", { name: "Back", exact: true }).click();
-        }
-        await button("Draft with Mari").click();
+        await button("Next").click();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         const hierarchy = root.getByRole("img", { name: /^World, Village, Map, Venue, Zone/ });
         const layer = async (name) => {

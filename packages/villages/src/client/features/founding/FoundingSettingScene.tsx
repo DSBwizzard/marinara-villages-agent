@@ -6,17 +6,14 @@ import { FoundingSpeaker } from "./FoundingGuide.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
-type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]> | "manual";
+type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["settingBeat"]>;
 const worldQuestion = "What World does your Village take place in?";
 const script: Record<SettingBeat, readonly string[]> = {
   welcome: [
     "Oh, hi! I’m Mari. You caught me arguing with a map.",
     "Welcome to Villages. Come on over. The view’s good from here.",
     "You’ll make a life with a community here. That could mean a dockside town, a spaceship crew, or six neighbors with one catastrophically shared laundry room.",
-    "We need a place for your people to call home. Want to build it together, or shall I hand you the pencil?",
-  ],
-  manual: [
-    "The pencil’s yours. Name the Village, pick the first bit we’ll put on the map, and tell me what a normal day looks like there.",
+    "Let’s give your people a place to call home. I’ll walk you through the World, your Village, and your first Map.",
   ],
   "world-overview": [
     "See these five layers? We’ll start at the top and work our way down. I promise there’s no quiz.",
@@ -38,12 +35,6 @@ const script: Record<SettingBeat, readonly string[]> = {
   ],
 };
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
-  if (
-    workspace.settingBeat === "village" &&
-    workspace.settingManual === true &&
-    !workspace.suggestionRequest?.draftSetting
-  )
-    return "manual";
   return workspace.settingBeat ?? (workspace.suggestionRequest?.draftSetting ? "village" : "welcome");
 }
 
@@ -62,8 +53,6 @@ export function FoundingSettingScene({
   onEditSetting,
   onBeatChange,
   next,
-  advanceSetup,
-  advanceDisabled,
 }: {
   controller: FoundingScreenController;
   connectionProblem: string;
@@ -79,12 +68,9 @@ export function FoundingSettingScene({
   onEditSetting(): void;
   onBeatChange(): void;
   next: ReactNode;
-  advanceSetup(): void;
-  advanceDisabled: boolean;
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
-  const manual = setupWorkspace.settingManual === true;
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [turn, setTurn] = useState<{ beat: SettingBeat; index: number }>();
   const [popup, setPopup] = useState<"world" | "village">();
@@ -108,30 +94,27 @@ export function FoundingSettingScene({
   }, [beat, phone, villageInvalid]);
   const moveTo = (settingBeat: SettingBeat, showLast = false) => {
     const openEditor =
-      settingBeat === "manual" ||
-      (!phone &&
-        settingBeat === "village" &&
-        (showLast || !!setupWorkspace.settingDraft) &&
-        !setupWorkspace.settingProblem &&
-        !setupWorkspace.suggestionRequest?.draftSetting);
+      !phone &&
+      settingBeat === "village" &&
+      (showLast || !!setupWorkspace.settingDraft) &&
+      !setupWorkspace.settingProblem &&
+      !setupWorkspace.suggestionRequest?.draftSetting;
     setSetupWorkspace((workspace) => ({
       ...workspace,
-      settingBeat: settingBeat === "manual" ? "village" : settingBeat,
-      settingManual:
-        settingBeat === "manual" || (manual && (settingBeat === "world" || settingBeat === "lorebooks")) || undefined,
+      settingBeat,
       settingEditorOpen: openEditor,
       mobileMenu: undefined,
     }));
     setTurn(showLast ? { beat: settingBeat, index: script[settingBeat].length - 1 } : undefined);
     const openedPopup =
-      phone && settingBeat === "world" && !manual
+      phone && settingBeat === "world"
         ? "world"
         : phone && settingBeat === "village-overview" && showLast
           ? "village"
           : undefined;
     setPopup(openedPopup);
     onBeatChange();
-    const openLorebooks = settingBeat === "lorebooks" && (manual || showLast);
+    const openLorebooks = settingBeat === "lorebooks" && showLast;
     if (!openedPopup && !openLorebooks && (!openEditor || !phone)) focusLine();
   };
   const request = setupWorkspace.suggestionRequest;
@@ -158,12 +141,7 @@ export function FoundingSettingScene({
         : drafted
           ? "I’ve sketched your first Map. Go ahead and tinker with its name or what’s there. That’s the fun bit."
           : undefined;
-  const lines =
-    beat === "village" && draftDialogue
-      ? [draftDialogue]
-      : beat === "lorebooks" && manual
-        ? script.lorebooks.slice(-1)
-        : script[beat];
+  const lines = beat === "village" && draftDialogue ? [draftDialogue] : script[beat];
   const lineIndex = Math.min(
     lines.length - 1,
     turn?.beat === beat
@@ -187,9 +165,8 @@ export function FoundingSettingScene({
   };
   const previous = {
     welcome: undefined,
-    manual: "welcome",
     "world-overview": "welcome",
-    world: manual ? "manual" : "world-overview",
+    world: "world-overview",
     lorebooks: "world",
     "village-overview": "lorebooks",
     village: "village-overview",
@@ -217,25 +194,23 @@ export function FoundingSettingScene({
           onChange={(event) => controller.setSetupWorldName(event.currentTarget.value)}
         />
       </FoundingField>
-      {!manual ? (
-        <FoundingField
-          title="World description"
-          description="A quick picture of the wider setting for Mari’s draft."
-          optional
-        >
-          <textarea
-            autoComplete="off"
-            rows={2}
-            maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
-            value={world}
-            placeholder="A chain of island kingdoms linked by trade ships."
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-              setSetupWorkspace((workspace) => ({ ...workspace, settingWorldBrief: value }));
-            }}
-          />
-        </FoundingField>
-      ) : null}
+      <FoundingField
+        title="World description"
+        description="A quick picture of the wider setting for Mari’s draft."
+        optional
+      >
+        <textarea
+          autoComplete="off"
+          rows={2}
+          maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
+          value={world}
+          placeholder="A chain of island kingdoms linked by trade ships."
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setSetupWorkspace((workspace) => ({ ...workspace, settingWorldBrief: value }));
+          }}
+        />
+      </FoundingField>
       <FoundingField title="World rules" description="Facts or limits that should always hold in play." optional>
         <textarea
           autoComplete="off"
@@ -337,41 +312,22 @@ export function FoundingSettingScene({
             </button>
           </div>
         ) : beat === "welcome" ? (
-          <div className="villages-founding-replies" data-setting-choices>
-            {backReply}
-            <button type="button" className="villages-forging-primary" onClick={() => moveTo("world-overview")}>
-              Draft with Mari
-            </button>
-            <button type="button" onClick={() => moveTo("manual")}>
-              Set it up myself
-            </button>
-          </div>
-        ) : beat === "manual" ? (
           <div className="villages-founding-replies">
             {backReply}
-            {phone ? (
-              <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
-                Next
-              </button>
-            ) : (
-              next
-            )}
+            <button type="button" className="villages-forging-primary" onClick={() => moveTo("world-overview")}>
+              Next
+            </button>
           </div>
         ) : beat === "world" ? (
           <>
             {!phone ? worldField : null}
             <div className="villages-founding-replies">
               {backReply}
-              {phone && manual ? (
-                <button type="button" className="villages-forging-primary" onClick={() => setPopup("world")}>
-                  Describe world
-                </button>
-              ) : null}
               <button
                 type="button"
-                className={phone && manual ? undefined : "villages-forging-primary"}
+                className="villages-forging-primary"
                 onClick={() => {
-                  if (phone && !manual) setPopup("world");
+                  if (phone) setPopup("world");
                   else moveTo("lorebooks");
                 }}
               >
@@ -388,11 +344,10 @@ export function FoundingSettingScene({
               selected={controller.setupLorebookDraft}
               onChange={(ids) => {
                 controller.setSetupLorebookDraft(ids);
-                if (manual) advanceSetup();
-                else moveTo("village-overview");
+                moveTo("village-overview");
               }}
-              disabled={controller.busy || setupSuggestionsBusy || (manual && advanceDisabled)}
-              founding={{ inline: !phone, onBack: back, nextLabel: phone && !manual ? "Done" : "Next" }}
+              disabled={controller.busy || setupSuggestionsBusy}
+              founding={{ inline: !phone, onBack: back, nextLabel: phone ? "Done" : "Next" }}
               budget={loreBudget}
             />
           </div>
