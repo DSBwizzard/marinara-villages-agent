@@ -16,6 +16,7 @@ import { foundingVenueIssues, type FoundingIssue } from "./villages-founding-wor
 
 export function QuickStartVenues({
   inlineVenue = false,
+  mobile = false,
   venues,
   locationName,
   people,
@@ -38,6 +39,7 @@ export function QuickStartVenues({
   onRetrySaving,
 }: {
   inlineVenue?: boolean;
+  mobile?: boolean;
   venues: SetupVenueDraft[];
   locationName: string;
   people: { id: string; name: string }[];
@@ -555,24 +557,50 @@ export function QuickStartVenues({
       </>
     ) : null;
   return (
-    <section className="villages-quick-start" ref={venuesRoot} aria-label="Venues" data-map-open={mapOpen || undefined}>
-      {map ? (
-        <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
-          <div className="villages-quick-map-toolbar">
-            <h2>{locationName || "Starting location"}</h2>
-            <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
-              ← Venues
-            </button>
-          </div>
-          <section className="villages-quick-map" aria-label="Venue placement" inert={inlineOpen || undefined}>
-            {map}
-          </section>
-          {inlineOpen ? (
-            <div className="villages-quick-dialog villages-founding-venue-page villages-founding-venue-pane">
-              {venuePage}
+    <section
+      className="villages-quick-start"
+      ref={venuesRoot}
+      aria-label="Venues"
+      data-map-open={(!mobile && mapOpen) || undefined}
+    >
+      {map && (!mobile || mapOpen) ? (
+        mobile ? (
+          <FoundingDialog
+            title="Place Venues"
+            headerless
+            className="villages-founding-map-page"
+            onClose={() => setMapOpen(false)}
+          >
+            <section className="villages-founding-mobile-map" aria-label="Starting location map">
+              <header className="villages-quick-map-toolbar">
+                <button type="button" onClick={() => setMapOpen(false)}>
+                  ← Venues
+                </button>
+                <h2>{locationName || "Starting location"}</h2>
+              </header>
+              <section className="villages-quick-map" aria-label="Venue placement">
+                {map}
+              </section>
+            </section>
+          </FoundingDialog>
+        ) : (
+          <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
+            <div className="villages-quick-map-toolbar">
+              <h2>{locationName || "Starting location"}</h2>
+              <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
+                ← Venues
+              </button>
             </div>
-          ) : null}
-        </section>
+            <section className="villages-quick-map" aria-label="Venue placement" inert={inlineOpen || undefined}>
+              {map}
+            </section>
+            {inlineOpen ? (
+              <div className="villages-quick-dialog villages-founding-venue-page villages-founding-venue-pane">
+                {venuePage}
+              </div>
+            ) : null}
+          </section>
+        )
       ) : null}
       <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
         <header className="villages-venue-heading">

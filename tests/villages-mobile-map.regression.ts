@@ -20,6 +20,12 @@ assert.equal(cover, 2.5);
 const initial = { zoom: cover, centerX: 0.5, centerY: 0.5 };
 const centered = mobileMapBox(image, frame, initial);
 assert.deepEqual(centered, { left: -270, top: 0, width: 900, height: 600 });
+const overview = { zoom: 1, centerX: 0.5, centerY: 0.5 };
+assert.deepEqual(mobileMapBox(image, frame, overview, 1), { left: 0, top: 180, width: 360, height: 240 });
+const overviewZoom = mobileMapGesture(image, frame, overview, { x: 180, y: 300 }, { x: 180, y: 300 }, 2, 1);
+assert.equal(overviewZoom.zoom, 2);
+const resetOverview = mobileMapGesture(image, frame, overviewZoom, { x: 180, y: 300 }, { x: 180, y: 300 }, 0.01, 1);
+assert.equal(resetOverview.zoom, 1, "Founding can zoom out to the complete image");
 
 const dragged = mobileMapGesture(image, frame, initial, { x: 180, y: 300 }, { x: 280, y: 300 }, 1);
 assert.equal(mobileMapBox(image, frame, dragged).left, -170);

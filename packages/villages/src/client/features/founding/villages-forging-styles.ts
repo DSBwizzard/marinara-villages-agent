@@ -906,6 +906,23 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2[data-desktop-map] .villages-quick-map-panel .villages-quick-map { height:auto; min-height:0; flex:1; }
 .villages-forging-v2[data-desktop-map] .villages-quick-map-panel>:is(.villages-quick-map,.villages-founding-venue-pane) { grid-area:2 / 1; }
 .villages-quick-map[inert] { visibility:hidden; }
+.villages-forging-v2 .villages-founding-overlay:has(>.villages-founding-map-page) { padding:0; backdrop-filter:none; }
+.villages-forging-v2 .villages-founding-overlay>dialog.villages-founding-map-page[open] {
+  width:100%; height:100%; max-width:100%; max-height:100%; padding:0; overflow:hidden;
+  border:0; border-radius:0; background:#292438; box-shadow:none;
+}
+.villages-founding-mobile-map { display:flex; flex-direction:column; width:100%; height:100%; min-height:0; }
+.villages-forging-v2 .villages-founding-mobile-map>header { flex:none; padding:.55rem; border-bottom:1px solid #a6809180; background:#292438; }
+.villages-founding-mobile-map>header h2 { font-size:1rem; overflow-wrap:anywhere; }
+.villages-founding-mobile-map>.villages-quick-map { flex:1; height:auto; min-height:0; border-radius:0; }
+.villages-forging-v2 .villages-founding-map-page .marinara-capability-villages-map-camera-controls { display:flex; }
+.villages-founding-map-placement { flex:none; padding:.65rem; border-top:1px solid #a6809180; background:#292438; }
+.villages-forging-v2 .villages-founding-map-placement label { display:grid; gap:.25rem; margin:0; font-size:.85rem; }
+.villages-forging-v2 .villages-founding-map-placement select { width:100%; min-width:0; min-height:44px; font-size:1rem; }
+.villages-forging-v2 .villages-founding-map-placement p { font-size:.8rem; margin:.4rem 0 0; }
+.villages-founding-map-page .marinara-capability-villages-map-label { display:none; }
+.villages-founding-map-page .marinara-capability-villages-map-point { width:14px; height:14px; margin-top:15px; }
+.villages-founding-map-page .marinara-capability-villages-explore-marker[data-selected=true] .marinara-capability-villages-map-point { width:18px; height:18px; margin-top:13px; }
 .villages-founding-venue-pane { container:founding-editor / inline-size; min-width:0; min-height:0; overflow:hidden; border-radius:.5rem; background:#292438; }
 .villages-forging-v2[data-desktop-map] .villages-quick-start>.villages-quick-venue-list {
   grid-column:2; grid-row:2; align-self:start; height:auto; max-height:100%; padding:.65rem;
