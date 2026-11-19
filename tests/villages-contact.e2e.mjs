@@ -223,6 +223,7 @@ await withBrowser(browser, async () => {
     assert.equal(entered, undefined, "Inspecting a restricted Zone never admits entry");
     await expect(picker.getByText("Invited for this visit", { exact: true })).toBeVisible();
     await picker.getByRole("button", { name: "Common Space", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
     await expect.poll(() => entered?.zoneId).toBe("common");
     assert.equal(entered.expectedSceneRevision, 3);
     await expect(page.getByRole("button", { name: "Venue actions", exact: true })).toBeVisible();

@@ -1065,15 +1065,8 @@ export function RoomPanel({
               selectedId={movementSelection ?? room.zoneId}
               disabled={busy || !canDraft}
               onSelect={(id) => {
-                if (id === room.zoneId) return;
-                const zone = movementZones.find((zone) => zone.id === id);
-                if (zone?.allowed) {
-                  setActionsView(null);
-                  onMovementTarget(id);
-                } else {
-                  setMovementSelection(id);
-                  setTrespassTarget(null);
-                }
+                setMovementSelection(id === room.zoneId ? null : id);
+                setTrespassTarget(null);
               }}
               labels={(zone) => (
                 <>
@@ -1104,11 +1097,29 @@ export function RoomPanel({
               .filter((zone) => zone.id === movementSelection && zone.id !== room.zoneId)
               .map((zone) => (
                 <div className="villages-scene-move-zone" key={zone.id}>
-                  {trespassTarget !== zone.id && (
+                  {!zone.allowed && trespassTarget !== zone.id && (
                     <>
                       <strong>{zone.label}</strong>
                       {zone.status && <small>{zone.status}</small>}
                     </>
+                  )}
+                  {zone.allowed && (
+                    <div className="villages-scene-move-confirm">
+                      <p>Move to {zone.label}?</p>
+                      <button type="button" onClick={() => setMovementSelection(null)}>
+                        Stay here
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || !canDraft}
+                        onClick={() => {
+                          setActionsView(null);
+                          onMovementTarget(zone.id);
+                        }}
+                      >
+                        Move
+                      </button>
+                    </div>
                   )}
                   {zone.canTrespass && trespassTarget !== zone.id && (
                     <button type="button" disabled={busy || !canDraft} onClick={() => setTrespassTarget(zone.id)}>
@@ -1116,7 +1127,7 @@ export function RoomPanel({
                     </button>
                   )}
                   {trespassTarget === zone.id && zone.canTrespass && (
-                    <div className="villages-scene-trespass-confirm">
+                    <div className="villages-scene-move-confirm">
                       <p>Enter {zone.label} without permission?</p>
                       <button type="button" onClick={() => setTrespassTarget(null)}>
                         Stay here

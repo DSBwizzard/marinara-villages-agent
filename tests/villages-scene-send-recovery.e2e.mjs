@@ -350,6 +350,7 @@ await withBrowser(browser, async () => {
       },
     };
     await zoneSelect.getByRole("button", { name: "Hall", exact: true }).click();
+    await zoneSelect.getByRole("button", { name: "Move", exact: true }).click();
     await expectSceneError(page, "Review the saved action before moving");
     assert.equal(zonePosts, 0, "movement does not replace an unresolved Contact action");
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));

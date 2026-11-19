@@ -98,8 +98,8 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .villages-scene-move .villages-zone-map-tile small { font-size:clamp(11px,.85rem,16px); }
 .villages-scene-move-zone { display:grid; gap:.25rem; padding:.25rem 0; border-bottom:1px solid var(--border); }
 .villages-scene-move-zone small { color:var(--muted-foreground); }
-.villages-scene-move-zone:has(.villages-scene-trespass-confirm) { border-bottom:0; }
-.villages-scene-trespass-confirm { display:grid; gap:.35rem; }
+.villages-scene-move-zone:has(.villages-scene-move-confirm) { border-bottom:0; }
+.villages-scene-move-confirm { display:grid; gap:.35rem; }
 .${tag}-room-screen .${tag}-chat-head { flex-wrap: nowrap; }
 .${tag}-room-screen .${tag}-chat-head:has(:is(.${tag}-room-actions-menu, .${tag}-scene-error-panel, .${tag}-room-stars)) { z-index: 25; }
 .${tag}-room-screen .${tag}-chat-actions { flex: 0 0 auto; }

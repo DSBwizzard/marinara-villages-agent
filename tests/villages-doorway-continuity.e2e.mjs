@@ -180,6 +180,7 @@ await withBrowser(browser, async () => {
       .getByRole("dialog", { name: "Move to Zone" })
       .getByRole("button", { name: destination.name, exact: true })
       .click();
+    await page.getByRole("dialog", { name: "Move to Zone" }).getByRole("button", { name: "Move", exact: true }).click();
     await expect.poll(() => moves).toBe(1);
     const mara = page.locator('[class$="-chat-cast-person"][data-character-id="mara"]');
     await expect(mara).toBeVisible({ timeout: 3000 });

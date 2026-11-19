@@ -229,6 +229,7 @@ await withBrowser(browser, async () => {
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-move-" + width + ".png") });
     await picker.getByRole("button", { name: "Entrance", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
     await page.getByRole("button", { name: /^1 Scene error$/ }).click();
     await expect(page.getByText(/Scene changed/).last()).toBeVisible();
     await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
@@ -243,6 +244,7 @@ await withBrowser(browser, async () => {
     assert.equal(moves, 0);
     await selectMove();
     await picker.getByRole("button", { name: "Entrance", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await expect(composer).toHaveValue(preservedDraft);
@@ -252,6 +254,7 @@ await withBrowser(browser, async () => {
     for (const zoneId of ["hall", "exterior", "hall", "exterior"]) {
       await selectMove();
       await picker.getByRole("button", { name: zoneId === "hall" ? "Common Space" : "Entrance", exact: true }).click();
+      await picker.getByRole("button", { name: "Move", exact: true }).click();
       await expect(composer).toHaveValue(preservedDraft);
       await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
       await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(zoneId === "hall" ? 1 : 0);
