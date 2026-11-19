@@ -1,4 +1,4 @@
-// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure
+// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -8,6 +8,33 @@ import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { fixtureSceneState } from "./helpers/village-storage.fixture.js";
 
+const localCrossings = {
+  boundary: {
+    venue: "Crossing Hall",
+    origin: "Hall",
+    originDescription: "A wooden bench stands against a plaster wall.",
+    destination: "Kitchen",
+    destinationId: "kitchen",
+    destinationDescription: "The Kitchen has a sink and a tea tray.",
+    departure: '"Hey Ella, I\'ll be right back." I walk to the kitchen',
+    activity: "In the kitchen, I prepare some tea.",
+    approach: "Ella watches you approach the Kitchen doorway.",
+    arrival: "You set the tea on the Kitchen counter.",
+  },
+  "open-park-boundary": {
+    venue: "Riverside Park",
+    origin: "Picnic Lawn",
+    originDescription: "An open lawn slopes toward a pond. The grass runs continuously down to the water.",
+    destination: "Pond",
+    destinationId: "pond",
+    destinationDescription: "Reeds grow at the open shoreline.",
+    departure: '"I’ll be right back, Ella." I walk down to the pond.',
+    activity: "At the pond, I crouch to watch the tadpoles.",
+    approach: "Ella waves as you start down the grassy slope toward the pond.",
+    arrival: "A cluster of tadpoles darts away from your reflection.",
+  },
+};
+
 for (const scenario of [
   "invitation",
   "revoked",
@@ -16,31 +43,35 @@ for (const scenario of [
   "group-visit",
   "overheard",
   "boundary",
+  "open-park-boundary",
   "crossing-rejected",
   "departure-rejected",
   "resident-crossing",
   "resident-departure",
 ] as const)
   await runCase("scene-travel/" + scenario, async () => {
-    const hallToKitchen = scenario === "boundary";
+    const crossing = scenario === "boundary" || scenario === "open-park-boundary" ? localCrossings[scenario] : null;
+    const remoteWalk = "I head over to Willow Hotel.";
+    const beforeMove = crossing ? [crossing.departure, crossing.activity, remoteWalk] : [];
     const host = await packagedSceneServer({
       configure(world) {
         world.spontaneousEvents = true;
-        if (hallToKitchen) {
-          const hall = world.venues[0];
-          hall.name = "Crossing Hall";
-          const common = hall.zones.find((zone) => zone.id === "common")!;
-          common.name = "Hall";
-          common.connectedTo.push("kitchen");
-          hall.zones.push({
-            ...defaultVenueSpace("other", "The Kitchen has a sink and a tea tray."),
-            id: "kitchen",
-            name: "Kitchen",
+        if (crossing) {
+          const venue = world.venues[0];
+          venue.name = crossing.venue;
+          const common = venue.zones.find((zone) => zone.id === "common")!;
+          common.name = crossing.origin;
+          common.description = crossing.originDescription;
+          common.connectedTo.push(crossing.destinationId);
+          venue.zones.push({
+            ...defaultVenueSpace("other", crossing.destinationDescription),
+            id: crossing.destinationId,
+            name: crossing.destination,
             kind: "public",
             seen: true,
             connectedTo: ["common"],
           });
-          world.venues[0] = venueFixture(hall);
+          world.venues[0] = venueFixture(venue);
         }
         const speaker = world.villagers[0];
         speaker.cardSnapshot.name = "Gidget";
@@ -75,7 +106,7 @@ for (const scenario of [
         world.venues.push(hotel);
       },
       configureScene(scene) {
-        if (hallToKitchen) scene.placeName = "Crossing Hall";
+        if (crossing) scene.placeName = crossing.venue;
         scene.participants[0].name = "Gidget";
         scene.sceneAttendance!.occupants[0].name = "Gidget";
         scene.activeIds.push("ella");
@@ -86,11 +117,7 @@ for (const scenario of [
     });
     let calls = 0;
     const walk = "I walk to the Entrance.";
-    const hallFarewell = '"Hey Ella, I\'ll be right back." I walk to the kitchen';
-    const kitchenTea = "In the kitchen, I prepare some tea.";
     const ellaFarewell = "Sure thing, star! We'll be right here.";
-    const threshold = "Ella watches you approach the Kitchen doorway.";
-    const tea = "You set the tea on the Kitchen counter.";
     const departure = "I leave now.";
     const residentCrossing = scenario === "resident-crossing";
     const residentDeparture = scenario === "resident-departure";
@@ -102,21 +129,22 @@ for (const scenario of [
         assert.match(prompt, /Write "visit" first/);
         assert.match(prompt, /A group invitation gets the same entry when it includes the player/);
       }
-      if (hallToKitchen) {
+      if (crossing) {
         const submitted = messages.at(-2)?.content;
         const reminder = messages.at(-1)?.content ?? "";
-        const zone = calls <= 3 ? "Hall" : "Kitchen";
-        assert.equal(submitted, [hallFarewell, kitchenTea, "I head over to Willow Hotel.", kitchenTea][calls - 1]);
+        const afterMove = calls > beforeMove.length;
+        const zone = afterMove ? crossing.destination : crossing.origin;
+        assert.equal(submitted, afterMove ? crossing.activity : beforeMove[calls - 1]);
         assert.match(reminder, new RegExp(`Keep the player in "${zone}" until they use Move or Visit`));
         assert.match(reminder, /Use that Zone even if earlier prose puts them elsewhere/);
-        assert.match(reminder, /play the local part and end at the threshold/);
+        assert.match(reminder, /end before the player enters the next Zone/);
         const segments =
           calls === 1
             ? [
                 { kind: "dialogue", speakerId: "ella", text: ellaFarewell },
-                { kind: "narration", text: threshold },
+                { kind: "narration", text: crossing.approach },
               ]
-            : [{ kind: "narration", text: calls === 4 ? tea : threshold }];
+            : [{ kind: "narration", text: afterMove ? crossing.arrival : crossing.approach }];
         return {
           content: JSON.stringify({ segments }),
           finishReason: "stop",
@@ -263,7 +291,7 @@ for (const scenario of [
           submissionId,
           message,
           mode: "chat",
-          targetId: hallToKitchen ? undefined : "mara",
+          targetId: crossing ? undefined : "mara",
           expectedSceneRevision: revision,
         },
       });
@@ -314,14 +342,10 @@ for (const scenario of [
         assert(!recovered.body.includes("You step out of the Mill."));
         return;
       }
-      if (hallToKitchen) {
+      if (crossing) {
         let current = before;
-        for (const [submissionId, message] of [
-          ["hall-farewell", hallFarewell],
-          ["tea-before-move", kitchenTea],
-          ["walk-hotel", "I head over to Willow Hotel."],
-        ]) {
-          const result = await turn(current.id, current.sceneRevision, submissionId, message);
+        for (const [index, message] of beforeMove.entries()) {
+          const result = await turn(current.id, current.sceneRevision, "before-move-" + index, message);
           assert.equal(result.statusCode, 200, result.body);
           current = result.json().session;
           assert.equal(current.id, before.id);
@@ -332,13 +356,14 @@ for (const scenario of [
         const farewell = host.scene().lines.find((line) => line.content === ellaFarewell);
         assert.equal(farewell?.zoneId, before.zoneId);
         assert(farewell.heardBy.includes("ella"));
-        assert.equal(calls, 3);
+        assert.equal(calls, beforeMove.length);
+        assert(!host.scene().lines.some((line) => line.content === crossing.arrival));
         const move = await host.app.inject({
           method: "POST",
           url: "/api/villages/rooms/zone",
           payload: {
             sessionId: before.id,
-            zoneId: "kitchen",
+            zoneId: crossing.destinationId,
             operationId: "explicit-move",
             expectedSceneRevision: current.sceneRevision,
           },
@@ -346,16 +371,16 @@ for (const scenario of [
         assert.equal(move.statusCode, 200, move.body);
         const moved = move.json().session;
         assert.equal(moved.id, before.id);
-        assert.equal(moved.zoneId, "kitchen");
-        const reused = await turn(before.id, moved.sceneRevision, "explicit-move", hallFarewell);
+        assert.equal(moved.zoneId, crossing.destinationId);
+        const reused = await turn(before.id, moved.sceneRevision, "explicit-move", crossing.departure);
         assert.equal(reused.statusCode, 409, reused.body);
-        assert.equal(calls, 3, "Explicit Move and rejected ID reuse both skip generation");
-        const prepareTea = await turn(moved.id, moved.sceneRevision, "tea-after-move", kitchenTea);
-        assert.equal(prepareTea.statusCode, 200, prepareTea.body);
-        const teaLine = host.scene().lines.find((line) => line.content === tea);
-        assert.equal(teaLine?.zoneId, "kitchen");
-        assert(!teaLine.heardBy.includes("ella"));
-        assert.equal(calls, 4);
+        assert.equal(calls, beforeMove.length, "Explicit Move and rejected ID reuse both skip generation");
+        const arrived = await turn(moved.id, moved.sceneRevision, "after-move", crossing.activity);
+        assert.equal(arrived.statusCode, 200, arrived.body);
+        const arrival = host.scene().lines.find((line) => line.content === crossing.arrival);
+        assert.equal(arrival?.zoneId, crossing.destinationId);
+        assert(!arrival.heardBy.includes("ella"));
+        assert.equal(calls, beforeMove.length + 1);
         return;
       }
       const request = await turn(

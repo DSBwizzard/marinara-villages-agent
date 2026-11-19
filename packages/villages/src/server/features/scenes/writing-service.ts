@@ -437,7 +437,7 @@ export function createSceneWriting({
             : "") +
         (mode === "leave"
           ? "Finish the departure and end before arrival. "
-          : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. Use that Zone even if earlier prose puts them elsewhere. If they try to cross, play the local part and end at the threshold. Wait to write anything that happens after crossing. `) +
+          : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. Use that Zone even if earlier prose puts them elsewhere. If they try to cross, play the local part and end before the player enters the next Zone. `) +
         'Treat the submission as intent. Show local outcomes and leave the next choice open. Put "segments" and any "keep" entries in one JSON object.',
     );
     if (loreInspection) {
