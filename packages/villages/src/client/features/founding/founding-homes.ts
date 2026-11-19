@@ -1,6 +1,7 @@
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { newSetupVenue } from "./FoundingPanels.js";
+import { quickStartTemplates } from "./quick-start-drafts.js";
 import { draftZonePolicy, foundingLayoutZones } from "./villages-founding-zones.js";
 
 export const foundingHomeMembers = (venue: SetupVenueDraft): string[] => [
@@ -171,7 +172,15 @@ export function reconcileFoundingRoster(
       venue.name = `${actor.name} home`;
       venue.residentIds = actor.id === "player" ? [] : [actor.id];
       venue.presentation = { ...venue.presentation, x: null, y: null };
-      next.push(reconcileFoundingHome(venue));
+      const template = quickStartTemplates([venue])[0]!;
+      next.push(
+        reconcileFoundingHome({
+          ...venue,
+          layout: template.layout,
+          spaces: template.spaces,
+          privateSpaces: template.privateSpaces,
+        }),
+      );
     }
   }
   for (const [id, name] of [
@@ -181,7 +190,7 @@ export function reconcileFoundingRoster(
   ]) {
     if (next.filter((venue) => venue.classes?.some((kind) => kind !== "residence")).length >= 2) break;
     if (next.some((venue) => venue.id === id) || next.length >= 16) continue;
-    const venue = newSetupVenue(id!, "community", 0.5, 0.5);
+    const venue = quickStartTemplates([newSetupVenue(id!, "community", 0.5, 0.5)])[0]!;
     venue.name = name!;
     while (next.some((row) => row.name === venue.name)) venue.name += " 2";
     venue.presentation = { ...venue.presentation, x: null, y: null };

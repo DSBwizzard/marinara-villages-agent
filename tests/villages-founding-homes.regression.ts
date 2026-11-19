@@ -47,7 +47,31 @@ let rows = reconcileFoundingRoster(
   actors.map((row) => row.id),
   "community",
 );
-assert.ok(rows.filter((row) => row.classes?.includes("residence")).every((row) => row.privateSpaces?.length === 0));
+for (const home of rows.filter((row) => row.classes?.includes("residence"))) {
+  const owner = home.occupancy.playerHome ? "player" : home.residentIds![0]!;
+  assert.equal(home.spaces?.length, 1);
+  assert.equal(home.privateSpaces?.length, 1);
+  assert.equal(home.privateSpaces![0].ownerId, owner);
+  assert.equal(home.privateSpaces![0].access!.mode, "permission-required");
+  assert.deepEqual(home.privateSpaces![0].access!.memberIds, [owner]);
+  assert.equal(home.destinations![owner].sleep, "private:base");
+  assert.deepEqual(
+    foundingSleepZones(home, owner).map((zone) => zone.id),
+    ["common:base", "private:base"],
+  );
+}
+const communityTemplate = rows.find((row) => row.id === "community")!;
+assert.equal(communityTemplate.spaces?.length, 2);
+assert.equal(communityTemplate.privateSpaces?.length, 0);
+assert.ok(communityTemplate.spaces!.every((zone) => zone.access?.mode === "public" && !zone.ownerId));
+// The remaining cases exercise a deliberately customized common-only player home.
+rows[0] = reconcileFoundingHome({
+  ...rows[0],
+  layout: "common",
+  spaces: rows[0].spaces!.map((zone) => ({ ...zone, connectedTo: ["exterior"] })),
+  privateSpaces: [],
+  destinations: { player: { home: "common:base", sleep: "common:base" } },
+});
 assert.ok(
   rows
     .filter((row) => row.classes?.includes("residence"))

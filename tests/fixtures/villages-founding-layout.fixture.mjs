@@ -1274,6 +1274,31 @@ export async function verifyFoundingLayout(group) {
         await settingNext().click();
         await expect(root).toHaveAttribute("data-step", "4");
         await enterChapter();
+        const prepared = await page.evaluate(() => window.featureController.setupVenues);
+        for (const venue of prepared) {
+          const community = venue.classes.includes("community");
+          assert.equal(venue.spaces.length, community ? 2 : 1);
+          assert.equal(venue.privateSpaces.length, community ? 0 : 1);
+          if (!community) {
+            const owner = venue.occupancy.playerHome ? "player" : venue.residentIds[0];
+            assert.equal(venue.privateSpaces[0].ownerId, owner);
+            assert.equal(venue.destinations[owner].sleep, "private:base");
+          }
+        }
+        await expect(root.locator(".villages-quick-zone-summary").first()).toContainText("Entrance");
+        await expect(sheet).toHaveCount(0);
+        await settingNext().click();
+        await expect(root).toHaveAttribute("data-step", "5");
+        if (phone) await enterChapter();
+        if (phone) await button("Back").click();
+        await button("Back").click();
+        await expect(root).toHaveAttribute("data-step", "4");
+        await enterChapter();
+        assert.deepEqual(
+          await page.evaluate(() => window.featureController.setupVenues),
+          prepared,
+          "Accepting ready layouts requires no room edits",
+        );
         await expect(root.getByRole("region", { name: "Venue placement" })).toHaveCount(0);
         await editVenue("founding-home:player");
         await expect(sheet).toHaveAttribute("open", "");

@@ -241,6 +241,7 @@ await withBrowser(browser, async () => {
               ? row
               : {
                   ...row,
+                  privateSpaces: [],
                   spaces: Array.from({ length: 6 }, (_, i) => ({
                     ...row.spaces[0],
                     id: i ? "compact:" + i : "common:base",
@@ -341,7 +342,7 @@ await withBrowser(browser, async () => {
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["compact:4"].y)).toBe(86);
       await assertGraph();
       await page.evaluate((rows) => window.replaceQuickVenues(rows), originalVenues);
-      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
       assert.equal((await canvas.boundingBox()).height, canvasHeight, "Sparse graphs keep the full canvas height");
       await zone("common:base").scrollIntoViewIfNeeded();
       const room = await zone("common:base").boundingBox();
@@ -358,7 +359,7 @@ await withBrowser(browser, async () => {
       );
       await assertGraph();
       await button("Add Zone").click();
-      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(4);
       const addedZone = await page.evaluate(() => window.quickState.venues[0].spaces.at(-1).id);
       await button("Zones").click();
       await zone(addedZone).click();
@@ -387,7 +388,7 @@ await withBrowser(browser, async () => {
         .toBe(true);
       await sheet.locator(".villages-zone-map").getByRole("button", { name: "Done", exact: true }).click();
       await button("Remove Zone").click();
-      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
       await expect(zone("exterior")).toHaveAttribute("aria-pressed", "true");
       await button("Modify Zone Connections").click();
       await zone("exterior").click();

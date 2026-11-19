@@ -742,7 +742,7 @@ export function FoundingScreen({
               "Now for the neighbors. Choose who you’ll play, then who already lives here and how they’ll look in Scenes. I’ve retired from the casting committee.",
               "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
               "A Venue is a place your community uses. Name the homes and the Community Venue, then place them on your Map. I’ll mind the pins.",
-              "Now let’s step inside. Zones are the spots within each Venue. Set their connections, access, and sleeping places. Yes, the couch counts.",
+              "Here are the spaces inside each Venue. The starter layouts include connected rooms and beds. Keep them as they are, or make a few changes. I’m keeping the furniture opinions to myself.",
               "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
             ][setupStep]!
           }

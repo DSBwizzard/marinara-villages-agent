@@ -195,7 +195,7 @@ export function QuickStartVenues({
     <section className="villages-quick-start" aria-label={phase === "zones" ? "Zones" : "Venues"} data-phase={phase}>
       <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
         <header className="villages-venue-heading">
-          <h2>{phase === "zones" ? "Zones by Venue" : "Starting Venues"}</h2>
+          <h2>{phase === "zones" ? "Ready-to-use Zones" : "Starting Venues"}</h2>
           <div className="villages-quick-venue-actions">{actions}</div>
         </header>
         <FoundingVenuePages selectedId={selectedId}>
@@ -238,6 +238,15 @@ export function QuickStartVenues({
                     ? members.map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident").join(", ")
                     : "Everyone"}
                 </span>
+                {phase === "zones" ? (
+                  <span className="villages-quick-zone-summary">
+                    {[
+                      "Entrance",
+                      ...(venue.spaces ?? []).map((zone) => zone.name),
+                      ...(venue.privateSpaces ?? []).map((zone) => zone.name),
+                    ].join(" · ")}
+                  </span>
+                ) : null}
               </button>
             );
           })}

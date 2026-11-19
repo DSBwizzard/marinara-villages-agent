@@ -1,5 +1,6 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
+import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { createFoundingRestoreSetupDraft } from "../packages/villages/src/client/features/founding/draft-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -983,6 +984,27 @@ await main()
     false,
     "Settled drafts discard retired grouping state",
   );
+  const oldHome = newSetupVenue("founding-home:player", "residence", 0.2, 0.3, true);
+  const legacyDraft = { ...draft, venues: [oldHome] };
+  restore(JSON.parse(JSON.stringify(legacyDraft)));
+  assert.equal(values.setSetupVenues[0].privateSpaces.length, 1);
+  assert.equal(values.setSetupVenues[0].destinations.player.sleep, "private:base");
+  for (const held of [
+    { ...legacyDraft, interruptedGeneration: true },
+    { ...legacyDraft, editorOriginal: oldHome },
+    { ...legacyDraft, zoneDrafts: { [oldHome.id]: {} } },
+    {
+      ...legacyDraft,
+      workspace: { ...draft.workspace, suggestionRequest: { id: "admitted", sourceKey: "source", quickStart: true } },
+    },
+  ]) {
+    restore(JSON.parse(JSON.stringify(held)));
+    assert.deepEqual(
+      values.setSetupVenues,
+      JSON.parse(JSON.stringify(legacyDraft.venues)),
+      "Pending or edited work keeps its exact source layout",
+    );
+  }
   draft.workspace.suggestionRequest = { id: "admitted-source", sourceKey: "exact-source", quickStart: true };
   draft.context.households = { a: "player" };
   createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));

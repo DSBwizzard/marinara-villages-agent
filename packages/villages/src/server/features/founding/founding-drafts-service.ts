@@ -289,7 +289,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. Starting Community Venues default to public Common Space, with distinct uses suited to the setting.",
             ...(quickStart
               ? [
-                  "Quick Start: a single-person Residence uses both Common and Private Space. A shared Residence uses a common sleeping/living space, without a Private Space. Each starting Community Venue has a public Common Space.",
+                  "Quick Start uses fixed starter layouts. Every Residence, including the player's, has Entrance, Common Space and Private Space. Describe each Community Venue's public Gathering Space in the Common fields; a second public Activity Space is supplied by the starter layout. Keep these public spaces unowned.",
                   "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Give each Community Venue a distinct everyday use suited to the Village. These template defaults do not restrict later editing.",
                 ]
               : []),
@@ -373,9 +373,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                     row.venueClass === "community"
                       ? "common"
                       : quickStart && row.venueClass === "residence"
-                        ? row.residentIds.length + Number(row.playerHome) > 1
-                          ? "common"
-                          : "both"
+                        ? "both"
                         : row.venueClass === "residence"
                           ? "common|private|both"
                           : "exterior|common|private|both",
