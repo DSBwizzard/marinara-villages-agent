@@ -53,6 +53,7 @@ const SETTING_MARI_POSES = {
 
 function FoundingChapter({
   step,
+  explanation,
   mobileScene,
   mobileTitle,
   mobileHeader,
@@ -64,6 +65,7 @@ function FoundingChapter({
   children,
 }: {
   step: number;
+  explanation: boolean;
   mobileScene: boolean;
   mobileTitle?: string;
   mobileHeader?: ReactNode;
@@ -80,9 +82,13 @@ function FoundingChapter({
     </main>
   );
   return (
-    <div className="villages-founding-chapter" data-guided={step > 0 || undefined}>
+    <div
+      className="villages-founding-chapter"
+      data-guided={step > 0 || undefined}
+      data-explanation={explanation || undefined}
+    >
       {guide}
-      {mobileTitle ? (
+      {explanation ? null : mobileTitle ? (
         mobileScene ? null : (
           <FoundingDialog
             title={mobileTitle}
@@ -209,8 +215,11 @@ export function FoundingScreen({
     return () => layout.removeEventListener("change", update);
   }, []);
   const chapterMenu = CHAPTER_MENUS[setupStep];
+  const [venueIntro, setVenueIntro] = useState<"homes" | "community">();
+  const explainingVenues = setupStep === FOUNDING_STEP.Venues && !!venueIntro && !draftSaveError;
   const confirmStarterHomes = useConfirmation(setupVenues);
-  const mobileScene = phone && !!chapterMenu && setupWorkspace.mobileMenu !== chapterMenu && !draftSaveError;
+  const mobileScene =
+    phone && !!chapterMenu && (explainingVenues || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
   const beat = settingBeat(setupWorkspace);
   const manualSetting = beat === "manual";
   const [arrival, setArrival] = useState<"fading" | "turning" | "greeting">();
@@ -227,7 +236,8 @@ export function FoundingScreen({
   const chooseConnections =
     setupStep === FOUNDING_STEP.Setting && setupWorkspace.settingIntroPending === "connections" && !fading;
   const prelude = showTitle || chooseConnections || turning;
-  const desktopMap = !phone && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
+  const desktopMap =
+    !phone && !explainingVenues && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
   const hierarchyLayer = desktopMap
     ? undefined
     : setupStep === FOUNDING_STEP.Setting &&
@@ -250,11 +260,13 @@ export function FoundingScreen({
       ? "looking-up"
       : setupStep === FOUNDING_STEP.Setting
         ? SETTING_MARI_POSES[beat]
-        : setupStep === FOUNDING_STEP.People
-          ? "happy"
-          : setupStep === FOUNDING_STEP.Review
-            ? "proud"
-            : "playful";
+        : explainingVenues
+          ? "presenting"
+          : setupStep === FOUNDING_STEP.People
+            ? "happy"
+            : setupStep === FOUNDING_STEP.Review
+              ? "proud"
+              : "playful";
   const mariFacing = mariPose === "happy-side" ? "left" : mariPose === "looking-up" ? "right" : "front";
   const mariFlipEnabled = snapshot?.settings.spriteCardFlipEnabled !== false;
   useEffect(() => {
@@ -318,8 +330,8 @@ export function FoundingScreen({
     setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
   }, [setupStep, screen]);
   useEffect(() => {
-    if (screen === "setup" && mobileScene) chapterLine.current?.focus({ preventScroll: true });
-  }, [screen, phone, chapterMenu, mobileScene]);
+    if (screen === "setup" && (mobileScene || explainingVenues)) chapterLine.current?.focus({ preventScroll: true });
+  }, [screen, phone, chapterMenu, mobileScene, explainingVenues, venueIntro]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const mapUpload = useRef<HTMLInputElement>(null);
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
@@ -480,6 +492,9 @@ export function FoundingScreen({
     const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
       setSetupFocusIssue(null);
+      setVenueIntro(
+        step === FOUNDING_STEP.Venues && setupStep === FOUNDING_STEP.People && !openMenu ? "homes" : undefined,
+      );
       if (openMenu && step === FOUNDING_STEP.Setting) setSettingEditorOpen(true);
       if (phone && openMenu) {
         setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: CHAPTER_MENUS[step] }));
@@ -825,16 +840,25 @@ export function FoundingScreen({
                 type="button"
                 disabled={busy || spriteBusy || setupEditorOpen}
                 onClick={() => {
-                  if (!spriteWorking.current) changeStep(setupStep - 1);
+                  if (spriteWorking.current) return;
+                  if (explainingVenues && venueIntro === "community") setVenueIntro("homes");
+                  else changeStep(setupStep - 1, explainingVenues);
                 }}
               >
                 Back
               </button>
-              {phone ? (
+              {phone || explainingVenues ? (
                 <button
                   type="button"
                   className="villages-forging-primary"
-                  onClick={() => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }))}
+                  disabled={advanceDisabled}
+                  onClick={() => {
+                    if (explainingVenues && venueIntro === "homes") setVenueIntro("community");
+                    else {
+                      setVenueIntro(undefined);
+                      if (phone) setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }));
+                    }
+                  }}
                 >
                   Next
                 </button>
@@ -844,17 +868,19 @@ export function FoundingScreen({
             </>
           }
         >
-          {
-            [
-              "",
-              desktopMap
-                ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
-                : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
-              "Choose who you’ll play and who lives here. Each of you gets a home with an entrance, a common room, and a private room.",
-              "The Community Venue starts with an entrance and two public spaces. Move the pins here and change any layout later.",
-              "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
-            ][setupStep]!
-          }
+          {explainingVenues
+            ? venueIntro === "homes"
+              ? "Each of you gets a home with an entrance, a common room, and a private room. You can change the layout after Founding."
+              : "You’ll also share a Community Venue, with an entrance and two public spaces. That’s somewhere for everyone to gather."
+            : [
+                "",
+                desktopMap
+                  ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
+                  : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
+                "Choose who you’ll play and who lives here.",
+                "Here are your starting Venues. You can give them names and place them on the Map.",
+                "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
+              ][setupStep]!}
         </FoundingGuide>
       ) : null;
     return (
@@ -991,6 +1017,7 @@ export function FoundingScreen({
         ) : null}
         <FoundingChapter
           step={setupStep}
+          explanation={explainingVenues}
           bodyRef={bodyRef}
           guide={guide}
           mobileScene={mobileScene}

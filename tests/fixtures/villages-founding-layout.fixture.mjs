@@ -323,6 +323,35 @@ export async function verifyFoundingLayout(group) {
         const work = root.locator(".villages-forging-body");
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
+          if (await root.locator("[data-explanation]").count()) {
+            const homes = guide.getByText(/^Each of you gets a home/);
+            const community = guide.getByText(/^You’ll also share a Community Venue/);
+            await expect(homes).toBeVisible();
+            await expect(work).toHaveCount(0);
+            await layer("Venue");
+            await expect(hierarchy).toBeInViewport({ ratio: 1 });
+            await expect(button("Back")).toBeInViewport({ ratio: 1 });
+            await expect(button("Next")).toBeInViewport({ ratio: 1 });
+            await button("Back").click();
+            await expect(root).toHaveAttribute("data-step", "2");
+            await expect(root.locator(".villages-selected-villager")).toHaveCount(view.count);
+            await button("Next").click();
+            await expect(homes).toBeVisible();
+            await button("Next").click();
+            await expect(community).toBeVisible();
+            await expect(work).toHaveCount(0);
+            await expect(button("Next")).toBeInViewport({ ratio: 1 });
+            if (process.env.VILLAGES_SCREENSHOT_DIR)
+              await page.screenshot({
+                path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `community-intro-${view.width}.png`),
+              });
+            await button("Back").click();
+            await expect(homes).toBeVisible();
+            await button("Next").click();
+            await expect(community).toBeVisible();
+            await button("Next").click();
+            await expect(work).toBeVisible();
+          }
           if (!phone || !(await root.locator("dialog.villages-chapter-menu[open]").count())) {
             const currentLayer = { 1: "Map", 3: "Venue" }[await root.getAttribute("data-step")];
             if (!phone && (currentLayer === "Map" || currentLayer === "Venue")) {
@@ -1164,6 +1193,10 @@ export async function verifyFoundingLayout(group) {
         await bounds("maps");
         await settingNext().click();
         await expect(root).toHaveAttribute("data-step", "2");
+        await expect(root.locator(".villages-chapter-guide")).toContainText(
+          "Choose who you’ll play and who lives here.",
+        );
+        await expect(root.locator(".villages-chapter-guide")).not.toContainText("gets a home");
         await enterChapter();
         if (view.width === 390 && view.height === 844) {
           await expect

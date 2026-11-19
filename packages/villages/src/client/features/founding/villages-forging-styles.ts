@@ -722,6 +722,7 @@ export const VILLAGES_FORGING_STYLES = `
     container-type:size; display:grid; grid-template-columns:minmax(9rem,.52fr) minmax(0,1fr);
     gap:clamp(.75rem,2vw,1.75rem); width:100%;
   }
+  .villages-founding-chapter[data-explanation] { grid-template-columns:minmax(0,1fr); }
   .villages-founding-chapter[data-guided]>.villages-forging-body {
     container:founding-work / inline-size; align-self:center; height:min(94cqh,54rem);
     padding-inline:0; overflow:auto;
