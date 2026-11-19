@@ -1,6 +1,14 @@
 import { observedZone } from "./zone-observation.js";
 import type { VenueScene } from "../models/scene-model.js";
-import { contactPath, liveSceneMovePermission, sceneMoveAccompanying } from "./venue-contact.js";
+import {
+  contactCanEnter,
+  contactNeighbors,
+  contactPath,
+  liveSceneMovePermission,
+  physicalVenuePath,
+  sceneMoveAccompanying,
+  sceneTrespassReason,
+} from "./venue-contact.js";
 import { sceneZoneOccupants } from "./scene-attendance.js";
 import { findLocation } from "./places.js";
 import { VillagesRequestError } from "./errors.js";
@@ -49,7 +57,7 @@ import {
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
 import { evaluateZoneAccess, projectVenueAccess, projectZoneAccess } from "./venue-access.js";
 import { villageVenueLimit } from "./venue-capacity.js";
-import { venueZones, zoneClosed } from "./venue-zones.js";
+import { resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
 
@@ -280,6 +288,28 @@ export function villageSettings(
         };
         const accessView = projectZoneAccess(venue, originalZone, "player", access);
         const movement = scene && { ...scene, accompanying };
+        const route =
+          movement && context?.at && physicalVenuePath(village, venue, movement, originalZone.id, context.at);
+        const approach =
+          route &&
+          movement &&
+          context?.at &&
+          physicalVenuePath(village, venue, movement, originalZone.id, context.at, true);
+        const liveZone = liveVenue && resolveVenueZone(liveVenue, originalZone.id);
+        const trespassReason =
+          scene && context?.at && sceneTrespassReason(village, venue, originalZone, scene, context.at);
+        const canTrespass = !!(
+          scene &&
+          scene.status === "active" &&
+          liveVenue &&
+          liveZone &&
+          liveSceneWorld &&
+          context?.at &&
+          !accessView.decision.allowed &&
+          contactNeighbors(liveVenue, scene.zoneId ?? "").includes(originalZone.id) &&
+          trespassReason &&
+          sceneTrespassReason(liveSceneWorld, liveVenue, liveZone, scene, context.at) === trespassReason
+        );
         let reachable = false;
         if (
           liveSceneWorld &&
@@ -353,7 +383,20 @@ export function villageSettings(
             : undefined,
           access: undefined,
           controllerIds: undefined,
-          accessView: liveSceneWorld ? { ...accessView, reachable } : accessView,
+          accessView: liveSceneWorld
+            ? {
+                ...accessView,
+                reachable,
+                canTrespass,
+                routeBlocked: !reachable && !!scene && !route,
+                accessNeededVia:
+                  !reachable && !approach && movement && route
+                    ? route
+                        .slice(1, -1)
+                        .find((id) => !contactCanEnter(village, venue, id, "player", movement, context?.at))
+                    : undefined,
+              }
+            : accessView,
         };
         return {
           ...zone,

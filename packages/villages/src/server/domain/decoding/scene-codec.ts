@@ -129,6 +129,7 @@ export function coerceSession(value: unknown): VenueScene {
             originZoneId: String(row.originZoneId),
             destinationZoneId: String(row.destinationZoneId),
             at: String(row.at),
+            ...(row.trespass === true ? { trespass: true as const } : {}),
           }))
       : [],
     generationReceipts: Array.isArray(raw.generationReceipts)
@@ -151,6 +152,16 @@ export function coerceSession(value: unknown): VenueScene {
     placeName: asTrimmedString(raw.placeName),
     zoneId: asTrimmedString(raw.zoneId) || undefined,
     enteredFromZoneId: asTrimmedString(raw.enteredFromZoneId) || undefined,
+    ...(asRecord(raw.trespass).zoneId === raw.zoneId &&
+    typeof raw.zoneId === "string" &&
+    isTrespassReason(asRecord(raw.trespass).reason)
+      ? {
+          trespass: {
+            zoneId: raw.zoneId,
+            reason: asRecord(raw.trespass).reason as import("../../../shared/helpers/venue-access.js").TrespassReason,
+          },
+        }
+      : {}),
     pendingRoomQuestions: Array.isArray(raw.pendingRoomQuestions)
       ? raw.pendingRoomQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
       : [],
@@ -253,3 +264,4 @@ export function coerceSession(value: unknown): VenueScene {
     recap: asString(raw.recap).slice(0, 600),
   };
 }
+import { isTrespassReason } from "../../../shared/helpers/venue-access.js";

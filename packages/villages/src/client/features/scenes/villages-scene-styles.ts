@@ -87,6 +87,10 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .villages-scene-move .villages-founding-editor-body { display:grid; gap:.45rem; padding:.75rem; }
 .villages-scene-move .villages-founding-editor-body p { margin:0 0 .2rem; }
 .villages-scene-move .villages-founding-editor-body button { width:100%; text-align:left; min-height:44px; }
+.villages-scene-move-zone { display:grid; gap:.25rem; padding:.25rem 0; border-bottom:1px solid var(--border); }
+.villages-scene-move-zone small { color:var(--muted-foreground); }
+.villages-scene-move-zone:has(.villages-scene-trespass-confirm) { border-bottom:0; }
+.villages-scene-trespass-confirm { display:grid; gap:.35rem; }
 .${tag}-room-screen .${tag}-chat-head { flex-wrap: nowrap; }
 .${tag}-room-screen .${tag}-chat-head:has(:is(.${tag}-room-actions-menu, .${tag}-scene-error-panel, .${tag}-room-stars)) { z-index: 25; }
 .${tag}-room-screen .${tag}-chat-actions { flex: 0 0 auto; }

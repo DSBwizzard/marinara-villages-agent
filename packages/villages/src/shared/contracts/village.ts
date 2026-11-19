@@ -704,6 +704,7 @@ export type RoomOperation = {
   error?: string;
   input?: {
     zoneId?: string;
+    trespass?: true;
     message?: string;
     mode?: string;
     targetId?: string;
@@ -739,6 +740,7 @@ export type SceneView = {
   placeName: string;
   spaceClass?: VenueClass;
   zoneId?: string;
+  trespassing?: true;
   doorwayContacts?: { characterId: string; playerZoneId: string }[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;

@@ -152,7 +152,7 @@ export function applyNarrationMove(
       .map(([characterId, zoneId]) => ({ characterId, zoneId })),
   };
   const accessAt = new ZonedDate(readset.calendar.instant, readset.calendar.timeZone),
-    path = contactPath(state, venue, before[actor.id], command.to, actor.id, scene, accessAt),
+    path = contactPath(state, venue, before[actor.id], command.to, actor.id, scene, accessAt, true),
     zone = venue.zones?.find((zone) => zone.id === command.to);
   memoryRequire(path && path.length > 1 && zone, "there is no permitted connected movement route");
   const decision = evaluateZoneAccess(venue, zone, actor.id, {

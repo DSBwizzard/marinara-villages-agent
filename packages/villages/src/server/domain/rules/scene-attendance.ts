@@ -6,7 +6,7 @@ import { agendaAt } from "./agenda-plan.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
-import { contactPath, sceneAccessContext } from "./venue-contact.js";
+import { contactPath, physicallyUsableZone, sceneAccessContext } from "./venue-contact.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
@@ -154,10 +154,20 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
     for (const [actor, from] of Object.entries(positions)) {
       if (!from || from === "exterior") continue;
       const zone = resolveVenueZone(venue, from);
-      if (
+      const decision =
         zone &&
-        evaluateZoneAccess(venue, zone, actor, { ...context, positions, unavailable: zoneClosed(village, venue, zone) })
-          .allowed
+        evaluateZoneAccess(venue, zone, actor, {
+          ...context,
+          positions,
+          unavailable: zone.closed || zoneClosed(village, venue, zone),
+        });
+      if (
+        decision?.allowed ||
+        (actor === "player" &&
+          session.trespass?.zoneId === from &&
+          zone &&
+          session.trespass.reason === decision?.reason &&
+          physicallyUsableZone(village, venue, zone, context.at ?? new Date(session.startedAt)))
       )
         continue;
       const previous = actor === "player" ? session.enteredFromZoneId : session.accessPreviousZones?.[actor];

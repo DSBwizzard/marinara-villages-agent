@@ -1,4 +1,4 @@
-// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move
+// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -44,6 +44,7 @@ for (const scenario of [
   "overheard",
   "boundary",
   "open-park-boundary",
+  "trespass",
   "crossing-rejected",
   "departure-rejected",
   "resident-crossing",
@@ -53,7 +54,8 @@ for (const scenario of [
   await runCase("scene-travel/" + scenario, async () => {
     const crossing = scenario === "boundary" || scenario === "open-park-boundary" ? localCrossings[scenario] : null;
     const follow = scenario === "follow-after-move";
-    const location = follow ? localCrossings.boundary : crossing;
+    const trespass = scenario === "trespass";
+    const location = trespass ? localCrossings["open-park-boundary"] : follow ? localCrossings.boundary : crossing;
     const remoteWalk = "I head over to Willow Hotel.";
     const beforeMove = crossing ? [crossing.departure, crossing.activity, remoteWalk] : [];
     const host = await packagedSceneServer({
@@ -75,6 +77,10 @@ for (const scenario of [
             connectedTo: ["common"],
           });
           world.venues[0] = venueFixture(venue);
+          if (trespass) {
+            const pond = world.venues[0].zones.find((zone) => zone.id === "pond")!;
+            pond.access = { ...pond.access!, mode: "permission-required", managerIds: ["mara"] };
+          }
         }
         const speaker = world.villagers[0];
         speaker.cardSnapshot.name = "Gidget";
@@ -339,6 +345,37 @@ for (const scenario of [
       });
     try {
       const before = (await getActive()).json().session;
+      if (trespass) {
+        const cross = {
+          sessionId: before.id,
+          zoneId: "pond",
+          operationId: "cross-pond",
+          expectedSceneRevision: before.sceneRevision,
+          trespass: true,
+        };
+        const move = (payload: typeof cross | Omit<typeof cross, "trespass">) =>
+          host.app.inject({ method: "POST", url: "/api/villages/rooms/zone", payload });
+        const crossed = await move(cross);
+        assert.equal(crossed.statusCode, 200, crossed.body);
+        assert.equal(crossed.json().session.zoneId, "pond");
+        assert.equal(crossed.json().session.trespassing, true);
+        assert.equal((await getActive()).json().session.trespassing, true);
+        assert.equal((await move(cross)).statusCode, 200);
+        const { trespass: _, ...ordinary } = cross;
+        assert.equal((await move(ordinary)).statusCode, 409, "A move receipt cannot be replayed in a different mode.");
+        const left = await move({
+          ...ordinary,
+          zoneId: "common",
+          operationId: "leave-pond",
+          expectedSceneRevision: (await getActive()).json().session.sceneRevision,
+        });
+        assert.equal(left.statusCode, 200, left.body);
+        assert.equal(left.json().session.zoneId, "common");
+        assert.equal(left.json().session.trespassing, undefined);
+        assert.equal((await move(cross)).json().session.zoneId, "common", "A late replay cannot cross again.");
+        assert.equal(calls, 0, "Crossing and departure purchase no Scene reply.");
+        return;
+      }
       if (follow) {
         const hallReply = await turn(before.id, before.sceneRevision, "invite-ella", invitation);
         assert.equal(hallReply.statusCode, 200, hallReply.body);

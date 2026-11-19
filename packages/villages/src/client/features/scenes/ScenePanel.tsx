@@ -306,8 +306,8 @@ export function RoomPanel({
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
-  movementZones: { id: string; label: string }[];
-  onMovementTarget: (id: string) => void;
+  movementZones: { id: string; label: string; status?: string; allowed?: boolean; canTrespass?: boolean }[];
+  onMovementTarget: (id: string, trespass?: boolean) => void;
   onTravel?: () => void;
   currentZoneLabel: string;
 }) {
@@ -319,6 +319,7 @@ export function RoomPanel({
   const retrying = !!retryPending || (room.operation?.kind === "retry" && room.operation.status === "running");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsView, setActionsView] = useState<"menu" | "move" | null>(null);
+  const [trespassTarget, setTrespassTarget] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
@@ -778,6 +779,7 @@ export function RoomPanel({
       <div className={`${ELEMENT_TAG}-chat-head`}>
         <span className={`${ELEMENT_TAG}-room-place`}>
           {room.placeName}
+          {room.trespassing ? <span className={`${ELEMENT_TAG}-room-time`}>Trespassing</span> : null}
           {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
         </span>
         <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
@@ -915,6 +917,7 @@ export function RoomPanel({
                   disabled={busy || !!contactRecovery || !movementZones.length}
                   onClick={() => {
                     actionsRef.current?.querySelector("button")?.focus();
+                    setTrespassTarget(null);
                     setActionsView("move");
                   }}
                 >
@@ -1037,19 +1040,51 @@ export function RoomPanel({
           scrollBody
         >
           <div className="villages-founding-editor-body">
-            <p>In {currentZoneLabel}</p>
+            <p>
+              In {currentZoneLabel}
+              {room.trespassing ? " · Trespassing" : ""}
+            </p>
             {movementZones.map((zone) => (
-              <button
-                key={zone.id}
-                type="button"
-                disabled={busy || !canDraft}
-                onClick={() => {
-                  setActionsView(null);
-                  onMovementTarget(zone.id);
-                }}
-              >
-                {zone.label}
-              </button>
+              <div className="villages-scene-move-zone" key={zone.id}>
+                {zone.allowed !== false ? (
+                  <button
+                    type="button"
+                    disabled={busy || !canDraft}
+                    onClick={() => {
+                      setActionsView(null);
+                      onMovementTarget(zone.id);
+                    }}
+                  >
+                    {zone.label}
+                  </button>
+                ) : (
+                  <span>{zone.label}</span>
+                )}
+                {zone.status && zone.status !== "Open" && <small>{zone.status}</small>}
+                {zone.canTrespass && trespassTarget !== zone.id && (
+                  <button type="button" disabled={busy || !canDraft} onClick={() => setTrespassTarget(zone.id)}>
+                    Trespass…
+                  </button>
+                )}
+                {trespassTarget === zone.id && zone.canTrespass && (
+                  <div className="villages-scene-trespass-confirm">
+                    <p>Enter {zone.label} without permission?</p>
+                    <button type="button" onClick={() => setTrespassTarget(null)}>
+                      Stay here
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !canDraft}
+                      onClick={() => {
+                        setActionsView(null);
+                        onMovementTarget(zone.id, true);
+                      }}
+                    >
+                      Attempt entry
+                    </button>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </ModalDialog>

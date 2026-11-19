@@ -13,6 +13,7 @@ import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
+import { zoneAccessLabel } from "../../shared/zone-access.js";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
@@ -355,18 +356,19 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           movementZones={(() => {
             const venue = sceneVenues.find((entry) => entry.id === room.placeId);
-            return (venue?.zones ?? [])
-              .filter((zone) => {
-                if (zone.id === room.zoneId) return false;
-                if (zone.closed) return false;
-                return zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false;
-              })
+            if (!venue) return [];
+            return (venue.zones ?? [])
+              .filter((zone) => zone.id !== room.zoneId)
               .map((zone) => ({
                 id: zone.id,
-                label: sceneZoneLabel(zone) + (zone.accessView?.decision.reason === "invitation" ? " (invited)" : ""),
+                label: sceneZoneLabel(zone),
+                allowed:
+                  !zone.closed && zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false,
+                status: zoneAccessLabel(zone, venue, true),
+                canTrespass: !!zone.accessView?.canTrespass,
               }));
           })()}
-          onMovementTarget={(zoneId) => void moveRoom(zoneId)}
+          onMovementTarget={(zoneId, trespass) => void moveRoom(zoneId, trespass)}
           onTravel={() => {
             if (!room.travel || roomBusy || contactReviewPending.current || sceneLifetime.current !== room.id) return;
             const source = room.id;

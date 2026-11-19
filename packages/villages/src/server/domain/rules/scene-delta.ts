@@ -36,6 +36,7 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
     if (move.actorId === "player") {
       scene.enteredFromZoneId = move.from;
       scene.zoneId = move.zoneId;
+      delete scene.trespass;
       scene.spaceClass = move.spaceClass;
       scene.area = move.area;
       scene.privateOwnerId = move.privateOwnerId;

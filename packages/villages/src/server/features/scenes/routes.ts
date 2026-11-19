@@ -98,6 +98,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       expectedSceneRevision?: unknown;
       retryOfAttemptId?: string;
       operationId?: unknown;
+      trespass?: unknown;
     };
   }>("/rooms/zone", async (request, reply) => {
     try {
@@ -108,6 +109,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
           readSceneRevision(request.body?.expectedSceneRevision),
           request.body?.retryOfAttemptId,
           request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
+          request.body?.trespass === true,
         ),
       };
     } catch (error) {

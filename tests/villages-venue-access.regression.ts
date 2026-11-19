@@ -366,6 +366,8 @@ command({ action: "ban", zoneId: null, visitorId: "player" } as any);
 assert.equal(decide("bedroom").reason, "banned", "A later ban is not covered by a previous exception.");
 for (const row of venue.access!.bans) row.active = false;
 venue.access!.visitorHours = [{ days: ["Monday"], start: "09:00", end: "17:00" }];
+assert.equal(zone("bedroom").access!.visitorHours, "always", "New private rooms have their own visitor schedule.");
+zone("bedroom").access!.visitorHours = "inherit"; // Existing rooms with an explicit inherited schedule retain it.
 assert.equal(decide("bedroom", "player", { at: new Date(2026, 9, 5, 23) }).reason, "outside-hours");
 assert.equal(
   decide("bedroom", "jim", { at: new Date(2026, 9, 5, 23) }).allowed,
@@ -383,6 +385,21 @@ command({
   outsideHours: true,
 } as any);
 assert.equal(decide("bedroom", "player", { at: new Date(2026, 9, 5, 23) }).allowed, true);
+const nextVisit = command({
+  action: "invite",
+  zoneId: "bedroom",
+  visitorId: "visitor",
+  duration: "visit",
+  visitTiming: "next",
+  sceneId: "scene-a",
+  accompanied: false,
+  outsideHours: true,
+} as any);
+assert.equal(decide("bedroom", "visitor", { sceneId: "scene-a" }).allowed, false);
+assert.equal(decide("bedroom", "visitor", { sceneId: "scene-b" }).allowed, true);
+assert.throws(() => claimVisitPermission(venue, nextVisit.operationId, "scene-a"), /another visit/);
+claimVisitPermission(venue, nextVisit.operationId, "scene-b");
+assert.equal(decide("bedroom", "visitor", { sceneId: "scene-c" }).allowed, false);
 const state = defaultVillageState();
 state.venues = [venue];
 const imageKey = sceneryImageKey(state, venue, state.setupAt, "office"),
@@ -689,6 +706,7 @@ cafe.access!.visitorHours = [{ days: ["Monday"], start: "09:00", end: "17:00" }]
 const cafeZone = cafe.zones!.find((zone) => zone.id === "living")!;
 cafeZone.kind = "public";
 cafeZone.access!.mode = "public";
+cafeZone.access!.visitorHours = "inherit";
 cafeZone.access!.memberRoles = [];
 planningWorld.venues = [cafe];
 const planned = {

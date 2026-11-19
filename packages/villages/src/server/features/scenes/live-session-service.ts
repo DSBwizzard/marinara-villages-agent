@@ -203,6 +203,19 @@ export function createLiveScenes({
       return refreshZoneParticipants(captured, completing);
     }
     const zoneId = requireSceneZoneId(session);
+    const trespassZone = session.trespass && resolveVenueZone(venue, session.trespass.zoneId);
+    if (
+      trespassZone &&
+      evaluateZoneAccess(venue, trespassZone, "player", {
+        ...sceneAccessContext(session, undefined, village.timeZone),
+        unavailable: zoneClosed(village, venue, trespassZone),
+        environment: village.narrative,
+      }).allowed
+    ) {
+      session = await changeSession(session.id, (saved) => {
+        if (saved.zoneId === trespassZone.id) delete saved.trespass;
+      });
+    }
     if (venue.access && session.sceneAttendance) {
       const exits = accessExits(session, village, venue);
       if (exits.length) {
@@ -235,6 +248,7 @@ export function createLiveScenes({
               const destination = resolveVenueZone(venue, exit.to)!;
               state.enteredFromZoneId = exit.from;
               state.zoneId = exit.to;
+              delete state.trespass;
               state.area = zoneArea(destination);
               state.spaceClass = destination.venueClass;
               state.privateOwnerId = destination.ownerId ?? "";
@@ -346,6 +360,7 @@ export function createLiveScenes({
       if (!claimed) {
         const entrance = resolveVenueZone(venue, "exterior")!;
         saved.zoneId = entrance.id;
+        delete saved.trespass;
         saved.area = zoneArea(entrance);
         saved.spaceClass = entrance.venueClass;
         saved.privateOwnerId = "";

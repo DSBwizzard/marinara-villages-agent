@@ -188,6 +188,7 @@ function authority(scene: VenueScene) {
   return {
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
     version: 1 as const,
+    ...(scene.trespass?.zoneId === scene.zoneId && scene.trespass ? { trespassing: true as const } : {}),
     ...(scene.status === "opening" && scene.visitEvent ? { visitEventOpening: true as const } : {}),
     ...(travel && destination
       ? {

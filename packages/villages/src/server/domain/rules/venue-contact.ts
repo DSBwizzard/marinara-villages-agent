@@ -1,4 +1,5 @@
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
+import { isTrespassReason } from "../../../shared/helpers/venue-access.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
@@ -6,6 +7,7 @@ import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
 import { resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { conflict } from "./errors.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { ordinaryUseRestricted } from "./narrative-environment.js";
 
 export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
@@ -109,6 +111,7 @@ export function contactCanEnter(
   characterId: string,
   scene?: VenueScene,
   at?: Date,
+  accepting = characterId === "player",
 ): boolean {
   if (scene) state = sceneAccessState(state, scene);
   venue = sceneLayoutVenue(venue, scene);
@@ -118,11 +121,66 @@ export function contactCanEnter(
     !!zone &&
     evaluateZoneAccess(venue, zone, characterId, {
       ...(scene ? sceneAccessContext(scene, at, state.timeZone) : { at }),
-      accepting: characterId === "player",
+      accepting,
       unavailable: zoneClosed(state, venue, zone),
       environment: state.narrative,
     }).allowed
   );
+}
+export function physicallyUsableZone(state: VillageState, venue: VillageVenue, zone: VillageVenueZone, at: Date) {
+  return (
+    !zone.closed &&
+    !zoneClosed(state, venue, zone) &&
+    !ordinaryUseRestricted(state.narrative, at.toISOString(), venue.id, zone.id)
+  );
+}
+
+export function sceneTrespassReason(
+  state: VillageState,
+  venue: VillageVenue,
+  zone: VillageVenueZone,
+  scene: VenueScene,
+  at: Date,
+) {
+  if (
+    !venue.access ||
+    !zone.access ||
+    !contactNeighbors(venue, scene.zoneId ?? "", scene).includes(zone.id) ||
+    !physicallyUsableZone(state, venue, zone, at)
+  )
+    return;
+  const { reason } = evaluateZoneAccess(venue, zone, "player", {
+    ...sceneAccessContext(scene, at, state.timeZone),
+    accepting: true,
+    environment: state.narrative,
+  });
+  return isTrespassReason(reason) ? reason : undefined;
+}
+/** The layout supplies crossings. Entry restrictions are evaluated separately. */
+export function physicalVenuePath(
+  state: VillageState,
+  venue: VillageVenue,
+  scene: VenueScene,
+  to: string,
+  at: Date,
+  permittedApproach = false,
+): string[] | undefined {
+  const start = scene.zoneId;
+  if (!start) return;
+  const paths = [[start]];
+  const seen = new Set([start]);
+  for (const path of paths) {
+    const last = path.at(-1)!;
+    if (last === to) return path;
+    for (const next of contactNeighbors(venue, last, scene)) {
+      if (seen.has(next)) continue;
+      const zone = resolveVenueZone(venue, next);
+      if (!zone || !physicallyUsableZone(state, venue, zone, at)) continue;
+      if (permittedApproach && next !== to && !contactCanEnter(state, venue, next, "player", scene, at)) continue;
+      seen.add(next);
+      paths.push([...path, next]);
+    }
+  }
 }
 /** Exit routes can cross Zones that deny entry. */
 export function contactPath(
@@ -133,6 +191,7 @@ export function contactPath(
   actor: string,
   scene?: VenueScene,
   at?: Date,
+  acceptDestination = false,
 ): string[] | null {
   if (!from || !to) return null;
   const queue = [[from]],
@@ -142,7 +201,9 @@ export function contactPath(
       last = path.at(-1)!;
     if (last === to) return path;
     for (const next of contactNeighbors(venue, last, scene)) {
-      if (seen.has(next) || (to !== "exterior" && !contactCanEnter(state, venue, next, actor, scene, at))) continue;
+      const accepting = actor === "player" || (acceptDestination && next === to);
+      if (seen.has(next) || (to !== "exterior" && !contactCanEnter(state, venue, next, actor, scene, at, accepting)))
+        continue;
       seen.add(next);
       queue.push([...path, next]);
     }

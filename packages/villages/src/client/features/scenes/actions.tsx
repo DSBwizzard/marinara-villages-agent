@@ -378,7 +378,7 @@ export function useMoveRoom(ports: {
     clearCompletionOnRetire: false,
   });
   return useCallback(
-    async (zoneId: string) => {
+    async (zoneId: string, trespass = false) => {
       if (
         !room?.id ||
         roomEnded ||
@@ -404,7 +404,8 @@ export function useMoveRoom(ports: {
         );
         if (!owns()) return;
         if (hasPendingContact(operation)) throw new Error("Review the saved action before moving.");
-        const resend = sceneResend(operation, { zoneId }, operationId);
+        if (operation?.input?.trespass !== (trespass ? true : undefined)) operationId = createVillagesClientId();
+        const resend = sceneResend(operation, { zoneId, ...(trespass ? { trespass: true } : {}) }, operationId);
         operationId = resend.submissionId;
         roomMoveOperationIdRef.current = operationId;
         claim.submission = operationId;
@@ -413,6 +414,7 @@ export function useMoveRoom(ports: {
           body: JSON.stringify({
             sessionId: room.id,
             zoneId,
+            ...(trespass ? { trespass: true } : {}),
             operationId,
             expectedSceneRevision: room.sceneRevision ?? 0,
             retryOfAttemptId: resend.retryOfAttemptId,

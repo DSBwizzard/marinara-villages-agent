@@ -7,8 +7,9 @@ export function draftZonePolicy(
 ): ZoneAccessPolicy {
   const owner = area.ownerId || (venue.occupancy.playerHome ? "player" : venue.residentIds?.[0] || "");
   const occupied = venue.occupancy.playerHome || !!venue.residentIds?.length || !!venue.workerIds?.length;
+  const mode = occupied && (area.venueClass === "residence" || personal) ? "permission-required" : "public";
   return {
-    mode: occupied && (area.venueClass === "residence" || personal) ? "permission-required" : "public",
+    mode,
     managerIds: personal && owner ? [owner] : null,
     memberIds: personal && owner ? [owner] : [],
     memberRoles:
@@ -18,7 +19,7 @@ export function draftZonePolicy(
           ? ["workers"]
           : [],
     inviterIds: [],
-    visitorHours: "inherit",
+    visitorHours: mode === "public" ? "inherit" : "always",
     accompanied: false,
   };
 }

@@ -286,6 +286,9 @@ export function createSceneWriting({
       ]),
       metadata: blocksFor([
         scene.contactGeneration?.instruction ?? "",
+        scene.trespass?.zoneId === scene.zoneId && scene.trespass
+          ? "The player is here without permission. Reactions depend on what each person can observe or already knows. The crossing established no consent."
+          : "",
         mode === "greet"
           ? scene.visitEvent
             ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${

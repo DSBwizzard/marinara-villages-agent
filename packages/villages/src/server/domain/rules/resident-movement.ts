@@ -37,8 +37,8 @@ export function residentMovementOptions(
     zoneIds: zones
       .filter(
         (zone) =>
-          (contactPath(state, venue, contactPosition(scene, characterId), zone.id, characterId, scene, at)?.length ??
-            0) > 1,
+          (contactPath(state, venue, contactPosition(scene, characterId), zone.id, characterId, scene, at, true)
+            ?.length ?? 0) > 1,
       )
       .map((zone) => zone.id),
   }));
