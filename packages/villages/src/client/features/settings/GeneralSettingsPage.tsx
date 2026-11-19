@@ -45,6 +45,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
               </label>
               <label className={`${ELEMENT_TAG}-row ${ELEMENT_TAG}-send-toggle`}>
                 <input
+                  autoComplete="off"
                   type="checkbox"
                   checked={snapshot.settings.spontaneousEvents === true}
                   disabled={busy}

@@ -115,6 +115,7 @@ const publicFields = [
   "setupMaxVillagerCount",
   "setupMinVillagerCount",
   "setupPlaceCount",
+  "spontaneousEvents",
   "spriteCardFlipEnabled",
   "spriteVariantsEnabled",
   "backgroundPace",
@@ -160,6 +161,7 @@ try {
   assert.equal(initial.communityVenueId, "");
   assert.equal(initial.sceneryStyleProfileId, null);
   assert.equal(initial.narrativeConsequence, "gentle");
+  assert.equal(initial.spontaneousEvents, false);
   assert.equal(initial.playerPersonaName, "Robin Hale");
   assert.equal(initial.townMapExpectedWidth, 2560);
   assert.equal(initial.townMapExpectedHeight, 1440);
@@ -194,6 +196,7 @@ try {
     request("PATCH", {
       worldName: "Harbor",
       sendOnEnter: false,
+      spontaneousEvents: true,
       backgroundPace: "quiet",
       sceneryArtStyle: "Watercolor",
       sceneryStyleProfileId: "watercolor",
@@ -204,6 +207,7 @@ try {
   );
   assert.equal(updated.worldName, "Harbor");
   assert.equal(updated.sendOnEnter, false);
+  assert.equal(updated.spontaneousEvents, true);
   assert.equal(updated.backgroundPace, "quiet");
   assert.equal(updated.sceneryArtStyle, "Watercolor");
   assert.equal(updated.sceneryStyleProfileId, "watercolor");
