@@ -1,5 +1,10 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
+import {
+  FOUNDING_STEP,
+  savedFoundingStep,
+  SETUP_STEPS,
+} from "../packages/villages/src/client/features/founding/founding-steps.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { createFoundingRestoreSetupDraft } from "../packages/villages/src/client/features/founding/draft-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
@@ -36,7 +41,7 @@ async function reviewNavigation() {
   const { createFoundingGotoSetupStep } =
     await import("../packages/villages/src/client/features/founding/setup-controller.js");
   let reviewed = false,
-    step = 5,
+    step: number = FOUNDING_STEP.Review,
     problem = "",
     blocked = "Place every starting Venue photograph.";
   const ports = {
@@ -72,99 +77,86 @@ async function reviewNavigation() {
     setupLocationName: "Old Harbour",
     setupPlayerBackground: "I came to help the community.",
     setupSetting: "Coastal rooms",
-    setupStep: 5,
+    setupStep: Number(FOUNDING_STEP.Review),
     setupSuggestionsBusy: false,
     setupVenueBusy: false,
     snapshot: { isFounded: true },
   };
   const goto = createFoundingGotoSetupStep(ports as any);
-  goto(5);
+  goto(FOUNDING_STEP.Review);
   assert.equal(reviewed, false, "re-entering restored Review cannot acknowledge an invalid map");
   assert.match(problem, /Place every/);
   blocked = "";
-  goto(5);
+  goto(FOUNDING_STEP.Review);
   assert.equal(reviewed, true, "successful Review navigation incorporates map acknowledgment");
-  assert.equal(step, 5);
+  assert.equal(step, FOUNDING_STEP.Review);
   assert.equal(problem, "");
-  ports.setupStep = 0;
+  ports.setupStep = FOUNDING_STEP.Setting;
   ports.connectionSetupProblem = "Choose a System connection.";
-  goto(1);
-  assert.equal(step, 0, "Place requires connections before proceeding");
-  assert.equal(problem, ports.connectionSetupProblem);
-  ports.setupStep = 1;
-  goto(2);
-  assert.equal(step, 0, "connection errors return to their first-page controls");
+  goto(FOUNDING_STEP.Maps);
+  assert.equal(step, FOUNDING_STEP.Setting, "Setting requires connections before proceeding");
   assert.equal(problem, ports.connectionSetupProblem);
   ports.connectionSetupProblem = "";
-  ports.setupStep = 0;
   ports.personaDraft = "";
-  goto(1);
-  assert.equal(step, 1, "Place can advance to People before choosing a Persona");
-  ports.setupStep = 1;
-  goto(2);
-  assert.equal(step, 1, "People validates its own required fields before Map");
-  assert.equal(problem, "Choose an available Persona.");
-  ports.setupName = "";
-  goto(2);
-  assert.equal(step, 0, "missing Place fields return to the first tab");
-  assert.equal(problem, "Give the village a name.");
-  ports.setupName = "Village";
+  goto(FOUNDING_STEP.Maps);
+  assert.equal(step, FOUNDING_STEP.Maps, "Map artwork comes before choosing a Persona");
+  ports.setupStep = FOUNDING_STEP.Maps;
   ports.setupLocationName = "";
-  goto(2);
-  assert.equal(step, 0);
+  goto(FOUNDING_STEP.People);
+  assert.equal(step, FOUNDING_STEP.Setting);
   assert.equal(problem, "Name the starting location.");
   ports.setupLocationName = "Old Harbour";
-  ports.personaDraft = "player";
   reviewed = false;
   ports.setupMapSrc = "";
   ports.snapshot.isFounded = false;
-  goto(5);
-  assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
-  assert.match(problem, /Generate or upload map artwork/);
-  assert.equal(step, 2, "Missing artwork returns to Maps");
-  ports.setupStep = 2;
-  for (const target of [3, 4, 5]) {
+  for (const target of [FOUNDING_STEP.People, FOUNDING_STEP.Venues, FOUNDING_STEP.Review]) {
     goto(target);
-    assert.equal(step, 2, "No later chapter can bypass missing map artwork");
+    assert.equal(step, FOUNDING_STEP.Maps, "No later chapter can bypass missing map artwork");
+    assert.match(problem, /Generate or upload map artwork/);
   }
+  assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
   ports.setupMapSrc = "uploaded-map";
   ports.setupMapBusy = true;
-  goto(3);
-  assert.equal(step, 2, "Replacement artwork must finish before Venues");
+  goto(FOUNDING_STEP.People);
+  assert.equal(step, FOUNDING_STEP.Maps, "Replacement artwork must finish before People");
   assert.match(problem, /Wait for the requested map/);
   ports.setupMapBusy = false;
-  goto(3);
-  assert.equal(step, 3, "Completed artwork unlocks Venues without validating future Zones");
-  ports.setupStep = 3;
-  goto(4);
-  assert.equal(step, 4, "Venues advances to Zones without acknowledging Review");
+  goto(FOUNDING_STEP.People);
+  assert.equal(step, FOUNDING_STEP.People, "Completed artwork unlocks People");
+  ports.setupStep = FOUNDING_STEP.People;
+  goto(FOUNDING_STEP.Venues);
+  assert.equal(step, FOUNDING_STEP.People, "People requires a Persona before Venues");
+  assert.equal(problem, "Choose an available Persona.");
+  ports.personaDraft = "player";
+  goto(FOUNDING_STEP.Venues);
+  assert.equal(step, FOUNDING_STEP.Venues);
+  ports.setupStep = FOUNDING_STEP.Venues;
+  goto(FOUNDING_STEP.Review);
+  assert.equal(step, FOUNDING_STEP.Review, "Venues advances directly to Review");
   const admissionPorts: any = {
     ...ports,
-    setupStep: 1,
+    setupStep: FOUNDING_STEP.Maps,
     setupWorldName: "Othiras",
     setupMapSrc: "map",
     setupResidentAdmissions: { resident: { ...EMPTY_RESIDENT_ADMISSION } },
   };
   const continueWithNotes = createFoundingGotoSetupStep(admissionPorts);
-  continueWithNotes(2);
-  assert.equal(step, 2, "blank admission requires no approval");
-  admissionPorts.setupStep = 2;
+  continueWithNotes(FOUNDING_STEP.People);
+  assert.equal(step, FOUNDING_STEP.People, "blank admission requires no approval");
+  admissionPorts.setupStep = FOUNDING_STEP.People;
   admissionPorts.setupSetting = "Changed setting";
-  continueWithNotes(3);
-  assert.equal(step, 3, "no biography reapproval gate");
+  continueWithNotes(FOUNDING_STEP.Venues);
+  assert.equal(step, FOUNDING_STEP.Venues, "no biography reapproval gate");
 }
 
 async function main() {
-  const { savedFoundingStep, SETUP_STEPS } =
-    await import("../packages/villages/src/client/features/founding/founding-steps.js");
-  assert.deepEqual(SETUP_STEPS, ["Setting", "People", "Maps", "Venues", "Zones", "Review"]);
+  assert.deepEqual(SETUP_STEPS, ["Setting", "Maps", "People", "Venues", "Review"]);
   for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
-  assert.equal(savedFoundingStep({ step: 2, phase: "Venues and Map" }), 2);
-  assert.equal(savedFoundingStep({ step: 3 }), 5, "Old Review resumes at Review");
-  assert.equal(savedFoundingStep({ step: 3, phase: "Review" }), 5);
-  assert.equal(savedFoundingStep({ step: 0, phase: "Zones" }), 4, "Named chapters survive changed numbering");
-  assert.equal(savedFoundingStep({ step: NaN }), 0);
-  assert.equal(savedFoundingStep({ step: 8 }), 5);
+  assert.equal(savedFoundingStep({ step: 1 }), FOUNDING_STEP.People);
+  assert.equal(savedFoundingStep({ step: 2, phase: "Venues and Map" }), FOUNDING_STEP.Maps);
+  assert.equal(savedFoundingStep({ step: 3 }), FOUNDING_STEP.Review);
+  assert.equal(savedFoundingStep({ step: 4, phase: "Zones" }), FOUNDING_STEP.Venues);
+  assert.equal(savedFoundingStep({ step: NaN }), FOUNDING_STEP.Setting);
   const { readPersona } = await import("../packages/villages/src/server/adapters/engine/catalog.js");
   const { validateFoundingRoster } = await import("../packages/villages/src/server/domain/rules/founding-record.js");
   const { parseFoundingVenueSuggestions } =
@@ -965,9 +957,13 @@ await main()
     assert.equal(values.setSetupLocationName, startingLocationName, "Authored location names restore without backfill");
   }
   assert.equal(values.setScreen, "setup", "A freshly serialized v2 draft resumes without old-format backfill");
-  for (const phase of ["Venues", "Zones", "Review"]) {
+  for (const phase of ["People", "Venues", "Zones", "Review"]) {
     restore({ ...draft, step: 3, phase });
-    assert.equal(values.setSetupStep, 2, "Missing artwork resumes on Maps without discarding the draft");
+    assert.equal(
+      values.setSetupStep,
+      FOUNDING_STEP.Maps,
+      "Missing artwork resumes on Maps without discarding the draft",
+    );
   }
   restore({
     ...draft,
@@ -977,7 +973,7 @@ await main()
     mapImageSource: "upload",
     mapImage: "/saved-map.png",
   });
-  assert.equal(values.setSetupStep, 5, "Old Review preserves its chapter once artwork exists");
+  assert.equal(values.setSetupStep, FOUNDING_STEP.Review, "Old Review preserves its chapter once artwork exists");
   assert.deepEqual(values.setSetupWorkspace, draft.workspace);
   assert.equal(
     Object.hasOwn(values.setSetupContext, "households"),

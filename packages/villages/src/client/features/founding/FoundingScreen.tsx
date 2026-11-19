@@ -21,7 +21,8 @@ import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide, foundingMariSprite } from "./FoundingGuide.js";
 import { FoundingHierarchy } from "./FoundingHierarchy.js";
 import { FoundingSettingScene, settingBeat } from "./FoundingSettingScene.js";
-import { FoundingPersonaSelector, FoundingVillagerPicker, SETUP_STEPS } from "./FoundingPanels.js";
+import { FoundingPersonaSelector, FoundingVillagerPicker } from "./FoundingPanels.js";
+import { FOUNDING_STEP, SETUP_STEPS } from "./founding-steps.js";
 import { QuickStartButton } from "./QuickStartButton.js";
 import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
@@ -38,7 +39,7 @@ const PLACE_ERRORS = {
 };
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 const PHONE_LAYOUT = "(max-width:727px)";
-const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "zones", "review"] as const;
+const CHAPTER_MENUS = [undefined, "maps", "people", "venues", "review"] as const;
 const SETTING_MARI_POSES = {
   welcome: "wave",
   manual: "neutral",
@@ -181,12 +182,12 @@ export function FoundingScreen({
   const pendingSetting = setupWorkspace.suggestionRequest?.draftSetting && !setupWorkspace.suggestionRequest.failure;
   const rawSetupProblem =
     currentSetupProblem ||
-    (setupStep === 3 && !setupWorkspace.suggestionRequest?.draftSetting
+    (setupStep === FOUNDING_STEP.Venues && !setupWorkspace.suggestionRequest?.draftSetting
       ? setupWorkspace.suggestionRequest?.failure
       : "") ||
     "";
   const venueConnectionUnavailable =
-    setupStep === 3 && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
+    setupStep === FOUNDING_STEP.Venues && /^Language model connection not found(?::|\.?$)/iu.test(rawSetupProblem);
   const setupProblem = venueConnectionUnavailable
     ? "The System connection is unavailable. Choose another model or review it in Engine."
     : rawSetupProblem;
@@ -211,40 +212,43 @@ export function FoundingScreen({
   const [arrival, setArrival] = useState<"fading" | "turning" | "greeting">();
   const fading = arrival === "fading";
   const turning = arrival === "turning";
-  const enteringScene = arrival === "greeting" && setupStep === 0 && beat === "welcome";
+  const enteringScene = arrival === "greeting" && setupStep === FOUNDING_STEP.Setting && beat === "welcome";
   const showTitle =
     fading ||
-    (setupStep === 0 &&
+    (setupStep === FOUNDING_STEP.Setting &&
       beat === "welcome" &&
       setupWorkspace.settingBeat === undefined &&
       setupWorkspace.settingIntroPending === true &&
       !draftSaveError);
-  const chooseConnections = setupStep === 0 && setupWorkspace.settingIntroPending === "connections" && !fading;
+  const chooseConnections =
+    setupStep === FOUNDING_STEP.Setting && setupWorkspace.settingIntroPending === "connections" && !fading;
   const prelude = showTitle || chooseConnections || turning;
-  const desktopMap = !phone && (setupStep === 2 || setupStep === 3);
+  const desktopMap = !phone && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
   const hierarchyLayer = desktopMap
     ? undefined
-    : setupStep === 0 && !prelude && !setupWorkspace.settingManual && beat !== "welcome" && !manualSetting
+    : setupStep === FOUNDING_STEP.Setting &&
+        !prelude &&
+        !setupWorkspace.settingManual &&
+        beat !== "welcome" &&
+        !manualSetting
       ? beat === "village-overview"
         ? "Village"
         : beat === "village"
           ? "Map"
           : "World"
-      : setupStep === 2
+      : setupStep === FOUNDING_STEP.Maps
         ? "Map"
-        : setupStep === 3
+        : setupStep === FOUNDING_STEP.Venues
           ? "Venue"
-          : setupStep === 4
-            ? "Zone"
-            : undefined;
+          : undefined;
   const mariPose =
     prelude && !turning
       ? "looking-up"
-      : setupStep === 0
+      : setupStep === FOUNDING_STEP.Setting
         ? SETTING_MARI_POSES[beat]
-        : setupStep === 1
+        : setupStep === FOUNDING_STEP.People
           ? "happy"
-          : setupStep === 5
+          : setupStep === FOUNDING_STEP.Review
             ? "proud"
             : "playful";
   const mariFacing = mariPose === "happy-side" ? "left" : mariPose === "looking-up" ? "right" : "front";
@@ -323,7 +327,7 @@ export function FoundingScreen({
   useEffect(() => {
     if (
       screen !== "setup" ||
-      setupStep < 2 ||
+      setupStep < FOUNDING_STEP.Maps ||
       !setupMapSrc ||
       !setupVenues.length ||
       cameraSource.current === setupMapSrc
@@ -358,7 +362,7 @@ export function FoundingScreen({
     Object.values(CONNECTION_SETUP_PROBLEMS).includes(setupProblem);
   useEffect(() => {
     if (focusedValidationAttempt.current === validationAttempt) return;
-    if (setupStep === 0 && beat !== "village-overview" && inlineProblem && !settingEditorOpen) {
+    if (setupStep === FOUNDING_STEP.Setting && beat !== "village-overview" && inlineProblem && !settingEditorOpen) {
       setSettingEditorOpen(true);
       return;
     }
@@ -460,7 +464,7 @@ export function FoundingScreen({
     const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
       setSetupFocusIssue(null);
-      if (openMenu && step === 0) setSettingEditorOpen(true);
+      if (openMenu && step === FOUNDING_STEP.Setting) setSettingEditorOpen(true);
       if (phone && openMenu) {
         setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: CHAPTER_MENUS[step] }));
       }
@@ -472,9 +476,7 @@ export function FoundingScreen({
     }));
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);
-    const setupIssues = foundingVenueIssues(setupVenues, false).filter((issue) =>
-      setupStep === 3 ? ["placement", "name", "form", "description", "assignment"].includes(issue.field) : true,
-    );
+    const setupIssues = foundingVenueIssues(setupVenues, false);
     const openIssue = (issue: FoundingIssue) => {
       setSelectedSetupVenueId(issue.venueId);
       setSetupFocusIssue(issue);
@@ -504,7 +506,7 @@ export function FoundingScreen({
           <MapStage
             src={setupMapSrc || simpleFoundingMap()}
             alt={`Map of ${setupLocationName || "your starting location"}`}
-            pins={(setupStep === 2 ? [] : draftPins).map((pin) => ({
+            pins={(setupStep === FOUNDING_STEP.Maps ? [] : draftPins).map((pin) => ({
               ...pin,
               selected: selectedSetupVenueId === pin.id,
               onSelect:
@@ -620,7 +622,7 @@ export function FoundingScreen({
       setupSuggestionsBusy ||
       setupVenueBusy ||
       !!draftSaveError ||
-      (setupStep === 2 && (setupMapBusy || !!setupMapRequest));
+      (setupStep === FOUNDING_STEP.Maps && (setupMapBusy || !!setupMapRequest));
     const validateVillage = () => {
       const problem = !setupName.trim() ? PLACE_ERRORS.name : !villageBrief ? PLACE_ERRORS.brief : "";
       if (!problem) return true;
@@ -635,7 +637,7 @@ export function FoundingScreen({
         openConnectionPicker();
         return;
       }
-      if (setupStep === 0 && beat === "village" && !validateVillage()) {
+      if (setupStep === FOUNDING_STEP.Setting && beat === "village" && !validateVillage()) {
         setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "village-overview", settingEditorOpen: false }));
         bodyRef.current?.scrollTo({ top: 0 });
         return;
@@ -648,33 +650,39 @@ export function FoundingScreen({
           "place-name",
           "location-name",
           "place-setting",
-          ...(setupStep === 2 ? ["map"] : []),
-          ...(setupStep >= 1
+          ...(setupStep === FOUNDING_STEP.Maps ? ["map"] : []),
+          ...(setupStep >= FOUNDING_STEP.People
             ? ["persona", "playerBackground", "villagers", ...setupFoundingVillagerIds.map((id) => "backstory:" + id)]
             : []),
         ]),
       ]);
-      if (setupStep === 0 && manualSetting && setupName.trim() && setupLocationName.trim() && setupSetting.trim()) {
+      if (
+        setupStep === FOUNDING_STEP.Setting &&
+        manualSetting &&
+        setupName.trim() &&
+        setupLocationName.trim() &&
+        setupSetting.trim()
+      ) {
         setSetupWorkspace((workspace) => ({ ...workspace, settingBeat: "world", settingEditorOpen: false }));
         bodyRef.current?.scrollTo({ top: 0 });
         return;
       }
-      if (setupStep === 2 && !setupMapSrc) {
+      if (setupStep === FOUNDING_STEP.Maps && !setupMapSrc) {
         requestAnimationFrame(() =>
           bodyRef.current?.querySelector<HTMLElement>(".villages-forging-map-warning")?.focus(),
         );
         return;
       }
-      if ((setupStep === 3 || setupStep === 4) && venueShapeProblem) {
+      if (setupStep === FOUNDING_STEP.Venues && venueShapeProblem) {
         setSetupProblem(venueShapeProblem);
         return;
       }
-      if ((setupStep === 3 || setupStep === 4) && setupIssues.length) {
+      if (setupStep === FOUNDING_STEP.Venues && setupIssues.length) {
         setSetupShowIssues(true);
         openIssue(setupIssues[0]);
         return;
       }
-      if (setupStep === 5) void foundVillage();
+      if (setupStep === FOUNDING_STEP.Review) void foundVillage();
       else changeStep(setupStep + 1);
     };
     const nextReply = (
@@ -684,7 +692,7 @@ export function FoundingScreen({
         disabled={advanceDisabled}
         onClick={advanceSetup}
       >
-        {busy ? "Saving village…" : setupStep === 5 ? "Found village" : "Next"}
+        {busy ? "Saving village…" : setupStep === FOUNDING_STEP.Review ? "Found village" : "Next"}
       </button>
     );
     const villageNameField = (
@@ -746,7 +754,7 @@ export function FoundingScreen({
     const closeChapterMenu = () => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }));
     const canCloseChapterMenu = !busy && !spriteBusy && !setupEditorOpen;
     const guide =
-      setupStep > 0 ? (
+      setupStep > FOUNDING_STEP.Setting ? (
         <FoundingGuide
           scene
           inactive={phone && !mobileScene}
@@ -779,14 +787,11 @@ export function FoundingScreen({
           {
             [
               "",
-              "Now for the neighbors. Choose who you’ll play, then who already lives here and how they’ll look in Scenes. I’ve retired from the casting committee.",
               desktopMap
                 ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
                 : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
-              desktopMap
-                ? "I’ve penciled in a home for each of you and a Community Venue. Move their pins if you like."
-                : "I’ve penciled in a home for each of you and a Community Venue. Give them names or move their pins if you like.",
-              "For Founding, each home starts with a common room and a private room. The Community Venue gets two public spaces. You can change the layouts later.",
+              "Choose who you’ll play and who lives here. Each of you gets a home with an entrance, a common room, and a private room.",
+              "The Community Venue starts with an entrance and two public spaces. Move the pins here and change any layout later.",
               "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
             ][setupStep]!
           }
@@ -857,7 +862,7 @@ export function FoundingScreen({
             </footer>
           </FoundingDialog>
         ) : null}
-        {setupStep === 2 && artSettingsOpen ? (
+        {setupStep === FOUNDING_STEP.Maps && artSettingsOpen ? (
           <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
               <SceneryStyleFields
@@ -906,7 +911,7 @@ export function FoundingScreen({
             {connectionPrompt}
           </FoundingDialog>
         ) : null}
-        {phone && setupStep === 0 && settingEditorOpen && !prelude ? (
+        {phone && setupStep === FOUNDING_STEP.Setting && settingEditorOpen && !prelude ? (
           <FoundingDialog
             title={settingTitleLabel}
             onClose={() => setSettingEditorOpen(false)}
@@ -934,7 +939,7 @@ export function FoundingScreen({
           canCloseMenu={canCloseChapterMenu}
           onCloseMenu={closeChapterMenu}
         >
-          <div hidden={setupStep !== 1}>
+          <div hidden={setupStep !== FOUNDING_STEP.People}>
             <div className="villages-people-panel">
               <section className="villages-forging-card">
                 <h3 aria-label="You">You</h3>
@@ -978,7 +983,7 @@ export function FoundingScreen({
                   onChange={chooseRoster}
                   disabled={busy || spriteBusy}
                 />
-                {setupStep === 1 && activeSpriteId ? (
+                {setupStep === FOUNDING_STEP.People && activeSpriteId ? (
                   <Appearance
                     key={activeSpriteId}
                     characterId={activeSpriteId}
@@ -992,8 +997,12 @@ export function FoundingScreen({
               </section>
             </div>
           </div>
-          <div hidden={setupStep !== 0} className="villages-place-panels" data-manual={manualSetting || undefined}>
-            {setupStep === 0 ? (
+          <div
+            hidden={setupStep !== FOUNDING_STEP.Setting}
+            className="villages-place-panels"
+            data-manual={manualSetting || undefined}
+          >
+            {setupStep === FOUNDING_STEP.Setting ? (
               <FoundingSettingScene
                 controller={controller}
                 connectionProblem={connections.setupProblem}
@@ -1024,7 +1033,7 @@ export function FoundingScreen({
               </section>
             ) : null}
           </div>
-          {setupStep === 2 ? (
+          {setupStep === FOUNDING_STEP.Maps ? (
             <section
               className="villages-forging-card villages-quick-map-panel villages-founding-map-artwork"
               aria-label="Map artwork"
@@ -1097,31 +1106,25 @@ export function FoundingScreen({
               )}
             </section>
           ) : null}
-          {setupStep === 3 || setupStep === 4 ? (
+          {setupStep === FOUNDING_STEP.Venues ? (
             <div className="villages-founding-places">
               <QuickStartVenues
-                key={setupStep}
-                phase={setupStep === 3 ? "venues" : "zones"}
                 inlineVenue={desktopMap}
                 venues={setupVenues}
                 locationName={setupLocationName}
                 onRetrySaving={() => void retrySetupSaving()}
                 actions={
-                  setupStep === 3 ? (
-                    <QuickStartButton
-                      busy={busy || setupSuggestionsBusy}
-                      disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
-                      pending={
-                        !!setupWorkspace.suggestionRequest &&
-                        !pendingSetting &&
-                        !setupWorkspace.suggestionRequest.failure
-                      }
-                      failed={
-                        !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
-                      }
-                      onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
-                    />
-                  ) : undefined
+                  <QuickStartButton
+                    busy={busy || setupSuggestionsBusy}
+                    disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
+                    pending={
+                      !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
+                    }
+                    failed={
+                      !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
+                    }
+                    onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
+                  />
                 }
                 openingVenueId={setupContext.openingVenueId}
                 onOpeningVenue={(openingVenueId) => setSetupContext({ ...setupContext, openingVenueId })}
@@ -1154,12 +1157,10 @@ export function FoundingScreen({
                   ) : undefined
                 }
                 map={
-                  setupStep === 3 ? (
-                    <>
-                      {map(true)}
-                      {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
-                    </>
-                  ) : undefined
+                  <>
+                    {map(true)}
+                    {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+                  </>
                 }
                 onSelect={(venue) => {
                   setSelectedSetupVenueId(venue.id);
@@ -1175,7 +1176,7 @@ export function FoundingScreen({
               />
             </div>
           ) : null}
-          {setupStep === 5 ? (
+          {setupStep === FOUNDING_STEP.Review ? (
             <>
               {!phone ? <h2>Review {setupName}</h2> : null}
               <div className="villages-forging-columns">
@@ -1183,7 +1184,7 @@ export function FoundingScreen({
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
                       <h3>People</h3>
-                      <button type="button" onClick={() => changeStep(1, true)}>
+                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.People, true)}>
                         Change people
                       </button>
                     </div>
@@ -1210,7 +1211,7 @@ export function FoundingScreen({
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
                       <h3>Setting</h3>
-                      <button type="button" onClick={() => changeStep(0, true)}>
+                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.Setting, true)}>
                         Change setting
                       </button>
                     </div>
@@ -1222,7 +1223,7 @@ export function FoundingScreen({
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
                       <h3>First map · {setupLocationName}</h3>
-                      <button type="button" onClick={() => changeStep(2, true)}>
+                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.Maps, true)}>
                         Change map
                       </button>
                     </div>
@@ -1234,7 +1235,7 @@ export function FoundingScreen({
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
                       <h3>Starting Venues</h3>
-                      <button type="button" onClick={() => changeStep(3, true)}>
+                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.Venues, true)}>
                         Change starting Venues
                       </button>
                     </div>
@@ -1316,17 +1317,17 @@ export function FoundingScreen({
           {setupProblem &&
           !inlineProblem &&
           !venueConnectionUnavailable &&
-          !((setupStep === 3 || setupStep === 4) && setupWorkspace.view === "details") ? (
+          !(setupStep === FOUNDING_STEP.Venues && setupWorkspace.view === "details") ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupProblem}
             </p>
           ) : null}
-          {setupMapProblem && setupStep !== 2 && setupStep !== 5 ? (
+          {setupMapProblem && setupStep !== FOUNDING_STEP.Maps && setupStep !== FOUNDING_STEP.Review ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupMapProblem}
             </p>
           ) : null}
-          {setupMapRequest?.phase === "paused" && setupStep !== 2 ? (
+          {setupMapRequest?.phase === "paused" && setupStep !== FOUNDING_STEP.Maps ? (
             <button
               type="button"
               onClick={() => {

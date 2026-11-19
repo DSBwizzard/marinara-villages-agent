@@ -1,4 +1,4 @@
-import { savedFoundingStep } from "./founding-steps.js";
+import { FOUNDING_STEP, savedFoundingStep } from "./founding-steps.js";
 import { upgradeUntouchedStartingLayout } from "./quick-start-drafts.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
@@ -227,7 +227,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       ((data.mapSource === "generate" || data.mapSource === "upload") &&
         data.mapImageSource === data.mapSource &&
         !!data.mapImage);
-    setSetupStep(step > 2 && !hasMap ? 2 : step);
+    setSetupStep(step > FOUNDING_STEP.Maps && !hasMap ? FOUNDING_STEP.Maps : step);
     setSetupName(data.name);
     setSetupLocationName(data.startingLocationName ?? data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");

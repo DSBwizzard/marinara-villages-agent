@@ -1,3 +1,4 @@
+import { FOUNDING_STEP } from "./founding-steps.js";
 import { zoneDayNightDefault } from "../../../shared/helpers/zone-day-night.js";
 import { reconcileFoundingHome } from "./founding-homes.js";
 import { applyFoundingVenueDraft, foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
@@ -401,11 +402,11 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 5 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === FOUNDING_STEP.Review && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep || step === 5) {
+    if (step > setupStep || step === FOUNDING_STEP.Review) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
@@ -433,19 +434,19 @@ export function createFoundingGotoSetupStep(ports: {
       const problem =
         placeProblem ||
         connectionSetupProblem ||
-        (step >= 2 ? peopleProblem : "") ||
-        (step >= 3 ? mapProblem : "") ||
-        (step === 5 ? setupBlocker(true) : "");
+        (step >= FOUNDING_STEP.People ? mapProblem : "") ||
+        (step >= FOUNDING_STEP.Venues ? peopleProblem : "") ||
+        (step === FOUNDING_STEP.Review ? setupBlocker(true) : "");
       if (problem) {
-        if (placeProblem || problem === connectionSetupProblem) setSetupStep(0);
-        else if (step >= 2 && peopleProblem) setSetupStep(1);
-        else if (step >= 3 && mapProblem) setSetupStep(2);
+        if (placeProblem || problem === connectionSetupProblem) setSetupStep(FOUNDING_STEP.Setting);
+        else if (step >= FOUNDING_STEP.People && mapProblem) setSetupStep(FOUNDING_STEP.Maps);
+        else if (step >= FOUNDING_STEP.Venues && peopleProblem) setSetupStep(FOUNDING_STEP.People);
         setSetupProblem(problem);
         return;
       }
     }
     setSetupProblem("");
-    if (step === 5) setSetupMapReviewed(true);
+    if (step === FOUNDING_STEP.Review) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();

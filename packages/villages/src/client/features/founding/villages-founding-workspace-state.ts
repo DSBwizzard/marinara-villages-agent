@@ -13,7 +13,7 @@ export type FoundingWorkspaceState = {
   settingWorldBrief?: string;
   settingDraft?: Partial<FoundingSetting>;
   settingEditorOpen?: boolean;
-  mobileMenu?: "people" | "maps" | "venues" | "zones" | "review";
+  mobileMenu?: "people" | "maps" | "venues" | "review";
   settingProblem?: string;
   unusedHomes?: VillageVenue[];
   suggestionRequest?: {

@@ -15,7 +15,6 @@ import { draftZonePolicy, FoundingConnections } from "./villages-founding-zones.
 import { foundingVenueIssues, type FoundingIssue } from "./villages-founding-workspace-state.js";
 
 export function QuickStartVenues({
-  phase,
   inlineVenue = false,
   venues,
   locationName,
@@ -38,7 +37,6 @@ export function QuickStartVenues({
   actions,
   onRetrySaving,
 }: {
-  phase: "venues" | "zones";
   inlineVenue?: boolean;
   venues: SetupVenueDraft[];
   locationName: string;
@@ -62,7 +60,7 @@ export function QuickStartVenues({
   onRetrySaving?(): void;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
-  const [section, setSection] = useState<VenueSection>(phase === "zones" ? "zones" : "about");
+  const [section, setSection] = useState<VenueSection>("about");
   const [zoneDetails, setZoneDetails] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -143,7 +141,7 @@ export function QuickStartVenues({
     );
     setZoneDetails(field !== "sleep" && !!focusIssue.zoneId);
     setEditorOpen(true);
-  }, [focusIssue, phase, inlineVenue]);
+  }, [focusIssue, inlineVenue]);
   useEffect(() => {
     if (!openFromMap || selected?.id !== openFromMap.id) return;
     openedFromPin.current = true;
@@ -227,7 +225,7 @@ export function QuickStartVenues({
         onClick={() => {
           openedFromPin.current = false;
           onSelect(venue);
-          selectSection(phase === "zones" ? "zones" : "about");
+          selectSection("about");
           setEditorOpen(true);
         }}
       >
@@ -237,17 +235,11 @@ export function QuickStartVenues({
         <span className="villages-quick-venue-copy">
           <strong>{venue.name || "Venue"}</strong>
           <small className="villages-quick-zone-summary">
-            {phase === "zones"
-              ? [
-                  "Entrance",
-                  ...(venue.spaces ?? []).map((zone) => zone.name),
-                  ...(venue.privateSpaces ?? []).map((zone) => zone.name),
-                ].join(" · ")
-              : home
-                ? foundingHomeMembers(venue)
-                    .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
-                    .join(", ")
-                : "Community Venue"}
+            {home
+              ? foundingHomeMembers(venue)
+                  .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
+                  .join(", ")
+              : "Community Venue"}
           </small>
         </span>
         <span aria-hidden="true">›</span>
@@ -563,13 +555,7 @@ export function QuickStartVenues({
       </>
     ) : null;
   return (
-    <section
-      className="villages-quick-start"
-      ref={venuesRoot}
-      aria-label={phase === "zones" ? "Zones" : "Venues"}
-      data-phase={phase}
-      data-map-open={mapOpen || undefined}
-    >
+    <section className="villages-quick-start" ref={venuesRoot} aria-label="Venues" data-map-open={mapOpen || undefined}>
       {map ? (
         <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
           <div className="villages-quick-map-toolbar">
@@ -588,12 +574,9 @@ export function QuickStartVenues({
           ) : null}
         </section>
       ) : null}
-      <section
-        className="villages-forging-card villages-quick-venue-list"
-        aria-label={phase === "zones" ? "Starter layouts" : "Starting Venues"}
-      >
+      <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
         <header className="villages-venue-heading">
-          <h2>{phase === "zones" ? "Starter layouts" : "Starting Venues"}</h2>
+          <h2>Starting Venues</h2>
           <div className="villages-quick-venue-actions">
             {map ? (
               <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(true)}>

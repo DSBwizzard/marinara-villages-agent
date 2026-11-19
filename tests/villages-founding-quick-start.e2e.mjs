@@ -29,8 +29,6 @@ function Harness(){
  const [workspace,setWorkspace]=useState(emptyFoundingWorkspace),[selected,setSelected]=useState(null),[moving,setMoving]=useState(null);
  const [busy,setBusy]=useState(false),[key,setKey]=useState(''),[problem,setProblem]=useState(''),[source,setSource]=useState('coast');
  const [visible,setVisible]=useState(true);
- const [phase,setPhase]=useState('venues');
- window.setQuickPhase=setPhase;
  const signal=useActivitySignal(visible);
  const [authored,setAuthored]=useState({}),[saved,setSaved]=useState(false);
  const authoredRef=useRef(authored),rowsRef=useRef(venues),sourceRef=useRef(source),claim=useRef(false),image=useRef(null),revision=useRef(0);
@@ -51,7 +49,7 @@ function Harness(){
  spaces:row.spaces.map(zone=>zone.id!=='common:base'?zone:{...zone,access:{mode:'public',managerIds:null,memberIds:[],memberRoles:[],inviterIds:[],visitorHours:'inherit',accompanied:false}})}));
  window.editDuringRequest=()=>patch('founding-home:player',row=>({...row,form:'A newer manual description'}));
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
- <QuickStartVenues key={phase} phase={phase} openingVenueId='community' venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
+ <QuickStartVenues openingVenueId='community' venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
  actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure} onGenerate={()=>suggest({quickStart:true,separateHomes:true})}/>}/>
  {problem?<p role='alert'>{problem}</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
 }
@@ -217,7 +215,6 @@ await withBrowser(browser, async () => {
       await expect(button("Zones")).toBeVisible();
       await expect(sheet.getByText("Resident · Fixed for Founding", { exact: true })).toBeVisible();
       await closeVenue();
-      await page.evaluate(() => window.setQuickPhase("zones"));
       await first.click();
       await expect(button("Zones")).toBeVisible();
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
@@ -450,13 +447,12 @@ await withBrowser(browser, async () => {
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
       expected.spaces[0].name = "Front Office";
       await closeVenue();
-      await page.evaluate(() => window.setQuickPhase("venues"));
       await first.click();
       await manage();
       await sheet.getByLabel("Venue form", { exact: true }).fill("A converted school bus");
       await closeVenue();
-      await page.evaluate(() => window.setQuickPhase("zones"));
       await first.click();
+      await button("Zones").click();
       await zone("common:base").click();
       expected.form = "A converted school bus";
       assert.deepEqual(

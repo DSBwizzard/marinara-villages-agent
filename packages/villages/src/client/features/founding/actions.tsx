@@ -1,3 +1,4 @@
+import { FOUNDING_STEP } from "./founding-steps.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
@@ -486,7 +487,7 @@ export function useFoundVillage(ports: {
               ? "exterior-description"
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
-        setSetupStep(!incomplete.description.trim() || !incomplete.name.trim() || !incomplete.form?.trim() ? 3 : 4);
+        setSetupStep(FOUNDING_STEP.Venues);
         window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);

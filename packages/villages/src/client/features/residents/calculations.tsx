@@ -1,13 +1,12 @@
 export function calculatePortraitWanted(ports: {
   catalog: import("../../../shared/contracts/village").CatalogEntry[];
-  screen: "venue" | "home" | "menu" | "setup" | "preparing" | "room" | "person";
-  setupStep: number;
+  includeCatalog: boolean;
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  const { catalog, screen, setupStep, snapshot } = ports;
+  const { catalog, includeCatalog, snapshot } = ports;
   return [
     ...(snapshot?.villagers ?? []).map((villager) => villager.characterId),
-    ...(screen === "setup" && setupStep === 1 ? (catalog ?? []).map((entry) => entry.id) : []),
+    ...(includeCatalog ? (catalog ?? []).map((entry) => entry.id) : []),
   ].join("\n");
 }
 export function calculatePersonaPortraitId(ports: {
