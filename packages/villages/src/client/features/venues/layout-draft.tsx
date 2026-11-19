@@ -51,7 +51,7 @@ export function useVenueLayoutDraft({
     epoch.current += 1;
     pending.current.clear();
     setVenueLayouts({});
-  }, [unfounded]);
+  }, [unfounded, snapshot?.worldScope]);
   useLayoutEffect(() => {
     active.current = true;
     const entries = pending.current;

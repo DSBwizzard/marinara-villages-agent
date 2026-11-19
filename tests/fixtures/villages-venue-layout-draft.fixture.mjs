@@ -116,7 +116,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     const map = page.locator(".villages-zone-map");
     const leave = () => page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     const manage = page.getByRole("button", { name: "Manage", exact: true });
-    const save = page.getByRole("button", { name: "Save connections", exact: true });
+    const save = page.getByRole("button", { name: "Save layout", exact: true });
     const openEditor = async () => {
       if ((await manage.getAttribute("aria-pressed")) !== "true") await manage.click();
       await page.getByRole("button", { name: "Zone connections", exact: true }).click();
@@ -128,6 +128,12 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     const select = (id) => map.locator(`[data-layout-zone="${id}"]`).click();
     const connection = (name) => page.getByRole("checkbox", { name, exact: true });
     await openEditor();
+    const arrangement = map.locator('[data-layout-zone="exterior"]');
+    await arrangement.focus();
+    await arrangement.press("ArrowRight");
+    await expect.poll(entranceX).toBe(1);
+    assert.equal(requests.length, 0, "Keyboard arranging remains a local draft until Save or navigation");
+    await arrangement.press("ArrowLeft");
     await select("exterior");
     await connection("common").uncheck();
     await expect(map.locator("svg line")).toHaveCount(1);
@@ -228,6 +234,39 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
     await back();
     await expect.poll(entranceX).toBe(0);
+    await page.evaluate(() => {
+      const snapshot = window.h.read().snapshot;
+      window.h.snapshot({
+        ...snapshot,
+        settings: {
+          ...snapshot.settings,
+          venues: snapshot.settings.venues.map((venue) => ({
+            ...venue,
+            accessView: { ...venue.accessView, canManage: false },
+          })),
+        },
+      });
+      window.h.scene({ id: "cosmetic-scene", status: "active", placeId: "a", zoneId: "exterior" });
+    });
+    await arrangement.press("ArrowRight");
+    await expect.poll(entranceX).toBe(1);
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect.poll(() => requests.length).toBe(8);
+    assert.deepEqual(
+      requests[7].body.connections,
+      server.settings.venues[0].zones.map((zone) => ({ id: zone.id, connectedTo: zone.connectedTo })),
+      "A non-manager can save only box positions during a Scene",
+    );
+    await reply(7);
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await arrangement.press("ArrowRight");
+    await save.click();
+    await expect.poll(() => requests.length).toBe(9);
+    await page.evaluate(() => window.h.snapshot({ ...window.h.read().snapshot, worldScope: "c".repeat(64) }));
+    await reply(8);
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await expect.poll(entranceX).toBe(1);
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
     await context.close();

@@ -218,7 +218,9 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     const picker = page.getByRole("dialog", { name: "Move to Zone" });
-    await expect(picker.getByRole("button", { name: "Secret bedroom" })).toHaveCount(0);
+    await picker.getByRole("button", { name: "Secret bedroom", exact: true }).click();
+    await expect(picker.getByRole("button", { name: "Trespass…", exact: true })).toHaveCount(0);
+    assert.equal(entered, undefined, "Inspecting a restricted Zone never admits entry");
     await expect(picker.getByText("Invited for this visit", { exact: true })).toBeVisible();
     await picker.getByRole("button", { name: "Common Space", exact: true }).click();
     await expect.poll(() => entered?.zoneId).toBe("common");

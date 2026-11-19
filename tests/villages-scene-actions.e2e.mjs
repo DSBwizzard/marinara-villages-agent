@@ -214,7 +214,12 @@ await withBrowser(browser, async () => {
       await page.getByRole("button", { name: "Venue actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Move", exact: true }).click();
       await expect(picker.getByRole("button", { name: "Close Move to Zone" })).toBeFocused();
-      assert.ok((await picker.boundingBox()).height < 260, "A short list opens as a compact dialog");
+      assert.ok((await picker.boundingBox()).height < 700, "The route diagram fits the Scene viewport");
+      await expect(picker.getByRole("region", { name: "Zone layout", exact: true })).toBeVisible();
+      await expect(picker.locator('[data-layout-zone="' + scene.zoneId + '"]')).toHaveAttribute(
+        "aria-current",
+        "location",
+      );
       await expect(composer).toHaveValue(preservedDraft);
       await dockAtBottom('[class$="-chat-input"]');
     };

@@ -60,17 +60,35 @@ async function main() {
     let scene: Pick<VenueScene, "id" | "placeId" | "zoneId"> | null = null;
     f.ports.sceneQueries = () => ({ activeVenueSession: async () => scene });
     const venue = f.state.venues[0];
+    const common = venue.zones!.find((zone) => zone.id !== "exterior")!;
+    venue.zones!.push({ ...structuredClone(common), id: "other", name: "Other", connectedTo: ["exterior"] });
+    venue.zones!.find((zone) => zone.id === "exterior")!.connectedTo!.push("other");
     const zones = materializeConnections(venueZones(venue));
-    const change = {
+    const cosmetic = {
       base: zoneLayoutKey(zones, venue.zoneLayout),
       positions: resolveZoneLayout(zones.map((z) => z.id)),
       connections: zones.map((z) => ({ id: z.id, connectedTo: z.connectedTo! })),
     };
     const commands = createVenueCommands(f.ports);
     scene = { id: "scene", placeId: "another-venue", zoneId: "exterior" };
-    const before = structuredClone(venue);
+    cosmetic.positions.exterior.x = 2;
+    await commands.updateVenueZoneLayout(venue.id, cosmetic);
+    assert.equal(venue.zoneLayout!.exterior.x, 2, "Box arrangement can save during any active Scene");
+    assert.deepEqual(
+      venue.zones!.map((zone) => zone.connectedTo),
+      zones.map((zone) => zone.connectedTo),
+      "Arranging boxes never changes passages",
+    );
+    const change = {
+      ...cosmetic,
+      base: zoneLayoutKey(venue.zones!, venue.zoneLayout),
+      connections: cosmetic.connections.map((zone) => ({ ...zone, connectedTo: [...zone.connectedTo] })),
+    };
+    change.connections.find((zone) => zone.id === common.id)!.connectedTo.push("other");
+    change.connections.find((zone) => zone.id === "other")!.connectedTo.push(common.id);
+    const before = JSON.stringify(venue);
     await assert.rejects(commands.updateVenueZoneLayout(venue.id, change), /End the active Scene/);
-    assert.deepEqual(venue, before, "Scene anywhere blocks layout writes");
+    assert.equal(JSON.stringify(venue), before, "Scene anywhere blocks passage changes");
     scene = null;
     let release!: () => void;
     const entry = navigation.serializeNavigation(async () => {
@@ -84,7 +102,7 @@ async function main() {
     release();
     await entry;
     await assert.rejects(save, /End the active Scene/);
-    assert.deepEqual(venue, before, "Scene entry admitted first blocks an already queued layout save");
+    assert.equal(JSON.stringify(venue), before, "Scene entry admitted first blocks an already queued layout save");
     scene = null;
     await commands.updateVenueZoneLayout(venue.id, change);
     assert.deepEqual(venue.zoneLayout, change.positions, "editing resumes after the Scene ends");

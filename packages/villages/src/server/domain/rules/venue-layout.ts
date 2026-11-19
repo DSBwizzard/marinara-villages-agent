@@ -1,6 +1,7 @@
 import { zoneAppearanceContext, zonePictureBaseline } from "./zone-picture.js";
 import {
   applyConnectionEdits,
+  changedConnectionIds,
   connectionProblem,
   materializeConnections,
 } from "../../../shared/helpers/zone-contact.js";
@@ -22,7 +23,12 @@ import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { managesAccess } from "./venue-access.js";
 
 /** Cosmetic positioning and explicit passages never edit access or an active Scene's captured layout. */
-export function applyVenueZoneLayout(state: VillageState, venue: VillageVenue, value: unknown): void {
+export function applyVenueZoneLayout(
+  state: VillageState,
+  venue: VillageVenue,
+  value: unknown,
+  sceneActive = false,
+): void {
   const row = asRecord(value),
     zones = venueZones(venue);
   const ids = zones.map((zone) => zone.id);
@@ -46,18 +52,20 @@ export function applyVenueZoneLayout(state: VillageState, venue: VillageVenue, v
   }));
   const problem = connectionProblem(next);
   if (problem) throw badRequest(problem.replaceAll("Exterior", "Entrance"));
-  const changed = zones.filter(
-    (zone) => JSON.stringify(contactNeighborIds(zones, zone.id)) !== JSON.stringify(contactNeighborIds(next, zone.id)),
-  );
+  const changed = changedConnectionIds(zones, next);
   if (changed.length) {
+    if (sceneActive) throw conflict("End the active Scene before changing Zone connections.");
     if (
       !managesAccess(venue, null, "player") ||
-      changed.some((zone) => zone.id !== "exterior" && !managesAccess(venue, zone.id, "player"))
+      changed.some((id) => id !== "exterior" && !managesAccess(venue, id, "player"))
     )
       throw conflict("Only the Venue and affected Zone managers may change these connections.");
     if (
       state.projects.some(
-        (project) => project.venueId === venue.id && project.lifecycle && project.lifecycle.phase !== "complete",
+        (project) =>
+          project.venueId === venue.id &&
+          project.lifecycle &&
+          !["complete", "cancelled"].includes(project.lifecycle.phase),
       )
     )
       throw conflict("Finish the current Venue project before changing its connections.");

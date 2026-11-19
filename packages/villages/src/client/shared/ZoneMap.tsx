@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { contactNeighborIds, materializeConnections, type ConnectedSpace } from "../../shared/helpers/zone-contact.js";
 import { resolveZoneLayout, zonePositionFits, ZONE_TILE, type ZoneLayout } from "../../shared/helpers/zone-layout.js";
 
@@ -8,6 +8,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   onPositions,
   onConnections,
   selectedId,
+  currentId,
   onSelect,
   disabled = false,
   labels,
@@ -19,12 +20,14 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   onPositions?(layout: ZoneLayout): void;
   onConnections?(zones: T[]): void;
   selectedId?: string;
+  currentId?: string;
   onSelect?(id: string): void;
   disabled?: boolean;
   labels?(zone: T): ReactNode;
   toolbar?: ReactNode;
   modifyConnections?: boolean;
 }) {
+  const descriptionId = useId();
   const [connecting, setConnecting] = useState(false),
     [first, setFirst] = useState<string | null>(null);
   const [preview, setPreview] = useState<ZoneLayout | null>(null);
@@ -116,7 +119,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
             />
           ))}
         </svg>
-        {zones.map((zone) => (
+        {zones.map((zone, index) => (
           <button
             type="button"
             key={zone.id}
@@ -132,13 +135,15 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               height: `${ZONE_TILE.height}%`,
             }}
             aria-pressed={connecting ? first === zone.id : selectedId === zone.id}
+            aria-current={currentId === zone.id ? "location" : undefined}
             aria-label={name(zone.id)}
+            aria-describedby={labels ? `${descriptionId}-${index}` : undefined}
             title={name(zone.id)}
             onClick={(event) => {
-              if (event.detail === 0) select(zone.id);
+              if (!onPositions || event.detail === 0) select(zone.id);
             }}
             onPointerDown={(event) => {
-              if (disabled || event.button !== 0) return;
+              if (disabled || !onPositions || event.button !== 0) return;
               event.currentTarget.setPointerCapture(event.pointerId);
               drag.current = {
                 id: zone.id,
@@ -213,7 +218,11 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
             }}
           >
             <strong>{name(zone.id)}</strong>
-            {labels?.(zone)}
+            {labels && (
+              <span className="villages-zone-map-label" id={`${descriptionId}-${index}`}>
+                {labels(zone)}
+              </span>
+            )}
           </button>
         ))}
       </div>

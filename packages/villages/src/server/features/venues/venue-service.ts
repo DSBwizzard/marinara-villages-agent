@@ -212,12 +212,11 @@ export function createVenueCommands({
 
   async function updateVenueZoneLayout(venueId: string, value: unknown): Promise<VillageSnapshot> {
     return withSceneNavigation(async () => {
-      if (await sceneQueries().activeVenueSession())
-        throw conflict("End the active Scene before editing Zone positions or connections.");
+      const sceneActive = !!(await sceneQueries().activeVenueSession());
       await mutateVillageState((state) => {
         const venue = state.venues.find((entry) => entry.id === venueId);
         if (!venue) throw notFound("That Venue no longer exists.");
-        applyVenueZoneLayout(state, venue, value);
+        applyVenueZoneLayout(state, venue, value, sceneActive);
       });
       return buildVillageSnapshot();
     });

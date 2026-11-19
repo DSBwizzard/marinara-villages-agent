@@ -357,17 +357,17 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           movementZones={(() => {
             const venue = sceneVenues.find((entry) => entry.id === room.placeId);
             if (!venue) return [];
-            return (venue.zones ?? [])
-              .filter((zone) => zone.id !== room.zoneId)
-              .map((zone) => ({
-                id: zone.id,
-                label: sceneZoneLabel(zone),
-                allowed:
-                  !zone.closed && zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false,
-                status: zoneAccessLabel(zone, venue, true),
-                canTrespass: !!zone.accessView?.canTrespass,
-              }));
+            return (venue.zones ?? []).map((zone) => ({
+              id: zone.id,
+              label: sceneZoneLabel(zone),
+              connectedTo: zone.connectedTo,
+              allowed:
+                !zone.closed && zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false,
+              status: zoneAccessLabel(zone, venue, true),
+              canTrespass: !!zone.accessView?.canTrespass,
+            }));
           })()}
+          movementPositions={snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zoneLayout}
           onMovementTarget={(zoneId, trespass) => void moveRoom(zoneId, trespass)}
           onTravel={() => {
             if (!room.travel || roomBusy || contactReviewPending.current || sceneLifetime.current !== room.id) return;

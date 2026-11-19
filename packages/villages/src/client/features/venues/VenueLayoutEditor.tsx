@@ -1,7 +1,7 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
-import type { CSSProperties } from "react";
 import {
   applyConnectionEdits,
+  changedConnectionIds,
   connectionProblem,
   contactNeighborIds,
   materializeConnections,
@@ -35,12 +35,30 @@ export function VenueLayoutEditor({
   const selected = rows.find((zone) => zone.id === selectedId);
   if (!selected) return null;
   const neighbors = contactNeighborIds(rows, selectedId);
-  const canEdit = !!place.accessView?.canManage && !sceneActive && !controller.venueEditBusy && !pending?.saving;
-  const problem = draft ? connectionProblem(draft.connections) : "";
-  const rowCount = Math.ceil(rows.length / 3);
-  const positions = Object.fromEntries(
-    rows.map(({ id }, index) => [id, { x: (index % 3) * 34, y: (Math.floor(index / 3) * 100) / rowCount }]),
+  const projectActive = controller.snapshot.projects.some(
+    (project) =>
+      project.venueId === place.id && project.lifecycle && !["complete", "cancelled"].includes(project.lifecycle.phase),
   );
+  const busy = controller.venueEditBusy || !!pending?.saving;
+  const canArrange = !busy && place.constructionStatus !== "worksite";
+  const canManage = (id: string) =>
+    id === "exterior"
+      ? !!place.accessView?.canManage
+      : !!rows.find((zone) => zone.id === id)?.accessView?.decision.canManage;
+  const canEdit =
+    !!place.accessView?.canManage && canManage(selectedId) && !sceneActive && !projectActive && canArrange;
+  const changedIds = draft ? changedConnectionIds(zones, draft.connections) : [];
+  const canSave =
+    canArrange &&
+    (!changedIds.length ||
+      (!!place.accessView?.canManage && !sceneActive && !projectActive && changedIds.every(canManage)));
+  const problem = draft ? connectionProblem(draft.connections) : "";
+  const positions =
+    draft?.positions ??
+    resolveZoneLayout(
+      rows.map((zone) => zone.id),
+      place.zoneLayout,
+    );
   const toggle = (id: string, checked: boolean) => {
     const connectedTo = checked ? [...neighbors, id] : neighbors.filter((neighbor) => neighbor !== id);
     const connections = applyConnectionEdits(rows, [{ id: selectedId, connectedTo }]).map((zone) => ({
@@ -49,27 +67,29 @@ export function VenueLayoutEditor({
     }));
     controller.stageVenueZoneLayout(place, {
       base: draft?.base ?? zoneLayoutKey(zones, place.zoneLayout),
-      // The schematic's arrangement is independent of the saved layout coordinates.
-      positions:
-        draft?.positions ??
-        resolveZoneLayout(
-          zones.map((zone) => zone.id),
-          place.zoneLayout,
-        ),
+      positions,
       connections,
     });
   };
   return (
     <>
-      <div style={{ "--venue-diagram-height": `${rowCount * 68}px` } as CSSProperties}>
-        <ZoneMap
-          zones={rows}
-          positions={positions}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          disabled={pending?.saving}
-        />
-      </div>
+      <ZoneMap
+        zones={rows}
+        positions={positions}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        disabled={busy}
+        onPositions={
+          canArrange
+            ? (positions) =>
+                controller.stageVenueZoneLayout(place, {
+                  base: draft?.base ?? zoneLayoutKey(zones, place.zoneLayout),
+                  positions,
+                  connections: rows.map((zone) => ({ id: zone.id, connectedTo: zone.connectedTo })),
+                })
+            : undefined
+        }
+      />
       {place.accessView?.canManage ? (
         <>
           <fieldset className={P + "-venue-connection-choices"} disabled={!canEdit}>
@@ -81,6 +101,7 @@ export function VenueLayoutEditor({
                   <input
                     type="checkbox"
                     autoComplete="off"
+                    disabled={!canManage(zone.id)}
                     checked={neighbors.includes(zone.id)}
                     onChange={(event) => toggle(zone.id, event.target.checked)}
                   />
@@ -89,18 +110,19 @@ export function VenueLayoutEditor({
               ))}
           </fieldset>
           {sceneActive ? <p role="status">End the Scene to edit connections.</p> : null}
-          {pending?.saving ? <p role="status">Saving layout…</p> : null}
-          {problem || pending?.error ? <p role="alert">{problem || pending?.error}</p> : null}
-          <button
-            type="button"
-            className={P + "-venue-primary"}
-            disabled={!canEdit || !draft || !!problem}
-            onClick={() => void controller.commitVenueZoneLayout(place.id)}
-          >
-            Save connections
-          </button>
+          {projectActive ? <p role="status">Finish the Venue project to edit connections.</p> : null}
         </>
       ) : null}
+      {pending?.saving ? <p role="status">Saving layout…</p> : null}
+      {problem || pending?.error ? <p role="alert">{problem || pending?.error}</p> : null}
+      <button
+        type="button"
+        className={P + "-venue-primary"}
+        disabled={!canSave || !draft || !!problem}
+        onClick={() => void controller.commitVenueZoneLayout(place.id)}
+      >
+        Save layout
+      </button>
     </>
   );
 }

@@ -32,6 +32,15 @@ export function contactNeighborIds(zones: readonly ConnectedSpace[], zoneId: str
   ].sort();
 }
 
+export function changedConnectionIds(zones: readonly ConnectedSpace[], next: readonly ConnectedSpace[]): string[] {
+  return zones
+    .filter(
+      (zone) =>
+        JSON.stringify(contactNeighborIds(zones, zone.id)) !== JSON.stringify(contactNeighborIds(next, zone.id)),
+    )
+    .map((zone) => zone.id);
+}
+
 export function materializeConnections<T extends ConnectedSpace>(zones: readonly T[]): T[] {
   const initialize = !zones.some((zone) => zone.connectedTo !== undefined);
   return zones.map((zone) => ({

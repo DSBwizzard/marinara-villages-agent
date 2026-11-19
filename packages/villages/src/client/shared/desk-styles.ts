@@ -169,8 +169,7 @@ export const DESK_STYLES = `
 .villages-access-panel :is(select,input[type=time],button){max-width:100%;min-height:40px;font:inherit}
 .villages-access-panel :is(select,input[type=time]){color:var(--foreground);background:var(--background);border:1px solid var(--border);border-radius:5px;padding:4px}
 .villages-access-hours{display:grid;gap:8px}
-.${P}-venue-connections .villages-zone-map-canvas{height:var(--venue-diagram-height);min-height:0;border:0;background:transparent}
-.${P}-venue-connections .villages-zone-map-canvas>svg{top:calc(22px - var(--venue-diagram-height)*.07)}
+.${P}-venue-connections .villages-zone-map-canvas{height:clamp(360px,52dvh,560px);min-height:360px;border:0;background:transparent}
 .${P}-venue-connections .villages-zone-map-canvas button.villages-zone-map-tile{min-height:44px;border:1px solid #a39b84;background:#514157;color:#f0dfbc;font-size:clamp(12px,1.6cqw,17px);overflow-wrap:anywhere}
 .${P}-venue-connections .villages-zone-map-canvas button[aria-pressed="true"]{border-color:#d29399;background:#654f65}
 .${P}-venue-connections .villages-zone-map-canvas line{stroke:#a5ac8b}

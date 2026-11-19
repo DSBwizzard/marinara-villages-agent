@@ -82,11 +82,20 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-send svg { width: .9375rem; height: .9375rem; }
 .${tag}-room-screen .${tag}-chat-send:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
 .${tag}-room-screen .${tag}-room-actions-menu { max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 4rem)); overflow-y: auto; }
-.villages-founding-dialog.villages-scene-move { width:min(24rem,calc(100vw - 2rem)); height:fit-content; padding:.5rem; }
+.villages-founding-dialog.villages-scene-move { width:min(46rem,calc(100vw - 2rem)); height:fit-content; padding:.5rem; }
 .villages-scene-move > header { margin:0; padding:.3rem .5rem; }
 .villages-scene-move .villages-founding-editor-body { display:grid; gap:.45rem; padding:.75rem; }
 .villages-scene-move .villages-founding-editor-body p { margin:0 0 .2rem; }
 .villages-scene-move .villages-founding-editor-body button { width:100%; text-align:left; min-height:44px; }
+.villages-scene-move .villages-zone-map { margin:0; }
+.villages-scene-move .villages-zone-map-canvas { height:clamp(340px,48dvh,460px); min-height:340px; }
+.villages-scene-move .villages-zone-map-canvas button.villages-zone-map-tile { width:32%; min-height:44px; text-align:center; }
+.villages-scene-move .villages-zone-map-tile:has([data-zone-access="allowed"]) { border-color:#78ad91; }
+.villages-scene-move .villages-zone-map-tile:has([data-zone-access="trespass"]) { border-color:#d5a15d; }
+.villages-scene-move .villages-zone-map-tile:has([data-zone-access="blocked"]) { border-style:dashed; }
+.villages-scene-move .villages-zone-map-tile[aria-current="location"] { background:color-mix(in srgb,var(--primary) 25%,var(--popover)); border-width:2px; }
+.villages-scene-move .villages-zone-map-tile strong { white-space:normal; overflow-wrap:anywhere; font-size:clamp(13px,1rem,18px); }
+.villages-scene-move .villages-zone-map-tile small { font-size:clamp(11px,.85rem,16px); }
 .villages-scene-move-zone { display:grid; gap:.25rem; padding:.25rem 0; border-bottom:1px solid var(--border); }
 .villages-scene-move-zone small { color:var(--muted-foreground); }
 .villages-scene-move-zone:has(.villages-scene-trespass-confirm) { border-bottom:0; }

@@ -1,9 +1,13 @@
-// Test cases: zones/map/editor
+// Test cases: zones/map/editor, zones/map/move
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { createVenueScreenHarness } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
+import { snapshot as fixture, now, venueSnapshotFixture } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+import { fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 
 const styles = await build({
   stdin: {
@@ -67,16 +71,24 @@ await withBrowser(browser, async () => {
     await f.page.getByRole("button", { name: "Manage", exact: true }).click();
     await f.page.getByRole("button", { name: "Zone connections", exact: true }).click();
     const map = f.page.locator(".villages-zone-map");
-    const save = f.page.getByRole("button", { name: "Save connections", exact: true });
+    const save = f.page.getByRole("button", { name: "Save layout", exact: true });
     await expect(map.locator("[data-layout-zone]")).toHaveCount(7);
     await node(map, "exterior").press("ArrowRight");
+    const entrance = await node(map, "exterior").boundingBox();
+    const canvas = await map.locator(".villages-zone-map-canvas").boundingBox();
+    await f.page.mouse.move(entrance.x + entrance.width / 2, entrance.y + entrance.height / 2);
+    await f.page.mouse.down();
+    await f.page.mouse.move(entrance.x + entrance.width / 2 + canvas.width * 0.05, entrance.y + entrance.height / 2, {
+      steps: 5,
+    });
+    await f.page.mouse.up();
     await node(map, "zone:1").click();
     await f.page.getByRole("checkbox", { name: "Room 2", exact: true }).check();
     assert.equal(f.requests.length, 0, "seven-tile draft is local");
     await save.click();
     await expect.poll(() => f.requests.length).toBe(1);
     const body = f.requests[0].body;
-    assert.equal(body.positions.exterior.x, 0);
+    assert.ok(body.positions.exterior.x > 1, "Dragging persists the new arrangement together with the keyboard nudge");
     assert.equal(body.connections.length, 7);
     assert.ok(body.connections.find((z) => z.id === "zone:1").connectedTo.includes("zone:2"));
     assert.ok(body.connections.find((z) => z.id === "zone:2").connectedTo.includes("zone:1"));
@@ -111,5 +123,156 @@ await withBrowser(browser, async () => {
       assert.equal(f.requests.length, 1, "Resizing visual nodes never rewrites saved coordinates");
     }
     await f.finish();
+  });
+  await runCase("zones/map/move", async () => {
+    const bundle = await build({
+      stdin: {
+        loader: "tsx",
+        resolveDir: process.cwd(),
+        contents: `
+import {installFeature} from './tests/fixtures/feature-root.js';
+import {SceneScreen} from './packages/villages/src/client/features/scenes/SceneScreen.js';
+installFeature(controller=><SceneScreen controller={controller}/>);
+`,
+      },
+      bundle: true,
+      write: false,
+      format: "iife",
+      platform: "browser",
+      jsx: "automatic",
+    });
+    for (const width of [1366, 390, 320]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await mockEngineLookups(page);
+      const snapshot = structuredClone(fixture);
+      let scene = {
+        id: "move-map",
+        version: 2,
+        sceneRevision: 1,
+        placeId: "mill",
+        placeName: "Airfield",
+        zoneId: "exterior",
+        area: "outside",
+        status: "active",
+        activeIds: [],
+        participants: [],
+        submissions: [],
+        lines: [],
+        startedAt: now,
+        endedAt: "",
+        capturedContext: true,
+      };
+      const venue = venueSnapshotFixture({
+        ...snapshot.settings.venues[0],
+        zones: [
+          { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: ["walkway", "airstrip"] },
+          { id: "walkway", name: "Walkway", kind: "public", connectedTo: ["exterior", "garden"] },
+          { id: "garden", name: "Garden", kind: "public", connectedTo: ["walkway"] },
+          { id: "airstrip", name: "Airstrip", kind: "restricted", connectedTo: ["exterior", "hangar"] },
+          { id: "hangar", name: "Hangar", kind: "staff", connectedTo: ["airstrip"] },
+        ],
+      });
+      for (const zone of venue.zones) {
+        const allowed = ["exterior", "walkway", "garden"].includes(zone.id);
+        zone.accessView = {
+          decision: {
+            allowed,
+            available: true,
+            mode: allowed ? "public" : "permission-required",
+            reason: allowed ? "public" : "permission-required",
+            explanation: "Fixture",
+            canManage: false,
+            canInvite: false,
+          },
+          reachable: allowed,
+          canTrespass: zone.id === "airstrip",
+          ...(zone.id === "hangar" ? { accessNeededVia: "airstrip" } : {}),
+        };
+      }
+      snapshot.sceneVenue = { sceneId: scene.id, venue: structuredClone(venue) };
+      const positions = {
+        exterior: { x: 0, y: 0 },
+        walkway: { x: 0, y: 24 },
+        garden: { x: 0, y: 48 },
+        airstrip: { x: 68, y: 12 },
+        hangar: { x: 68, y: 42 },
+      };
+      snapshot.settings.venues = [{ ...structuredClone(venue), zoneLayout: positions }];
+      snapshot.settings.venues[0].zones[0].connectedTo.push("garden");
+      snapshot.settings.venues[0].zones.push({
+        id: "live-only",
+        name: "Uncaptured Zone",
+        kind: "public",
+        connectedTo: ["exterior"],
+      });
+      const moves = [];
+      await page.route("http://move-map.test/", (r) =>
+        fulfill(r, {
+          contentType: "text/html",
+          body: "<style>html,body{margin:0;height:100%}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+        }),
+      );
+      await page.route("**/api/villages**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        let value = snapshot;
+        if (path.endsWith("/rooms/zone")) {
+          const body = route.request().postDataJSON();
+          moves.push(body);
+          scene = {
+            ...scene,
+            zoneId: body.zoneId,
+            area: body.zoneId === "exterior" ? "outside" : "public",
+            sceneRevision: scene.sceneRevision + 1,
+            ...(body.trespass ? { trespassing: true } : {}),
+          };
+          value = { session: scene };
+        } else if (path.endsWith("/rooms/active")) value = { session: scene };
+        await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
+      });
+      await page.goto("http://move-map.test/");
+      await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      const picker = page.getByRole("dialog", { name: "Move to Zone", exact: true });
+      const open = async () => {
+        await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+      };
+      await open();
+      await expect(picker.locator("svg line")).toHaveCount(4);
+      await expect(picker.getByRole("button", { name: "Uncaptured Zone", exact: true })).toHaveCount(0);
+      await expect(picker.locator('[data-layout-zone="exterior"]')).toHaveAttribute("aria-current", "location");
+      const gardenRatio = await picker
+        .locator('[data-layout-zone="garden"]')
+        .evaluate((node) => node.offsetTop / node.parentElement.clientHeight);
+      assert.ok(Math.abs(gardenRatio - 0.48) < 0.01, "Move uses the live diagram arrangement with captured routes");
+      const gardenBox = await picker.getByRole("button", { name: "Garden", exact: true }).boundingBox();
+      await page.mouse.move(gardenBox.x + gardenBox.width / 2, gardenBox.y + gardenBox.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(gardenBox.x + gardenBox.width + 20, gardenBox.y + gardenBox.height + 20);
+      await page.mouse.up();
+      assert.equal(moves.length, 0, "Dragging off a read-only tile never activates a move");
+      await picker.getByRole("button", { name: "Garden", exact: true }).click();
+      await expect.poll(() => moves.length).toBe(1);
+      assert.equal(moves[0].zoneId, "garden");
+      assert.equal(moves[0].trespass, undefined);
+      await open();
+      await picker.getByRole("button", { name: "Entrance", exact: true }).click();
+      await expect.poll(() => moves.length).toBe(2);
+      await open();
+      await picker.getByRole("button", { name: "Hangar", exact: true }).click();
+      await expect(picker.getByRole("button", { name: "Trespass…", exact: true })).toHaveCount(0);
+      assert.equal(moves.length, 2);
+      await picker.getByRole("button", { name: "Airstrip", exact: true }).click();
+      await picker.getByRole("button", { name: "Trespass…", exact: true }).click();
+      await picker.getByRole("button", { name: "Stay here", exact: true }).click();
+      assert.equal(moves.length, 2);
+      await picker.getByRole("button", { name: "Trespass…", exact: true }).click();
+      await page.screenshot({ path: `.build-tmp/move-map-${width}.png` });
+      assert.ok((await picker.boundingBox()).width <= width, "Move map fits phone width");
+      await picker.getByRole("button", { name: "Attempt entry", exact: true }).click();
+      await expect.poll(() => moves.length).toBe(3);
+      assert.equal(moves[2].zoneId, "airstrip");
+      assert.equal(moves[2].trespass, true);
+      await page.close();
+    }
   });
 });

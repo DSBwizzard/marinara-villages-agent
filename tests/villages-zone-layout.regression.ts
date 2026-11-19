@@ -125,11 +125,16 @@ zone.access = {
 };
 state.projects.push({ venueId: venue.id, lifecycle: { phase: "planning" } } as VillageProject);
 assert.throws(() => applyVenueZoneLayout(state, venue, unauthorized), /current Venue project/);
+state.projects[0].lifecycle!.phase = "cancelled";
+assert.doesNotThrow(
+  () => applyVenueZoneLayout(state, venue, unauthorized),
+  "A cancelled Project no longer owns the layout",
+);
 state.projects = [];
 const cosmetic = command();
 cosmetic.positions.exterior = { x: 2, y: 2 };
 venue.access!.managerIds = ["other"];
-applyVenueZoneLayout(state, venue, cosmetic);
+applyVenueZoneLayout(state, venue, cosmetic, true);
 assert.deepEqual(
   venue.zoneLayout!.exterior,
   { x: 2, y: 2 },

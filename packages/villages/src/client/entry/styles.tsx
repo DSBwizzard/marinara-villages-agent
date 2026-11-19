@@ -2130,6 +2130,7 @@ ${VILLAGES_FORGING_STYLES}
 .villages-zone-map-canvas button.villages-zone-map-tile { position:absolute; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; min-width:0; min-height:0; margin:0; padding:4px; overflow:hidden; border-radius:.6rem; touch-action:none; user-select:none; cursor:grab; line-height:1.2; }
 .villages-zone-map-tile strong { display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(12px,.8rem,16px); }
 .villages-zone-map-tile small { display:block; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(11px,.65rem,14px); }
+.villages-zone-map-label { display:block; width:100%; min-width:0; max-width:100%; }
 .villages-zone-map-tile[aria-pressed="true"] { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
 .villages-zone-map-canvas button[data-draggable="false"] { cursor:pointer; touch-action:pan-y; }
 .villages-zone-map-connections { list-style:none; padding:0; }
