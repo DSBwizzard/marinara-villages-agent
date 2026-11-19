@@ -490,10 +490,28 @@ await withBrowser(browser, async () => {
       await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
       await page.setViewportSize(viewport);
       assert.equal(calls, 0);
+      await page.evaluate(() =>
+        window.replaceQuickVenues((rows) =>
+          rows.map((row) =>
+            row.id === "founding-home:ada"
+              ? {
+                  ...row,
+                  id: "ada-original-home",
+                  presentation: { ...row.presentation, mapId: "coast", x: 0.12, y: 0.83 },
+                }
+              : row,
+          ),
+        ),
+      );
       loseReply = true;
       await confirm();
       await expect.poll(() => calls).toBe(1);
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].name)).toBe("Drafted 0");
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues.find((row) => row.id === "founding-home:ada").presentation),
+        { mapId: "coast", image: null, x: 0.12, y: 0.83 },
+        "A resident keeps their home pin when the draft uses a different Venue ID",
+      );
       assert.ok(reads > 0, "Lost POST response recovers by reading the same receipt");
       assert.equal(calls, 1, "Recovery never dispatches a second paid attempt");
       assert.ok(

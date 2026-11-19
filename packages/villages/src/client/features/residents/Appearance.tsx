@@ -584,7 +584,7 @@ export function Appearance({
             type="button"
             key={label}
             aria-pressed={selected}
-            disabled={locked || (!resident && ((stale && !!error) || (useSprites && !choice.expressions.length)))}
+            disabled={locked || (!resident && stale && !!error)}
             onClick={() => {
               if (resident) edit({ ...choice, useSprites });
               else if (!selected) void save({ ...choice, useSprites });
@@ -610,6 +610,7 @@ export function Appearance({
       </button>
     ) : null;
   if (!resident) {
+    if (data && !choice.expressions.length && !previousAppearance && !error && !stale && !locked) return null;
     const front = baseline.expressions.filter((row) => row.front);
     const side = baseline.expressions.filter((row) => row.side);
     const moveEntries = (view: SpriteView) =>
@@ -628,7 +629,7 @@ export function Appearance({
     return (
       <section className="villages-appearance appearance-compact" aria-label={title}>
         <style>{APPEARANCE_STYLES}</style>
-        {data ? (
+        {data && choice.expressions.length ? (
           <div className="appearance-compact-row">
             {mode}
             {baseline.useSprites ? (
@@ -647,7 +648,7 @@ export function Appearance({
               </div>
             ) : null}
           </div>
-        ) : !error ? (
+        ) : !data && !error ? (
           <span role="status">Loading appearance…</span>
         ) : null}
         {moveOpen && data ? (

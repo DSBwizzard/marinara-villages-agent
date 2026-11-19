@@ -1,14 +1,12 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 
 /** Fill missing placement only. Authored positions survive generation and retries. */
-export function arrangeQuickStartVenues(venues: VillageVenue[], moveAll = false): VillageVenue[] {
-  const occupied = moveAll
-    ? []
-    : venues
-        .filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null)
-        .map((venue) => venue.presentation);
+export function arrangeQuickStartVenues(venues: VillageVenue[]): VillageVenue[] {
+  const occupied = venues
+    .filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null)
+    .map((venue) => venue.presentation);
   return venues.map((venue) => {
-    if (!moveAll && venue.presentation.x !== null && venue.presentation.y !== null) return venue;
+    if (venue.presentation.x !== null && venue.presentation.y !== null) return venue;
     const candidates = [0.5, 0.32, 0.68, 0.14, 0.86].flatMap((y) =>
       [0.5, 0.32, 0.68, 0.14, 0.86].map((x) => ({ x, y })),
     );

@@ -1175,12 +1175,13 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();
         await resident.getByRole("button", { name: characters[0].name, exact: true }).click();
-        const spritePane = resident.getByRole("region", { name: characters[0].name + "’s appearance", exact: true });
-        await expect(spritePane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute(
+        await expect(resident.getByRole("button", { name: characters[0].name, exact: true })).toHaveAttribute(
           "aria-pressed",
           "true",
         );
-        await expect(spritePane.getByRole("button", { name: "Sprites", exact: true })).toBeDisabled();
+        await expect(
+          resident.getByRole("region", { name: characters[0].name + "’s appearance", exact: true }),
+        ).toHaveCount(0);
         await expect(settingNext()).toBeEnabled();
         await bounds("people");
         await settingNext().click();
@@ -1456,6 +1457,16 @@ export async function verifyFoundingLayout(group) {
             draggedPosition,
           );
         }
+        const readPins = () =>
+          page.evaluate(() =>
+            Object.fromEntries(
+              window.featureController.setupVenues.map(({ id, presentation: { mapId, x, y } }) => [
+                id,
+                { mapId, x, y },
+              ]),
+            ),
+          );
+        const savedPins = await readPins();
         await button("Suggest").click();
         await page
           .getByRole("dialog", { name: "Suggest", exact: true })
@@ -1490,6 +1501,7 @@ export async function verifyFoundingLayout(group) {
             ),
           )
           .toBe("Community Courtyard");
+        assert.deepEqual(await readPins(), savedPins, "Drafted Venue text keeps each existing map pin");
         assert.ok(
           await page.evaluate(() =>
             window.featureController.setupVenues

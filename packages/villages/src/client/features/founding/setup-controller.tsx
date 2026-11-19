@@ -1,6 +1,6 @@
 import { FOUNDING_STEP } from "./founding-steps.js";
 import { zoneDayNightDefault } from "../../../shared/helpers/zone-day-night.js";
-import { reconcileFoundingHome } from "./founding-homes.js";
+import { foundingHomeMembers, reconcileFoundingHome } from "./founding-homes.js";
 import { applyFoundingVenueDraft, foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
@@ -275,10 +275,20 @@ export function createFoundingSuggestSetupVenues(ports: {
         const next = rows.map((row) => {
           const proposal = result.venues.find((item) => item.id === row.id);
           if (!proposal) throw new Error("Suggestions did not return every template Venue. Your draft is unchanged.");
-          return replaceQuickStartVenue(row, proposal);
+          const drafted = replaceQuickStartVenue(row, proposal);
+          const resident =
+            options.separateHomes && row.classes?.includes("residence") ? foundingHomeMembers(row)[0] : undefined;
+          const placed = setupVenuesRef.current.find((venue) => {
+            if (!resident) return venue.id === row.id;
+            if (!venue.classes?.includes("residence")) return false;
+            const members = foundingHomeMembers(venue);
+            return members.length === 1 && members[0] === resident;
+          });
+          const { mapId = "", x = null, y = null } = placed?.presentation ?? {};
+          return { ...drafted, presentation: { ...drafted.presentation, mapId, x, y } };
         });
         setSetupVenues(
-          arrangeQuickStartVenues(options.separateHomes ? next.map((row) => reconcileFoundingHome(row)) : next, true),
+          arrangeQuickStartVenues(options.separateHomes ? next.map((row) => reconcileFoundingHome(row)) : next),
         );
         ports.onQuickStartApplied?.();
         ports.setSetupWorkspace((state) => ({
