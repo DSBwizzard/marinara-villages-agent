@@ -1102,6 +1102,7 @@ export function FoundingScreen({
               <QuickStartVenues
                 key={setupStep}
                 phase={setupStep === 3 ? "venues" : "zones"}
+                inlineVenue={desktopMap}
                 venues={setupVenues}
                 locationName={setupLocationName}
                 onRetrySaving={() => void retrySetupSaving()}

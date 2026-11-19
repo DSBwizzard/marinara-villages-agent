@@ -900,6 +900,9 @@ export const VILLAGES_FORGING_STYLES = `
 }
 .villages-forging-v2[data-desktop-map] .villages-quick-start>.villages-quick-map-panel h2 { overflow-wrap:anywhere; }
 .villages-forging-v2[data-desktop-map] .villages-quick-map-panel .villages-quick-map { height:auto; min-height:0; flex:1; }
+.villages-forging-v2[data-desktop-map] .villages-quick-map-panel>:is(.villages-quick-map,.villages-founding-venue-pane) { grid-area:2 / 1; }
+.villages-quick-map[inert] { visibility:hidden; }
+.villages-founding-venue-pane { container:founding-editor / inline-size; min-width:0; min-height:0; overflow:hidden; border-radius:.5rem; background:#292438; }
 .villages-forging-v2[data-desktop-map] .villages-quick-start>.villages-quick-venue-list {
   grid-column:2; grid-row:2; align-self:start; height:auto; max-height:100%; padding:.65rem;
   background:#352c44; border-color:#a6809160;
