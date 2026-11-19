@@ -165,6 +165,19 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
     scopedBookmark && ((advanced && readingEnd) || advanceOwned)
       ? scopedBookmark.momentIndex - (synthetic && !advanceOwned ? 1 : 0)
       : undefined;
+  const newest = useCallback(() => {
+    const current = lane.current;
+    current.generation++;
+    current.pending?.abort();
+    current.pending = null;
+    const window = latest.current.window;
+    reading.checkpoint.current.bookmark = undefined;
+    reading.checkpoint.current.window = window;
+    previousAuthority.current = window;
+    setSelected({ window: { ...window }, entry: "last" });
+    setBusy(false);
+    setError(null);
+  }, [reading.checkpoint]);
   return {
     window,
     entry: chosen?.entry ?? initialEntry,
@@ -177,12 +190,6 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
     advanceOwned,
     advanceFrom,
     retry: () => load(lane.current.cursor, lane.current.entry),
-    newest: () => {
-      reading.checkpoint.current.bookmark = undefined;
-      reading.checkpoint.current.window = authority;
-      previousAuthority.current = authority;
-      setSelected({ window: { ...authority }, entry: "last" });
-      setError(null);
-    },
+    newest,
   };
 }

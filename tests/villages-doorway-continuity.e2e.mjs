@@ -22,6 +22,9 @@ await withBrowser(browser, async () => {
     let issues = [];
     let summary = { pending: 0, failed: 0, rejected: 1 };
     let mutatingRequests = 0;
+    let moves = 0;
+    const destination = snapshot.settings.venues.find((venue) => venue.id === "mill").zones[1];
+    destination.name = "Workshop";
     const line = (id, kind, speakerId, content, extra = {}) => ({
       id,
       kind,
@@ -81,6 +84,17 @@ await withBrowser(browser, async () => {
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/rooms/zone") && route.request().method() === "POST") {
+        assert.equal(route.request().postDataJSON().zoneId, destination.id);
+        moves++;
+        Object.assign(session, {
+          zoneId: destination.id,
+          area: "public",
+          activeIds: ["mara"],
+          sceneRevision: session.sceneRevision + 1,
+        });
+        return fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
+      }
       if (route.request().method() !== "GET" && /\/(?:turn|generate|interpret|replay)(?:\/|$)/u.test(path))
         mutatingRequests++;
       const value =
@@ -159,6 +173,22 @@ await withBrowser(browser, async () => {
     summary = { pending: 0, failed: 0, rejected: 1 };
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(chip).toHaveCount(0);
+    // The new Zone has Mara, but the saved end of the old conversation has an empty cast.
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Move to Zone" })
+      .getByRole("button", { name: destination.name, exact: true })
+      .click();
+    await expect.poll(() => moves).toBe(1);
+    const mara = page.locator('[class$="-chat-cast-person"][data-character-id="mara"]');
+    await expect(mara).toBeVisible({ timeout: 3000 });
+    await expect(mara).toHaveAttribute("data-position", /left|center|right/);
+    await previous.click();
+    await expect(current).toContainText("Mara steps back inside");
+    await expect(mara).toHaveCount(0);
+    await next.click();
+    await expect(mara).toBeVisible();
     assert.equal(mutatingRequests, 0, "Reading feedback never replays saved work or generates a response");
     assert.deepEqual(errors, []);
     await page.close();

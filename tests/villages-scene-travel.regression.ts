@@ -316,6 +316,21 @@ for (const scenario of [
           assert(
             !saved.lines.find((line) => line.content === "A remark only heard outside.")?.heardBy.includes("player"),
           );
+          const move = await host.app.inject({
+            method: "POST",
+            url: "/api/villages/rooms/zone",
+            payload: {
+              sessionId: after.id,
+              zoneId: "exterior",
+              operationId: "follow-resident",
+              expectedSceneRevision: after.sceneRevision,
+            },
+          });
+          assert.equal(move.statusCode, 200, move.body);
+          const followed = move.json().session;
+          assert.equal(followed.zoneId, "exterior");
+          assert.deepEqual(followed.activeIds, ["mara"]);
+          assert.equal(calls, 1, "The destination cast is returned before another turn");
         } else {
           assert.equal(receipt.departure?.actorId, "mara");
           assert(saved.departedIds?.includes("mara"));
