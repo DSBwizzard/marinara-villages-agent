@@ -23,6 +23,7 @@ import { contactNeighborIds } from "../packages/villages/src/shared/helpers/zone
 import { fixture } from "./fixtures/villages-projects.fixture.js";
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageProject } from "../packages/villages/src/server/domain/models/world.js";
+import { immutableMemoryValue } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 
 const f = fixture(),
   state = structuredClone(f.state()),
@@ -35,6 +36,11 @@ venue.zones = Array.from({ length: 7 }, (_, i) => ({
 }));
 const ids = venue.zones.map((z) => z.id);
 const positions = resolveZoneLayout(ids);
+assert.doesNotThrow(() => immutableMemoryValue(positions), "Resolved positions are valid saved-memory JSON containers");
+const unusual = readZoneLayout(Object.fromEntries([["__proto__", { x: 0, y: 0 }]]), ["__proto__"])!;
+assert.equal(Object.getPrototypeOf(unusual), Object.prototype);
+assert.ok(Object.hasOwn(unusual, "__proto__"));
+assert.deepEqual(immutableMemoryValue(unusual)["__proto__"], { x: 0, y: 0 }, "Authored IDs remain own data properties");
 assert.ok(ids.every((id) => zonePositionFits(positions, id, positions[id])));
 assert.equal(
   readZoneLayout({ ...positions, "zone:1": positions.exterior }, ids),
@@ -57,6 +63,14 @@ const command = () => ({
 });
 const first = command();
 applyVenueZoneLayout(state, venue, first);
+assert.doesNotThrow(
+  () => immutableMemoryValue(venue.zoneLayout),
+  "Layout edits can enter the authoritative saved-memory snapshot",
+);
+assert.doesNotThrow(
+  () => immutableMemoryValue(coerceVillageState(state).venues[0].zoneLayout),
+  "Decoded layout stays compatible with the persistence boundary",
+);
 assert.deepEqual(JSON.parse(JSON.stringify(venue.zoneLayout)), JSON.parse(JSON.stringify(positions)));
 assert.deepEqual(
   JSON.parse(JSON.stringify(coerceVillageState(state).venues[0].zoneLayout)),
