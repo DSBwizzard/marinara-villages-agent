@@ -53,6 +53,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
     if (
       method === "get" ||
       settingsFields?.length === 0 ||
+      (settingsFields?.length === 1 &&
+        settingsFields[0] === "spontaneousEvents" &&
+        asRecord(body).spontaneousEvents === false) ||
       path === "/background/presence" ||
       path === "/background/catchup/retry" ||
       path === "/background/catchup/continue" ||

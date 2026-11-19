@@ -1295,7 +1295,7 @@ export function useOpenRoom(ports: {
           method: "POST",
           body: JSON.stringify({
             venueId: place.id,
-            zoneId,
+            zoneId: zoneId ?? place.zones?.find((zone) => zone.kind === "exterior")?.id,
             expectedSceneRevision: room?.sceneRevision,
           }),
           signal: AbortSignal.timeout(20_000),
@@ -1307,7 +1307,7 @@ export function useOpenRoom(ports: {
         setLastSceneEnding("");
         setRoomOpen(true);
         void loadSnapshot();
-        if (session.status === "opening")
+        if (session.status === "opening" && !session.visitEventOpening)
           await greetRoom(session.id, {
             owns,
             handoff: (next) => lifetime.handoff(claim, next, false),

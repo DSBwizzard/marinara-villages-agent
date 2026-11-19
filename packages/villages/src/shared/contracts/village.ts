@@ -488,6 +488,7 @@ export type VillageSettings = {
   foundingLore?: { label: string; entries: import("./lore.js").LoreUse[] }[];
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
+  spontaneousEvents?: boolean;
   spriteCardFlipEnabled: boolean;
   spriteVariantsEnabled: boolean;
   backgroundPace: VillageBackgroundPace;
@@ -720,6 +721,7 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  visitEventOpening?: true;
   lore?: import("./lore.js").LoreUse[];
   currentTime?: string;
   lighting?: "day" | "night";

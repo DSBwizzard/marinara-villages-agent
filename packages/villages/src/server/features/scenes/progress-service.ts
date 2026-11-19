@@ -174,7 +174,10 @@ export function createSceneProgress({
           if (notices.length) entry.recordEvents = notices;
           else delete entry.recordEvents;
           entry.acceptance = { status: "applied", rejected: accepted.rejected };
-          if (entry.id === "greeting" && saved.status === "opening") saved.status = "active";
+          if (entry.id === "greeting") {
+            if (saved.status === "opening") saved.status = "active";
+            delete saved.visitEvent;
+          }
           entry.progressProcessedAt = episode.acceptedAt;
           entry.progressError = "";
           delete entry.narration;

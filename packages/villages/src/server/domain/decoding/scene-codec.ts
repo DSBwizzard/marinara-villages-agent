@@ -135,6 +135,9 @@ export function coerceSession(value: unknown): VenueScene {
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
     openingGatheringId: asTrimmedString(raw.openingGatheringId) || undefined,
+    ...(raw.visitEvent === "waiting" || raw.visitEvent === "opening" || raw.visitEvent === "place"
+      ? { visitEvent: raw.visitEvent }
+      : {}),
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),

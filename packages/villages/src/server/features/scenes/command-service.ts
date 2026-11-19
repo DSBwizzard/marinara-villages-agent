@@ -4,7 +4,7 @@ import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { observableRoomDescription } from "../../domain/rules/zone-picture.js";
 import { findLocation, hasAssociatedNpc } from "../../domain/rules/places.js";
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
@@ -39,7 +39,20 @@ import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
 import { sceneTurnNotices } from "../../domain/rules/scene-public.js";
 import { visibleSceneNotices } from "../../domain/rules/narration-notices.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
+import { activeNarrativeConditions } from "../../domain/rules/narrative-environment.js";
+
+const VISIT_ROLL_COOLDOWN = 5 * 60_000;
+function visitEventHere(state: VillageState, placeId: string, zoneId: string, occupants: number, at: string) {
+  return (
+    occupants > 0 ||
+    activeNarrativeConditions(state.narrative, at).some(
+      (condition) => condition.venueId === placeId && condition.zoneId === zoneId,
+    )
+  );
+}
+
 export interface SceneCommandPorts {
+  rollVisitEvent?: () => "local" | "place" | "quiet";
   retry?: ReturnType<typeof import("./retry-service.js").createSceneRetry>;
   generate: typeof import("./writing.js").generate;
   processSavedExchange: typeof import("./progress.js").processSavedExchange;
@@ -97,6 +110,10 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  rollVisitEvent = () => {
+    const roll = randomInt(9);
+    return roll === 0 ? "place" : roll < 3 ? "local" : "quiet";
+  },
   retry,
   generate,
   processSavedExchange,
@@ -315,6 +332,7 @@ export function createSceneCommands({
       environment: village.narrative,
     });
     if (!decision.allowed) throw conflict(decision.explanation);
+    let visitEvent: VenueScene["visitEvent"];
     await mutateVillageState((state) => {
       const current = findLocation(state, venue.id);
       if (!current) throw conflict("That Zone is no longer available.");
@@ -328,6 +346,12 @@ export function createSceneCommands({
         decision.permissionId,
       );
       claimVisitPermission(current, permission, session.id);
+      visitEvent =
+        session.visitEvent === "waiting" && state.spontaneousEvents && !session.submissions.length
+          ? visitEventHere(state, venue.id, zone.id, people.length, accessAt.toISOString())
+            ? "opening"
+            : "waiting"
+          : undefined;
     });
     await changeSceneVenues(session, (state) => {
       const captured = findLocation(state, venue.id)!;
@@ -353,6 +377,8 @@ export function createSceneCommands({
           state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });
       }
       state.activeIds = people.map((person) => person.characterId);
+      state.visitEvent = visitEvent;
+      if (visitEvent === "opening") state.status = "opening";
       state.spaceClass = zone.venueClass;
       state.area = zoneArea(zone);
       state.privateOwnerId = zone.ownerId ?? "";
@@ -570,8 +596,32 @@ export function createSceneCommands({
         .length > 4
     )
       throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
+    const authoredOpening = gathering || !!discovery || hasAssociatedNpc(village, placeId);
+    let visitEvent: VenueScene["visitEvent"];
+    if (!authoredOpening && village.spontaneousEvents) {
+      const at = Date.parse(sceneAttendance.capturedAt);
+      let roll: ReturnType<typeof rollVisitEvent> | undefined;
+      await mutateVillageStateWithoutPlaces((state) => {
+        visitEvent = undefined;
+        if (state.seed !== village.seed || state.setupAt !== village.setupAt || !state.spontaneousEvents) return false;
+        const rolls = state.recentVisitRolls ?? {};
+        const cutoff = at - VISIT_ROLL_COOLDOWN;
+        if (Object.hasOwn(rolls, placeId) && rolls[placeId] > cutoff) return false;
+        state.recentVisitRolls = {
+          ...Object.fromEntries(Object.entries(rolls).filter(([, time]) => time > cutoff)),
+          [placeId]: at,
+        };
+        roll ??= rollVisitEvent();
+        if (roll === "place") visitEvent = "place";
+        if (roll === "local")
+          visitEvent = visitEventHere(state, placeId, zone.id, participants.length, sceneAttendance.capturedAt)
+            ? "opening"
+            : "waiting";
+      });
+    }
     const session: VenueScene = {
       openingGatheringId: gathering ? village.opening!.id : undefined,
+      visitEvent,
       pendingAccessClaim: initialPermissionId,
       version: 5,
       sceneRevision: 0,
@@ -590,7 +640,7 @@ export function createSceneCommands({
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
       endReason: "",
-      status: participants.length || discovery || hasAssociatedNpc(village, placeId) ? "opening" : "active",
+      status: authoredOpening || visitEvent === "opening" || visitEvent === "place" ? "opening" : "active",
       // Pending entry cannot put the private cast into the playback index.
       participants: initialPermissionId ? [] : participants,
       sceneAttendance,
@@ -612,7 +662,7 @@ export function createSceneCommands({
     if (gathering) await withSceneWork(id, create);
     else await create();
     const settled = await refreshZoneParticipants(session);
-    await queueZonePicture(settled);
+    if (!participants.length && !authoredOpening) await queueZonePicture(settled);
     return settled;
   }
   async function greetVenue(id: string, retryOfAttemptId?: string, recovery = false): Promise<VenueScene> {
@@ -640,7 +690,10 @@ export function createSceneCommands({
     const task = Promise.race([
       aborted,
       Promise.resolve().then(async () => {
-        const admission = await readSession(id);
+        let admission = await readSession(id);
+        const freshVisit =
+          admission.status === "opening" && admission.visitEvent && admission.operation?.kind !== "greet";
+        if (freshVisit) admission = await requireLiveVenueSession(id);
         assertCurrentSceneGeneration(admission);
         signal.throwIfAborted();
         const writingInput = {};
@@ -651,7 +704,7 @@ export function createSceneCommands({
           "greeting",
           "greet",
           writingInput,
-          undefined,
+          freshVisit ? admission.sceneRevision : undefined,
           retryOfAttemptId,
           () => greetVenueOnce(id, venueOperationSignal() ?? signal, trace),
           { recovery },
@@ -687,6 +740,28 @@ export function createSceneCommands({
       )
     )
       return session;
+    if (
+      session.visitEvent &&
+      !session.submissions.some((turn) => turn.id === "greeting") &&
+      !Object.keys(session.operation?.attempts ?? {}).length
+    ) {
+      const village = await readVillageStateWithoutPlaces();
+      if (
+        !village.spontaneousEvents ||
+        (session.visitEvent !== "place" &&
+          !visitEventHere(
+            village,
+            session.placeId,
+            requireSceneZoneId(session),
+            session.activeIds.length,
+            villageNow().toISOString(),
+          ))
+      )
+        return changeSession(id, (saved) => {
+          saved.status = "active";
+          delete saved.visitEvent;
+        });
+    }
     session = await publishNarration(
       session,
       { sessionId: id, submissionId: "greeting", mode: "chat", targetId: "", message: "" },
@@ -696,6 +771,7 @@ export function createSceneCommands({
     );
     return changeSession(id, (saved) => {
       if (saved.status === "opening") saved.status = "active";
+      delete saved.visitEvent;
     });
   }
   async function continueVenueWithoutGreeting(id: string): Promise<VenueScene> {
@@ -725,6 +801,7 @@ export function createSceneCommands({
         throw conflict("The Scene request changed before the greeting could be skipped.");
       if (state.status === "opening") state.status = "active";
       else if (state.status !== "active") throw conflict("That Scene has already ended.");
+      delete state.visitEvent;
       if (state.operation?.kind === "greet" && state.operation.status === "complete") {
         state.operation.error = "";
         delete state.operation.failure;

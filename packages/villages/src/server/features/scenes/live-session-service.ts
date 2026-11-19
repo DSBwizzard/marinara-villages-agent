@@ -333,7 +333,15 @@ export function createLiveScenes({
       const people = sceneZoneOccupants(saved, venue, requireSceneZoneId(saved));
       saved.participants = people.map(({ characterId, name, doing }) => ({ characterId, name, doing }));
       saved.activeIds = people.map((person) => person.characterId);
-      if (!people.length && saved.status === "opening" && !hasAssociatedNpc(authority, venue.id))
+      if (!claimed && saved.visitEvent === "opening") {
+        saved.visitEvent = "waiting";
+        saved.status = "active";
+      } else if (
+        !people.length &&
+        saved.status === "opening" &&
+        !saved.visitEvent &&
+        !hasAssociatedNpc(authority, venue.id)
+      )
         saved.status = "active";
       saved.continuity = captureSceneContinuity(authority, saved, now.getTime());
       saved.pendingAccessClaim = undefined;
@@ -466,7 +474,12 @@ export function createLiveScenes({
         else state.participants[existing] = participant;
       }
       state.activeIds = activeIds;
-      if (state.status === "opening" && activeIds.length === 0 && !hasAssociatedNpc(village, venue.id))
+      if (
+        state.status === "opening" &&
+        !state.visitEvent &&
+        activeIds.length === 0 &&
+        !hasAssociatedNpc(village, venue.id)
+      )
         state.status = "active";
       if (departed.length || arrived.length || currentMoment.dayIndex !== previousMoment.dayIndex) {
         // Report current presence, never fabricate witnessed departures or player activity during an absence.

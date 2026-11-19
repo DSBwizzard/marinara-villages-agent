@@ -418,7 +418,7 @@ export function narrationContinuityContext(
   );
   const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
   parts.push(...transcript);
-  const recallCandidates = history.recallCandidates ?? [];
+  const recallCandidates = scene.visitEvent && opening ? [] : (history.recallCandidates ?? []);
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   for (const { npc } of npcCandidates)

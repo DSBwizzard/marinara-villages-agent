@@ -6,6 +6,7 @@ export type VillageCompletionOptions = {
   checkpointId?: string;
   /** New-work preflight after replay and before reservation; may lower the output allowance. */
   beforeBackgroundDispatch?: () => Promise<number | void>;
+  beforeSceneDispatch?: () => Promise<void>;
   /** Durable replay response for a standalone task, separate from applying its effects. */
   savedRequest?: {
     key: string;

@@ -1,5 +1,5 @@
 import { useConfirmation } from "../shared/confirmation.js";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
@@ -124,7 +124,7 @@ import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js"
 import {
   useSaveBackgroundPace,
   useSaveScenerySettings,
-  useSaveSendOnEnter,
+  useSaveVillageSwitch,
   useSaveSettings,
 } from "../features/settings/actions.js";
 import { useAgentConnections } from "../features/settings/AgentConnections.js";
@@ -772,6 +772,20 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const greetRoom = useGreetRoom({ ...scenes, isFounded: snapshot?.isFounded, room, loadSnapshot, setRoom });
+  const visitEventRequested = useRef("");
+  useEffect(() => {
+    if (
+      !room?.visitEventOpening ||
+      !visible ||
+      scenes.roomBusy ||
+      screen !== "room" ||
+      exploreSheet ||
+      visitEventRequested.current === room.id
+    )
+      return;
+    visitEventRequested.current = room.id;
+    void greetRoom(room.id);
+  }, [room, visible, scenes.roomBusy, screen, exploreSheet, greetRoom]);
 
   const retrySavedScene = useRetrySavedScene({
     ...scenes,
@@ -867,7 +881,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const saveBackgroundPace = useSaveBackgroundPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
-  const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
+  const saveSendOnEnter = useSaveVillageSwitch("sendOnEnter", { setBusy, setSettingsError, setSnapshot, snapshot });
+  const saveSpontaneousEvents = useSaveVillageSwitch("spontaneousEvents", {
+    setBusy,
+    setSettingsError,
+    setSnapshot,
+    snapshot,
+  });
 
   // ── Town map ───────────────────────────────────────────────────────────────
   useFoundingMapReceipt({ ...founding, visible, screen, updateSetupMapRequest });
@@ -1396,6 +1416,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     scenerySettings,
     spriteVisualSettings,
     saveSendOnEnter,
+    saveSpontaneousEvents,
     saveSettings,
     saveBackgroundPace,
     saveVenue,
