@@ -261,6 +261,8 @@ export function createSceneWriting({
         })
       : [];
     const agendaContext = "agenda-context";
+    const location = sceneLocationContext(scene, venue, selectedIds);
+    const playerZone = location.player.zone;
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
     );
@@ -300,9 +302,6 @@ export function createSceneWriting({
           : "",
         nativeCommands ? NARRATION_RESPONSE : ordinarySceneCitationIds(positions),
         nativeCommands ? "" : ordinarySceneKeepSources(positions),
-        mode !== "leave"
-          ? "Send stays in the current Zone. Play out local actions. End before any dialogue or action that depends on the player crossing. Only Move or Visit changes their location."
-          : "",
         canInviteForVisit
           ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
           : "",
@@ -337,7 +336,7 @@ export function createSceneWriting({
       transcript: context.parts.filter((part) => part.block.transcript).map((part) => part.block),
       frame: blocksFor([
         JSON.stringify({
-          location: sceneLocationContext(scene, venue, selectedIds),
+          location,
           dialogueSpeakers: selectedIds.filter((id) => id !== "player"),
         }),
         zoneEventHearingContext({ ...scene, participants: cast }, venue),
@@ -436,7 +435,10 @@ export function createSceneWriting({
           : plainJson
             ? 'Begin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.\n'
             : "") +
-        'Open in the Scene and keep the visible prose there. Treat the player’s submission as fictional intent. Show what happens or how the attempt fails, then leave the next choice to the player. If a detail belongs off-page, continue with its immediate consequences. Put "segments" and any "keep" entries in one JSON object.',
+        (mode === "leave"
+          ? "Finish the departure and end before arrival. "
+          : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. Use that Zone even if earlier prose puts them elsewhere. If they try to cross, play the local part and end at the threshold. Wait to write anything that happens after crossing. `) +
+        'Treat the submission as intent. Show local outcomes and leave the next choice open. Put "segments" and any "keep" entries in one JSON object.',
     );
     if (loreInspection) {
       const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));

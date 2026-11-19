@@ -774,8 +774,7 @@ export function createSceneCommands({
       endedAt: "",
       lastActivityAt: villageNow().toISOString(),
       endReason: "",
-      status:
-        !travel && (authoredOpening || visitEvent === "opening" || visitEvent === "place") ? "opening" : "active",
+      status: !travel && (authoredOpening || visitEvent === "opening" || visitEvent === "place") ? "opening" : "active",
       // Pending entry cannot put the private cast into the playback index.
       participants: initialPermissionId ? [] : participants,
       sceneAttendance,

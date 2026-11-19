@@ -399,7 +399,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.deepEqual(messages.at(-2), { role: "user", content: input });
   assert.match(
     messages.at(-1)?.content ?? "",
-    /^## Scene reply reminder\nOpen in the Scene and keep the visible prose there\./u,
+    /^## Scene reply reminder\nKeep the player in .* until they use Move or Visit\./u,
   );
   const example = messages[cut].content.match(/(\{"segments":\[.*?\]\})/u);
   assert(example, "The model receives a Scene response example");
