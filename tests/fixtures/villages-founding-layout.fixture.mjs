@@ -1286,6 +1286,9 @@ export async function verifyFoundingLayout(group) {
           }
         }
         await expect(root.locator(".villages-quick-zone-summary").first()).toContainText("Entrance");
+        await expect(root.locator(".villages-quick-zone-summary")).toHaveCount(prepared.length);
+        await expect(root.getByRole("button", { name: "Next Venues page", exact: true })).toHaveCount(0);
+        await expect(settingNext()).toBeInViewport({ ratio: 1 });
         await expect(sheet).toHaveCount(0);
         await settingNext().click();
         await expect(root).toHaveAttribute("data-step", "5");

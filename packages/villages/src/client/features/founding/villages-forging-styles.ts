@@ -505,6 +505,11 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-artwork-button img { width:2rem; height:2rem; object-fit:cover; border-radius:.25rem; }
 .villages-quick-venue-card h3 { margin:0; }
 .villages-quick-household { display:block; min-height:1.2em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8rem; margin:0!important; }
+.villages-quick-zone-list { display:grid; gap:.4rem; }
+.villages-forging-v2 .villages-quick-zone-list .villages-quick-venue-card {
+  min-height:44px; justify-content:center; padding:.45rem .65rem; overflow:visible;
+}
+.villages-quick-zone-list .villages-quick-venue-title strong { white-space:normal; overflow-wrap:anywhere; }
 .villages-quick-zone-summary { display:block; white-space:normal; overflow-wrap:anywhere; font-size:.8rem; line-height:1.3; }
 .villages-quick-map-panel { display:flex; flex-direction:column; }
 .villages-quick-map-panel .villages-quick-map { flex:1; min-height:10rem; height:auto; }

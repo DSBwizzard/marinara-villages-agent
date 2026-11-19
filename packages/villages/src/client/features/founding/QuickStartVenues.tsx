@@ -191,66 +191,75 @@ export function QuickStartVenues({
       setZoneId(id);
     }
   };
+  const cards = ordered.map((venue) => {
+    const home = venue.classes?.includes("residence");
+    return (
+      <button
+        key={venue.id}
+        type="button"
+        className="villages-quick-venue-card"
+        aria-label={venue.name || "Venue"}
+        aria-haspopup="dialog"
+        aria-pressed={selected?.id === venue.id}
+        data-venue-id={venue.id}
+        data-selected={selected?.id === venue.id}
+        disabled={busy || imageBusy}
+        style={
+          venue.presentation.image
+            ? {
+                backgroundImage: `linear-gradient(0deg,#0c1830f2,transparent),url(${JSON.stringify(venue.presentation.image.url)})`,
+              }
+            : undefined
+        }
+        onClick={() => {
+          onSelect(venue);
+          selectSection(phase === "zones" ? "zones" : "about");
+          setEditorOpen(true);
+        }}
+      >
+        <span className="villages-quick-venue-title">
+          <strong>{venue.name || "Venue"}</strong>
+          {phase === "venues" ? (
+            <span className="villages-quick-venue-badge">
+              {venue.classes?.includes("community") ? "Community" : home ? "Residence" : "Venue"}
+            </span>
+          ) : null}
+        </span>
+        {phase === "zones" ? (
+          <span className="villages-quick-zone-summary">
+            {[
+              "Entrance",
+              ...(venue.spaces ?? []).map((zone) => zone.name),
+              ...(venue.privateSpaces ?? []).map((zone) => zone.name),
+            ].join(" · ")}
+          </span>
+        ) : (
+          <span className="villages-quick-household">
+            {home
+              ? foundingHomeMembers(venue)
+                  .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
+                  .join(", ")
+              : "Everyone"}
+          </span>
+        )}
+      </button>
+    );
+  });
   return (
     <section className="villages-quick-start" aria-label={phase === "zones" ? "Zones" : "Venues"} data-phase={phase}>
-      <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
+      <section
+        className="villages-forging-card villages-quick-venue-list"
+        aria-label={phase === "zones" ? "Starter layouts" : "Starting Venues"}
+      >
         <header className="villages-venue-heading">
-          <h2>{phase === "zones" ? "Ready-to-use Zones" : "Starting Venues"}</h2>
-          <div className="villages-quick-venue-actions">{actions}</div>
+          <h2>{phase === "zones" ? "Starter layouts" : "Starting Venues"}</h2>
+          {actions ? <div className="villages-quick-venue-actions">{actions}</div> : null}
         </header>
-        <FoundingVenuePages selectedId={selectedId}>
-          {ordered.map((venue) => {
-            const home = venue.classes?.includes("residence");
-            const community = venue.classes?.includes("community");
-            const members = foundingHomeMembers(venue);
-            return (
-              <button
-                key={venue.id}
-                type="button"
-                className="villages-quick-venue-card"
-                aria-label={venue.name || "Venue"}
-                aria-haspopup="dialog"
-                aria-pressed={selected?.id === venue.id}
-                data-venue-id={venue.id}
-                data-selected={selected?.id === venue.id}
-                disabled={busy || imageBusy}
-                style={
-                  venue.presentation.image
-                    ? {
-                        backgroundImage: `linear-gradient(0deg,#0c1830f2,transparent),url(${JSON.stringify(venue.presentation.image.url)})`,
-                      }
-                    : undefined
-                }
-                onClick={() => {
-                  onSelect(venue);
-                  selectSection(phase === "zones" ? "zones" : "about");
-                  setEditorOpen(true);
-                }}
-              >
-                <span className="villages-quick-venue-title">
-                  <strong>{venue.name || "Venue"}</strong>
-                  <span className="villages-quick-venue-badge">
-                    {community ? "Community" : home ? "Residence" : "Venue"}
-                  </span>
-                </span>
-                <span className="villages-quick-household">
-                  {home
-                    ? members.map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident").join(", ")
-                    : "Everyone"}
-                </span>
-                {phase === "zones" ? (
-                  <span className="villages-quick-zone-summary">
-                    {[
-                      "Entrance",
-                      ...(venue.spaces ?? []).map((zone) => zone.name),
-                      ...(venue.privateSpaces ?? []).map((zone) => zone.name),
-                    ].join(" · ")}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </FoundingVenuePages>
+        {phase === "zones" ? (
+          <div className="villages-quick-zone-list">{cards}</div>
+        ) : (
+          <FoundingVenuePages selectedId={selectedId}>{cards}</FoundingVenuePages>
+        )}
         {!open && (saveError || problem) ? <p role="alert">{saveError || problem}</p> : null}
         {!open && !saveError ? problemAction : null}
       </section>
@@ -313,15 +322,11 @@ export function QuickStartVenues({
                 </nav>
               ) : null}
               <div className={`${P}-venue-profile-body`}>
-                <FoundingGuide>
-                  {section === "about"
-                    ? "Give this place a name, an appearance, and a household. We’ll step inside on Zones."
-                    : section === "manage"
-                      ? "Connect the Zones so people can get there from the entrance. Walls are famously uncooperative."
-                      : zoneDetails
-                        ? "Who sleeps here, whose space it is, and who gets in are three separate choices. People are complicated."
-                        : "Pick a Zone to see who uses it. I’m curious, too."}
-                </FoundingGuide>
+                {section === "manage" ? (
+                  <FoundingGuide>
+                    Give each Zone a route from the Entrance. Walls are famously uncooperative.
+                  </FoundingGuide>
+                ) : null}
                 {section === "about" ? (
                   <section aria-label="About this Venue">
                     <fieldset className="villages-quick-venue-header" disabled={busy || imageBusy}>
