@@ -214,38 +214,41 @@ export function useSaveBackgroundPace(ports: {
   );
 }
 
-export function useSaveSendOnEnter(ports: {
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-  snapshot: VillageSnapshot;
-}) {
+export function useSaveVillageSwitch(
+  key: "sendOnEnter" | "spontaneousEvents",
+  ports: {
+    setBusy: React.Dispatch<SetStateAction<boolean>>;
+    setSettingsError: React.Dispatch<SetStateAction<string>>;
+    setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
+    snapshot: VillageSnapshot;
+  },
+) {
   const { setBusy, setSettingsError, setSnapshot, snapshot } = ports;
   const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
-    async (sendOnEnter: boolean) => {
+    async (enabled: boolean) => {
       const claim = lifetime.begin();
       if (!claim) return;
-      const previous = snapshot?.settings.sendOnEnter === true;
-      setSnapshot((current) => (current ? { ...current, settings: { ...current.settings, sendOnEnter } } : current));
+      const previous = snapshot?.settings[key] === true;
+      setSnapshot((current) => (current ? { ...current, settings: { ...current.settings, [key]: enabled } } : current));
       setBusy(true);
       setSettingsError("");
       try {
         const saved = await request<VillageSnapshot>("/settings", {
           method: "PATCH",
-          body: JSON.stringify({ sendOnEnter }),
+          body: JSON.stringify({ [key]: enabled }),
         });
         if (lifetime.owns(claim)) setSnapshot(saved);
       } catch (cause) {
         if (!lifetime.owns(claim)) return;
         setSnapshot((current) =>
-          current ? { ...current, settings: { ...current.settings, sendOnEnter: previous } } : current,
+          current ? { ...current, settings: { ...current.settings, [key]: previous } } : current,
         );
-        setSettingsError(messageFrom(cause, "Send on Enter could not be saved."));
+        setSettingsError(messageFrom(cause, "That setting could not be saved."));
       } finally {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [lifetime, snapshot?.settings?.sendOnEnter, setSnapshot, setBusy, setSettingsError],
+    [key, lifetime, snapshot?.settings, setSnapshot, setBusy, setSettingsError],
   );
 }

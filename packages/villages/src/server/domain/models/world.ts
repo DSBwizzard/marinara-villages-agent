@@ -587,6 +587,8 @@ export type VillageState = {
   narrationStyle: VillageNarrationStyle;
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
+  spontaneousEvents?: true;
+  recentVisitRolls?: Record<string, number>;
   spriteCardFlipEnabled: boolean;
   spriteVariantsEnabled: boolean;
   /**

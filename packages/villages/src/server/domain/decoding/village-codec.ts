@@ -1380,6 +1380,16 @@ export function coerceVillageState(value: unknown): VillageState {
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
     sendOnEnter: raw.sendOnEnter === true,
+    ...(raw.spontaneousEvents === true ? { spontaneousEvents: true as const } : {}),
+    ...(raw.recentVisitRolls === undefined
+      ? {}
+      : {
+          recentVisitRolls: Object.fromEntries(
+            Object.entries(asRecord(raw.recentVisitRolls)).flatMap(([placeId, at]) =>
+              typeof at === "number" && Number.isSafeInteger(at) && at >= 0 ? [[placeId, at]] : [],
+            ),
+          ),
+        }),
     spriteCardFlipEnabled: raw.spriteCardFlipEnabled !== false,
     spriteVariantsEnabled: raw.spriteVariantsEnabled !== false,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),

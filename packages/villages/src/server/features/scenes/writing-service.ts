@@ -281,7 +281,13 @@ export function createSceneWriting({
       metadata: blocksFor([
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
-          ? "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
+          ? scene.visitEvent
+            ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
+                scene.visitEvent === "place"
+                  ? "Let a plausible local development give the player something to notice or react to. The place can initiate this even when nobody is present."
+                  : "Let a present resident initiate from their own activity, desire or commitment, or let an observable local development draw the player's attention."
+              } Show one brief beat. Respect current attendance and hearing. The player chooses whether to engage. Keep any lasting result subject to ordinary evidence and native authority.`
+            : "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
           : mode === "leave"
             ? "Respond to the whole submitted departure and close when it is complete. Any goodbye from the player comes from their submission."
             : "",
@@ -495,7 +501,7 @@ export function createSceneWriting({
         trace?.("model request", 0, `${prepared.resolvedModel.model} (${prepared.resolvedModel.connectionId})`);
         completion = await venueCheckpoint(completionStage, async () => {
           if (retry) await retry.beforeDispatch();
-          return requestCompletion(prepared.resolvedModel, request, signal);
+          return requestCompletion(prepared.resolvedModel, request, signal, mode === "greet" && !!scene.visitEvent);
         });
       }
       const parsed = readModelJsonObject(completion);
@@ -592,7 +598,12 @@ export function createSceneWriting({
       throw conflict("The captured Narration model changed. The request is retained.");
     return model;
   }
-  function requestCompletion(model: CapabilityResolvedLanguageModel, request: Request, signal?: AbortSignal) {
+  function requestCompletion(
+    model: CapabilityResolvedLanguageModel,
+    request: Request,
+    signal?: AbortSignal,
+    visitEvent = false,
+  ) {
     return completeWithRoom(model, request.fitted.messages, request.fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, {
       ...(request.plainJson ? {} : { responseFormat: { type: "json_object" } }),
       temperature: 0.85,
@@ -600,6 +611,15 @@ export function createSceneWriting({
       reasoningEffort: null,
       verbosity: null,
       debugMode: false,
+      ...(visitEvent
+        ? {
+            beforeSceneDispatch: async () => {
+              const current = await readVillageState();
+              if (!current.spontaneousEvents || current.seed !== request.readset.source.seed)
+                throw conflict("Spontaneous events are off. Continue this Scene to move or speak.");
+            },
+          }
+        : {}),
       signal,
     });
   }

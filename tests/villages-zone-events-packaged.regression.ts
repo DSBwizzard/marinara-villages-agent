@@ -320,6 +320,15 @@ async function request(url: string, payload?: object, status = 200) {
   assert.equal(response.statusCode, status, url + " " + response.body);
   return response.json();
 }
+async function setSpontaneousEvents(value: boolean) {
+  const response = await app.inject({
+    method: "PATCH",
+    url: "/api/villages/settings",
+    payload: { spontaneousEvents: value },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().settings.spontaneousEvents, value);
+}
 const submit = (id: string, message = "I watch the water.") => ({
   sessionId: sceneId,
   submissionId: id,
@@ -496,8 +505,12 @@ try {
   const visits: string[] = [];
   for (const note of ["I am making cedar shelves.", "I am learning glassblowing."]) {
     const opened = (await request("/rooms", { venueId: placeId, zoneId: "terrace" })).session;
-    assert.equal(opened.status, "opening");
+    assert.equal(opened.status, "active", "an occupied ordinary visit is quiet with spontaneous events off");
     visits.push(opened.id);
+    const record = records.get("villages-venue-visit-" + opened.id)!;
+    record.data = { ...record.data, status: "opening", visitEvent: "opening" };
+    await restart();
+    await setSpontaneousEvents(true);
     provide({
       segments: [{ id: "news", kind: "dialogue", speakerId: "aqua", text: note }],
       keep: [{ id: "news", for: ["player"], class: "information", text: note, source: [{ segment: "news" }] }],
@@ -505,10 +518,12 @@ try {
     const before = completions;
     const greeted = (await request("/rooms/greet", { sessionId: opened.id })).session;
     assert.equal(greeted.status, "active");
+    assert.equal(records.get("villages-venue-visit-" + opened.id)!.data.visitEvent, undefined);
     assert.equal(completions, before + 1);
     await request("/rooms/greet", { sessionId: opened.id });
     assert.equal(completions, before + 1, "Repeating a greeting replays only the same Scene");
     await request("/rooms/end", { sessionId: opened.id, expectedSceneRevision: greeted.sceneRevision });
+    await setSpontaneousEvents(false);
   }
   assert.equal(new Set(visits).size, 2);
   const greetings = storedVillage(records).episodes.records.filter((episode) => episode.submissionId === "greeting");
@@ -517,6 +532,29 @@ try {
     visits,
   );
   assert.equal(new Set(greetings.flatMap((episode) => episode.continuityVersionIds)).size, 2);
+
+  const arrivalAtEntrance = (await request("/rooms", { venueId: placeId, zoneId: "exterior" })).session;
+  const entranceRecord = records.get("villages-venue-visit-" + arrivalAtEntrance.id)!;
+  entranceRecord.data = { ...entranceRecord.data, status: "opening", visitEvent: "place" };
+  await restart();
+  const beforeDisabled = completions;
+  const quietEntrance = (await request("/rooms/greet", { sessionId: arrivalAtEntrance.id })).session;
+  assert.equal(quietEntrance.status, "active");
+  assert.equal(completions, beforeDisabled, "a persisted visit event is skipped if the setting is off before dispatch");
+  await request("/rooms/end", { sessionId: quietEntrance.id, expectedSceneRevision: quietEntrance.sceneRevision });
+  const placeArrival = (await request("/rooms", { venueId: placeId, zoneId: "exterior" })).session;
+  const placeRecord = records.get("villages-venue-visit-" + placeArrival.id)!;
+  placeRecord.data = { ...placeRecord.data, status: "opening", visitEvent: "place" };
+  await restart();
+  await setSpontaneousEvents(true);
+  const readyEntrance = (await request("/rooms/active")).session;
+  assert.equal(readyEntrance.visitEventOpening, true);
+  assert.deepEqual(readyEntrance.activeIds, []);
+  provide({ segments: [{ id: "wind", kind: "narration", text: "A gust rattles the shutters." }] });
+  const greetedEntrance = (await request("/rooms/greet", { sessionId: placeArrival.id })).session;
+  assert.equal(greetedEntrance.status, "active");
+  assert.equal(completions, beforeDisabled + 1);
+  assert.match(JSON.stringify(greetedEntrance.lines), /gust rattles the shutters/);
 
   await restart(baseline);
   const validKeep = {

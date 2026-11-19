@@ -12,6 +12,7 @@ export type GeneralSettingsPagePorts = {
   readonly busy: boolean;
   readonly resetArmed: boolean;
   readonly saveSendOnEnter: (sendOnEnter: boolean) => Promise<void>;
+  readonly saveSpontaneousEvents: (enabled: boolean) => Promise<void>;
   readonly saveBackgroundPace: (
     backgroundPace: VillageBackgroundPace,
     consequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence,

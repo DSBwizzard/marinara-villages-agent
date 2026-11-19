@@ -505,7 +505,13 @@ export function useActiveSceneRestoration(ports: {
             setRoomOpen(true);
             setScreen("room");
             // Only startup of an existing village can resume its opening automatically.
-            if (session.status === "opening" && world.openingOnLoad && attempt === 0 && retries === 0) {
+            if (
+              session.status === "opening" &&
+              !session.visitEventOpening &&
+              world.openingOnLoad &&
+              attempt === 0 &&
+              retries === 0
+            ) {
               owned.busy = true;
               setRoomBusy(true);
               try {

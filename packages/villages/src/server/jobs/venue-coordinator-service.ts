@@ -283,9 +283,16 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   }
 
   /** Journal each provider attempt before dispatch. */
-  async function coordinatedCompletion<T>(fingerprint: string, work: (signal?: AbortSignal) => Promise<T>): Promise<T> {
+  async function coordinatedCompletion<T>(
+    fingerprint: string,
+    work: (signal?: AbortSignal) => Promise<T>,
+    beforeDispatch?: () => Promise<void>,
+  ): Promise<T> {
     const current = context.getStore();
-    if (!current) return work();
+    if (!current) {
+      await beforeDispatch?.();
+      return work();
+    }
     assertVenueOwnership();
     const index = current.counts.get(current.scope) ?? 0;
     current.counts.set(current.scope, index + 1);
@@ -323,6 +330,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         "The previous request may have been billed. Review your draft and explicitly retry to authorize another request.",
       );
     }
+    await beforeDispatch?.();
+    assertVenueOwnership();
     current.operation.attempts[key] = { status: "dispatching" };
     await persist(current);
     const reservationClaim = await receipts.begin(

@@ -13,6 +13,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
     busy,
     resetArmed,
     saveSendOnEnter,
+    saveSpontaneousEvents,
     saveBackgroundPace,
     setResetArmed,
     settingsError,
@@ -42,6 +43,19 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
                 />
                 <span>Send on Enter</span>
               </label>
+              <label className={`${ELEMENT_TAG}-row ${ELEMENT_TAG}-send-toggle`}>
+                <input
+                  type="checkbox"
+                  checked={snapshot.settings.spontaneousEvents === true}
+                  disabled={busy}
+                  aria-describedby={`${ELEMENT_TAG}-spontaneous-events-cost`}
+                  onChange={(event) => void saveSpontaneousEvents(event.target.checked)}
+                />
+                <span>Spontaneous events</span>
+              </label>
+              <p id={`${ELEMENT_TAG}-spontaneous-events-cost`} className={`${ELEMENT_TAG}-empty`}>
+                Visits may use one GM call for a surprise opening.
+              </p>
             </div>
           ) : null}
 
