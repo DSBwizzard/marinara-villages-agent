@@ -306,7 +306,7 @@ export function createSceneWriting({
           ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
           : "",
         residentMovesInReply
-          ? 'A resident’s visible move uses a segment {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They step through the door."}. For a full exit use {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied routes. Put last words before the move and stay with the player’s view.'
+          ? 'A visible resident move uses {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter the Zone."}. A full exit uses {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied actors and routes. Write arrivals before local dialogue. Stay with the player’s view.'
           : "",
         nativeCommands ? NARRATION_NATIVE : "",
         mode === "leave" && input.trim()

@@ -79,6 +79,29 @@ export function zoneEventScene(
     (person) =>
       !scene.activeIds.includes(person.characterId) && neighbors.includes(contactPosition(scene, person.characterId)),
   );
+  const move = scene.navigationReceipts?.at(-1);
+  const previous = move && scene.submissions.findLast((turn) => turn.acceptance.status === "applied");
+  const previousSpeakers = new Set<string>();
+  if (
+    move &&
+    move.originZoneId !== move.destinationZoneId &&
+    move.destinationZoneId === scene.zoneId &&
+    previous?.zoneIdAtTurn === move.originZoneId &&
+    Date.parse(previous.at) <= Date.parse(move.at)
+  ) {
+    const replyIds = new Set(previous.replyLineIds);
+    for (const line of scene.lines) {
+      if (
+        replyIds.has(line.id) &&
+        line.kind === "dialogue" &&
+        line.zoneId === move.originZoneId &&
+        !line.contactHidden &&
+        !line.viaDoorway &&
+        line.heardBy?.includes("player")
+      )
+        previousSpeakers.add(line.speakerId);
+    }
+  }
   const continuing = new Set(
     scene.lines
       .filter((line) => !line.contactHidden && line.kind !== "narration" && line.role !== "user")
@@ -100,6 +123,8 @@ export function zoneEventScene(
       (person) =>
         contactPosition(scene, person.characterId) === intent.zoneId ||
         crossZones.includes(contactPosition(scene, person.characterId)) ||
+        (previousSpeakers.has(person.characterId) &&
+          contactPosition(scene, person.characterId) === move?.originZoneId) ||
         scene.doorwayContacts?.some((contact) => contact.characterId === person.characterId),
     ),
     ...(calling ? near.slice(0, 1) : []),

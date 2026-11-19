@@ -1,4 +1,4 @@
-// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure
+// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -48,25 +48,28 @@ for (const scenario of [
   "departure-rejected",
   "resident-crossing",
   "resident-departure",
+  "follow-after-move",
 ] as const)
   await runCase("scene-travel/" + scenario, async () => {
     const crossing = scenario === "boundary" || scenario === "open-park-boundary" ? localCrossings[scenario] : null;
+    const follow = scenario === "follow-after-move";
+    const location = follow ? localCrossings.boundary : crossing;
     const remoteWalk = "I head over to Willow Hotel.";
     const beforeMove = crossing ? [crossing.departure, crossing.activity, remoteWalk] : [];
     const host = await packagedSceneServer({
       configure(world) {
         world.spontaneousEvents = true;
-        if (crossing) {
+        if (location) {
           const venue = world.venues[0];
-          venue.name = crossing.venue;
+          venue.name = location.venue;
           const common = venue.zones.find((zone) => zone.id === "common")!;
-          common.name = crossing.origin;
-          common.description = crossing.originDescription;
-          common.connectedTo.push(crossing.destinationId);
+          common.name = location.origin;
+          common.description = location.originDescription;
+          common.connectedTo.push(location.destinationId);
           venue.zones.push({
-            ...defaultVenueSpace("other", crossing.destinationDescription),
-            id: crossing.destinationId,
-            name: crossing.destination,
+            ...defaultVenueSpace("other", location.destinationDescription),
+            id: location.destinationId,
+            name: location.destination,
             kind: "public",
             seen: true,
             connectedTo: ["common"],
@@ -106,7 +109,7 @@ for (const scenario of [
         world.venues.push(hotel);
       },
       configureScene(scene) {
-        if (crossing) scene.placeName = crossing.venue;
+        if (location) scene.placeName = location.venue;
         scene.participants[0].name = "Gidget";
         scene.sceneAttendance!.occupants[0].name = "Gidget";
         scene.activeIds.push("ella");
@@ -121,6 +124,10 @@ for (const scenario of [
     const departure = "I leave now.";
     const residentCrossing = scenario === "resident-crossing";
     const residentDeparture = scenario === "resident-departure";
+    const invitation = '"Ella, would you join me in the kitchen to slice this up before Gidget eats the entire thing?"';
+    const afterMoveInput = "I step into the Kitchen.";
+    const waitInKitchen = "I hold out a plate.";
+    const ellaArrivalLine = "Point me at the knife and I’ll slice the cake.";
     host.model.chatComplete = async (messages) => {
       calls++;
       if (calls === 1) {
@@ -128,6 +135,29 @@ for (const scenario of [
         assert.match(prompt, /Remote visit invitations available.*Willow Hotel/);
         assert.match(prompt, /Write "visit" first/);
         assert.match(prompt, /A group invitation gets the same entry when it includes the player/);
+      }
+      if (follow) {
+        const prompt = messages.map(({ content }) => content).join("\n");
+        const speakerIds = calls < 3 ? '["ella","mara"]' : '["ella"]';
+        assert(prompt.includes('"dialogueSpeakers":' + speakerIds), "The fitted cast matches the current exchange");
+        assert.equal(messages.at(-2)?.content, [invitation, afterMoveInput, waitInKitchen][calls - 1]);
+        const segments =
+          calls === 1
+            ? [
+                { kind: "dialogue", speakerId: "mara", text: "I haven’t even had a slice yet!" },
+                { kind: "dialogue", speakerId: "ella", text: "Of course. I’ll come help." },
+              ]
+            : calls === 2
+              ? [
+                  { kind: "crossing", who: "ella", to: "kitchen", text: "Ella comes into the Kitchen after you." },
+                  { kind: "dialogue", speakerId: "ella", text: ellaArrivalLine },
+                ]
+              : [{ kind: "narration", text: "Ella takes the plate." }];
+        return {
+          content: JSON.stringify({ segments }),
+          finishReason: "stop",
+          usage: { inputTokens: 10, outputTokens: 10 },
+        };
       }
       if (crossing) {
         const submitted = messages.at(-2)?.content;
@@ -291,12 +321,45 @@ for (const scenario of [
           submissionId,
           message,
           mode: "chat",
-          targetId: crossing ? undefined : "mara",
+          targetId: location ? undefined : "mara",
           expectedSceneRevision: revision,
         },
       });
     try {
       const before = (await getActive()).json().session;
+      if (follow) {
+        const hallReply = await turn(before.id, before.sceneRevision, "invite-ella", invitation);
+        assert.equal(hallReply.statusCode, 200, hallReply.body);
+        assert.equal(hallReply.json().session.zoneId, "common");
+        const move = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/zone",
+          payload: {
+            sessionId: before.id,
+            zoneId: "kitchen",
+            operationId: "move-to-kitchen",
+            expectedSceneRevision: hallReply.json().session.sceneRevision,
+          },
+        });
+        assert.equal(move.statusCode, 200, move.body);
+        const moved = move.json().session;
+        assert.equal(moved.zoneId, "kitchen");
+        assert.deepEqual(moved.activeIds, []);
+        assert.equal(calls, 1, "Player Move makes no model call and leaves resident choices open");
+        const afterMove = await turn(moved.id, moved.sceneRevision, "after-move", afterMoveInput);
+        assert.equal(afterMove.statusCode, 200, afterMove.body);
+        const arrived = afterMove.json().session;
+        assert.deepEqual(arrived.activeIds, ["ella"]);
+        const kitchenSpeech = host.scene().lines.find((line) => line.content === ellaArrivalLine);
+        assert.equal(kitchenSpeech?.zoneId, "kitchen");
+        assert.deepEqual(kitchenSpeech.heardBy.toSorted(), ["ella", "player"]);
+        assert.equal(calls, 2);
+        const current = (await getActive()).json().session;
+        const next = await turn(current.id, current.sceneRevision, "plate", waitInKitchen);
+        assert.equal(next.statusCode, 200, next.body);
+        assert.equal(calls, 3);
+        return;
+      }
       if (residentCrossing || residentDeparture) {
         const outcome = await turn(before.id, before.sceneRevision, "resident-leaves", "I've got some time to chat.");
         assert.equal(outcome.statusCode, 200, outcome.body);
