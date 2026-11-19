@@ -642,7 +642,7 @@ export function Appearance({
                     setMoveOpen(true);
                   }}
                 >
-                  Assign side-facing sprites
+                  Assign Side
                 </button>
               </div>
             ) : null}

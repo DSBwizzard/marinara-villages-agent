@@ -305,7 +305,7 @@ await withBrowser(browser, async () => {
         undefined,
         "Opening an older character setup does not adopt it",
       );
-      const openPicker = () => pane.getByRole("button", { name: "Assign side-facing sprites" }).click();
+      const openPicker = () => pane.getByRole("button", { name: "Assign Side", exact: true }).click();
       await openPicker();
       const sidePicker = page.getByRole("dialog", { name: "Assign side-facing sprites", exact: true });
       await sidePicker.getByRole("combobox", { name: "Folder" }).selectOption("profile");
