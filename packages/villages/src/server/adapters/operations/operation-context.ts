@@ -29,8 +29,8 @@ export function venueRefusal(code: string, message: string): VillagesRequestErro
 export function outsideVenueOperation<T>(work: () => T): T {
   return operations().outsideVenueOperation<T>(work);
 }
-export function venueSavedCheckpoint<T>(stage: string): T | undefined {
-  return operations().venueSavedCheckpoint<T>(stage);
+export function venueSavedCheckpoint<T>(stage: string, recoverRejected?: (result: T) => boolean): T | undefined {
+  return operations().venueSavedCheckpoint(stage, recoverRejected);
 }
 export function venueOperationSignal(): AbortSignal | undefined {
   return operations().venueOperationSignal();

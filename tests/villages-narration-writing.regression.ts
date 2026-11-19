@@ -1377,6 +1377,35 @@ await runCase("narration-writing/long-followup", async () => {
     "I remember.",
   );
   assert.deepEqual(selfAnnotated.segments[0].source, ["self"]);
+  const copiedWords = { speakerId: f.id, quote: "I remember." };
+  const copiedReply = { segments: [{ ...selfAnnotated.segments[0], source: [copiedWords] }], keep: [] };
+  assert.deepEqual(
+    readSceneNarrationReply(copiedReply, [f.id], reply.readset, f.state.continuity).segments,
+    readSceneNarrationReply(
+      { segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember." }] },
+      [f.id],
+      reply.readset,
+      f.state.continuity,
+    ).segments,
+  );
+  assert.deepEqual(copiedReply.segments[0].source, [copiedWords]);
+  for (const raw of [
+    { ...copiedReply, keep: [{}] },
+    { ...copiedReply, segments: [{ ...copiedReply.segments[0], requires: ["effect"] }] },
+    { ...copiedReply, segments: [{ ...copiedReply.segments[0], source: [{ ...copiedWords, quote: "I forgot." }] }] },
+    { ...copiedReply, segments: [{ ...copiedReply.segments[0], source: [{ ...copiedWords, speakerId: "bram" }] }] },
+  ])
+    assert.throws(() => readSceneNarrationReply(raw, [f.id], reply.readset, f.state.continuity), /source/u);
+  assert.throws(
+    () =>
+      readSceneNarrationReply(
+        { ...copiedReply, segments: [{ ...copiedReply.segments[0], delivery: "private" }] },
+        [f.id],
+        reply.readset,
+        f.state.continuity,
+      ),
+    /delivery/u,
+  );
   const decoration = { ref: "h:1515.1" };
   const witnessed = {
     segments: [{ kind: "dialogue", speakerId: f.id, text: "I remember.", witnessedWords: decoration }],

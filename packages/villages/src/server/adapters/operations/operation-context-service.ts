@@ -39,8 +39,16 @@ export function createVenueOperationContext(villagesLogger: () => CapabilityRunt
   function outsideVenueOperation<T>(work: () => T): T {
     return context.exit(work);
   }
-  function venueSavedCheckpoint<T>(stage: string): T | undefined {
-    return context.getStore()?.operation.checkpoints[stage] as T | undefined;
+  function venueSavedCheckpoint<T>(stage: string, recoverRejected?: (result: T) => boolean): T | undefined {
+    const current = context.getStore();
+    const operation = current?.operation;
+    const checkpoint = operation?.checkpoints[stage] as T | undefined;
+    if (checkpoint !== undefined || !recoverRejected || !current?.explicitRetry) return checkpoint;
+    const attempt = Object.entries(current.operation.attempts).findLast(([key]) => key.startsWith(stage + ":"))?.[1];
+    if (attempt?.status === "rejected" && attempt.response && attempt.result) {
+      const result = attempt.result as T;
+      if (recoverRejected(result)) return result;
+    }
   }
   function venueOperationSignal(): AbortSignal | undefined {
     return context.getStore()?.controller.signal;

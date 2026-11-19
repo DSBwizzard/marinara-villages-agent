@@ -51,6 +51,7 @@ export function completeSceneObject(
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
     .trim()
+    .replace(/^\u200B/u, "")
     .replace(/^```(?:json)?\s*\n/iu, "")
     .replace(/\r?\n```$/u, "")
     .trim();

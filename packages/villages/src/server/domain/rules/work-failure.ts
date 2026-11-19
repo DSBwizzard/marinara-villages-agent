@@ -11,6 +11,7 @@ export type WorkFailure = {
     | "empty_output"
     | "output_limit"
     | "invalid_json"
+    | "invalid_schema"
     | "missing_result"
     | "duplicate_result"
     | "unsupported_outcome"
@@ -69,6 +70,7 @@ export function coerceWorkFailure(value: unknown): WorkFailure | undefined {
     "empty_output",
     "output_limit",
     "invalid_json",
+    "invalid_schema",
     "missing_result",
     "duplicate_result",
     "unsupported_outcome",

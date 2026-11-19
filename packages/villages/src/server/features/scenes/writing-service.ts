@@ -485,7 +485,13 @@ export function createSceneWriting({
       const key = requestKey(scene, input, mode),
         completionStage = "writing-completion:" + key;
       const savedRequest = venueSavedCheckpoint?.<Request>("writing-request:" + key);
-      const savedCompletion = venueSavedCheckpoint?.<Awaited<ReturnType<typeof completeWithRoom>>>(completionStage);
+      const savedCompletion = venueSavedCheckpoint?.<Awaited<ReturnType<typeof completeWithRoom>>>(
+        completionStage,
+        savedRequest &&
+          ((reply) =>
+            !!reply.content?.trimStart().startsWith("\u200B") &&
+            !!completeSceneObject(reply.content, reply.finishReason)),
+      );
       let request: Request, completion: Awaited<ReturnType<typeof completeWithRoom>>;
       if (savedRequest && savedCompletion) {
         assertRequestIdentity(savedRequest, scene, input);

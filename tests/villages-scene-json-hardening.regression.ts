@@ -23,6 +23,7 @@ await runCase("scene-json-hardening/syntax", () => {
   assert.equal("delivery" in main && main.delivery, "whisper");
   for (const input of [
     json,
+    "\u200B" + json,
     "```json\n" + json + "\n```",
     "```JSON\r\n" + json + "\r\n```",
     "```json\n" + json,
@@ -65,6 +66,15 @@ await runCase("scene-json-hardening/syntax", () => {
   );
   assert(stranger);
   assert.throws(() => readNarrationReply(stranger, ["a"]), /actor's words/);
+  assert.equal(completeSceneObject("\u200B" + json, "length"), null);
+  assert.equal(completeSceneObject("\u200B" + json.slice(0, -1), "stop"), null);
+  const textWithMarker = { ...scene, segments: [{ ...scene.segments[0], text: "A\u200B pause." }] };
+  assert.deepEqual(completeSceneObject("\u200B" + JSON.stringify(textWithMarker), "stop"), textWithMarker);
+  const wrongDelivery = {
+    ...scene,
+    segments: [{ ...scene.segments[0], delivery: "main" }],
+  };
+  assert.throws(() => readNarrationReply(completeSceneObject("\u200B" + JSON.stringify(wrongDelivery), "stop"), ["a"]));
 });
 
 await runCase("scene-json-hardening/ambiguity", () => {

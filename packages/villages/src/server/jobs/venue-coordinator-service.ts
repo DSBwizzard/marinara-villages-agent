@@ -1089,6 +1089,13 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         const latest = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + sceneId);
         const current = asRecord(latest?.data).operation as VenueOperation | undefined;
         if (!current || current.status === "complete" || current.token !== operation.token) return;
+        if (
+          current.status === "interrupted" &&
+          current.failure?.cause === "invalid_json" &&
+          current.failure.stage === "scene-response" &&
+          Object.values(current.attempts).every((attempt) => attempt.status === "rejected")
+        )
+          return;
         const currentScene = await readSceneWorkIndex(documents, latest!.data);
         if (
           currentScene.submissions.some(
