@@ -219,7 +219,8 @@ await withBrowser(browser, async () => {
     await page.getByRole("menuitem", { name: "Move", exact: true }).click();
     const picker = page.getByRole("dialog", { name: "Move to Zone" });
     await expect(picker.getByRole("button", { name: "Secret bedroom" })).toHaveCount(0);
-    await picker.getByRole("button", { name: "Common Space (invited)", exact: true }).click();
+    await expect(picker.getByText("Invited for this visit", { exact: true })).toBeVisible();
+    await picker.getByRole("button", { name: "Common Space", exact: true }).click();
     await expect.poll(() => entered?.zoneId).toBe("common");
     assert.equal(entered.expectedSceneRevision, 3);
     await expect(page.getByRole("button", { name: "Venue actions", exact: true })).toBeVisible();

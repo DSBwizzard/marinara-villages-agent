@@ -22,6 +22,7 @@ function HoursEditor({ hours, change }: { hours: VisitorHours; change: (value: V
             {week.map((day) => (
               <label key={day}>
                 <input
+                  autoComplete="off"
                   type="checkbox"
                   checked={window.days.includes(day)}
                   onChange={(event) => {
@@ -38,6 +39,7 @@ function HoursEditor({ hours, change }: { hours: VisitorHours; change: (value: V
           <label>
             Opens{" "}
             <input
+              autoComplete="off"
               type="time"
               value={window.start}
               onChange={(event) =>
@@ -48,6 +50,7 @@ function HoursEditor({ hours, change }: { hours: VisitorHours; change: (value: V
           <label>
             Closes{" "}
             <input
+              autoComplete="off"
               type="time"
               value={window.end}
               onChange={(event) =>
@@ -231,12 +234,22 @@ export function VenueAccessPanel({
             </select>
           </label>
           <label>
-            <input type="checkbox" checked={escort} onChange={(event) => setEscort(event.target.checked)} /> Escort
-            required
+            <input
+              autoComplete="off"
+              type="checkbox"
+              checked={escort}
+              onChange={(event) => setEscort(event.target.checked)}
+            />{" "}
+            Escort required
           </label>
           {view.canAllowAfterHours && (
             <label>
-              <input type="checkbox" checked={afterHours} onChange={(event) => setAfterHours(event.target.checked)} />{" "}
+              <input
+                autoComplete="off"
+                type="checkbox"
+                checked={afterHours}
+                onChange={(event) => setAfterHours(event.target.checked)}
+              />{" "}
               Allow after hours
             </label>
           )}
