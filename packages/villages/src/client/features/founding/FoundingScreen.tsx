@@ -318,7 +318,7 @@ export function FoundingScreen({
   const rememberMariPosition = () => {
     if (phone) return;
     mariMoveFrom.current = Array.from(
-      rootRef.current?.querySelectorAll<HTMLElement>(".villages-setting-stage, .villages-chapter-guide") ?? [],
+      rootRef.current?.querySelectorAll<HTMLElement>(".villages-setting-stage") ?? [],
       (element) => ({ element, bounds: element.getBoundingClientRect() }),
     );
   };

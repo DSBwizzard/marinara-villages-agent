@@ -371,6 +371,8 @@ export async function verifyFoundingLayout(group) {
                 root.querySelector(".villages-founding-replies button:last-child").click();
                 await new Promise(requestAnimationFrame);
                 const body = root.querySelector(".villages-forging-body");
+                const dialogue = root.querySelector(".villages-chapter-guide .villages-setting-dialogue");
+                const dialogueStart = dialogue.getBoundingClientRect().toJSON();
                 const slide = stage.getAnimations()[0];
                 const reveal = body.getAnimations()[0];
                 slide.pause();
@@ -381,15 +383,23 @@ export async function verifyFoundingLayout(group) {
                 slide.currentTime = 110;
                 reveal.currentTime = 110;
                 const middle = stage.getBoundingClientRect().toJSON();
+                const dialogueMiddle = dialogue.getBoundingClientRect().toJSON();
                 const mapHidden = getComputedStyle(body).visibility === "hidden";
                 slide.finish();
                 const end = stage.getBoundingClientRect().toJSON();
+                const dialogueEnd = dialogue.getBoundingClientRect().toJSON();
                 reveal.finish();
-                return { original, start, middle, end, mapHidden };
+                return { original, start, middle, end, mapHidden, dialogueStart, dialogueMiddle, dialogueEnd };
               });
               assert.ok(Math.abs(move.start.x - move.original.x) < 1, "Mari starts at her teaching position");
               assert.ok(move.end.x < move.middle.x && move.middle.x < move.start.x, "Mari slides left continuously");
               assert.ok(move.mapHidden, "The map waits until Mari has moved aside");
+              assert.deepEqual(
+                move.dialogueStart,
+                move.dialogueMiddle,
+                "The dialogue appears at its normal size and position",
+              );
+              assert.deepEqual(move.dialogueMiddle, move.dialogueEnd, "Only Mari moves during the transition");
             } else await button("Next").click();
             await expect(work).toBeVisible();
             if (phone || view.height === 650)
@@ -760,6 +770,11 @@ export async function verifyFoundingLayout(group) {
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         const hierarchy = root.getByRole("img", { name: /^World, Village, Map, Venue, Zone/ });
         const layer = async (name) => {
+          await expect
+            .poll(() =>
+              stage.evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running")),
+            )
+            .toBe(false);
           await expect(hierarchy).toHaveAccessibleName(`World, Village, Map, Venue, Zone. Current layer: ${name}`);
           await expect(hierarchy.locator("[data-active] text")).toHaveText(name);
           const activeCount = name === "Venue" ? 2 : name === "Zone" ? 4 : 1;
