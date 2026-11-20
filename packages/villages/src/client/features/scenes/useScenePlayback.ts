@@ -15,7 +15,11 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
   const [selected, setSelected] = useState<{ window: ScenePlaybackWindow; entry: Entry; cursor?: string } | null>(
     () => {
       const window = reading.checkpoint.current.window;
-      return window?.scope === scope && window.sceneId === room.id ? { window, entry: "bookmark" } : null;
+      return window?.scope === scope &&
+        window.sceneId === room.id &&
+        reading.checkpoint.current.bookmark?.zoneArrivalId === room.zoneArrivalId
+        ? { window, entry: "bookmark" }
+        : null;
     },
   );
   const [busy, setBusy] = useState(false),
@@ -91,7 +95,9 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
     [scope, room.id, room.playback.version, reading.isFounded, reading.checkpoint],
   );
   const bookmark = reading.checkpoint.current.bookmark;
-  const scopedBookmark = bookmark?.scope === scope && bookmark.sceneId === room.id ? bookmark : undefined;
+  const sameArrival = bookmark?.zoneArrivalId === room.zoneArrivalId;
+  const scopedBookmark =
+    bookmark?.scope === scope && bookmark.sceneId === room.id && sameArrival ? bookmark : undefined;
   const synthetic = scopedBookmark?.lineId.startsWith("optimistic:") === true;
   const advanceOwned =
     synthetic && scopedBookmark!.lineId === "optimistic:" + room.latestTurn?.id && room.latestTurn?.published === true;
@@ -100,6 +106,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
     selected?.window.scope === scope &&
     selected.window.sceneId === room.id &&
     selected.window.version === authority.version &&
+    sameArrival &&
     !selected.window.lines.some(
       (line) => line.id?.startsWith("optimistic:") && !room.lines.some((current) => current.id === line.id),
     ) &&
@@ -109,7 +116,7 @@ export function useScenePlayback(room: SceneView, scope: string, reading: SceneR
   const window = chosen?.window ?? authority;
   const retained = reading.checkpoint.current.window;
   const previous = retained?.scope === scope && retained.sceneId === room.id ? retained : previousAuthority.current;
-  const same = previous?.scope === scope && previous.sceneId === room.id;
+  const same = previous?.scope === scope && previous.sceneId === room.id && sameArrival;
   const advanced = same && authority.total > previous!.total;
   const readingEnd = !scopedBookmark || scopedBookmark.atEnd || synthetic;
   const target = scopedBookmark?.anchorCursor

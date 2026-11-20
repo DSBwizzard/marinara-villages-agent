@@ -105,6 +105,63 @@ function nativeFixture(npc = false) {
   return { state, venue, scene, input, accept, readset };
 }
 
+for (const mode of ["aside", "private", "legacy", "malformed", "narration", "stop", "specific", "conflict"]) {
+  const f = nativeFixture();
+  f.readset.sceneFollowing = mode === "legacy" ? true : 2;
+  const raw = {
+    segments: [
+      {
+        id: "promise",
+        kind: mode === "narration" ? "narration" : "dialogue",
+        speakerId: "a",
+        text: mode === "stop" ? "I'll wait here." : "I'll sneak around this place with you for this outing.",
+        presentation: "aside",
+        follow:
+          mode === "malformed"
+            ? { agrees: "yes" }
+            : { agrees: mode !== "stop", trespass: true, ...(mode === "specific" ? { to: "garden" } : {}) },
+        ...(mode === "private" ? { delivery: "whisper", targetId: "b" } : {}),
+      },
+    ],
+    ...(mode === "conflict"
+      ? {
+          commands: [
+            {
+              id: "native-stop",
+              type: "move.decide",
+              who: "a",
+              agrees: false,
+              at: "promise",
+              source: [{ segment: "promise" }],
+            },
+          ],
+        }
+      : {}),
+  };
+  if (["legacy", "malformed", "narration", "conflict"].includes(mode)) {
+    assert.throws(() => f.accept(raw), /following|follow|spoken|Unrecognized/i);
+    continue;
+  }
+  const result = f.accept(raw);
+  assert.equal(
+    result.held,
+    ["private", "legacy", "malformed", "narration", "conflict"].includes(mode),
+    mode + JSON.stringify(result.rejected),
+  );
+  if (result.held) continue;
+  applyAcceptedSceneDelta(f.scene, result.episode!);
+  const agreement = f.scene.movementAgreements?.[0];
+  if (mode === "stop") {
+    assert.equal(agreement, undefined);
+    continue;
+  }
+  assert.equal(agreement?.trespass, true);
+  assert.equal(!!agreement?.following, mode !== "specific");
+  const cold = coerceSession(JSON.parse(JSON.stringify(f.scene)));
+  const party = followingMovementParty(f.state, f.venue, cold, "garden");
+  assert.equal(party.moves[0]?.actorId, "a", "An audible aside records actual following and explicit sneaking");
+}
+
 for (const mode of ["spoken", "seen", "seen-trespass", "private", "request", "stop", "legacy"]) {
   const f = nativeFixture(),
     seen = mode.startsWith("seen");
@@ -872,18 +929,8 @@ for (const scenario of ["ordinary", "sneaking", "staying", "escorted"]) {
               scenario === "sneaking"
                 ? "I'll sneak around this place with you for this outing."
                 : "I'll come with you.",
-            requires: ["follow"],
-          },
-        ],
-        commands: [
-          {
-            id: "follow",
-            type: "move.decide",
-            who: "mara",
-            agrees: true,
-            ...(scenario === "sneaking" ? { trespass: true } : {}),
-            at: "f",
-            source: [{ segment: "f" }],
+            presentation: "aside",
+            follow: { agrees: true, ...(scenario === "sneaking" ? { trespass: true } : {}) },
           },
         ],
       }),
@@ -955,6 +1002,11 @@ for (const scenario of ["ordinary", "sneaking", "staying", "escorted"]) {
       assert.equal(result.statusCode, 200, result.body);
       scene = result.json().session;
       const stays = scenario === "staying" && zoneId === "garden";
+      const arrival = scene.lines.at(-1);
+      assert.match(arrival.id, /^arrival-/);
+      assert.equal(scene.zoneArrivalId, arrival.id);
+      assert.equal(arrival.content.includes("Mara"), !stays, "Arrival names only the actual moving party");
+      assert.equal(scene.activeIds.includes("mara"), !stays, "A follower is immediately in the destination cast");
       if (scenario === "escorted" && zoneId === "garden") {
         assert.deepEqual(host.scene().navigationReceipts!.find((row) => row.id === "follow-garden")!.path, [
           "common",
@@ -986,6 +1038,7 @@ for (const scenario of ["ordinary", "sneaking", "staying", "escorted"]) {
       );
       result = await post("/rooms/zone", { ...request, expectedSceneRevision: scene.sceneRevision });
       assert.equal(result.statusCode, 200, result.body);
+      assert.equal(result.json().session.lines.filter((line: any) => line.id === arrival.id).length, 1);
     }
     scene = (await get("/rooms/active")).json().session;
     result = await post("/rooms", {

@@ -154,6 +154,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             ? {
                 scope: scene.playback.scope,
                 sceneId: scene.id,
+                zoneArrivalId: scene.zoneArrivalId,
                 lineId: start.id,
                 paragraph: 0,
                 momentIndex: start.index,

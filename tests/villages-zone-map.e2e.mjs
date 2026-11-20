@@ -164,10 +164,31 @@ installFeature(controller=><SceneScreen controller={controller}/>);
         zoneId: "exterior",
         area: "outside",
         status: "active",
-        activeIds: [],
-        participants: [],
+        activeIds: ["mara"],
+        participants: [{ characterId: "mara", name: "Mara", doing: "Waiting" }],
         submissions: [],
-        lines: [],
+        lines: [
+          {
+            id: "old-main",
+            kind: "narration",
+            role: "assistant",
+            speakerId: "__venue_scene__",
+            name: "Narration",
+            content: "Mara glances toward the Garden.",
+            at: now,
+          },
+          {
+            id: "old-aside",
+            kind: "side",
+            role: "assistant",
+            speakerId: "mara",
+            name: "Mara",
+            content: "I will sneak along with you.",
+            presentation: "aside",
+            asideFor: "old-main",
+            at: now,
+          },
+        ],
         startedAt: now,
         endedAt: "",
         capturedContext: true,
@@ -269,17 +290,37 @@ installFeature(controller=><SceneScreen controller={controller}/>);
               .find((row) => row.id === body.zoneId)
               ?.accessView.companions?.filter((row) => !row.staying)
               .map((row) => row.id) ?? [];
+          const arrivalId = "arrival-fixture-" + moves.length;
+          const destination = venue.zones.find((z) => z.id === body.zoneId).name;
+          const names = companions.map((id) => (id === "mara" ? "Mara" : "Gidget"));
           scene = {
             ...scene,
+            zoneArrivalId: arrivalId,
+            lines: [
+              ...scene.lines,
+              {
+                id: arrivalId,
+                kind: "narration",
+                role: "assistant",
+                speakerId: "__venue_scene__",
+                name: "Narration",
+                content: `You arrive at ${destination}${names.length ? " with " + names.join(", ") : ""}.`,
+                at: now,
+                physicalIdsAfter: companions,
+              },
+            ],
             zoneId: body.zoneId,
             area: body.zoneId === "exterior" ? "outside" : "public",
             sceneRevision: scene.sceneRevision + 1,
             activeIds: companions,
-            participants: companions.map((id) => ({
-              characterId: id,
-              name: id === "mara" ? "Mara" : "Gidget",
-              doing: "Crossing with you",
-            })),
+            participants: [
+              ...scene.participants.filter((p) => !companions.includes(p.characterId)),
+              ...companions.map((id) => ({
+                characterId: id,
+                name: id === "mara" ? "Mara" : "Gidget",
+                doing: "Crossing with you",
+              })),
+            ],
             ...(body.trespass ? { trespassing: true } : {}),
           };
           value = { session: scene };
@@ -287,7 +328,9 @@ installFeature(controller=><SceneScreen controller={controller}/>);
           reactions.push(route.request().postDataJSON());
           scene = { ...scene, trespassReactionId: undefined, sceneRevision: scene.sceneRevision + 1 };
           value = { session: scene, recordEvents: [] };
-        } else if (path.endsWith("/rooms/active")) value = { session: scene };
+        } else if (path.endsWith("/history"))
+          value = { sceneId: scene.id, scope: snapshot.worldScope, version: "history-fixture", lines: scene.lines };
+        else if (path.endsWith("/rooms/active")) value = { session: scene };
         await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
       });
       await page.goto("http://move-map.test/");
@@ -362,12 +405,41 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await picker.getByRole("button", { name: "Entrance", exact: true }).click();
       await expect(picker.getByRole("button", { name: "Move", exact: true })).toHaveCount(0);
       await picker.getByRole("button", { name: "Garden", exact: true }).click();
+      await page.evaluate(() => {
+        window.beforeArrivalCheckpoint = structuredClone(window.featureController.sceneReading.checkpoint.current);
+      });
       await picker.getByRole("button", { name: "Move", exact: true }).click();
       await expect.poll(() => moves.length).toBe(1);
       assert.equal(moves[0].zoneId, "garden");
       assert.equal(moves[0].trespass, undefined);
       assert.equal(moves[0].follow, true, "Ordinary movement includes the authoritative following party");
       assert.equal(moves[0].companions, undefined, "Players do not select a separate crossing party");
+      await expect(page.getByText("You arrive at Garden with Mara.", { exact: true })).toBeVisible();
+      await expect(page.getByText("I will sneak along with you.", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeDisabled();
+      await expect(page.locator('[data-character-id="mara"]')).toBeVisible();
+      await page.evaluate(() => {
+        const c = window.featureController;
+        window.arrivedRoom = c.room;
+        c.setRoom(null);
+        c.sceneReading.checkpoint.current = window.beforeArrivalCheckpoint;
+      });
+      await expect(page.locator("[data-villages-scene-composer]")).toHaveCount(0);
+      await page.evaluate(() => window.featureController.setRoom(window.arrivedRoom));
+      await expect(page.getByText("You arrive at Garden with Mara.", { exact: true })).toBeVisible();
+      await expect(page.getByText("I will sneak along with you.", { exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
+      await expect(page.getByRole("log", { name: "Scene history", exact: true })).toContainText(
+        "I will sneak along with you.",
+      );
+      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
+      await page.reload();
+      await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      await expect(page.getByText("You arrive at Garden with Mara.", { exact: true })).toBeVisible();
+      await expect(page.getByText("I will sneak along with you.", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeDisabled();
       await expect(page.locator("[data-villages-scene-composer]")).toBeVisible();
       await open();
       await picker.getByRole("button", { name: "Entrance", exact: true }).click();

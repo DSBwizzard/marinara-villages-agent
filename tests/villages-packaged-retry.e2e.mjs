@@ -29,7 +29,26 @@ const bundle = await build({
 });
 await writeFile(entry, bundle.outputFiles[0].contents);
 const { packagedSceneServer } = await import(pathToFileURL(entry).href);
-const server = await packagedSceneServer();
+const server = await packagedSceneServer({
+  configureScene(scene) {
+    scene.zoneId = "exterior";
+    scene.activeIds = [];
+  },
+});
+const entrance = (await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).json().session;
+const moved = await server.app.inject({
+  method: "POST",
+  url: "/api/villages/rooms/zone",
+  payload: {
+    sessionId: entrance.id,
+    zoneId: "common",
+    operationId: "retry-test-arrival",
+    expectedSceneRevision: entrance.sceneRevision,
+  },
+});
+assert.equal(moved.statusCode, 200, moved.body);
+assert.ok(moved.json().session.zoneArrivalId, "Retry keeps the replacement's first paragraph after an actual Move");
+assert.equal(server.calls(), 0, "Arrival does not purchase narration");
 await withBrowser({ close: server.stop }, async () => {
   const browser = await chromium.launch({ headless: true });
   await withBrowser(browser, async () => {

@@ -998,9 +998,16 @@ async function main() {
       ).length,
       1,
     );
-    assert.equal(recoveredMove.lines.length, beforeGap.lines.length);
+    assert.equal(recoveredMove.lines.length, beforeGap.lines.length + 1);
+    assert.deepEqual(recoveredMove.lines.slice(0, -1), beforeGap.lines, "Arrival preserves every prior line");
+    assert.match(recoveredMove.lines.at(-1)!.id, /^arrival-/);
     assert.equal(recoveredMove.submissions.length, beforeGap.submissions.length);
     await moveVenueZone(entered.id, "living", undefined, undefined, "claim-gap-move");
+    assert.equal(
+      (await readSession(entered.id)).lines.length,
+      recoveredMove.lines.length,
+      "Navigation receipt replay cannot duplicate the arrival beat",
+    );
     assert.equal(
       (await readSession(entered.id)).navigationReceipts!.filter((row) => row.id === "claim-gap-move").length,
       1,
@@ -1048,6 +1055,12 @@ async function main() {
     const exited = await activeVenueSession();
     assert.equal(exited!.zoneId, "office", "A live Scene applies current permission and preserves a permitted exit.");
     assert(exited!.lines.some((line) => /access has ended/.test(line.content)));
+    assert.match(exited!.lines.at(-1)!.id, /^arrival-/);
+    assert.equal(exited!.lines.at(-1)!.zoneId, exited!.zoneId);
+    assert.ok(
+      exited!.lines.at(-1)!.heardBy.includes("player"),
+      "A forced return supplies a fresh visible arrival boundary",
+    );
     const lineCount = exited!.lines.length;
     assert.equal(
       (await activeVenueSession())!.lines.length,

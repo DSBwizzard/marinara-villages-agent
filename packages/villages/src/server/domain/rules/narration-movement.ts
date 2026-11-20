@@ -221,7 +221,7 @@ export function applyNarrationMovementDecision(
 ) {
   memoryRequire(command.who !== "player", "following needs a non-player actor");
   memoryRequire(
-    command.to !== undefined || readset.sceneFollowing === true,
+    command.to !== undefined || !!readset.sceneFollowing,
     "the saved request did not offer ongoing following",
   );
   const positions = narrationPositions(context, { index: segment, side: "after" }),

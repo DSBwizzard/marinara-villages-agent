@@ -743,6 +743,8 @@ export type SceneView = {
   spaceClass?: VenueClass;
   zoneId?: string;
   trespassing?: true;
+  /** Latest player-visible arrival; earlier dialogue remains in History. */
+  zoneArrivalId?: string;
   trespassReactionId?: string;
   movementCompanions?: { id: string; name: string; zoneId: string; trespass?: true }[];
   doorwayContacts?: { characterId: string; playerZoneId: string }[];

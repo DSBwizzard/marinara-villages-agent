@@ -182,12 +182,16 @@ const sceneFields = [
 ] as const;
 function authority(scene: VenueScene) {
   if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
+  const arrival =
+    scene.status !== "closed" &&
+    scene.lines.findLast((line) => line.id.startsWith("arrival-") && line.heardBy.includes("player"));
   const facts = scene.continuity?.facts;
   const visible = new Set(scene.activeIds);
   const travel = sceneTravelOffer(scene);
   const destination = travel?.travel;
   return {
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
+    ...(arrival && arrival.zoneId === scene.zoneId ? { zoneArrivalId: arrival.id } : {}),
     version: 1 as const,
     ...(scene.trespass?.zoneId === scene.zoneId && scene.trespass ? { trespassing: true as const } : {}),
     ...(scene.trespassReaction &&

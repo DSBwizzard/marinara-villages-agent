@@ -216,10 +216,49 @@ export function readSceneNarrationReply(
   const visit = raw.visit;
   const readReply = (payload: Record<string, unknown>) => {
     const movements: Record<string, unknown>[] = [];
+    const automaticIds = new Set(
+      [
+        ...(Array.isArray(payload.commands) ? payload.commands : []),
+        ...(Array.isArray(payload.keep) ? payload.keep : []),
+      ].map((value) => asRecord(value).id),
+    );
+    let followingId = 0;
     const segments =
-      readset.sceneResidentMovement && Array.isArray(payload.segments)
+      (readset.sceneResidentMovement || readset.sceneFollowing === 2) && Array.isArray(payload.segments)
         ? payload.segments.map((value, index) => {
             const row = asRecord(value);
+            if (readset.sceneFollowing === 2 && Object.hasOwn(row, "follow")) {
+              const { follow, ...line } = row;
+              const decision = asRecord(follow);
+              memoryRequire(
+                row.kind === "dialogue" &&
+                  typeof decision.agrees === "boolean" &&
+                  (line.requires === undefined || Array.isArray(line.requires)) &&
+                  Object.keys(decision).every((key) => ["agrees", "to", "trespass"].includes(key)),
+                "following needs an explicit decision on the actor's own spoken line",
+              );
+              while (automaticIds.has("resident-follow-" + followingId)) followingId++;
+              const id = "resident-follow-" + followingId++;
+              automaticIds.add(id);
+              const at = line.id ?? "segment-" + index;
+              memoryRequire(
+                !(Array.isArray(payload.commands) ? payload.commands : []).some((value) => {
+                  const command = asRecord(value);
+                  return command.type === "move.decide" && command.who === line.speakerId && command.at === at;
+                }),
+                "use one following decision for each spoken line",
+              );
+              movements.push({
+                ...decision,
+                id,
+                type: "move.decide",
+                who: line.speakerId,
+                at,
+                source: [{ segment: at }],
+              });
+              return { ...line, requires: [...(Array.isArray(line.requires) ? line.requires : []), id] };
+            }
+            if (!readset.sceneResidentMovement) return value;
             if (row.kind !== "crossing" && row.kind !== "departure") return value;
             const { kind, who, to, trespass, ...line } = row;
             memoryRequire(kind === "crossing" || !Object.hasOwn(row, "to"), "a Scene departure has no destination");
@@ -245,6 +284,11 @@ export function readSceneNarrationReply(
       const ids = new Set([...parsed.keep, ...commands].map((row) => asRecord(row).id));
       let next = 0;
       for (const move of movements) {
+        if (typeof move.id === "string") {
+          ids.add(move.id);
+          commands.push(move);
+          continue;
+        }
         while (ids.has("resident-move-" + next)) next++;
         commands.push({ ...move, id: "resident-move-" + next++ });
       }

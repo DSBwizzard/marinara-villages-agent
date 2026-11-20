@@ -541,6 +541,24 @@ export function createSceneCommands({
           state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });
       }
       state.activeIds = people.map((person) => person.characterId);
+      const names = party.moves
+        .map((member) => state.participants.find((person) => person.characterId === member.actorId)?.name)
+        .filter(Boolean);
+      const destinationName = zone.kind === "exterior" ? "Entrance" : zone.name;
+      state.lines.push({
+        id: "arrival-" + memoryHash([state.id, operationId]).slice(0, 32),
+        kind: "narration",
+        role: "assistant",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        content: names.length
+          ? `You arrive at ${destinationName} with ${names.join(", ")}.`
+          : `You arrive at ${destinationName}.`,
+        at,
+        zoneId: zone.id,
+        heardBy: ["player"],
+        physicalIdsAfter: [...state.activeIds],
+      });
       state.visitEvent = visitEvent;
       if (visitEvent === "opening") state.status = "opening";
       queueTrespassReaction(state, reactionsEnabled);

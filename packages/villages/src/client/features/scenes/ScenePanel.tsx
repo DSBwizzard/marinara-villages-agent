@@ -506,10 +506,11 @@ export function RoomPanel({
   }
 
   /** Each playback moment supplies its captured presentation and source lines. */
-  const steps = useMemo(
-    () => scenePlaybackSteps(playback.window, playerName, room.activeIds),
-    [playback.window, playerName, room.activeIds],
-  );
+  const steps = useMemo(() => {
+    const steps = scenePlaybackSteps(playback.window, playerName, room.activeIds);
+    const arrival = room.zoneArrivalId ? steps.findIndex((step) => step.lineId === room.zoneArrivalId) : -1;
+    return arrival < 0 ? steps : steps.slice(arrival);
+  }, [playback.window, playerName, room.activeIds, room.zoneArrivalId]);
   const targetStep = useRef<string | null>(null);
   const positionedWindow = useRef<ScenePlaybackWindow | null>(null);
   /** A new visit opens at its latest line; each append opens at its first new paragraph. */
@@ -611,7 +612,8 @@ export function RoomPanel({
       restoring: initialRead && readingOrdinal !== readingTotal - 1,
     };
   }, [stageRoomId, readingOrdinal, readingTotal, step?.key]);
-  const canReadPrevious = at > 0 || readingPages.index > 0 || !!playback.window.olderCursor;
+  const atArrivalBoundary = !!room.zoneArrivalId && steps[0]?.lineId === room.zoneArrivalId;
+  const canReadPrevious = at > 0 || readingPages.index > 0 || (!atArrivalBoundary && !!playback.window.olderCursor);
   const canReadNext =
     at < steps.length - 1 ||
     readingPages.index < readingPages.count - 1 ||
@@ -627,6 +629,7 @@ export function RoomPanel({
     checkpoint.current.bookmark = {
       scope: worldScope,
       sceneId: room.id,
+      zoneArrivalId: room.zoneArrivalId,
       lineId: step.lineId,
       paragraph: step.paragraph,
       momentIndex: step.momentIndex,
@@ -634,7 +637,17 @@ export function RoomPanel({
       atEnd: !canReadNext,
     };
     checkpoint.current.window = playback.window;
-  }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
+  }, [
+    checkpoint,
+    worldScope,
+    room.id,
+    room.zoneArrivalId,
+    step,
+    canReadNext,
+    isFounded,
+    playback.window,
+    playback.restoring,
+  ]);
   useLayoutEffect(() => {
     const previous = previousLocation.current;
     previousLocation.current = { scope: worldScope, sceneId: room.id, zoneId: room.zoneId };
@@ -1457,7 +1470,8 @@ export function RoomPanel({
                 onClick={() => {
                   if (!readingPages.move(-1)) {
                     if (at > 0) setReadStep(at - 1);
-                    else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
+                    else if (!atArrivalBoundary && playback.window.olderCursor)
+                      void playback.load(playback.window.olderCursor, "last");
                   }
                 }}
                 disabled={!canReadPrevious || playback.busy || retrying}

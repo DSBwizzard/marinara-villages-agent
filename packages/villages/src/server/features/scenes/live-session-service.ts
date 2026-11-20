@@ -247,15 +247,20 @@ export function createLiveScenes({
             ].filter((actor) => actor !== "player");
             const playerPosition = requireSceneZoneId(state);
             appendLine(state, {
-              id: randomUUID(),
+              id: (exit.actor === "player" ? "arrival-" : "") + randomUUID(),
               role: "assistant",
               speakerId: "__venue_scene__",
               name: "Narration",
               kind: "narration",
               content: `${exit.actor === "player" ? "You" : (state.sceneAttendance?.occupants.find((person) => person.characterId === exit.actor)?.name ?? "A visitor")} leave ${resolveVenueZone(venue, exit.from)?.name ?? "the Zone"}${exit.to ? ` and return to ${resolveVenueZone(venue, exit.to)?.name ?? "Entrance"}` : " and depart the Venue"} because access has ended.`,
               at: villageNow().toISOString(),
-              heardBy: witnesses,
-              zoneId: exit.from,
+              heardBy: exit.actor === "player" ? ["player", ...witnesses] : witnesses,
+              zoneId: exit.actor === "player" ? exit.to : exit.from,
+              ...(exit.actor === "player"
+                ? {
+                    physicalIdsAfter: sceneZoneOccupants(state, venue, exit.to).map((person) => person.characterId),
+                  }
+                : {}),
               contactHidden: exit.actor !== "player" && playerPosition !== exit.from && playerPosition !== exit.to,
             });
             state.accessPreviousZones ??= {};

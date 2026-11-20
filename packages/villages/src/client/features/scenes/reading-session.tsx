@@ -4,6 +4,7 @@ import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playba
 export type SceneReadingBookmark = {
   scope: string;
   sceneId: string;
+  zoneArrivalId?: string;
   lineId: string;
   paragraph: number;
   momentIndex: number;
