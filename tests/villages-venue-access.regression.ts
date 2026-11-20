@@ -1082,7 +1082,7 @@ async function main() {
     managementWorld.seed = "management-world";
     managementWorld.foundedAt = stamp;
     managementWorld.setupAt = stamp;
-    managementWorld.venues = [fixture()];
+    managementWorld.venues = [fixture(), ...sharedVenuesFixture()];
     managementWorld.villagers = structuredClone(live.villagers);
     managementWorld.startingHistory.reviewed = { ...live.startingHistory.reviewed };
     records.delete("villages-active-venue");

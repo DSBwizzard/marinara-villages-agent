@@ -61,6 +61,7 @@ function fixture(interior = false) {
   synchronizeVenueZones(venue);
   initializeVenueAccess(venue);
   state.venues = [...[venue], ...sharedVenuesFixture()];
+  state.backgroundPace = "lively";
   ensureNarrative(state, at);
   if (
     interior &&
@@ -568,10 +569,10 @@ await runCase("narration-circumstance/protected-update", () => {
       correction,
     );
     let day = 1;
-    const zoneCount = f.venue.zones!.filter((zone) => zone.description.trim()).length;
-    assert(zoneCount < 6, "fixture update remains within its seven-day condition");
+    const zoneCount = f.state.venues.reduce((sum, venue) => sum + venue.zones!.length, 0);
+    assert(zoneCount < 7, "fixture update remains within its seven-day condition");
     for (let index = 1; index < zoneCount; index++) {
-      const now = new Date(Date.parse(at) + day++ * 86400000);
+      const now = new Date(Date.parse(at) + day++ * 3600000);
       reserveEventAttempt(
         f.state,
         "other-world-" + index,
@@ -581,7 +582,7 @@ await runCase("narration-circumstance/protected-update", () => {
         "world",
       );
     }
-    const residentAt = new Date(Date.parse(at) + day++ * 86400000);
+    const residentAt = new Date(Date.parse(at) + day++ * 3600000);
     reserveEventAttempt(
       f.state,
       "resident-opportunity",
@@ -590,7 +591,7 @@ await runCase("narration-circumstance/protected-update", () => {
       undefined,
       "resident",
     );
-    const nextAt = new Date(Date.parse(at) + day * 86400000).toISOString(),
+    const nextAt = new Date(Date.parse(at) + day * 3600000).toISOString(),
       selected = admitNarrative(f.state, nextAt, "selection", "scene", { venueId: f.venue.id, zoneId: f.scene.zoneId })!
         .targets[0]!;
     assert.equal(selected.zoneId, f.scene.zoneId);
@@ -656,7 +657,7 @@ await runCase("narration-circumstance/protected-update", () => {
   }
 });
 function nextLocal(f: ReturnType<typeof fixture>, operation: string) {
-  const zones = f.venue.zones!.filter((zone) => zone.description.trim()).length,
+  const zones = f.state.venues.reduce((sum, venue) => sum + venue.zones!.length, 0),
     count = f.state.eventAttempts!.attempts.filter((row) => row.origin === "world" || row.origin === "scene").length,
     needed = (zones - (count % zones)) % zones;
   let stamp = Date.parse(f.state.eventAttempts!.lastAttemptAt) + 86400000;

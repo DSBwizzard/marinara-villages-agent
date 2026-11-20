@@ -1446,9 +1446,7 @@ async function mediaConnectionOwnership() {
         backgroundPace: "off",
         selectedLorebookIds: ["visual"],
         useVisualLoreByDefault: true,
-        venues: [
-          ...sharedVenuesFixture(),
-          venueFixture({
+        venues: [venueFixture({
             residentIds: [null].filter((id) => typeof id === "string" && !!id),
             classes: false || null ? ["residence"] : ["other"],
             id: "equal-venue",
@@ -1466,8 +1464,7 @@ async function mediaConnectionOwnership() {
                 controllerIds: ["player"],
               },
             ],
-          }),
-        ],
+          }), ...sharedVenuesFixture()],
       });
       type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
       const record = (id: string, kind: string, data: unknown): Row => ({

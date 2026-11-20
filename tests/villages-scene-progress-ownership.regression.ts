@@ -391,7 +391,7 @@ await runCase("scene-narration/native-npc", async () => {
 });
 await runCase("scene-narration/native-circumstance", async () => {
   for (const lost of [false, true]) {
-    const f = fixture(),
+    const f = fixture("native-circumstance-2"),
       scene = f.scenes.get("scene")!,
       turn = f.turn(),
       venue = structuredClone(turn.narration!.readset.source.venue);

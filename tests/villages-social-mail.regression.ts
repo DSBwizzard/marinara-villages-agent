@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 // Test cases: social-mail/one-request, social-mail/romantic-interest, social-mail/saved-recovery, social-mail/authority, social-mail/admission, social-mail/fail-before-spend, social-mail/background-recovery
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
@@ -73,6 +74,7 @@ async function fixture() {
     read = () => repository.readAuthority({ memories: true });
   await repository.mutateAuthority(
     (state) => {
+      state.venues = sharedVenuesFixture();
       Object.assign(state, { seed: "mail", setupAt: at, foundedAt: at });
       state.villagers = [
         {
