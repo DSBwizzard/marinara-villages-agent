@@ -72,8 +72,13 @@ async function main() {
     const commands = createVenueCommands(f.ports);
     scene = { id: "scene", placeId: "another-venue", zoneId: "exterior" };
     cosmetic.positions.exterior.x = 2;
+    const beforeArrangement = JSON.stringify(venue);
+    await assert.rejects(commands.updateVenueZoneLayout(venue.id, cosmetic), /End the active Scene/);
+    assert.equal(JSON.stringify(venue), beforeArrangement, "An active Scene blocks even cosmetic layout changes");
+    scene = null;
     await commands.updateVenueZoneLayout(venue.id, cosmetic);
-    assert.equal(venue.zoneLayout!.exterior.x, 2, "Box arrangement can save during any active Scene");
+    assert.equal(venue.zoneLayout!.exterior.x, 2, "Box arrangement resumes after the Scene ends");
+    scene = { id: "scene", placeId: "another-venue", zoneId: "exterior" };
     assert.deepEqual(
       venue.zones!.map((zone) => zone.connectedTo),
       zones.map((zone) => zone.connectedTo),

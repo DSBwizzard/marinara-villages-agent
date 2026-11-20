@@ -248,6 +248,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
       });
       window.h.scene({ id: "cosmetic-scene", status: "active", placeId: "a", zoneId: "exterior" });
     });
+    await expect(page.getByText("End the Scene to edit the layout.", { exact: true })).toBeVisible();
     await arrangement.press("ArrowRight");
     await expect.poll(entranceX).toBe(0);
     await expect(save).toBeDisabled();
