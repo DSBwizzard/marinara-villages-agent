@@ -289,7 +289,7 @@ await runCase("narration-writing/subject-scope", async () => {
   assert(!generated.readset.source.actors.some((row) => row.id === "offstage"));
   assert(!JSON.stringify(f.messages()).includes("PRIVATE_SUBJECT_PROFILE"));
   assert(
-    f.messages().every(({ content }) => !/Optional staging:|"presentation":\{"state":/u.test(content)),
+    f.messages().every(({ content }) => !/Optional staging\b|"presentation":\{"state":/u.test(content)),
     "A Scene with no sprites omits the catalog and staging instructions",
   );
   f.state.villagers[0].incarnation = "replacement";

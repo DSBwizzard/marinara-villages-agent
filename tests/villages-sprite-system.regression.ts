@@ -241,7 +241,7 @@ const writer = createSceneWriting({
     const prompt = messages.map(({ content }) => content).join("\n");
     assert.match(prompt, /Leave their next choice open/u);
     assert.doesNotMatch(prompt, /about 2,000 characters|several substantial exchanges/u);
-    assert.match(prompt, /Optional staging:/u);
+    assert.match(prompt, /Optional staging\b/u);
     assert.doesNotMatch(prompt, /commands array|Native changes use commands|roomKeeps:\[/u);
     const catalog = scenePromptPacket(prompt, "calendar").presentation;
     assert(catalog.sprites[0].expressions.includes('"name":"smile"'));
