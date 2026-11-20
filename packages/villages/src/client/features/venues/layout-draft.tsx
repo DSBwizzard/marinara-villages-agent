@@ -10,6 +10,7 @@ type LayoutSave = {
   saving: boolean;
   error: string;
 };
+export type VenueLayoutDraft = ReturnType<typeof useVenueLayoutDraft>;
 type PendingLayout = LayoutSave & {
   promise?: Promise<boolean>;
   base: string;
@@ -67,6 +68,7 @@ export function useVenueLayoutDraft({
   };
   const drain = async (id: string, entry: PendingLayout) => {
     const generation = epoch.current;
+    const worldScope = current.current?.worldScope;
     const currentWorld = () => active.current && epoch.current === generation;
     const owns = () => currentWorld() && pending.current.get(id) === entry;
     entry.saving = true;
@@ -82,6 +84,8 @@ export function useVenueLayoutDraft({
           // overwriting a different layout or rejecting our own acknowledged save.
           const observed = await request<VillageSnapshot>("");
           if (!owns()) return false;
+          if (observed.worldScope !== worldScope)
+            throw new Error("The Village changed. Reload Villages before saving.");
           const venue = observed.settings.venues.find((venue) => venue.id === id);
           if (!venue) throw new Error("The Venue is no longer available.");
           const key = layoutKey(venue);
@@ -102,6 +106,7 @@ export function useVenueLayoutDraft({
           });
         }
         if (!owns()) return false;
+        if (next.worldScope !== worldScope) throw new Error("The Village changed. Reload Villages before saving.");
         const saved = next.settings.venues.find((venue) => venue.id === id);
         if (!saved) throw new Error("The Venue is no longer available.");
         const savedKey = layoutKey(saved);
@@ -169,6 +174,7 @@ export function useVenueLayoutDraft({
     return promise;
   };
   const discardVenueZoneLayout = async (id: string): Promise<boolean> => {
+    const worldScope = current.current?.worldScope;
     const owns = () => active.current && epoch.current === generation;
     const entry = pending.current.get(id);
     if (!owns() || entry?.saving) return false;
@@ -178,6 +184,7 @@ export function useVenueLayoutDraft({
       try {
         const observed = await request<VillageSnapshot>("");
         if (!owns() || pending.current.get(id) !== entry) return false;
+        if (observed.worldScope !== worldScope) throw new Error("The Village changed. Reload Villages before saving.");
         const saved = observed.settings.venues.find((venue) => venue.id === id);
         if (!saved) throw new Error("The Venue is no longer available.");
         const expected = zoneLayoutKey(entry.uncertain.change.connections, entry.uncertain.change.positions);

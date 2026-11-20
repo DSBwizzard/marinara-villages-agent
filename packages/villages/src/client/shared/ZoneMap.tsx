@@ -1,6 +1,8 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { contactNeighborIds, materializeConnections, type ConnectedSpace } from "../../shared/helpers/zone-contact.js";
 import { resolveZoneLayout, zonePositionFits, ZONE_TILE, type ZoneLayout } from "../../shared/helpers/zone-layout.js";
+import { ArtworkImage } from "./ArtworkImage.js";
+import { zoneConnectionPath } from "./zone-connection-path.js";
 
 export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   zones,
@@ -14,6 +16,8 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   labels,
   toolbar,
   modifyConnections = false,
+  angular = false,
+  artwork,
 }: {
   zones: T[];
   positions?: ZoneLayout;
@@ -26,6 +30,8 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   labels?(zone: T): ReactNode;
   toolbar?: ReactNode;
   modifyConnections?: boolean;
+  angular?: boolean;
+  artwork?(zone: T): string | undefined;
 }) {
   const descriptionId = useId();
   const [connecting, setConnecting] = useState(false),
@@ -109,15 +115,19 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
       ) : null}
       <div className="villages-zone-map-canvas">
         <svg className="mari-rgb-static-icon" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          {pairs.map(([a, b]) => (
-            <line
-              key={JSON.stringify([a, b])}
-              x1={layout[a].x + ZONE_TILE.width / 2}
-              y1={layout[a].y + ZONE_TILE.height / 2}
-              x2={layout[b].x + ZONE_TILE.width / 2}
-              y2={layout[b].y + ZONE_TILE.height / 2}
-            />
-          ))}
+          {pairs.map(([a, b]) =>
+            angular ? (
+              <polyline key={JSON.stringify([a, b])} points={zoneConnectionPath(layout, a, b)} />
+            ) : (
+              <line
+                key={JSON.stringify([a, b])}
+                x1={layout[a].x + ZONE_TILE.width / 2}
+                y1={layout[a].y + ZONE_TILE.height / 2}
+                x2={layout[b].x + ZONE_TILE.width / 2}
+                y2={layout[b].y + ZONE_TILE.height / 2}
+              />
+            ),
+          )}
         </svg>
         {zones.map((zone, index) => (
           <button
@@ -217,6 +227,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               }
             }}
           >
+            {artwork?.(zone) && <ArtworkImage src={artwork(zone)!} alt="" tile className="villages-zone-map-art" />}
             <strong>{name(zone.id)}</strong>
             {labels && (
               <span className="villages-zone-map-label" id={`${descriptionId}-${index}`}>

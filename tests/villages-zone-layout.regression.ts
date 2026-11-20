@@ -24,6 +24,32 @@ import { fixture } from "./fixtures/villages-projects.fixture.js";
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageProject } from "../packages/villages/src/server/domain/models/world.js";
 import { immutableMemoryValue } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { zoneConnectionPath } from "../packages/villages/src/client/shared/zone-connection-path.js";
+
+for (const layout of [
+  { a: { x: 0, y: 0 }, b: { x: 32, y: 0 } },
+  { a: { x: 0, y: 0 }, b: { x: 0, y: 14 } },
+  { a: { x: 0, y: 0 }, b: { x: 68, y: 42 } },
+  { a: { x: 0, y: 0 }, middle: { x: 0, y: 24 }, b: { x: 0, y: 48 } },
+]) {
+  const points = zoneConnectionPath(layout, "a", "b")
+    .split(" ")
+    .map((p) => p.split(",").map(Number));
+  assert.ok(new Set(points.map((p) => p.join(","))).size > 1, "Touching boxes retain a visible connection");
+  for (let i = 1; i < points.length; i++) {
+    const [x, y] = points[i - 1],
+      [endX, endY] = points[i];
+    assert.ok(x === endX || y === endY, "All connection segments are orthogonal");
+    for (const p of Object.values(layout)) {
+      assert.ok(
+        !(x === endX
+          ? x > p.x && x < p.x + 32 && Math.max(y, endY) > p.y && Math.min(y, endY) < p.y + 14
+          : y > p.y && y < p.y + 14 && Math.max(x, endX) > p.x && Math.min(x, endX) < p.x + 32),
+        "Connections route around boxes",
+      );
+    }
+  }
+}
 
 const f = fixture(),
   state = structuredClone(f.state()),

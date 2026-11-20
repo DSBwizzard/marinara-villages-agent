@@ -74,6 +74,7 @@ export function VenueLayoutEditor({
   return (
     <>
       <ZoneMap
+        angular
         zones={rows}
         positions={positions}
         selectedId={selectedId}

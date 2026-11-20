@@ -39,10 +39,8 @@ import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
-import { ModalDialog } from "../../shared/ModalDialog.js";
-import { ZoneMap } from "../../shared/ZoneMap.js";
+import { SceneMoveDialog, type SceneMoveZone, type SceneMoveArrangement } from "./SceneMoveDialog.js";
 import type { ZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 
 export function sceneZoneLabel(zone?: { name: string }): string {
   return zone?.name || "Zone";
@@ -259,6 +257,8 @@ export function RoomPanel({
   sceneSettings,
   movementZones,
   movementPositions,
+  movementArrangement,
+  movementLighting = "day",
   onMovementTarget,
   onTravel,
   currentZoneLabel,
@@ -310,15 +310,10 @@ export function RoomPanel({
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
-  movementZones: {
-    id: string;
-    label: string;
-    connectedTo?: string[];
-    status?: string;
-    allowed?: boolean;
-    canTrespass?: boolean;
-  }[];
+  movementZones: SceneMoveZone[];
   movementPositions?: ZoneLayout;
+  movementArrangement?: SceneMoveArrangement;
+  movementLighting?: "day" | "night";
   onMovementTarget: (id: string, trespass?: boolean) => void;
   onTravel?: () => void;
   currentZoneLabel: string;
@@ -331,8 +326,6 @@ export function RoomPanel({
   const retrying = !!retryPending || (room.operation?.kind === "retry" && room.operation.status === "running");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsView, setActionsView] = useState<"menu" | "move" | null>(null);
-  const [trespassTarget, setTrespassTarget] = useState<string | null>(null);
-  const [movementSelection, setMovementSelection] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
@@ -930,8 +923,6 @@ export function RoomPanel({
                   disabled={busy || !!contactRecovery || !movementZones.some((zone) => zone.id !== room.zoneId)}
                   onClick={() => {
                     actionsRef.current?.querySelector("button")?.focus();
-                    setTrespassTarget(null);
-                    setMovementSelection(null);
                     setActionsView("move");
                   }}
                 >
@@ -1046,108 +1037,20 @@ export function RoomPanel({
         </span>
       </div>
       {actionsView === "move" && !contactRecovery ? (
-        <ModalDialog
-          title="Move to Zone"
+        <SceneMoveDialog
+          key={worldScope + ":" + room.id}
+          zones={movementZones}
+          positions={movementPositions}
+          currentId={room.zoneId}
+          venueName={room.placeName}
+          currentZoneLabel={currentZoneLabel}
+          trespassing={room.trespassing}
+          lighting={movementLighting}
+          arrangement={movementArrangement}
+          busy={busy || !canDraft}
           onClose={() => setActionsView(null)}
-          className="villages-scene-move"
-          compact
-          scrollBody
-        >
-          <div className="villages-founding-editor-body">
-            <p>
-              In {currentZoneLabel}
-              {room.trespassing ? " · Trespassing" : ""}
-            </p>
-            <ZoneMap
-              zones={movementZones.map((zone) => ({ ...zone, name: zone.label }))}
-              positions={movementPositions}
-              currentId={room.zoneId}
-              selectedId={movementSelection ?? room.zoneId}
-              disabled={busy || !canDraft}
-              onSelect={(id) => {
-                setMovementSelection(id === room.zoneId ? null : id);
-                setTrespassTarget(null);
-              }}
-              labels={(zone) => (
-                <>
-                  <small
-                    data-zone-access={
-                      zone.id === room.zoneId
-                        ? "current"
-                        : zone.allowed
-                          ? "allowed"
-                          : zone.canTrespass
-                            ? "trespass"
-                            : "blocked"
-                    }
-                  >
-                    {zone.id === room.zoneId ? "You are here" : (zone.status ?? "Unavailable")}
-                  </small>
-                  <span className={ELEMENT_TAG + "-visually-hidden"}>
-                    Connected to{" "}
-                    {contactNeighborIds(movementZones, zone.id)
-                      .map((id) => movementZones.find((row) => row.id === id)?.label)
-                      .join(", ") || "no other Zones"}
-                    .
-                  </span>
-                </>
-              )}
-            />
-            {movementZones
-              .filter((zone) => zone.id === movementSelection && zone.id !== room.zoneId)
-              .map((zone) => (
-                <div className="villages-scene-move-zone" key={zone.id}>
-                  {!zone.allowed && trespassTarget !== zone.id && (
-                    <>
-                      <strong>{zone.label}</strong>
-                      {zone.status && <small>{zone.status}</small>}
-                    </>
-                  )}
-                  {zone.allowed && (
-                    <div className="villages-scene-move-confirm">
-                      <p>Move to {zone.label}?</p>
-                      <button type="button" onClick={() => setMovementSelection(null)}>
-                        Stay here
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy || !canDraft}
-                        onClick={() => {
-                          setActionsView(null);
-                          onMovementTarget(zone.id);
-                        }}
-                      >
-                        Move
-                      </button>
-                    </div>
-                  )}
-                  {zone.canTrespass && trespassTarget !== zone.id && (
-                    <button type="button" disabled={busy || !canDraft} onClick={() => setTrespassTarget(zone.id)}>
-                      Trespass…
-                    </button>
-                  )}
-                  {trespassTarget === zone.id && zone.canTrespass && (
-                    <div className="villages-scene-move-confirm">
-                      <p>Enter {zone.label} without permission?</p>
-                      <button type="button" onClick={() => setTrespassTarget(null)}>
-                        Stay here
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy || !canDraft}
-                        onClick={() => {
-                          setActionsView(null);
-                          onMovementTarget(zone.id, true);
-                        }}
-                      >
-                        Attempt entry
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-          </div>
-        </ModalDialog>
+          onMove={onMovementTarget}
+        />
       ) : null}
       {settingsOpen ? (
         <div

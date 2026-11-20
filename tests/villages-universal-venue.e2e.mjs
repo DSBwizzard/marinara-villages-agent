@@ -329,7 +329,7 @@ await withBrowser(browser, async () => {
     await profile.getByRole("button", { name: "Zone connections", exact: true }).click();
     const layout = profile.locator(".villages-zone-map");
     await expect(layout.locator("[data-layout-zone]")).toHaveCount(4);
-    await expect(layout.locator("svg line")).toHaveCount(3);
+    await expect(layout.locator("svg :is(line, polyline)")).toHaveCount(3);
     await expect(profile.getByText("Zone settings", { exact: true })).toHaveCount(0);
     await expect(profile.getByLabel("Room name", { exact: true })).toHaveCount(0);
     const manageBack = profile.getByRole("button", { name: "← Manage", exact: true });

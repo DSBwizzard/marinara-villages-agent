@@ -1,3 +1,5 @@
+import { STORYBOOK_DAY, STORYBOOK_NIGHT } from "../../shared/storybook-colors.js";
+
 const tag = "marinara-capability-villages";
 
 /** Package-owned presentation; Engine source and ordinary Home tabs stay intact. */
@@ -82,24 +84,53 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-send svg { width: .9375rem; height: .9375rem; }
 .${tag}-room-screen .${tag}-chat-send:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
 .${tag}-room-screen .${tag}-room-actions-menu { max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 4rem)); overflow-y: auto; }
-.villages-founding-dialog.villages-scene-move { width:min(46rem,calc(100vw - 2rem)); height:fit-content; padding:.5rem; }
-.villages-scene-move > header { margin:0; padding:.3rem .5rem; }
-.villages-scene-move .villages-founding-editor-body { display:grid; gap:.45rem; padding:.75rem; }
-.villages-scene-move .villages-founding-editor-body p { margin:0 0 .2rem; }
-.villages-scene-move .villages-founding-editor-body button { width:100%; text-align:left; min-height:44px; }
+.villages-founding-dialog.villages-scene-move {
+  ${STORYBOOK_NIGHT}; color-scheme:dark; --move-card:#514157; --move-line:#a5ac8b; --move-caution:#d9b37c;
+  width:min(58rem,calc(100vw - 2rem)); height:fit-content; padding:1.25rem;
+  max-height:calc(100dvh - 2rem); border:1px solid var(--border); border-radius:1rem;
+  background:var(--popover); color:var(--foreground); font:16px/1.4 var(--menu-font); box-shadow:0 1.5rem 5rem #0005;
+}
+.villages-founding-dialog.villages-scene-move-day { ${STORYBOOK_DAY}; --move-card:#dae7d2; --move-line:#789483; --move-caution:#8b6035; }
+.villages-scene-move::backdrop { background:#11131c70; backdrop-filter:blur(4px); }
+.villages-founding-dialog.villages-scene-move > header { display:flex; align-items:center; gap:.75rem; margin:0; padding:0 0 1rem; background:transparent; }
+.villages-scene-move-heading { flex:1; min-width:0; }
+.villages-scene-move-heading h3 { margin:0!important; font:500 2rem/1.1 var(--menu-font)!important; }
+.villages-scene-move-heading small { display:block; color:var(--muted-foreground); margin-top:.35rem; }
+.villages-founding-dialog.villages-scene-move button { min-height:44px; border:1px solid var(--border); border-radius:.6rem; background:var(--secondary); color:inherit; font:inherit; padding:.45rem .8rem; }
+.villages-founding-dialog.villages-scene-move > header button { flex:none; width:auto; margin:0; background:transparent; }
+.villages-founding-dialog.villages-scene-move > header > button:last-child { width:44px; padding:0; font-size:1.5rem; }
+.villages-founding-dialog.villages-scene-move button:focus-visible { outline:2px solid var(--menu-tab-line); outline-offset:3px; }
+.villages-scene-move .villages-founding-editor-body { display:grid; gap:1rem; padding:0; }
+.villages-scene-move .villages-founding-editor-body p { margin:0; }
+.villages-scene-move-location { font-size:.875rem; color:var(--muted-foreground); }
 .villages-scene-move .villages-zone-map { margin:0; }
-.villages-scene-move .villages-zone-map-canvas { height:clamp(340px,48dvh,460px); min-height:340px; }
-.villages-scene-move .villages-zone-map-canvas button.villages-zone-map-tile { width:32%; min-height:44px; text-align:center; }
-.villages-scene-move .villages-zone-map-tile:has([data-zone-access="allowed"]) { border-color:#78ad91; }
-.villages-scene-move .villages-zone-map-tile:has([data-zone-access="trespass"]) { border-color:#d5a15d; }
+.villages-scene-move .villages-zone-map-canvas { height:clamp(420px,52dvh,540px); min-height:420px; border:0; border-radius:0; background:transparent; }
+.villages-scene-move .villages-zone-map-canvas polyline { stroke:var(--move-line); stroke-width:1.5; }
+.villages-scene-move .villages-zone-map-canvas button.villages-zone-map-tile {
+  --tile-surface:var(--move-card); width:32%; min-height:44px; text-align:left; align-items:flex-start;
+  padding:.5rem .75rem; isolation:isolate; border-color:var(--move-line); background:var(--tile-surface);
+}
+.villages-scene-move .villages-zone-map-tile:has([data-zone-access="trespass"]) { border-color:var(--move-caution); }
 .villages-scene-move .villages-zone-map-tile:has([data-zone-access="blocked"]) { border-style:dashed; }
-.villages-scene-move .villages-zone-map-tile[aria-current="location"] { background:color-mix(in srgb,var(--primary) 25%,var(--popover)); border-width:2px; }
-.villages-scene-move .villages-zone-map-tile strong { white-space:normal; overflow-wrap:anywhere; font-size:clamp(13px,1rem,18px); }
-.villages-scene-move .villages-zone-map-tile small { font-size:clamp(11px,.85rem,16px); }
-.villages-scene-move-zone { display:grid; gap:.25rem; padding:.25rem 0; border-bottom:1px solid var(--border); }
-.villages-scene-move-zone small { color:var(--muted-foreground); }
-.villages-scene-move-zone:has(.villages-scene-move-confirm) { border-bottom:0; }
-.villages-scene-move-confirm { display:grid; gap:.35rem; }
+.villages-scene-move .villages-zone-map-canvas button[aria-pressed="true"] { --tile-surface:var(--menu-selected); border-color:var(--menu-tab-line); box-shadow:inset 0 0 0 1px var(--menu-tab-line); }
+.villages-scene-move .villages-zone-map-tile[aria-current="location"] small::before { content:""; display:inline-block; width:.4rem; height:.4rem; margin-right:.35rem; border-radius:50%; background:currentColor; vertical-align:middle; }
+.villages-scene-move .villages-zone-map-tile strong { position:relative; white-space:normal; overflow-wrap:anywhere; font-size:clamp(12px,1rem,18px); line-height:1.15; }
+.villages-scene-move .villages-zone-map-label { position:relative; max-width:100%; }
+.villages-scene-move .villages-zone-map-tile small { font-size:clamp(10px,.8rem,14px); color:var(--foreground); }
+.villages-scene-move .villages-zone-map-art { position:absolute; z-index:-2; inset:0; width:100%; height:100%; object-fit:cover; opacity:.65; pointer-events:none; }
+.villages-scene-move .villages-zone-map-tile:has(.villages-zone-map-art)::before { content:""; position:absolute; z-index:-1; inset:0; background:linear-gradient(90deg,var(--tile-surface) 12%,color-mix(in srgb,var(--tile-surface) 94%,transparent) 48%,color-mix(in srgb,var(--tile-surface) 25%,transparent)); pointer-events:none; }
+.villages-scene-move-zone { padding-top:1rem; border-top:1px solid var(--border); }
+.villages-scene-move-confirm { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; }
+.villages-scene-move-confirm p { flex:1; min-width:8rem; }
+.villages-scene-move-confirm small { display:block; font-size:.8rem; color:var(--muted-foreground); }
+.villages-scene-move-confirm button { flex:none; min-width:5rem; }
+.villages-founding-dialog.villages-scene-move .villages-scene-move-primary { background:var(--primary); border-color:var(--move-line); color:var(--primary-foreground); }
+@media(max-width:540px) {
+ .villages-founding-dialog.villages-scene-move { padding:.85rem; width:calc(100vw - 1rem); }
+ .villages-scene-move .villages-zone-map-canvas button.villages-zone-map-tile { padding:.3rem; }
+ .villages-scene-move-confirm p { flex-basis:100%; }
+ .villages-scene-move-confirm button { flex:1; }
+}
 .${tag}-room-screen .${tag}-chat-head { flex-wrap: nowrap; }
 .${tag}-room-screen .${tag}-chat-head:has(:is(.${tag}-room-actions-menu, .${tag}-scene-error-panel, .${tag}-room-stars)) { z-index: 25; }
 .${tag}-room-screen .${tag}-chat-actions { flex: 0 0 auto; }

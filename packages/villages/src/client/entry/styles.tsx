@@ -2126,7 +2126,7 @@ ${VILLAGES_FORGING_STYLES}
 .villages-zone-map button:disabled, .villages-zone-map-actions button:disabled { opacity:.5; cursor:default; }
 .villages-zone-map-canvas { position:relative; width:100%; height:clamp(320px,48dvh,480px); min-height:320px; border:1px solid var(--border); border-radius:.5rem; background:var(--background); overflow:hidden; box-sizing:border-box; }
 .villages-zone-map-canvas > svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-.villages-zone-map-canvas line { stroke:var(--primary); stroke-width:2; vector-effect:non-scaling-stroke; }
+.villages-zone-map-canvas :is(line, polyline) { fill:none; stroke:var(--primary); stroke-width:2; vector-effect:non-scaling-stroke; }
 .villages-zone-map-canvas button.villages-zone-map-tile { position:absolute; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; min-width:0; min-height:0; margin:0; padding:4px; overflow:hidden; border-radius:.6rem; touch-action:none; user-select:none; cursor:grab; line-height:1.2; }
 .villages-zone-map-tile strong { display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(12px,.8rem,16px); }
 .villages-zone-map-tile small { display:block; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(11px,.65rem,14px); }

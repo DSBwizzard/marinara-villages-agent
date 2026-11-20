@@ -15,10 +15,14 @@ import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { zoneAccessLabel } from "../../shared/zone-access.js";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
+import { useVillageLighting } from "../../shared/useVillageLighting.js";
+import { zoneLayoutKey } from "../../../shared/helpers/zone-layout.js";
+import { changedConnectionIds, materializeConnections } from "../../../shared/helpers/zone-contact.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
 
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
+  const lighting = useVillageLighting(controller.snapshot?.village, "storybook");
   const [showPlace, setShowPlace] = useState(false);
   const displayedSubmissionId = controller.room?.latestTurn?.published ? controller.room.latestTurn.id : undefined;
   useEffect(() => {
@@ -113,6 +117,16 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     room?.operation?.kind === "turn" &&
     roomErrorTrace?.submissionId === room.operation.id &&
     (room.operation.status === "interrupted" || (room.operation.status === "complete" && !!room.operation.error));
+  const movementVenue = sceneVenues.find((venue) => venue.id === room?.placeId);
+  const liveVenue = snapshot?.settings.venues.find((venue) => venue.id === room?.placeId);
+  const layoutDraft = liveVenue && controller.venueLayouts[liveVenue.id];
+  const liveZones = materializeConnections(liveVenue?.zones ?? []);
+  const canArrange =
+    !!liveVenue &&
+    liveVenue.constructionStatus !== "worksite" &&
+    movementVenue?.zones?.length === liveZones.length &&
+    liveZones.every((zone) => movementVenue.zones?.some((row) => row.id === zone.id)) &&
+    (!layoutDraft || !changedConnectionIds(liveZones, layoutDraft.change.connections).length);
 
   async function changeReply() {
     const target = room.retryReply;
@@ -360,14 +374,31 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             return (venue.zones ?? []).map((zone) => ({
               id: zone.id,
               label: sceneZoneLabel(zone),
-              connectedTo: zone.connectedTo,
+              connectedTo: zone.connectedTo ?? [],
+              image: ((lighting === "night" && zone.dayNight ? zone.nightImage : null) ?? zone.image)?.url,
               allowed:
                 !zone.closed && zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false,
               status: zoneAccessLabel(zone, venue, true),
               canTrespass: !!zone.accessView?.canTrespass,
             }));
           })()}
-          movementPositions={snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zoneLayout}
+          movementPositions={(canArrange && layoutDraft?.change.positions) || liveVenue?.zoneLayout}
+          movementLighting={lighting === "night" ? "night" : "day"}
+          movementArrangement={
+            canArrange && liveVenue
+              ? {
+                  saving: !!layoutDraft?.saving,
+                  error: layoutDraft?.error ?? "",
+                  onPositions: (positions) =>
+                    controller.stageVenueZoneLayout(liveVenue, {
+                      base: layoutDraft?.change.base ?? zoneLayoutKey(liveZones, liveVenue.zoneLayout),
+                      positions,
+                      connections: liveZones.map((zone) => ({ id: zone.id, connectedTo: zone.connectedTo ?? [] })),
+                    }),
+                  onSave: () => controller.commitVenueZoneLayout(liveVenue.id),
+                }
+              : undefined
+          }
           onMovementTarget={(zoneId, trespass) => void moveRoom(zoneId, trespass)}
           onTravel={() => {
             if (!room.travel || roomBusy || contactReviewPending.current || sceneLifetime.current !== room.id) return;

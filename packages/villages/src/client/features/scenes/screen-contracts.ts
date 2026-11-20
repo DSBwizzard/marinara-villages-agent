@@ -23,6 +23,7 @@ import type { useOpenRoom } from "./actions.js";
 import type { useRetrySavedScene } from "./actions.js";
 
 import type { useSendRoom } from "./actions.js";
+import type { VenueLayoutDraft } from "../venues/layout-draft.js";
 
 /** Values and actions used by SceneScreen; independent of shell implementation. */
 export type SceneScreenController = {
@@ -86,4 +87,4 @@ export type SceneScreenController = {
   readonly setVenueEditDraft: React.Dispatch<React.SetStateAction<VillageVenue | null>>;
   readonly setVenueId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-};
+} & Pick<VenueLayoutDraft, "venueLayouts" | "stageVenueZoneLayout" | "commitVenueZoneLayout">;
