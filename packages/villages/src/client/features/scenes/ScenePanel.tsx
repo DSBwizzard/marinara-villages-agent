@@ -26,6 +26,7 @@ import type { Portrait, PortraitMap, VillageBeatRegister } from "../../shared/ty
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
+import { isSceneConnectionError } from "./scene-error-message.js";
 import type { SceneFailure } from "./scene-error-report.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
@@ -166,9 +167,7 @@ export async function completedRoomAfterFailure(
 
 export function openingFailureMessage(cause: unknown): string {
   const message = messageFrom(cause, "The scene opening could not be prepared.");
-  return /timeout|timed out|exceeded 28 seconds/iu.test(message)
-    ? "The scene opening took too long. Retry it or continue without an opening."
-    : `${message} Retry it or continue without an opening.`;
+  return /timeout|timed out|exceeded 28 seconds/iu.test(message) ? "The scene opening took too long." : message;
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */
@@ -243,6 +242,7 @@ export function RoomPanel({
   onEnd,
   onRetryGreeting,
   onContinueWithoutGreeting,
+  onConnections,
   notices,
   onDismissNotice,
   onOpenWish,
@@ -295,6 +295,7 @@ export function RoomPanel({
   onEnd: () => void;
   onRetryGreeting: () => void;
   onContinueWithoutGreeting: () => void;
+  onConnections: () => void;
   notices: RoomRecordEvent[];
   onDismissNotice: (id: string) => void;
   onOpenWish?: (actorId: string, wishId: string) => void;
@@ -413,17 +414,20 @@ export function RoomPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeMemory, openMemory]);
 
+  const connectionFailure = [error, ...sceneErrors.map((item) => item.message)].some(isSceneConnectionError);
   const openingActions =
-    room.status === "opening" ? (
+    !ended &&
+    room.status === "opening" &&
+    (error || sceneErrors.some((item) => ["room", "greeting", "operation"].includes(item.id))) ? (
       <>
-        <button type="button" onClick={onEnd} disabled={busy}>
+        <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onEnd} disabled={busy}>
           Back to map
         </button>
-        <button type="button" onClick={onRetryGreeting} disabled={busy}>
+        <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onRetryGreeting} disabled={busy}>
           {room.operation?.recoverable ? "Recover saved opening" : "Retry opening"}
         </button>
-        {room.id ? (
-          <button type="button" onClick={onContinueWithoutGreeting} disabled={busy}>
+        {room.id && !connectionFailure ? (
+          <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onContinueWithoutGreeting} disabled={busy}>
             Continue without opening
           </button>
         ) : null}
@@ -432,14 +436,15 @@ export function RoomPanel({
   const errorItems: SceneErrorItem[] = sceneErrors.map((item) => ({
     ...item,
     operation: item.id === "operation" || item.message === room.operation?.error ? room.operation : undefined,
-    actions: item.actions ?? (["room", "greeting", "operation"].includes(item.id) ? openingActions : undefined),
+    onClick: isSceneConnectionError(item.message) ? onConnections : undefined,
+    actions: room.status === "opening" && isSceneConnectionError(item.message) ? undefined : item.actions,
   }));
   if (error && !sceneErrors.length)
     errorItems.push({
       id: "request",
       title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
       message: error,
-      actions: openingActions,
+      onClick: isSceneConnectionError(error) ? onConnections : undefined,
     });
   const recoveryTrace = typeof turnRecovery === "string" ? undefined : turnRecovery?.trace;
   const heldRecoveryId = unresolvedChanges?.find(
@@ -1437,7 +1442,9 @@ export function RoomPanel({
                   */
                   <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
                     {room.status === "opening"
-                      ? `Opening the Scene in ${room.placeName}…`
+                      ? openingActions
+                        ? "Scene opening failed."
+                        : `Opening the Scene in ${room.placeName}…`
                       : activeParticipants.length === 0
                         ? `You are alone in this Zone of ${room.placeName}.`
                         : "…"}
@@ -1500,6 +1507,11 @@ export function RoomPanel({
         </div>
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
+        {openingActions ? (
+          <div className={`${ELEMENT_TAG}-scene-opening-actions`} role="group" aria-label="Scene opening">
+            {openingActions}
+          </div>
+        ) : null}
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
             {contactRecovery && !busy ? (
