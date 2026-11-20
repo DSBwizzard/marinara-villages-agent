@@ -71,8 +71,14 @@ try {
     assert.match(prompt, /personalized opening greeting/);
     assert.match(prompt, /warmly sarcastic/);
     assert.match(prompt, /GM-only/);
-    assert.match(prompt, /server inserts the player's fixed Visitor explanation/);
-    assert.match(prompt, /ONE final dialogue segment/);
+    assert.match(prompt, /prepared dialogue spoken entirely by MARI TO THE PLAYER/);
+    assert.match(prompt, /Do not introduce the Visitor topic/);
+    assert.match(prompt, /Do not generate, repeat, paraphrase or set up this middle section/);
+    assert(
+      !prompt.includes("player's fixed Visitor explanation") &&
+        !prompt.includes("Do not explain the Visitor mechanics yourself"),
+    );
+    assert.match(prompt, /ONE final(?: ordinary main)? dialogue segment/);
     assert.match(prompt, /24 hours after this introduction finishes/);
     assert(!prompt.includes("They rented a room just outside"));
     return {
@@ -178,7 +184,10 @@ try {
   const normalComplete = server.model.chatComplete;
   server.model.chatComplete = async (messages: any[]) => {
     await normalComplete(messages);
-    assert(!JSON.stringify(messages).includes("ONE final dialogue segment"), "Later Scenes are ordinary conversations");
+    assert(
+      !JSON.stringify(messages).includes("prepared dialogue spoken entirely by MARI TO THE PLAYER"),
+      "Later Scenes are ordinary conversations",
+    );
     return {
       content: JSON.stringify({
         segments: [
