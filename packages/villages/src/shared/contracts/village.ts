@@ -917,8 +917,6 @@ export type VillageWritingView = {
   tense: "present" | "past";
   person: "first" | "second" | "third";
   rating: "sfw" | "nsfw";
-  writingGuidance: string;
-  writingGuidanceMaxLength: number;
 };
 
 export type VillageConnectionSettings = {

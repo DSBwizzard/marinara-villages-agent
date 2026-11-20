@@ -7,13 +7,13 @@ import {
 
 await withSettingsOwners(async (a, b) => {
   const paused = a.pause("update", "villages-village");
-  const pending = a.owner.run(() => saveVillageWriting({ writingGuidance: "  authored A  " }));
+  const pending = a.owner.run(() => saveVillageWriting({ person: "third" }));
   await paused.wait(pending);
-  assert.equal((await b.owner.run(() => readVillageWriting())).writingGuidance, "B writing");
+  assert.equal((await b.owner.run(() => readVillageWriting())).person, "first");
   const bCalls = b.calls.length;
   paused.resume();
   await pending;
-  assert.equal((await a.owner.run(() => readVillageWriting())).writingGuidance, "authored A");
+  assert.equal((await a.owner.run(() => readVillageWriting())).person, "third");
   assert.equal(b.calls.length, bCalls);
   await assert.rejects(
     a.owner.run(() => saveVillageWriting({ tense: "future" })),
@@ -24,5 +24,5 @@ await withSettingsOwners(async (a, b) => {
     a.owner.run(() => readVillageWriting()),
     /writing settings are not configured/,
   );
-  assert.equal((await b.owner.run(() => readVillageWriting())).writingGuidance, "B writing");
+  assert.equal((await b.owner.run(() => readVillageWriting())).person, "first");
 });

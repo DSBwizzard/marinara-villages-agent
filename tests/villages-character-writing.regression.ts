@@ -11,6 +11,7 @@ import {
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { CHARACTER_DIALOGUE_DIRECTION } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { captureResidentNarration } from "../packages/villages/src/server/domain/rules/resident-narration.js";
 import { buildResidentPlanningMessages } from "../packages/villages/src/server/domain/rules/resident-planning.js";
@@ -51,6 +52,7 @@ const state = coerceVillageState({
   setting: "S".repeat(2000) + "WORLD SETTING TAIL",
   worldRules: "R".repeat(2000) + "WORLD RULES TAIL",
   worldName: "WORLD NAME TAIL",
+  narrationStyle: { tense: "present", person: "second", rating: "sfw", writingGuidance: "RETIRED STYLE OVERRIDE" },
   venues: [venue],
   villagers: [
     {
@@ -63,7 +65,7 @@ const state = coerceVillageState({
     },
   ],
 });
-state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
+assert.deepEqual(state.narrationStyle, { tense: "present", person: "second", rating: "sfw" });
 const authored = readEffectiveVillagerCard(state.villagers[0]);
 const wishId = retainAuthoredNote(state, "concert", "See a concert", [card.id], at, {
   class: "desire",
@@ -120,7 +122,7 @@ for (const fragment of [
   assert(prepared.prompt.includes(fragment), fragment);
 assert.equal(prepared.prompt.split("REMEMBERED MECCA; CURRENT LOCATION UNDECIDED").length - 1, 1);
 assert(venueCardProfile(authored).includes(RESIDENT_CONTINUITY_RULE));
-assert.match(prepared.prompt, /where compatible with character identity/);
+assert.doesNotMatch(prepared.prompt, /Additional writing guidance|RETIRED STYLE OVERRIDE/);
 assert.match(prepared.prompt, /present tense/);
 assert.match(prepared.prompt, /Address the player as "you"/);
 assert.match(prepared.prompt, /Portray authored residents using what they know/);
@@ -140,6 +142,7 @@ for (const mode of ["chat", "greet"] as const) {
   assert.match(withRating.prompt, /NSFW: Explicit adult intimacy and graphic violence are permitted/);
   assert.doesNotMatch(withRating.prompt, /SFW: Mature themes/);
   assert.match(withRating.prompt, /mutual interest develop through words and actions/);
+  assert.equal(withRating.prompt.split(CHARACTER_DIALOGUE_DIRECTION).length - 1, 1);
   assert.match(withRating.prompt, /portray the conflict and its consequences within the rating/);
   assert.doesNotMatch(withRating.prompt, /as binding on advances/);
 }
@@ -258,6 +261,7 @@ for (const fragment of [
 ])
   assert(background.includes(fragment), fragment);
 assert.doesNotMatch(background, /UNRELATED SECRET FROM AN ABSENT RESIDENT|SCRIPTED TELL SECRET/);
+assert.equal(background.split(CHARACTER_DIALOGUE_DIRECTION).length - 1, 1);
 
 const withoutPostHistory = coerceVillageState({
   ...state,

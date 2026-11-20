@@ -34,7 +34,7 @@ import {
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
-import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
+import { venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
@@ -294,7 +294,6 @@ export function createSceneWriting({
             ]
           : [ORDINARY_SCENE_DIRECTION]),
         venueWritingDirection(village.narrationStyle, player.name, !nativeCommands),
-        venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
       format: blocksFor([
         nativeCommands ? SCENE_NARRATION_FORMAT : ORDINARY_SCENE_FORMAT,
