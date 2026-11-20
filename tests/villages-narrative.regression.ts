@@ -846,6 +846,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
 }
 {
   const fixture = world();
+  fixture.state.venues = [fixture.venue];
   fixture.state.residentPlans.plans.push({
     kind: "meeting",
     status: "planned",

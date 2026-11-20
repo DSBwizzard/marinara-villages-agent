@@ -367,6 +367,7 @@ async function reset() {
           addedAt: "2026-09-01T00:00:00.000Z",
         }) as any,
     );
+    state.venues = sharedVenuesFixture(state.villagers.length);
   });
   stop = startBackgroundWork({ now: () => now });
 }
