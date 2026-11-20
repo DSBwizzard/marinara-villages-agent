@@ -2,6 +2,7 @@ import { request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingSetting, FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
+import { FOUNDING_DRAFT_UNAVAILABLE } from "../../../shared/contracts/founding.js";
 import type { FoundingState } from "./useFoundingState.js";
 
 export type FoundingSuggestionOptions = {
@@ -106,7 +107,8 @@ export async function requestFoundingSuggestions(
             !pending.draftSetting ||
             !options?.checkSetting ||
             !(error instanceof VillageApiError) ||
-            error.status !== 404
+            error.status !== 404 ||
+            error.code !== FOUNDING_DRAFT_UNAVAILABLE
           )
             throw error;
           // An explicit check can recover a save that preceded dispatch. Reuse the same ID.
@@ -150,8 +152,12 @@ export async function requestFoundingSuggestions(
     }
   } catch (error) {
     if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
-    // A definite refusal permits a new explicit attempt; connection loss keeps the ID for GET recovery.
-    if (admitting && error instanceof VillageApiError && error.status >= 400 && error.status < 500) {
+    // Only admission refusals and an identified unavailable result stop observation; transport errors keep the ID.
+    if (
+      error instanceof VillageApiError &&
+      ((admitting && error.status >= 400 && error.status < 500) ||
+        (!admitting && error.status === 404 && error.code === FOUNDING_DRAFT_UNAVAILABLE))
+    ) {
       failed(error.message);
       terminal = true;
     }

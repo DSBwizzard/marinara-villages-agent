@@ -39,6 +39,7 @@ function Harness(){
  const suggest=createFoundingSuggestSetupVenues({signal,setupWorkspace:workspace,setSetupWorkspace:setWorkspace,setupDraftData:data,persistSetupDraft:persist,personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:[],setupLoreTokenBudgetDraft:1600,setupSetting:'An oceanfront community',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[],openingVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
  useVisibleInterval(signal=>{if(workspace.suggestionRequest&&!workspace.suggestionRequest.failure)return suggest(undefined,signal)},workspace.suggestionRequest&&!workspace.suggestionRequest.failure?2000:null,visible);
  window.setFoundingVisible=setVisible;
+ window.restoreMissingSuggestion=()=>setWorkspace(state=>({...state,suggestionRequest:{id:'absent-draft-result',sourceKey:source,quickStart:true}}));
  const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
  const select=venue=>{setSelected(venue.id);setMoving(null);setWorkspace(state=>({...state,view:'details',paused:true}))};
  const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,pictureReference:image}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,pictureReference:image}:zone)});};
@@ -80,11 +81,21 @@ await withBrowser(browser, async () => {
         loseReply = false,
         failReply = false,
         hold = false,
+        unavailable = false,
         release,
         receipt;
       await page.route("**/api/villages**", async (route) => {
         if (route.request().method() === "GET") {
           reads++;
+          if (unavailable)
+            return fulfill(route, {
+              status: 404,
+              contentType: "application/json",
+              body: JSON.stringify({
+                code: "FOUNDING_DRAFT_UNAVAILABLE",
+                error: "This Founding draft result is no longer available. Your current setup is kept.",
+              }),
+            });
           return fulfill(route, { contentType: "application/json", body: JSON.stringify(receipt) });
         }
         const input = route.request().postDataJSON();
@@ -556,6 +567,41 @@ await withBrowser(browser, async () => {
         "A newer manual description",
         "Newer manual edits survive a stale replacement",
       );
+      const keptVenues = await page.evaluate(() => window.quickState.venues);
+      await page.evaluate(() => {
+        window.setFoundingVisible(false);
+        window.restoreMissingSuggestion();
+      });
+      await button("Save draft").click();
+      const beforeUnavailableReads = reads;
+      unavailable = true;
+      await page.reload();
+      await expect(button("Retry")).toBeEnabled();
+      await expect.poll(() => reads).toBe(beforeUnavailableReads + 1);
+      assert.equal(calls, 4, "An unavailable saved result never generates automatically");
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues),
+        keptVenues,
+        "Recovery retains all Venue edits and map pins",
+      );
+      await first.click();
+      await manage();
+      await sheet.getByLabel("Venue form", { exact: true }).fill("Still editable after an unavailable result");
+      await closeVenue();
+      await page.waitForTimeout(2250);
+      assert.equal(reads, beforeUnavailableReads + 1, "An authoritative missing result stops the recovery interval");
+      await button("Save draft").click();
+      await page.reload();
+      await expect(button("Retry")).toBeEnabled();
+      await expect
+        .poll(() => page.evaluate(() => window.quickState.venues[0].form))
+        .toBe("Still editable after an unavailable result");
+      assert.equal(reads, beforeUnavailableReads + 1, "Reloading the saved failure does not resume polling");
+      assert.equal(calls, 4);
+      await button("Retry").click();
+      await page.getByRole("dialog").getByRole("button", { name: "Replace and suggest", exact: true }).click();
+      await expect.poll(() => calls).toBe(5);
+      await expect(button("Suggest")).toBeEnabled();
       await page.screenshot({ path: ".build-tmp/page-three-" + viewport.width + ".png" });
       await context.close();
     });

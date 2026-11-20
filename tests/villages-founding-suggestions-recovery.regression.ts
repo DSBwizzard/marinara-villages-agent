@@ -13,6 +13,7 @@ import {
 import { requestFoundingSuggestions } from "../packages/villages/src/client/features/founding/suggestion-request.js";
 import { createFoundingDraftSetting } from "../packages/villages/src/client/features/founding/setup-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
+import { FOUNDING_DRAFT_UNAVAILABLE } from "../packages/villages/src/shared/contracts/founding.js";
 
 const tick = () => new Promise<void>((done) => setImmediate(done));
 const records = new Map<string, any>();
@@ -178,6 +179,11 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     assert.equal(response.statusCode, 400, response.body);
     assert.equal(calls, 0, "A missing durable action ID cannot dispatch either suggestion path");
     assert.equal(JSON.stringify([...records]), before, "A refused request creates no saved claim");
+    const missing = await app.inject({ method: "GET", url: "/setup/venues/suggestions/missing-attempt" });
+    assert.equal(missing.statusCode, 404);
+    assert.equal(missing.json().code, FOUNDING_DRAFT_UNAVAILABLE);
+    assert.equal(calls, 0, "An unavailable result never dispatches generation");
+    assert.equal(JSON.stringify([...records]), before, "Checking an absent attempt does not alter storage");
   } finally {
     await app.close();
     releaseDrafts();
@@ -209,6 +215,10 @@ fail = true;
 await restarted.requestFoundingSuggestions({ ...input, actionId: "failed-attempt" });
 await tick();
 assert.equal((await restarted.readFoundingSuggestions("failed-attempt")).status, "failed");
+await assert.rejects(restarted.readFoundingSuggestions(input.actionId), {
+  statusCode: 404,
+  code: FOUNDING_DRAFT_UNAVAILABLE,
+});
 await assert.rejects(restarted.requestFoundingSuggestions(input), /already used/);
 assert.equal(calls, 2);
 // A process restart cannot silently restart an unfinished/billed attempt.
@@ -328,6 +338,32 @@ try {
     beforeReplacement + 1,
     "A stale recovered result never dispatches again",
   );
+  // A result can disappear during observation after the initial POST was admitted.
+  clientPorts.setupWorkspace = emptyFoundingWorkspace();
+  let latePosts = 0,
+    lateReads = 0;
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === "POST") {
+      latePosts++;
+      const pending = workspace.suggestionRequest!;
+      return Response.json({
+        id: pending.id,
+        sourceKey: pending.sourceKey,
+        status: "running",
+        result: null,
+        error: "",
+      });
+    }
+    lateReads++;
+    return Response.json(
+      { error: "Saved draft result is unavailable", code: FOUNDING_DRAFT_UNAVAILABLE },
+      { status: 404 },
+    );
+  };
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /unavailable/);
+  assert.equal(latePosts, 1);
+  assert.equal(lateReads, 1);
+  assert.equal(workspace.suggestionRequest?.failure, "Saved draft result is unavailable");
   // Storage failure must not authorize dispatch.
   clientPorts.setupWorkspace = emptyFoundingWorkspace();
   clientPorts.persistSetupDraft = async () => {
@@ -380,6 +416,43 @@ try {
     Response.json({ id: "waiting", sourceKey: "setting-1", status: "failed", result: null, error: "Invalid draft" });
   await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Invalid draft/);
   assert.equal(workspace.suggestionRequest?.failure, "Invalid draft");
+  workspace = {
+    ...workspace,
+    suggestionRequest: {
+      id: "waiting",
+      sourceKey: "setting-1",
+      quickStart: false,
+      sourceInputs: "original inputs",
+      sourceVenues: "original venues",
+    },
+  };
+  clientPorts.setupWorkspace = workspace;
+  let unavailableReads = 0;
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method ?? "GET", "GET");
+    unavailableReads++;
+    return Response.json(
+      { error: "Saved draft result is unavailable", code: FOUNDING_DRAFT_UNAVAILABLE },
+      { status: 404 },
+    );
+  };
+  await assert.rejects(
+    requestFoundingSuggestions(clientPorts, {}, {}),
+    (error: Error) => /unavailable/.test(error.message) && !/Reconnecting/.test(error.message),
+  );
+  assert.equal(unavailableReads, 1);
+  assert.deepEqual(
+    workspace.suggestionRequest,
+    {
+      id: "waiting",
+      sourceKey: "setting-1",
+      quickStart: false,
+      sourceInputs: "original inputs",
+      sourceVenues: "original venues",
+      failure: "Saved draft result is unavailable",
+    },
+    "A known unavailable result stops observation without discarding the admitted identity or source",
+  );
   clientPorts.setupWorkspace = workspace;
   clientPorts.persistSetupDraft = async (data: any) => {
     persisted = structuredClone(data);
@@ -424,7 +497,21 @@ try {
   };
   let settingPosts = 0;
   globalThis.fetch = async (_url, init) => {
-    if (init?.method !== "POST") return Response.json({ error: "Saved attempt not found" }, { status: 404 });
+    assert.equal(init?.method ?? "GET", "GET", "A generic missing route cannot re-admit a setting request");
+    return Response.json({ error: "Route unavailable" }, { status: 404 });
+  };
+  await assert.rejects(
+    requestFoundingSuggestions(
+      { ...clientPorts, setupWorkspace: workspace, setupBeginningSourceKey: "founding-setting" },
+      { draftSetting: true, checkSetting: true },
+      originalSetting,
+    ),
+    /Reconnecting/,
+  );
+  assert.equal(workspace.suggestionRequest?.failure, undefined);
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method !== "POST")
+      return Response.json({ error: "Saved attempt not found", code: FOUNDING_DRAFT_UNAVAILABLE }, { status: 404 });
     settingPosts++;
     assert.deepEqual(JSON.parse(String(init.body)), {
       ...originalSetting,
