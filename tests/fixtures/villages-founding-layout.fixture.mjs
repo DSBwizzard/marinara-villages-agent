@@ -738,7 +738,7 @@ export async function verifyFoundingLayout(group) {
         assert.equal(new Set(railRows).size, 1, "All five chapters fit on one row");
         const scene = root.getByRole("region", { name: "Professor Mari", exact: true });
         await expect(title).toHaveCount(0);
-        const greetingPose = await expectPose("wave");
+        await expectPose("wave");
         await expect(sidePose).toHaveCount(0);
         assert.deepEqual(await stage.boundingBox(), stageBounds, "Mari turns without moving to a different spot");
         const currentStar = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
@@ -753,14 +753,17 @@ export async function verifyFoundingLayout(group) {
           }
           await next.click();
         };
-        await expect(line).toHaveText(/I’m Mari/);
+        await expect(line).toHaveText("Oh, hello! I’m Mari. I was hoping you’d stop by.");
         await expect(button("Draft with Mari")).toHaveCount(0);
         await nextLine();
         await expect(line).toHaveText(/^Welcome to Villages\./);
+        await expectPose("happy");
         await nextLine();
         await expect(line).toHaveText(/make a life with a community/);
+        await expectPose("happy");
         await nextLine();
         await expect(line).toHaveText(/I’ll walk you through the World, your Village, and your first Map/);
+        const greetingPose = await expectPose("neutral");
         await expect(button("Set it up myself")).toHaveCount(0);
         await expect(button("Draft with Mari")).toHaveCount(0);
         if (phone) {
@@ -969,7 +972,7 @@ export async function verifyFoundingLayout(group) {
         else await nextLine();
         await layer("World");
         await expect(line).toHaveText(/^Got Lorebooks\?.*Scenes, new places, and daily routines\./);
-        await expectPose("happy");
+        await expectPose("thoughtful");
         await expect(button("Choose lorebooks")).toHaveCount(0);
         if (draftWithLore) {
           await scene.getByRole("button", { name: "Back", exact: true }).click();
@@ -982,6 +985,7 @@ export async function verifyFoundingLayout(group) {
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
         const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
+        await expectPose("happy");
         if (phone) await expect(picker.locator("header")).toBeFocused();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
         const lorePageSize = phone ? 6 : 12;
@@ -998,13 +1002,17 @@ export async function verifyFoundingLayout(group) {
           "Maximum lorebook information added to each model request.",
         );
         const loreFooter = picker.locator(".villages-lorebook-footer");
-        const unselectedLayout = await Promise.all(
-          [loreResults, loreBudget, loreFooter].map((element) => element.boundingBox()),
-        );
+        const loreElements = [
+          phone ? picker : scene.locator(".villages-setting-dialogue"),
+          loreResults,
+          loreBudget,
+          loreFooter,
+        ];
+        const unselectedLayout = await Promise.all(loreElements.map((element) => element.boundingBox()));
         const firstChoice = loreResults.getByRole("checkbox", { name: "Relay Belt", exact: true });
         await firstChoice.check();
         assert.deepEqual(
-          await Promise.all([loreResults, loreBudget, loreFooter].map((element) => element.boundingBox())),
+          await Promise.all(loreElements.map((element) => element.boundingBox())),
           unselectedLayout,
           "Selecting the first Lorebook keeps the grid, budget and navigation stationary",
         );
@@ -1052,6 +1060,11 @@ export async function verifyFoundingLayout(group) {
         }
         await picker.getByRole("button", { name: "Next Lorebooks page", exact: true }).click();
         await expect(loreResults.getByRole("checkbox")).toHaveCount(6);
+        assert.deepEqual(
+          await Promise.all(loreElements.map((element) => element.boundingBox())),
+          unselectedLayout,
+          "A partial Lorebook page keeps the full panel and controls stationary",
+        );
         await loreResults.getByRole("checkbox").first().check();
         await picker.getByRole("button", { name: "Previous Lorebooks page", exact: true }).click();
         await expect(loreResults.getByRole("checkbox")).toHaveCount(lorePageSize);
@@ -1061,7 +1074,23 @@ export async function verifyFoundingLayout(group) {
         await loreResults.getByRole("checkbox").first().uncheck();
         await picker.getByRole("searchbox", { name: "Search Lorebooks" }).fill("Relay");
         await expect(loreResults.getByRole("checkbox")).toHaveCount(1);
+        assert.deepEqual(
+          await Promise.all(loreElements.map((element) => element.boundingBox())),
+          unselectedLayout,
+          "One search result keeps the full Lorebook panel size",
+        );
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `lorebooks-one-${view.width}-${view.height}.png`),
+          });
         await expect(picker.getByRole("navigation", { name: "Lorebooks pages" })).toHaveCount(0);
+        await picker.getByRole("searchbox", { name: "Search Lorebooks" }).fill("No matching book");
+        await expect(loreResults.getByText("No matches", { exact: true })).toBeVisible();
+        assert.deepEqual(
+          await Promise.all(loreElements.map((element) => element.boundingBox())),
+          unselectedLayout,
+          "No search results keep the full Lorebook panel size",
+        );
         await picker.getByRole("searchbox", { name: "Search Lorebooks" }).fill("");
         await expect(loreResults.getByRole("checkbox", { name: "Relay Belt", exact: true })).toBeVisible();
         assert.ok(
@@ -1258,6 +1287,13 @@ export async function verifyFoundingLayout(group) {
           await expect(villageName).toHaveValue("Coastal Community");
           await villageBrief.fill("Our village is inside a dumpster.");
           await finishNaming();
+          await expect(line).toHaveText(/^A Map is where we actually play/);
+          await expect(mapName).toBeHidden();
+          await nextLine();
+          await expect(line).toHaveText(/^Each Map covers one locale/);
+          await nextLine();
+          await expect(line).toHaveText(mapMessage);
+          if (phone) await expect(settingPanel).toBeHidden();
           await button("Draft Map with Mari").click();
           await expect(line).toContainText("I’ll replace your first Map details");
           await button("Replace and draft").click();

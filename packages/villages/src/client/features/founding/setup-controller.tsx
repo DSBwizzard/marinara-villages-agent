@@ -33,7 +33,6 @@ export function createFoundingDraftSetting(
     | "setSetupLocationName"
     | "setSetupSetting"
     | "setSetupWorldName"
-    | "setSetupContext"
     | "setupLorebookDraft"
     | "setupLoreTokenBudgetDraft"
   > & {
@@ -82,10 +81,6 @@ export function createFoundingDraftSetting(
       ports.setSetupLocationName((value) => apply("startingLocationName", value));
       ports.setSetupSetting((value) => apply("description", value));
       ports.setSetupWorldName((value) => (value.trim() ? value : apply("worldName", value)));
-      ports.setSetupContext((context) => ({
-        ...context,
-        rules: context.rules.trim() ? context.rules : apply("rules", context.rules),
-      }));
       setSetupWorkspace((workspace) => ({
         ...workspace,
         settingBeat: "village",

@@ -448,9 +448,9 @@ export function VillageLorebookPicker({
           }}
         />
       </div>
-      {status}
       {stale ? <p role="alert">Lorebooks changed. Close and reopen this picker.</p> : null}
       <div className="villages-lorebook-results" role="group" aria-label="Lorebooks">
+        {status}
         {shown.map((book) => {
           const checked = active.includes(book.id);
           const state = missing.includes(book.id)

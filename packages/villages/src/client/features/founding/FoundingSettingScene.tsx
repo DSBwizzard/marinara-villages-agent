@@ -2,7 +2,7 @@ import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import { FoundingField } from "./FoundingField.js";
-import { FoundingSpeaker } from "./FoundingGuide.js";
+import { FoundingSpeaker, type foundingMariSprite } from "./FoundingGuide.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
@@ -10,7 +10,7 @@ type SettingBeat = NonNullable<FoundingScreenController["setupWorkspace"]["setti
 const worldQuestion = "What World does your Village take place in?";
 const script: Record<SettingBeat, readonly string[]> = {
   welcome: [
-    "Oh, hi! I’m Mari. You caught me arguing with a map.",
+    "Oh, hello! I’m Mari. I was hoping you’d stop by.",
     "Welcome to Villages. Come on over. The view’s good from here.",
     "You’ll make a life with a community here. That could mean a dockside town, a spaceship crew, or six neighbors with one catastrophically shared laundry room.",
     "Let’s give your people a place to call home. I’ll walk you through the World, your Village, and your first Map.",
@@ -34,6 +34,14 @@ const script: Record<SettingBeat, readonly string[]> = {
     "Where should your first Map take us? Give that spot a name and tell me what we’d see when we get there.",
   ],
 };
+const expressions = {
+  welcome: ["wave", "happy", "happy", "neutral"],
+  "world-overview": ["presenting", "presenting"],
+  world: ["thoughtful"],
+  lorebooks: ["thoughtful", "happy"],
+  "village-overview": ["presenting", "neutral"],
+  village: ["happy-side", "happy-side", "presenting"],
+} as const;
 export function settingBeat(workspace: FoundingScreenController["setupWorkspace"]): SettingBeat {
   return workspace.settingBeat ?? (workspace.suggestionRequest?.draftSetting ? "village" : "welcome");
 }
@@ -52,6 +60,7 @@ export function FoundingSettingScene({
   onValidateVillage,
   onEditSetting,
   onBeatChange,
+  onExpressionChange,
   next,
 }: {
   controller: FoundingScreenController;
@@ -67,12 +76,16 @@ export function FoundingSettingScene({
   onValidateVillage(): boolean;
   onEditSetting(): void;
   onBeatChange(): void;
+  onExpressionChange(pose: Parameters<typeof foundingMariSprite>[0]): void;
   next: ReactNode;
 }) {
   const { setupWorkspace, setSetupWorkspace, setupSuggestionsBusy, draftSetupSetting } = controller;
   const beat = settingBeat(setupWorkspace);
   const [confirmReplace, setConfirmReplace] = useState(false);
-  const [turn, setTurn] = useState<{ beat: SettingBeat; index: number }>();
+  const [turn, setTurn] = useState<{ beat: SettingBeat; index: number }>(() => ({
+    beat,
+    index: beat === "village" && setupWorkspace.settingEditorOpen ? script[beat].length - 1 : 0,
+  }));
   const [popup, setPopup] = useState<"world" | "village">();
   const lineRef = useRef<HTMLParagraphElement>(null);
   const draftButton = useRef<HTMLButtonElement>(null);
@@ -99,7 +112,7 @@ export function FoundingSettingScene({
     const openEditor =
       !phone &&
       settingBeat === "village" &&
-      (showLast || !!setupWorkspace.settingDraft) &&
+      showLast &&
       !setupWorkspace.settingProblem &&
       !setupWorkspace.suggestionRequest?.draftSetting;
     setSetupWorkspace((workspace) => ({
@@ -108,7 +121,7 @@ export function FoundingSettingScene({
       settingEditorOpen: openEditor,
       mobileMenu: undefined,
     }));
-    setTurn(showLast ? { beat: settingBeat, index: script[settingBeat].length - 1 } : undefined);
+    setTurn({ beat: settingBeat, index: showLast ? script[settingBeat].length - 1 : 0 });
     const openedPopup = phone && settingBeat === "world" ? "world" : undefined;
     setPopup(openedPopup);
     onBeatChange();
@@ -139,13 +152,14 @@ export function FoundingSettingScene({
   const lines = beat === "village" && draftDialogue ? [draftDialogue] : script[beat];
   const lineIndex = Math.min(
     lines.length - 1,
-    turn?.beat === beat
+    turn.beat === beat
       ? turn.index
-      : (beat === "village" && (setupWorkspace.settingEditorOpen || setupWorkspace.settingDraft)) ||
-          (beat === "village-overview" && villageInvalid)
+      : (beat === "village" && setupWorkspace.settingEditorOpen) || (beat === "village-overview" && villageInvalid)
         ? lines.length - 1
         : 0,
   );
+  const expression = expressions[beat][Math.min(lineIndex, expressions[beat].length - 1)]!;
+  useEffect(() => onExpressionChange(expression), [expression, onExpressionChange]);
   const lastLine = lineIndex === lines.length - 1;
   const namingVillage = beat === "village-overview" && lastLine;
   const finishVillage = () => {

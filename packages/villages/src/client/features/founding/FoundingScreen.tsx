@@ -41,14 +41,6 @@ const PLACE_ERRORS = {
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 const PHONE_LAYOUT = "(max-width:727px)";
 const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "review"] as const;
-const SETTING_MARI_POSES = {
-  welcome: "wave",
-  "world-overview": "presenting",
-  world: "thoughtful",
-  lorebooks: "happy",
-  "village-overview": "presenting",
-  village: "happy-side",
-} as const;
 
 function FoundingChapter({
   step,
@@ -215,6 +207,7 @@ export function FoundingScreen({
   const mobileScene =
     phone && !!chapterMenu && (explainingStarters || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
   const beat = settingBeat(setupWorkspace);
+  const [settingExpression, setSettingExpression] = useState<Parameters<typeof foundingMariSprite>[0]>("wave");
   const [arrival, setArrival] = useState<"fading" | "turning" | "greeting">();
   const fading = arrival === "fading";
   const turning = arrival === "turning";
@@ -251,7 +244,7 @@ export function FoundingScreen({
     prelude && !turning
       ? "looking-up"
       : setupStep === FOUNDING_STEP.Setting
-        ? SETTING_MARI_POSES[beat]
+        ? settingExpression
         : explainingStarters
           ? "presenting"
           : setupStep === FOUNDING_STEP.People
@@ -1085,6 +1078,7 @@ export function FoundingScreen({
                   setArrival(undefined);
                   bodyRef.current?.scrollTo({ top: 0 });
                 }}
+                onExpressionChange={setSettingExpression}
                 next={nextReply}
               />
             ) : null}

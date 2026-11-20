@@ -116,13 +116,17 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
       dispatchedTokens = maxTokens;
       assert.equal(options.reasoningEffort, undefined);
       completions++;
-      return { content: JSON.stringify(setting), finishReason };
+      return {
+        content: JSON.stringify({ ...setting, rules: "Model-authored rule that must be ignored." }),
+        finishReason,
+      };
     },
   } as any);
   const draftInput = { ...input, mode: "draft-setting", brief };
   await assert.rejects(writer.suggestStartingVenues({ ...draftInput, brief: " " }), /Tell Mari/);
   assert.equal(completions, 0);
   assert.deepEqual(await writer.suggestStartingVenues(draftInput), { venues: [], setting });
+  assert.match(prompt[0]!.content, /World rules are player-authored constraints: never generate, add or rewrite them/u);
   assert.equal(requestedTokens, 8192, "Use the selected System connection's output limit when fitting the prompt");
   assert.equal(dispatchedTokens, 6144, "Dispatch with the output room Engine found in context");
   assert.deepEqual(prompt.slice(1), [{ role: "user", content: brief }]);
@@ -157,6 +161,13 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
   assert.equal(authoredDraft.setting?.name, authoredSetting.villageName);
   assert.equal(authoredDraft.setting?.worldName, authoredSetting.worldName);
   assert.equal(authoredDraft.setting?.rules, authoredSetting.worldRules);
+  const spacedRules = "  Only the player edits these rules.  ";
+  assert.equal(
+    (await writer.suggestStartingVenues({ ...draftInput, worldRules: spacedRules })).setting?.rules,
+    spacedRules,
+    "A draft returns player rules verbatim, ignoring any rules supplied by the model",
+  );
+  await writer.suggestStartingVenues({ ...draftInput, ...authoredSetting });
   assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredSetting, village: brief });
   const sparseBrief = "Besmoa has a Wendy’s.";
   await writer.suggestStartingVenues({ ...draftInput, villageName: "Besmoa", brief: sparseBrief });
@@ -566,9 +577,6 @@ try {
     setSetupWorldName: (update) => {
       worldName = typeof update === "function" ? update(worldName) : update;
     },
-    setSetupContext: (update) => {
-      rules = (typeof update === "function" ? update({ rules } as any) : update).rules;
-    },
   };
   const resume = createFoundingDraftSetting(settingPorts);
   await resume("recover");
@@ -619,6 +627,35 @@ try {
   assert.equal(worldName, "  My world  ", "A draft cannot rewrite a supplied world name");
   assert.equal(rules, "  The tide stops at midnight.  ", "A draft cannot rewrite supplied standing rules");
   assert.equal(workspace.suggestionRequest, undefined);
+  for (const playerRules of ["", "   ", "  Player-authored rule.  "]) {
+    rules = playerRules;
+    workspace = { ...emptyFoundingWorkspace(), settingBrief: "A new village" };
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      return Response.json({
+        id: body.actionId,
+        sourceKey: body.sourceKey,
+        status: "complete",
+        result: {
+          venues: [],
+          setting: {
+            name,
+            startingLocationName: "New quay",
+            description: "A quay.",
+            worldName,
+            rules: "Legacy generated rule.",
+          },
+        },
+        error: "",
+      });
+    };
+    await createFoundingDraftSetting({
+      ...settingPorts,
+      setupWorkspace: workspace,
+      setupDraftData: { ...settingPorts.setupDraftData, context: { rules } },
+    })("replace");
+    assert.equal(rules, playerRules, "Even a legacy draft result cannot fill or alter player-only World rules");
+  }
   lost = false;
 } finally {
   globalThis.fetch = originalFetch;
