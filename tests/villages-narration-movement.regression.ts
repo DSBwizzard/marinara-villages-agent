@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 // Test cases: narration-movement/player, narration-movement/resident, narration-movement/authority, narration-movement/capacity, narration-movement/independent, narration-movement/recovery, narration-movement/private-destination, narration-movement/two-turns, narration-movement/group-request, narration-movement/departure, narration-movement/calendar-allow, narration-movement/calendar-deny, narration-movement/calendar-group, narration-movement/calendar-replay, narration-movement/calendar-context, narration-movement/calendar-operations
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -807,7 +808,7 @@ await runCase("narration-movement/recovery", () => {
   const episode = result.episode!,
     saved = structuredClone(f.scene);
   f.state.villagers = [];
-  f.state.venues = [];
+  f.state.venues = [...[], ...sharedVenuesFixture()];
   const before = memoryHash(f.state);
   assert.equal(f.accept().held, false);
   assert.equal(memoryHash(f.state), before);

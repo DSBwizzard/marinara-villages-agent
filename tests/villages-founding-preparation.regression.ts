@@ -1,6 +1,6 @@
-import { venueFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
+import { sharedVenuesFixture, venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
@@ -91,31 +91,39 @@ function fixture(seeded = true) {
       },
       addedAt: stamp,
     })),
-    venues: ["aqua", "feddy", "sneak", "hall"].map((id, index) =>
-      venueFixture({
-        id,
-        name: id === "hall" ? "Community Place" : `${names[index]}'s living space`,
-        form: "Converted station space",
-        description: "An old station door",
-        layoutVersion: 1,
-        classes: id === "hall" ? ["community"] : ["residence"],
-        occupancy: { playerHome: false, residentCharacterId: id === "hall" ? null : id, homeKind: null },
-        residentIds: id === "hall" ? [] : [id],
-        presentation: { image: null, x: (index + 1) / 5, y: 0.5 },
-        zones: [
-          { ...defaultVenueSpace("other", "An old station door"), id: "exterior", name: "Exterior", kind: "exterior" },
-          {
-            ...defaultVenueSpace(id === "hall" ? "community" : "residence"),
-            id: "private:base",
-            name: ["Signal Loft", "Storage Bay", "Underplatform Den", "Ticket Office"][index],
-            kind: id === "hall" ? "restricted" : "private-residence",
-            ownerId: id === "hall" ? undefined : id,
-            controllerIds: id === "hall" ? ["player"] : [],
-            preparation: { status: "pending" },
-          },
-        ],
-      }),
-    ),
+    venues: [
+      ...["aqua", "feddy", "sneak", "hall"].map((id, index) =>
+        venueFixture({
+          id,
+          name: id === "hall" ? "Community Place" : `${names[index]}'s living space`,
+          form: "Converted station space",
+          description: "An old station door",
+          layoutVersion: 1,
+          classes: id === "hall" ? ["community"] : ["residence"],
+          occupancy: { playerHome: false, residentCharacterId: id === "hall" ? null : id, homeKind: null },
+          residentIds: id === "hall" ? [] : [id],
+          presentation: { image: null, x: (index + 1) / 5, y: 0.5 },
+          zones: [
+            {
+              ...defaultVenueSpace("other", "An old station door"),
+              id: "exterior",
+              name: "Exterior",
+              kind: "exterior",
+            },
+            {
+              ...defaultVenueSpace(id === "hall" ? "community" : "residence"),
+              id: "private:base",
+              name: ["Signal Loft", "Storage Bay", "Underplatform Den", "Ticket Office"][index],
+              kind: id === "hall" ? "restricted" : "private-residence",
+              ownerId: id === "hall" ? undefined : id,
+              controllerIds: id === "hall" ? ["player"] : [],
+              preparation: { status: "pending" },
+            },
+          ],
+        }),
+      ),
+      ...sharedVenuesFixture(),
+    ],
   });
   state.venues[0].description = "UNSCOPED-OLD-ROOM-PROSE";
   for (const resident of state.villagers) resident.agenda = unwrittenVillageAgenda();

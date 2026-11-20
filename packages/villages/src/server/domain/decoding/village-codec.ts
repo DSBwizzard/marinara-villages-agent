@@ -91,7 +91,7 @@ import { emptyResidentPlans, readResidentPlans } from "./resident-plans-codec.js
 export function defaultVillageState(): VillageState {
   return {
     worldPlaces: emptyPlaceRegistry(),
-    version: 18,
+    version: 19,
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
     mailbox: emptyMailbox(),
@@ -110,7 +110,6 @@ export function defaultVillageState(): VillageState {
     setting: "",
     worldRules: "",
     worldName: "",
-    communityVenueId: "",
     playerBackground: "",
     selectedLorebookIds: [],
     sceneryArtStyle: "",
@@ -1341,7 +1340,7 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
 
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 19) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null)
     memoryRequire(
       raw.continuity && raw.episodes && raw.startingHistory && raw.mailbox && raw.residentPlans,
@@ -1359,7 +1358,7 @@ export function coerceVillageState(value: unknown): VillageState {
   const episodes = readEpisodes(raw.episodes ?? fallback.episodes, asString(raw.seed));
   const state: VillageState = {
     worldPlaces: readPlaceRegistry(raw.worldPlaces),
-    version: 18,
+    version: 19,
     continuity,
     episodes,
     mailbox: value == null ? fallback.mailbox : readMailboxState(raw.mailbox, asString(raw.seed)),
@@ -1395,7 +1394,6 @@ export function coerceVillageState(value: unknown): VillageState {
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     worldRules: boundText(raw.worldRules, MAX_SETTING_LENGTH),
     worldName: readWorldName(raw.worldName) ?? "",
-    communityVenueId: asTrimmedString(raw.communityVenueId),
     playerBackground: coercePlayerBackground(raw.playerBackground),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),

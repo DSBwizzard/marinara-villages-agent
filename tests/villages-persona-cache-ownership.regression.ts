@@ -1,3 +1,4 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
@@ -7,7 +8,6 @@ import {
   activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import {
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,

@@ -21,7 +21,7 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
     )
       return;
     if (attempted.current === opening.id) return;
-    const venue = snapshot.settings.venues.find((entry) => entry.id === opening.communityVenueId);
+    const venue = snapshot.settings.venues.find((entry) => entry.id === opening.openingVenueId);
     if (!venue) return;
     attempted.current = opening.id;
     const common = venue.zones?.find(

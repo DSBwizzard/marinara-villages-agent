@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 // Test cases: storage-admission/module-replacement, storage-admission/disposed-write, storage-admission/epoch, storage-admission/recovery-generation, storage-admission/history-read, storage-admission/cleanup-wait, storage-admission/idle-context, storage-admission/manual-publication-gap, storage-admission/parallel-readiness, storage-admission/stale-control-read, storage-admission/page-batching, storage-admission/page-guards, storage-admission/page-overlay, storage-admission/page-acknowledgement, storage-admission/page-inflight, storage-admission/page-lifetime, storage-admission/page-inventory-integrity, storage-admission/page-replay, storage-admission/background-receipts
 import assert from "node:assert/strict";
 import { setImmediate as nextTurn } from "node:timers/promises";
@@ -573,6 +574,7 @@ await runCase("storage-admission/history-read", async () => {
       (state) => {
         state.seed = "read-owner";
         state.setupAt = "2026-11-11T00:00:00.000Z";
+        state.venues = sharedVenuesFixture();
         retainAuthoredNote(state, "history-read", "The Player remembers the bridge.", ["player"], state.setupAt);
       },
       { memories: true },

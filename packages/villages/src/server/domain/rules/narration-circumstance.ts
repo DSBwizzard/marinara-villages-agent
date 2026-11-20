@@ -157,7 +157,11 @@ export function narrationCircumstancePrompt(grant: NarrationReadset["circumstanc
         id: grant.id,
         consequence: grant.consequence,
         zoneId: grant.targets[0]!.zoneId,
-        ...(includeRoomDamage && !grant.targets[0]!.exterior && grant.targets[0]!.correctiveActorIds.length
+        ordinaryUseRestrictionAllowed: grant.targets[0]!.ordinaryUseRestrictionAllowed,
+        ...(includeRoomDamage &&
+        grant.targets[0]!.ordinaryUseRestrictionAllowed &&
+        !grant.targets[0]!.exterior &&
+        grant.targets[0]!.correctiveActorIds.length
           ? {
               roomDamage:
                 "For a new enduring ordinary-use restriction caused by physical damage, add roomKeeps:[same-reply keep labels] to its condition. Link at most four distinct observable enduring Room adds or replacements across the occurrence, each to one condition. Cite the same Player-seen narration on each keep. The narration requires the circumstance, and the restriction and Room changes are one required outcome.",

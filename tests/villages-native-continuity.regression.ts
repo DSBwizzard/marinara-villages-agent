@@ -1,7 +1,7 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: native-continuity/unobserved, native-continuity/fresh-room, native-continuity/room-replay, native-continuity/cold-room, native-continuity/authored-paragraphs, native-continuity/founding-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { readContinuity } from "../packages/villages/src/server/domain/decoding/continuity-codec.js";
 import {

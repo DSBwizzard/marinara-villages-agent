@@ -1,9 +1,10 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: scene-retirement/eligibility, scene-retirement/terminal, scene-retirement/operation-status, scene-retirement/notice-dismissal, scene-retirement/publication, scene-retirement/restart-cleanup, scene-retirement/fence
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
@@ -51,7 +52,7 @@ function worldFixture() {
     setupAt: at,
     foundedAt: at,
     timeZone: "UTC",
-    venues: [venueFixture({ id: "hall", name: "Hall", description: "A quiet hall." })],
+    venues: [venueFixture({ id: "hall", name: "Hall", description: "A quiet hall." }), ...sharedVenuesFixture()],
   });
 }
 function sceneFixture(

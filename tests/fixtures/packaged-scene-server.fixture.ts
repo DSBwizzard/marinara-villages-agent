@@ -1,9 +1,10 @@
+import { sharedVenuesFixture } from "../helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "../helpers/venues.fixture.js";
 import { venueFixture } from "../helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { captureSceneLayout } from "../../packages/villages/src/server/domain/rules/scene-layout.js";
@@ -50,35 +51,38 @@ export async function packagedSceneServer(
     },
   ] as typeof world.villagers;
   world.venues = [
-    {
-      id: "mill",
-      name: "The Mill",
-      classes: ["other"],
-      layoutVersion: 1,
-      zones: [
-        {
-          ...defaultVenueSpace("other"),
-          id: "exterior",
-          name: "Exterior",
-          venueClass: "other",
-          kind: "exterior",
-          description: "A stone threshold outside the mill.",
-          connectedTo: ["common"],
-          seen: true,
-        },
-        {
-          ...defaultVenueSpace("other"),
-          id: "common",
-          name: "Common",
-          venueClass: "other",
-          kind: "public",
-          description: "A wooden bench stands against a plaster wall.",
-          connectedTo: ["exterior"],
-          seen: true,
-        },
-      ],
-    },
-  ].map(venueFixture) as typeof world.venues;
+    ...([
+      {
+        id: "mill",
+        name: "The Mill",
+        classes: ["other"],
+        layoutVersion: 1,
+        zones: [
+          {
+            ...defaultVenueSpace("other"),
+            id: "exterior",
+            name: "Exterior",
+            venueClass: "other",
+            kind: "exterior",
+            description: "A stone threshold outside the mill.",
+            connectedTo: ["common"],
+            seen: true,
+          },
+          {
+            ...defaultVenueSpace("other"),
+            id: "common",
+            name: "Common",
+            venueClass: "other",
+            kind: "public",
+            description: "A wooden bench stands against a plaster wall.",
+            connectedTo: ["exterior"],
+            seen: true,
+          },
+        ],
+      },
+    ].map(venueFixture) as typeof world.venues),
+    ...sharedVenuesFixture(),
+  ];
   options.configure?.(world, now);
   world.startingHistory.reviewed = Object.fromEntries(world.villagers.map((row) => [row.characterId, row.incarnation]));
   for (const actor of world.villagers)

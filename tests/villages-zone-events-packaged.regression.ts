@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
@@ -110,7 +111,7 @@ const village = coerceVillageState({
     ...defaultVillageState().startingHistory,
     reviewed: Object.fromEntries(people.map(({ characterId }) => [characterId, "resident-" + characterId])),
   },
-  venues: [venue],
+  venues: [venue, ...sharedVenuesFixture()],
   villagers: people.map(({ characterId, name, zoneId }) => {
     const block = {
       startMinute: 0,
@@ -668,7 +669,14 @@ try {
   freshGathering.delete(sceneRecordId);
   freshGathering.get(villageRecordId).data.opening = initialOpening(["aqua", "feddy"], placeId, "fresh-founding");
   await restart(freshGathering);
-  const founded = (await request("/rooms", { venueId: placeId, zoneId: "terrace" })).session;
+  await request("/rooms", { venueId: placeId, zoneId: "bedroom" }, 409);
+  assert.equal(
+    storedVillage(records).opening?.gatheringSceneId,
+    "",
+    "An explicit private target cannot start a gathering",
+  );
+  const founded = (await request("/rooms", { venueId: placeId })).session;
+  assert.equal(founded.zoneId, "terrace", "Opening entry chooses a qualifying public Zone");
   assert.equal(founded.status, "opening");
   assert.equal(storedVillage(records).opening?.gatheringSceneId, founded.id);
   assert.equal((await request("/rooms/active")).session?.id, founded.id);

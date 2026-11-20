@@ -1,3 +1,4 @@
+import { accessibleVenueRoute } from "./venue-path.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import type { NativeWeekSchedule } from "./schedule-rules.js";
@@ -523,7 +524,8 @@ export function validateRoutineDay(
       !venue ||
       !zone ||
       venue.constructionStatus === "worksite" ||
-      !canOccupyZone(venue, zone, resident.characterId, accessContext) ||
+      !canOccupyZone(venue, zone, resident.characterId, { ...accessContext, environment: state.narrative }) ||
+      !accessibleVenueRoute(state, venue, resident.characterId, zone.id, accessContext.at) ||
       zoneClosed(state, venue, zone)
     )
       return {

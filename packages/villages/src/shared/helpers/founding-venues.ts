@@ -1,20 +1,21 @@
 import type { VillageVenue } from "../contracts/village.js";
 
-export function foundingVenueShapeProblem(venues: readonly VillageVenue[], communityId: string): string {
+export function foundingVenueShapeProblem(venues: readonly VillageVenue[], openingId: string): string {
+  if (venues.length > 16 || !venues.some((venue) => venue.id === openingId))
+    return "Choose an opening gathering Venue among at most sixteen Venues.";
+  if (venues.filter((venue) => venue.classes?.includes("residence")).length > 4)
+    return "Founding supports at most four Residences.";
+  if (venues.some((venue) => !venue.classes?.length || venue.classes.length > 2))
+    return "Choose one or two Venue Classes.";
   if (
-    venues.length > 5 ||
-    venues.filter((venue) => venue.id === communityId).length !== 1 ||
-    venues.some((venue) => {
-      const community = venue.id === communityId;
-      const members = Number(venue.occupancy.playerHome) + (venue.residentIds?.length ?? 0);
-      return (
-        venue.classes?.length !== 1 ||
-        venue.classes[0] !== (community ? "community" : "residence") ||
-        (community ? members !== 0 : members > 4) ||
-        !!venue.workerIds?.length
-      );
-    })
+    venues.filter((venue) =>
+      venue.spaces?.some(
+        (zone) =>
+          zone.venueClass !== "residence" &&
+          (!zone.access || (zone.access.mode === "public" && !zone.access.accompanied)),
+      ),
+    ).length < 2
   )
-    return "Founding supports up to four Residences and one Community Venue.";
+    return "Provide public shared Zones in at least two Venues.";
   return "";
 }

@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -31,6 +32,7 @@ async function fixture() {
     world = createVillageRepository(() => f.gate.documents);
   await world.mutateAuthority(
     (state) => {
+      state.venues = sharedVenuesFixture();
       state.seed = owner.villageSeed;
       state.setupAt = state.foundedAt = at;
     },

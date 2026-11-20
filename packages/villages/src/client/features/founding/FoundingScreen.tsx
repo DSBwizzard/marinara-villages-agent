@@ -434,7 +434,7 @@ export function FoundingScreen({
       setMovingSetupVenueId(issue.field === "placement" ? issue.venueId : null);
     };
     const mapReady = !setupMapBusy;
-    const venueShapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.communityVenueId);
+    const venueShapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.openingVenueId);
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
         {setupMapProblem ? (
@@ -515,9 +515,9 @@ export function FoundingScreen({
       const added = ids.filter((id) => !setupFoundingVillagerIds.includes(id));
       if (!setupFoundingVillagerIds.length) added.push("player");
       setSetupVenues((rows) =>
-        rows.length && foundingVenueShapeProblem(rows, setupContext.communityVenueId)
+        rows.length && foundingVenueShapeProblem(rows, setupContext.openingVenueId)
           ? rows
-          : arrangeQuickStartVenues(reconcileFoundingRoster(rows, actors, added, setupContext.communityVenueId)),
+          : arrangeQuickStartVenues(reconcileFoundingRoster(rows, actors, added, setupContext.openingVenueId)),
       );
       setSetupFoundingVillagerIds(ids);
       setSetupMapReviewed(false);
@@ -975,7 +975,8 @@ export function FoundingScreen({
                     />
                   </>
                 }
-                communityVenueId={setupContext.communityVenueId}
+                openingVenueId={setupContext.openingVenueId}
+                onOpeningVenue={(openingVenueId) => setSetupContext({ ...setupContext, openingVenueId })}
                 people={wizardVillagers}
                 selectedId={selectedSetupVenueId}
                 busy={setupSuggestionsBusy}
@@ -1091,9 +1092,7 @@ export function FoundingScreen({
                           {venueHasPrivate(venue) ? " / Private" : ""}
                         </summary>
                         <p>{venue.description}</p>
-                        {venue.id === setupContext.communityVenueId ? (
-                          <p>Community Venue · public and unowned at Founding</p>
-                        ) : null}
+                        {venue.id === setupContext.openingVenueId ? <p>Opening gathering</p> : null}
                         {venue.residentIds?.length || venue.occupancy.playerHome ? (
                           <p>
                             Household:{" "}
@@ -1156,7 +1155,7 @@ export function FoundingScreen({
                     />
                   </FoundingField>
                   <h3>After founding</h3>
-                  <p>Prepare local routines and optional initial Wishes, then meet at the Community Venue.</p>
+                  <p>Prepare local routines and optional initial Wishes, then meet at the selected opening Venue.</p>
                 </section>
               </div>
             </>

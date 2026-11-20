@@ -1,10 +1,9 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: narration-project/approval-and-lead, narration-project/controller, narration-project/captured-terms, narration-project/fitted-terms, narration-project/current-witness, narration-project/withdrawal, narration-project/pending-withdrawal, narration-project/selected-lead, narration-project/new-venue-terms, narration-project/explicit-start, narration-project/identity-replacement, narration-project/retired-proof
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
@@ -105,7 +104,7 @@ function fixture(speakerId = "a", whisper = false) {
   });
   initializeVenueAccess(venue);
   venue.access!.managerIds = ["a"];
-  state.venues = [venue];
+  state.venues = [...[venue], ...sharedVenuesFixture()];
   const project = draftRenovationProject(
     state,
     venue.id,

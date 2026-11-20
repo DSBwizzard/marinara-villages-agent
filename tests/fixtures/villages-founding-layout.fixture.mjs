@@ -18,7 +18,7 @@ const snapshot = {
     venues: [],
     worldRules: "",
     circumstances: [],
-    communityVenueId: "",
+    openingVenueId: "",
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     maps: [],
@@ -190,7 +190,7 @@ export async function verifyFoundingLayout(group) {
                 result: null,
                 error: "Language model connection not found: stale-model-id",
               });
-            assert.equal(body.communityVenueId, "founding-community");
+            assert.equal(body.openingVenueId, "founding-community");
             assert.equal(body.mode, "quick-start");
             assert.equal(body.draftEntranceImage, undefined);
             assert.equal(body.context.rules, "The sun never sets.");
@@ -233,7 +233,9 @@ export async function verifyFoundingLayout(group) {
                           : row.playerHome
                             ? "Your home"
                             : (row.residentIds[0] ?? row.id) + " home"
-                        : "Community Courtyard",
+                        : row.id === "founding-garden"
+                          ? "Community Garden"
+                          : "Community Courtyard",
                     form: row.venueClass === "residence" ? "A coastal home" : "An open courtyard",
                     description: "A sheltered approach beside the coast.",
                     layout,
@@ -412,9 +414,7 @@ export async function verifyFoundingLayout(group) {
               await next.click();
             const community = root.locator("details").filter({ hasText: "Community Courtyard" });
             await community.locator("summary").click();
-            await community
-              .getByText("Community Venue · public and unowned at Founding", { exact: true })
-              .scrollIntoViewIfNeeded();
+            await community.getByText("Opening gathering", { exact: true }).scrollIntoViewIfNeeded();
           }
           if (process.env.VILLAGES_SCREENSHOT_DIR)
             await page.screenshot({
@@ -916,11 +916,11 @@ export async function verifyFoundingLayout(group) {
         }
         await drag(12, 0);
         if (view.width === 2550) {
-          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
+          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 3);
           await page.setViewportSize({ width: view.width, height: 480 });
           await expect
             .poll(() => root.locator(".villages-quick-venue-card:visible").count())
-            .toBeLessThan(view.count + 2);
+            .toBeLessThan(view.count + 3);
           const nextPage = root.getByRole("button", { name: "Next Venues page", exact: true });
           await nextPage.click();
           const fitting = () =>
@@ -937,9 +937,9 @@ export async function verifyFoundingLayout(group) {
             .poll(fitting, { message: "Resized pages keep complete Venue rows inside the available height" })
             .toBe(true);
           await page.setViewportSize({ width: view.width, height: view.height });
-          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
+          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 3);
         }
-        assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 2);
+        assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 3);
         const mapWarning = root.getByText("Upload or generate a map image before continuing.", { exact: true });
         await expect(mapWarning).toHaveCount(0);
         await expect(forward("Let’s look it over")).toBeEnabled();
@@ -1201,7 +1201,7 @@ export async function verifyFoundingLayout(group) {
           "Old Harbour",
           "The saved draft retains the location separately from the Village",
         );
-        assert.equal(payload.communityVenueId, "founding-community");
+        assert.equal(payload.openingVenueId, "founding-community");
         assert.equal(payload.worldRules, "The sun never sets.");
         assert.deepEqual(payload.circumstances, [
           { scope: "village", summary: "The ferries are delayed. A festival starts tonight.", venueId: "", zoneId: "" },
@@ -1209,10 +1209,10 @@ export async function verifyFoundingLayout(group) {
         assert.equal(Object.hasOwn(payload, "foundingHistory"), false);
         assert.equal(
           payload.venues.length,
-          view.count + 2,
-          "Founding contains only the selected homes and Community Venue",
+          view.count + 3,
+          "Founding contains the selected homes and two Community Venues",
         );
-        const community = payload.venues.find((row) => row.id === payload.communityVenueId);
+        const community = payload.venues.find((row) => row.id === payload.openingVenueId);
         assert.equal(community.residentIds.length, 0);
         assert.equal(community.occupancy.playerHome, false);
         const assigned = payload.venues.flatMap((row) => row.residentIds);

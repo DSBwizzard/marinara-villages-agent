@@ -307,7 +307,7 @@ export function useOpenSetup(ports: {
       setSetupContext({
         rules: "",
         circumstances: [],
-        communityVenueId: "founding-community",
+        openingVenueId: "founding-community",
       });
       const foundingPlaces =
         fresh || !village
@@ -504,7 +504,7 @@ export function useFoundVillage(ports: {
           worldName: setupWorldName,
           setting: setupSetting.trim(),
           worldRules: ports.setupContext.rules,
-          communityVenueId: ports.setupContext.communityVenueId,
+          openingVenueId: ports.setupContext.openingVenueId,
           playerBackground: setupPlayerBackground,
           circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),
           selectedLorebookIds: setupLorebookDraft,

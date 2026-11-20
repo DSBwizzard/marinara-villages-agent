@@ -104,7 +104,6 @@ const publicFields = [
   "playerPersonaId",
   "playerPersonaMissing",
   "playerPersonaName",
-  "communityVenueId",
   "sceneryArtStyle",
   "sceneryStyleProfileId",
   "selectedLorebookIds",
@@ -158,7 +157,6 @@ try {
   const initial = await scope.run(() => request("GET"));
   assert.equal(initial.worldName, "");
   assert.equal(initial.playerBackground, "");
-  assert.equal(initial.communityVenueId, "");
   assert.equal(initial.sceneryStyleProfileId, null);
   assert.equal(initial.narrativeConsequence, "gentle");
   assert.equal(initial.spontaneousEvents, false);

@@ -3,7 +3,7 @@ import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 export type FoundingContext = {
   rules: string;
   circumstances: import("../../../shared/contracts/village.js").FoundingCircumstance[];
-  communityVenueId: string;
+  openingVenueId: string;
   /** Opaque source data retained only while an already-admitted request is recovered. */
   households?: unknown;
 };

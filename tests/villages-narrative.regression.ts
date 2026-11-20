@@ -1,8 +1,7 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import {
   synchronizeVenueZones,
@@ -91,7 +90,7 @@ function world() {
   );
   synchronizeVenueZones(venue);
   initializeVenueAccess(venue);
-  state.venues = [venue];
+  state.venues = [...[venue], ...sharedVenuesFixture()];
   const zone = venueZones(venue).find((row) => row.kind !== "exterior")!;
   initializeRoomContinuity(state, venue.id, zone.id, zone.description, "founding", start);
   ensureNarrative(state, start);
@@ -847,6 +846,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
 }
 {
   const fixture = world();
+  fixture.state.venues = [fixture.venue];
   fixture.state.residentPlans.plans.push({
     kind: "meeting",
     status: "planned",

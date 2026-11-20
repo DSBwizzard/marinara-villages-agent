@@ -30,8 +30,8 @@ export function QuickStartButton({
           {!pending ? (
             <>
               <p>
-                Replace all starting Venue names, descriptions, Zones and artwork with AI-written Residences and a
-                Community Venue. Images can be added in each Zone afterwards.
+                Replace all starting Venue names, descriptions, Zones and artwork with AI-written Residences and two
+                Community Venues. Images can be added in each Zone afterwards.
               </p>
             </>
           ) : null}

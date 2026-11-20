@@ -426,7 +426,7 @@ export function useFoundingSetupBlocker(ports: {
         return "Place every starting Venue.";
       if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap) return "Check the Venue positions on the map.";
 
-      const shapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.communityVenueId);
+      const shapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.openingVenueId);
       if (!snapshot?.isFounded && shapeProblem) return shapeProblem;
       const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
       const villagerHomes = residences;
@@ -469,27 +469,6 @@ export function useFoundingSetupBlocker(ports: {
         return "Give each Private Space a name, purpose, and controller on Venues.";
       if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
         return "A chosen villager is no longer in your character cards. Choose another villager on People.";
-      const community = setupVenues.find((venue) => venue.id === setupContext.communityVenueId);
-      if (
-        !community ||
-        community.classes?.includes("residence") ||
-        community.residentIds?.length ||
-        community.occupancy.playerHome ||
-        community.workerIds?.length
-      )
-        return "Choose a separate non-residential Community Venue.";
-      if (
-        !community.spaces?.some(
-          (zone) =>
-            zone.description.trim() &&
-            (!zone.access ||
-              (zone.access.mode === "public" &&
-                !zone.access.accompanied &&
-                !zone.access.managerIds?.length &&
-                !Array.isArray(zone.access.visitorHours))),
-        )
-      )
-        return "The Community Venue needs a usable public common Zone.";
       if (setupVenues.length > 16) return "A Village supports at most 16 Venues.";
       if (
         residences.some(

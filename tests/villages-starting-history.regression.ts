@@ -1,3 +1,4 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: starting-history/cold-authority, starting-history/save-recovery, starting-history/source-validation, starting-history/creator-conflict, starting-history/incarnation-fence, starting-history/established-perspective
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -5,10 +6,7 @@ import { createVillageRepository } from "../packages/villages/src/server/adapter
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
