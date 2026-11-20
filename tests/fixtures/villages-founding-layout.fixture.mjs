@@ -1191,6 +1191,7 @@ export async function verifyFoundingLayout(group) {
         await expect(line).toHaveText(/^Each Map covers one locale/);
         await nextLine();
         await expect(line).toHaveText(/^Where should your first Map take us/);
+        const mapMessage = await line.textContent();
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
         await expect(villageBrief).toHaveCount(0);
@@ -1199,7 +1200,7 @@ export async function verifyFoundingLayout(group) {
         if (phone) {
           await expect(settingPanel).toBeHidden();
           if (!draftWithLore) {
-            await button("Enter Map details").click();
+            await button("Edit Map").click();
             await expect(settingPanel).toBeVisible();
           }
         } else {
@@ -1235,6 +1236,19 @@ export async function verifyFoundingLayout(group) {
           assert.equal(settingCalls, 1, "One explicit action dispatches one request");
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
           if (phone) await closeSetting();
+          await expect(line).toHaveText(mapMessage);
+          await expect(button("Draft Map with Mari")).toBeEnabled();
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(
+                process.env.VILLAGES_SCREENSHOT_DIR,
+                `drafted-map-message-${view.width}-${view.height}.png`,
+              ),
+            });
+          await button("Back").click();
+          await expect(line).toHaveText(/^Each Map covers one locale/);
+          await button("Back").click();
+          await expect(line).toHaveText(/^A Map is where we actually play/);
           await button("Back").click();
           if (phone) {
             await expect(line).toHaveText(/^What should we call your Village/);
@@ -1244,13 +1258,13 @@ export async function verifyFoundingLayout(group) {
           await expect(villageName).toHaveValue("Coastal Community");
           await villageBrief.fill("Our village is inside a dumpster.");
           await finishNaming();
-          await button("Draft Map again").click();
+          await button("Draft Map with Mari").click();
           await expect(line).toContainText("I’ll replace your first Map details");
           await button("Replace and draft").click();
           await expect.poll(() => settingCalls).toBe(2);
           if (phone) await expect(settingPanel).toBeVisible();
           else {
-            await expect(button("Draft Map again")).toBeEnabled();
+            await expect(button("Draft Map with Mari")).toBeEnabled();
             assert.equal(
               (await stage.boundingBox()).height,
               originalStage?.height,
@@ -1273,6 +1287,12 @@ export async function verifyFoundingLayout(group) {
             await page.addScriptTag({ content: foundingBundle });
             await expect(settingPanel).toBeVisible();
             await expect(mapName).toHaveValue("Scavenger Rim");
+          }
+          if (phone) {
+            await closeSetting();
+            await expect(line).toHaveText(mapMessage);
+            await expect(button("Draft Map with Mari")).toBeEnabled();
+            await button("Edit Map").click();
           }
         }
 
@@ -1299,7 +1319,7 @@ export async function verifyFoundingLayout(group) {
           await finishNaming();
           await nextLine();
           await nextLine();
-          if (phone) await button("Enter Map details").click();
+          if (phone) await button("Edit Map").click();
           await expect(mapName).toHaveValue("Old Harbour");
         }
         if (phone && process.env.VILLAGES_SCREENSHOT_DIR)

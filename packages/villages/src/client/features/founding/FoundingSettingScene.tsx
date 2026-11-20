@@ -119,7 +119,6 @@ export function FoundingSettingScene({
   const pending = request && !request.failure;
   const waitingForMari = pending && request.draftSetting;
   const error = setupWorkspace.settingProblem || (request?.draftSetting ? request.failure : "");
-  const drafted = !!setupWorkspace.settingDraft && !waitingForMari;
   const brief = setupWorkspace.settingBrief ?? "";
   const world = setupWorkspace.settingWorldBrief ?? "";
   const canDraft =
@@ -136,15 +135,14 @@ export function FoundingSettingScene({
       ? "I’m putting it together. Keep editing if inspiration rudely interrupts."
       : phone && waitingForMari
         ? "I still have your Map draft request. Want me to check on it?"
-        : drafted
-          ? "I’ve sketched your first Map. Go ahead and tinker with its name or what’s there. That’s the fun bit."
-          : undefined;
+        : undefined;
   const lines = beat === "village" && draftDialogue ? [draftDialogue] : script[beat];
   const lineIndex = Math.min(
     lines.length - 1,
     turn?.beat === beat
       ? turn.index
-      : (beat === "village" && setupWorkspace.settingEditorOpen) || (beat === "village-overview" && villageInvalid)
+      : (beat === "village" && (setupWorkspace.settingEditorOpen || setupWorkspace.settingDraft)) ||
+          (beat === "village-overview" && villageInvalid)
         ? lines.length - 1
         : 0,
   );
@@ -280,9 +278,7 @@ export function FoundingSettingScene({
     ? setupSuggestionsBusy
       ? "Drafting Map…"
       : "Resume Map draft"
-    : drafted
-      ? "Draft Map again"
-      : "Draft Map with Mari";
+    : "Draft Map with Mari";
   return (
     <section
       className="villages-setting-guide"
@@ -393,7 +389,7 @@ export function FoundingSettingScene({
               {!waitingForMari ? backReply : null}
               {phone ? (
                 <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
-                  {drafted || waitingForMari ? "Edit Map" : "Enter Map details"}
+                  Edit Map
                 </button>
               ) : null}
               {brief.trim() || waitingForMari ? (

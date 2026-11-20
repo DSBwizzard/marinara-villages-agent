@@ -175,7 +175,7 @@ await withBrowser(browser, async () => {
       else await next.click();
       await next.click();
       await next.click();
-      if (phone) await root.getByRole("button", { name: "Enter Map details", exact: true }).click();
+      if (phone) await root.getByRole("button", { name: "Edit Map", exact: true }).click();
       await root.getByLabel("First map name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
       await next.click();
