@@ -5,6 +5,7 @@ import { readResidentNarrationCapture } from "../decoding/resident-narration-cod
 import { socialPlanSchema } from "../decoding/resident-plans-codec.js";
 import type { ResidentNarrationCapture } from "../models/resident-narration.js";
 import {
+  CHARACTER_DIALOGUE_DIRECTION,
   NARRATION_KEEP,
   NARRATION_SEGMENT_CHARACTERS,
   RELATIONSHIP_ANSWER,
@@ -252,6 +253,7 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     VILLAGE_SHARED_SETTING_RULE,
     "You are the GM for one captured resident opportunity. Return one JSON object. A quiet result {} is valid; no daily quota or obligation to act. The player is absent: never invent player participation, knowledge, actions or consent.",
     "Cards govern complete identity. The shared continuity contains individual knowledge and private GM history, never a shared resident mind. Current desires, perspectives and commitments guide initiative naturally without a separate lifecycle review. A refusal remains meaningful; an unchanged desire is no reason to repeat a declined invitation.",
+    "For encounter dialogue: " + CHARACTER_DIALOGUE_DIRECTION,
     "Choose at most one source: encounter, reflection or mail. encounter:{opportunityId,lines:[{id?:label,speakerId,text}|{id?:label,kind:narration,text}]} requires the offered encounter and two to eight short lines, with two actual speakers. Only captured participants hear ordinary words and witness explicitly grounded local actions. No player, whispers, travel, construction, official services or time skips. Current Room entries support freeform nonstructural changes; keep only affected complete entries. Omitted room details are not absent. Intentions are not completed deeds.",
     `reflection:{actorId,text} is one offered resident's brief private thought (max ${NARRATION_SEGMENT_CHARACTERS} characters). Use segment:reflection with private perception for its own grounded keep; it proves no external observation, consent or other person's response. No public learning from private reflection.`,
     "mail:{senderId,text} is an exact personal letter to the player from one offered resident instead of an encounter/reflection. Source letter refers to its exact writing; keep may retain only its actual writer or future reader. Player learning happens only when they read it. A letter grants no access and performs no native action.",
