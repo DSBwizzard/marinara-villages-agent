@@ -363,8 +363,41 @@ export async function verifyFoundingLayout(group) {
               );
               await expect(button("Next")).toBeEnabled();
             }
-            await button("Next").click();
+            if (view.width === 1366) {
+              const move = await page.evaluate(async () => {
+                const root = document.querySelector(".villages-forging-v2");
+                const stage = root.querySelector(".villages-setting-stage");
+                const original = stage.getBoundingClientRect().toJSON();
+                root.querySelector(".villages-founding-replies button:last-child").click();
+                await new Promise(requestAnimationFrame);
+                const body = root.querySelector(".villages-forging-body");
+                const slide = stage.getAnimations()[0];
+                const reveal = body.getAnimations()[0];
+                slide.pause();
+                reveal.pause();
+                slide.currentTime = 0;
+                reveal.currentTime = 0;
+                const start = stage.getBoundingClientRect().toJSON();
+                slide.currentTime = 110;
+                reveal.currentTime = 110;
+                const middle = stage.getBoundingClientRect().toJSON();
+                const mapHidden = getComputedStyle(body).visibility === "hidden";
+                slide.finish();
+                const end = stage.getBoundingClientRect().toJSON();
+                reveal.finish();
+                return { original, start, middle, end, mapHidden };
+              });
+              assert.ok(Math.abs(move.start.x - move.original.x) < 1, "Mari starts at her teaching position");
+              assert.ok(move.end.x < move.middle.x && move.middle.x < move.start.x, "Mari slides left continuously");
+              assert.ok(move.mapHidden, "The map waits until Mari has moved aside");
+            } else await button("Next").click();
             await expect(work).toBeVisible();
+            if (phone || view.height === 650)
+              assert.equal(
+                await root.locator(".villages-setting-stage").evaluate((stage) => stage.getAnimations().length),
+                0,
+                "Phone and reduced-motion layouts do not slide Mari",
+              );
             if (pausedMap) {
               await expect(button("Check map status")).toBeEnabled();
               await expect(button("Next")).toBeDisabled();
@@ -424,6 +457,11 @@ export async function verifyFoundingLayout(group) {
         const manageVenue = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
 
         const bounds = async (phase) => {
+          await expect
+            .poll(() =>
+              stage.evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running")),
+            )
+            .toBe(false);
           assert.deepEqual(await root.boundingBox(), frame, "Founding frame stays the same size across pages");
           assert.equal(
             await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),

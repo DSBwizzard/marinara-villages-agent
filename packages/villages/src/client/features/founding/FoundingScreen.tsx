@@ -2,7 +2,7 @@ import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venu
 import { simpleFoundingMap } from "./simple-map.js";
 import { foundingHomeMembers, selectFoundingHomes } from "./founding-homes.js";
 import { useConfirmation } from "../../shared/confirmation.js";
-import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { CONNECTION_SETUP_PROBLEMS, ELEMENT_TAG } from "../../shared/constants.js";
 import { useLetterFont } from "../../shared/letter-font-css.js";
@@ -314,6 +314,51 @@ export function FoundingScreen({
   const reviewIndex = Math.min(reviewPage, Math.max(0, Math.ceil(setupVenues.length / 3) - 1));
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
+  const mariMoveFrom = useRef<{ element: HTMLElement; bounds: DOMRect }[]>([]);
+  const rememberMariPosition = () => {
+    if (phone) return;
+    mariMoveFrom.current = Array.from(
+      rootRef.current?.querySelectorAll<HTMLElement>(".villages-setting-stage, .villages-chapter-guide") ?? [],
+      (element) => ({ element, bounds: element.getBoundingClientRect() }),
+    );
+  };
+  useLayoutEffect(() => {
+    const previous = mariMoveFrom.current;
+    mariMoveFrom.current = [];
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (phone || !previous.length || motion.matches) return;
+    const animations = previous.flatMap(({ element, bounds }) => {
+      if (!element.isConnected || !bounds.width || !bounds.height) return [];
+      const target = element.getBoundingClientRect();
+      if (!target.width || !target.height) return [];
+      return element.animate(
+        [
+          {
+            transform: `translate(${bounds.x - target.x}px, ${bounds.y - target.y}px) scale(${bounds.width / target.width}, ${bounds.height / target.height})`,
+            transformOrigin: "top left",
+          },
+          { transform: "none", transformOrigin: "top left" },
+        ],
+        { duration: 220, easing: "ease" },
+      );
+    });
+    if (desktopMap && bodyRef.current)
+      animations.push(
+        bodyRef.current.animate(
+          [
+            { opacity: 0, visibility: "hidden" },
+            { opacity: 1, visibility: "visible" },
+          ],
+          { duration: 180, delay: 220, easing: "ease-out", fill: "backwards" },
+        ),
+      );
+    const stop = () => animations.forEach((animation) => animation.cancel());
+    motion.addEventListener("change", stop);
+    return () => {
+      stop();
+      motion.removeEventListener("change", stop);
+    };
+  }, [desktopMap, phone]);
   const connectionGate = useRef<HTMLElement>(null);
   const chapterLine = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -496,6 +541,7 @@ export function FoundingScreen({
     );
     const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
+      rememberMariPosition();
       setSetupFocusIssue(null);
       setStarterIntro(step === FOUNDING_STEP.Maps && setupStep === FOUNDING_STEP.People && !openMenu);
       if (openMenu && step === FOUNDING_STEP.Setting) setSettingEditorOpen(true);
@@ -808,6 +854,7 @@ export function FoundingScreen({
                   className="villages-forging-primary"
                   disabled={chapterDisabled}
                   onClick={() => {
+                    rememberMariPosition();
                     setStarterIntro(false);
                     if (phone) setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }));
                   }}
