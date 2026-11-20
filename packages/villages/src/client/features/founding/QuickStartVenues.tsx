@@ -32,6 +32,7 @@ export function QuickStartVenues({
   onPatch,
   openFromMap,
   onMapOpened,
+  onMoveVenue,
   onGenerateImage,
   onUploadImage,
   openingVenueId,
@@ -56,6 +57,7 @@ export function QuickStartVenues({
   onPatch(venue: SetupVenueDraft): void;
   openFromMap?: { id: string };
   onMapOpened?(): void;
+  onMoveVenue?(id: string): void;
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   openingVenueId?: string;
@@ -93,7 +95,8 @@ export function QuickStartVenues({
     const id = CSS.escape(selected.id);
     requestAnimationFrame(() => {
       const root = venuesRoot.current;
-      const pin = openedFromPin.current ? root?.querySelector<HTMLButtonElement>(`[data-pin-id="${id}"]`) : null;
+      const pin =
+        mobile || openedFromPin.current ? root?.querySelector<HTMLButtonElement>(`[data-pin-id="${id}"]`) : null;
       (pin ?? root?.querySelector<HTMLButtonElement>(`[data-venue-id="${id}"]`))?.focus({ preventScroll: true });
     });
   };
@@ -286,7 +289,8 @@ export function QuickStartVenues({
                     if (
                       event.key !== "Escape" ||
                       event.defaultPrevented ||
-                      (event.target instanceof Element && event.target.closest("dialog"))
+                      (event.target instanceof Element &&
+                        event.target.closest("dialog") !== event.currentTarget.closest("dialog"))
                     )
                       return;
                     event.preventDefault();
@@ -356,6 +360,19 @@ export function QuickStartVenues({
                 <button type="button" className={P + "-button"} onClick={() => setConnectionsOpen(true)}>
                   Zone connections <span aria-hidden="true">›</span>
                 </button>
+                {onMoveVenue ? (
+                  <button
+                    type="button"
+                    className={P + "-button"}
+                    disabled={busy || imageBusy}
+                    onClick={() => {
+                      closeVenue();
+                      onMoveVenue(selected.id);
+                    }}
+                  >
+                    Move on map
+                  </button>
+                ) : null}
               </section>
             ) : null}
             {section === "manage" && connectionsOpen ? (
@@ -584,61 +601,51 @@ export function QuickStartVenues({
       aria-label="Venues"
       data-map-open={(!mobile && mapOpen) || undefined}
     >
-      {map && (!mobile || mapOpen) ? (
-        mobile ? (
-          <FoundingDialog
-            title="Place Venues"
-            headerless
-            className="villages-founding-map-page"
-            onClose={() => setMapOpen(false)}
-          >
-            <section className="villages-founding-mobile-map" aria-label="Starting location map">
-              <header className="villages-quick-map-toolbar">
-                <button type="button" onClick={() => setMapOpen(false)}>
-                  ← Venues
-                </button>
-                <h2>{locationName || "Starting location"}</h2>
-              </header>
-              <section className="villages-quick-map" aria-label="Venue placement">
-                {map}
-              </section>
-            </section>
-          </FoundingDialog>
-        ) : (
-          <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
-            <div className="villages-quick-map-toolbar">
-              <h2>{locationName || "Starting location"}</h2>
+      {map ? (
+        <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
+          <div className="villages-quick-map-toolbar" hidden={mobile && inlineOpen}>
+            <h2 title={locationName || "Starting location"}>{locationName || "Starting location"}</h2>
+            {mobile ? (
+              actions
+            ) : (
               <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
                 ← Venues
               </button>
-            </div>
-            <section className="villages-quick-map" aria-label="Venue placement" inert={inlineOpen || undefined}>
-              {map}
-            </section>
-            {inlineOpen ? (
-              <div className="villages-quick-dialog villages-founding-venue-page villages-founding-venue-pane">
-                {venuePage}
-              </div>
-            ) : null}
-          </section>
-        )
-      ) : null}
-      <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
-        <header className="villages-venue-heading">
-          <h2>Starting Venues</h2>
-          <div className="villages-quick-venue-actions">
-            {map ? (
-              <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(true)}>
-                Map
-              </button>
-            ) : null}
-            {actions}
+            )}
           </div>
-        </header>
-        <div className="villages-quick-zone-list">{cards}</div>
-        {!open && (saveError || problem) ? <p role="alert">{saveError || problem}</p> : null}
-        {!open && !saveError ? problemAction : null}
-      </section>
+          <section className="villages-quick-map" aria-label="Venue placement" inert={inlineOpen || undefined}>
+            {map}
+          </section>
+          {inlineOpen ? (
+            <div className="villages-quick-dialog villages-founding-venue-page villages-founding-venue-pane">
+              {venuePage}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+      {!mobile ? (
+        <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
+          <header className="villages-venue-heading">
+            <h2>Starting Venues</h2>
+            <div className="villages-quick-venue-actions">
+              {map ? (
+                <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(true)}>
+                  Map
+                </button>
+              ) : null}
+              {actions}
+            </div>
+          </header>
+          <div className="villages-quick-zone-list">{cards}</div>
+          {!open && (saveError || problem) ? <p role="alert">{saveError || problem}</p> : null}
+          {!open && !saveError ? problemAction : null}
+        </section>
+      ) : !open && (saveError || problem || problemAction) ? (
+        <div className="villages-founding-map-notice">
+          {saveError || problem ? <p role="alert">{saveError || problem}</p> : null}
+          {!saveError ? problemAction : null}
+        </div>
+      ) : null}
       {!inlineVenue && venuePage && selected ? (
         <FoundingDialog
           title={selected.name || "Venue"}

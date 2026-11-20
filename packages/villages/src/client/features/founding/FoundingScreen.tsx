@@ -92,7 +92,8 @@ function FoundingChapter({
           <FoundingDialog
             title={mobileTitle}
             headerContent={mobileHeader}
-            className="villages-chapter-menu"
+            className={`villages-chapter-menu${step === FOUNDING_STEP.Venues ? " villages-chapter-map" : ""}`}
+            headerless={step === FOUNDING_STEP.Venues}
             scrollBody
             dismissible={canCloseMenu}
             showCloseButton={canCloseMenu}
@@ -236,19 +237,20 @@ export function FoundingScreen({
   const prelude = showTitle || chooseConnections || turning;
   const desktopMap =
     !phone && !explainingVenues && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
-  const hierarchyLayer = desktopMap
-    ? undefined
-    : setupStep === FOUNDING_STEP.Setting && !prelude && beat !== "welcome"
-      ? beat === "village-overview"
-        ? "Village"
-        : beat === "village"
+  const hierarchyLayer =
+    desktopMap || (phone && setupStep === FOUNDING_STEP.Venues && !mobileScene)
+      ? undefined
+      : setupStep === FOUNDING_STEP.Setting && !prelude && beat !== "welcome"
+        ? beat === "village-overview"
+          ? "Village"
+          : beat === "village"
+            ? "Map"
+            : "World"
+        : setupStep === FOUNDING_STEP.Maps
           ? "Map"
-          : "World"
-      : setupStep === FOUNDING_STEP.Maps
-        ? "Map"
-        : setupStep === FOUNDING_STEP.Venues
-          ? "Venue"
-          : undefined;
+          : setupStep === FOUNDING_STEP.Venues
+            ? "Venue"
+            : undefined;
   const mariPose =
     prelude && !turning
       ? "looking-up"
@@ -552,25 +554,18 @@ export function FoundingScreen({
                   ? () => {
                       setSelectedSetupVenueId(pin.id);
                       setSetupFocusIssue(null);
-                      if (!phone) setOpenVenueFromMap({ id: pin.id });
+                      setOpenVenueFromMap({ id: pin.id });
                       setMovingSetupVenueId(null);
                       setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
                     }
                   : undefined,
             }))}
             placing={
-              interactive &&
-              !!(phone ? selectedPin : nextPin) &&
-              mapReady &&
-              !setupEditorOpen &&
-              !setupSuggestionsBusy &&
-              !setupVenueBusy
+              interactive && !!nextPin && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
             }
             view={defaultView("contain")}
             shape={setupMapShape}
-            onPlace={
-              interactive ? (x, y, size) => placeSetupPin(x, y, size, phone ? selectedPin?.id : nextPin?.id) : undefined
-            }
+            onPlace={interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
             onMovePin={
               !phone && interactive && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
                 ? (id, x, y, size) => {
@@ -591,12 +586,12 @@ export function FoundingScreen({
             keyboardPlacementId={
               interactive
                 ? phone
-                  ? selectedPin?.id
+                  ? nextPin?.id
                   : (nextPin?.id ?? selectedSetupVenueId ?? setupVenues[0]?.id)
                 : undefined
             }
             onNudgePin={
-              interactive && mapReady && !setupSuggestionsBusy && !setupVenueBusy
+              interactive && (!phone || !!nextPin) && mapReady && !setupSuggestionsBusy && !setupVenueBusy
                 ? (id, dx, dy) => {
                     const venue = setupVenues.find((row) => row.id === id);
                     if (!venue) return;
@@ -612,33 +607,18 @@ export function FoundingScreen({
             }
           />
         </div>
-        {phone && interactive ? (
+        {phone && interactive && nextPin ? (
           <div className="villages-founding-map-placement">
-            <label>
-              Venue to place
-              <select
-                value={selectedPin?.id ?? ""}
-                disabled={setupVenueBusy || setupSuggestionsBusy || setupMapBusy}
-                onChange={(event) => {
-                  const venue = setupVenues.find((row) => row.id === event.target.value);
-                  if (!venue) return;
-                  setSelectedSetupVenueId(venue.id);
-                  setSetupFocusIssue(null);
-                  setMapNavigation((current) => ({
-                    zoom: current?.zoom ?? 1,
-                    centerX: venue.presentation.x ?? 0.5,
-                    centerY: venue.presentation.y ?? 0.5,
-                  }));
-                }}
-              >
-                {setupVenues.map((venue) => (
-                  <option key={venue.id} value={venue.id}>
-                    {venue.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p role="status">Tap the map to place this Venue. Pinch to zoom and drag to look around.</p>
+            <p role="status">Tap the map to move {nextPin.name}.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setMovingSetupVenueId(null);
+                setSetupWorkspace((state) => ({ ...state, paused: true }));
+              }}
+            >
+              Cancel
+            </button>
           </div>
         ) : null}
       </div>
@@ -1184,22 +1164,27 @@ export function FoundingScreen({
             <div className="villages-founding-places">
               <QuickStartVenues
                 mobile={phone}
-                inlineVenue={desktopMap}
+                inlineVenue={desktopMap || phone}
                 venues={setupVenues}
                 locationName={setupLocationName}
                 onRetrySaving={() => void retrySetupSaving()}
                 actions={
-                  <QuickStartButton
-                    busy={busy || setupSuggestionsBusy}
-                    disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
-                    pending={
-                      !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
-                    }
-                    failed={
-                      !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
-                    }
-                    onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
-                  />
+                  <>
+                    {phone ? modelButton : null}
+                    <QuickStartButton
+                      busy={busy || setupSuggestionsBusy}
+                      disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
+                      pending={
+                        !!setupWorkspace.suggestionRequest &&
+                        !pendingSetting &&
+                        !setupWorkspace.suggestionRequest.failure
+                      }
+                      failed={
+                        !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
+                      }
+                      onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
+                    />
+                  </>
                 }
                 openingVenueId={setupContext.openingVenueId}
                 onOpeningVenue={(openingVenueId) => setSetupContext({ ...setupContext, openingVenueId })}
@@ -1248,6 +1233,16 @@ export function FoundingScreen({
                 onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
                 openFromMap={openVenueFromMap}
                 onMapOpened={() => setOpenVenueFromMap(undefined)}
+                onMoveVenue={
+                  phone
+                    ? (id) => {
+                        setSelectedSetupVenueId(id);
+                        setMovingSetupVenueId(id);
+                        setSetupFocusIssue(null);
+                        setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+                      }
+                    : undefined
+                }
                 onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
                 onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
               />

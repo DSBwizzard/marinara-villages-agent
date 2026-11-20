@@ -387,29 +387,12 @@ export async function verifyFoundingLayout(group) {
         const sheet = page.locator(".villages-quick-dialog");
         const closeVenue = () => sheet.getByRole("button", { name: /^← (Map|Venues)$/ }).click();
         const showMap = async () => {
-          if (phone)
-            await root
-              .getByRole("region", { name: "Starting Venues", exact: true })
-              .getByRole("button", { name: "Map", exact: true })
-              .click();
-        };
-        const showList = async () => {
-          if (phone && (await root.getByRole("region", { name: "Starting location map", exact: true }).isVisible())) {
-            await root
-              .getByRole("region", { name: "Starting location map", exact: true })
-              .getByRole("button", { name: "← Venues", exact: true })
-              .click();
-            await expect(
-              root
-                .getByRole("region", { name: "Starting Venues", exact: true })
-                .getByRole("button", { name: "Map", exact: true }),
-            ).toBeFocused();
-          }
+          if (phone && (await sheet.count())) await closeVenue();
         };
         const editVenue = async (id) => {
           if (await sheet.count()) await closeVenue();
-          await showList();
-          await root.locator('[data-venue-id="' + id + '"]').click();
+          if (phone) await root.getByRole("button", { name: "Reset map view", exact: true }).click();
+          await root.locator(`[${phone ? "data-pin-id" : "data-venue-id"}="${id}"]`).click();
         };
         const manageVenue = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
 
@@ -1318,7 +1301,7 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
-        await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 3);
+        await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(phone ? 0 : view.count + 3);
         if (view.width === 390 && view.height === 844) {
           const keptVenues = await page.evaluate(() => {
             const kept = window.featureController.setupVenues.filter((venue) => venue.id !== "founding-garden");
@@ -1333,7 +1316,7 @@ export async function verifyFoundingLayout(group) {
             keptVenues,
             "Adding a second shared starter preserves the old draft's homes, text, artwork and pins",
           );
-          await expect(root.locator('[data-venue-id="founding-garden"]')).toBeVisible();
+          await expect(root.locator('[data-pin-id="founding-garden"]')).toBeVisible();
           await expect(button("Add shared Venue")).toHaveCount(0);
           const sharedVenues = await page.evaluate(() => {
             const original = window.featureController.setupVenues;
@@ -1360,10 +1343,14 @@ export async function verifyFoundingLayout(group) {
         }
         await expect(settingNext()).toBeInViewport({ ratio: 1 });
         await expect(root.getByRole("button", { name: "Next Venues page", exact: true })).toHaveCount(0);
-        await expect(
-          root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
-        ).toBeVisible();
+        if (!phone)
+          await expect(
+            root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
+          ).toBeVisible();
         const placementPane = root.getByRole("region", { name: "Venue placement", exact: true });
+        const mobileWorkspaceBounds = phone
+          ? await root.locator(".villages-chapter-map>.villages-forging-body").boundingBox()
+          : null;
         const placementBounds = phone ? null : await placementPane.boundingBox();
         if (placementBounds) {
           const options = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
@@ -1381,7 +1368,11 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
         await expect(sheet.getByRole("group", { name: "Who lives here?" })).toHaveCount(0);
         const venuePage = await sheet.boundingBox();
-        assert.deepEqual(venuePage, placementBounds ?? frame, "The Venue fills the map pane or the phone screen");
+        assert.deepEqual(
+          venuePage,
+          placementBounds ?? mobileWorkspaceBounds,
+          "The Venue fills the workspace above the fixed actions",
+        );
         const homeRow = root.locator('[data-venue-id="founding-home:player"]');
         if (placementBounds) {
           await expect(root.getByRole("dialog")).toHaveCount(0);
@@ -1418,16 +1409,29 @@ export async function verifyFoundingLayout(group) {
         await openingGathering.click();
         await expect(openingGathering).toHaveAttribute("aria-pressed", "true");
         await closeVenue();
-        if (phone) await expect(root.getByRole("region", { name: "Starting location map", exact: true })).toBeHidden();
+        if (phone) await expect(root.getByRole("region", { name: "Venue placement", exact: true })).toBeVisible();
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "venue-list-" + view.width + ".png"),
           });
         await showMap();
-        if (phone) await expect(root.getByRole("dialog", { name: "Place Venues", exact: true })).toBeVisible();
+        if (phone) {
+          await expect(root.getByRole("dialog")).toHaveCount(1);
+          await expect(root.getByLabel("Venue to place")).toHaveCount(0);
+          await expect(settingNext()).toBeInViewport({ ratio: 1 });
+          await expect(hierarchy).toHaveCount(0);
+          await expect(root.getByRole("list", { name: "Founding phases" })).toBeInViewport({ ratio: 1 });
+        }
         const mapCanvas = root.locator(".villages-quick-map");
+        if (phone) {
+          const canvasBounds = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
+          assert.ok(
+            Math.abs(canvasBounds.y + canvasBounds.height - mobileWorkspaceBounds.y - mobileWorkspaceBounds.height) < 2,
+            "The map fills the workspace above navigation",
+          );
+        }
         const marker = mapCanvas.locator('[data-pin-id="founding-home:player"]');
-        if (placementBounds) {
+        if (placementBounds || phone) {
           const stage = mapCanvas.locator("[data-navigation-zoom]");
           const initialZoom = await stage.getAttribute("data-navigation-zoom");
           await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
@@ -1453,10 +1457,13 @@ export async function verifyFoundingLayout(group) {
           await page.mouse.up();
         };
         if (phone) {
-          const fullMap = root.getByRole("dialog", { name: "Place Venues", exact: true });
-          assert.deepEqual(await fullMap.boundingBox(), frame, "Mobile placement uses the full Villages pane");
-          await expect(fullMap.getByLabel("Venue to place")).toBeInViewport({ ratio: 1 });
-          await fullMap.getByLabel("Venue to place").selectOption("founding-home:finn");
+          const fullMap = root.getByRole("dialog", { name: "Venues", exact: true });
+          const workspace = await fullMap.boundingBox();
+          assert.equal(workspace.width, frame.width, "Mobile map uses the full Villages width");
+          assert.ok(workspace.y <= frame.y + 80 && workspace.y + workspace.height >= frame.y + frame.height - 1);
+          await editVenue("founding-home:finn");
+          await manageVenue();
+          await sheet.getByRole("button", { name: "Move on map", exact: true }).click();
           const finnX = await page.evaluate(
             () => window.featureController.setupVenues.find((row) => row.id === "founding-home:finn").presentation.x,
           );
@@ -1470,9 +1477,12 @@ export async function verifyFoundingLayout(group) {
                 finnX -
                 0.01,
             ) < 0.0001,
-            "Keyboard placement follows the Venue selector",
+            "Keyboard placement follows the explicitly selected move",
           );
-          await fullMap.getByLabel("Venue to place").selectOption("founding-home:player");
+          await expect(fullMap.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+          await editVenue("founding-home:player");
+          await manageVenue();
+          await sheet.getByRole("button", { name: "Move on map", exact: true }).click();
           await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
           await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
           await drag(frame.width * 2, -frame.height * 2);
@@ -1531,7 +1541,7 @@ export async function verifyFoundingLayout(group) {
           );
         }
         await drag(12, 0);
-        await showList();
+        await showMap();
         assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 3);
         await expect(root.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
         await expect(root.getByRole("button", { name: "+ Add home", exact: true })).toHaveCount(0);
@@ -1551,7 +1561,7 @@ export async function verifyFoundingLayout(group) {
             assert.equal(venue.destinations[owner].sleep, "private:base");
           }
         }
-        await expect(root.locator(".villages-quick-zone-summary")).toHaveCount(prepared.length);
+        await expect(root.locator(".villages-quick-zone-summary")).toHaveCount(phone ? 0 : prepared.length);
         await expect(root.getByRole("button", { name: "Next Venues page", exact: true })).toHaveCount(0);
         await expect(settingNext()).toBeInViewport({ ratio: 1 });
         await expect(sheet).toHaveCount(0);
@@ -1640,8 +1650,26 @@ export async function verifyFoundingLayout(group) {
             )
             .toBe(beforeTouch);
           await mapCanvas.getByRole("button", { name: "Reset map view", exact: true }).click();
+          await editVenue("founding-home:player");
+          await manageVenue();
+          await sheet.getByRole("button", { name: "Move on map", exact: true }).tap();
+          await expect(mapCanvas.getByRole("status")).toContainText("Tap the map to move");
+          await expect(mapCanvas.locator('[data-placing="true"]')).toBeVisible();
+          await mapCanvas.getByRole("button", { name: "Cancel", exact: true }).tap();
+          await expect(mapCanvas.getByRole("status")).toHaveCount(0);
+          assert.equal(
+            await page.evaluate(
+              () =>
+                window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
+            ),
+            beforeTouch,
+          );
+          await editVenue("founding-home:player");
+          await manageVenue();
+          await sheet.getByRole("button", { name: "Move on map", exact: true }).tap();
+          await expect(mapCanvas.getByRole("status")).toContainText("Tap the map to move");
           const picture = await mapCanvas.getByRole("img", { name: "Map of Old Harbour" }).boundingBox();
-          await page.touchscreen.tap(picture.x + picture.width * 0.86, picture.y + picture.height * 0.86);
+          await page.touchscreen.tap(picture.x + picture.width * 0.08, picture.y + picture.height * 0.86);
           await expect
             .poll(() =>
               page.evaluate(
@@ -1649,7 +1677,7 @@ export async function verifyFoundingLayout(group) {
                   window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
               ),
             )
-            .toBe(0.86);
+            .toBe(0.08);
           assert.equal(
             await page.evaluate(
               () =>
@@ -1657,7 +1685,7 @@ export async function verifyFoundingLayout(group) {
             ),
             0.86,
           );
-          await showList();
+          await showMap();
           await editVenue("founding-home:player");
           await sheet.getByRole("button", { name: "Zones", exact: true }).click();
           await common.tap();
