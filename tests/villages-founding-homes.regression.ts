@@ -182,11 +182,28 @@ assert.equal(
   "An existing draft retains an unknown capacity choice until explicitly set to Automatic",
 );
 const starting = selectFoundingHomes([], [], actors, "community");
+const sharedVenue = starting.venues.find((venue) => venue.id === "founding-garden")!;
+sharedVenue.name = "The riverside garden";
+sharedVenue.description = "A garden with benches beneath a willow.";
+sharedVenue.presentation = { ...sharedVenue.presentation, x: 0.18, y: 0.72 };
+const sharedBefore = structuredClone(sharedVenue);
+const singleSharedDraft = starting.venues.filter((venue) => venue !== sharedVenue);
+const completedShared = selectFoundingHomes(singleSharedDraft, [], actors, "community");
+assert.equal(completedShared.venues.filter((venue) => !venue.classes?.includes("residence")).length, 2);
+assert.deepEqual(
+  completedShared.venues.filter((venue) => singleSharedDraft.some((prior) => prior.id === venue.id)),
+  singleSharedDraft,
+  "Completing an older single-Community draft preserves every existing Venue and pin",
+);
 const authored = starting.venues.find((venue) => venue.id === "founding-home:a")!;
 authored.name = "Ada's canal loft";
 authored.privateSpaces![0].description = "Ada's blue quilt.";
 const replacementActors = [actors[0]!, actors[2]!, { id: "c", name: "Cleo" }];
 const replacement = selectFoundingHomes(starting.venues, starting.unusedHomes, replacementActors, "community");
+assert.deepEqual(
+  replacement.venues.find((venue) => venue.id === sharedVenue.id),
+  sharedBefore,
+);
 assert.equal(
   replacement.venues.some((venue) => venue.id === authored.id),
   false,
@@ -219,7 +236,7 @@ assert.deepEqual(activeFoundingCircumstances([fact], withCleo.venues), []);
 assert.deepEqual(activeFoundingCircumstances([fact], restoredHome.venues), [fact]);
 assert.ok(
   returned.venues
-    .filter((venue) => venue.id !== "community")
+    .filter((venue) => venue.classes?.includes("residence"))
     .every((venue) => Number(venue.occupancy.playerHome) + venue.residentIds!.length === 1),
 );
 assert.doesNotThrow(() =>

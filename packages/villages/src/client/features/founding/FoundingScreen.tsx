@@ -528,6 +528,11 @@ export function FoundingScreen({
     };
     const mapReady = !setupMapBusy;
     const venueShapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.openingVenueId);
+    const standardHomes = setupVenues.every(
+      (venue) => !venue.classes?.includes("residence") || foundingHomeMembers(venue).length === 1,
+    );
+    const missingSharedVenue =
+      standardHomes && setupVenues.filter((venue) => !venue.classes?.includes("residence")).length < 2;
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
         {setupMapProblem ? (
@@ -648,7 +653,7 @@ export function FoundingScreen({
           name: catalog?.find((person) => person.id === id)?.name ?? "Villager",
         })),
       ];
-      if (!setupVenues.length || !venueShapeProblem) {
+      if (standardHomes) {
         const homes = selectFoundingHomes(
           setupVenues,
           setupWorkspace.unusedHomes ?? [],
@@ -663,9 +668,8 @@ export function FoundingScreen({
       setSetupProblem("");
     };
     const replaceLegacyHomes = async () => {
-      const id = setupContext.communityVenueId;
-      const community = setupVenues.filter((venue) => venue.id === id);
-      const retained = foundingVenueShapeProblem(community, id) ? [] : community;
+      const id = setupContext.openingVenueId;
+      const retained = setupVenues.filter((venue) => !venue.classes?.includes("residence"));
       if (
         !(await confirmStarterHomes(
           "Replace the old Residences and their room details and artwork with one starter home per resident?",
@@ -860,7 +864,7 @@ export function FoundingScreen({
           {explainingVenues
             ? venueIntro === "homes"
               ? "Each of you gets a home with an entrance, a common room, and a private room. You can change the layout after Founding."
-              : "You’ll also share a Community Venue, with an entrance and two public spaces. That’s somewhere for everyone to gather."
+              : "I’ve added two Community Venues, each with an entrance and two public rooms. You can change them later; keep public space in two Venues. Choose where we’ll gather first."
             : [
                 "",
                 desktopMap
@@ -1207,7 +1211,7 @@ export function FoundingScreen({
                 saveError={draftSaveError || undefined}
                 problem={setupProblem || venueShapeProblem}
                 problemAction={
-                  venueShapeProblem ? (
+                  venueShapeProblem && (missingSharedVenue || !standardHomes) ? (
                     <button
                       type="button"
                       disabled={
@@ -1217,9 +1221,11 @@ export function FoundingScreen({
                         setupSuggestionsBusy ||
                         (!!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure)
                       }
-                      onClick={() => void replaceLegacyHomes()}
+                      onClick={() =>
+                        missingSharedVenue ? chooseRoster(setupFoundingVillagerIds) : void replaceLegacyHomes()
+                      }
                     >
-                      Use starter homes
+                      {missingSharedVenue ? "Add shared Venue" : "Use starter homes"}
                     </button>
                   ) : venueConnectionUnavailable ? (
                     <button type="button" onClick={openConnectionPicker}>

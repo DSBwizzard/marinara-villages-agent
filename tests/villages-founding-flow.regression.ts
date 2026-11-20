@@ -949,6 +949,11 @@ await main()
   assert.equal(restore({ ...draft, workspace: { ...draft.workspace, settingWorldBrief: 42 } }), false);
   assert.deepEqual(values, {}, "Unreadable drafts never populate the editor or enable autosave");
   assert.equal(restore(JSON.parse(JSON.stringify(draft))), true);
+  const legacyContext = { rules: "", circumstances: [], communityVenueId: "authored-meeting-place" };
+  const oldContextBefore = structuredClone(legacyContext);
+  assert.equal(restore({ ...draft, context: legacyContext }), true);
+  assert.equal((values.setSetupContext as any).openingVenueId, "authored-meeting-place");
+  assert.deepEqual(legacyContext, oldContextBefore, "Reading the old opening ID does not rewrite the saved source");
   assert.equal(values.setSetupName, "Willowmere");
   assert.equal(values.setSetupLocationName, "Willowmere", "Older v2 drafts retain their original first-map name");
   for (const startingLocationName of ["Old Harbour", ""]) {

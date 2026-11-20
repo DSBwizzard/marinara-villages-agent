@@ -334,7 +334,7 @@ export async function verifyFoundingLayout(group) {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
             const homes = guide.getByText(/^Each of you gets a home/);
-            const community = guide.getByText(/^You’ll also share a Community Venue/);
+            const community = guide.getByText(/^I’ve added two Community Venues/);
             await expect(homes).toBeVisible();
             await expect(work).toHaveCount(0);
             await layer("Venue");
@@ -1318,7 +1318,46 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
-        await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
+        await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 3);
+        if (view.width === 390 && view.height === 844) {
+          const keptVenues = await page.evaluate(() => {
+            const kept = window.featureController.setupVenues.filter((venue) => venue.id !== "founding-garden");
+            window.featureController.setSetupVenues(kept);
+            return kept;
+          });
+          await button("Add shared Venue").click();
+          assert.deepEqual(
+            await page.evaluate(() =>
+              window.featureController.setupVenues.filter((venue) => venue.id !== "founding-garden"),
+            ),
+            keptVenues,
+            "Adding a second shared starter preserves the old draft's homes, text, artwork and pins",
+          );
+          await expect(root.locator('[data-venue-id="founding-garden"]')).toBeVisible();
+          await expect(button("Add shared Venue")).toHaveCount(0);
+          const sharedVenues = await page.evaluate(() => {
+            const original = window.featureController.setupVenues;
+            window.featureController.setSetupVenues(
+              original.map((venue) =>
+                venue.id === "founding-garden"
+                  ? {
+                      ...venue,
+                      spaces: venue.spaces.map((zone) => ({
+                        ...zone,
+                        access: { ...zone.access, mode: "permission-required" },
+                      })),
+                    }
+                  : venue,
+              ),
+            );
+            return original;
+          });
+          await expect(
+            root.getByText("Provide public shared Zones in at least two Venues.", { exact: true }),
+          ).toBeVisible();
+          await expect(button("Use starter homes")).toHaveCount(0);
+          await page.evaluate((venues) => window.featureController.setSetupVenues(venues), sharedVenues);
+        }
         await expect(settingNext()).toBeInViewport({ ratio: 1 });
         await expect(root.getByRole("button", { name: "Next Venues page", exact: true })).toHaveCount(0);
         await expect(
@@ -1365,6 +1404,20 @@ export async function verifyFoundingLayout(group) {
           });
         await closeVenue();
         if (placementBounds) await expect(homeRow).toBeFocused();
+        await editVenue("founding-garden");
+        const openingGathering = sheet.getByRole("button", { name: "Opening gathering", exact: true });
+        await expect(openingGathering).toHaveAttribute("aria-pressed", "false");
+        await openingGathering.click();
+        await expect(openingGathering).toHaveAttribute("aria-pressed", "true");
+        await expect
+          .poll(() => page.evaluate(() => window.featureController.setupContext.openingVenueId))
+          .toBe("founding-garden");
+        await closeVenue();
+        await editVenue("founding-community");
+        await expect(openingGathering).toHaveAttribute("aria-pressed", "false");
+        await openingGathering.click();
+        await expect(openingGathering).toHaveAttribute("aria-pressed", "true");
+        await closeVenue();
         if (phone) await expect(root.getByRole("region", { name: "Starting location map", exact: true })).toBeHidden();
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({

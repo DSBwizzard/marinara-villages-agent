@@ -35,6 +35,7 @@ export function QuickStartVenues({
   onGenerateImage,
   onUploadImage,
   openingVenueId,
+  onOpeningVenue,
   actions,
   onRetrySaving,
 }: {
@@ -58,6 +59,7 @@ export function QuickStartVenues({
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   openingVenueId?: string;
+  onOpeningVenue?(venueId: string): void;
   actions?: ReactNode;
   onRetrySaving?(): void;
 }) {
@@ -241,7 +243,9 @@ export function QuickStartVenues({
               ? foundingHomeMembers(venue)
                   .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
                   .join(", ")
-              : "Community Venue"}
+              : venue.classes?.includes("community")
+                ? "Community Venue"
+                : venue.venueType || venue.classes?.join(" · ") || "Venue"}
           </small>
         </span>
         <span aria-hidden="true">›</span>
@@ -259,7 +263,7 @@ export function QuickStartVenues({
         >
           <VenueProfile
             name={selected.name || "Venue"}
-            type={selected.classes?.includes("community") ? "Community Venue" : "Residence"}
+            type={selected.venueType || selected.classes?.join(" · ") || "Venue"}
             mapName={locationName}
             entranceImage={selected.presentation.image?.url}
             zoneImage={
@@ -294,11 +298,29 @@ export function QuickStartVenues({
             tabs={{ section, onSelect: selectSection }}
           >
             {section === "about" ? (
-              <AssignedVillagers
-                place={selected}
-                locked
-                nameOfCharacter={(id) => actors.find((actor) => actor.id === id)?.name ?? "Resident"}
-              />
+              <>
+                <AssignedVillagers
+                  place={selected}
+                  locked
+                  nameOfCharacter={(id) => actors.find((actor) => actor.id === id)?.name ?? "Resident"}
+                />
+                {onOpeningVenue &&
+                selected.spaces?.some(
+                  (zone) =>
+                    zone.venueClass !== "residence" &&
+                    (!zone.access || (zone.access.mode === "public" && !zone.access.accompanied)),
+                ) ? (
+                  <button
+                    type="button"
+                    className={P + "-button"}
+                    disabled={busy || imageBusy}
+                    aria-pressed={selected.id === openingVenueId}
+                    onClick={() => onOpeningVenue(selected.id)}
+                  >
+                    Opening gathering
+                  </button>
+                ) : null}
+              </>
             ) : null}
             {section === "manage" && !connectionsOpen ? (
               <section className={P + "-venue-manage"} aria-label="Manage this venue">
@@ -484,7 +506,6 @@ export function QuickStartVenues({
                             key={mode}
                             type="button"
                             aria-pressed={zoneAccess.mode === mode}
-                            
                             onClick={() => {
                               const key = personal ? "privateSpaces" : "spaces";
                               const candidate = {

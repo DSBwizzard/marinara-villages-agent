@@ -185,8 +185,8 @@ export function reconcileFoundingRoster(
   }
   for (const [id, name] of [
     [openingVenueId, "Meeting place"],
-    ["founding-community", "Meeting place"],
     ["founding-garden", "Shared space"],
+    ["founding-community", "Meeting place"],
   ]) {
     if (next.filter((venue) => venue.classes?.some((kind) => kind !== "residence")).length >= 2) break;
     if (next.some((venue) => venue.id === id) || next.length >= 16) continue;
@@ -204,16 +204,16 @@ export function selectFoundingHomes(
   venues: SetupVenueDraft[],
   unusedHomes: SetupVenueDraft[],
   actors: { id: string; name: string }[],
-  communityId: string,
+  openingVenueId: string,
 ) {
   const chosen = new Set(actors.map((actor) => actor.id));
   const active = venues.filter(
-    (venue) => venue.id === communityId || foundingHomeMembers(venue).some((id) => chosen.has(id)),
+    (venue) => !venue.classes?.includes("residence") || foundingHomeMembers(venue).some((id) => chosen.has(id)),
   );
   const unused = [...unusedHomes, ...venues.filter((venue) => !active.includes(venue))];
   const templates = separateFoundingTemplates(
     actors.filter((actor) => actor.id !== "player").map((actor) => actor.id),
-    communityId,
+    openingVenueId,
     [...venues, ...unusedHomes].map((venue) => venue.id),
   );
   for (const actor of actors) {
@@ -230,11 +230,7 @@ export function selectFoundingHomes(
           });
     active.push(home);
   }
-  if (!active.some((venue) => venue.id === communityId)) {
-    const community = templates.find((venue) => venue.id === communityId)!;
-    active.push({ ...community, presentation: { ...community.presentation, x: null, y: null } });
-  }
-  return { venues: active, unusedHomes: unused };
+  return { venues: reconcileFoundingRoster(active, actors, [], openingVenueId), unusedHomes: unused };
 }
 
 export function changeFoundingZoneOwner(venue: SetupVenueDraft, zoneId: string, ownerId: string): SetupVenueDraft {
