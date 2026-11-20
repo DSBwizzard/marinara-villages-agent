@@ -3,6 +3,7 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -13,8 +14,12 @@ const browser = await chromium.launch({
 const bundle = resolve(process.env.VILLAGES_GREETING_CLIENT_BUNDLE || "packages/villages/client.js");
 const errors = [];
 
-async function fixture({ restored = true, recovery = "failed" } = {}) {
-  const page = await browser.newPage({ viewport: { width: 375, height: 740 }, isMobile: true, hasTouch: true });
+async function fixture({ restored = true, recovery = "failed", connectionError = "", width = 375 } = {}) {
+  const page = await browser.newPage({
+    viewport: { width, height: 740 },
+    isMobile: width < 600,
+    hasTouch: width < 600,
+  });
   await mockEngineLookups(page);
   page.on("pageerror", (error) => errors.push(error.message));
   let session = restored ? opening("visit-1") : null;
@@ -24,7 +29,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   let releaseRecovery = null;
   let recoverySettled = false;
   let failActiveReads = false;
-  let nextFailure = "";
+  let nextFailure = connectionError;
   let changeAttemptOnRead = false;
   let succeedNextGreeting = false;
   let activeReads = 0;
@@ -87,12 +92,22 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       if (recovery === "delayed" && greetingCalls === 1) await initialValidation.promise;
       recoveryPending = true;
       if (recovery === "immediate") complete();
-      if (nextFailure)
+      if (nextFailure) {
+        if (connectionError)
+          session.operation = {
+            id: "greeting",
+            kind: "greet",
+            status: "complete",
+            stage: "complete",
+            attemptId: "configuration-attempt",
+            error: connectionError,
+          };
         return fulfill(route, {
           status: 502,
           contentType: "application/json",
           body: JSON.stringify({ error: nextFailure }),
         });
+      }
       return abort(route, "failed");
     }
     if (path.endsWith("/rooms/active") && ++activeReads === 2 && recovery === "delayed") {
@@ -130,6 +145,8 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       if (changeAttemptOnRead) session.operation.attemptId = "newer-attempt";
       value = { operation: session?.operation || null };
     } else if (path.endsWith("/town-map")) value = { image: mapImage };
+    else if (path === "/api/villages/connections")
+      value = { systemConnectionId: "", narrationConnectionId: "missing-gm", imageConnectionId: "" };
     else if (path.startsWith("/api/villages"))
       value = {
         ...snapshot,
@@ -158,7 +175,10 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       .waitForResponse((response) => new URL(response.url()).pathname.endsWith("/rooms/active"), { timeout: 10_000 })
       .then(async (response) => assert.equal(await response.finished(), null));
     await Promise.all([page.addScriptTag({ path: bundle }), initialSceneRead]);
-    await expect(page.locator(".marinara-capability-villages-root").first()).toHaveAttribute("data-mobile", "true");
+    await expect(page.locator(".marinara-capability-villages-root").first()).toHaveAttribute(
+      "data-mobile",
+      width < 600 ? "true" : "false",
+    );
   }
   async function start() {
     // Clicking waits for the map pin to remain attached and settle after the
@@ -180,6 +200,15 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     start,
     focus,
     complete,
+    setClosingConnectionFailure() {
+      session.status = "closing";
+      session.operation = {
+        id: "conclude",
+        kind: "close",
+        status: "interrupted",
+        error: 'GM connection is not configured: "missing-gm".\n401 unauthorized',
+      };
+    },
     setTerminalFailure({ recoverable = false } = {}) {
       session.operation = {
         id: "greeting",
@@ -224,12 +253,54 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
 }
 
 await withBrowser(browser, async () => {
+  await mkdir(".build-tmp/scene-errors", { recursive: true });
+  for (const width of [1440, 390, 320]) {
+    const connectionError = 'GM connection is not configured: "missing-gm".\nLanguage model connection not found';
+    const f = await fixture({ connectionError, recovery: "configuration", width });
+    const panel = await openSceneErrors(f.page);
+    await expect(f.page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
+    await expect(panel.getByRole("button", { name: /Retry|Continue without/ })).toHaveCount(0);
+    await expect(f.page.getByRole("button", { name: "Continue without opening", exact: true })).toHaveCount(0);
+    await f.page.screenshot({ path: `.build-tmp/scene-errors/connection-${width}.png` });
+    assert.equal(f.calls, 1, "opening error details never dispatch a retry");
+    await panel
+      .getByRole("button", { name: /GM connection is not configured: "missing-gm".*Manage AI connections/s })
+      .click();
+    await expect(f.page.getByRole("button", { name: "Return to Scene", exact: true })).toBeVisible();
+    await expect(f.page.getByRole("button", { name: /GM.*Missing connection/s })).toBeVisible();
+    assert.equal(f.calls, 1, "opening connection settings never dispatches a retry");
+    await f.page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    await closeSceneErrors(f.page);
+    const dock = f.page.getByRole("group", { name: "Scene opening", exact: true });
+    const retry = dock.getByRole("button", { name: "Retry opening", exact: true });
+    await expect(retry).toBeVisible();
+    const bounds = await retry.boundingBox();
+    assert(bounds.x >= 0 && bounds.x + bounds.width <= width && bounds.y > 370 && bounds.y + bounds.height <= 740);
+    assert(bounds.height >= 44, "opening retry has a usable touch target");
+    f.succeedNextGreeting();
+    await retry.click();
+    await expect(f.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
+    assert.equal(f.calls, 2, "the dock retry makes exactly one explicit opening request");
+    await f.page.close();
+  }
+  const closing = await fixture({ recovery: "configuration" });
+  await expectSceneError(closing.page, "The game couldn’t reach the server.");
+  closing.setClosingConnectionFailure();
+  await closing.focus();
+  const closingErrors = await openSceneErrors(closing.page);
+  await expect(closingErrors.getByRole("button", { name: /Manage AI connections/ })).toBeVisible();
+  await expect(closingErrors.getByRole("button", { name: "Retry saved request", exact: true })).toBeVisible();
+  await closing.page.close();
   for (const restored of [false, true]) {
     const f = await fixture({ restored });
     await expectSceneError(f.page, "The game couldn’t reach the server.");
-    await openSceneErrors(f.page);
-    await expect(f.page.getByRole("button", { name: "Retry opening", exact: true })).toBeVisible();
-    await expect(f.page.getByRole("button", { name: "Continue without opening", exact: true })).toBeVisible();
+    const panel = await openSceneErrors(f.page);
+    await expect(panel.getByRole("button", { name: "Retry opening", exact: true })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Continue without opening", exact: true })).toHaveCount(0);
+    await closeSceneErrors(f.page);
+    const dock = f.page.getByRole("group", { name: "Scene opening", exact: true });
+    await expect(dock.getByRole("button", { name: "Retry opening", exact: true })).toBeVisible();
+    await expect(dock.getByRole("button", { name: "Continue without opening", exact: true })).toBeVisible();
     assert.equal(f.calls, 1, "a genuine opening failure does not retry generation");
     await closeSceneErrors(f.page);
     f.complete();
@@ -262,7 +333,7 @@ await withBrowser(browser, async () => {
   const unsaved = await fixture();
   await expectSceneError(unsaved.page, "The game couldn’t reach the server.");
   unsaved.succeedNextGreeting();
-  await openSceneErrors(unsaved.page);
+  await closeSceneErrors(unsaved.page);
   await unsaved.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
   await expect(unsaved.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
   assert.equal(
@@ -278,7 +349,7 @@ await withBrowser(browser, async () => {
   terminal.allowReads();
   await terminal.focus();
   await expectSceneError(terminal.page, "The AI returned a reply the game couldn’t read.");
-  await openSceneErrors(terminal.page);
+  await closeSceneErrors(terminal.page);
   await terminal.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
   await expect(terminal.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
   await expect(terminal.page.getByRole("button", { name: /Scene errors?/ })).toHaveCount(0);
@@ -291,7 +362,7 @@ await withBrowser(browser, async () => {
   recoverable.setTerminalFailure({ recoverable: true });
   recoverable.allowReads();
   await recoverable.focus();
-  await openSceneErrors(recoverable.page);
+  await closeSceneErrors(recoverable.page);
   await recoverable.page.getByRole("button", { name: "Recover saved opening", exact: true }).first().click();
   await expect(recoverable.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
   assert.equal(recoverable.bodies[1].recovery, true, "a saved greeting uses recovery rather than a paid retry");
@@ -304,7 +375,7 @@ await withBrowser(browser, async () => {
   changed.allowReads();
   await changed.focus();
   await expectSceneError(changed.page, "The AI returned a reply the game couldn’t read.");
-  await openSceneErrors(changed.page);
+  await closeSceneErrors(changed.page);
   changed.changeAttemptOnRead();
   await changed.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
   await expectSceneError(changed.page, "The Scene changed during the request.");
