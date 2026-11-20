@@ -5,6 +5,7 @@ import { PeopleBook } from "./PeopleBook.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AddVisitorDialog } from "./VisitorControls.js";
+import { visitorVisitLabel } from "./calculations.js";
 
 export function RosterScreen({
   controller,
@@ -47,22 +48,19 @@ export function RosterScreen({
         >
           <header className={`${ELEMENT_TAG}-directory-head`}>
             <StorybookHeading>People</StorybookHeading>
+            {showVisitors && snapshot ? (
+              <button type="button" aria-label="Add Visitor" title="Add Visitor" onClick={() => setAddingVisitor(true)}>
+                <span aria-hidden="true">+</span>
+              </button>
+            ) : null}
           </header>
-          <nav
-            className={`${ELEMENT_TAG}-directory-pagination ${ELEMENT_TAG}-people-sections`}
-            aria-label="People sections"
-          >
+          <nav className={`${ELEMENT_TAG}-people-sections`} aria-label="People sections">
             <button type="button" aria-pressed={!showVisitors} onClick={() => void chooseTab(false)}>
               Villagers
             </button>
             <button type="button" aria-pressed={showVisitors} onClick={() => void chooseTab(true)}>
               Visitors
             </button>
-            {showVisitors && snapshot ? (
-              <button type="button" aria-label="Add Visitor" title="Add Visitor" onClick={() => setAddingVisitor(true)}>
-                <span aria-hidden="true">+</span>
-              </button>
-            ) : null}
           </nav>
           <div className={`${ELEMENT_TAG}-directory-filters`}>
             <label className={`${ELEMENT_TAG}-directory-search`}>
@@ -79,7 +77,7 @@ export function RosterScreen({
                 }}
               />
             </label>
-            {visitVenue && notice ? (
+            {!showVisitors && visitVenue && notice ? (
               <button type="button" title={notice.venueName} onClick={() => controller.openVenue(visitVenue)}>
                 Find visitor
               </button>
@@ -93,26 +91,32 @@ export function RosterScreen({
           <div className={`${ELEMENT_TAG}-directory-reading`}>
             {people.length ? (
               <div className={`${ELEMENT_TAG}-directory-grid`}>
-                {people.slice(currentPage * 4, currentPage * 4 + 4).map((person) => (
-                  <button
-                    type="button"
-                    key={person.characterId}
-                    className={`${ELEMENT_TAG}-directory-card`}
-                    aria-label={`Open ${person.name} profile`}
-                    aria-pressed={selectedId === person.characterId}
-                    onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
-                  >
-                    <AvatarFace
-                      portrait={portraits[person.characterId]}
-                      name={person.name}
-                      className={`${ELEMENT_TAG}-avatar`}
-                    />
-                    <span className={`${ELEMENT_TAG}-directory-text`}>
-                      <strong>{person.name}</strong>
-                      {person.missing ? <small>Card missing</small> : null}
-                    </span>
-                  </button>
-                ))}
+                {people.slice(currentPage * 4, currentPage * 4 + 4).map((person) => {
+                  const visitor = showVisitors
+                    ? snapshot?.visitors?.find((entry) => entry.characterId === person.characterId)
+                    : undefined;
+                  return (
+                    <button
+                      type="button"
+                      key={person.characterId}
+                      className={`${ELEMENT_TAG}-directory-card`}
+                      aria-label={`Open ${person.name} profile`}
+                      aria-pressed={selectedId === person.characterId}
+                      onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
+                    >
+                      <AvatarFace
+                        portrait={portraits[person.characterId]}
+                        name={person.name}
+                        className={`${ELEMENT_TAG}-avatar`}
+                      />
+                      <span className={`${ELEMENT_TAG}-directory-text`}>
+                        <strong>{person.name}</strong>
+                        {visitor ? <small>{visitorVisitLabel(visitor, snapshot?.clock?.timeZone)}</small> : null}
+                        {person.missing ? <small>Card missing</small> : null}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p role={!snapshot ? "status" : undefined}>

@@ -173,6 +173,7 @@ export function createVillageSnapshot({
           null,
         ),
         met: Boolean(visitor.firstMetAt),
+        ...(visitor.firstMetAt ? { firstMetAt: visitor.firstMetAt } : {}),
         visitsEnabled: visitor.visitsEnabled,
         ...(canSeeTrip
           ? {

@@ -43,6 +43,7 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
   return (
     <ModalDialog title="Add Visitor" compact onClose={onClose} dismissible={!busy}>
       <form
+        autoComplete="off"
         onSubmit={async (event) => {
           event.preventDefault();
           if (!choice || busy) return;
@@ -60,7 +61,7 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
       >
         <label>
           Character Card
-          <select value={choice} onChange={(event) => setChoice(event.target.value)} disabled={busy}>
+          <select autoComplete="off" value={choice} onChange={(event) => setChoice(event.target.value)} disabled={busy}>
             <option value="">Choose a card</option>
             {available.map((card) => (
               <option key={card.id} value={card.id}>
@@ -116,15 +117,6 @@ export function VisitorProfileControls({
   };
   return (
     <>
-      {visit ? (
-        <span>
-          Visiting until{" "}
-          {new Intl.DateTimeFormat(undefined, {
-            weekday: "long",
-            timeZone: snapshot.clock?.timeZone,
-          }).format(new Date(visit.leavesAt))}
-        </span>
-      ) : null}
       {visit?.stayingWithPlayer ? <span role="status">Staying with you</span> : null}
       {visit?.offerHome ? (
         <button type="button" disabled={busy} onClick={() => void offerHome(visit.arrivedAt)}>

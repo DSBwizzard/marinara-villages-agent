@@ -13,6 +13,8 @@ import { useContext } from "react";
 import { DeskLeaveGuard } from "../../shared/DeskWorkspace.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 import { VisitorProfileControls } from "./VisitorControls.js";
+import { visitorFirstMetLabel, visitorVisitLabel } from "./calculations.js";
+import { VillageIcon } from "../../shared/VillageIcon.js";
 
 export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
   const navigationLifetime = useVillageMutationLifetime(controller.snapshot?.isFounded);
@@ -342,6 +344,37 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
           villageDate={snapshot?.village.dateLabel}
           villager={person}
           visitor={visitor}
+          visitorStatus={visitor ? visitorVisitLabel(visitor, snapshot?.clock?.timeZone) : undefined}
+          firstMetLabel={
+            visitor
+              ? visitorFirstMetLabel(visitor.firstMetAt, snapshot?.clock?.instant, snapshot?.clock?.timeZone)
+              : undefined
+          }
+          visitorActions={
+            visitor?.met ? (
+              <>
+                {visitor.visit && snapshot?.visitorNotice ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!(await canLeaveDocument())) return;
+                      const venue = snapshot.settings.venues.find(
+                        (entry) => entry.id === snapshot.visitorNotice?.venueId,
+                      );
+                      if (venue) openVenue(venue);
+                    }}
+                  >
+                    <VillageIcon name="places" />
+                    Find {person?.name}
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => controller.setMailboxOpen(true)}>
+                  <VillageIcon name="mailbox" />
+                  Write a letter
+                </button>
+              </>
+            ) : undefined
+          }
           portrait={
             <AvatarFace
               portrait={portraits[personProfile.actorId]}

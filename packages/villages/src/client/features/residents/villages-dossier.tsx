@@ -124,6 +124,9 @@ export function VillagerDossier({
   villageDate,
   villager,
   visitor,
+  visitorStatus,
+  firstMetLabel,
+  visitorActions,
   portrait,
   request,
   venues,
@@ -147,6 +150,9 @@ export function VillagerDossier({
     sprite?: ResidentSprite | null;
   };
   visitor?: { met: boolean; visitsEnabled: boolean };
+  visitorStatus?: string;
+  firstMetLabel?: string;
+  visitorActions?: ReactNode;
   portrait: ReactNode;
   request: Request;
   venues: DossierVenue[];
@@ -324,14 +330,14 @@ export function VillagerDossier({
         </div>
       ) : null}
       <RetainedView active={!showingSprites}>
-        <div className={`${P}-root ${P}-dossier-root`}>
+        <div className={`${P}-root ${P}-dossier-root`} data-visitor={visitor ? "true" : undefined}>
           <PeopleBook label={`${name} profile`}>
             <div className={`${P}-dossier-identity`}>
               <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
                 <div className={`${P}-dossier-journal-content`}>
                   <h1>{name}</h1>
                   <div className={`${P}-dossier-biography`}>
-                    {villager?.summary ? <p>{villager.summary}</p> : null}
+                    {visitorStatus ? <p>{visitorStatus}</p> : villager?.summary ? <p>{villager.summary}</p> : null}
                     {villager?.missing ? (
                       <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
                     ) : null}
@@ -435,6 +441,16 @@ export function VillagerDossier({
                     {visited.includes("overview") ? (
                       <RetainedView active={section === "overview"} label="Overview content">
                         <div className={`${P}-dossier-overview`}>
+                          {visitor ? (
+                            <div className={`${P}-visitor-overview`}>
+                              {firstMetLabel ? (
+                                <p>{firstMetLabel}</p>
+                              ) : !visitor.met ? (
+                                <p>Awaiting first meeting</p>
+                              ) : null}
+                              {visitorActions ? <div className={`${P}-visitor-actions`}>{visitorActions}</div> : null}
+                            </div>
+                          ) : null}
                           {!canReadProfile ? null : !relationships ? (
                             <p role="status">Reading profile…</p>
                           ) : !profile ? (
@@ -460,17 +476,7 @@ export function VillagerDossier({
                             </div>
                           ) : null}
                           <div ref={setSignatureSurface} />
-                          {visitor ? (
-                            <Sheet title="Visits">
-                              <p>
-                                {!visitor.visitsEnabled
-                                  ? "Visits off"
-                                  : visitor.met
-                                    ? "Visits enabled"
-                                    : "Awaiting first meeting"}
-                              </p>
-                            </Sheet>
-                          ) : (
+                          {!visitor ? (
                             <Sheet title="Home and work" icon="venues">
                               {venues.some((venue) => venue.publicConnections.length) ? (
                                 <ul>
@@ -486,7 +492,7 @@ export function VillagerDossier({
                                 <p>No home or workplace assigned.</p>
                               )}
                             </Sheet>
-                          )}
+                          ) : null}
                           {inspectedSection("overview") ? inspectors.overview : null}
                         </div>
                       </RetainedView>

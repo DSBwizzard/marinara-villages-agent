@@ -53,6 +53,7 @@ export type VillageVillagerView = {
 
 export type VillageVisitorView = VillageVillagerView & {
   met: boolean;
+  firstMetAt?: string;
   visitsEnabled: boolean;
   visit?: { arrivedAt: string; leavesAt: string; offerHome: boolean; stayingWithPlayer: boolean };
 };

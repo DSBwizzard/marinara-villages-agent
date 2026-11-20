@@ -56,6 +56,7 @@ await withBrowser(browser, async () => {
           characterId: "river-visitor",
           name: "River Visitor",
           met: true,
+          firstMetAt: "2026-11-09T12:00:00.000Z",
           visitsEnabled: true,
           visit: {
             arrivedAt: "2026-11-09T12:00:00.000Z",
@@ -665,8 +666,20 @@ await withBrowser(browser, async () => {
       await page.keyboard.press("Escape");
       await visitorTile.click();
       await expect(page.getByRole("heading", { name: "River Visitor", exact: true })).toBeVisible();
+      const visitorProfile = page.locator(`.${P}-dossier-root`);
+      await expect(visitorProfile.getByText(/^First met /)).toBeVisible();
+      await expect(visitorProfile.getByRole("button", { name: "Find River Visitor", exact: true })).toBeVisible();
+      await expect(visitorProfile.getByRole("button", { name: "Write a letter", exact: true })).toBeVisible();
+      await page.screenshot({ path: resolve(output, `visitor-profile-${width}-${height}.png`) });
+      await visitorProfile.getByRole("button", { name: "Write a letter", exact: true }).click();
+      const visitorMail = page.getByRole("dialog", { name: "Mailbox", exact: true });
+      await expect(visitorMail.getByRole("combobox", { name: "Recipient", exact: true })).toHaveValue("river-visitor");
+      const backToLetters = visitorMail.getByRole("button", { name: /Back to letters/ });
+      if (await backToLetters.isVisible()) await backToLetters.click();
+      else await visitorMail.getByRole("button", { name: "Inbox", exact: true }).click();
+      await visitorMail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       await openCharacterTools(page);
-      await expect(page.getByText(/^Visiting until /)).toBeVisible();
+      await expect(visitorProfile.getByText(/^Visiting until /)).toBeVisible();
       await page.getByRole("button", { name: "Offer to host", exact: true }).click();
       await expect(page.getByText("Staying with you", { exact: true })).toBeVisible();
       await page.screenshot({ path: resolve(output, `visitor-host-${width}-${height}.png`) });
