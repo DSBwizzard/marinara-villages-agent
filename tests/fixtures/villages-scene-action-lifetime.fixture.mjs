@@ -659,6 +659,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
               assert.deepEqual(control.requests[1].body, {
                 sessionId: "A",
                 zoneId: "private-A",
+                follow: true,
                 operationId: control.requests[1].body.operationId,
                 expectedSceneRevision: 0,
               });
@@ -859,7 +860,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             kind: "move",
             status: "failed",
             attemptId: "saved-attempt",
-            input: { zoneId: "private-A" },
+            input: { zoneId: "private-A", follow: true },
           };
           const f = await mount(strict, width, { fail: true, recovered, closed: recovered, archive: recovered, saved });
           try {
@@ -872,6 +873,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             assert.deepEqual(f.requests.find((request) => request.kind === "zone").body, {
               sessionId: "A",
               zoneId: "private-A",
+              follow: true,
               operationId: "saved-move",
               expectedSceneRevision: 0,
               retryOfAttemptId: "saved-attempt",
