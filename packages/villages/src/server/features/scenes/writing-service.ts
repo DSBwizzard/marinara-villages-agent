@@ -316,7 +316,7 @@ export function createSceneWriting({
           ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
           : "",
         residentMovesInReply
-          ? 'Visible move: {kind:"crossing",who:"resident-id",to:"zone-id",text:"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {kind:"departure",who:"resident-id",text:"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
+          ? 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
           : "",
         nativeCommands ? NARRATION_NATIVE : "",
         !nativeCommands
