@@ -176,7 +176,10 @@ export function createSceneProgress({
           else delete entry.recordEvents;
           entry.acceptance = { status: "applied", rejected: accepted.rejected };
           if (entry.id === "greeting") {
-            appendVisitorIntroductionTutorial(saved);
+            appendVisitorIntroductionTutorial(
+              saved,
+              publication.readset.visitorIntroductionFarewell ? episode.segments.at(-1)!.id : undefined,
+            );
             if (saved.status === "opening") saved.status = "active";
             delete saved.visitEvent;
           }

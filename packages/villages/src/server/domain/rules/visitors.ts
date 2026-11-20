@@ -9,6 +9,7 @@ import { mayHostLodging } from "./venue-access.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
+import { PROFESSOR_MARI_ID } from "../../../shared/helpers/professor-mari.js";
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -41,6 +42,11 @@ const sleepTime = (at: Date) => at.getHours() >= BEDTIME || at.getHours() < MORN
 
 const trusted = (state: VillageState, now: Date) =>
   Math.max(now.getTime(), Date.parse(state.clock?.trustedAt ?? now.toISOString()));
+
+export const introductoryVisitorStay = (state: VillageState, person: VillageVisitor) =>
+  person.characterId === PROFESSOR_MARI_ID &&
+  !!person.trip &&
+  person.trip.arrivedAt === state.visitorIntroduction?.completedAt;
 
 export function visitingCharacter(state: VillageState, now: Date) {
   if (state.visitorIntroduction && !state.visitorIntroduction.completedAt) return;
@@ -164,6 +170,7 @@ function remainingNights(trip: VisitorTrip, at: Date) {
 }
 
 function lodgingUpdate(state: VillageState, person: VillageVisitor & { trip: VisitorTrip }, at: Date) {
+  if (introductoryVisitorStay(state, person)) return;
   const nights = remainingNights(person.trip, at);
   if (!nights.length) return;
   const current = person.trip.lodging;
@@ -233,6 +240,7 @@ export function guestRoomOffer(
   hostId: string,
   selection?: { venueId: string; zoneId: string },
 ) {
+  if (introductoryVisitorStay(state, person)) return;
   if (!person.firstMetAt || !person.trip || person.trip.lodging?.hostId || !person.visitsEnabled) return;
   const at = local(state, now);
   const nights = remainingNights(person.trip, at);
@@ -304,13 +312,17 @@ export function visitorPosition(
   const hasRoom = (id: string, zoneId: string) =>
     [...presence.values()].filter((row) => row.id === id && row.zoneId === zoneId).length < MAX_ZONE_VILLAGERS;
   if (sleepTime(at)) {
+    if (introductoryVisitorStay(state, person)) return;
     const room = person.trip.lodging && lodgingRoom(state, person.characterId, person.trip.lodging, at);
     if (room && hasRoom(room.venue.id, room.zone.id))
       return { person, venueId: room.venue.id, zoneId: room.zone.id, name: room.venue.name, sleeping: true };
     return;
   }
   const placed = positions?.get(person.characterId);
-  for (const venue of state.venues) {
+  const venues = state.venues.toSorted(
+    (a, b) => Number(b.id === person.trip.venueId) - Number(a.id === person.trip.venueId),
+  );
+  for (const venue of venues) {
     const zones = venueZones(venue);
     for (const zone of [
       ...zones.filter((row) => row.kind !== "exterior"),

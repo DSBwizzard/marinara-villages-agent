@@ -1,6 +1,6 @@
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
-import { memoryHash } from "./memory-integrity.js";
+import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { villageWorldScope } from "./village-identity.js";
 import { contactNeighbors } from "./venue-contact.js";
 import { evaluateZoneAccess } from "./venue-access.js";
@@ -70,8 +70,10 @@ export function writeVisitorIntroduction(scene: VenueScene, state: VillageState)
   scene.sceneAttendance!.occupants.push({ ...participant, zoneId: scene.zoneId! });
 }
 
-export function appendVisitorIntroductionTutorial(scene: VenueScene) {
-  if (!scene.visitorIntroduction) return;
+export function appendVisitorIntroductionTutorial(scene: VenueScene, farewellId?: string) {
+  if (!scene.visitorIntroduction || scene.lines.some((line) => line.id === `${scene.id}-visitors-0`)) return;
+  const farewellIndex = farewellId ? scene.lines.findIndex((line) => line.id === farewellId) : scene.lines.length;
+  memoryRequire(farewellIndex >= 0, "Mari's saved farewell is missing");
   const mari = scene.participants.find((person) => person.characterId === PROFESSOR_MARI_ID)!;
   const paragraphs: ["narration" | "dialogue", string, string][] = [
     ["dialogue", "Wondering why I'm here?", "Thinking"],
@@ -103,22 +105,20 @@ export function appendVisitorIntroductionTutorial(scene: VenueScene) {
     ],
     [
       "dialogue",
-      "Today’s just a quick hello for me. I’ll let you get back to village life before this tutorial develops footnotes. Do write sometime. I’m excellent company when I’m not explaining buttons.",
+      "I’ll be looking around until tomorrow. Come find me if you’d like to talk about something that isn’t a tutorial. I’m excellent company when I’m not explaining buttons.",
       "Wave",
     ],
-    [
-      "narration",
-      "Mari gives a small wave and heads back down the road. The entrance settles into its ordinary rhythm again.",
-      "Wave",
-    ],
+    ["narration", "With a little wave, Mari sets off to look around the village.", "Wave"],
   ];
   const at = scene.lines.at(-1)?.at ?? scene.startedAt;
   const sprite = scene.continuity?.facts.visitors?.find((person) => person.characterId === PROFESSOR_MARI_ID)?.sprite;
+  const explanation: VenueScene["lines"][number][] = [];
   for (const [index, [kind, content, mood]] of paragraphs.entries()) {
+    if (farewellId && index === 7) continue;
     const id = `${scene.id}-visitors-${index}`;
     if (scene.lines.some((line) => line.id === id)) continue;
     const expression = resolveSpriteExpression(sprite, mood, false, "front", 0);
-    scene.lines.push({
+    const line: VenueScene["lines"][number] = {
       id,
       role: "assistant",
       kind,
@@ -129,8 +129,11 @@ export function appendVisitorIntroductionTutorial(scene: VenueScene) {
       zoneId: scene.zoneId,
       heardBy: ["player", PROFESSOR_MARI_ID],
       ...(expression ? { staging: [{ characterId: PROFESSOR_MARI_ID, expression }] } : {}),
-    });
+    };
+    if (farewellId && index === 8) scene.lines.push(line);
+    else explanation.push(line);
   }
+  scene.lines.splice(farewellIndex, 0, ...explanation);
 }
 
 export function completeVisitorIntroduction(state: VillageState, scene: VenueScene) {
@@ -150,12 +153,15 @@ export function completeVisitorIntroduction(state: VillageState, scene: VenueSce
     visitor.firstMetAt ||= scene.startedAt;
     visitor.trip ??= {
       arrivedAt: scene.startedAt,
-      leavesAt: new Date(Date.parse(scene.startedAt) + 2 * 86_400_000).toISOString(),
+      leavesAt: new Date(Date.parse(scene.startedAt) + 86_400_000).toISOString(),
+      venueId: scene.placeId,
     };
   }
   if (scene.status === "closed" && visitor.trip)
-    visitor.trip.leavesAt = new Date(
-      Math.max(Date.parse(scene.startedAt) + 1, Date.parse(scene.endedAt)),
-    ).toISOString();
+    visitor.trip = {
+      arrivedAt: scene.endedAt,
+      leavesAt: new Date(Date.parse(scene.endedAt) + 86_400_000).toISOString(),
+      venueId: scene.placeId,
+    };
   state.visitorIntroduction = { sceneId: scene.id, completedAt: scene.status === "closed" ? scene.endedAt : "" };
 }

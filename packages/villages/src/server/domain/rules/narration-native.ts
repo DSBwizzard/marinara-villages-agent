@@ -528,6 +528,19 @@ export function acceptNarration(
         (raw.keep === undefined || (Array.isArray(raw.keep) && raw.keep.length === 0)),
       "Mari's introduction can only contain her opening greeting; no commands or lasting changes.",
     );
+    if (publication.readset.visitorIntroductionFarewell) {
+      const segments = raw.segments as unknown[],
+        last = asRecord(segments.at(-1));
+      memoryRequire(
+        segments.length >= 2 &&
+          last.kind === "dialogue" &&
+          last.speakerId === "__professor_mari__" &&
+          last.presentation !== "aside" &&
+          (last.delivery === undefined || last.delivery === "ordinary") &&
+          segments.slice(0, -1).some((row) => asRecord(row).kind === "dialogue"),
+        "Mari's introduction needs a greeting and a final spoken farewell.",
+      );
+    }
   }
   const evaluate = (prepared: ReturnType<typeof prepareNarrationNative>) =>
     prepared.routingFailure

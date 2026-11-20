@@ -260,6 +260,7 @@ function coerceVisitors(value: unknown, residentIds: Set<string>, applySpriteDef
     const trip = asRecord(raw.trip);
     const arrivedAt = asIsoString(trip.arrivedAt);
     const leavesAt = asIsoString(trip.leavesAt);
+    const visitVenueId = asTrimmedString(trip.venueId);
     const lodging = asRecord(trip.lodging);
     const venueId = asString(lodging.venueId);
     const zoneId = asString(lodging.zoneId);
@@ -284,6 +285,7 @@ function coerceVisitors(value: unknown, residentIds: Set<string>, applySpriteDef
           (arrivedAt &&
             leavesAt &&
             arrivedAt < leavesAt &&
+            (trip.venueId === undefined || (visitVenueId && visitVenueId.length <= 200)) &&
             (trip.lodging === undefined ||
               (venueId &&
                 venueId.length <= 200 &&
@@ -314,6 +316,7 @@ function coerceVisitors(value: unknown, residentIds: Set<string>, applySpriteDef
             trip: {
               arrivedAt,
               leavesAt,
+              ...(visitVenueId ? { venueId: visitVenueId } : {}),
               ...(venueId && zoneId ? { lodging: { venueId, zoneId, ...(hostId ? { hostId } : {}) } } : {}),
             },
           }

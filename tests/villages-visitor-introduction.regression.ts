@@ -13,7 +13,12 @@ import {
   visitorIntroductionVenue,
   writeVisitorIntroduction,
 } from "../packages/villages/src/server/domain/rules/visitor-introduction.js";
-import { settleVisitorTrip } from "../packages/villages/src/server/domain/rules/visitors.js";
+import {
+  introductoryVisitorStay,
+  settleVisitorTrip,
+  visitingCharacter,
+  visitorPosition,
+} from "../packages/villages/src/server/domain/rules/visitors.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import {
   narrationContinuityContext,
@@ -151,6 +156,75 @@ appendVisitorIntroductionTutorial(scene);
 const tutorial = structuredClone(scene.lines);
 appendVisitorIntroductionTutorial(scene);
 assert.deepEqual(scene.lines, tutorial, "The fixed tutorial appends only once");
+const bookendReadset = { ...readset, visitorIntroductionFarewell: true as const };
+const bookendRaw = {
+  segments: [
+    { kind: "dialogue", speakerId: PROFESSOR_MARI_ID, text: "A garden! You even remembered the outside." },
+    {
+      kind: "dialogue",
+      speakerId: PROFESSOR_MARI_ID,
+      text: "I'll be exploring until tomorrow. Try not to misplace the village while the tutorial is off duty.",
+    },
+  ],
+};
+const legacyRaw = { segments: [bookendRaw.segments[0]] };
+const legacy = acceptNarration(
+  structuredClone(state),
+  { readset, raw: legacyRaw, responseDigest: memoryHash(legacyRaw) },
+  "greeting",
+  due.toISOString(),
+);
+assert.equal(legacy.episode!.segments.length, 1, "A retained older opening does not require a new farewell or request");
+const legacyScene = structuredClone(scene);
+legacyScene.lines[7].content = "Previously saved farewell.";
+const frozenLegacy = memoryHash(legacyScene.lines);
+appendVisitorIntroductionTutorial(legacyScene, "a-new-farewell-must-not-rewrite-saved-dialogue");
+assert.equal(memoryHash(legacyScene.lines), frozenLegacy);
+const accepted = acceptNarration(
+  structuredClone(state),
+  { readset: bookendReadset, raw: bookendRaw, responseDigest: memoryHash(bookendRaw) },
+  "greeting",
+  due.toISOString(),
+);
+const bookends = structuredClone(scene);
+bookends.lines = structuredClone(accepted.episode!.segments);
+appendVisitorIntroductionTutorial(bookends, bookends.lines.at(-1)!.id);
+assert.equal(bookends.lines[0].content, bookendRaw.segments[0].text);
+assert.equal(bookends.lines[1].content, "Wondering why I'm here?");
+assert.equal(bookends.lines.at(-2)!.content, bookendRaw.segments[1].text);
+assert.equal(bookends.lines.length, 10, "One generated pair surrounds the seven fixed paragraphs and closing beat");
+const ordered = memoryHash(bookends.lines);
+appendVisitorIntroductionTutorial(bookends, accepted.episode!.segments.at(-1)!.id);
+assert.equal(memoryHash(bookends.lines), ordered, "Recovery preserves generated bookend order and concrete cues");
+assert.throws(
+  () =>
+    acceptNarration(
+      structuredClone(state),
+      {
+        readset: bookendReadset,
+        raw: { segments: [bookendRaw.segments[0]] },
+        responseDigest: memoryHash("missing farewell"),
+      },
+      "greeting",
+      due.toISOString(),
+    ),
+  /final spoken farewell/,
+);
+assert.throws(() => appendVisitorIntroductionTutorial({ ...bookends, lines: [] }, "missing"), /farewell is missing/);
+for (const decoration of [{ presentation: "aside" }, { delivery: "whisper", targetId: "player" }]) {
+  const raw = { segments: [bookendRaw.segments[0], { ...bookendRaw.segments[1], ...decoration }] };
+  assert.throws(
+    () =>
+      acceptNarration(
+        structuredClone(state),
+        { readset: bookendReadset, raw, responseDigest: memoryHash(raw) },
+        "greeting",
+        due.toISOString(),
+      ),
+    /final spoken farewell/,
+    "The farewell cannot anchor beside the opening ahead of the explanation",
+  );
+}
 const sprite = scene.continuity!.facts.visitors![0]!.sprite!;
 const cues = scene.lines.flatMap((line) => line.staging ?? []);
 assert(
@@ -187,7 +261,25 @@ scene.status = "closed";
 scene.endedAt = new Date(due.getTime() + 60000).toISOString();
 completeVisitorIntroduction(state, scene);
 assert.equal(state.visitorIntroduction.completedAt, scene.endedAt);
-assert.equal(state.visitors[0]!.trip!.leavesAt, scene.endedAt);
+assert.equal(state.visitors[0]!.trip!.arrivedAt, scene.endedAt);
+assert.equal(state.visitors[0]!.trip!.leavesAt, new Date(Date.parse(scene.endedAt) + 86_400_000).toISOString());
+assert.equal(state.visitors[0]!.trip!.venueId, venue.id);
+assert(introductoryVisitorStay(state, state.visitors[0]!));
+assert.equal(coerceVillageState(state).visitors![0]!.trip!.venueId, venue.id, "Preferred visit Venue survives saving");
+assert.equal(visitorPosition(state, new Date(scene.endedAt), new Map())?.venueId, venue.id);
+const leavesAt = Date.parse(state.visitors[0]!.trip!.leavesAt);
+assert.equal(visitingCharacter(state, new Date(leavesAt - 1))?.characterId, PROFESSOR_MARI_ID);
+assert.equal(visitingCharacter(state, new Date(leavesAt)), undefined);
+const night = new Date(scene.endedAt);
+night.setUTCHours(23, 0, 0, 0);
+assert.equal(
+  visitorPosition({ ...state, timeZone: "UTC" }, night, new Map()),
+  undefined,
+  "Mari stays off-map overnight",
+);
+settleVisitorTrip(state, night);
+assert.equal(state.visitors[0]!.trip!.lodging, undefined, "Her introduction stay never assigns a room by its name");
+const savedTrip = structuredClone(state.visitors[0]!.trip);
 const saved = JSON.stringify(state.visitorIntroduction);
 completeVisitorIntroduction(state, { ...scene, status: "active", endedAt: "" });
 assert.equal(
@@ -195,6 +287,7 @@ assert.equal(
   saved,
   "A delayed publication cannot reopen a completed introduction",
 );
+assert.deepEqual(state.visitors[0]!.trip, savedTrip, "Concluding or replaying again cannot extend her stay");
 completeVisitorIntroduction({ ...state, setupAt: "2027-01-01T00:00:00Z" }, scene);
 assert.equal(JSON.stringify(state.visitorIntroduction), saved, "Another world cannot conclude this tutorial");
 assert(!visitorIntroductionDue(state, new Date(due.getTime() + 86_400_000)));

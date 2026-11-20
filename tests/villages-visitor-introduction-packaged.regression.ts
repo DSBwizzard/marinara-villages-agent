@@ -5,6 +5,8 @@ import { fixtureSceneState, fixtureVillageState } from "./helpers/village-storag
 let server = await packagedSceneServer({
   configure(world, stamp) {
     world.name = "Juniper Crossing";
+    const offset = new Date(stamp).getUTCHours() - 12;
+    world.timeZone = `Etc/GMT${offset >= 0 ? "+" : ""}${offset}`;
     world.setupAt = new Date(Date.parse(stamp) - 86_400_000).toISOString();
     world.visitorIntroduction = { sceneId: "", completedAt: "" };
     world.spontaneousEvents = true;
@@ -69,8 +71,9 @@ try {
     assert.match(prompt, /personalized opening greeting/);
     assert.match(prompt, /warmly sarcastic/);
     assert.match(prompt, /GM-only/);
-    assert.match(prompt, /server appends the fixed Visitor tutorial/);
-    assert.match(prompt, /brief stop rather than an overnight stay/);
+    assert.match(prompt, /server inserts the player's fixed Visitor explanation/);
+    assert.match(prompt, /ONE final dialogue segment/);
+    assert.match(prompt, /24 hours after this introduction finishes/);
     assert(!prompt.includes("They rented a room just outside"));
     return {
       content: JSON.stringify({
@@ -81,6 +84,11 @@ try {
             text: "Juniper Crossing! A village with an entrance this inviting? The interface almost undersold you.",
             expression: "playful",
             look: { target: "player" },
+          },
+          {
+            kind: "dialogue",
+            speakerId: "__professor_mari__",
+            text: "I'll be exploring Juniper Crossing until tomorrow. Do try the unsupervised dialogue options.",
           },
         ],
       }),
@@ -98,7 +106,13 @@ try {
     ),
   );
   assert.equal(scene.lines[1].id, `${scene.id}-visitors-0`);
-  assert(scene.lines.at(-1).content.includes("heads back down the road"));
+  assert(scene.lines.at(-2).content.includes("unsupervised dialogue options"));
+  assert(scene.lines.at(-1).content.includes("look around the village"));
+  const playbackOrder = scene.playback.moments.flatMap((moment: any) => moment.lineIds);
+  assert(
+    playbackOrder.indexOf(scene.lines.at(-2).id) > playbackOrder.indexOf(`${scene.id}-visitors-6`),
+    "The actual playback places the farewell after the fixed explanation",
+  );
   assert.equal(server.calls(), 1, "One saved generated opening precedes the fixed tutorial");
   const snapshot = await request("");
   assert.equal(
@@ -157,6 +171,40 @@ try {
   );
   const closed = fixtureSceneState(server.records.get("villages-venue-visit-" + scene.id).data, server.records);
   assert.equal(closed.endReason, "scene");
+  assert.equal(stored.visitors[0].trip.arrivedAt, closed.endedAt);
+  assert.equal(Date.parse(stored.visitors[0].trip.leavesAt) - Date.parse(closed.endedAt), 86_400_000);
+  const stay = await request("");
+  assert.equal(stay.visitorNotice?.venueId, publicVenue.id);
+  const normalComplete = server.model.chatComplete;
+  server.model.chatComplete = async (messages: any[]) => {
+    await normalComplete(messages);
+    assert(!JSON.stringify(messages).includes("ONE final dialogue segment"), "Later Scenes are ordinary conversations");
+    return {
+      content: JSON.stringify({
+        segments: [
+          { kind: "dialogue", speakerId: "__professor_mari__", text: "A lovely spot for a proper conversation." },
+        ],
+      }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  let normal = (await request("/rooms", { venueId: stay.visitorNotice.venueId, zoneId: stay.visitorNotice.zoneId }))
+    .session;
+  assert(!normal.visitorIntroduction && normal.activeIds.includes("__professor_mari__"));
+  normal = (await request("/rooms/greet", { sessionId: normal.id })).session;
+  const conversation = await request("/rooms/turn", {
+    sessionId: normal.id,
+    submissionId: "mari-day-stay-chat",
+    mode: "chat",
+    targetId: "__professor_mari__",
+    message: "What do you think of the garden?",
+    expectedSceneRevision: normal.sceneRevision,
+  });
+  assert(conversation.session.lines.some((line: any) => line.content === "A lovely spot for a proper conversation."));
+  await request("/rooms/end", { sessionId: normal.id, expectedSceneRevision: conversation.session.sceneRevision });
+  server.model.chatComplete = normalComplete;
+  const callsBeforeReplay = server.calls();
   const replayRoot = server.records.get("villages-village");
   const priorEpisode = fixtureVillageState(replayRoot.data, server.records).episodes.records.find(
     (row) => row.sceneId === scene.id,
@@ -176,7 +224,10 @@ try {
     await replayComplete(messages);
     return {
       content: JSON.stringify({
-        segments: [{ kind: "dialogue", speakerId: "__professor_mari__", text: "A fresh hello." }],
+        segments: [
+          { kind: "dialogue", speakerId: "__professor_mari__", text: "A fresh hello." },
+          { kind: "dialogue", speakerId: "__professor_mari__", text: "A fresh farewell. I'll be here another day." },
+        ],
       }),
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
@@ -199,7 +250,7 @@ try {
     undefined,
     "Normal play resumes without repeating Mari's introduction",
   );
-  assert.equal(server.calls(), 1, "Only the explicit replay bought a new mocked greeting");
+  assert.equal(server.calls(), callsBeforeReplay + 1, "Only the explicit replay bought a new mocked greeting");
   await request("/rooms/end", {
     sessionId: ordinary.session.id,
     expectedSceneRevision: ordinary.session.sceneRevision,

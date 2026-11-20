@@ -36,7 +36,7 @@ import { fittedNarrationReadset, narrationContinuityContext } from "../../domain
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
-import { findCardCharacter } from "../../domain/rules/visitors.js";
+import { findCardCharacter, introductoryVisitorStay } from "../../domain/rules/visitors.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
@@ -173,14 +173,16 @@ export function createSceneWriting({
               ? "They are staying with a local host. Keep the identity and room private."
               : lodging
                 ? `They have a guest room at ${village.venues.find((venue) => venue.id === lodging.venueId)?.name ?? "a local inn"}.`
-                : "They rented a room just outside the Village. They can describe it consistently if asked.";
+                : "They are staying somewhere off-map nearby. This grants no access to a Village room.";
         return (
           venueCardProfile(card, player.name, false, false) +
           (scene.visitorIntroduction
-            ? "\nVillage role: Professor Mari is making the Village's first Visitor introduction, a brief stop rather than an overnight stay. She has no local job, Agenda, Wish or Project role."
+            ? "\nVillage role: Professor Mari is making the Village's first Visitor introduction. She will stay for 24 hours after this introduction finishes, exploring public Venues and staying off-map nearby overnight. She has no local job, Agenda, Wish or Project role."
             : visitor
-              ? "\nVillage role: On a two-night visit. They can speak, react, and form relationships. Their attendance is supplied by the Village. They have no local job, Agenda, Wish or Project role. " +
-                stay
+              ? "\nVillage role: On a temporary visit" +
+                (visitor.trip ? ", departing at " + visitor.trip.leavesAt : "") +
+                ". They can speak, react, and form relationships. Their attendance is supplied by the Village. They have no local job, Agenda, Wish or Project role. " +
+                (introductoryVisitorStay(village, visitor) ? "They are staying off-map nearby overnight." : stay)
               : "")
         );
       }
@@ -339,7 +341,7 @@ export function createSceneWriting({
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
           ? scene.visitorIntroduction
-            ? "Professor Mari's first visit: write only her personalized opening greeting, two to four short spoken sentences, with at most one brief observable arrival beat. Use her existing card's voice: playful, warmly sarcastic, with one light fourth-wall aside. React specifically to this Village's public name/setting and/or the current Venue's observable entrance. Do not reveal GM-only player context, private rooms, unseen people or secrets. Do not invent established Village history or repeat a stock joke. She remembers helping the player found the Village a day ago. End at a natural transition into explaining Visitors. The server appends the fixed Visitor tutorial and farewell immediately after this opening: do not explain the mechanics, say goodbye, end the Scene, move anyone, or propose keeps, commands, offers or lasting changes. Do not supply the player's actions, thoughts or speech."
+            ? "Professor Mari's first visit: write her personalized opening greeting, two to four short spoken sentences, with at most one brief observable arrival beat. Then write ONE final dialogue segment containing a short personalized farewell, one to three sentences. This final segment is ordinary main dialogue, never an aside or whisper. The server inserts the player's fixed Visitor explanation BETWEEN your opening and that final farewell segment. Use her existing card's voice: playful, warmly sarcastic, with a light fourth-wall aside. Ground both bookends in this Village's public name/setting and/or the current Venue's observable entrance; let the farewell make its own small callback rather than repeating the greeting. She remembers helping the player found the Village a day ago. The opening transitions into explaining Visitors. The final farewell releases the player back to village life and makes clear she will be around for another day and can be found for ordinary conversation. She is going to look around, not leaving the Village yet. Do not explain the Visitor mechanics yourself. Do not reveal GM-only player context, private rooms, unseen people or secrets, invent established Village history, repeat a stock joke, end the Scene, move anyone, or propose keeps, commands, offers or lasting changes. Do not supply the player's actions, thoughts or speech."
             : scene.visitEvent
               ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
                   scene.visitEvent === "place"
@@ -521,6 +523,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        ...(scene.visitorIntroduction ? { visitorIntroductionFarewell: true as const } : {}),
         ...(!nativeCommands ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),

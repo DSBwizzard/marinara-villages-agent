@@ -85,6 +85,7 @@ export type VillageVisitor = VillageCardCharacter & {
 export type VisitorTrip = {
   arrivedAt: string;
   leavesAt: string;
+  venueId?: string;
   lodging?: { venueId: string; zoneId: string; hostId?: string };
 };
 
