@@ -11,6 +11,7 @@ import { foundingCompletedIds, foundingReadyForPlay } from "../../domain/rules/f
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { openingView } from "../../domain/rules/opening-project.js";
+import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
@@ -186,7 +187,7 @@ export function createVillageSnapshot({
       return {
         ...projectVillager(
           visitor,
-          card ? visitor.cardSnapshot.name : null,
+          card || visitor.characterId === PROFESSOR_MARI_ID ? visitor.cardSnapshot.name : null,
           "",
           visitor.cardSnapshot.tags,
           visitor.cardSnapshot.nameColor ?? "",

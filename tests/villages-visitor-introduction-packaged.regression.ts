@@ -21,6 +21,31 @@ try {
   await request("/rooms/end", { sessionId: "browser", expectedSceneRevision: resumed.session.sceneRevision });
   const world = server.records.get("villages-village").data;
   const publicVenue = world.venues.find((venue: any) => venue.id !== "mill");
+  const library = server.resources.listCharacters;
+  let crowded = false;
+  server.resources.listCharacters = async (...args: any[]) => {
+    if (!crowded) {
+      crowded = true;
+      const row = server.records.get("villages-village");
+      row.data.villagers[0].agenda.activeDay.blocks[0].venueId = publicVenue.id;
+      row.data.villagers[0].agenda.activeDay.blocks[0].zoneId = "exterior";
+      row.revision++;
+    }
+    return library(...args);
+  };
+  const deferred = await server.app.inject({
+    method: "POST",
+    url: "/api/villages/rooms",
+    payload: { venueId: publicVenue.id, zoneId: "exterior" },
+  });
+  assert.equal(deferred.statusCode, 409, deferred.body);
+  assert.match(deferred.body, /no longer quiet/);
+  assert.equal(server.calls(), 0, "A late arrival defers Mari without a provider request");
+  server.resources.listCharacters = library;
+  const row = server.records.get("villages-village");
+  row.data.villagers[0].agenda.activeDay.blocks[0].venueId = "mill";
+  row.data.villagers[0].agenda.activeDay.blocks[0].zoneId = "common";
+  row.revision++;
   const entered = await request("/rooms", { venueId: publicVenue.id, zoneId: "exterior" });
   const scene = entered.session;
   assert.equal(scene.visitorIntroduction, true);
@@ -37,6 +62,11 @@ try {
   );
   assert.equal(snapshot.visitors[0].visit.introductory, true);
   assert.equal(snapshot.visitors[0].visit.offerHome, false);
+  assert.equal(
+    snapshot.visitors[0].missing,
+    false,
+    "The bundled guide remains available when the native card is absent",
+  );
   const ids = scene.lines.map((line: any) => line.id);
   // Simulate loss of the entry reply and pointer after the immutable Scene has saved.
   const pointer = server.records.get("villages-active-venue");
@@ -83,6 +113,18 @@ try {
     "Normal play resumes without repeating Mari's introduction",
   );
   assert.equal(server.calls(), 0);
+  await request("/rooms/end", {
+    sessionId: ordinary.session.id,
+    expectedSceneRevision: ordinary.session.sceneRevision,
+  });
+  await request("/setup/reset", {});
+  const reset = server.records.get("villages-village").data;
+  assert.equal(
+    reset.visitors,
+    undefined,
+    "An explicit reset retires the prior world's Visitor identities and meetings",
+  );
+  assert.equal(reset.visitorIntroduction, undefined);
 } finally {
   await server.stop();
 }

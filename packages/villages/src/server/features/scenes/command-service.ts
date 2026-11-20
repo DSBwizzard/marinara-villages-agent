@@ -835,10 +835,6 @@ export function createSceneCommands({
       submissions: [],
       recap: "",
     };
-    if (introduction) {
-      writeVisitorIntroduction(session, village);
-      session.continuity = captureSceneContinuity(village, session, now.getTime());
-    }
     const create = async () => {
       await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, async (value) => {
         if (introduction && value.id) throw conflict("Mari's introduction is already starting. Refresh the Scene.");
@@ -851,15 +847,33 @@ export function createSceneCommands({
       await selectActiveScene(id, placeId, travel?.source.id);
     };
     if (introduction) {
-      return withSceneWork(id, async () => {
-        const scope = villageWorldScope(village);
-        const current = await readVillageState();
-        if (villageWorldScope(current) !== scope || !visitorIntroductionDue(current, now))
-          throw conflict("The Village changed. Refresh before entering.");
-        await create();
-        await mutateVillageState((state) => completeVisitorIntroduction(state, session));
-        return session;
-      });
+      return withSceneWork(id, () =>
+        withVillageSceneAcceptance(
+          async (current) => {
+            const at = villageNow();
+            const currentPlace = findLocation(current, placeId);
+            if (
+              villageWorldScope(current) !== villageWorldScope(village) ||
+              !visitorIntroductionDue(current, at) ||
+              !currentPlace ||
+              !currentPlace.zones?.some((row) => row.id === session.zoneId && row.kind === "exterior")
+            )
+              throw conflict("The Village changed. Refresh before entering.");
+            const currentAttendance = captureSceneAttendance(current, placeId, at);
+            if (!visitorIntroductionVenue(current, currentPlace, currentAttendance, at))
+              throw conflict("The entrance is no longer quiet or available. Mari will visit another time.");
+            session.placeName = currentPlace.name;
+            session.startedAt = session.lastActivityAt = currentAttendance.capturedAt;
+            session.sceneAttendance = currentAttendance;
+            writeVisitorIntroduction(session, current);
+            session.continuity = captureSceneContinuity(current, session, at.getTime());
+            await create();
+            await mutateVillageState((state) => completeVisitorIntroduction(state, session));
+            return session;
+          },
+          { memories: true },
+        ),
+      );
     }
     if (gathering) await withSceneWork(id, create);
     else await create();

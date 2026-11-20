@@ -238,6 +238,7 @@ export async function packagedSceneServer(
     app,
     stop,
     model,
+    resources: runtime.resources,
     calls: () => calls,
     records,
     documents,
