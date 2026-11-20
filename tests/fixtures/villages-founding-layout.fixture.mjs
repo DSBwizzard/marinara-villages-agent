@@ -289,7 +289,16 @@ export async function verifyFoundingLayout(group) {
           }
           if (path.endsWith("/catalog")) return send({ characters });
           if (path.endsWith("/lorebooks"))
-            return send({ books: [{ id: "relay-belt", name: "Relay Belt", enabled: true }] });
+            return send({
+              books: [
+                { id: "relay-belt", name: "Relay Belt", enabled: true },
+                ...Array.from({ length: 17 }, (_, index) => ({
+                  id: `archive-${index}`,
+                  name: index === 1 ? "NOODLE Othiras Character Relationships" : `Community archive ${index + 1}`,
+                  enabled: index !== 0,
+                })),
+              ],
+            });
           if (path.endsWith("/image-style-profiles"))
             return send({ defaultProfileId: "fixture-ink", profiles: [{ id: "fixture-ink", name: "Ink" }] });
           return send(snapshot);
@@ -870,6 +879,36 @@ export async function verifyFoundingLayout(group) {
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
         const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
+        const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(18);
+        const loreCards = loreResults.locator(".villages-lorebook-option");
+        assert.ok(
+          await loreCards.evaluateAll((cards) =>
+            cards.every((card) => {
+              const label = card.getBoundingClientRect();
+              const text = card.querySelector("span").getBoundingClientRect();
+              return text.bottom <= label.bottom + 1 && text.right <= label.right + 1;
+            }),
+          ),
+          "Long titles and disabled status stay inside their Lorebook cards",
+        );
+        const firstBook = await loreCards.nth(0).boundingBox();
+        const secondBook = await loreCards.nth(1).boundingBox();
+        assert.ok(
+          secondBook.x > firstBook.x + firstBook.width && Math.abs(secondBook.y - firstBook.y) < 1,
+          "Lorebooks use two columns",
+        );
+        assert.ok(
+          (await loreResults.evaluate((node) => {
+            const bounds = node.getBoundingClientRect();
+            return [...node.children].filter((child) => {
+              const box = child.getBoundingClientRect();
+              return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom + 1;
+            }).length;
+          })) >= 6,
+          "At least six lorebooks fit before scrolling",
+        );
+        await expect(loreResults.getByRole("checkbox", { name: /Community archive 1 Disabled/ })).toBeDisabled();
         await expect(button("Choose lorebooks")).toHaveCount(0);
         if (!phone) {
           await expect(line).toHaveText(/^Which Lorebooks should I have/);
@@ -888,6 +927,10 @@ export async function verifyFoundingLayout(group) {
           await relay.check();
           await expect(budget).toHaveValue("1600");
         }
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `lorebooks-${view.width}-${view.height}.png`),
+          });
         await picker.getByRole("button", { name: phone ? "Done" : "Next", exact: true }).click();
         await layer("Village");
         await expectPose("presenting");
@@ -899,6 +942,11 @@ export async function verifyFoundingLayout(group) {
         const finishNaming = () =>
           phone ? namingDialog.getByRole("button", { name: "Done", exact: true }).click() : nextLine();
         if (phone) {
+          await expect(line).toHaveText(/^What should we call your Village/);
+          await expect(line).toBeFocused();
+          await expect(namingDialog).toHaveCount(0);
+          await expect(button("Next")).toBeInViewport({ ratio: 1 });
+          await nextLine();
           await expect(namingDialog.getByRole("textbox", { name: "Village Name" })).toBeVisible();
           await expect(namingDialog.getByRole("button", { name: "Done" })).toBeInViewport({ ratio: 0.99 });
         } else {
@@ -960,6 +1008,11 @@ export async function verifyFoundingLayout(group) {
         await expect(villageName).toHaveCount(0);
         await expect(villageBrief).toHaveCount(0);
         await scene.getByRole("button", { name: "Back", exact: true }).click();
+        if (phone) {
+          await expect(line).toHaveText(/^What should we call your Village/);
+          await expect(namingDialog).toHaveCount(0);
+          await nextLine();
+        }
         await expect(villageName).toHaveValue("Coastal Community");
         await expect(villageBrief).toHaveValue(initialBrief);
         await finishNaming();
@@ -1013,6 +1066,11 @@ export async function verifyFoundingLayout(group) {
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
           if (phone) await closeSetting();
           await button("Back").click();
+          if (phone) {
+            await expect(line).toHaveText(/^What should we call your Village/);
+            await expect(namingDialog).toHaveCount(0);
+            await nextLine();
+          }
           await expect(villageName).toHaveValue("Coastal Community");
           await villageBrief.fill("Our village is inside a dumpster.");
           await finishNaming();
@@ -1058,6 +1116,11 @@ export async function verifyFoundingLayout(group) {
             window.featureController.setSetupWorkspace((workspace) => ({ ...workspace, settingBrief: "" })),
           );
           await settingNext().click();
+          if (phone) {
+            await expect(line).toHaveText(/^What should we call your Village/);
+            await expect(namingDialog).toHaveCount(0);
+            await nextLine();
+          }
           await expect(villageBrief).toHaveAttribute("aria-invalid", "true");
           await expect(villageName).toHaveValue("Coastal Community");
           await finishNaming();
@@ -1086,14 +1149,20 @@ export async function verifyFoundingLayout(group) {
         const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
         await expect(artSettings.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
         await expect(artSettings.getByRole("button", { name: /^System / })).toHaveCount(0);
+        await expect(artSettings.getByRole("button", { name: /^GM / })).toHaveCount(0);
+        await expect(root.getByRole("dialog", { name: "Model Connections", exact: true })).toHaveCount(0);
+        await expect(
+          root
+            .getByRole("region", { name: "Map artwork", exact: true })
+            .getByRole("button", { name: "Art settings", exact: true }),
+        ).toHaveCount(0);
         await artSettings
-          .getByRole("group", { name: "Scenery style preset" })
-          .getByRole("button", { name: "Ink", exact: true })
-          .click();
+          .getByRole("combobox", { name: "Scenery style preset", exact: true })
+          .selectOption("fixture-ink");
         await expect
           .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
           .toBe("fixture-ink");
-        await artSettings.getByRole("button", { name: "Custom description", exact: true }).click();
+        await artSettings.getByRole("combobox", { name: "Scenery style preset", exact: true }).selectOption("@custom");
         await artSettings
           .getByLabel("Scenery style description", { exact: true })
           .fill("Watercolor with muted teal and warm amber.");
@@ -1156,7 +1225,7 @@ export async function verifyFoundingLayout(group) {
           .getByRole("region", { name: "Map artwork", exact: true })
           .getByRole("heading")
           .boundingBox();
-        const mapActions = await button("Art settings").boundingBox();
+        const mapActions = await button("Generate artwork").boundingBox();
         if (phone) {
           assert.ok(mapTitle.y + mapTitle.height <= mapActions.y, "The map title stays above its artwork controls");
         } else {

@@ -228,6 +228,10 @@ await withBrowser(browser, async () => {
       });
       await lore.getByRole("button", { name: phone ? "Done" : "Next", exact: true }).click();
       await next.click();
+      if (phone) {
+        await expect(root.getByRole("dialog", { name: "Your Village", exact: true })).toHaveCount(0);
+        await next.click();
+      }
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
       await root.getByLabel("Tell Mari about your village", { exact: true }).fill("A village beside the sea.");
       if (phone)

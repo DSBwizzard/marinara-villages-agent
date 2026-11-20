@@ -90,8 +90,7 @@ export function FoundingSettingScene({
   useEffect(() => {
     if (beat !== "village-overview" || !villageInvalid) return;
     setTurn({ beat, index: script[beat].length - 1 });
-    if (phone) setPopup("village");
-  }, [beat, phone, villageInvalid]);
+  }, [beat, villageInvalid]);
   const moveTo = (settingBeat: SettingBeat, showLast = false) => {
     const openEditor =
       !phone &&
@@ -106,12 +105,7 @@ export function FoundingSettingScene({
       mobileMenu: undefined,
     }));
     setTurn(showLast ? { beat: settingBeat, index: script[settingBeat].length - 1 } : undefined);
-    const openedPopup =
-      phone && settingBeat === "world"
-        ? "world"
-        : phone && settingBeat === "village-overview" && showLast
-          ? "village"
-          : undefined;
+    const openedPopup = phone && settingBeat === "world" ? "world" : undefined;
     setPopup(openedPopup);
     onBeatChange();
     const openLorebooks = settingBeat === "lorebooks" && showLast;
@@ -160,8 +154,7 @@ export function FoundingSettingScene({
     if (!phone && beat === "village") {
       setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: index === lines.length - 1 }));
     }
-    if (phone && beat === "village-overview" && index === lines.length - 1) setPopup("village");
-    else if (beat !== "lorebooks" || index !== lines.length - 1) focusLine();
+    if (beat !== "lorebooks" || index !== lines.length - 1) focusLine();
   };
   const previous = {
     welcome: undefined,

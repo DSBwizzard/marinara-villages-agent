@@ -474,10 +474,15 @@ export function FoundingScreen({
       <button
         type="button"
         className="villages-founding-models"
-        aria-label="Model Connections"
-        title="Model Connections"
+        aria-label={setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
+        title={setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
         aria-haspopup="dialog"
-        onClick={openConnectionPicker}
+        onClick={() => {
+          if (setupStep === FOUNDING_STEP.Maps) {
+            connections.refresh();
+            setArtSettingsOpen(true);
+          } else openConnectionPicker();
+        }}
       >
         <VillageIcon name="settings" />
       </button>
@@ -931,16 +936,20 @@ export function FoundingScreen({
           </FoundingDialog>
         ) : null}
         {setupStep === FOUNDING_STEP.Maps && artSettingsOpen ? (
-          <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
+          <FoundingDialog
+            title="Art settings"
+            onClose={() => setArtSettingsOpen(false)}
+            dismissible={!connections.saving}
+            showCloseButton={!connections.saving}
+          >
             <div className="villages-founding-editor-body">
+              <AgentConnectionsControls connections={connections} kind="images" compact />
               <SceneryStyleFields
-                asButtons
                 value={controller.sceneryStyle}
                 profileId={controller.sceneryStyleProfileId}
                 onChange={controller.setSceneryStyle}
                 onProfileChange={controller.setSceneryStyleProfileId}
               />
-              <AgentConnectionsControls connections={connections} kind="images" compact />
               <label>
                 Map details
                 <textarea
@@ -965,7 +974,7 @@ export function FoundingScreen({
               </label>
             </div>
             <footer>
-              <button type="button" onClick={() => setArtSettingsOpen(false)}>
+              <button type="button" disabled={connections.saving} onClick={() => setArtSettingsOpen(false)}>
                 Done
               </button>
             </footer>
@@ -1105,13 +1114,6 @@ export function FoundingScreen({
               <div className="villages-quick-map-toolbar">
                 <h2>{setupLocationName || "Your first Map"}</h2>
                 <>
-                  <button
-                    type="button"
-                    disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
-                    onClick={() => setArtSettingsOpen(true)}
-                  >
-                    Art settings
-                  </button>
                   <button
                     type="button"
                     disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
