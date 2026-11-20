@@ -321,7 +321,8 @@ const sceneOutcomeDirection =
 const sceneTurnDirection =
   "Treat only quoted player text as spoken aloud. Unquoted text is action, narration, or internal thoughts that cannot be accessed by residents unless made observable. Never quote or speak for the player. " +
   sceneOutcomeDirection +
-  "Let each resident's authored voice shape their vocabulary, cadence, formality, and interruptions. Let residents pursue their own aims, disagree, or deflect. Let mutual interest develop through words and actions. When someone crosses a boundary, portray the conflict and its consequences within the rating. Let warmth and reconciliation follow from what happens in the Scene. " +
+  "Travel within or between places can cross open ground. Base any doors, gates, fences, or other barriers on the established surroundings. " +
+  "Let each resident's authored voice shape their vocabulary, cadence, formality, and interruptions. Let residents pursue their own aims, disagree, or deflect. Let mutual interest develop through words and actions. When someone oversteps an established limit, portray the conflict and its consequences within the rating. Let warmth and reconciliation follow from what happens in the Scene. " +
   "Continue from the latest beat. Avoid echoing dialogue or recapping unchanged details unless the player asks or the current beat depends on them. When their motives, commitments, or surroundings give them a reason to act, let residents start or finish a brief action or exchange within their abilities and the Scene's rules. Let quiet moments stay quiet.";
 
 export const narrationDirection =

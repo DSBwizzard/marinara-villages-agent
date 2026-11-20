@@ -9,7 +9,7 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
-  physicalTargetId?: string;
+  /** Legacy knock values are retained for saved request identity. */
   kind: "knock" | "call";
   targetId: string;
   boundaryZoneId: string;
@@ -124,7 +124,7 @@ export function contactCanEnter(
     }).allowed
   );
 }
-/** Entrance egress follows physical doorways even when an intermediate Zone denies entry. */
+/** Exit routes can cross Zones that deny entry. */
 export function contactPath(
   state: VillageState,
   venue: VillageVenue,

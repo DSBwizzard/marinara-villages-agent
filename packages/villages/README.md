@@ -108,11 +108,11 @@ Ordinary visits can open quietly so you can look around or move without a narrat
 
 A resident’s invitation to another Venue can show a destination card. Select **Visit** to start a new Scene under the destination’s current access, escort and attendance rules. The invitation handoff generates no goodbye or greeting.
 
-**Send** takes place in the Zone shown in the Scene header. Put spoken dialogue in quotation marks. Unquoted text describes actions, narration, or thoughts, and residents can respond to what they observe. If you describe heading to another Zone, the GM can write up to the crossing. Choose **Venue actions → Move** to enter a permitted Zone. A pending spontaneous opening can play when you arrive. Villagers can cross Zones or leave on their own in a GM reply. **Conclude** archives the Scene without a generated reply. Send any farewell as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
+**Send** takes place in the Zone shown in the Scene header. Put spoken dialogue in quotation marks. Unquoted text describes actions, narration, or thoughts, and residents can respond to what they observe. If you describe heading to another Zone, the GM can write up to the crossing. Choose **Venue actions → Move** to enter a permitted Zone. A pending spontaneous opening can play when you arrive. Villagers can cross Zones or leave on their own in a GM reply. **Conclude** archives the Scene without a generated reply. Send any farewell as an ordinary turn before concluding.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
-Ordinary speech reaches everyone in the same Zone. A whisper reaches its one local recipient. A deliberate shout can carry through a directly connected doorway. Hearing someone in another Zone leaves them where they are. Exchanging an object requires being together. Saved exchanges retain their original witnesses.
+Ordinary speech reaches everyone in the same Zone. A whisper reaches its one local recipient. A deliberate shout can reach a directly connected Zone. Hearing someone in another Zone leaves them where they are. Exchanging an object requires being together. Saved exchanges retain their original witnesses.
 
 An aside appears beside the main Scene paragraph. It follows the same hearing rules as ordinary dialogue, whispers, and shouts. A card marked **Whisper** names its recipient.
 

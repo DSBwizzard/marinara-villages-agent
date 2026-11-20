@@ -37,7 +37,7 @@ function Harness(){
  useEffect(()=>{setRoom(scene('A',0,window.initiallyClosed?'closed':window.opening?'opening':'active'));
   state.setRoomEnded(!!window.initiallyClosed);state.setRoomOpen(true);state.setRoomDraft(window.draft??'A message');
   state.setRoomMoveZoneId('private-A');state.setRoomContactBoundary('A-boundary');
-  state.setRoomTargetId('A-target');state.setRoomContactKind('knock');
+  state.setRoomTargetId('A-target');
   if(window.operation){state.roomSubmissionIdRef.current='A-turn';}
  },[]);
  const launch=work=>{window.pending.push(work());return window.pending.length-1;};
@@ -69,7 +69,7 @@ function Harness(){
   founded,busy:state.roomBusy,error:state.roomError,notice:state.roomGreetingNotice,
   target:state.roomMoveZoneId,boundary:state.roomContactBoundary,draft:state.roomDraft,status:room?.status??null,
   ended:state.roomEnded,screen,open:state.roomOpen,notices:state.roomNotices,
-  residentTarget:state.roomTargetId,contactKind:state.roomContactKind})}</pre>;
+  residentTarget:state.roomTargetId})}</pre>;
 }
 window.pending=[];window.loads=0;window.received=[];
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
@@ -598,10 +598,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal(after.state.busy, false);
         assert.equal(after.loads, 1);
         assert.equal(after.received.length, 1);
-        if (mode === "contact") {
-          assert.equal(after.state.residentTarget, "");
-          assert.equal(after.state.contactKind, "call");
-        }
+        if (mode === "contact") assert.equal(after.state.residentTarget, "");
         if (kind === "close") {
           assert.equal(after.state.ended, true);
           assert.equal(after.state.status, "closed");

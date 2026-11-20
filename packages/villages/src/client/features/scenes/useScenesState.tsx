@@ -20,8 +20,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const [roomContactBoundary, setRoomContactBoundary] = useState("");
 
-  const [roomContactKind, setRoomContactKind] = useState<"knock" | "call">("call");
-
   const [roomTargetId, setRoomTargetId] = useState("");
 
   const [roomMoveZoneId, setRoomMoveZoneId] = useState("");
@@ -91,8 +89,6 @@ export function useScenesState(isFounded?: boolean) {
     setContactRecovery,
     roomContactBoundary,
     setRoomContactBoundary,
-    roomContactKind,
-    setRoomContactKind,
     roomTargetId,
     setRoomTargetId,
     roomMoveZoneId,

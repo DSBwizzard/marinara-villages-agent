@@ -1124,12 +1124,11 @@ export function createSceneCommands({
         });
     if (input.mode === "contact" && input.contact && admitted.contactGeneration)
       admitted.contactGeneration.instruction =
-        "Requested Contact shortcut: " +
+        "Contact context: " +
         JSON.stringify({
-          kind: input.contact.kind,
+          kind: input.contact.kind === "call" ? "call" : undefined,
           targetId: input.contact.targetId || input.targetId,
           boundaryZoneId: input.contact.boundaryZoneId,
-          physicalTargetId: input.contact.physicalTargetId,
           delivery: input.contact.delivery,
         }) +
         ". Resolve the authored submission naturally; do not invent success or voluntary player speech.";

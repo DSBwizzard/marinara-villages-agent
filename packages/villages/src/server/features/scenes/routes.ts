@@ -253,6 +253,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         ...(mode === "contact"
           ? {
               contact: {
+                // Preserve saved Contact request fingerprints, including requests that omitted kind.
                 kind: request.body?.contact?.kind === "call" ? ("call" as const) : ("knock" as const),
                 boundaryZoneId:
                   typeof request.body?.contact?.boundaryZoneId === "string" ? request.body.contact.boundaryZoneId : "",

@@ -936,7 +936,6 @@ export function useRetrySavedScene(ports: {
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomContactBoundary: React.Dispatch<SetStateAction<string>>;
-  setRoomContactKind: React.Dispatch<SetStateAction<"knock" | "call">>;
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
@@ -961,7 +960,6 @@ export function useRetrySavedScene(ports: {
     setRoom,
     setRoomBusy,
     setRoomContactBoundary,
-    setRoomContactKind,
     setRoomDraft,
     setRoomEnded,
     setRoomError,
@@ -1064,10 +1062,7 @@ export function useRetrySavedScene(ports: {
           setRoomContactBoundary("");
           roomMoveOperationIdRef.current = null;
         }
-        if (operation.kind === "turn" && operation.input?.mode === "contact") {
-          setRoomTargetId("");
-          setRoomContactKind("call");
-        }
+        if (operation.kind === "turn" && operation.input?.mode === "contact") setRoomTargetId("");
         void loadSnapshot();
       } catch (cause) {
         if (!lifetime.owns(claim)) return;
@@ -1094,7 +1089,6 @@ export function useRetrySavedScene(ports: {
       setRoom,
       setRoomBusy,
       setRoomContactBoundary,
-      setRoomContactKind,
       setRoomDraft,
       setRoomEnded,
       setRoomError,
