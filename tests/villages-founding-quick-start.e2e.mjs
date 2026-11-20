@@ -90,7 +90,7 @@ await withBrowser(browser, async () => {
         const input = route.request().postDataJSON();
         calls++;
         assert.equal(input.mode, "quick-start");
-        assert.equal(input.venues.length, 4);
+        assert.equal(input.venues.length, 5);
         assert.ok(
           input.venues.every(
             (row) => row.venueClass === "community" || row.residentIds.length + Number(row.playerHome) === 1,

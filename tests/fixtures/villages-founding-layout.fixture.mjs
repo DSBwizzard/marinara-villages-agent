@@ -233,7 +233,9 @@ export async function verifyFoundingLayout(group) {
                           : row.playerHome
                             ? "Your home"
                             : (row.residentIds[0] ?? row.id) + " home"
-                        : "Community Courtyard",
+                        : row.id === "founding-garden"
+                          ? "Community Garden"
+                          : "Community Courtyard",
                     form: row.venueClass === "residence" ? "A coastal home" : "An open courtyard",
                     description: "A sheltered approach beside the coast.",
                     layout,
@@ -914,11 +916,11 @@ export async function verifyFoundingLayout(group) {
         }
         await drag(12, 0);
         if (view.width === 2550) {
-          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
+          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 3);
           await page.setViewportSize({ width: view.width, height: 480 });
           await expect
             .poll(() => root.locator(".villages-quick-venue-card:visible").count())
-            .toBeLessThan(view.count + 2);
+            .toBeLessThan(view.count + 3);
           const nextPage = root.getByRole("button", { name: "Next Venues page", exact: true });
           await nextPage.click();
           const fitting = () =>
@@ -935,9 +937,9 @@ export async function verifyFoundingLayout(group) {
             .poll(fitting, { message: "Resized pages keep complete Venue rows inside the available height" })
             .toBe(true);
           await page.setViewportSize({ width: view.width, height: view.height });
-          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
+          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 3);
         }
-        assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 2);
+        assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 3);
         const mapWarning = root.getByText("Upload or generate a map image before continuing.", { exact: true });
         await expect(mapWarning).toHaveCount(0);
         await expect(forward("Let’s look it over")).toBeEnabled();
