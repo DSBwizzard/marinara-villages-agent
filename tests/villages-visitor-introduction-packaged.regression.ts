@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
 import { fixtureSceneState, fixtureVillageState } from "./helpers/village-storage.fixture.js";
+import { scenePromptPacket } from "./fixtures/villages-scene-writing.fixture.js";
 
 let server = await packagedSceneServer({
   configure(world, stamp) {
@@ -80,6 +81,11 @@ try {
     );
     assert.match(prompt, /ONE final(?: ordinary main)? dialogue segment/);
     assert.match(prompt, /24 hours after this introduction finishes/);
+    const timing = scenePromptPacket(messages.map((message: any) => message.content).join("\n"), "calendar");
+    assert.equal(timing.founding.instant, world.setupAt);
+    assert.equal(timing.founding.elapsedDays, 1);
+    assert.equal(timing.founding.timeZone, timing.calendar.timeZone);
+    assert(!prompt.includes("found the Village a day ago"));
     assert(!prompt.includes("They rented a room just outside"));
     return {
       content: JSON.stringify({
@@ -319,3 +325,67 @@ try {
 console.log(
   "Packaged Mari introduction saves one personalized greeting before its fixed tutorial and resumes without another request.",
 );
+
+for (const advanceDays of [0, 60]) {
+  let foundingAt = "";
+  server = await packagedSceneServer({
+    configure(world, stamp) {
+      foundingAt = new Date(Date.parse(stamp) - (90 - advanceDays) * 86_400_000).toISOString();
+      world.setupAt = foundingAt;
+      world.timeZone = "Pacific/Kiritimati";
+      world.visitorIntroduction = { sceneId: "", completedAt: "" };
+      if (advanceDays)
+        world.clock = {
+          revision: 1,
+          trustedAt: new Date(Date.parse(stamp) + advanceDays * 86_400_000).toISOString(),
+          replayUntilDate: "",
+          advanceMs: advanceDays * 86_400_000,
+        };
+    },
+    configureScene(scene) {
+      scene.startedAt = scene.lastActivityAt = new Date(
+        Date.parse(scene.startedAt) + advanceDays * 86_400_000,
+      ).toISOString();
+    },
+  });
+  try {
+    const initial = (await request("/rooms/active")).session;
+    await request("/rooms/end", { sessionId: initial.id, expectedSceneRevision: initial.sceneRevision });
+    const venue = server.records.get("villages-village").data.venues.find((row: any) => row.id !== "mill");
+    const entered = (await request("/rooms", { venueId: venue.id, zoneId: "exterior" })).session;
+    assert.equal(entered.visitorIntroduction, true, "Mari remains eligible months after founding");
+    const complete = server.model.chatComplete;
+    server.model.chatComplete = async (messages: any[]) => {
+      await complete(messages);
+      const prompt = messages.map((message) => message.content).join("\n");
+      const timing = scenePromptPacket(prompt, "calendar");
+      assert.equal(timing.founding.instant, foundingAt);
+      assert.equal(timing.founding.elapsedDays, 90, "Founding age follows the Village clock, including its advance");
+      assert.equal(timing.founding.timeZone, "Pacific/Kiritimati");
+      assert.equal(timing.calendar.timeZone, timing.founding.timeZone);
+      assert.equal(
+        Math.floor((Date.parse(timing.calendar.instant) - Date.parse(timing.founding.instant)) / 86_400_000),
+        90,
+      );
+      assert(!prompt.includes("found the Village a day ago"));
+      assert.match(prompt, /Elapsed time does not establish that the player was absent/);
+      return {
+        content: JSON.stringify({
+          segments: [
+            { kind: "dialogue", speakerId: "__professor_mari__", text: "Juniper Crossing! Good to see the garden." },
+            { kind: "dialogue", speakerId: "__professor_mari__", text: "I'll be looking around for another day." },
+          ],
+        }),
+        finishReason: "stop",
+        usage: { inputTokens: 10, outputTokens: 10 },
+      };
+    };
+    const greeted = (await request("/rooms/greet", { sessionId: entered.id })).session;
+    assert.equal(greeted.status, "active");
+    assert.equal(server.calls(), 1);
+    await request("/rooms/greet", { sessionId: entered.id });
+    assert.equal(server.calls(), 1, "Reloading keeps the saved chronology without another request");
+  } finally {
+    await server.stop();
+  }
+}

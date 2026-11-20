@@ -67,6 +67,7 @@ import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
 import { addressedSceneResidents, zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
+import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
 import type { ContinuityEvidence } from "../../domain/models/continuity-model.js";
 
 export interface SceneWritingPorts {
@@ -341,7 +342,7 @@ export function createSceneWriting({
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
           ? scene.visitorIntroduction
-            ? "Professor Mari's first visit has three parts. You write only parts 1 and 3. Part 1: her personalized opening greeting, two to four short spoken sentences about this Village or Venue, with at most one brief observable arrival beat. Greet the player, make a local observation or joke, and stop naturally. Do not introduce the Visitor topic, announce an explanation, hand over to another speaker, or ask the player a question or to explain anything. Part 2: the game inserts prepared dialogue spoken entirely by MARI TO THE PLAYER, beginning with Mari's own 'Wondering why I'm here?' and 'Me too!' This scripted part introduces and explains Visitors; the player only listens. Do not generate, repeat, paraphrase or set up this middle section. Part 3: ONE final ordinary main dialogue segment, never an aside or whisper, containing her personalized farewell, one to three sentences. Let her go look around, make a small callback to the Village or Venue, and say she will be around for another day and can be found for ordinary conversation. She is not leaving the Village yet. Neither generated part introduces or explains Visitors or asks anyone to explain them. Use her existing card's voice: playful, warmly sarcastic, with a small fourth-wall joke. Ground both generated sections in this Village's public name/setting and/or the current Venue's observable entrance. She remembers helping the player found the Village a day ago. Do not reveal GM-only player context, private rooms, unseen people or secrets, invent established Village history, repeat a stock joke, end the Scene, move anyone, or propose keeps, commands, offers or lasting changes. Do not supply the player's actions, thoughts or speech."
+            ? "Professor Mari's first visit has three parts. You write only parts 1 and 3. Part 1: her personalized opening greeting, two to four short spoken sentences about this Village or Venue, with at most one brief observable arrival beat. Greet the player, make a local observation or joke, and stop naturally. Do not introduce the Visitor topic, announce an explanation, hand over to another speaker, or ask the player a question or to explain anything. Part 2: the game inserts prepared dialogue spoken entirely by MARI TO THE PLAYER, beginning with Mari's own 'Wondering why I'm here?' and 'Me too!' This scripted part introduces and explains Visitors; the player only listens. Do not generate, repeat, paraphrase or set up this middle section. Part 3: ONE final ordinary main dialogue segment, never an aside or whisper, containing her personalized farewell, one to three sentences. Let her go look around, make a small callback to the Village or Venue, and say she will be around for another day and can be found for ordinary conversation. She is not leaving the Village yet. Neither generated part introduces or explains Visitors or asks anyone to explain them. Use her existing card's voice: playful, warmly sarcastic, with a small fourth-wall joke. Ground both generated sections in this Village's public name/setting and/or the current Venue's observable entrance. She remembers helping the player found the Village. Use the supplied founding record and current Scene calendar for the actual time since founding; her first visit may be days, months, or years later. A time reference is optional and must match that record. Elapsed time does not establish that the player was absent or what happened in the interval. Do not reveal GM-only player context, private rooms, unseen people or secrets, invent established Village history, repeat a stock joke, end the Scene, move anyone, or propose keeps, commands, offers or lasting changes. Do not supply the player's actions, thoughts or speech."
             : scene.visitEvent
               ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
                   scene.visitEvent === "place"
@@ -437,6 +438,14 @@ export function createSceneWriting({
             : "",
           JSON.stringify({
             calendar,
+            ...(scene.visitorIntroduction
+              ? {
+                  founding: {
+                    ...capturedSceneCalendar({ startedAt: village.setupAt }, calendar.timeZone),
+                    elapsedDays: Math.floor((Date.parse(calendar.instant) - Date.parse(village.setupAt)) / 86_400_000),
+                  },
+                }
+              : {}),
             leadSpeakerId,
             movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
             doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
