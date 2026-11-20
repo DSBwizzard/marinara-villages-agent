@@ -341,7 +341,7 @@ export async function verifyFoundingLayout(group) {
             await expect(button("Back")).toBeInViewport({ ratio: 1 });
             await expect(button("Next")).toBeInViewport({ ratio: 1 });
             await button("Back").click();
-            await expect(root).toHaveAttribute("data-step", "2");
+            await expect(root).toHaveAttribute("data-step", "1");
             await expect(root.locator(".villages-selected-villager")).toHaveCount(view.count);
             await button("Next").click();
             await expect(introduction).toBeVisible();
@@ -351,11 +351,29 @@ export async function verifyFoundingLayout(group) {
               await page.screenshot({
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `venue-intro-${view.width}.png`),
               });
+            const pausedMap = view.width === 320 || view.width === 1366;
+            if (pausedMap) {
+              await page.evaluate(() =>
+                window.featureController.updateSetupMapRequest({
+                  id: "paused-map",
+                  sourceKey: "unchanged-map-inputs",
+                  startedAt: "2026-11-20T00:00:00.000Z",
+                  phase: "paused",
+                }),
+              );
+              await expect(button("Next")).toBeEnabled();
+            }
             await button("Next").click();
             await expect(work).toBeVisible();
+            if (pausedMap) {
+              await expect(button("Check map status")).toBeEnabled();
+              await expect(button("Next")).toBeDisabled();
+              await page.evaluate(() => window.featureController.updateSetupMapRequest(null));
+              await expect(button("Next")).toBeEnabled();
+            }
           }
           if (!phone || !(await root.locator("dialog.villages-chapter-menu[open]").count())) {
-            const currentLayer = { 1: "Map", 3: "Venue" }[await root.getAttribute("data-step")];
+            const currentLayer = { 2: "Map", 3: "Venue" }[await root.getAttribute("data-step")];
             if (!phone && (currentLayer === "Map" || currentLayer === "Venue")) {
               await expect(hierarchy).toHaveCount(0);
             } else if (currentLayer) {
@@ -636,7 +654,7 @@ export async function verifyFoundingLayout(group) {
             .getByRole("list", { name: "Founding phases" })
             .locator("li")
             .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
-          ["Setting", "Maps", "People", "Venues", "Review"],
+          ["Setting", "People", "Maps", "Venues", "Review"],
         );
         const railRows = await root
           .getByRole("list", { name: "Founding phases" })
@@ -1153,103 +1171,6 @@ export async function verifyFoundingLayout(group) {
         await bounds("setting");
         await settingNext().click();
         await expect(root).toHaveAttribute("data-step", "1");
-        await enterChapter();
-        await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
-        await button("Art settings").click();
-        const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
-        await expect(artSettings.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
-        await expect(artSettings.getByRole("button", { name: /^System / })).toHaveCount(0);
-        await expect(artSettings.getByRole("button", { name: /^GM / })).toHaveCount(0);
-        await expect(root.getByRole("dialog", { name: "Model Connections", exact: true })).toHaveCount(0);
-        await expect(
-          root
-            .getByRole("region", { name: "Map artwork", exact: true })
-            .getByRole("button", { name: "Art settings", exact: true }),
-        ).toHaveCount(0);
-        await artSettings
-          .getByRole("combobox", { name: "Scenery style preset", exact: true })
-          .selectOption("fixture-ink");
-        await expect
-          .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
-          .toBe("fixture-ink");
-        await artSettings.getByRole("combobox", { name: "Scenery style preset", exact: true }).selectOption("@custom");
-        await artSettings
-          .getByLabel("Scenery style description", { exact: true })
-          .fill("Watercolor with muted teal and warm amber.");
-        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
-        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
-        if (process.env.VILLAGES_SCREENSHOT_DIR)
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
-          });
-        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
-        await expect(artSettings).toHaveCount(0);
-        assert.equal(generatedImages, 0, "Changing art settings never generates an image");
-        assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
-        await button("Art settings").click();
-        await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
-          "Watercolor with muted teal and warm amber.",
-        );
-        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
-        const image = await page.evaluate(() => {
-          const canvas = document.createElement("canvas");
-          canvas.width = 1536;
-          canvas.height = 1024;
-          const context = canvas.getContext("2d");
-          context.fillStyle = "#7fba91";
-          context.fillRect(0, 0, 1536, 1024);
-          return canvas.toDataURL("image/png").split(",")[1];
-        });
-        generationImage = "data:image/png;base64," + image;
-        const mapWarning = root.getByText("Upload or generate a map image before continuing.", { exact: true });
-        await expect(root.locator(".villages-quick-venue-card")).toHaveCount(0);
-        await expect(root.getByRole("navigation", { name: "Venue sections" })).toHaveCount(0);
-        await settingNext().click();
-        await expect(root).toHaveAttribute("data-step", "1");
-        await expect(mapWarning).toBeVisible();
-        assert.deepEqual(await root.boundingBox(), frame, "Missing artwork keeps the player on Maps");
-        if (view.width === 1366) {
-          failMapGeneration = true;
-          await button("Generate artwork").click();
-          await expect(
-            root.getByRole("alert").filter({ hasText: "Map artwork could not be generated." }),
-          ).toBeVisible();
-          await expect(root).toHaveAttribute("data-step", "1");
-          await expect(settingNext()).toBeEnabled();
-          await settingNext().click();
-          await expect(root).toHaveAttribute("data-step", "1");
-          failMapGeneration = false;
-          await button("Generate artwork").click();
-          await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
-          assert.equal(generatedImages, 2);
-        } else {
-          await root.getByLabel("Upload map image", { exact: true }).setInputFiles({
-            name: "map.png",
-            mimeType: "image/png",
-            buffer: Buffer.from(image, "base64"),
-          });
-          await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("upload");
-        }
-        await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
-        const mapTitle = await root
-          .getByRole("region", { name: "Map artwork", exact: true })
-          .getByRole("heading")
-          .boundingBox();
-        const mapActions = await button("Generate artwork").boundingBox();
-        if (phone) {
-          assert.ok(mapTitle.y + mapTitle.height <= mapActions.y, "The map title stays above its artwork controls");
-        } else {
-          assert.ok(
-            mapTitle.y + mapTitle.height <= mapActions.y || mapTitle.x + mapTitle.width <= mapActions.x,
-            "The map title and artwork controls stay separate",
-          );
-          const map = await root.getByRole("region", { name: "Map artwork preview" }).boundingBox();
-          assert.ok(map.width >= frame.width * 0.55, "Artwork previews use most of the desktop width");
-          assert.ok(map.height >= frame.height * 0.48, "Artwork previews use most of the available height");
-        }
-        await bounds("maps");
-        await settingNext().click();
-        await expect(root).toHaveAttribute("data-step", "2");
         await expect(root.locator(".villages-chapter-guide")).toContainText(
           "Choose who you’ll play and who lives here.",
         );
@@ -1304,8 +1225,122 @@ export async function verifyFoundingLayout(group) {
         await expect(settingNext()).toBeEnabled();
         await bounds("people");
         await settingNext().click();
-        await expect(root).toHaveAttribute("data-step", "3");
+        await expect(root).toHaveAttribute("data-step", "2");
         await enterChapter();
+        await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
+        await button("Art settings").click();
+        const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
+        await expect(artSettings.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
+        await expect(artSettings.getByRole("button", { name: /^System / })).toHaveCount(0);
+        await expect(artSettings.getByRole("button", { name: /^GM / })).toHaveCount(0);
+        await expect(root.getByRole("dialog", { name: "Model Connections", exact: true })).toHaveCount(0);
+        await expect(
+          root
+            .getByRole("region", { name: "Map artwork", exact: true })
+            .getByRole("button", { name: "Art settings", exact: true }),
+        ).toHaveCount(0);
+        await artSettings
+          .getByRole("combobox", { name: "Scenery style preset", exact: true })
+          .selectOption("fixture-ink");
+        await expect
+          .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
+          .toBe("fixture-ink");
+        await artSettings.getByRole("combobox", { name: "Scenery style preset", exact: true }).selectOption("@custom");
+        await artSettings
+          .getByLabel("Scenery style description", { exact: true })
+          .fill("Watercolor with muted teal and warm amber.");
+        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
+        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
+          });
+        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(artSettings).toHaveCount(0);
+        assert.equal(generatedImages, 0, "Changing art settings never generates an image");
+        assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
+        await button("Art settings").click();
+        await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
+          "Watercolor with muted teal and warm amber.",
+        );
+        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
+        const image = await page.evaluate(() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 1536;
+          canvas.height = 1024;
+          const context = canvas.getContext("2d");
+          context.fillStyle = "#7fba91";
+          context.fillRect(0, 0, 1536, 1024);
+          return canvas.toDataURL("image/png").split(",")[1];
+        });
+        generationImage = "data:image/png;base64," + image;
+        const mapWarning = root.getByText("Upload or generate a map image before continuing.", { exact: true });
+        await expect(root.locator(".villages-quick-venue-card")).toHaveCount(0);
+        await expect(root.getByRole("navigation", { name: "Venue sections" })).toHaveCount(0);
+        await settingNext().click();
+        await expect(root).toHaveAttribute("data-step", "2");
+        await expect(mapWarning).toBeVisible();
+        assert.deepEqual(await root.boundingBox(), frame, "Missing artwork keeps the player on Maps");
+        if (view.width === 1366) {
+          failMapGeneration = true;
+          await button("Generate artwork").click();
+          await expect(
+            root.getByRole("alert").filter({ hasText: "Map artwork could not be generated." }),
+          ).toBeVisible();
+          await expect(root).toHaveAttribute("data-step", "2");
+          await expect(settingNext()).toBeEnabled();
+          await settingNext().click();
+          await expect(root).toHaveAttribute("data-step", "2");
+          failMapGeneration = false;
+          await button("Generate artwork").click();
+          await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
+          assert.equal(generatedImages, 2);
+        } else {
+          await root.getByLabel("Upload map image", { exact: true }).setInputFiles({
+            name: "map.png",
+            mimeType: "image/png",
+            buffer: Buffer.from(image, "base64"),
+          });
+          await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("upload");
+        }
+        await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
+        const mapTitle = await root
+          .getByRole("region", { name: "Map artwork", exact: true })
+          .getByRole("heading")
+          .boundingBox();
+        const mapActions = await button("Generate artwork").boundingBox();
+        if (phone) {
+          assert.ok(mapTitle.y + mapTitle.height <= mapActions.y, "The map title stays above its artwork controls");
+        } else {
+          assert.ok(
+            mapTitle.y + mapTitle.height <= mapActions.y || mapTitle.x + mapTitle.width <= mapActions.x,
+            "The map title and artwork controls stay separate",
+          );
+          const map = await root.getByRole("region", { name: "Map artwork preview" }).boundingBox();
+          assert.ok(map.width >= frame.width * 0.55, "Artwork previews use most of the desktop width");
+          assert.ok(map.height >= frame.height * 0.48, "Artwork previews use most of the available height");
+        }
+        await bounds("maps");
+        await button("Back").click();
+        await expect(root).toHaveAttribute("data-step", "1");
+        await expect(root.locator(".villages-selected-villager")).toHaveCount(view.count);
+        if (phone) await expect(root.getByRole("dialog", { name: "People", exact: true })).toBeVisible();
+        await settingNext().click();
+        await enterChapter();
+        await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
+        await settingNext().click();
+        await expect(root).toHaveAttribute("data-step", "3");
+        await expect(root.locator("[data-explanation]")).toHaveCount(0);
+        if (phone) await expect(root.locator("dialog.villages-chapter-map[open]")).toBeVisible();
+        else await expect(root).toHaveAttribute("data-desktop-map", "true");
+        await enterChapter();
+        await button("Back").click();
+        await expect(root).toHaveAttribute("data-step", "2");
+        await expect(root.locator("[data-explanation]")).toHaveCount(0);
+        await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
+        await settingNext().click();
+        await expect(root).toHaveAttribute("data-step", "3");
+        await expect(work).toBeVisible();
         await expect(root.getByRole("button", { name: "Upload image", exact: true })).toHaveCount(0);
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);

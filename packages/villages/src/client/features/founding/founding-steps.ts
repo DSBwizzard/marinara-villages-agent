@@ -1,5 +1,5 @@
 /** One ordered list for the phase rail and draft navigation. */
-export const FOUNDING_STEP = { Setting: 0, Maps: 1, People: 2, Venues: 3, Review: 4 } as const;
+export const FOUNDING_STEP = { Setting: 0, People: 1, Maps: 2, Venues: 3, Review: 4 } as const;
 export type FoundingPhase = keyof typeof FOUNDING_STEP;
 export const SETUP_STEPS = Object.keys(FOUNDING_STEP) as FoundingPhase[];
 

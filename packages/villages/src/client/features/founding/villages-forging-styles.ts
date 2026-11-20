@@ -93,12 +93,12 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-resident-review p { margin:.2rem 0; }
 .villages-forging-v2 .villages-persona-preview { margin:.4rem 0; }
 .villages-forging-v2 .marinara-capability-villages-founding-roster > p { display:none; }
-.villages-forging-body[data-step="2"] .marinara-capability-villages-identity-strip { min-height:0; }
-.villages-forging-body[data-step="2"] .marinara-capability-villages-identity-card { flex-direction:row; flex:0 0 auto; max-width:15rem; gap:.45rem; padding:.4rem; font-size:.9rem; }
-.villages-forging-body[data-step="2"] .marinara-capability-villages-identity-card strong { max-width:10rem; white-space:normal; overflow-wrap:anywhere; text-align:left; }
-.villages-forging-body[data-step="2"] .marinara-capability-villages-identity-card small { display:none; }
-.villages-forging-body[data-step="2"] .marinara-capability-villages-identity-card-face { width:2rem; height:2rem; }
-.villages-forging-body[data-step="2"] .marinara-capability-villages-founding-roster-grid { height:11rem; grid-auto-rows:3.25rem; }
+.villages-forging-body[data-step="1"] .marinara-capability-villages-identity-strip { min-height:0; }
+.villages-forging-body[data-step="1"] .marinara-capability-villages-identity-card { flex-direction:row; flex:0 0 auto; max-width:15rem; gap:.45rem; padding:.4rem; font-size:.9rem; }
+.villages-forging-body[data-step="1"] .marinara-capability-villages-identity-card strong { max-width:10rem; white-space:normal; overflow-wrap:anywhere; text-align:left; }
+.villages-forging-body[data-step="1"] .marinara-capability-villages-identity-card small { display:none; }
+.villages-forging-body[data-step="1"] .marinara-capability-villages-identity-card-face { width:2rem; height:2rem; }
+.villages-forging-body[data-step="1"] .marinara-capability-villages-founding-roster-grid { height:11rem; grid-auto-rows:3.25rem; }
 .villages-forging-v2 .villages-people-connections details { margin:.5rem 0 0; padding:.4rem 0 0; }
 @media(max-width:1000px) { .villages-forging-columns { grid-template-columns:minmax(0,1fr); } .villages-forging-editor .villages-forging-zone-grid { grid-template-columns:1fr; } .villages-resident-choices { grid-template-columns:1fr; } }
 @media(max-width:704px) {
@@ -113,7 +113,7 @@ export const VILLAGES_FORGING_STYLES = `
  .villages-forging-v2 .marinara-capability-villages-founding-roster-card { font-size:.9rem; min-height:44px; }
  .villages-forging-v2 .marinara-capability-villages-founding-roster-card small { display:none; }
  .villages-forging-v2 .marinara-capability-villages-founding-roster-card strong { white-space:normal; overflow-wrap:anywhere; }
- .villages-forging-body[data-step="2"] .marinara-capability-villages-founding-roster-grid { grid-auto-rows:minmax(3.25rem,auto); }
+ .villages-forging-body[data-step="1"] .marinara-capability-villages-founding-roster-grid { grid-auto-rows:minmax(3.25rem,auto); }
 }
 
 .villages-forging-v2 { overscroll-behavior:contain; }

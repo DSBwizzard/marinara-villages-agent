@@ -40,7 +40,7 @@ const PLACE_ERRORS = {
 };
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 const PHONE_LAYOUT = "(max-width:727px)";
-const CHAPTER_MENUS = [undefined, "maps", "people", "venues", "review"] as const;
+const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "review"] as const;
 const SETTING_MARI_POSES = {
   welcome: "wave",
   "world-overview": "presenting",
@@ -215,11 +215,11 @@ export function FoundingScreen({
     return () => layout.removeEventListener("change", update);
   }, []);
   const chapterMenu = CHAPTER_MENUS[setupStep];
-  const [venueIntro, setVenueIntro] = useState(false);
-  const explainingVenues = setupStep === FOUNDING_STEP.Venues && venueIntro && !draftSaveError;
+  const [starterIntro, setStarterIntro] = useState(false);
+  const explainingStarters = setupStep === FOUNDING_STEP.Maps && starterIntro && !draftSaveError;
   const confirmStarterHomes = useConfirmation(setupVenues);
   const mobileScene =
-    phone && !!chapterMenu && (explainingVenues || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
+    phone && !!chapterMenu && (explainingStarters || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
   const beat = settingBeat(setupWorkspace);
   const [arrival, setArrival] = useState<"fading" | "turning" | "greeting">();
   const fading = arrival === "fading";
@@ -236,27 +236,29 @@ export function FoundingScreen({
     setupStep === FOUNDING_STEP.Setting && setupWorkspace.settingIntroPending === "connections" && !fading;
   const prelude = showTitle || chooseConnections || turning;
   const desktopMap =
-    !phone && !explainingVenues && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
+    !phone && !explainingStarters && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
   const hierarchyLayer =
     desktopMap || (phone && setupStep === FOUNDING_STEP.Venues && !mobileScene)
       ? undefined
-      : setupStep === FOUNDING_STEP.Setting && !prelude && beat !== "welcome"
-        ? beat === "village-overview"
-          ? "Village"
-          : beat === "village"
+      : explainingStarters
+        ? "Venue"
+        : setupStep === FOUNDING_STEP.Setting && !prelude && beat !== "welcome"
+          ? beat === "village-overview"
+            ? "Village"
+            : beat === "village"
+              ? "Map"
+              : "World"
+          : setupStep === FOUNDING_STEP.Maps
             ? "Map"
-            : "World"
-        : setupStep === FOUNDING_STEP.Maps
-          ? "Map"
-          : setupStep === FOUNDING_STEP.Venues
-            ? "Venue"
-            : undefined;
+            : setupStep === FOUNDING_STEP.Venues
+              ? "Venue"
+              : undefined;
   const mariPose =
     prelude && !turning
       ? "looking-up"
       : setupStep === FOUNDING_STEP.Setting
         ? SETTING_MARI_POSES[beat]
-        : explainingVenues
+        : explainingStarters
           ? "presenting"
           : setupStep === FOUNDING_STEP.People
             ? "happy"
@@ -324,8 +326,8 @@ export function FoundingScreen({
     setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
   }, [setupStep, screen]);
   useEffect(() => {
-    if (screen === "setup" && (mobileScene || explainingVenues)) chapterLine.current?.focus({ preventScroll: true });
-  }, [screen, phone, chapterMenu, mobileScene, explainingVenues, venueIntro]);
+    if (screen === "setup" && (mobileScene || explainingStarters)) chapterLine.current?.focus({ preventScroll: true });
+  }, [screen, phone, chapterMenu, mobileScene, explainingStarters]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const mapUpload = useRef<HTMLInputElement>(null);
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
@@ -495,7 +497,7 @@ export function FoundingScreen({
     const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
       setSetupFocusIssue(null);
-      setVenueIntro(step === FOUNDING_STEP.Venues && setupStep === FOUNDING_STEP.People && !openMenu);
+      setStarterIntro(step === FOUNDING_STEP.Maps && setupStep === FOUNDING_STEP.People && !openMenu);
       if (openMenu && step === FOUNDING_STEP.Setting) setSettingEditorOpen(true);
       if (phone && openMenu) {
         setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: CHAPTER_MENUS[step] }));
@@ -660,14 +662,10 @@ export function FoundingScreen({
       setSetupMapReviewed(false);
       setSetupProblem("");
     };
+    const chapterDisabled =
+      busy || spriteBusy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError;
     const advanceDisabled =
-      busy ||
-      spriteBusy ||
-      setupEditorOpen ||
-      setupSuggestionsBusy ||
-      setupVenueBusy ||
-      !!draftSaveError ||
-      (setupStep === FOUNDING_STEP.Maps && (setupMapBusy || !!setupMapRequest));
+      chapterDisabled || (setupStep === FOUNDING_STEP.Maps && (setupMapBusy || !!setupMapRequest));
     const validateVillage = () => {
       const problem = !setupName.trim() ? PLACE_ERRORS.name : !villageBrief ? PLACE_ERRORS.brief : "";
       if (!problem) return true;
@@ -717,7 +715,7 @@ export function FoundingScreen({
         return;
       }
       if (setupStep === FOUNDING_STEP.Review) void foundVillage();
-      else changeStep(setupStep + 1);
+      else changeStep(setupStep + 1, setupStep === FOUNDING_STEP.Maps);
     };
     const nextReply = (
       <button
@@ -799,18 +797,18 @@ export function FoundingScreen({
                 disabled={busy || spriteBusy || setupEditorOpen}
                 onClick={() => {
                   if (spriteWorking.current) return;
-                  changeStep(setupStep - 1, explainingVenues);
+                  changeStep(setupStep - 1, explainingStarters);
                 }}
               >
                 Back
               </button>
-              {phone || explainingVenues ? (
+              {phone || explainingStarters ? (
                 <button
                   type="button"
                   className="villages-forging-primary"
-                  disabled={advanceDisabled}
+                  disabled={chapterDisabled}
                   onClick={() => {
-                    setVenueIntro(false);
+                    setStarterIntro(false);
                     if (phone) setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }));
                   }}
                 >
@@ -822,14 +820,14 @@ export function FoundingScreen({
             </>
           }
         >
-          {explainingVenues
+          {explainingStarters
             ? "A new Village starts with 2 public locations, and each of you gets a home with two rooms to start. Don't worry, you can cram everyone into the same house later if you want to. I won't judge."
             : [
                 "",
+                "Choose who you’ll play and who lives here. I recommend making sure your Villagers have Sprites assigned to their Character Card, otherwise they’ll spend every Scene doing their best impression of a passport photo.",
                 desktopMap
                   ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
                   : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
-                "Choose who you’ll play and who lives here. I recommend making sure your Villagers have Sprites assigned to their Character Card, otherwise they’ll spend every Scene doing their best impression of a passport photo.",
                 "Here are your starting Venues. You can give them names and place them on the Map.",
                 "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
               ][setupStep]!}
@@ -973,7 +971,7 @@ export function FoundingScreen({
         ) : null}
         <FoundingChapter
           step={setupStep}
-          explanation={explainingVenues}
+          explanation={explainingStarters}
           bodyRef={bodyRef}
           guide={guide}
           mobileScene={mobileScene}
@@ -986,7 +984,15 @@ export function FoundingScreen({
           }
           mobileReplies={
             <>
-              <button type="button" disabled={!canCloseChapterMenu} onClick={closeChapterMenu}>
+              <button
+                type="button"
+                disabled={!canCloseChapterMenu}
+                onClick={() => {
+                  if (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues)
+                    changeStep(setupStep - 1, true);
+                  else closeChapterMenu();
+                }}
+              >
                 Back
               </button>
               {nextReply}

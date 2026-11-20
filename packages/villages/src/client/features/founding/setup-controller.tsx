@@ -443,13 +443,13 @@ export function createFoundingGotoSetupStep(ports: {
       const problem =
         placeProblem ||
         connectionSetupProblem ||
-        (step >= FOUNDING_STEP.People ? mapProblem : "") ||
-        (step >= FOUNDING_STEP.Venues ? peopleProblem : "") ||
+        (step > FOUNDING_STEP.People ? peopleProblem : "") ||
+        (step > FOUNDING_STEP.Maps ? mapProblem : "") ||
         (step === FOUNDING_STEP.Review ? setupBlocker(true) : "");
       if (problem) {
         if (placeProblem || problem === connectionSetupProblem) setSetupStep(FOUNDING_STEP.Setting);
-        else if (step >= FOUNDING_STEP.People && mapProblem) setSetupStep(FOUNDING_STEP.Maps);
-        else if (step >= FOUNDING_STEP.Venues && peopleProblem) setSetupStep(FOUNDING_STEP.People);
+        else if (step > FOUNDING_STEP.People && peopleProblem) setSetupStep(FOUNDING_STEP.People);
+        else if (step > FOUNDING_STEP.Maps && mapProblem) setSetupStep(FOUNDING_STEP.Maps);
         setSetupProblem(problem);
         return;
       }
