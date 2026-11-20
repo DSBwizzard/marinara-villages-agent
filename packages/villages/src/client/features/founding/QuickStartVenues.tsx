@@ -32,7 +32,6 @@ export function QuickStartVenues({
   onPatch,
   openFromMap,
   onMapOpened,
-  onMoveVenue,
   onGenerateImage,
   onUploadImage,
   openingVenueId,
@@ -57,7 +56,6 @@ export function QuickStartVenues({
   onPatch(venue: SetupVenueDraft): void;
   openFromMap?: { id: string };
   onMapOpened?(): void;
-  onMoveVenue?(id: string): void;
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   openingVenueId?: string;
@@ -360,19 +358,6 @@ export function QuickStartVenues({
                 <button type="button" className={P + "-button"} onClick={() => setConnectionsOpen(true)}>
                   Zone connections <span aria-hidden="true">›</span>
                 </button>
-                {onMoveVenue ? (
-                  <button
-                    type="button"
-                    className={P + "-button"}
-                    disabled={busy || imageBusy}
-                    onClick={() => {
-                      closeVenue();
-                      onMoveVenue(selected.id);
-                    }}
-                  >
-                    Move on map
-                  </button>
-                ) : null}
               </section>
             ) : null}
             {section === "manage" && connectionsOpen ? (

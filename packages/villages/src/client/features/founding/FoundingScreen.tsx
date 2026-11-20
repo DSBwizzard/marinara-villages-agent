@@ -561,13 +561,19 @@ export function FoundingScreen({
                   : undefined,
             }))}
             placing={
-              interactive && !!nextPin && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
+              !phone &&
+              interactive &&
+              !!nextPin &&
+              mapReady &&
+              !setupEditorOpen &&
+              !setupSuggestionsBusy &&
+              !setupVenueBusy
             }
             view={defaultView("contain")}
             shape={setupMapShape}
-            onPlace={interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
+            onPlace={!phone && interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
             onMovePin={
-              !phone && interactive && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
+              interactive && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
                 ? (id, x, y, size) => {
                     setSelectedSetupVenueId(id);
                     placeSetupPin(x, y, size, id);
@@ -579,19 +585,14 @@ export function FoundingScreen({
             mobile={false}
             fitToRoom={false}
             exploration
-            navigationFit={phone ? "contain" : "cover"}
             navigationView={mapNavigation}
             onNavigationView={setMapNavigation}
             navigationControlsWhilePlacing
             keyboardPlacementId={
-              interactive
-                ? phone
-                  ? nextPin?.id
-                  : (nextPin?.id ?? selectedSetupVenueId ?? setupVenues[0]?.id)
-                : undefined
+              !phone && interactive ? (nextPin?.id ?? selectedSetupVenueId ?? setupVenues[0]?.id) : undefined
             }
             onNudgePin={
-              interactive && (!phone || !!nextPin) && mapReady && !setupSuggestionsBusy && !setupVenueBusy
+              interactive && mapReady && !setupSuggestionsBusy && !setupVenueBusy
                 ? (id, dx, dy) => {
                     const venue = setupVenues.find((row) => row.id === id);
                     if (!venue) return;
@@ -607,20 +608,6 @@ export function FoundingScreen({
             }
           />
         </div>
-        {phone && interactive && nextPin ? (
-          <div className="villages-founding-map-placement">
-            <p role="status">Tap the map to move {nextPin.name}.</p>
-            <button
-              type="button"
-              onClick={() => {
-                setMovingSetupVenueId(null);
-                setSetupWorkspace((state) => ({ ...state, paused: true }));
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        ) : null}
       </div>
     );
     const chooseRoster = (ids: string[]) => {
@@ -1233,16 +1220,6 @@ export function FoundingScreen({
                 onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
                 openFromMap={openVenueFromMap}
                 onMapOpened={() => setOpenVenueFromMap(undefined)}
-                onMoveVenue={
-                  phone
-                    ? (id) => {
-                        setSelectedSetupVenueId(id);
-                        setMovingSetupVenueId(id);
-                        setSetupFocusIssue(null);
-                        setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
-                      }
-                    : undefined
-                }
                 onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
                 onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
               />

@@ -561,7 +561,18 @@ export function MapStage({
       pointersRef.current.clear();
       suppressTouchClickRef.current = false;
     }
-    if (onMovePin && event.target instanceof Element && event.target.closest("[data-pin-id]")) return;
+    if (
+      onMovePin &&
+      event.pointerType !== "touch" &&
+      event.target instanceof Element &&
+      event.target.closest("[data-pin-id]")
+    )
+      return;
+    if (!event.isPrimary && pinDrag.current) {
+      pinDrag.current = null;
+      setPinOffset(null);
+      suppressPinClick.current = true;
+    }
     if (!frameRef.current) return;
     if (event.target instanceof Element && event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)) return;
     stageRef.current?.setAttribute("data-mobile-gesturing", "true");
@@ -582,6 +593,7 @@ export function MapStage({
       return;
     const rect = frameRef.current.getBoundingClientRect();
     pointersRef.current.set(event.pointerId, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+    if (pinDrag.current) return;
     const points = [...pointersRef.current.values()];
     const first = points[0]!;
     const second = points[1];
@@ -628,7 +640,7 @@ export function MapStage({
       event.currentTarget.releasePointerCapture(event.pointerId);
     if (pointersRef.current.size === 0) stageRef.current?.removeAttribute("data-mobile-gesturing");
     gestureAnchor();
-    if (!tapped || !(event.target instanceof Element)) return;
+    if (pinDrag.current || !tapped || !(event.target instanceof Element)) return;
     const pinId = event.target.closest<HTMLButtonElement>(`.${ELEMENT_TAG}-pin`)?.dataset.pinId;
     const pin = pinId ? pins.find((candidate) => candidate.id === pinId) : null;
     if (pin?.onSelect) {
@@ -715,7 +727,20 @@ export function MapStage({
       suppressPinClick.current = true;
       const x = drag.x + (event.clientX - drag.startX) / drag.width;
       const y = drag.y + (event.clientY - drag.startY) / drag.height;
-      if (x < 0 || x > 1 || y < 0 || y > 1 || drag.width !== box.width || drag.height !== box.height) {
+      const viewport = frameRef.current?.getBoundingClientRect();
+      if (
+        !viewport ||
+        event.clientX < viewport.left ||
+        event.clientX > viewport.right ||
+        event.clientY < viewport.top ||
+        event.clientY > viewport.bottom ||
+        x < 0 ||
+        x > 1 ||
+        y < 0 ||
+        y > 1 ||
+        drag.width !== box.width ||
+        drag.height !== box.height
+      ) {
         onMoveInvalid?.();
         return;
       }

@@ -389,9 +389,25 @@ export async function verifyFoundingLayout(group) {
         const showMap = async () => {
           if (phone && (await sheet.count())) await closeVenue();
         };
+        const showVenuePin = async (id) => {
+          if (!phone) return;
+          const navigation = root.getByRole("group", { name: "Map navigation" });
+          await navigation.press("Home");
+          const point = await page.evaluate(
+            (id) => window.featureController.setupVenues.find((row) => row.id === id).presentation,
+            id,
+          );
+          for (const [axis, negative, positive] of [
+            ["x", "ArrowLeft", "ArrowRight"],
+            ["y", "ArrowUp", "ArrowDown"],
+          ]) {
+            const steps = Math.round((point[axis] - 0.5) / 0.05);
+            for (let step = 0; step < Math.abs(steps); step++) await navigation.press(steps < 0 ? negative : positive);
+          }
+        };
         const editVenue = async (id) => {
           if (await sheet.count()) await closeVenue();
-          if (phone) await root.getByRole("button", { name: "Reset map view", exact: true }).click();
+          await showVenuePin(id);
           await root.locator(`[${phone ? "data-pin-id" : "data-venue-id"}="${id}"]`).click();
         };
         const manageVenue = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
@@ -1316,6 +1332,7 @@ export async function verifyFoundingLayout(group) {
             keptVenues,
             "Adding a second shared starter preserves the old draft's homes, text, artwork and pins",
           );
+          await showVenuePin("founding-garden");
           await expect(root.locator('[data-pin-id="founding-garden"]')).toBeVisible();
           await expect(button("Add shared Venue")).toHaveCount(0);
           const sharedVenues = await page.evaluate(() => {
@@ -1431,6 +1448,7 @@ export async function verifyFoundingLayout(group) {
           );
         }
         const marker = mapCanvas.locator('[data-pin-id="founding-home:player"]');
+        await showVenuePin("founding-home:player");
         if (placementBounds || phone) {
           const stage = mapCanvas.locator("[data-navigation-zoom]");
           const initialZoom = await stage.getAttribute("data-navigation-zoom");
@@ -1444,6 +1462,7 @@ export async function verifyFoundingLayout(group) {
           await expect(marker).toBeFocused();
           await expect(stage).toHaveAttribute("data-navigation-zoom", zoom);
           await mapCanvas.getByRole("button", { name: "Reset map view", exact: true }).click();
+          await showVenuePin("founding-home:player");
         }
         await marker.scrollIntoViewIfNeeded();
         const beforeDrag = await page.evaluate(
@@ -1461,13 +1480,12 @@ export async function verifyFoundingLayout(group) {
           const workspace = await fullMap.boundingBox();
           assert.equal(workspace.width, frame.width, "Mobile map uses the full Villages width");
           assert.ok(workspace.y <= frame.y + 80 && workspace.y + workspace.height >= frame.y + frame.height - 1);
-          await editVenue("founding-home:finn");
-          await manageVenue();
-          await sheet.getByRole("button", { name: "Move on map", exact: true }).click();
+          await expect(root.getByRole("button", { name: "Move on map", exact: true })).toHaveCount(0);
+          await showVenuePin("founding-home:finn");
           const finnX = await page.evaluate(
             () => window.featureController.setupVenues.find((row) => row.id === "founding-home:finn").presentation.x,
           );
-          await mapCanvas.getByRole("group", { name: "Map navigation" }).press("ArrowRight");
+          await mapCanvas.locator('[data-pin-id="founding-home:finn"]').press("ArrowRight");
           assert.ok(
             Math.abs(
               (await page.evaluate(
@@ -1477,34 +1495,41 @@ export async function verifyFoundingLayout(group) {
                 finnX -
                 0.01,
             ) < 0.0001,
-            "Keyboard placement follows the explicitly selected move",
+            "A focused Venue icon can be moved with the keyboard",
           );
           await expect(fullMap.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
-          await editVenue("founding-home:player");
-          await manageVenue();
-          await sheet.getByRole("button", { name: "Move on map", exact: true }).click();
+          await showVenuePin("founding-home:player");
           await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
           await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
-          await drag(frame.width * 2, -frame.height * 2);
+          const zoomedPicture = await mapCanvas.getByRole("img", { name: "Map of Old Harbour" }).boundingBox();
+          const zoomedViewport = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
+          const point = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
+          assert.ok(zoomedPicture.x + zoomedPicture.width > zoomedViewport.x + zoomedViewport.width + 24);
+          await drag(zoomedViewport.x + zoomedViewport.width + 12 - point.x - point.width / 2, 0);
+          await expect(root.getByRole("alert")).toContainText("inside the map");
           assert.deepEqual(
             await page.evaluate(
               () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
             ),
             beforeDrag,
-            "Dragging pans the mobile map without moving a Venue",
+            "A drop outside the visible map keeps the saved pin, even when it is inside the zoomed image",
           );
-          await mapCanvas.getByRole("button", { name: "Reset map view", exact: true }).click();
+          await showVenuePin("founding-home:player");
           const picture = await mapCanvas.getByRole("img", { name: "Map of Old Harbour" }).boundingBox();
           const viewport = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
           assert.ok(
-            picture.x >= viewport.x - 1 && picture.x + picture.width <= viewport.x + viewport.width + 1,
-            "Overview shows the entire map width",
+            picture.x <= viewport.x + 1 && picture.x + picture.width >= viewport.x + viewport.width - 1,
+            "The game map fills the workspace width",
           );
           assert.ok(
-            picture.y >= viewport.y - 1 && picture.y + picture.height <= viewport.y + viewport.height + 1,
-            "Overview shows the entire map height",
+            picture.y <= viewport.y + 1 && picture.y + picture.height >= viewport.y + viewport.height - 1,
+            "The game map fills the workspace height",
           );
-          await page.mouse.click(picture.x + picture.width * 0.74, picture.y + picture.height * 0.65);
+          const start = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
+          await drag(
+            viewport.x + viewport.width * 0.65 - start.x - start.width / 2,
+            viewport.y + viewport.height * 0.65 - start.y - start.height / 2,
+          );
           if (process.env.VILLAGES_SCREENSHOT_DIR)
             await page.screenshot({
               path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "mobile-map-placement-" + view.width + ".png"),
@@ -1522,8 +1547,8 @@ export async function verifyFoundingLayout(group) {
           () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
         );
         if (phone) {
-          assert.ok(Math.abs(afterDrag.x - 0.74) < 0.002);
-          assert.ok(Math.abs(afterDrag.y - 0.65) < 0.002);
+          assert.ok(afterDrag.x >= 0 && afterDrag.x <= 1);
+          assert.ok(afterDrag.y >= 0 && afterDrag.y <= 1);
         }
         assert.ok(afterDrag.y > beforeDrag.y);
         await expect(sheet).toHaveCount(0);
@@ -1607,32 +1632,69 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("button", { name: "Art settings", exact: true })).toHaveCount(0);
         if (view.width === 390) {
           await closeVenue();
-          await showMap();
-          await marker.scrollIntoViewIfNeeded();
-          const box = await marker.locator(".marinara-capability-villages-map-point").boundingBox(),
-            beforeTouch = await page.evaluate(
-              () =>
-                window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
+          await showVenuePin("founding-home:player");
+          const touch = await context.newCDPSession(page);
+          const readPosition = () =>
+            page.evaluate(
+              () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
             );
-          const touch = await context.newCDPSession(page),
-            x = box.x + box.width / 2,
-            y = box.y + box.height / 2;
-          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
-          await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + 20, y }] });
+          const pinPoint = async () => {
+            const box = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
+            return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          };
+          const beforeTouch = await readPosition();
+          const point = await pinPoint();
+          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+          await touch.send("Input.dispatchTouchEvent", {
+            type: "touchMove",
+            touchPoints: [{ x: point.x + 20, y: point.y + 12 }],
+          });
           await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await expect.poll(async () => (await readPosition()).x).toBeGreaterThan(beforeTouch.x);
+          const moved = await readPosition();
+          assert.ok(moved.y > beforeTouch.y, "Dragging a Venue icon moves it on both axes");
+          await expect(sheet).toHaveCount(0);
+          const movedPoint = await pinPoint();
+          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [movedPoint] });
+          await touch.send("Input.dispatchTouchEvent", {
+            type: "touchMove",
+            touchPoints: [{ x: movedPoint.x + 20, y: movedPoint.y + 12 }],
+          });
+          await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+          assert.deepEqual(await readPosition(), moved, "Cancelling a touch drag keeps the saved position");
           const canvas = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
-          const pinchPoint = (part, id) => ({
-            x: canvas.x + canvas.width * part,
-            y: canvas.y + canvas.height * 0.4,
-            id,
+          const picture = mapCanvas.getByRole("img", { name: "Map of Old Harbour" });
+          const beforePan = await picture.boundingBox();
+          const panStart = { x: canvas.x + canvas.width * 0.75, y: canvas.y + canvas.height * 0.15 };
+          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [panStart] });
+          await touch.send("Input.dispatchTouchEvent", {
+            type: "touchMove",
+            touchPoints: [{ x: panStart.x - 30, y: panStart.y }],
+          });
+          await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await expect.poll(async () => (await picture.boundingBox()).x).not.toBe(beforePan.x);
+          assert.deepEqual(await readPosition(), moved, "Dragging the background pans without moving pins");
+          const oldZoom = Number(
+            await mapCanvas.locator("[data-navigation-zoom]").getAttribute("data-navigation-zoom"),
+          );
+          const pinchStart = await pinPoint();
+          await touch.send("Input.dispatchTouchEvent", {
+            type: "touchStart",
+            touchPoints: [{ ...pinchStart, id: 0 }],
           });
           await touch.send("Input.dispatchTouchEvent", {
             type: "touchStart",
-            touchPoints: [pinchPoint(0.4, 0), pinchPoint(0.6, 1)],
+            touchPoints: [
+              { ...pinchStart, id: 0 },
+              { x: pinchStart.x - 60, y: pinchStart.y, id: 1 },
+            ],
           });
           await touch.send("Input.dispatchTouchEvent", {
             type: "touchMove",
-            touchPoints: [pinchPoint(0.2, 0), pinchPoint(0.8, 1)],
+            touchPoints: [
+              { x: pinchStart.x + 30, y: pinchStart.y, id: 0 },
+              { x: pinchStart.x - 90, y: pinchStart.y, id: 1 },
+            ],
           });
           await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
           await touch.detach();
@@ -1640,53 +1702,17 @@ export async function verifyFoundingLayout(group) {
             .poll(async () =>
               Number(await mapCanvas.locator("[data-navigation-zoom]").getAttribute("data-navigation-zoom")),
             )
-            .toBeGreaterThan(1);
-          await expect
-            .poll(() =>
-              page.evaluate(
-                () =>
-                  window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
-              ),
-            )
-            .toBe(beforeTouch);
-          await mapCanvas.getByRole("button", { name: "Reset map view", exact: true }).click();
-          await editVenue("founding-home:player");
+            .toBeGreaterThan(oldZoom);
+          assert.deepEqual(await readPosition(), moved, "A pinch starting on a Venue icon zooms without saving a drag");
+          await expect(sheet).toHaveCount(0);
+          await showVenuePin("founding-home:player");
+          const target = await pinPoint();
+          await page.touchscreen.tap(target.x, target.y);
+          await expect(sheet).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "← Map", exact: true })).toBeFocused();
+          assert.deepEqual(await readPosition(), moved, "A tap opens the Venue without moving it");
           await manageVenue();
-          await sheet.getByRole("button", { name: "Move on map", exact: true }).tap();
-          await expect(mapCanvas.getByRole("status")).toContainText("Tap the map to move");
-          await expect(mapCanvas.locator('[data-placing="true"]')).toBeVisible();
-          await mapCanvas.getByRole("button", { name: "Cancel", exact: true }).tap();
-          await expect(mapCanvas.getByRole("status")).toHaveCount(0);
-          assert.equal(
-            await page.evaluate(
-              () =>
-                window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
-            ),
-            beforeTouch,
-          );
-          await editVenue("founding-home:player");
-          await manageVenue();
-          await sheet.getByRole("button", { name: "Move on map", exact: true }).tap();
-          await expect(mapCanvas.getByRole("status")).toContainText("Tap the map to move");
-          const picture = await mapCanvas.getByRole("img", { name: "Map of Old Harbour" }).boundingBox();
-          await page.touchscreen.tap(picture.x + picture.width * 0.08, picture.y + picture.height * 0.86);
-          await expect
-            .poll(() =>
-              page.evaluate(
-                () =>
-                  window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
-              ),
-            )
-            .toBe(0.08);
-          assert.equal(
-            await page.evaluate(
-              () =>
-                window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.y,
-            ),
-            0.86,
-          );
-          await showMap();
-          await editVenue("founding-home:player");
+          await expect(sheet.getByRole("button", { name: "Move on map", exact: true })).toHaveCount(0);
           await sheet.getByRole("button", { name: "Zones", exact: true }).click();
           await common.tap();
         }
