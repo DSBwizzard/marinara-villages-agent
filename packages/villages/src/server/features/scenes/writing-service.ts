@@ -6,7 +6,14 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import { agendaSpeechOptions } from "../../domain/rules/agenda-overview.js";
 import type { NarrationReadset } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
-import { badGateway, conflict, VillagesRequestError } from "../../domain/rules/errors.js";
+import {
+  badGateway,
+  badRequest,
+  conflict,
+  safeFailureMessage,
+  VillagesRequestError,
+} from "../../domain/rules/errors.js";
+import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import {
@@ -27,7 +34,7 @@ import {
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
-import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
+import { venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
@@ -102,6 +109,17 @@ export function createSceneWriting({
   villagesConnectionIdFor,
   readVillageState,
 }: SceneWritingPorts) {
+  async function resolveModel(connectionId: string | null) {
+    try {
+      return await villagesLanguageModels().resolveForRequest({ connectionId });
+    } catch (cause) {
+      if (connectionFailureKind(cause) !== "configuration") throw cause;
+      throw badRequest(
+        `GM connection is not configured: ${connectionId ? JSON.stringify(connectionId) : "Engine default"}.\n${safeFailureMessage(cause)}`,
+        "AI_CONNECTION_NOT_CONFIGURED",
+      );
+    }
+  }
   const requestKey = (scene: VenueScene, input: string, mode: string) =>
     memoryHash([scene.id, venueOperationId(), mode, input]);
   async function prepareVenueTurnMessages(
@@ -192,7 +210,7 @@ export function createSceneWriting({
           },
         },
       ),
-      villagesLanguageModels().resolveForRequest({ connectionId }),
+      resolveModel(connectionId),
     ]);
     signal?.throwIfAborted();
     const calendar = context.calendar;
@@ -281,7 +299,6 @@ export function createSceneWriting({
             ]
           : [ORDINARY_SCENE_DIRECTION]),
         venueWritingDirection(village.narrationStyle, player.name, !nativeCommands),
-        venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
       format: blocksFor([
         nativeCommands ? SCENE_NARRATION_FORMAT : ORDINARY_SCENE_FORMAT,
@@ -645,7 +662,7 @@ export function createSceneWriting({
     const model =
       resolved?.model === request.model.model && resolved.connectionId === request.model.connectionId
         ? resolved
-        : await villagesLanguageModels().resolveForRequest({ connectionId: request.model.connectionId });
+        : await resolveModel(request.model.connectionId);
     if (model.model !== request.model.model || model.connectionId !== request.model.connectionId)
       throw conflict("The captured Narration model changed. The request is retained.");
     return model;

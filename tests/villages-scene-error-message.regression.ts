@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { sceneErrorMessage } from "../packages/villages/src/client/features/scenes/scene-error-message.js";
+import {
+  isSceneConnectionError,
+  sceneErrorCause,
+  sceneErrorMessage,
+} from "../packages/villages/src/client/features/scenes/scene-error-message.js";
 import { anonymousSceneErrorReport } from "../packages/villages/src/client/features/scenes/scene-error-report.js";
 
 const cases = [
@@ -103,6 +107,17 @@ const report = anonymousSceneErrorReport(
     },
   ],
   { sceneStatus: "active", revision: 1, mobile: true, draftRetained: true },
+);
+const connectionError =
+  'GM connection is not configured: "private-connection-id".\nLanguage model connection not found';
+assert.equal(isSceneConnectionError(connectionError), true);
+assert.equal(isSceneConnectionError(`${connectionError}\n401 unauthorized: invalid API key`), true);
+assert.equal(sceneErrorMessage(connectionError), 'GM connection is not configured: "private-connection-id".');
+assert.equal(sceneErrorCause(`${connectionError} Retry it or continue without an opening.`), connectionError);
+assert.equal(isSceneConnectionError("Failed to fetch"), false);
+assert.doesNotMatch(
+  anonymousSceneErrorReport([{ id: "connection", title: "Scene opening failed", message: connectionError }]),
+  /private-connection-id/,
 );
 assert.match(report, /Scene: active · revision 1\nView: phone · Draft: retained/);
 assert.match(

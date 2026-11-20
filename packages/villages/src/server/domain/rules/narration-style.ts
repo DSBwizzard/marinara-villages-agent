@@ -1,6 +1,5 @@
-import { asRecord, asString } from "./coerce.js";
+import { asRecord } from "./coerce.js";
 
-export const WRITING_GUIDANCE_MAX_LENGTH = 4_000;
 export const DEFAULT_NARRATION_STYLE =
   "An immersive, living village. Continue the scene through specific dialogue, actions, discoveries, and consequences.";
 
@@ -8,12 +7,10 @@ export type VillageNarrationStyle = {
   tense: "present" | "past";
   person: "first" | "second" | "third";
   rating: "sfw" | "nsfw";
-  /** Optional player preference. The scene foundation and resident cards remain in force. */
-  writingGuidance: string;
 };
 
 export function defaultVillageNarrationStyle(): VillageNarrationStyle {
-  return { tense: "present", person: "second", rating: "sfw", writingGuidance: "" };
+  return { tense: "present", person: "second", rating: "sfw" };
 }
 
 export function coerceVillageNarrationStyle(value: unknown): VillageNarrationStyle {
@@ -22,16 +19,7 @@ export function coerceVillageNarrationStyle(value: unknown): VillageNarrationSty
     tense: raw.tense === "past" ? "past" : "present",
     person: raw.person === "first" || raw.person === "third" ? raw.person : "second",
     rating: raw.rating === "nsfw" ? "nsfw" : "sfw",
-    writingGuidance: asString(raw.writingGuidance).trim().slice(0, WRITING_GUIDANCE_MAX_LENGTH),
   };
-}
-
-export function venueAdditionalWritingGuidance(style: VillageNarrationStyle): string {
-  return style.writingGuidance
-    ? `## Additional writing guidance
-The player's preference below governs presentation where compatible with character identity, current Scene facts, player agency, content rating, and the required response format. Apply prose style to narration. Character dialogue retains its authored voice, vocabulary, mannerisms, values, and agency; a request for a warmer or quieter style does not make every resident warm or quiet.
-${style.writingGuidance}`
-    : "";
 }
 
 export function venueWritingDirection(style: VillageNarrationStyle, playerName: string, compact: boolean): string {

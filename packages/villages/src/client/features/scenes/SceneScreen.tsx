@@ -470,6 +470,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onContinueWithoutGreeting={() => {
             if (room.id) void continueRoomWithoutGreeting(room.id);
           }}
+          onConnections={() => openMenu("general")}
           onUseMailbox={() => setMailboxOpen(true)}
           onMap={goHome}
           onProjects={() => openMenu("projects")}

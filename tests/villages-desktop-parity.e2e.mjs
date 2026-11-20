@@ -205,8 +205,6 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/story")) value = { entries: [], total: 0 };
       else if (path.endsWith("/narration"))
         value = {
-          writingGuidance: "",
-          writingGuidanceMaxLength: 4000,
           tense: "present",
           person: "third",
           rating: "sfw",
