@@ -79,6 +79,8 @@ await withBrowser(browser, async () => {
     for (const text of ["Mara sets her cup down.", "Welcome to the Workshop.", "covered in tools."])
       await expect(reply).toContainText(text);
     await expect(reply.locator("strong")).toHaveText("Mara sets her cup down.");
+    await expect(reply.locator('[data-register="narration"]')).toHaveCount(2);
+    await expect(reply.locator('[data-register="speech"]')).toHaveCount(1);
     await expect(reply).not.toContainText("Old Entrance");
     await expect(page.getByRole("button", { name: /^(Previous|Next) paragraph$/ })).toHaveCount(0);
     const cast = page.locator('[class$="-chat-cast-person"]');
