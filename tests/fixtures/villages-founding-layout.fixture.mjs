@@ -469,6 +469,7 @@ export async function verifyFoundingLayout(group) {
           if (!phone) return;
           const navigation = root.getByRole("group", { name: "Map navigation" });
           await navigation.press("Home");
+          await navigation.evaluate(() => new Promise(requestAnimationFrame));
           const point = await page.evaluate(
             (id) => window.featureController.setupVenues.find((row) => row.id === id).presentation,
             id,
@@ -478,7 +479,10 @@ export async function verifyFoundingLayout(group) {
             ["y", "ArrowUp", "ArrowDown"],
           ]) {
             const steps = Math.round((point[axis] - 0.5) / 0.05);
-            for (let step = 0; step < Math.abs(steps); step++) await navigation.press(steps < 0 ? negative : positive);
+            for (let step = 0; step < Math.abs(steps); step++) {
+              await navigation.press(steps < 0 ? negative : positive);
+              await navigation.evaluate(() => new Promise(requestAnimationFrame));
+            }
           }
         };
         const editVenue = async (id) => {
@@ -966,7 +970,31 @@ export async function verifyFoundingLayout(group) {
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
         await expect(loreResults.getByRole("checkbox")).toHaveCount(12);
+        const loreBudget = picker.getByRole("textbox", { name: "Lorebook Token Budget", exact: true });
+        await expect(loreBudget).toBeVisible();
+        await expect(loreBudget).toHaveAccessibleDescription(
+          "Maximum lorebook information added to each model request.",
+        );
+        const loreFooter = picker.locator(".villages-lorebook-footer");
+        const unselectedLayout = await Promise.all(
+          [loreResults, loreBudget, loreFooter].map((element) => element.boundingBox()),
+        );
+        const firstChoice = loreResults.getByRole("checkbox", { name: "Relay Belt", exact: true });
+        await firstChoice.check();
+        assert.deepEqual(
+          await Promise.all([loreResults, loreBudget, loreFooter].map((element) => element.boundingBox())),
+          unselectedLayout,
+          "Selecting the first Lorebook keeps the grid, budget and navigation stationary",
+        );
+        await firstChoice.uncheck();
         const loreCards = loreResults.locator(".villages-lorebook-option");
+        assert.ok(
+          await loreCards.evaluateAll((cards) => {
+            const heights = cards.map((card) => card.getBoundingClientRect().height);
+            return Math.max(...heights) - Math.min(...heights) < 1;
+          }),
+          "Disabled and long-titled Lorebooks use the same card height",
+        );
         assert.ok(
           await loreCards.evaluateAll((cards) =>
             cards.every((card) => {

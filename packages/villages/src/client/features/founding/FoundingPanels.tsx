@@ -432,7 +432,6 @@ export function VillageLorebookPicker({
             setPage(0);
           }}
         />
-        <FoundingPagination compact page={pageIndex} count={pages} onPage={setPage} label="Lorebooks" />
       </div>
       {status}
       {stale ? <p role="alert">Lorebooks changed. Close and reopen this picker.</p> : null}
@@ -484,29 +483,32 @@ export function VillageLorebookPicker({
   const editor = (
     <>
       {choices}
-      {budget && active.length ? (
+      {budget ? (
         <LoreTokenBudgetField {...budget} value={pendingBudget ?? budget.value} onChange={setPendingBudget} />
       ) : null}
       <footer className="villages-lorebook-footer">
-        <span aria-live="polite">{active.length} / 24</span>
-        {founding ? (
-          <button type="button" onClick={founding.onBack}>
-            Back
+        <span aria-live="polite">{active.length} selected</span>
+        <FoundingPagination compact page={pageIndex} count={pages} onPage={setPage} label="Lorebooks" />
+        <div className="villages-lorebook-actions">
+          {founding ? (
+            <button type="button" onClick={founding.onBack}>
+              Back
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="villages-forging-primary"
+            disabled={disabled || stale}
+            onClick={() => {
+              if (disabled || stale) return;
+              if (budget && pendingBudget !== undefined) budget.onChange(pendingBudget);
+              onChange(pending);
+              close();
+            }}
+          >
+            {founding?.nextLabel ?? "Done"}
           </button>
-        ) : null}
-        <button
-          type="button"
-          className="villages-forging-primary"
-          disabled={disabled || stale}
-          onClick={() => {
-            if (disabled || stale) return;
-            if (budget && pending.length && pendingBudget !== undefined) budget.onChange(pendingBudget);
-            onChange(pending);
-            close();
-          }}
-        >
-          {founding?.nextLabel ?? "Done"}
-        </button>
+        </div>
       </footer>
     </>
   );
@@ -609,32 +611,30 @@ export function LoreTokenBudgetField({
   const invalid = !Number.isInteger(value) || value < min || value > max;
   return (
     <div className="villages-lorebook-budget">
-      <div className="villages-lorebook-budget-heading">
-        <label htmlFor={id}>Lorebook Token Budget</label>
-        <FoundingHelp label="Lorebook Token Budget">
-          Estimated token allowance per prompt. Constant entries need no keyword match but still need space. Current and
-          recent shared dialogue matches take priority. Primary keys, secondary conditions, case, whole-word matching
-          and entry order are supported. Regex keys are unsupported.
-        </FoundingHelp>
+      <label htmlFor={id}>Lorebook Token Budget</label>
+      <div className="villages-lorebook-budget-value">
+        <input
+          id={id}
+          aria-label="Lorebook Token Budget"
+          aria-describedby={`${id}-description`}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
+          placeholder="1600"
+          value={empty && value === 0 ? "" : String(value)}
+          disabled={disabled}
+          aria-invalid={invalid || undefined}
+          onChange={(event) => {
+            const raw = event.target.value.trim();
+            if (!/^\d*$/.test(raw)) return;
+            setEmpty(raw === "");
+            onChange(raw === "" ? 0 : Number(raw));
+          }}
+        />
+        <span>tokens</span>
       </div>
-      <input
-        id={id}
-        aria-label="Lorebook Token Budget"
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        autoComplete="off"
-        placeholder="1600"
-        value={empty && value === 0 ? "" : String(value)}
-        disabled={disabled}
-        aria-invalid={invalid || undefined}
-        onChange={(event) => {
-          const raw = event.target.value.trim();
-          if (!/^\d*$/.test(raw)) return;
-          setEmpty(raw === "");
-          onChange(raw === "" ? 0 : Number(raw));
-        }}
-      />
+      <p id={`${id}-description`}>Maximum lorebook information added to each model request.</p>
     </div>
   );
 }
