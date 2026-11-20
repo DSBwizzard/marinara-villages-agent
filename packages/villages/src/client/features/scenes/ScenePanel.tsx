@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -329,6 +330,10 @@ export function RoomPanel({
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [dismissedTravelId, setDismissedTravelId] = useState<string>();
   const [errorsOpen, setErrorsOpen] = useState(false);
+  const [permissionOpen, setPermissionOpen] = useState(false);
+  const permissionId = useId();
+  const permissionRef = useRef<HTMLDivElement>(null);
+  const permissionTriggerRef = useRef<HTMLButtonElement>(null);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const memoryCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -355,11 +360,34 @@ export function RoomPanel({
   }, [room.id]);
 
   useEffect(() => {
+    setPermissionOpen(false);
+  }, [room.id, room.zoneId, room.trespassing, settingsOpen]);
+
+  useEffect(() => {
+    if (!permissionOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (!permissionRef.current?.contains(event.target as Node)) setPermissionOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setPermissionOpen(false);
+      permissionTriggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [permissionOpen]);
+
+  useEffect(() => {
     const fresh = notices.some((notice) => !previousNoticeIds.current.has(notice.id));
     previousNoticeIds.current = new Set(notices.map((notice) => notice.id));
-    if (fresh && !errorsOpen) setNoticesOpen(true);
+    if (fresh && !errorsOpen && !permissionOpen) setNoticesOpen(true);
     else if (notices.length === 0) setNoticesOpen(false);
-  }, [notices, room.id, errorsOpen]);
+  }, [notices, room.id, errorsOpen, permissionOpen]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -796,10 +824,54 @@ export function RoomPanel({
       <div className={`${ELEMENT_TAG}-chat-head`}>
         <span className={`${ELEMENT_TAG}-room-place`}>
           {room.placeName}
-          {room.trespassing ? <span className={`${ELEMENT_TAG}-room-time`}>Trespassing</span> : null}
           {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
         </span>
         <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
+          {room.trespassing && !settingsOpen ? (
+            <div ref={permissionRef}>
+              <button
+                ref={permissionTriggerRef}
+                type="button"
+                className={`${ELEMENT_TAG}-scene-error-trigger ${ELEMENT_TAG}-scene-permission-trigger`}
+                aria-label="Without permission"
+                aria-expanded={permissionOpen}
+                aria-controls={permissionId}
+                onClick={() => {
+                  setPermissionOpen((value) => !value);
+                  setErrorsOpen(false);
+                  setNoticesOpen(false);
+                  setActionsView(null);
+                }}
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <circle cx="12.5" cy="6.8" r="1.2" fill="currentColor" stroke="none" />
+                  <path d="m8 12 3-3 2 3 2 1m-4-4-1 6-3 3m3-3 3 2 1 2M5.6 18.4 18.4 5.6" />
+                </svg>
+              </button>
+              {permissionOpen ? (
+                <section
+                  id={permissionId}
+                  className={`${ELEMENT_TAG}-scene-error-panel`}
+                  aria-label="Without permission"
+                >
+                  <div className={`${ELEMENT_TAG}-scene-error-message`}>
+                    You are currently in this area without permission.
+                  </div>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
           {!settingsOpen ? (
             <SceneErrorChip
               items={errorItems}
@@ -808,6 +880,7 @@ export function RoomPanel({
               onOpen={(value) => {
                 setErrorsOpen(value);
                 if (value) {
+                  setPermissionOpen(false);
                   setNoticesOpen(false);
                   setActionsView(null);
                 }
@@ -821,6 +894,7 @@ export function RoomPanel({
                 className={`${ELEMENT_TAG}-room-notices-trigger`}
                 onClick={() => {
                   setNoticesOpen((value) => !value);
+                  setPermissionOpen(false);
                   setErrorsOpen(false);
                   setActionsView(null);
                 }}
@@ -890,6 +964,7 @@ export function RoomPanel({
             className={`${ELEMENT_TAG}-room-actions-trigger`}
             onClick={() => {
               setActionsView((value) => (value ? null : "menu"));
+              setPermissionOpen(false);
               setErrorsOpen(false);
               setNoticesOpen(false);
             }}

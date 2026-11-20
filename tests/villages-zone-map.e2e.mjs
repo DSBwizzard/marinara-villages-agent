@@ -415,6 +415,7 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       assert.equal(moves[0].follow, true, "Ordinary movement includes the authoritative following party");
       assert.equal(moves[0].companions, undefined, "Players do not select a separate crossing party");
       await expect(page.getByText("You arrive at Garden with Mara.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Without permission", exact: true })).toHaveCount(0);
       await expect(page.getByText("I will sneak along with you.", { exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeDisabled();
       await expect(page.locator('[data-character-id="mara"]')).toBeVisible();
@@ -462,6 +463,40 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       assert.equal(moves[2].zoneId, "airstrip");
       assert.equal(moves[2].trespass, true);
       assert.equal(moves[2].follow, true);
+      const permission = page.getByRole("button", { name: "Without permission", exact: true });
+      const permissionPanel = page.getByRole("region", { name: "Without permission", exact: true });
+      await expect(permission).toBeVisible();
+      await expect(
+        page.locator(".marinara-capability-villages-chat-head").getByText("Trespassing", { exact: true }),
+      ).toHaveCount(0);
+      await permission.click();
+      await expect(permission).toHaveAttribute("aria-expanded", "true");
+      await expect(permissionPanel).toHaveText("You are currently in this area without permission.");
+      const chipBox = await permission.boundingBox(),
+        panelBox = await permissionPanel.boundingBox();
+      assert.ok(chipBox.width >= 44 && chipBox.height >= 44);
+      assert.ok(panelBox.x >= 0 && panelBox.x + panelBox.width <= width);
+      await page.screenshot({ path: `.build-tmp/permission-chip-${width}.png` });
+      await page.keyboard.press("Escape");
+      await expect(permissionPanel).toHaveCount(0);
+      await expect(permission).toBeFocused();
+      await permission.press("Enter");
+      await expect(permissionPanel).toBeVisible();
+      await page.locator("[data-villages-scene-composer]").click();
+      await expect(permissionPanel).toHaveCount(0);
+      await permission.click();
+      await page.evaluate(() => {
+        const c = window.featureController;
+        c.setRoom({ ...c.room, trespassing: false });
+      });
+      await expect(permission).toHaveCount(0);
+      await expect(permissionPanel).toHaveCount(0);
+      await page.evaluate(() => {
+        const c = window.featureController;
+        c.setRoom({ ...c.room, trespassing: true });
+      });
+      assert.equal(moves.length, 3, "Permission details never move the player");
+      assert.equal(reactions.length, 0, "Permission details never dispatch narration");
       await open();
       await expect(picker.getByRole("button", { name: "Arrange", exact: true })).toHaveCount(0);
       const garden = picker.locator('[data-layout-zone="garden"]');
