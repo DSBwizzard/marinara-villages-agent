@@ -224,7 +224,7 @@ await withBrowser(browser, async () => {
         .poll(
           async () => {
             const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-            if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+            if ((await next.isVisible()) && (await next.count()) > 0 && (await next.isEnabled())) await next.click();
             if (!(await composer(page).isVisible())) return false;
             if (await page.getByRole("button", { name: "Sending", exact: true }).isVisible()) return false;
             return !hasDraft || ((await send(page).isVisible()) && (await send(page).isEnabled()));
@@ -265,8 +265,8 @@ await withBrowser(browser, async () => {
     // Completion polling intentionally pauses in hidden tabs. Activate the tab
     // whose preserved draft and refreshed transcript this assertion exercises.
     await two.bringToFront();
-    const next = two.getByRole("button", { name: "Next paragraph", exact: true });
-    await expect(next).toBeVisible({ timeout: 10000 });
+    const latest = two.getByRole("region", { name: "Latest reply", exact: true });
+    await expect(latest).toContainText("I heard your new message.", { timeout: 10000 });
     await expect(one.getByRole("button", { name: "Sending", exact: true })).toHaveCount(0);
     await readToComposer(two);
     await expect(composer(two)).toHaveValue("Second tab draft");
@@ -296,7 +296,7 @@ await withBrowser(browser, async () => {
     await expect(two.getByRole("region", { name: "Scene errors" })).toContainText("The situation changed.");
     await two.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(calls, 2);
-    await expect(next).toBeVisible();
+    await expect(latest).toBeVisible();
     await readToComposer(two);
     await expect(composer(two)).toHaveValue("Review the updated scene");
     await send(two).click();

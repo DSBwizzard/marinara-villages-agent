@@ -7,7 +7,7 @@ export const VILLAGES_SCENE_STYLES = `
 [data-component="HomeBrowserHub"]:has(${tag}[data-scene-play]) [data-component="HomeBrowserHub.Content"] { overflow: hidden; }
 ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !important; }
 .${tag}-root.${tag}-room-screen { position: relative; }
-.${tag}-room-time { display: block; overflow: hidden; text-overflow: ellipsis; font-size: .6875rem; opacity: .8; }
+.${tag}-room-time, .${tag}-room-zone { display: block; overflow: hidden; text-overflow: ellipsis; font-size: .6875rem; opacity: .8; }
 .${tag}-room-screen > .${tag}-room-error { position: absolute; z-index: 20; top: 3rem; left: .75rem; right: .75rem; max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 9rem)); overflow-y: auto; }
 .${tag}-room-screen > .${tag}-chat { position: relative; flex: 1 0 100%; height: 100%; min-height: 0; }
 .${tag}-room-screen .${tag}-chat-stage {
@@ -196,7 +196,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-chat-keyboard-done { display: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem; gap: .25rem; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn:has(.${tag}-composer)
-  > :is(.${tag}-chat-log, .${tag}-chat-vn-card) { display: none; }
+  > :is(.${tag}-chat-log, .${tag}-chat-vn-card, .${tag}-scene-reply-head, .${tag}-scene-latest-reply) { display: none; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-composer-row { flex-wrap: nowrap; gap: .375rem; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-keyboard-done {
   display: block; flex: 0 0 auto; min-height: 44px; min-width: 44px; padding: 0 .625rem;
@@ -236,4 +236,7 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="false"] > .${tag}-avatar { width: 80px; height: 80px; box-sizing: border-box; flex: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="false"] > span:not(.${tag}-avatar) { position: static; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: .75rem; }
+@media (prefers-reduced-motion: reduce) {
+  .${tag}-room-screen .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person { transition: none !important; }
+}
 `;

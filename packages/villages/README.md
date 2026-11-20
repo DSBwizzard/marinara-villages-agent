@@ -120,13 +120,13 @@ An invitation to a restricted Zone in the current Venue applies for the current 
 
 **Send** takes place in the Zone shown in the Scene header. Put spoken dialogue in quotation marks. Unquoted text describes actions, narration, or thoughts, and residents can respond to what they observe. If you describe heading to another Zone, the GM can write up to the crossing. Choose **Venue actions → Move** to enter a permitted Zone. A pending spontaneous opening can play when you arrive. Villagers can cross Zones or leave on their own in a GM reply. **Conclude** archives the Scene without a generated reply. Send any farewell as an ordinary turn before concluding.
 
-Changing Zones starts the live view with a short arrival beat and the people actually there. **Previous** still lets you reread earlier messages and their asides, and **Next** returns to the arrival. Reading history does not move you. The complete exchange also stays in **Read transcript**. Arrival itself makes no model request; any spontaneous reaction follows the existing setting.
+The Scene shows the complete latest reply in one scrollable card. Changing Zones replaces it with a short arrival beat and the people actually there. **Transcript** keeps the complete heard exchange, including your inputs and asides, grouped by Zone visit with times and known arrivals or departures. Returning to a Zone starts another section. The transcript opens as a drawer on desktop and fills the game screen on phones. Reading it never moves you or changes the current cast or background. Arrival and transcript reading make no model request; any spontaneous reaction follows the existing setting.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
 Ordinary speech reaches everyone in the same Zone. A whisper reaches its one local recipient. A deliberate shout can reach a directly connected Zone. Hearing someone in another Zone leaves them where they are. Exchanging an object requires being together. Saved exchanges retain their original witnesses.
 
-An aside appears beside the main Scene paragraph. It follows the same hearing rules as ordinary dialogue, whispers, and shouts. A card marked **Whisper** names its recipient.
+Asides appear with their speaker in the latest reply and remain in the transcript. They follow the same hearing rules as ordinary dialogue, whispers, and shouts.
 
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
@@ -134,7 +134,7 @@ The GM first tries to continue in character. Attempts, threats, ordinary refusal
 
 ### Take breaks without losing your progress
 
-You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
+You can leave the page or refresh and return to your unfinished Scene, draft, and latest reply. Scenes have no inactivity deadline.
 
 Once a Scene and its saved effects are settled, its playback can retire. Accepted exchanges and relevant Project evidence remain available to continuity and recovery. Scene playback includes the original input for each accepted exchange, including private thoughts, for anyone with access to this Engine instance. Characters learn only what they actually heard or witnessed.
 

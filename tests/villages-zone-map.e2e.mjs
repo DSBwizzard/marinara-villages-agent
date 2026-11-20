@@ -417,21 +417,8 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await expect(page.getByText("You arrive at Garden with Mara.", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Without permission", exact: true })).toHaveCount(0);
       await expect(page.getByText("I will sneak along with you.", { exact: true })).toHaveCount(0);
-      await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
-      await expect(page.getByText("I will sneak along with you.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toHaveCount(0);
       assert.equal(await page.evaluate(() => window.featureController.room.zoneId), "garden");
-      assert.equal(moves.length, 1, "Reading previous dialogue does not move the player");
-      await page.evaluate(() => {
-        const c = window.featureController;
-        window.historyReadRoom = c.room;
-        c.setRoom(null);
-      });
-      await expect(page.locator("[data-villages-scene-composer]")).toHaveCount(0);
-      await page.evaluate(() => window.featureController.setRoom(window.historyReadRoom));
-      await expect(page.getByText("I will sneak along with you.", { exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
-      await expect(page.getByText("You arrive at Garden with Mara.", { exact: true })).toBeVisible();
-      await expect(page.getByText("I will sneak along with you.", { exact: true })).toHaveCount(0);
       await expect(page.locator('[data-character-id="mara"]')).toBeVisible();
       await page.evaluate(() => {
         const c = window.featureController;
@@ -448,13 +435,12 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await expect(page.getByRole("log", { name: "Scene history", exact: true })).toContainText(
         "I will sneak along with you.",
       );
-      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
+      await page.getByRole("button", { name: "Close transcript", exact: true }).click();
       await page.reload();
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect(page.getByText("You arrive at Garden with Mara.", { exact: true })).toBeVisible();
       await expect(page.getByText("I will sneak along with you.", { exact: true })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toHaveCount(0);
       await expect(page.locator("[data-villages-scene-composer]")).toBeVisible();
       await open();
       await picker.getByRole("button", { name: "Entrance", exact: true }).click();

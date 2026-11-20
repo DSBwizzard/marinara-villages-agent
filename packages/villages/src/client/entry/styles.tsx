@@ -1,7 +1,6 @@
 import { EXPLORATION_STYLES } from "../features/exploration/villages-exploration-styles.js";
 import { VILLAGES_FORGING_STYLES } from "../features/founding/villages-forging-styles.js";
 import { DOSSIER_STYLES } from "../features/residents/villages-dossier-styles.js";
-import { SCENE_ASIDE_STYLES } from "../features/scenes/villages-scene-asides.js";
 import { VILLAGES_SCENE_STYLES } from "../features/scenes/villages-scene-styles.js";
 import { ELEMENT_TAG, STYLE_ID } from "../shared/constants.js";
 import { LORE_ACTIVITY_STYLES } from "../shared/lore-activity-styles.js";
@@ -1978,11 +1977,47 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-beat { max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--foreground); font-size: 1rem; line-height: 1.45; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-name,
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-label { align-self: flex-start; margin: 0; padding: 0; border-radius: 0; background: transparent; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); font-size: .72rem; font-weight: 650; line-height: 1.35; letter-spacing: 0; text-transform: none; }
-.${ELEMENT_TAG}-room-panel-tools { display: grid; grid-template-columns: minmax(4rem, 1fr) auto minmax(4rem, 1fr); gap: .4rem; min-height: 1.75rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); padding-top: .25rem; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-counter { justify-self: center; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-nav { justify-self: end; gap: .25rem; padding: 0; border: 0; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-button { min-height: 1.75rem; padding: .2rem .4rem; border: 0; color: var(--foreground); }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-log { position: absolute; z-index: 8; bottom: calc(100% + .45rem); left: 0; width: 100%; max-height: min(55cqh, 32rem); box-sizing: border-box; overflow-y: auto; padding: .75rem; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); box-shadow: 0 .75rem 2rem #0009; }
+.${ELEMENT_TAG}-scene-reply-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; min-height: 2.75rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); font-size: .8125rem; border-bottom: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
+.${ELEMENT_TAG}-scene-live-card { overflow: hidden; }
+.${ELEMENT_TAG}-scene-live-card .${ELEMENT_TAG}-scene-reply-head { padding: .2rem .75rem; }
+.${ELEMENT_TAG}-scene-live-card .${ELEMENT_TAG}-scene-latest-reply { padding: .25rem .75rem; }
+.${ELEMENT_TAG}-scene-latest-reply { max-height: min(34cqh, 19rem); min-height: 2rem; overflow-y: auto; overscroll-behavior: contain; padding: .25rem 0; }
+.${ELEMENT_TAG}-scene-message { display: flex; align-items: flex-start; gap: .75rem; padding: .65rem 0; }
+.${ELEMENT_TAG}-scene-message + .${ELEMENT_TAG}-scene-message { border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
+.${ELEMENT_TAG}-scene-message-face { flex: 0 0 2.5rem; width: 2.5rem; height: 2.5rem; display: grid; place-items: center; color: var(--foreground); }
+.${ELEMENT_TAG}-scene-message-face > svg { width: 1.5rem; height: 1.5rem; }
+.${ELEMENT_TAG}-scene-message-face > img { width: 100%; height: 100%; object-fit: contain; }
+.${ELEMENT_TAG}-scene-message-face .${ELEMENT_TAG}-avatar { width: 100%; height: 100%; }
+.${ELEMENT_TAG}-scene-message-body { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-scene-message-name { margin: 0 0 .2rem; font-size: .875rem; font-weight: 650; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
+.${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text { margin: 0; white-space: pre-wrap; }
+.${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text > p { margin: 0 0 .5rem; }
+.${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text > :last-child { margin-bottom: 0; }
+.${ELEMENT_TAG}-scene-transcript-overlay { position: absolute; inset: 0; z-index: 30; display: flex; justify-content: flex-end; background: #0003; }
+.${ELEMENT_TAG}-scene-transcript { width: min(42rem, 52%); height: 100%; min-width: 0; display: flex; flex-direction: column; box-sizing: border-box; padding: 1rem 1.25rem; border-left: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); background: var(--marinara-chat-chrome-panel-bg, var(--popover)); color: var(--foreground); backdrop-filter: blur(20px); box-shadow: -.5rem 0 2rem #0005; }
+.${ELEMENT_TAG}-scene-transcript-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; padding-bottom: .75rem; }
+.${ELEMENT_TAG}-scene-transcript-head h2 { margin: 0; font-size: 1.35rem; }
+.${ELEMENT_TAG}-scene-transcript-head p { margin: .15rem 0 0; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); font-size: .875rem; }
+.${ELEMENT_TAG}-scene-transcript-head button { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.4rem; }
+.${ELEMENT_TAG}-scene-transcript-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.${ELEMENT_TAG}-scene-history-pages { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; padding-bottom: .5rem; }
+.${ELEMENT_TAG}-scene-history-pages button { min-height: 2.75rem; }
+.${ELEMENT_TAG}-scene-history-pages button[hidden] { display: none; }
+.${ELEMENT_TAG}-scene-history-pages button[aria-label="Refresh"] { margin-left: auto; min-width: 2.75rem; }
+.${ELEMENT_TAG}-scene-transcript-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: .5rem; }
+.${ELEMENT_TAG}-scene-history-visit { padding-bottom: 1rem; }
+.${ELEMENT_TAG}-scene-history-visit > header { display: flex; align-items: center; gap: .5rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); border-bottom: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); padding: .6rem 0; margin: .4rem 0; }
+.${ELEMENT_TAG}-scene-history-visit h3 { margin: 0 auto 0 0; font-size: 1rem; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
+.${ELEMENT_TAG}-scene-history-visit time { font-size: .75rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); }
+.${ELEMENT_TAG}-scene-visit-current { border: 1px solid var(--border); border-radius: 1rem; padding: .15rem .45rem; font-size: .7rem; }
+.${ELEMENT_TAG}-scene-history-event { font-size: .875rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); font-style: italic; }
+.${ELEMENT_TAG}-scene-transcript button:focus-visible, .${ELEMENT_TAG}-scene-transcript-body:focus-visible, .${ELEMENT_TAG}-scene-latest-reply:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@container ${ELEMENT_TAG} (max-width: 44rem) {
+  .${ELEMENT_TAG}-scene-transcript { width: 100%; padding: .75rem; border: 0; }
+  .${ELEMENT_TAG}-scene-message { gap: .5rem; }
+  .${ELEMENT_TAG}-scene-message-face { flex-basis: 2rem; width: 2rem; height: 2rem; }
+  .${ELEMENT_TAG}-scene-latest-reply { max-height: min(26cqh, 11rem); }
+}
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { padding-top: .35rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-input > .${ELEMENT_TAG}-textarea { height: 1.75rem; min-height: 0; max-height: none; overflow-y: hidden; }
 .${ELEMENT_TAG}-room-actions-trigger:focus-visible, .${ELEMENT_TAG}-room-actions-menu button:focus-visible, .${ELEMENT_TAG}-room-notices-trigger:focus-visible, .${ELEMENT_TAG}-room-panel-tools button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
@@ -2148,18 +2183,13 @@ export function syncVillagesStyles() {
     return;
   }
   if (existing) {
-    if (
-      existing.textContent !==
-      VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES
-    )
-      existing.textContent =
-        VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
+    if (existing.textContent !== VILLAGES_STYLES + VILLAGES_SCENE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES)
+      existing.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
     return;
   }
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent =
-    VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
+  style.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
   document.head.appendChild(style);
 }
 

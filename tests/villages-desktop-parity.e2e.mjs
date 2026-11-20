@@ -395,7 +395,7 @@ await withBrowser(browser, async () => {
     const dock = page.locator(".marinara-capability-villages-chat-vn");
     const stage = page.locator(".marinara-capability-villages-chat-stage");
     const cast = page.locator(".marinara-capability-villages-chat-cast-person");
-    const reading = page.getByRole("region", { name: "Current paragraph" });
+    const reading = page.getByRole("region", { name: "Latest reply" });
     await expect(cast).toHaveCount(4);
     const castPositions = await cast.evaluateAll(
       (people, mobile) => people.map((person) => person.offsetLeft + (mobile ? person.offsetWidth / 2 : 0)),
@@ -438,7 +438,7 @@ await withBrowser(browser, async () => {
       );
     } else {
       await expect(reading).toBeVisible();
-      if (await page.getByRole("button", { name: "Next paragraph" }).isDisabled()) {
+      {
         await expect(reading).toContainText(longGreeting);
       }
     }
@@ -448,17 +448,14 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
     const stageWithHistory = await stage.boundingBox();
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
-    await sceneMenu.click();
-    await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
-    while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
-      await page.getByRole("button", { name: "Next paragraph" }).click();
+    await page.getByRole("button", { name: "Close transcript", exact: true }).click();
+
     await expect(composer).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
-    while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
-      await page.getByRole("button", { name: "Next paragraph" }).click();
+
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();
@@ -504,14 +501,13 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue("My response.");
     assert.equal(lastTurn, null, "opening Venue actions does not send the draft");
     assert.equal(lastClose, null, "opening Venue actions does not conclude the Scene");
-    while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
-      await page.getByRole("button", { name: "Next paragraph" }).click();
+
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
     await expect(reading).toContainText("First reply.");
     assert.equal(lastTurn.mode, "chat");
     assert.equal(lastTurn.message, "My response.");
-    await expect(reading).not.toContainText("Sixth reply.");
+    await expect(reading).toContainText("Sixth reply.");
     assert.equal(await reading.evaluate((element) => element.scrollTop), 0, "a new paragraph starts at its top");
     const replyPositions = await cast.evaluateAll(
       (people, mobile) => people.map((person) => person.offsetLeft + (mobile ? person.offsetWidth / 2 : 0)),
@@ -532,11 +528,11 @@ await withBrowser(browser, async () => {
     );
     await page.getByRole("button", { name: "Close memory" }).click();
     await expect(memoryTrigger).toBeFocused();
-    for (let step = 0; step < 5; step += 1) await page.getByRole("button", { name: "Next paragraph" }).click();
+
     await expect(reading).toContainText("Sixth reply.");
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: /^Mode: /u })).toHaveCount(0);
-    const asideBand = page.locator(".marinara-capability-villages-scene-asides");
+    const asideBand = reading;
     await expect(asideBand).toContainText("A small aside rides with the final reply.");
     await expect(asideBand).toContainText("A quiet word stays visible too.");
     const asideOverflow = await asideBand.evaluate((element) => ({
@@ -544,22 +540,6 @@ await withBrowser(browser, async () => {
       clientHeight: element.clientHeight,
     }));
     assert.ok(asideOverflow.clientHeight > 0 && asideOverflow.scrollHeight >= asideOverflow.clientHeight);
-    const asideBox = await asideBand.boundingBox();
-    const finalDockBox = await dock.boundingBox();
-    assert.ok(
-      asideBox &&
-        finalDockBox &&
-        asideBox.x >= 0 &&
-        asideBox.x + asideBox.width <= width &&
-        asideBox.y >= 0 &&
-        asideBox.y + asideBox.height <= finalDockBox.y,
-      `aside and whisper bubbles stay within the ${width}x${height} viewport above the dock: ${JSON.stringify({ asideBox, finalDockBox })}`,
-    );
-    assert.equal(
-      await asideBand.evaluate((element) => getComputedStyle(element).position),
-      "absolute",
-      "asides float above the cast",
-    );
     assert.deepEqual(errors, [], `${width}×${height} renders without page errors`);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({

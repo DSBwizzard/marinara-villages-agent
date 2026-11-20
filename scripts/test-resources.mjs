@@ -123,7 +123,6 @@ export const isolatedTests = new Set([
   "tests/villages-project-navigation.e2e.mjs",
   "tests/villages-resident-planning.regression.ts",
   "tests/villages-reading-pages.e2e.mjs",
-  "tests/villages-reading-pages.regression.ts",
   "tests/villages-relationships.regression.ts",
   "tests/villages-remote-access.regression.ts",
   "tests/villages-residence-ownership.regression.ts",

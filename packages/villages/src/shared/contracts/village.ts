@@ -760,6 +760,8 @@ export type SceneView = {
   /** Residents encountered during this Scene; activeIds identifies the current Zone audience. */
   participants: RoomParticipant[];
   lines: RoomLine[];
+  /** Active lines contain one complete published reply, or the latest arrival. */
+  liveReplyId?: string;
   playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
   latestTurn?: { id: string; at: string; published: boolean };
   retryReply?: { token: string };

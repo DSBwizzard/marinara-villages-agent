@@ -10,7 +10,6 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
 import type {
   ResidentSprite,
   RoomRecordEvent,
@@ -22,21 +21,15 @@ import { createStagingCursor, stagingPresentation } from "../../../shared/helper
 import { messageFrom, request } from "../../shared/api.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
-import type { Portrait, PortraitMap, VillageBeatRegister } from "../../shared/types.js";
+import { villagesSpeechPaintStyle } from "../../shared/presentation.js";
+import type { Portrait, PortraitMap } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import type { SceneFailure } from "./scene-error-report.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
-import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
-import { scenePlaybackSteps } from "./scene-playback.js";
-import { useScenePlayback } from "./useScenePlayback.js";
-import { mobileReadingCounter } from "./villages-mobile-scene.js";
-import { useReadingPages } from "./villages-reading-viewport.js";
 import { hasCompletedRoomSubmission } from "./villages-room-reading";
-import { SceneAsides } from "./villages-scene-asides.js";
-import { SceneHistory } from "./SceneHistory.js";
+import { SceneHistory, SceneMessage } from "./SceneHistory.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
@@ -212,7 +205,6 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" | "r
 export function RoomPanel({
   room,
   worldScope,
-  sceneReading,
   mobile,
   nameColors,
   speechColors,
@@ -232,7 +224,6 @@ export function RoomPanel({
   open,
   ended,
   playerName,
-  playerPortrait,
   portraits,
   sprites,
   onDraft,
@@ -317,11 +308,6 @@ export function RoomPanel({
   onTravel?: () => void;
   currentZoneLabel: string;
 }) {
-  /** The current paragraph in this Scene's ordered reading. */
-  const { checkpoint, reset, isFounded } = sceneReading;
-  const [readStep, setReadStep] = useState(() => checkpoint.current.readStep);
-  const [revealStep, setRevealStep] = useState<string>();
-  const playback = useScenePlayback(room, worldScope, sceneReading);
   const retrying = !!retryPending || (room.operation?.kind === "retry" && room.operation.status === "running");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsView, setActionsView] = useState<"menu" | "move" | null>(null);
@@ -340,6 +326,9 @@ export function RoomPanel({
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const actionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
+  const transcriptTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const transcriptCloseRef = useRef<HTMLButtonElement | null>(null);
+  const transcriptId = useId();
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
   const [dialogueHidden, setDialogueHidden] = useState(false);
@@ -347,7 +336,6 @@ export function RoomPanel({
   const previousNoticeIds = useRef(new Set<string>());
   const presenceNotice = notices.find((notice) => notice.id.startsWith("presence:"));
   const previousLocation = useRef({ scope: worldScope, sceneId: room.id, zoneId: room.zoneId });
-  const newest = playback.newest;
 
   useEffect(() => {
     if (settingsOpen) settingsRef.current?.focus();
@@ -391,12 +379,20 @@ export function RoomPanel({
 
   useEffect(() => {
     if (!historyOpen) return;
-    window.requestAnimationFrame(() => historyRef.current?.focus());
+    const overlay = historyRef.current?.parentElement;
+    const background = [...(overlay?.parentElement?.children ?? [])].filter(
+      (node): node is HTMLElement => node instanceof HTMLElement && node !== overlay && !node.inert,
+    );
+    for (const node of background) node.inert = true;
+    window.requestAnimationFrame(() => transcriptCloseRef.current?.focus());
+    return () => {
+      for (const node of background) node.inert = false;
+    };
   }, [historyOpen]);
 
   const closeTranscript = () => {
     setHistoryOpen(false);
-    actionsTriggerRef.current?.focus();
+    window.requestAnimationFrame(() => transcriptTriggerRef.current?.focus());
   };
 
   useEffect(() => {
@@ -496,23 +492,6 @@ export function RoomPanel({
       title: "Scene opening notice",
       message: greetingNotice,
     });
-  if (playback.error)
-    errorItems.push({
-      id: "reading",
-      title: "Scene reading",
-      message: playback.error,
-      trace: playback.errorTrace,
-      actions: (
-        <>
-          <button type="button" onClick={() => void playback.retry()}>
-            Retry
-          </button>
-          <button type="button" onClick={playback.newest}>
-            Latest
-          </button>
-        </>
-      ),
-    });
   for (const change of unresolvedChanges ?? []) {
     if (change.status === "pending") continue;
     const trace = change.submissionId === heldRecoveryId ? recoveryTrace : undefined;
@@ -533,176 +512,44 @@ export function RoomPanel({
     });
   }
 
-  /** Each playback moment supplies its captured presentation and source lines. */
-  const steps = useMemo(
-    () => scenePlaybackSteps(playback.window, playerName, room.activeIds),
-    [playback.window, playerName, room.activeIds],
-  );
-  const targetStep = useRef<string | null>(null);
-  const positionedWindow = useRef<ScenePlaybackWindow | null>(null);
-  /** A new visit opens at its latest line; each append opens at its first new paragraph. */
-  useLayoutEffect(() => {
-    const select = (index: number) => {
-      targetStep.current = steps[index]?.key ?? null;
-      setReadStep(index);
-    };
-    if (isFounded === false) {
-      positionedWindow.current = null;
-      setReadStep(0);
-      return;
-    }
-    if (playback.restoring || positionedWindow.current === playback.window) return;
-    const bookmark = checkpoint.current.bookmark;
-    positionedWindow.current = playback.window;
-    if (playback.entry === "first")
-      select(
-        Math.max(
-          0,
-          playback.advanceOwned && bookmark ? steps.findIndex((step) => step.momentIndex > bookmark.momentIndex) : 0,
-        ),
-      );
-    else if (playback.entry === "last") select(Math.max(0, steps.length - 1));
-    else if (
-      bookmark?.scope === worldScope &&
-      bookmark.sceneId === room.id &&
-      bookmark.zoneArrivalId === room.zoneArrivalId
-    ) {
-      const saved = steps.findIndex((step) => step.lineId === bookmark.lineId && step.paragraph === bookmark.paragraph);
-      const newer =
-        bookmark.atEnd || playback.advanceFrom !== undefined
-          ? steps.findIndex((step) => step.momentIndex > (playback.advanceFrom ?? bookmark.momentIndex))
-          : -1;
-      if (newer >= 0) select(newer);
-      else if (saved >= 0) {
-        if (bookmark.reveal) setRevealStep(steps[saved]?.key);
-        select(saved);
-      } else if (!playback.restoring) select(Math.max(0, steps.length - 1));
-    } else select(Math.max(0, steps.length - 1));
-  }, [
-    room.id,
-    room.zoneArrivalId,
-    steps,
-    reset,
-    isFounded,
-    worldScope,
-    checkpoint,
-    playback.entry,
-    playback.restoring,
-    playback.advanceOwned,
-    playback.advanceFrom,
-    playback.window,
-  ]);
-
-  useLayoutEffect(() => {
-    if (isFounded !== false) checkpoint.current.readStep = readStep;
-  }, [checkpoint, readStep, isFounded]);
-
-  const at = Math.min(readStep, Math.max(0, steps.length - 1));
-  const step = steps[at];
-  const readingOrdinal = step?.paragraphIndex ?? 0;
-  const readingTotal = Math.max(1, room.playback.totalParagraphs, (steps.at(-1)?.paragraphIndex ?? -1) + 1);
+  const fallbackLine = room.lines.findLast((line) => line.role === "assistant" && !line.presenceChange);
+  const reply = {
+    id: room.liveReplyId ?? fallbackLine?.id ?? "",
+    lines: room.liveReplyId !== undefined ? room.lines : fallbackLine ? [fallbackLine] : [],
+  };
+  const replyLines = reply.lines.filter((line) => line.role === "assistant" && !line.presenceChange);
+  const lastLine = replyLines.at(-1);
   const stageRoomId = JSON.stringify([worldScope, room.id]);
-  const readingPages = useReadingPages(
-    step?.text ?? "",
-    step?.key ?? JSON.stringify([worldScope, room.id, "empty"]),
-    readingRef,
-    sceneReading,
-    !retrying && !playback.restoring && revealStep !== undefined && step?.key === revealStep,
-  );
   const liveFrame = useMemo(
     () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
     [room.activeIds],
   );
-  const atLatestParagraph = !step || (playback.atLatest && at === steps.length - 1);
-  const showLiveCast = atLatestParagraph && !historyOpen && !ended;
-  const tailFrame = playback.window.moments.at(-1)?.end ?? step?.presentation ?? liveFrame;
-  const tailMatchesLive =
-    tailFrame.activeIds.length === room.activeIds.length &&
-    room.activeIds.every((id) => tailFrame.activeIds.includes(id));
+  const tailFrame = room.playback.moments.at(-1)?.end;
   const stagingFrame =
-    playback.restoring || (showLiveCast && !tailMatchesLive)
-      ? liveFrame
-      : step && !atLatestParagraph
-        ? step.presentation
-        : tailFrame;
+    tailFrame &&
+    tailFrame.activeIds.length === room.activeIds.length &&
+    room.activeIds.every((id) => tailFrame.activeIds.includes(id))
+      ? tailFrame
+      : liveFrame;
   const stagingState = stagingFrame.state;
-  const previousStageReading = useRef<{ roomId: string; key?: string; at: number; restoring: boolean } | null>(null);
+  const previousReply = useRef({ sceneId: room.id, id: reply.id });
   const animateStaging = useMemo(
-    () =>
-      previousStageReading.current?.roomId === stageRoomId &&
-      previousStageReading.current.key !== step?.key &&
-      !previousStageReading.current.restoring &&
-      readingOrdinal > previousStageReading.current.at,
-    [stageRoomId, readingOrdinal, step?.key],
+    () => previousReply.current.sceneId === room.id && previousReply.current.id !== reply.id,
+    [room.id, reply.id],
   );
   useLayoutEffect(() => {
-    const initialRead = previousStageReading.current?.roomId !== stageRoomId;
-    previousStageReading.current = {
-      roomId: stageRoomId,
-      key: step?.key,
-      at: readingOrdinal,
-      restoring: initialRead && readingOrdinal !== readingTotal - 1,
-    };
-  }, [stageRoomId, readingOrdinal, readingTotal, step?.key]);
-  const canReadPrevious = at > 0 || readingPages.index > 0 || !!playback.window.olderCursor;
-  const canReadNext =
-    at < steps.length - 1 ||
-    readingPages.index < readingPages.count - 1 ||
-    (!playback.atLatest && !!playback.window.newerCursor);
-  useLayoutEffect(() => {
-    if (isFounded === false || playback.restoring) return;
-    if (!step) {
-      checkpoint.current.window = playback.window;
-      return;
-    }
-    if (targetStep.current && targetStep.current !== step.key) return;
-    targetStep.current = null;
-    checkpoint.current.bookmark = {
-      scope: worldScope,
-      sceneId: room.id,
-      zoneArrivalId: room.zoneArrivalId,
-      lineId: step.lineId,
-      paragraph: step.paragraph,
-      momentIndex: step.momentIndex,
-      anchorCursor: step.anchorCursor,
-      atEnd: !canReadNext,
-    };
-    checkpoint.current.window = playback.window;
-  }, [
-    checkpoint,
-    worldScope,
-    room.id,
-    room.zoneArrivalId,
-    step,
-    canReadNext,
-    isFounded,
-    playback.window,
-    playback.restoring,
-  ]);
+    previousReply.current = { sceneId: room.id, id: reply.id };
+  }, [room.id, reply.id]);
   useLayoutEffect(() => {
     const previous = previousLocation.current;
     previousLocation.current = { scope: worldScope, sceneId: room.id, zoneId: room.zoneId };
-    if (previous.scope === worldScope && previous.sceneId === room.id && previous.zoneId !== room.zoneId) {
+    if (previous.scope !== worldScope || previous.sceneId !== room.id || previous.zoneId !== room.zoneId)
       setHistoryOpen(false);
-      newest();
-    }
-  }, [worldScope, room.id, room.zoneId, newest]);
+  }, [worldScope, room.id, room.zoneId]);
   const canDraft = !ended && room.status === "active";
-  const canCompose =
-    canDraft &&
-    (!canReadNext || busy || !!error || !!turnRecovery || !!playback.error) &&
-    !historyOpen &&
-    (!playback.restoring || !!playback.error);
-  const canRetryReply =
-    canCompose &&
-    !busy &&
-    !readingPages.revealing &&
-    !canReadNext &&
-    !playback.busy &&
-    !playback.restoring &&
-    !!room.retryReply &&
-    !!onRetryReply;
-  const canSend = canCompose && !busy && !playback.busy && !contactRecovery;
+  const canCompose = canDraft;
+  const canRetryReply = canCompose && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
+  const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
   const resend = !draft.trim() && !!turnRecovery;
   const sendLabel = busy ? "Sending" : resend ? "Resend" : "Send";
   const travel = room.travel;
@@ -744,23 +591,11 @@ export function RoomPanel({
 
   useLayoutEffect(() => {
     if (readingRef.current) readingRef.current.scrollTop = 0;
-  }, [at, room.id, readingPages.index]);
+  }, [room.id, room.zoneArrivalId, reply.id]);
 
-  /** Each paragraph keeps its own narration or speech attribution. */
-  const register: VillageBeatRegister =
-    step?.register ??
-    (step === undefined || step.speakerId === "__venue_scene__"
-      ? "narration"
-      : step.player || classifyVillagesParagraph(step.text) === "speech"
-        ? "speech"
-        : "narration");
-
-  const speakerPortrait = step === undefined ? undefined : step.player ? playerPortrait : portraits[step.speakerId];
   const activeParticipants = room.participants.filter((person) => room.activeIds.includes(person.characterId));
-  const cast = showLiveCast
-    ? activeParticipants
-    : playback.window.participants.filter((person) => stagingFrame.activeIds.includes(person.characterId));
-  const speaker = cast.find((person) => person.characterId === step?.speakerId);
+  const cast = activeParticipants;
+  const speaker = cast.find((person) => person.characterId === lastLine?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
   const displayed = cast.slice(0, 4);
@@ -827,6 +662,7 @@ export function RoomPanel({
       <div className={`${ELEMENT_TAG}-chat-head`}>
         <span className={`${ELEMENT_TAG}-room-place`}>
           {room.placeName}
+          <span className={`${ELEMENT_TAG}-room-zone`}>{currentZoneLabel}</span>
           {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
         </span>
         <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
@@ -1274,48 +1110,6 @@ export function RoomPanel({
           ))}
         </div>
       ) : null}
-      {!dialogueHidden && !historyOpen && !retrying && !readingPages.revealing && step && step.asides.length > 0 ? (
-        <SceneAsides
-          asides={step.asides}
-          mobile={mobile}
-          positions={mobile ? mobileLayout : stageLayout}
-          renderAside={(aside, index) => (
-            <div
-              key={`${index}-${aside.register}`}
-              className={`${ELEMENT_TAG}-chat-vn-aside`}
-              data-register={aside.register}
-            >
-              <SceneFace
-                actorId={aside.speakerId ?? step.speakerId}
-                portrait={aside.speakerId ? portraits[aside.speakerId] : speakerPortrait}
-                name={aside.name ?? step.name}
-                glyph={step.player ? "person" : "initial"}
-                className={`${ELEMENT_TAG}-chat-vn-aside-face`}
-              />
-              <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
-                <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
-                  <span
-                    className={`${ELEMENT_TAG}-chat-vn-aside-name`}
-                    style={nameStyle(aside.speakerId ?? step.speakerId)}
-                  >
-                    {aside.name ?? step.name}
-                  </span>
-                  {aside.register === "whisper" && aside.target ? (
-                    <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`to ${aside.target}`}</span>
-                  ) : null}
-                </p>
-                <p
-                  className={`${ELEMENT_TAG}-chat-vn-aside-text`}
-                  style={speechStyle(aside.speakerId ?? step.speakerId)}
-                >
-                  {renderVillagesMarkdown(aside.text, `vn-aside-${index}-`)}
-                </p>
-              </div>
-            </div>
-          )}
-        />
-      ) : null}
-
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
         <div
           className={`${ELEMENT_TAG}-chat-cast`}
@@ -1342,7 +1136,7 @@ export function RoomPanel({
               <div
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
-                data-active={isSpeaker && (!mobile || register !== "narration") ? "true" : "false"}
+                data-active={isSpeaker && (!mobile || lastLine?.kind !== "narration") ? "true" : "false"}
                 data-sprite={npc || selected ? "true" : "false"}
                 data-character-id={villager.characterId}
                 data-position={slot ? stagingState[villager.characterId].position : undefined}
@@ -1369,7 +1163,7 @@ export function RoomPanel({
                     framing={sprite?.framing.mode ?? "full"}
                     enabled={spriteCardFlipEnabled}
                     animate={animateStaging}
-                    stepKey={step?.key ?? stageRoomId}
+                    stepKey={reply.id || stageRoomId}
                     onError={(url) => setFailedSpriteUrls((previous) => new Set([...previous, url]))}
                   />
                 ) : (
@@ -1402,7 +1196,6 @@ export function RoomPanel({
       </div>
 
       {canCompose &&
-      !canReadNext &&
       !turnRecovery &&
       !settingsOpen &&
       !openMemory &&
@@ -1423,18 +1216,54 @@ export function RoomPanel({
           </button>
         </div>
       ) : null}
-      <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
-        {historyOpen ? (
-          <div
+      {historyOpen ? (
+        <div
+          className={`${ELEMENT_TAG}-scene-transcript-overlay`}
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeTranscript();
+          }}
+        >
+          <section
             ref={historyRef}
-            className={`${ELEMENT_TAG}-chat-log`}
-            role="log"
-            aria-label="Scene history"
-            tabIndex={0}
+            id={transcriptId}
+            className={`${ELEMENT_TAG}-scene-transcript`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Scene transcript"
+            tabIndex={-1}
             onKeyDown={(event) => {
-              if (event.key === "Escape") closeTranscript();
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeTranscript();
+              }
+              if (event.key === "Tab") {
+                const controls = historyRef.current?.querySelectorAll<HTMLElement>(
+                  'button:not(:disabled), [href], [tabindex="0"]',
+                );
+                const first = controls?.[0],
+                  last = controls?.[controls.length - 1];
+                if (
+                  event.shiftKey &&
+                  (document.activeElement === first || document.activeElement === historyRef.current)
+                ) {
+                  event.preventDefault();
+                  last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first?.focus();
+                }
+              }
             }}
           >
+            <header className={`${ELEMENT_TAG}-scene-transcript-head`}>
+              <div>
+                <h2>Transcript</h2>
+                <p>{room.placeName}</p>
+              </div>
+              <button ref={transcriptCloseRef} type="button" aria-label="Close transcript" onClick={closeTranscript}>
+                ×
+              </button>
+            </header>
             <SceneHistory
               key={worldScope + ":" + room.id}
               sceneId={room.id}
@@ -1442,152 +1271,80 @@ export function RoomPanel({
               playerName={playerName}
               nameStyle={nameStyle}
               speechStyle={speechStyle}
+              portraits={portraits}
+              currentVisitId={room.status === "active" ? room.zoneArrivalId : undefined}
             />
-          </div>
-        ) : null}
-        {/* One readable paragraph shares the same dock with navigation and the composer at the latest paragraph. */}
-        <div
-          className={`${ELEMENT_TAG}-chat-vn-card`}
-          data-register={register}
-          data-delivery={step?.delivery}
-          hidden={historyOpen}
-        >
-          <div className={`${ELEMENT_TAG}-chat-vn-row`}>
-            {retrying ? null : register === "narration" ? (
-              <div className={ELEMENT_TAG + "-chat-vn-portrait"} aria-hidden="true">
-                <SceneControlIcon name="narrator" />
-              </div>
-            ) : (
-              <SceneFace
-                actorId={step?.speakerId}
-                portrait={speakerPortrait}
-                name={step?.name ?? playerName}
-                glyph={step?.player ? "person" : "initial"}
-                className={ELEMENT_TAG + "-chat-vn-portrait"}
-              />
-            )}
-            <div className={`${ELEMENT_TAG}-chat-vn-column`}>
-              <div className={ELEMENT_TAG + "-scene-speaker-row"}>
-                {retrying ? null : register === "narration" ? (
-                  <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
-                ) : (
-                  <p
-                    className={`${ELEMENT_TAG}-chat-vn-name`}
-                    style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
-                  >
-                    {step?.name ?? ""}
-                    {step?.viaDoorway ? (
-                      <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
-                        Nearby
-                      </span>
-                    ) : null}
-                  </p>
-                )}
-                <div className={ELEMENT_TAG + "-scene-reply-actions"}>
-                  <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
-                    <SceneControlIcon name={canRetryReply ? "retry" : "retry-unavailable"} />
-                    Retry
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={readingRef}
-                className={`${ELEMENT_TAG}-chat-vn-reading`}
-                role="region"
-                aria-label="Current paragraph"
-                aria-live="polite"
-                aria-busy={readingPages.revealing}
-                tabIndex={0}
+          </section>
+        </div>
+      ) : null}
+      <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
+        <div className={`${ELEMENT_TAG}-chat-vn-card ${ELEMENT_TAG}-scene-live-card`}>
+          <div className={`${ELEMENT_TAG}-scene-reply-head`}>
+            <span>{currentZoneLabel} · Now</span>
+            <div className={`${ELEMENT_TAG}-scene-reply-actions`}>
+              <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
+                <SceneControlIcon name={canRetryReply ? "retry" : "retry-unavailable"} /> Retry
+              </button>
+              <button
+                ref={transcriptTriggerRef}
+                type="button"
+                aria-label="Transcript"
+                aria-haspopup="dialog"
+                aria-expanded={historyOpen}
+                aria-controls={transcriptId}
+                disabled={!worldScope}
+                onClick={() => setHistoryOpen(true)}
               >
-                {retrying ? (
-                  waiting
-                ) : playback.restoring ? (
-                  <p role="status">{playback.error ? "Passage unavailable." : "Loading…"}</p>
-                ) : step ? (
-                  register === "narration" ? (
-                    <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
-                      {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
-                    </p>
-                  ) : (
-                    <p
-                      className={`${ELEMENT_TAG}-chat-vn-text`}
-                      style={step.player ? undefined : speechStyle(step.speakerId)}
-                    >
-                      {drawVillagesNodes(readingPages.nodes, "vn-")}
-                    </p>
-                  )
-                ) : (
-                  /*
-                    A room with nothing in it, which is a room the player has just
-                    walked into and nobody has been asked anything yet.
-                  */
-                  <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
-                    {room.status === "opening"
-                      ? `Opening the Scene in ${room.placeName}…`
-                      : activeParticipants.length === 0
-                        ? `You are alone in this Zone of ${room.placeName}.`
-                        : "…"}
-                  </p>
-                )}
-                {!ended && busy && !retrying ? waiting : null}
-              </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1Zm0 0v15" />
+                </svg>{" "}
+                Transcript
+              </button>
             </div>
           </div>
-          <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            {step && !retrying ? (
-              <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
-                {mobile
-                  ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
-                  : `${readingOrdinal + 1} / ${readingTotal}`}
-              </span>
-            ) : null}
-            <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-chat-vn-button`}
-                onClick={() => {
-                  if (!readingPages.move(-1)) {
-                    if (at > 0) setReadStep(at - 1);
-                    else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
-                  }
-                }}
-                disabled={!canReadPrevious || playback.busy || retrying}
-                aria-label="Previous paragraph"
-              >
-                ‹ <span>Previous</span>
-              </button>
-              {!ended || canReadNext ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-chat-vn-button`}
-                  onClick={() => {
-                    if (readingPages.revealing) {
-                      readingPages.finishReveal();
-                      return;
-                    }
-                    if (!readingPages.move(1)) {
-                      if (at < steps.length - 1) setReadStep(at + 1);
-                      else if (!playback.atLatest && playback.window.newerCursor)
-                        void playback.load(playback.window.newerCursor, "first");
-                    }
-                  }}
-                  disabled={(!canReadNext && !readingPages.revealing) || playback.busy || retrying}
-                  aria-label="Next paragraph"
-                >
-                  <span>Next</span> ›
-                </button>
-              ) : ended ? (
-                <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
-                  Return to map
-                </button>
-              ) : null}
-            </span>
+          <div
+            ref={readingRef}
+            className={`${ELEMENT_TAG}-scene-latest-reply`}
+            role="region"
+            aria-label="Latest reply"
+            aria-live="polite"
+            aria-busy={busy}
+            tabIndex={0}
+          >
+            {retrying ? (
+              waiting
+            ) : replyLines.length ? (
+              replyLines.map((line) => (
+                <SceneMessage
+                  key={line.id}
+                  line={line}
+                  playerName={playerName}
+                  portraits={portraits}
+                  nameStyle={nameStyle}
+                  speechStyle={speechStyle}
+                />
+              ))
+            ) : (
+              <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
+                {room.status === "opening"
+                  ? `Opening the Scene in ${room.placeName}…`
+                  : activeParticipants.length === 0
+                    ? `You are alone in this Zone of ${room.placeName}.`
+                    : "…"}
+              </p>
+            )}
+            {!ended && busy && !retrying ? waiting : null}
           </div>
+          {ended ? (
+            <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
+              Return to map
+            </button>
+          ) : null}
         </div>
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
         {canCompose ? (
-          <div className={`${ELEMENT_TAG}-composer`}>
+          <div className={`${ELEMENT_TAG}-composer`} inert={historyOpen}>
             {contactRecovery && !busy ? (
               <div role="status">
                 <p>Saved Contact action · {recoveryDestination}</p>

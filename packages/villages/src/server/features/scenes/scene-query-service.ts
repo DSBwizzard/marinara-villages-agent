@@ -7,7 +7,7 @@ import {
   type ScenePlaybackMoment,
 } from "../../../shared/contracts/scene-playback.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import { publicSceneAuthority } from "../../domain/rules/scene-public.js";
+import { publicSceneAuthority, publicSceneLiveReply } from "../../domain/rules/scene-public.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
@@ -76,7 +76,7 @@ export function createSceneQueryService({
   villagesDocuments,
   retryTarget,
 }: SceneQueryPorts) {
-  async function readPublicOwner(id: string, requestedScope?: string) {
+  async function readPublicOwner(id: string, requestedScope?: string, minimumPolicy = 1) {
     const documents = villagesDocuments();
     const rawWorld = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
     if (!rawWorld) throw notFound("That Village is no longer available.");
@@ -107,7 +107,7 @@ export function createSceneQueryService({
       submissions = readSceneSubmissionHead(raw.submissionHistory, scene);
     const stored = readScenePublicHistoryHead(raw.publicHistory, scene, transcript, submissions);
     const head =
-      raw.publicHistoryPolicy === SCENE_PUBLIC_HISTORY_POLICY
+      typeof raw.publicHistoryPolicy === "number" && raw.publicHistoryPolicy >= minimumPolicy
         ? stored
         : await upgradeScenePublicHistory(documents, row, transcript, submissions, stored);
     return { documents, scope, scene, transcript, head };
@@ -116,7 +116,11 @@ export function createSceneQueryService({
     const parsed = historyQuery.safeParse(value);
     if (!parsed.success) throw badRequest("Invalid Scene history query.");
     const query = parsed.data;
-    const { documents, scope, scene, transcript, head } = await readPublicOwner(id, query.scope);
+    const { documents, scope, scene, transcript, head } = await readPublicOwner(
+      id,
+      query.scope,
+      SCENE_PUBLIC_HISTORY_POLICY,
+    );
     let direction: "older" | "newer" = "older",
       anchor = head.count;
     if (query.cursor) {
@@ -151,7 +155,7 @@ export function createSceneQueryService({
     // Keep one oversized exact entry readable; remaining entries stay behind their ordinary page cursors.
     if (direction === "older") {
       for (let index = projected.length - 1; index >= 0; index--) {
-        const size = Buffer.byteLength(JSON.stringify(projected[index]), "utf8") + 1;
+        const size = Buffer.byteLength(JSON.stringify([projected[index], entries[index].visit]), "utf8") + 1;
         if (bytes + size > HISTORY_BYTES && index < projected.length - 1) {
           first = index + 1;
           break;
@@ -160,7 +164,7 @@ export function createSceneQueryService({
       }
     } else {
       for (let index = 0; index < projected.length; index++) {
-        const size = Buffer.byteLength(JSON.stringify(projected[index]), "utf8") + 1;
+        const size = Buffer.byteLength(JSON.stringify([projected[index], entries[index].visit]), "utf8") + 1;
         if (bytes + size > HISTORY_BYTES && index > 0) {
           last = index;
           break;
@@ -174,11 +178,19 @@ export function createSceneQueryService({
       Buffer.from(
         JSON.stringify({ v: 1, scope, sceneId: id, version: head.publicVersion, direction, anchor }),
       ).toString("base64url");
+    const visits: NonNullable<SceneHistoryPage["visits"]> = [];
+    for (const entry of entries.slice(first, last)) {
+      if (!entry.visit) continue;
+      const previous = visits.at(-1);
+      if (previous?.id === entry.visit.id) previous.lineIds.push(entry.id);
+      else visits.push({ ...entry.visit, lineIds: [entry.id] });
+    }
     return {
       sceneId: id,
       scope,
       version: head.publicVersion,
       lines: projected.slice(first, last),
+      visits,
       ...(start > 0 ? { olderCursor: cursor("older", start) } : {}),
       ...(end < head.count ? { newerCursor: cursor("newer", end) } : {}),
     };
@@ -205,11 +217,23 @@ export function createSceneQueryService({
       turn?.episodeId === sceneEpisodeId(scene.villageSeed, scene.id, operation.id)
         ? new Set(turn.replyLineIds)
         : undefined;
-    const { lines, participants, retryStart, ...playback } = await playbackWindow(owner, undefined, false, replacement);
-    const cast = new Set([...scene.activeIds, ...participants.map((person) => person.characterId)]);
+    const active = scene.status !== "closed";
+    const reply = publicSceneLiveReply(scene);
+    const { lines, participants, retryStart, ...playback } = await playbackWindow(
+      owner,
+      undefined,
+      false,
+      replacement,
+      active,
+    );
+    const cast = new Set([
+      ...scene.activeIds,
+      ...(active ? reply.lines.map((line) => line.speakerId) : participants.map((person) => person.characterId)),
+    ]);
     return {
       ...publicSceneAuthority(scene),
-      lines,
+      ...(active ? { liveReplyId: reply.id } : {}),
+      lines: active ? reply.lines : lines,
       playback,
       participants: scene.participants.filter((person) => cast.has(person.characterId)),
       operation: operationSummary(scene.operation),
@@ -222,6 +246,7 @@ export function createSceneQueryService({
     encodedCursor?: string,
     fromBeginning = false,
     replacement?: ReadonlySet<string>,
+    tailOnly = false,
   ): Promise<ScenePlaybackWindow & { retryStart?: Pick<ScenePlaybackMoment, "id" | "index" | "anchorCursor"> }> {
     const id = scene.id;
     const presentation = head.presentation;
@@ -250,7 +275,7 @@ export function createSceneQueryService({
       direction = cursor.direction;
       anchor = cursor.index + (direction === "newer" ? 1 : 0);
     }
-    const start = direction === "older" ? Math.max(0, anchor - HISTORY_ROWS) : anchor;
+    const start = direction === "older" ? Math.max(0, anchor - (tailOnly ? 1 : HISTORY_ROWS)) : anchor;
     const end = direction === "older" ? anchor : Math.min(presentation.count, anchor + HISTORY_ROWS);
     const entries = await readSceneMomentRange(documents, presentation, transcript.count, start, end);
     const frames = await readSceneMomentFrames(documents, presentation, entries, scene);

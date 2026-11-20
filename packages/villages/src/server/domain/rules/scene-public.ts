@@ -271,6 +271,45 @@ export function publicSceneAuthority(scene: VenueScene) {
   return authority(scene);
 }
 
+/** Arrival supersedes earlier replies; held and private lines never enter the live card. */
+export function publicSceneLiveReply(scene: VenueScene) {
+  const visible = sceneLineVisibility(scene.submissions);
+  const lines = scene.lines.filter(visible);
+  const arrival = lines.findLastIndex((line) => line.id.startsWith("arrival-") && !!publicLine(line));
+  const tail = lines.findLast(
+    (line, index) => index >= arrival && line.role === "assistant" && !line.presenceChange && !!publicLine(line),
+  );
+  if (!tail) return { id: "", lines: [] };
+  const publicIds = new Set(
+    lines
+      .slice(Math.max(0, arrival))
+      .filter((line) => !!publicLine(line))
+      .map((line) => line.id),
+  );
+  const turn = scene.submissions.findLast(
+    (turn) => sceneTurnPublished(turn) && turn.replyLineIds?.some((id) => publicIds.has(id)),
+  );
+  if (
+    arrival < 0 &&
+    turn &&
+    ((turn.zoneIdAtTurn && scene.zoneId && turn.zoneIdAtTurn !== scene.zoneId) ||
+      scene.navigationReceipts?.some(
+        (receipt) =>
+          receipt.originZoneId !== receipt.destinationZoneId && Date.parse(receipt.at) >= Date.parse(turn.at),
+      ))
+  )
+    return { id: "", lines: [] };
+  const ids = new Set(turn?.replyLineIds ?? [arrival >= 0 ? lines[arrival].id : tail.id]);
+  const projected = publicSceneResponse(
+    lines.filter((line, index) => index >= arrival && ids.has(line.id)),
+    new Set(scene.participants.map((person) => person.characterId)),
+  );
+  return {
+    id: turn?.episodeId ?? projected[0]?.id ?? "",
+    lines: projected,
+  };
+}
+
 /** Explicit public fields: the private fit, sources, native authority and purchased proposals never cross this boundary. */
 export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
   if (Array.isArray(value))

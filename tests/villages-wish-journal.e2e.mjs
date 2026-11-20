@@ -379,8 +379,8 @@ await withBrowser(browser, async () => {
     // Fresh notices open after rendering; clicking during that effect would race and close the panel.
     await expect(notices).toHaveAttribute("aria-expanded", "true");
     await page.getByRole("textbox", { name: "Message at The Mill" }).fill("Unsaved Scene draft");
-    await page.getByRole("button", { name: /Previous/ }).click();
-    const reader = page.getByRole("region", { name: "Current paragraph" });
+
+    const reader = page.getByRole("region", { name: "Latest reply" });
     const retainedReader = await reader.elementHandle();
     const readingText = await reader.textContent();
     await reader.evaluate((node) => {
@@ -402,12 +402,11 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true })
       .focus();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
     await expect(reader).toHaveText(readingText);
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true);
     assert.equal(await reader.evaluate((node) => node.scrollTop), readingScroll);
-    while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
-      await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsaved Scene draft");
     assert.equal(writes, 2, "The only writes are explicit following and Scene entry");
     assert.deepEqual(errors, []);
