@@ -487,7 +487,8 @@ export function useFoundVillage(ports: {
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
         setSetupStep(FOUNDING_STEP.Venues);
-        window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
+        if (!window.matchMedia("(max-width:727px)").matches)
+          window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);
       return;

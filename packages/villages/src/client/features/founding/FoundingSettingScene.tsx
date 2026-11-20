@@ -191,11 +191,7 @@ export function FoundingSettingScene({
           onChange={(event) => controller.setSetupWorldName(event.currentTarget.value)}
         />
       </FoundingField>
-      <FoundingField
-        title="World description"
-        description="A quick picture of the wider setting for Mari’s draft."
-        optional
-      >
+      <FoundingField title="World description" optional>
         <textarea
           autoComplete="off"
           rows={2}
@@ -208,7 +204,7 @@ export function FoundingSettingScene({
           }}
         />
       </FoundingField>
-      <FoundingField title="World rules" description="Facts or limits that should always hold in play." optional>
+      <FoundingField title="World rules" optional>
         <textarea
           autoComplete="off"
           aria-label="World rules"
@@ -235,7 +231,7 @@ export function FoundingSettingScene({
   const villageFields = (
     <>
       {villageNameField}
-      <FoundingField title="Tell Mari about your village" error={villageBriefError}>
+      <FoundingField title="What is the village like?" error={villageBriefError}>
         <textarea
           rows={2}
           autoComplete="off"
@@ -418,10 +414,7 @@ export function FoundingSettingScene({
           scrollBody
           onClose={closePopup}
         >
-          <div className="villages-setting-fields">
-            <p>{worldQuestion}</p>
-            {worldField}
-          </div>
+          <div className="villages-setting-fields">{worldField}</div>
           <footer>
             <button type="button" onClick={closePopup}>
               Back
@@ -434,10 +427,7 @@ export function FoundingSettingScene({
       ) : null}
       {phone && namingVillage && popup === "village" ? (
         <FoundingDialog title="Your Village" className="villages-setting-fields-dialog" scrollBody onClose={closePopup}>
-          <div className="villages-setting-fields">
-            <p>{script["village-overview"][lineIndex]}</p>
-            {villageFields}
-          </div>
+          <div className="villages-setting-fields">{villageFields}</div>
           <footer>
             <button type="button" onClick={closePopup}>
               Back

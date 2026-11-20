@@ -900,6 +900,7 @@ export async function verifyFoundingLayout(group) {
         const worldPopup = root.getByRole("dialog", { name: "The wider world", exact: true });
         if (phone) {
           await expect(worldPopup).toBeVisible();
+          await expect(worldPopup.locator("header")).toBeFocused();
           await expect(worldPopup.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 0.99 });
           const popupBounds = await worldPopup.boundingBox();
           assert.ok(popupBounds.x >= frame.x + 10 && popupBounds.x + popupBounds.width <= frame.x + frame.width - 10);
@@ -915,15 +916,21 @@ export async function verifyFoundingLayout(group) {
           await expect(worldPopup).toBeVisible();
         }
         const worldForm = phone ? worldPopup : scene;
-        await expect(worldForm.getByText(/^What World does your Village take place in\?/)).toBeVisible();
+        if (phone) {
+          await expect(worldForm.getByText(/^What World does your Village take place in\?/)).toHaveCount(0);
+          await expect(worldForm.getByRole("textbox").first()).not.toBeFocused();
+          const worldFields = worldPopup.locator(".villages-setting-fields");
+          assert.ok(
+            await worldFields.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+            "All World fields fit without scrolling",
+          );
+        } else await expect(worldForm.getByText(/^What World does your Village take place in\?/)).toBeVisible();
         await expect(worldForm.locator(".villages-founding-field-heading label")).toHaveText([
           /^World name/,
           /^World description/,
           /^World rules/,
         ]);
         await expect(worldField).toBeVisible();
-        await expect(worldField).toHaveAccessibleDescription(/wider setting/);
-        await expect(worldRules).toHaveAccessibleDescription(/hold in play/);
         if (!phone) {
           const chartLabel = hierarchy.locator("text").first();
           await worldField.focus();
@@ -975,6 +982,7 @@ export async function verifyFoundingLayout(group) {
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
         const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
+        if (phone) await expect(picker.locator("header")).toBeFocused();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
         const lorePageSize = phone ? 6 : 12;
         await expect(loreResults.getByRole("checkbox")).toHaveCount(lorePageSize);
@@ -1099,7 +1107,7 @@ export async function verifyFoundingLayout(group) {
         await expect(villageName).toBeHidden();
         await nextLine();
         const namingDialog = root.getByRole("dialog", { name: "Your Village", exact: true });
-        const villageBrief = root.getByLabel("Tell Mari about your village", { exact: true });
+        const villageBrief = root.getByLabel("What is the village like?", { exact: true });
         const finishNaming = () =>
           phone ? namingDialog.getByRole("button", { name: "Next", exact: true }).click() : nextLine();
         if (phone) {
@@ -1109,6 +1117,8 @@ export async function verifyFoundingLayout(group) {
           await expect(button("Next")).toBeInViewport({ ratio: 1 });
           await nextLine();
           await expect(namingDialog.getByRole("textbox", { name: "Village Name" })).toBeVisible();
+          await expect(namingDialog.locator("header")).toBeFocused();
+          await expect(namingDialog.getByText(/^What should we call your Village/)).toHaveCount(0);
           await expect(namingDialog.getByRole("button", { name: "Next" })).toBeInViewport({ ratio: 0.99 });
         } else {
           await expect(namingDialog).toHaveCount(0);
@@ -2009,7 +2019,8 @@ export async function verifyFoundingLayout(group) {
         await settingNext().click();
         await expect(sheet).toBeVisible();
         await expect(appearance).toHaveAttribute("aria-invalid", "true");
-        await expect(appearance).toBeFocused();
+        if (phone) await expect(appearance).not.toBeFocused();
+        else await expect(appearance).toBeFocused();
         await appearance.fill(savedAppearance);
         await closeVenue();
         await editVenue("founding-home:player");
@@ -2030,7 +2041,8 @@ export async function verifyFoundingLayout(group) {
         await closeVenue();
         await settingNext().click();
         await expect(sheet.locator(".villages-quick-selected-zone")).toHaveAttribute("data-zone-id", "common:base");
-        await expect(purpose).toBeFocused();
+        if (phone) await expect(purpose).not.toBeFocused();
+        else await expect(purpose).toBeFocused();
         await purpose.fill(savedPurpose);
         await closeVenue();
         await expect(root).toHaveAttribute("data-step", "3");

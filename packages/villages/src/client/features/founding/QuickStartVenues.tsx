@@ -159,13 +159,13 @@ export function QuickStartVenues({
     if (!open || (!inlineOpen && !focusIssue)) return;
     const frame = requestAnimationFrame(() => {
       const target =
-        (focusIssue && venueWorkspace.current?.querySelector<HTMLElement>('[aria-invalid="true"]')) ||
+        (!mobile && focusIssue && venueWorkspace.current?.querySelector<HTMLElement>('[aria-invalid="true"]')) ||
         (inlineOpen ? venueBack.current : null);
       target?.focus();
       target?.scrollIntoView({ block: "nearest" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, inlineOpen, selected?.id, focusIssue]);
+  }, [open, inlineOpen, selected?.id, focusIssue, mobile]);
   const zoneAccess = zone && selected ? (zone.access ?? draftZonePolicy(selected, zone, personal)) : undefined;
   const area = zoneId === "exterior" ? "exterior" : personal ? "private" : "interior";
   const artworkZone = zone;

@@ -166,7 +166,7 @@ await withBrowser(browser, async () => {
         await next.click();
       }
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
-      await root.getByLabel("Tell Mari about your village", { exact: true }).fill("A village beside the sea.");
+      await root.getByLabel("What is the village like?", { exact: true }).fill("A village beside the sea.");
       if (phone)
         await root
           .getByRole("dialog", { name: "Your Village", exact: true })

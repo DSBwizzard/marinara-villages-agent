@@ -834,7 +834,6 @@ export const VILLAGES_FORGING_STYLES = `
   .villages-forging-v2 .villages-chapter-menu [role=alert] { color:#ff9ba5; }
   .villages-forging-v2 .villages-founding-overlay>dialog.villages-setting-fields-dialog { overflow:hidden; }
   .villages-setting-fields { min-height:0; overflow:auto; }
-  .villages-forging-v2 .villages-setting-fields>p { margin:.3rem 0 .5rem; line-height:1.35; }
   .villages-setting-fields-dialog .villages-founding-field { margin:.4rem 0; }
   .villages-setting-fields-dialog .villages-founding-field-heading label { font-size:.9rem; }
   .villages-forging-v2 .villages-setting-fields-dialog .villages-founding-field-description { font-size:.8rem; line-height:1.35; }

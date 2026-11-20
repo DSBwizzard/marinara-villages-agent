@@ -319,6 +319,7 @@ export function AgentConnectionsControls({
           className={`${P}-model-picker`}
           dismissible={!kind}
           showCloseButton={!kind}
+          focusHeaderOnMobile={!!kind}
         >
           <div className={`${P}-model-picker-body`}>
             <p>{job.purpose}</p>

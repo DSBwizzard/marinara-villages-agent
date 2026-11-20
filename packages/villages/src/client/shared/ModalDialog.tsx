@@ -9,6 +9,7 @@ export function ModalDialog({
   scrollBody = false,
   dismissible = true,
   showCloseButton = true,
+  focusHeaderOnMobile = false,
   headerContent,
   headerless = false,
   className = "",
@@ -21,6 +22,7 @@ export function ModalDialog({
   scrollBody?: boolean;
   dismissible?: boolean;
   showCloseButton?: boolean;
+  focusHeaderOnMobile?: boolean;
   headerContent?: ReactNode;
   headerless?: boolean;
   className?: string;
@@ -31,6 +33,12 @@ export function ModalDialog({
   useEffect(() => {
     const opener = document.activeElement;
     const node = dialog.current;
+    const keepKeyboardClosed = focusHeaderOnMobile && window.matchMedia("(max-width:727px)").matches;
+    const heading = keepKeyboardClosed ? node?.querySelector<HTMLElement>("header") : null;
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.autofocus = true;
+    }
     const background = new Map<HTMLElement, boolean>();
     if (scope && node) {
       for (const child of scope.children) {
@@ -44,9 +52,16 @@ export function ModalDialog({
       const restoreFocus = !scope || node?.contains(document.activeElement) || document.activeElement === document.body;
       node?.close();
       for (const [child, inert] of background) child.inert = inert;
-      if (restoreFocus && opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
+      if (restoreFocus && opener instanceof HTMLElement && opener.isConnected) {
+        const target =
+          keepKeyboardClosed && opener.matches("input,textarea,select,[contenteditable]")
+            ? opener.closest("dialog")?.querySelector<HTMLElement>("header")
+            : opener;
+        if (target) target.focus({ preventScroll: true });
+        else opener.blur();
+      }
     };
-  }, [scope]);
+  }, [scope, focusHeaderOnMobile]);
   const content = (
     <dialog
       ref={dialog}

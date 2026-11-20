@@ -225,10 +225,11 @@ export function createFoundingGenerateSetupImage(ports: {
     if (!description.trim()) {
       setSelectedSetupVenueId(venue.id);
       setSetupProblem(`Add an ${area} description before generating its image.`);
-      window.setTimeout(
-        () => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${area}-description`)?.focus(),
-        0,
-      );
+      if (!window.matchMedia("(max-width:727px)").matches)
+        window.setTimeout(
+          () => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${area}-description`)?.focus(),
+          0,
+        );
       return;
     }
     const sourceKey = setupImageContextKey;

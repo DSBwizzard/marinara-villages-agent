@@ -417,7 +417,7 @@ export function FoundingScreen({
             second = b.getBoundingClientRect();
           return first.top - second.top || first.left - second.left;
         })[0];
-      target?.focus({ preventScroll: true });
+      if (!phone) target?.focus({ preventScroll: true });
       target?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);
@@ -430,6 +430,7 @@ export function FoundingScreen({
     beat,
     settingEditorOpen,
     setSettingEditorOpen,
+    phone,
   ]);
   if (screen === "setup") {
     const connectionPrompt = (
