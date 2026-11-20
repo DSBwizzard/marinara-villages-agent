@@ -16,7 +16,7 @@ const errors = [];
 
 async function fixture({ restored = true, recovery = "failed", connectionError = "", width = 375 } = {}) {
   const page = await browser.newPage({
-    viewport: { width, height: 840 },
+    viewport: { width, height: 740 },
     isMobile: width < 600,
     hasTouch: width < 600,
   });
@@ -275,7 +275,7 @@ await withBrowser(browser, async () => {
     const retry = dock.getByRole("button", { name: "Retry opening", exact: true });
     await expect(retry).toBeVisible();
     const bounds = await retry.boundingBox();
-    assert(bounds.x >= 0 && bounds.x + bounds.width <= width && bounds.y > 420 && bounds.y + bounds.height <= 840);
+    assert(bounds.x >= 0 && bounds.x + bounds.width <= width && bounds.y > 370 && bounds.y + bounds.height <= 740);
     assert(bounds.height >= 44, "opening retry has a usable touch target");
     f.succeedNextGreeting();
     await retry.click();
