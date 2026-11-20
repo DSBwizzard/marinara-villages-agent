@@ -22,6 +22,8 @@ import {
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { withMariSpriteDefaults } from "../packages/villages/src/server/domain/rules/professor-mari.js";
+import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 
 const state = socialWorldFixture();
 state.setupAt = "2026-11-01T08:30:00.000Z";
@@ -77,6 +79,8 @@ state.visitors = [
     visitsRevision: "mari",
   },
 ];
+state.visitors[0]!.spriteManager = withMariSpriteDefaults(PROFESSOR_MARI_ID, null);
+state.visitors[0]!.sprite = managerResidentSprite(state.visitors[0]!.spriteManager, PROFESSOR_MARI_ID);
 for (let i = 0; i < 100; i++) {
   state.seed = "arrival-" + i;
   settleVisitorTrip(state, due);
@@ -147,6 +151,29 @@ appendVisitorIntroductionTutorial(scene);
 const tutorial = structuredClone(scene.lines);
 appendVisitorIntroductionTutorial(scene);
 assert.deepEqual(scene.lines, tutorial, "The fixed tutorial appends only once");
+const sprite = scene.continuity!.facts.visitors![0]!.sprite!;
+const cues = scene.lines.flatMap((line) => line.staging ?? []);
+assert(
+  new Set(cues.map((cue) => cue.expression)).size >= 6,
+  "The fixed explanation uses several expressions instead of holding the greeting's mood",
+);
+assert(
+  cues.every((cue) => sprite.expressions.some((row) => row.view === "front" && row.expressionId === cue.expression)),
+  "Only captured front-facing expressions may be saved",
+);
+assert.deepEqual(
+  coerceSession(scene).lines.map((line) => line.staging),
+  scene.lines.map((line) => line.staging),
+  "Reload preserves concrete expression choices",
+);
+const portrait = structuredClone(scene);
+portrait.lines = [];
+portrait.continuity!.facts.visitors![0]!.sprite = null;
+appendVisitorIntroductionTutorial(portrait);
+assert(
+  portrait.lines.every((line) => !line.staging),
+  "Portrait fallback never invents sprite assignments",
+);
 scene.status = "active";
 assert(scene.lines.every((line) => line.heardBy.includes("player") && line.heardBy.length === 2));
 completeVisitorIntroduction(state, scene);
@@ -171,6 +198,17 @@ assert.equal(
 completeVisitorIntroduction({ ...state, setupAt: "2027-01-01T00:00:00Z" }, scene);
 assert.equal(JSON.stringify(state.visitorIntroduction), saved, "Another world cannot conclude this tutorial");
 assert(!visitorIntroductionDue(state, new Date(due.getTime() + 86_400_000)));
+const replay = structuredClone(state);
+replay.visitorIntroduction = { sceneId: "mari-first-visit-preview-replay", completedAt: "" };
+assert.equal(visitorIntroductionId(replay), replay.visitorIntroduction.sceneId);
+assert(visitorIntroductionDue(replay, due));
+const oldReceipt = structuredClone(replay.visitorIntroduction);
+completeVisitorIntroduction(replay, scene);
+assert.deepEqual(
+  replay.visitorIntroduction,
+  oldReceipt,
+  "An old completed Scene cannot consume a newly reserved introduction",
+);
 console.log(
   "Mari's first visit respects elapsed founding time, quiet public entrances, saved meeting identity and once-only conclusion.",
 );

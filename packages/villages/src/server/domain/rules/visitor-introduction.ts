@@ -8,10 +8,11 @@ import { zoneClosed } from "./venue-zones.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
 import { hasAssociatedNpc } from "./places.js";
 import { PROFESSOR_MARI_ID } from "../../../shared/helpers/professor-mari.js";
+import { resolveSpriteExpression } from "./sprite-expressions.js";
 
 export { PROFESSOR_MARI_ID } from "../../../shared/helpers/professor-mari.js";
 export const visitorIntroductionId = (state: VillageState) =>
-  "mari-first-visit-" + memoryHash(villageWorldScope(state)).slice(0, 32);
+  state.visitorIntroduction?.sceneId || "mari-first-visit-" + memoryHash(villageWorldScope(state)).slice(0, 32);
 
 export function visitorIntroductionDue(state: VillageState, now: Date) {
   return (
@@ -72,42 +73,51 @@ export function writeVisitorIntroduction(scene: VenueScene, state: VillageState)
 export function appendVisitorIntroductionTutorial(scene: VenueScene) {
   if (!scene.visitorIntroduction) return;
   const mari = scene.participants.find((person) => person.characterId === PROFESSOR_MARI_ID)!;
-  const paragraphs: ["narration" | "dialogue", string][] = [
-    ["dialogue", "Wondering why I'm here?"],
-    ["dialogue", "Me too!"],
+  const paragraphs: ["narration" | "dialogue", string, string][] = [
+    ["dialogue", "Wondering why I'm here?", "Thinking"],
+    ["dialogue", "Me too!", "Surprised"],
     [
       "dialogue",
       "Just kidding. I’m your first Visitor. A prestigious position, mostly involving turning up and making myself interesting.",
+      "Playful",
     ],
     [
       "dialogue",
       "Apparently, people insist on having lives elsewhere. Very inconsiderate. So to solve this, you can choose unused Character Cards you’d like to allow to visit your Village. Just add them in the People menu, under Visitors.",
+      "Neutral",
     ],
     [
       "dialogue",
       "Once you’ve met a Visitor in a Scene, you can write them letters or expect to see them visit again every once in a while. Feel free to get to know them. A village boundary is a rather poor excuse to abandon a promising friendship.",
+      "Happy",
     ],
     [
       "dialogue",
       "Of course, since free will remains a terribly inconvenient feature, you can switch them off in Character Tools if you’d rather stop someone’s visits altogether.",
+      "Playful",
     ],
     [
       "dialogue",
       "So that's all I have for you about Visitors. All the company, considerably less paperwork. And who knows, if they like it enough, maybe you can convince them to move into the Village proper.",
+      "Thinking",
     ],
     [
       "dialogue",
       "Today’s just a quick hello for me. I’ll let you get back to village life before this tutorial develops footnotes. Do write sometime. I’m excellent company when I’m not explaining buttons.",
+      "Wave",
     ],
     [
       "narration",
       "Mari gives a small wave and heads back down the road. The entrance settles into its ordinary rhythm again.",
+      "Wave",
     ],
   ];
   const at = scene.lines.at(-1)?.at ?? scene.startedAt;
-  for (const [index, [kind, content]] of paragraphs.entries()) {
+  const sprite = scene.continuity?.facts.visitors?.find((person) => person.characterId === PROFESSOR_MARI_ID)?.sprite;
+  for (const [index, [kind, content, mood]] of paragraphs.entries()) {
     const id = `${scene.id}-visitors-${index}`;
     if (scene.lines.some((line) => line.id === id)) continue;
+    const expression = resolveSpriteExpression(sprite, mood, false, "front", 0);
     scene.lines.push({
       id,
       role: "assistant",
@@ -118,6 +128,7 @@ export function appendVisitorIntroductionTutorial(scene: VenueScene) {
       name: kind === "dialogue" ? mari.name : "Narration",
       zoneId: scene.zoneId,
       heardBy: ["player", PROFESSOR_MARI_ID],
+      ...(expression ? { staging: [{ characterId: PROFESSOR_MARI_ID, expression }] } : {}),
     });
   }
 }

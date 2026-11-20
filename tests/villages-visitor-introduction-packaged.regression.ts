@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
-import { fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import { fixtureSceneState, fixtureVillageState } from "./helpers/village-storage.fixture.js";
 
 let server = await packagedSceneServer({
   configure(world, stamp) {
@@ -150,13 +150,49 @@ try {
   );
   const closed = fixtureSceneState(server.records.get("villages-venue-visit-" + scene.id).data, server.records);
   assert.equal(closed.endReason, "scene");
+  const replayRoot = server.records.get("villages-village");
+  const priorEpisode = fixtureVillageState(replayRoot.data, server.records).episodes.records.find(
+    (row) => row.sceneId === scene.id,
+  )!;
+  assert(priorEpisode);
+  const replayId = "mari-first-visit-explicit-replay";
+  replayRoot.data.visitorIntroduction = { sceneId: replayId, completedAt: "" };
+  replayRoot.data.visitors[0].incarnation = "mari-replay";
+  delete replayRoot.data.visitors[0].firstMetAt;
+  delete replayRoot.data.visitors[0].trip;
+  replayRoot.revision++;
+  const replayOpening = (await request("/rooms", { venueId: publicVenue.id, zoneId: "exterior" })).session;
+  assert.equal(replayOpening.id, replayId, "A reserved introduction gets a fresh Scene and request identity");
+  assert.equal(replayOpening.status, "opening");
+  const replayComplete = server.model.chatComplete;
+  server.model.chatComplete = async (messages: any[]) => {
+    await replayComplete(messages);
+    return {
+      content: JSON.stringify({
+        segments: [{ kind: "dialogue", speakerId: "__professor_mari__", text: "A fresh hello." }],
+      }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  const replay = (await request("/rooms/greet", { sessionId: replayId })).session;
+  assert.equal(replay.lines[0].content, "A fresh hello.");
+  assert(new Set(replay.lines.flatMap((line: any) => line.staging?.map((cue: any) => cue.expression) ?? [])).size >= 6);
+  assert.deepEqual(
+    fixtureVillageState(server.records.get("villages-village").data, server.records).episodes.records.find(
+      (row) => row.id === priorEpisode.id,
+    ),
+    priorEpisode,
+    "The replay never rewrites the prior accepted greeting",
+  );
+  await request("/rooms/end", { sessionId: replayId, expectedSceneRevision: replay.sceneRevision });
   const ordinary = await request("/rooms", { venueId: publicVenue.id, zoneId: "exterior" });
   assert.equal(
     ordinary.session.visitorIntroduction,
     undefined,
     "Normal play resumes without repeating Mari's introduction",
   );
-  assert.equal(server.calls(), 0);
+  assert.equal(server.calls(), 1, "Only the explicit replay bought a new mocked greeting");
   await request("/rooms/end", {
     sessionId: ordinary.session.id,
     expectedSceneRevision: ordinary.session.sceneRevision,
