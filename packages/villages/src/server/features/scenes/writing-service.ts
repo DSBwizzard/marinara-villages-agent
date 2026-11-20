@@ -182,6 +182,7 @@ export function createSceneWriting({
       input,
       villageNow(authority.clock?.advanceMs ?? 0).toISOString(),
       !nativeCommands,
+      mode === "chat" && !nativeCommands,
     );
     let loreInspection: LoreInspection | undefined;
     let loreRequirements: number[][][] = [];
@@ -393,6 +394,9 @@ export function createSceneWriting({
             ? "For a lasting Room fact changed by repair, cite the actual observed work and use the affected supplied Room entry ID in replace."
             : "",
           nativeCommands && (context.circumstance || context.repairs.length) ? NARRATION_CIRCUMSTANCE_COMMANDS : "",
+          context.exactOfferAssent
+            ? 'Code applies the player’s exact assent to the saved offer. Omit its keep. Use "accept-offer" in requires on any line claiming acceptance.'
+            : "",
           sprites.length
             ? 'Optional staging:[{characterId,expression?,look?:{target:"player"|"villager"|"direction",characterId?,direction?}}] uses supplied sprite choices and visible actors. Code owns placement.'
             : "",
@@ -435,7 +439,7 @@ export function createSceneWriting({
               },
             ]
           : []),
-        ...(!nativeCommands && openOffers.length
+        ...(!nativeCommands && openOffers.length && !context.exactOfferAssent
           ? [{ text: SCENE_OFFER_DECISION, requiresEvidence: [openOffers] }]
           : []),
       ],
