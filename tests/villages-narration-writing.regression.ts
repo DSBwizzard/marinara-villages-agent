@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
+// Test cases: narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -105,8 +105,9 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
     unavailable = false,
     overflow = false,
     hiddenRequest = false,
-    configuredConnection = "narration",
+    configuredConnection: string | null = "narration",
     usedModel = "";
+  let resolutionFailure: Error | undefined;
   const model = {
     model: modelId,
     connectionId: "narration",
@@ -134,6 +135,7 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
       resolveForRequest: async ({ connectionId }: { connectionId: string }) => {
         calls.resolutions++;
         assert(!unavailable);
+        if (resolutionFailure) throw resolutionFailure;
         return { ...model, connectionId, model: connectionId === "changed" ? "different-model" : model.model };
       },
     }),
@@ -183,12 +185,40 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
       configuredConnection = "changed";
     },
     usedModel: () => usedModel,
+    failConnection: (cause: Error, connectionId: string | null = "narration") => {
+      resolutionFailure = cause;
+      configuredConnection = connectionId;
+    },
     nextOperation: (id: string) => {
       operationId = id;
       checkpoints.clear();
     },
   };
 }
+
+await runCase("narration-writing/connection-failure", async () => {
+  for (const id of ["missing-gm", null]) {
+    const f = fixture();
+    f.failConnection(new Error("No language model connection selected"), id);
+    await assert.rejects(f.writing.prepareVenueTurnMessages(f.scene, "Hello", "greet"), (error: any) => {
+      assert.equal(error.code, "AI_CONNECTION_NOT_CONFIGURED");
+      assert.equal(
+        error.message.split("\n")[0],
+        `GM connection is not configured: ${id ? JSON.stringify(id) : "Engine default"}.`,
+      );
+      return true;
+    });
+    assert.equal(f.calls.purchases, 0);
+    assert.equal(f.checkpoints.size, 0);
+  }
+  const f = fixture(),
+    networkError = new Error("Network unavailable");
+  f.failConnection(networkError);
+  await assert.rejects(
+    f.writing.prepareVenueTurnMessages(f.scene, "Hello", "greet"),
+    (error) => error === networkError,
+  );
+});
 
 await runCase("narration-writing/activation-owner", async () => {
   const a = createActivationScope(),

@@ -23,7 +23,8 @@ export function sceneErrorCause(original: string): string {
   return original
     .trim()
     .replace(/^(?:Error|VillagesRequestError|VillageApiError):\s*/u, "")
-    .replace(/\s*\(HTTP \d+; [^)]+\)/gu, "");
+    .replace(/\s*\(HTTP \d+; [^)]+\)/gu, "")
+    .replace(/ Retry it or continue without an opening\.$/u, "");
 }
 
 /** Returns only fixed strings safe to include in a shareable report. */
@@ -160,8 +161,17 @@ export function sceneErrorCategory(message: string): string | undefined {
   return rules.find(([pattern]) => pattern.test(message))?.[1];
 }
 
+export function isSceneConnectionError(message: string): boolean {
+  const cause = sceneErrorCause(message);
+  return (
+    cause.startsWith("GM connection is not configured: ") ||
+    sceneErrorCategory(cause) === "The game has no usable AI connection."
+  );
+}
+
 export function sceneErrorMessage(original: string): string {
   const message = sceneErrorCause(original);
+  if (message.startsWith("GM connection is not configured: ")) return message.split("\n")[0]!;
   const friendly = sceneErrorCategory(message);
   if (friendly) return friendly;
   // Keep the cause in the panel and the recovery details in the copied report.
