@@ -1,3 +1,4 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: common-wishes/founding, common-wishes/save-recovery, common-wishes/empty, common-wishes/knowledge, common-wishes/incarnation, common-wishes/consumed-protection, common-wishes/founding-coordinator, common-wishes/routine-protection, common-wishes/prior-protection
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -6,10 +7,7 @@ import { createBackgroundWork } from "../packages/villages/src/server/jobs/backg
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   continuityWishes,
   changeContinuityMemory,

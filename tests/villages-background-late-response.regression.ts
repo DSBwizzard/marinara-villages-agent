@@ -1,7 +1,7 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";

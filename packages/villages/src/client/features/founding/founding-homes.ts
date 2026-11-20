@@ -128,7 +128,7 @@ export function reconcileFoundingRoster(
   rows: SetupVenueDraft[],
   actors: { id: string; name: string }[],
   addedIds: string[],
-  communityVenueId: string,
+  openingVenueId: string,
 ): SetupVenueDraft[] {
   const ids = actors.map((actor) => actor.id);
   const next = rows.map((venue) => {
@@ -174,8 +174,16 @@ export function reconcileFoundingRoster(
       next.push(reconcileFoundingHome(venue));
     }
   }
-  if (!next.some((venue) => venue.id === communityVenueId) && next.length < 16) {
-    const venue = newSetupVenue(communityVenueId, "community", 0.5, 0.5);
+  for (const [id, name] of [
+    [openingVenueId, "Meeting place"],
+    ["founding-community", "Meeting place"],
+    ["founding-garden", "Shared space"],
+  ]) {
+    if (next.filter((venue) => venue.classes?.some((kind) => kind !== "residence")).length >= 2) break;
+    if (next.some((venue) => venue.id === id) || next.length >= 16) continue;
+    const venue = newSetupVenue(id!, "community", 0.5, 0.5);
+    venue.name = name!;
+    while (next.some((row) => row.name === venue.name)) venue.name += " 2";
     venue.presentation = { ...venue.presentation, x: null, y: null };
     next.push(venue);
   }

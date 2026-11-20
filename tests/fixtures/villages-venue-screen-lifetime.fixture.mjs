@@ -13,7 +13,6 @@ export async function createVenueScreenHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
-import {PublicMeetingPlace} from './packages/villages/src/client/features/settings/PublicMeetingPlace.js';
 import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
@@ -40,7 +39,7 @@ poll:()=>rawSnapshot(current=>structuredClone(current)),hydrate:()=>rawSnapshot(
 removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.filter(v=>v.id!==venueId)}})),
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
-return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{window.meetingPlace?<PublicMeetingPlace snapshot={snapshot} onSnapshot={setSnapshot}/>:<VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
+return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{<VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
 homeBuildings:[],mobile:true,room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
@@ -161,7 +160,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       accessCommand,
       zoneBody,
       strict,
-      meetingPlace: options.meetingPlace ?? false,
       page: options.page ?? "edit",
       initialZone: options.zone ?? "zone / same",
       occupied: options.occupied ?? false,
@@ -212,56 +210,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
 /** Actual owner and delegated panels; HTTP is held independently and never reaches providers. */
 export async function verifyVenueScreenLifetimes(browser) {
   const mount = await createVenueScreenHarness(browser);
-  for (const width of [1366, 390]) {
-    const f = await mount(true, width, {
-      meetingPlace: true,
-      prepareSeed: (seed) => {
-        seed.isFounded = true;
-        seed.settings.communityVenueId = "B / venue";
-        for (const venue of seed.settings.venues) {
-          venue.classes = ["other"];
-          venue.residentIds = [];
-          venue.occupancy.playerHome = false;
-          venue.accessView = {
-            revision: 1,
-            canManage: false,
-            canRecover: false,
-            canDesignateCommunity: venue.id === "A / venue",
-          };
-        }
-      },
-    });
-    await f.page.getByText("Public meeting place", { exact: true }).click();
-    await f.page.getByRole("combobox", { name: "Replacement for B / venue", exact: true }).selectOption("A / venue");
-    const choose = f.page.getByRole("button", { name: "Save meeting place", exact: true });
-    await choose.click();
-    await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
-    await expect.poll(() => f.requests.length).toBe(1);
-    assert.equal(f.requests[0].path, "/api/villages/venues/A%20%2F%20venue/access");
-    assert.equal(f.requests[0].body.action, "community-venue");
-    assert.equal(f.requests[0].body.previousVenueId, "B / venue");
-    assert.equal(f.requests[0].body.previousRevision, 1);
-    assert.equal(f.requests[0].body.expectedRevision, 1);
-    const reply = structuredClone(f.seed);
-    reply.settings.communityVenueId = "A / venue";
-    reply.settings.venues[0].accessView = {
-      revision: 2,
-      canManage: false,
-      canRecover: false,
-      canDesignateCommunity: false,
-    };
-    reply.settings.venues[1].accessView = {
-      revision: 2,
-      canManage: false,
-      canRecover: true,
-      canDesignateCommunity: true,
-    };
-    await fulfill(f.requests[0].route, { status: 200, contentType: "application/json", body: JSON.stringify(reply) });
-    await expect(choose).toBeDisabled();
-    await expect(f.page.getByRole("combobox", { name: "Replacement for A / venue", exact: true })).toHaveValue("");
-    assert.equal(f.requests.length, 1, "Selecting a Community Venue sends one bounded access command");
-    await f.finish();
-  }
   const kinds = ["name", "image", "player", "access", "retry", "zone", "residence", "proposal"];
   const paths = {
     name: "/locations/venue/A%20%2F%20venue",

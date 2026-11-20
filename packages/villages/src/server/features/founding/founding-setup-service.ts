@@ -94,7 +94,7 @@ export function createFoundingSetup({
     setting?: unknown;
     worldRules?: unknown;
     worldName?: unknown;
-    communityVenueId?: unknown;
+    openingVenueId?: unknown;
     playerBackground?: unknown;
     circumstances?: unknown;
     selectedLorebookIds?: unknown;
@@ -120,7 +120,7 @@ export function createFoundingSetup({
     if (typeof (input.worldRules ?? "") !== "string" || String(input.worldRules ?? "").length > 4096)
       throw badRequest("Standing rules must be text of at most 4,096 characters.");
     const worldRules = asTrimmedString(input.worldRules);
-    const communityVenueId = asTrimmedString(input.communityVenueId);
+    const openingVenueId = asTrimmedString(input.openingVenueId);
 
     if (input.worldName !== undefined && readWorldName(input.worldName) === null)
       throw badRequest("Use a world name within 120 characters.");
@@ -148,7 +148,7 @@ export function createFoundingSetup({
     if (!Array.isArray(input.venues)) throw badRequest("The setup needs the places you put on the map.");
     const cards = await listVillagerCards();
     const cardNames = new Map(cards.map((card) => [card.id, card.name]));
-    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, communityVenueId, villageNow());
+    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, openingVenueId, villageNow());
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
     );
@@ -225,7 +225,6 @@ export function createFoundingSetup({
       if (typeof input.timeZone === "string") state.timeZone = input.timeZone;
       state.worldRules = worldRules;
       if (input.worldName !== undefined) state.worldName = readWorldName(input.worldName)!;
-      state.communityVenueId = communityVenueId;
       state.selectedLorebookIds = selectedLorebookIds;
       state.loreTokenBudget = loreTokenBudget;
       state.maps = [townMap];
@@ -254,7 +253,7 @@ export function createFoundingSetup({
             "founding:" + state.setupAt,
             state.setupAt,
           );
-      state.opening = initialOpening([...assignedResidents], communityVenueId, randomUUID());
+      state.opening = initialOpening([...assignedResidents], openingVenueId, randomUUID());
       state.foundingPreparation = {
         status: "pending",
         completedIds: [],

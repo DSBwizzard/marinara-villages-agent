@@ -5,6 +5,7 @@ export type NarrativeTarget = {
   zoneId: string;
   name: string;
   exterior: boolean;
+  ordinaryUseRestrictionAllowed: boolean;
   room: { id: string; text: string; expiresAt?: string }[];
   roomBasis: string;
   structure: string;

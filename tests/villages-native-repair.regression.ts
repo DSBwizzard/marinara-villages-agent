@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 // Test cases: native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/missing-page, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -124,6 +125,7 @@ async function fixture() {
   let api = service();
   await repository.mutateAuthority(
     (state) => {
+      state.venues = sharedVenuesFixture();
       Object.assign(state, { seed: "repair", setupAt: at, foundedAt: at, name: "Willowmere" });
       state.villagers = ["mara", "leo"].map((id) => ({
         characterId: id,
@@ -722,7 +724,7 @@ await runCase("native-repair/stale", async () => {
 await runCase("native-repair/checkpoint", async () => {
   const f = await fixture();
   await f.repository.mutateAuthority((state) => {
-    state.venues = [venueFixture({ id: "hall", name: "Hall" })];
+    state.venues = [...[venueFixture({ id: "hall", name: "Hall" })], ...sharedVenuesFixture()];
   });
   const checkpoint = await f.api.createCheckpoint("Before edit", "before-edit"),
     record = await wishRecord(f),
@@ -777,7 +779,10 @@ await runCase("native-repair/plan-allowance", async () => {
     (state) => {
       state.timeZone = "UTC";
       state.backgroundPace = "lively";
-      state.venues = [venueFixture({ id: "square", name: "Square", category: "public" })];
+      state.venues = [
+        ...[venueFixture({ id: "square", name: "Square", category: "public" })],
+        ...sharedVenuesFixture(),
+      ];
       for (const resident of state.villagers)
         resident.agenda = agendaFixture({
           day: [

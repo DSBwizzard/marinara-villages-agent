@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { sceneHistoryFixture as fixture } from "./helpers/scene-history-store.fixture.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
@@ -280,7 +281,7 @@ try {
     }),
     /participant identity/,
   );
-  const world = { ...defaultVillageState(), seed: "seed", setupAt: at };
+  const world = { ...defaultVillageState(), venues: sharedVenuesFixture(), seed: "seed", setupAt: at };
   await f.documents.create({
     id: "villages-village",
     packageId: "villages",

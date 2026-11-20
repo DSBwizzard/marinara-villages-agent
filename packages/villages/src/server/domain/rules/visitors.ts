@@ -308,10 +308,7 @@ export function visitorPosition(
     return;
   }
   const placed = positions?.get(person.characterId);
-  const venues = [...state.venues].sort(
-    (a, b) => Number(b.id === state.communityVenueId) - Number(a.id === state.communityVenueId),
-  );
-  for (const venue of venues) {
+  for (const venue of state.venues) {
     const zones = venueZones(venue);
     for (const zone of [
       ...zones.filter((row) => row.kind !== "exterior"),

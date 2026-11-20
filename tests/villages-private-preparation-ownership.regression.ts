@@ -1,11 +1,10 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -41,28 +40,31 @@ function world(name: string) {
     backgroundPace: "off",
     villagers: [],
     venues: [
-      venueFixture({
-        id: "same-venue",
-        name: "Office",
-        form: "Station",
-        description: "Station door",
-        layoutVersion: 1,
-        classes: ["community"],
-        occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-        residentIds: [],
-        presentation: { image: null, x: 0.5, y: 0.5 },
-        zones: [
-          { ...defaultVenueSpace("other", "Station door"), id: "exterior", name: "Exterior", kind: "exterior" },
-          {
-            ...defaultVenueSpace("community"),
-            id: "same-zone",
-            name: "Office",
-            kind: "restricted",
-            controllerIds: ["player"],
-            preparation: { status: "pending" },
-          },
-        ],
-      }),
+      ...[
+        venueFixture({
+          id: "same-venue",
+          name: "Office",
+          form: "Station",
+          description: "Station door",
+          layoutVersion: 1,
+          classes: ["community"],
+          occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+          residentIds: [],
+          presentation: { image: null, x: 0.5, y: 0.5 },
+          zones: [
+            { ...defaultVenueSpace("other", "Station door"), id: "exterior", name: "Exterior", kind: "exterior" },
+            {
+              ...defaultVenueSpace("community"),
+              id: "same-zone",
+              name: "Office",
+              kind: "restricted",
+              controllerIds: ["player"],
+              preparation: { status: "pending" },
+            },
+          ],
+        }),
+      ],
+      ...sharedVenuesFixture(),
     ],
   });
 }

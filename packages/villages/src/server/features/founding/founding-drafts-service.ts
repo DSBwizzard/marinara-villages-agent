@@ -198,14 +198,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const context = readFoundingDraftContext(input.context);
     if (!setting || setting.length > MAX_SETTING_LENGTH) throw badRequest("Describe the place first.");
     const rows = rowsOf(input.venues);
-    const communityVenueId = asTrimmedString(input.communityVenueId);
-    const community = rows.find((row) => row.id === communityVenueId);
+    const openingVenueId = asTrimmedString(input.openingVenueId);
+    const community = rows.find((row) => row.id === openingVenueId);
     const residents = rows.flatMap((row) => row.residentIds);
     if (
       !community ||
-      community.venueClass === "residence" ||
-      community.residentIds.length ||
-      community.playerHome ||
       rows.filter((row) => row.playerHome).length !== 1 ||
       residents.length < 1 ||
       residents.length > 3 ||
@@ -213,7 +210,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       rows.some((row) => row.residentIds.length + Number(row.playerHome) > 4)
     )
       throw badRequest(
-        "Assign homes for one to three residents and choose a separate Community Venue before suggestions.",
+        "Assign homes for one to three residents and choose an opening gathering Venue before suggestions.",
       );
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && !rows.some((row) => row.id === targetId))
@@ -286,11 +283,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   "The player requested details for one existing Venue. Preserve its current condition and supplied physical facts. The player keeps all existing Zones, access rules, residents, sleeping assignments and map placement; your suggested layout is not applied.",
                 ]
               : []),
-            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Community Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
+            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. Starting Community Venues default to public Common Space, with distinct uses suited to the setting.",
             ...(quickStart
               ? [
-                  "Quick Start: a single-person Residence uses both Common and Private Space. A shared Residence uses a common sleeping/living space, without a Private Space. The designated Community Venue has a public Common Space.",
-                  "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Tailor the Community Venue and its Common Zone to the Village itself. These template defaults do not restrict later editing.",
+                  "Quick Start: a single-person Residence uses both Common and Private Space. A shared Residence uses a common sleeping/living space, without a Private Space. Each starting Community Venue has a public Common Space.",
+                  "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Give each Community Venue a distinct everyday use suited to the Village. These template defaults do not restrict later editing.",
                 ]
               : []),
             "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned household member. Describe the space and ordinary furnishings, not private thoughts or secrets. The explicit playerHome flag identifies the player's home; residentIds identifies its other household members.",
@@ -316,7 +313,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         setting,
         worldName: asTrimmedString(input.worldName),
         villageName,
-        communityVenueId,
+        openingVenueId,
         worldRules,
         currentCircumstances,
         venues: rows,
@@ -370,7 +367,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   form: "",
                   description: "",
                   layout:
-                    row.id === communityVenueId
+                    row.venueClass === "community"
                       ? "common"
                       : quickStart && row.venueClass === "residence"
                         ? row.residentIds.length + Number(row.playerHome) > 1
@@ -419,9 +416,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     if (draftSource)
       return {
         ...(fitted.lore.length ? { lore: fitted.lore } : {}),
-        venues: [
-          parseFoundingVenueDraft(payload, draftSource, newZoneIds, targetId === communityVenueId, villageNow()),
-        ],
+        venues: [parseFoundingVenueDraft(payload, draftSource, newZoneIds, villageNow())],
       };
     return {
       ...(fitted.lore.length ? { lore: fitted.lore } : {}),
@@ -430,8 +425,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         requestedRows.map((row) => row.id),
         requestedRows.map((row) => ({
           ...row,
-          venueClass:
-            row.id === communityVenueId ? "community" : row.venueClass === "community" ? "other" : row.venueClass,
+          venueClass: row.venueClass,
         })),
         true,
       ),

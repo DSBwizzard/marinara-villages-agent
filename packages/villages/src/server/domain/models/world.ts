@@ -606,7 +606,7 @@ export type VillageState = {
   opening?: import("../rules/opening-project.js").OpeningRecord;
   dismissedNoticeIds: string[];
   backgroundReceipts: Record<string, string>;
-  version: 18;
+  version: 19;
   name: string;
   /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;
@@ -625,7 +625,6 @@ export type VillageState = {
   /** The player's reason for starting this village, kept apart from its visual setting. */
   worldRules: string;
   worldName: string;
-  communityVenueId: string;
   /** Optional Founding role. */
   playerBackground: VillagePlayerBackground | null;
   /** Engine lorebook links; entry content is always read live. */

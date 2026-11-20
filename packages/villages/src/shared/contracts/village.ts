@@ -514,7 +514,6 @@ export type VillageSettings = {
   setting: string;
   settingMaxLength: number;
   worldRules: string;
-  communityVenueId: string;
   worldName: string | null;
   playerBackground: PlayerBackground | null;
   selectedLorebookIds: string[];

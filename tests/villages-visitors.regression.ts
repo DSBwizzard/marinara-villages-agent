@@ -16,7 +16,6 @@ import { elapsed, socialWorldFixture } from "./fixtures/social-world.fixture.js"
 import { venueFixture } from "./helpers/venues.fixture.js";
 
 const world = socialWorldFixture();
-world.communityVenueId = world.venues[0].id;
 world.timeZone = "America/Los_Angeles";
 world.visitors = world.villagers
   .splice(1)
@@ -60,7 +59,7 @@ assert.equal(nextVisitorTransition(world, arrival), nightOne.getTime());
 assert.equal(nextVisitorTransition(world, nightOne), firstMorning.getTime());
 assert.equal(visitorPosition(world, nightOne, new Map())?.zoneId, "guest");
 assert.equal(visitorPosition(world, nightTwo, new Map())?.sleeping, true);
-assert.equal(visitorPosition(world, firstMorning, new Map())?.venueId, world.communityVenueId);
+assert.equal(visitorPosition(world, firstMorning, new Map())?.venueId, world.venues[0].id);
 assert.equal(
   visitingCharacter(world, departure),
   undefined,
@@ -107,7 +106,7 @@ inn.constructionStatus = "worksite";
 settleVisitorTrip(world, nightOne);
 assert.equal(visitingCharacter(world, nightOne)?.trip.lodging, undefined);
 assert.equal(visitorPosition(world, nightOne, new Map()), undefined, "A revoked room stays off the map.");
-assert.equal(visitorPosition(world, firstMorning, new Map())?.venueId, world.communityVenueId);
+assert.equal(visitorPosition(world, firstMorning, new Map())?.venueId, world.venues[0].id);
 
 const host = venueFixture({
   id: "friend-home",

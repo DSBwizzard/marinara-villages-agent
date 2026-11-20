@@ -1,9 +1,8 @@
+import { sharedVenuesFixture } from "../helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "../helpers/venues.fixture.js";
 import { venueFixture } from "../helpers/venues.fixture.js";
 import { randomUUID } from "node:crypto";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import type {
   VillageProject,
   VillageState,
@@ -107,7 +106,7 @@ export function fixture() {
       artwork: { id: "map-art", ref: "global-gallery:map-art", url: "/map.png" },
     },
   ];
-  state.venues = [venue()];
+  state.venues = [...[venue()], ...sharedVenuesFixture()];
   state.villagers = ["a", "b", "c"].map((id) => ({
     incarnation: "founding-" + id,
     letterFontId: "caveat",

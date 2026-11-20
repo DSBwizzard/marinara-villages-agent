@@ -90,7 +90,6 @@ export function narrationAccessScopes(state: VillageState, actors: string[]) {
             venue.workerIds,
             venue.occupancy.playerHome,
             venue.zones?.map((zone) => [zone.id, zone.kind, zone.ownerId, zone.controllerIds, zone.access]),
-            state.communityVenueId,
           ]),
           authorities,
         },
@@ -419,7 +418,6 @@ export function applyNarrationAccess(
       at,
       known,
       lineIds,
-      state.communityVenueId,
     );
   };
   if (decision.type === "permission.revoke") {
