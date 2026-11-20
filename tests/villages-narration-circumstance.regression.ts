@@ -1,7 +1,8 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: narration-circumstance/native, narration-circumstance/finite-authority, narration-circumstance/consequence, narration-circumstance/race, narration-circumstance/recovery, narration-circumstance/context, narration-circumstance/strict-boundary, narration-circumstance/request-clock, narration-circumstance/protected-update, narration-circumstance/inherited-knowers, narration-circumstance/sibling-condition, narration-circumstance/corrected-active-condition, narration-circumstance/room-damage, narration-circumstance/room-damage-holds
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { readNarrativeState } from "../packages/villages/src/server/domain/decoding/narrative-codec.js";
 import { ensureNarrative, admitNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
@@ -59,9 +60,15 @@ function fixture(interior = false) {
     );
   synchronizeVenueZones(venue);
   initializeVenueAccess(venue);
-  state.venues = [venue];
+  state.venues = [...[venue], ...sharedVenuesFixture()];
+  state.backgroundPace = "lively";
   ensureNarrative(state, at);
-  if (interior && admitNarrative(state, at, "selection")!.targets[0]!.exterior) state.seed += "a";
+  if (
+    interior &&
+    admitNarrative(state, at, "selection", "scene", { venueId: venue.id, zoneId: venue.zones![1]!.id })!.targets[0]!
+      .exterior
+  )
+    state.seed += "a";
   const target = admitNarrative(state, at, "selection")!.targets[0]!;
   if (interior) {
     assert(!target.exterior);
@@ -562,10 +569,10 @@ await runCase("narration-circumstance/protected-update", () => {
       correction,
     );
     let day = 1;
-    const zoneCount = f.venue.zones!.filter((zone) => zone.description.trim()).length;
-    assert(zoneCount < 6, "fixture update remains within its seven-day condition");
+    const zoneCount = f.state.venues.reduce((sum, venue) => sum + venue.zones!.length, 0);
+    assert(zoneCount < 7, "fixture update remains within its seven-day condition");
     for (let index = 1; index < zoneCount; index++) {
-      const now = new Date(Date.parse(at) + day++ * 86400000);
+      const now = new Date(Date.parse(at) + day++ * 3600000);
       reserveEventAttempt(
         f.state,
         "other-world-" + index,
@@ -575,7 +582,7 @@ await runCase("narration-circumstance/protected-update", () => {
         "world",
       );
     }
-    const residentAt = new Date(Date.parse(at) + day++ * 86400000);
+    const residentAt = new Date(Date.parse(at) + day++ * 3600000);
     reserveEventAttempt(
       f.state,
       "resident-opportunity",
@@ -584,8 +591,9 @@ await runCase("narration-circumstance/protected-update", () => {
       undefined,
       "resident",
     );
-    const nextAt = new Date(Date.parse(at) + day * 86400000).toISOString(),
-      selected = admitNarrative(f.state, nextAt, "selection")!.targets[0]!;
+    const nextAt = new Date(Date.parse(at) + day * 3600000).toISOString(),
+      selected = admitNarrative(f.state, nextAt, "selection", "scene", { venueId: f.venue.id, zoneId: f.scene.zoneId })!
+        .targets[0]!;
     assert.equal(selected.zoneId, f.scene.zoneId);
     const scene = zoneEventScene(
       coerceSession({ ...structuredClone(f.scene), id: "update-scene", startedAt: nextAt, lastActivityAt: nextAt }),
@@ -649,7 +657,7 @@ await runCase("narration-circumstance/protected-update", () => {
   }
 });
 function nextLocal(f: ReturnType<typeof fixture>, operation: string) {
-  const zones = f.venue.zones!.filter((zone) => zone.description.trim()).length,
+  const zones = f.state.venues.reduce((sum, venue) => sum + venue.zones!.length, 0),
     count = f.state.eventAttempts!.attempts.filter((row) => row.origin === "world" || row.origin === "scene").length,
     needed = (zones - (count % zones)) % zones;
   let stamp = Date.parse(f.state.eventAttempts!.lastAttemptAt) + 86400000;

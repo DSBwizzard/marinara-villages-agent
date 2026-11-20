@@ -219,7 +219,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupContext({
       rules: data.context.rules,
       circumstances: data.context.circumstances,
-      communityVenueId: data.context.communityVenueId,
+      openingVenueId: data.context.openingVenueId,
       ...((data.workspace.suggestionRequest || data.mapRequest) && Object.hasOwn(data.context, "households")
         ? { households: data.context.households }
         : {}),

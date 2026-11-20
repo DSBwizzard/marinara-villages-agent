@@ -1,6 +1,7 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -24,7 +25,13 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
     entered = deferred();
   const stamp = new Date().toISOString();
   const venue = venueDraft({ id: "same-place", name, description: "A hall." }, null);
-  const world = { ...defaultVillageState(), seed: "same-seed", setupAt: stamp, foundedAt: stamp, venues: [venue] };
+  const world = {
+    ...defaultVillageState(),
+    seed: "same-seed",
+    setupAt: stamp,
+    foundedAt: stamp,
+    venues: [...[venue], ...sharedVenuesFixture()],
+  };
   const rows = new Map<string, any>([
     ["villages-village", { id: "villages-village", kind: "village", packageId: "villages", revision: 1, data: world }],
     [
@@ -261,7 +268,7 @@ for (const canonical of [false, true]) {
   world.seed = "shared-world";
   world.setupAt = world.foundedAt = new Date().toISOString();
   const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
-  world.venues = [venue];
+  world.venues = [...[venue], ...sharedVenuesFixture()];
   world.backgroundPace = "off";
   shared.rows.set("villages-village", {
     id: "villages-village",

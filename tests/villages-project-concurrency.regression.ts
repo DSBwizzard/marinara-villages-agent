@@ -81,11 +81,11 @@ const results = await Promise.allSettled(
 assert.equal(results.filter((result) => result.status === "fulfilled").length, 2);
 assert(conflicts > 0, "actual document CAS retried conflicting starts");
 assert.equal(record.data.projects.filter((project) => project.status === "working").length, 2);
-assert.equal(record.data.venues.length, 3, "two sites plus the original Venue");
+assert.equal(record.data.venues.length, 5, "two sites plus the original Venue");
 const committed = record.data.projects.find((project) => project.status === "working")!;
 const retry = commands.find((command) => command.id === committed.id)!;
 await service.startProjectConstruction(retry.id, retry.body, now);
-assert.equal(record.data.venues.length, 3, "lost acknowledgement retry creates no second site");
+assert.equal(record.data.venues.length, 5, "lost acknowledgement retry creates no second site");
 const create = { requestId: "create", name: "Current", description: "A future room.", classes: ["community"] };
 await service.createNewVenueProject(create);
 await service.createNewVenueProject(create);

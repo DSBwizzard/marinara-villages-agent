@@ -173,6 +173,7 @@ const target = z
     zoneId: id,
     name: z.string(),
     exterior: z.boolean(),
+    ordinaryUseRestrictionAllowed: z.boolean(),
     structure: digest,
     roomBasis: digest,
     controllers: z.array(id),

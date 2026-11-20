@@ -115,7 +115,7 @@ await runCase("narration-place/discovery", () => {
   assert.deepEqual(place.knownBy, ["player", "a"]);
   assert.equal(place.prepared, false);
   assert.deepEqual(place.location.classes, ["other"]);
-  assert.equal(f.state.venues.length, 1);
+  assert.equal(f.state.venues.length, 3);
   assert.equal(memoryHash(f.state.venues[0]), before, "discovery never constructs or edits the current Venue");
   for (const zone of place.location.zones!) {
     const views = currentRoomViews(
@@ -245,7 +245,7 @@ await runCase("narration-place/objective", () => {
   assert.equal(f.state.projects[0].establishment!.objectives[0].evidence.length, 1);
   assert.equal(project.status, "planning");
   assert.equal(project.lifecycle!.workOrder, null, "objective evidence never starts or completes the Project");
-  assert.equal(f.state.venues.length, 1);
+  assert.equal(f.state.venues.length, 3);
   for (const kind of ["stale", "quote", "private", "empty"]) {
     const g = ready();
     if (kind === "stale") g.project.lifecycle!.revision++;

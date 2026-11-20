@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/continuity-owners, retained-storage/continuity-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry, retained-storage/background-sprite-retirement
 import assert from "node:assert/strict";
 import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
@@ -14,7 +16,6 @@ import {
   createRetainedStorageCleanup,
 } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import { createRepairSnapshots } from "../packages/villages/src/server/adapters/storage/repair-snapshot-store.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   memoryDigest,
   memoryPayload,
@@ -131,7 +132,7 @@ async function fixture() {
       state.name = "Retained storage";
       state.setupAt = memoryTime();
       state.foundedAt = memoryTime();
-      state.venues = [venue()];
+      state.venues = [...[venue()], ...sharedVenuesFixture()];
       retainAuthoredNote(state, "first", "The player left a telescope by the window.", ["player"], memoryTime());
     },
     { memories: true },

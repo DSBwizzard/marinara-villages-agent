@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { venueDisplayZones } from "../packages/villages/src/client/features/venues/venue-view.js";
 import {
@@ -10,10 +12,7 @@ import {
 import { readSession } from "../packages/villages/src/server/adapters/storage/scene-store.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { villageFixtureDocuments, fixtureSceneState } from "./helpers/village-storage.fixture.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { validateRoutineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
@@ -115,7 +114,8 @@ function fixture(): VillageVenue {
   applyAccessCommand(current, command, "jim", stamp, known, source);
   claimVisitPermission(current, "current-format-grant", "native-scene");
   const raw = { ...current, usedInvitationIds: ["old"], playerInvitations: [{ residentId: "jim", zoneId: "living" }] };
-  const roundtrip = coerceVillageState({ ...defaultVillageState(), venues: [raw] }).venues[0];
+  const roundtrip = coerceVillageState({ ...defaultVillageState(), venues: [...[raw], ...sharedVenuesFixture()] })
+    .venues[0];
   assert(!Object.hasOwn(roundtrip, "playerInvitations"));
   assert(!Object.hasOwn(roundtrip, "usedInvitationIds"));
   assert.deepEqual(roundtrip.access, current.access, "Native receipts and claimed visits survive current reload");
@@ -125,7 +125,8 @@ function fixture(): VillageVenue {
     revision: 0,
     outcome: "rejected",
   };
-  const reloaded = coerceVillageState({ ...defaultVillageState(), venues: [restored] }).venues[0];
+  const reloaded = coerceVillageState({ ...defaultVillageState(), venues: [...[restored], ...sharedVenuesFixture()] })
+    .venues[0];
   assert.throws(() => applyAccessCommand(reloaded, command, "jim", stamp, known, source), /already rejected/);
   assert.equal(reloaded.access!.permissions.length, 0);
   const scene = coerceSession({
@@ -178,7 +179,7 @@ for (const retainZonePolicy of [false, true]) {
   const missing = fixture();
   delete missing.access;
   const world = defaultVillageState();
-  world.venues = [missing];
+  world.venues = [...[missing], ...sharedVenuesFixture()];
   for (const target of missing.zones!) {
     if (target.kind === "exterior") continue;
     target.ownerId = "jim";
@@ -227,7 +228,7 @@ for (const retainZonePolicy of [false, true]) {
 {
   const home = fixture(),
     world = defaultVillageState();
-  world.venues = [home];
+  world.venues = [...[home], ...sharedVenuesFixture()];
   const scene = coerceSession({
     version: 5,
     id: "escort",
@@ -401,7 +402,7 @@ assert.throws(() => claimVisitPermission(venue, nextVisit.operationId, "scene-a"
 claimVisitPermission(venue, nextVisit.operationId, "scene-b");
 assert.equal(decide("bedroom", "visitor", { sceneId: "scene-c" }).allowed, false);
 const state = defaultVillageState();
-state.venues = [venue];
+state.venues = [...[venue], ...sharedVenuesFixture()];
 const imageKey = sceneryImageKey(state, venue, state.setupAt, "office"),
   prepKey = capturePrivateInterior(state, venue, zone("office"), state.setupAt).basis;
 zone("office").access!.mode = "public";
@@ -428,7 +429,7 @@ for (const scenario of [
 ]) {
   const world = defaultVillageState();
   const home = fixture();
-  world.venues = [home];
+  world.venues = [...[home], ...sharedVenuesFixture()];
   const target = home.zones!.find((zone) => zone.id === "office")!;
   target.name = "Unobserved workshop";
   world.foundedAt = stamp;
@@ -844,7 +845,7 @@ applyAccessCommand(
 liveVenue.zones!.find((row) => row.id === "bedroom")!.access!.managerIds = ["trina"];
 liveVenue.zones!.find((row) => row.id === "bedroom")!.access!.inviterIds = ["player"];
 liveVenue.zones!.find((row) => row.id === "office")!.access!.mode = "public";
-live.venues = [liveVenue];
+live.venues = [liveVenue, ...sharedVenuesFixture()];
 records.set("villages-village", {
   id: "villages-village",
   packageId: "villages",
@@ -1099,7 +1100,7 @@ async function main() {
     managementWorld.seed = "management-world";
     managementWorld.foundedAt = stamp;
     managementWorld.setupAt = stamp;
-    managementWorld.venues = [fixture()];
+    managementWorld.venues = [fixture(), ...sharedVenuesFixture()];
     managementWorld.villagers = structuredClone(live.villagers);
     managementWorld.startingHistory.reviewed = { ...live.startingHistory.reviewed };
     records.delete("villages-active-venue");

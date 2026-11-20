@@ -15,7 +15,7 @@ const f = fixture(),
 const first = await f.newProject("Art Hall", "a", { x: 0.5, y: 0.5 }),
   second = await f.newProject("Garden", "b", { x: 0.8, y: 0.8 }),
   third = await f.newProject("Third", "c", { x: 0.5, y: 0.8 });
-assert.equal(f.state().venues.length, 1, "drafts create no live sites");
+assert.equal(f.state().venues.length, 3, "drafts create no live sites");
 await assert.rejects(
   f.service.startProjectConstruction(first, { requestId: "stale", expectedRevision: 0 }, now),
   /changed/,
@@ -23,7 +23,7 @@ await assert.rejects(
 const request = f.body(first);
 await f.service.startProjectConstruction(first, request, now);
 await f.service.startProjectConstruction(first, request, now);
-assert.equal(f.state().venues.length, 2, "retry creates exactly one worksite");
+assert.equal(f.state().venues.length, 4, "retry creates exactly one worksite");
 assert.equal(Date.parse(f.get(first).lifecycle!.workOrder!.completesAt) - now.getTime(), PROJECT_DURATION_MS);
 await f.service.startProjectConstruction(second, f.body(second), now);
 await assert.rejects(f.service.startProjectConstruction(third, f.body(third), now), /Two Projects/);
@@ -51,7 +51,7 @@ assert.deepEqual(
 );
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 3)));
 assert.equal(f.get(r).status, "cancelled");
-assert.equal(coerceVillageState(undefined).version, 18);
+assert.equal(coerceVillageState(undefined).version, 19);
 for (const old of [{ version: 2 }, {}, { version: 0 }, { version: 5 }, { version: 6 }, { version: 17 }])
   assert.throws(() => coerceVillageState(old), /Unsupported Village format/);
 const fresh = defaultVillageState();

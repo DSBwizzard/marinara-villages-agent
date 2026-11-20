@@ -27,7 +27,7 @@ const snapshot = {
     venues: [],
     worldRules: "",
     circumstances: [],
-    communityVenueId: "",
+    openingVenueId: "",
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     maps: [],

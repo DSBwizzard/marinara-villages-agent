@@ -1,11 +1,9 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   boundedRejectedText,
   privateRejectedText,

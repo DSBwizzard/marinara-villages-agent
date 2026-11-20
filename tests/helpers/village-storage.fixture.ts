@@ -75,7 +75,7 @@ function page(rows: Rows | undefined, id: string) {
 
 /** Fresh logical authority is authored with the production encoders, never converted from an old format. */
 export function authorVillageFixture(rows: Rows, raw: any) {
-  assert.equal(raw?.version, 18, "fixture must author a fresh Village");
+  assert.equal(raw?.version, 19, "fixture must author a fresh Village");
   if (Object.hasOwn(raw, "memoryHead")) return raw;
   const state = coerceVillageState(raw),
     value = Object.fromEntries(histories.map((key) => [key, state[key]])) as ReturnType<typeof emptyMemoryPayload>;
@@ -164,7 +164,7 @@ function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Rows) {
     if (!row) return row;
     const raw = row.data;
     let data = raw;
-    if (row.kind === "village" && raw?.version === 18 && !Object.hasOwn(raw, "memoryHead"))
+    if (row.kind === "village" && raw?.version === 19 && !Object.hasOwn(raw, "memoryHead"))
       data = authorVillageFixture(virtual, raw);
     if (row.kind === "venue-visit" && raw?.version === 5 && !Object.hasOwn(raw, "storageFormat"))
       data = authorSceneFixture(virtual, raw);

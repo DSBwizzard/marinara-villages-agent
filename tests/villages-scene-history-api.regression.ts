@@ -1,9 +1,9 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { pendingSceneSubmission } from "./helpers/narration-submission.fixture.js";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { appendSceneInput } from "../packages/villages/src/server/domain/rules/scene-input.js";

@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: captured-admissions/roles, captured-admissions/release, captured-admissions/job-lock, captured-admissions/reset, captured-admissions/scale, captured-admissions/cleanup
 import assert from "node:assert/strict";
 import { AsyncResource } from "node:async_hooks";
@@ -13,10 +15,7 @@ import {
   validateBackgroundJobRecord,
 } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { BackgroundInput, Job } from "../packages/villages/src/server/domain/models/background-model.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import {
@@ -53,7 +52,10 @@ function world(seed = "captured-admissions") {
     setupAt,
     foundedAt: setupAt,
     timeZone: "UTC",
-    venues: [venueFixture({ id: "square", name: "Village square", classes: ["community"] })],
+    venues: [
+      ...[venueFixture({ id: "square", name: "Village square", classes: ["community"] })],
+      ...sharedVenuesFixture(),
+    ],
     villagers: ["ada", "bea"].map((id) => ({
       characterId: id,
       incarnation: id + "-one",

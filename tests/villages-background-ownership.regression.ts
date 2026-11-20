@@ -1,3 +1,4 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -11,7 +12,6 @@ import {
   backgroundCalls,
   configureBackgroundContext,
 } from "../packages/villages/src/server/adapters/operations/background-context.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { BackgroundCompletion } from "../packages/villages/src/server/domain/models/background-completion-model.js";
 import type { BackgroundInput, Handler } from "../packages/villages/src/server/domain/models/background-model.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";

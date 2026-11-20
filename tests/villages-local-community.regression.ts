@@ -2,17 +2,6 @@ import {
   foundingCircumstanceText,
   foundingCircumstanceFromText,
 } from "../packages/villages/src/shared/helpers/founding-circumstance.js";
-import {
-  communityVenueEligible,
-  designateCommunityVenue,
-} from "../packages/villages/src/server/domain/rules/community-venue.js";
-import {
-  applyAccessCommand,
-  projectVenueAccess,
-  readAccessCommand,
-} from "../packages/villages/src/server/domain/rules/venue-access.js";
-import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
-import { validateRoutineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -24,7 +13,7 @@ import {
   assignFoundingHome,
   reconcileFoundingRoster,
 } from "../packages/villages/src/client/features/founding/founding-homes.js";
-import { parsePlace, parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import {
   readFoundingCircumstances,
   seedFoundingCircumstances,
@@ -46,7 +35,6 @@ import {
   decideResidenceMove,
 } from "../packages/villages/src/server/domain/rules/residence-move.js";
 import { accessibleVenueRoute } from "../packages/villages/src/server/domain/rules/venue-path.js";
-import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { readRenovationChange } from "../packages/villages/src/server/domain/rules/project-design.js";
 import { completeProject } from "../packages/villages/src/server/domain/rules/project-completion.js";
@@ -90,7 +78,6 @@ function world(groups: Record<string, string> = {}) {
   state.seed = "local-community";
   state.timeZone = "UTC";
   state.venues = restorePlaces(drafts(groups));
-  state.communityVenueId = "community";
   state.villagers = actors.slice(1).map((actor) => ({
     letterFontId: "caveat",
     characterId: actor.id,
@@ -103,9 +90,9 @@ function world(groups: Record<string, string> = {}) {
 }
 
 for (const [groups, count] of [
-  [{}, 5],
-  [{ player: "player", a: "player", b: "player", c: "player" }, 2],
-  [{ player: "player", a: "player", b: "b", c: "b" }, 3],
+  [{}, 6],
+  [{ player: "player", a: "player", b: "player", c: "player" }, 3],
+  [{ player: "player", a: "player", b: "b", c: "b" }, 4],
 ] as const) {
   const state = world(groups);
   assert.equal(state.venues.length, count);
@@ -166,258 +153,9 @@ for (const [groups, count] of [
   assert.deepEqual(
     assignFoundingHome(retained, "community", "a", true),
     retained,
-    "The Community Venue cannot become a home through assignment",
+    "A Venue without Residence class cannot become a home through assignment",
   );
 }
-
-{
-  let live = world();
-  const replacement = newSetupVenue("courtyard", "other", 0.3, 0.7);
-  replacement.name = "Public courtyard";
-  live.venues = restorePlaces([...drafts(), replacement]);
-  const current = live.venues.find((row) => row.id === "community")!;
-  const candidate = live.venues.find((row) => row.id === "courtyard")!;
-  const commands = createVenueCommands({
-    readVillageState: async () => structuredClone(live),
-    mutateVillageState: async (update) => {
-      const next = structuredClone(live);
-      update(next);
-      live = next;
-      return structuredClone(live);
-    },
-    buildVillageSnapshot: async () => ({}) as any,
-    sceneQueries: () => ({ activeVenueSession: async () => null }),
-    withSceneNavigation: async (work) => work(),
-  });
-  const before = JSON.stringify(live);
-  for (const action of [
-    "recover-managers",
-    "venue-policy",
-    "zone-policy",
-    "ban",
-    "refuse-entry",
-    "leave-now",
-  ] as const) {
-    assert.throws(
-      () =>
-        applyAccessCommand(
-          current,
-          {
-            action,
-            operationId: "blocked:" + action,
-            expectedRevision: current.access!.revision,
-            zoneId: null,
-            managerIds: ["player"],
-            visitorId: "a",
-          } as any,
-          "player",
-          at,
-          actors.map((row) => row.id),
-          [],
-          live.communityVenueId,
-        ),
-      /another Community Venue/,
-    );
-  }
-  assert.equal(JSON.stringify(live), before, "Rejected restrictions do not mutate saved access or receipts");
-  await assert.rejects(
-    commands.changeVenueAccess(current.id, {
-      action: "recover-managers",
-      operationId: "api-recover",
-      expectedRevision: current.access!.revision,
-      zoneId: null,
-      managerIds: ["player"],
-    }),
-    /another Community Venue/,
-  );
-  assert.equal(projectVenueAccess(current, "player", live.communityVenueId)!.canRecover, false);
-  const command = {
-    action: "community-venue" as const,
-    operationId: "replace-neutral",
-    zoneId: null,
-    expectedRevision: candidate.access!.revision,
-    previousVenueId: current.id,
-    previousRevision: current.access!.revision,
-  };
-  for (const mutate of [
-    (v: any) => {
-      v.access.managerIds = ["a"];
-    },
-    (v: any) => {
-      v.workerIds = ["a"];
-    },
-    (v: any) => {
-      const archive = structuredClone(v.zones.find((z: any) => z.kind === "public"));
-      archive.id = "archive";
-      archive.access.mode = "permission-required";
-      archive.access.managerIds = ["player"];
-      v.zones.push(archive);
-    },
-    (v: any) => {
-      v.access.visitorHours = [];
-    },
-    (v: any) => {
-      v.access.bans.push({ active: true });
-    },
-    (v: any) => {
-      v.zones.find((z: any) => z.kind === "public").access.accompanied = true;
-    },
-    (v: any) => {
-      v.zones.find((z: any) => z.kind === "public").controllerIds = ["a"];
-    },
-  ]) {
-    const copy = structuredClone(live),
-      target = copy.venues.find((row) => row.id === candidate.id)!;
-    mutate(target);
-    assert.equal(communityVenueEligible(target, true), false);
-    const unchanged = JSON.stringify(copy);
-    assert.throws(() => designateCommunityVenue(copy, target, command, at), /public, always-open/);
-    assert.equal(JSON.stringify(copy), unchanged);
-  }
-  const beforeDesignation = structuredClone(live);
-  await commands.changeVenueAccess(candidate.id, command);
-  const committed = JSON.stringify(live);
-  await commands.changeVenueAccess(candidate.id, command);
-  assert.equal(JSON.stringify(live), committed, "A lost acknowledgement retries the exact designation without replay");
-  const beforeCandidate = beforeDesignation.venues.find((row) => row.id === candidate.id)!;
-  beforeCandidate.access!.receipts[command.operationId] = {
-    ...live.venues.find((row) => row.id === candidate.id)!.access!.receipts[command.operationId],
-    revision: beforeCandidate.access!.revision,
-    outcome: "rejected",
-  };
-  const rolledBack = coerceVillageState(beforeDesignation);
-  const restoredCandidate = rolledBack.venues.find((row) => row.id === candidate.id)!;
-  const parsed = readAccessCommand(command);
-  assert.equal(parsed.action, "community-venue");
-  assert.throws(
-    () => designateCommunityVenue(rolledBack, restoredCandidate, parsed, at),
-    /designation was rolled back/,
-  );
-  assert.equal(rolledBack.communityVenueId, current.id);
-  assert.equal(live.communityVenueId, candidate.id);
-  const loaded = coerceVillageState(JSON.parse(committed));
-  assert.equal(loaded.communityVenueId, candidate.id, "The ongoing designation survives restart");
-  assert.equal(communityVenueEligible(loaded.venues.find((row) => row.id === candidate.id)!), true);
-  assert.equal(
-    projectVenueAccess(
-      live.venues.find((row) => row.id === current.id)!,
-      "player",
-      live.communityVenueId,
-    )!.canRecover,
-    true,
-    "The former Community Venue uses ordinary management rules",
-  );
-  await commands.changeVenueAccess(current.id, {
-    action: "recover-managers",
-    operationId: "ordinary-recover",
-    expectedRevision: live.venues.find((row) => row.id === current.id)!.access!.revision,
-    zoneId: null,
-    managerIds: ["player"],
-  });
-  await commands.changeVenueAccess(current.id, {
-    action: "venue-policy",
-    operationId: "ordinary-close",
-    expectedRevision: live.venues.find((row) => row.id === current.id)!.access!.revision,
-    zoneId: null,
-    managerIds: ["player"],
-    visitorHours: [],
-  });
-  const stale = structuredClone(live),
-    target = stale.venues.find((row) => row.id === current.id)!;
-  assert.throws(
-    () => designateCommunityVenue(stale, target, { ...command, operationId: "stale", previousVenueId: current.id }, at),
-    /Community access changed/,
-  );
-  assert.equal(stale.communityVenueId, candidate.id);
-  const publicPlace = live.venues.find((row) => row.id === candidate.id)!;
-  for (const actor of actors)
-    assert.equal(
-      evaluateZoneAccess(
-        publicPlace,
-        publicPlace.zones!.find((zone) => zone.kind === "public")!,
-        actor.id,
-        { at: new Date(at) },
-      ).allowed,
-      true,
-    );
-  const routine = validateRoutineDay(
-    [
-      {
-        activity: "Meet neighbors",
-        venueId: candidate.id,
-        zoneId: "common:base",
-        startMinute: 0,
-        endMinute: 90,
-        flexible: true,
-      },
-    ],
-    live.villagers[0],
-    live,
-    new ZonedDate(at, "UTC"),
-  );
-  assert.equal(routine[0].venueId, candidate.id, "The neutral place remains an ordinary available routine destination");
-  const owned = structuredClone(candidate);
-  owned.zones!.find((zone) => zone.kind === "public")!.controllerIds = ["player"];
-  owned.access!.visitDenials = [{ sceneId: "old-scene", zoneId: "common:base", visitorId: "a", issuerId: "player" }];
-  assert.equal(
-    communityVenueEligible(owned, true),
-    true,
-    "The player can release their own control and old visit-specific refusals",
-  );
-  const released = world();
-  released.venues.push(owned);
-  designateCommunityVenue(
-    released,
-    owned,
-    {
-      ...command,
-      operationId: "release-own-control",
-      expectedRevision: owned.access!.revision,
-      previousVenueId: "community",
-      previousRevision: released.venues.find((v) => v.id === "community")!.access!.revision,
-    },
-    at,
-  );
-  assert.deepEqual(owned.access!.managerIds, []);
-  assert.deepEqual(owned.access!.visitDenials, []);
-  assert.deepEqual(owned.zones!.find((z) => z.kind === "public")!.controllerIds, []);
-  assert.equal(communityVenueEligible(owned), true);
-}
-
-for (const change of [
-  (venue: any) => {
-    venue.classes = ["residence"];
-  },
-  (venue: any) => {
-    venue.spaces[0].access.mode = "permission-required";
-  },
-  (venue: any) => {
-    venue.spaces[0].access.managerIds = ["a"];
-  },
-  (venue: any) => {
-    venue.spaces[0].access.accompanied = true;
-  },
-  (venue: any) => {
-    venue.spaces[0].access.visitorHours = [];
-  },
-  (venue: any) => {
-    venue.spaces[0].description = "";
-  },
-]) {
-  const rows = drafts();
-  change(rows.find((row) => row.id === "community"));
-  assert.throws(() => parsePlaces(rows, new Set(["a", "b", "c"]), true, "community"));
-}
-assert.throws(
-  () =>
-    parsePlaces(
-      [...drafts(), ...Array.from({ length: 12 }, (_, i) => newSetupVenue(`extra-${i}`, "other", 0.5, 0.5))],
-      new Set(["a", "b", "c"]),
-      true,
-      "community",
-    ),
-  /four Residences/,
-);
 
 {
   const state = world();
@@ -442,7 +180,7 @@ assert.throws(
     /floor is repaired/,
   );
   assert.equal(restarted.venues.find((venue) => venue.id === second.id)!.description, second.description);
-  assert.equal(restarted.venues.length, 7, "mentions and descriptions do not allocate destinations");
+  assert.equal(restarted.venues.length, 8, "mentions and descriptions do not allocate destinations");
 }
 
 {
@@ -880,7 +618,7 @@ console.log(
   );
   const state = world();
   state.setting += " " + Array.from({ length: 75 }, (_, i) => "Farm " + i).join(", ");
-  assert.equal(coerceVillageState(state).venues.length, 5, "Seventy-five farm mentions create no destinations");
+  assert.equal(coerceVillageState(state).venues.length, 6, "Seventy-five farm mentions create no destinations");
   const cases = readFoundingCircumstances(
     [{ scope: "zone", summary: "Local-only circumstance", venueId: "community", zoneId: "common:base" }],
     state.venues,
@@ -913,37 +651,6 @@ console.log(
   const parsed = restorePlaces([...drafts(), replacement]).find((row) => row.id === replacement.id)!;
   await f.mutate((state) => {
     state.venues.push(parsed);
-    const old = state.venues.find((row) => row.id === "community")!;
-    assert.throws(
-      () =>
-        readRenovationChange(
-          state,
-          old,
-          {
-            detail: "Make a home",
-            classes: ["residence"],
-            capacity: 2,
-            zones: old
-              .zones!.filter((z) => z.kind !== "exterior")
-              .map((z) => ({ ...z, kind: "shared-residence", venueClass: "residence" })),
-          },
-          new Date(at),
-        ),
-      /another Community Venue/,
-    );
-    designateCommunityVenue(
-      state,
-      parsed,
-      {
-        action: "community-venue",
-        operationId: "before-repurpose",
-        zoneId: null,
-        expectedRevision: parsed.access!.revision,
-        previousVenueId: old.id,
-        previousRevision: old.access!.revision,
-      },
-      at,
-    );
   });
   const target = f.state().venues.find((v) => v.id === "community")!;
   await f.service.createRenovationProject(target.id, {
@@ -963,11 +670,10 @@ console.log(
   await f.service.startProjectConstruction(id, f.body(id));
   await f.service.debugCompleteProjectConstruction(id, f.body(id));
   const loaded = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
-  assert.equal(loaded.communityVenueId, replacement.id, "A replacement preserves the neutral place during repurposing");
   assert.deepEqual(
     loaded.venues.find((v) => v.id === target.id)!.classes,
     ["residence"],
-    "A former Community Venue can be repurposed after designating a replacement",
+    "A Community Venue can be repurposed without a designation",
   );
 }
 {

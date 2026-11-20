@@ -41,7 +41,8 @@ export function QuickStartVenues({
   onMapOpened,
   onGenerateImage,
   onUploadImage,
-  communityVenueId,
+  openingVenueId,
+  onOpeningVenue,
   actions,
   mapArtwork,
   onRetrySaving,
@@ -64,7 +65,8 @@ export function QuickStartVenues({
   onMapOpened?(): void;
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
-  communityVenueId?: string;
+  openingVenueId?: string;
+  onOpeningVenue?(venueId: string): void;
   actions?: ReactNode;
   mapArtwork?: ReactNode;
   onRetrySaving?(): void;
@@ -201,7 +203,7 @@ export function QuickStartVenues({
         <FoundingVenuePages selectedId={selectedId}>
           {ordered.map((venue) => {
             const home = venue.classes?.includes("residence");
-            const community = venue.id === communityVenueId;
+            const community = venue.classes?.includes("community");
             const members = foundingHomeMembers(venue);
             return (
               <button
@@ -229,7 +231,9 @@ export function QuickStartVenues({
               >
                 <span className="villages-quick-venue-title">
                   <strong>{venue.name || "Venue"}</strong>
-                  <span className="villages-quick-venue-badge">{community ? "Community" : "Residence"}</span>
+                  <span className="villages-quick-venue-badge">
+                    {community ? "Community" : home ? "Residence" : "Venue"}
+                  </span>
                 </span>
                 <span className="villages-quick-household">
                   {home
@@ -277,7 +281,9 @@ export function QuickStartVenues({
                 <dl className={`${P}-venue-metadata`}>
                   <div>
                     <dt>Type</dt>
-                    <dd>{selected.id === communityVenueId ? "Community Venue" : "Residence"}</dd>
+                    <dd>
+                      {selected.classes?.includes("community") ? "Community" : (selected.classes?.[0] ?? "Venue")}
+                    </dd>
                   </div>
                   <div>
                     <dt>Map</dt>
@@ -327,6 +333,16 @@ export function QuickStartVenues({
                         {fieldError("form")}
                       </label>
                     </fieldset>
+                    {onOpeningVenue && selected.spaces?.some((zone) => zone.venueClass !== "residence") ? (
+                      <button
+                        type="button"
+                        disabled={busy || imageBusy}
+                        aria-pressed={selected.id === openingVenueId}
+                        onClick={() => onOpeningVenue(selected.id)}
+                      >
+                        Opening gathering
+                      </button>
+                    ) : null}
                     {selected.classes?.includes("residence") ? (
                       <fieldset className="villages-founding-venue-choices" disabled={busy || imageBusy}>
                         <legend>Who lives here?</legend>
@@ -551,7 +567,6 @@ export function QuickStartVenues({
                                 key={mode}
                                 type="button"
                                 aria-pressed={zoneAccess.mode === mode}
-                                disabled={selected.id === communityVenueId && mode !== "public"}
                                 onClick={() => {
                                   const key = personal ? "privateSpaces" : "spaces";
                                   const candidate = {

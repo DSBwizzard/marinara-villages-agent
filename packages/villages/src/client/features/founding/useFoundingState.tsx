@@ -38,7 +38,7 @@ export function useFoundingState() {
   const [setupContext, setSetupContext] = useState<import("./draft-model.js").FoundingContext>({
     rules: "",
     circumstances: [],
-    communityVenueId: "founding-community",
+    openingVenueId: "founding-community",
   });
 
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);

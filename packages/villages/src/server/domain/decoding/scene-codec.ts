@@ -40,7 +40,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     throw conflict("This saved Scene has an unsupported or invalid captured context. Its history is preserved.");
   const decoded = coerceVillageState({
     ...facts,
-    version: 18,
+    version: 19,
     setupAt: raw.setupAt,
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),

@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -13,10 +15,7 @@ import {
   createActivationScope,
   activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
@@ -62,7 +61,7 @@ function fixture(name: string) {
   );
   home.occupancy = { playerHome: false, residentCharacterId: "same", homeKind: "small-home" };
   home.residentIds = ["same"];
-  state.venues = [home];
+  state.venues = [...[home], ...sharedVenuesFixture()];
   const calls: string[] = [],
     owners: unknown[] = [],
     attempts: VillageState[] = [];
@@ -155,7 +154,7 @@ assert.equal(accepted.village.name, "Recorded");
 assert.equal(recorded.state.projects[0]!.kind, "new-venue");
 assert.equal(recorded.state.projects[0]!.lifecycle!.phase, "planning");
 assert.equal(recorded.state.pendingDecisions[0]!.status, "approved");
-assert.equal(recorded.state.venues.length, 1, "Planning does not create a constructed Venue.");
+assert.equal(recorded.state.venues.length, 3, "Planning does not create a constructed Venue.");
 assert.deepEqual(recorded.calls.slice(-3), ["mutate", "new-project", "snapshot"]);
 await assert.rejects(
   recorded.service.decideVillageVenueRequest(decision.id, true, { ...core, description: "Grow herbs here." }),

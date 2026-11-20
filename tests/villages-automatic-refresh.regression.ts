@@ -1,10 +1,11 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
 import {
   routineProfileFromWeek,
   influenceSettings,
 } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { clientImplementation } from "./client-source.js";
 import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
@@ -245,17 +246,20 @@ async function main() {
           },
         ] as any;
         state.venues = [
-          venueFixture({
-            residentIds: [null].filter((id) => typeof id === "string" && !!id),
-            classes: false || null ? ["residence"] : ["other"],
-            id: "square",
-            name: "Village Square",
-            category: "public",
-            presentation: { image: null, x: null, y: null },
-            occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-            capabilities: [],
-            state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
-          }),
+          ...[
+            venueFixture({
+              residentIds: [null].filter((id) => typeof id === "string" && !!id),
+              classes: false || null ? ["residence"] : ["other"],
+              id: "square",
+              name: "Village Square",
+              category: "public",
+              presentation: { image: null, x: null, y: null },
+              occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+              capabilities: [],
+              state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
+            }),
+          ],
+          ...sharedVenuesFixture(),
         ];
         retainAuthoredNote(state, "retained", "Share a conversation", ["retained"], start.toISOString(), {
           class: "desire",
@@ -392,42 +396,45 @@ async function main() {
         ];
         state.residences = [];
         state.venues = [
-          venueFixture({
-            ...state.venues[0]!,
-            id: "rosa-home",
-            classes: ["residence"],
-            baseClasses: ["residence"],
-            zones: undefined,
-            spaces: undefined,
-            residentIds: ["housing-resident"],
-            name: "Rosa home",
-            privateSpaces: [
-              {
-                id: "private:housing-resident",
-                venueClass: "residence",
-                ownerId: "housing-resident",
-                name: "Bedroom",
-                purpose: "Rest",
-                description: "Rosa's old nook. A letter lies on the desk.",
-              },
-            ],
-            description: "Rosa's little house.",
-            occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
-            presentation: { image: null, x: 0.2, y: 0.2 },
-          }),
-          venueFixture({
-            ...state.venues[0]!,
-            id: "empty-venue",
-            classes: ["residence"],
-            baseClasses: ["residence"],
-            zones: undefined,
-            spaces: undefined,
-            residentIds: [],
-            name: "The bakery",
-            description: "A small bakery.",
-            occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-            presentation: { image: null, x: 0.6, y: 0.6 },
-          }),
+          ...[
+            venueFixture({
+              ...state.venues[0]!,
+              id: "rosa-home",
+              classes: ["residence"],
+              baseClasses: ["residence"],
+              zones: undefined,
+              spaces: undefined,
+              residentIds: ["housing-resident"],
+              name: "Rosa home",
+              privateSpaces: [
+                {
+                  id: "private:housing-resident",
+                  venueClass: "residence",
+                  ownerId: "housing-resident",
+                  name: "Bedroom",
+                  purpose: "Rest",
+                  description: "Rosa's old nook. A letter lies on the desk.",
+                },
+              ],
+              description: "Rosa's little house.",
+              occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
+              presentation: { image: null, x: 0.2, y: 0.2 },
+            }),
+            venueFixture({
+              ...state.venues[0]!,
+              id: "empty-venue",
+              classes: ["residence"],
+              baseClasses: ["residence"],
+              zones: undefined,
+              spaces: undefined,
+              residentIds: [],
+              name: "The bakery",
+              description: "A small bakery.",
+              occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+              presentation: { image: null, x: 0.6, y: 0.6 },
+            }),
+          ],
+          ...sharedVenuesFixture(),
         ];
         const home = state.venues[0]!;
         const nook = home.zones!.find((zone) => zone.ownerId === "housing-resident")!;

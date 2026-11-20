@@ -1,3 +1,4 @@
+import { sharedPlayspace } from "../../domain/rules/shared-playspace.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import { recordSceneFollowup } from "../../domain/rules/activity-followup.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
@@ -549,8 +550,17 @@ export function createSceneCommands({
       );
     const classes = venueClasses(place),
       spaceClass = classes.find((entry) => entry !== "residence") ?? classes[0]!;
+    const gathering =
+      !existing && !travel && village.opening?.stage === "gathering" && village.opening.openingVenueId === placeId;
+    const gatheringZones = gathering
+      ? sharedPlayspace(village, villageNow()).venues.find((row) => row.venueId === placeId)?.zoneIds
+      : undefined;
+    if (gathering && (!gatheringZones?.length || (requestedZoneId && !gatheringZones.includes(requestedZoneId))))
+      throw conflict("Start the opening gathering in an available public shared Zone.");
     const requested =
-      requestedZoneId ?? defaultVenueZoneId(place, spaceClass === "residence" ? "shared" : "public", spaceClass);
+      requestedZoneId ??
+      gatheringZones?.[0] ??
+      defaultVenueZoneId(place, spaceClass === "residence" ? "shared" : "public", spaceClass);
     let zone = resolveVenueZone(place, requested);
     if (!zone) throw notFound("That zone is not in this Venue.");
     if (zoneClosed(village, place, zone)) {
@@ -583,7 +593,6 @@ export function createSceneCommands({
         () => moveVenueZoneOnce(existing.id, zone.id),
       );
     }
-    const gathering = !travel && village.opening?.stage === "gathering" && village.opening.communityVenueId === placeId;
     const id = travel
       ? "travel-" + memoryHash([travel.source.id, travel.offerId]).slice(0, 32)
       : (gathering && village.opening!.gatheringSceneId) || randomUUID();
@@ -595,7 +604,7 @@ export function createSceneCommands({
             state.setupAt !== village.setupAt ||
             state.opening?.stage !== "gathering" ||
             state.opening.id !== village.opening!.id ||
-            state.opening.communityVenueId !== placeId
+            state.opening.openingVenueId !== placeId
           )
             throw conflict("The opening changed. Refresh the Village.");
           state.opening.gatheringSceneId ||= id;

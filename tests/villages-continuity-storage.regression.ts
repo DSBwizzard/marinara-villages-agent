@@ -4,6 +4,7 @@ import { readMailboxState } from "../packages/villages/src/server/domain/decodin
 import { queueMailboxLetter } from "../packages/villages/src/server/domain/rules/social-mail.js";
 import { mailReceipt, type MailIdentity } from "../packages/villages/src/server/domain/rules/mail-evidence.js";
 import type { MailboxMessage } from "../packages/villages/src/server/domain/models/social-mail.js";
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -101,6 +102,7 @@ function fixture() {
         state.seed = "world";
         state.setupAt = at;
         state.foundedAt = at;
+        state.venues = sharedVenuesFixture();
         state.episodes = appendEpisode(state.episodes, episode(), state.seed);
       },
       { memories: true },
@@ -196,7 +198,7 @@ await runCase("continuity-storage/cold-history", async () => {
   await f.seed();
   const root = f.rows.get("villages-village"),
     head = structuredClone(root.data.memoryHead);
-  assert.equal(root.data.version, 18);
+  assert.equal(root.data.version, 19);
   for (const key of ["continuity", "episodes", "worldPlaces", "mailbox", "memories", "memoryScenes", "memoryReceipts"])
     assert.equal(Object.hasOwn(root.data, key), false, "history stays outside the authority root");
   const cold = await f.repository().readAuthority({ memories: true });
@@ -243,7 +245,7 @@ await runCase("continuity-storage/current-only", async () => {
   );
   assert.equal(f.writes, writes);
   assert.deepEqual([...f.rows], before, "rejecting an older world leaves every saved byte untouched");
-  root.data.version = 18;
+  root.data.version = 19;
   const payload = f.rows.get(root.data.memoryHead.id);
   payload.data.format = 2;
   await assert.rejects(f.repository().readAuthority({ memories: true }), /payload changed/);

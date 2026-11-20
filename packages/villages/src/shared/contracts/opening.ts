@@ -2,7 +2,7 @@ export type OpeningView = {
   id: string;
   version: 3;
   stage: "gathering" | "complete" | "ended";
-  communityVenueId: string;
+  openingVenueId: string;
   gatheringSceneId: string;
   residentIds: string[];
 };
