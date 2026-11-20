@@ -127,6 +127,35 @@ export const DOSSIER_STYLES = `
 .${P}-directory-filters label{min-width:0;flex:1 1 0;width:auto}
 .${P}-directory-head>button{margin-left:auto;flex:none;width:44px}
 .${P}-directory-filters button{flex:none}
+dialog.villages-founding-dialog.${P}-visitor-picker{position:fixed;inset:0;width:min(960px,calc(100vw - 32px));height:fit-content;max-height:calc(100dvh - 32px);margin:auto;padding:0;border:1px solid var(--menu-card-line,#a39b84);border-radius:18px;background:var(--popover,#393047);color:var(--dossier-ink,#f0dfbc);box-shadow:0 18px 60px #0005;font:400 20px/1.4 var(--notebook-hand,Georgia,serif)}
+.${P}-visitor-picker::backdrop{background:#172c3b88}
+.${P}-visitor-picker>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:24px 28px 12px;background:transparent}
+.${P}-visitor-picker>header h3{margin:0;font-size:36px;font-weight:600}
+.${P}-visitor-picker>header button{flex:none;width:48px;height:48px}
+.${P}-visitor-picker form{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.${P}-visitor-picker .${P}-visitor-picker-search{padding:12px 28px}
+.${P}-visitor-picker label.${P}-directory-search{display:block;max-width:none;margin:0}
+.${P}-visitor-picker .${P}-directory-search input{padding-left:56px;background:var(--menu-field,#74536755);color:inherit;border-color:var(--menu-field-border,#a39b84)}
+.${P}-visitor-picker .${P}-visitor-picker-body{min-height:140px;overflow:auto;padding:16px 28px 24px;scroll-padding:8px}
+.${P}-visitor-picker-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;padding:4px}
+.${P}-visitor-picker button.${P}-visitor-picker-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:12px;min-width:0;padding:12px;border:1px solid var(--menu-card-line,#a39b84);border-radius:14px;background:var(--menu-card,#969b7e);font-size:20px;text-align:center}
+.${P}-visitor-picker button.${P}-visitor-picker-card[aria-pressed=true]{outline:3px solid var(--menu-tab-line,#d29399);outline-offset:0;background:var(--menu-card-selected,#b97980bf)}
+.${P}-visitor-picker-card .${P}-avatar{position:relative;display:grid;place-items:center;width:100%;height:auto;aspect-ratio:1;overflow:hidden;border:0;border-radius:7px;background:var(--menu-avatar,#514157);font-size:48px}
+.${P}-visitor-picker-card .${P}-avatar img{width:100%;height:100%;object-fit:cover}
+.${P}-visitor-picker-check{position:absolute;top:5px;right:5px;display:grid;place-items:center;width:34px;height:34px;border:2px solid var(--popover,#393047);border-radius:50%;background:var(--menu-tab-line,#d29399);color:var(--popover,#393047);font:700 24px/1 Georgia,serif}
+.${P}-visitor-picker form>footer{display:flex;align-items:center;gap:12px;margin:0 28px;padding:20px 0 24px;border-top:1px solid var(--dossier-line,#a39b8460);background:transparent}
+.${P}-visitor-picker form>footer>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.${P}-visitor-picker form>footer>button{flex:none;min-width:110px;border-radius:10px}
+.${P}-visitor-picker form>footer>button:last-child{background:var(--menu-tab-line,#969b7e);color:var(--popover,#393047);border-color:transparent}
+.${P}-visitor-picker form>.${P}-dossier-warning{flex:none;margin:0 28px 12px}
+@media(max-width:600px){
+ dialog.villages-founding-dialog.${P}-visitor-picker{width:calc(100vw - 16px);height:fit-content;max-height:calc(100dvh - 16px);border-radius:14px;font-size:17px}
+ .${P}-visitor-picker>header{padding:16px 16px 8px}.${P}-visitor-picker>header h3{font-size:28px}
+ .${P}-visitor-picker .${P}-visitor-picker-search{padding:8px 16px}.${P}-visitor-picker .${P}-visitor-picker-body{padding:12px 16px 20px;min-height:100px}
+ .${P}-visitor-picker-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.${P}-visitor-picker button.${P}-visitor-picker-card{padding:10px;gap:10px;font-size:17px}
+ .${P}-visitor-picker form>footer{margin:0 16px;padding:16px 0;flex-wrap:wrap}.${P}-visitor-picker form>footer>span{flex-basis:100%}.${P}-visitor-picker form>footer>button{flex:1;min-width:0}
+ .${P}-visitor-picker form>.${P}-dossier-warning{margin:0 16px 8px}
+}
 
 @container village-desk (min-width:701px) and (max-width:1100px){
  .${P}-people-layout{grid-template-columns:220px minmax(0,1fr);gap:24px}

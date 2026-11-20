@@ -3,6 +3,10 @@ import type { CatalogResponse, VillageSnapshot, VillageVisitorView } from "../..
 import { messageFrom, request } from "../../shared/api.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
+import { StorybookSearchIcon } from "../../shared/StorybookHeading.js";
+import type { PortraitMap } from "../../shared/types.js";
+import { AvatarFace, readPortraits } from "./ResidentPanels.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
 
 type VisitorPorts = Pick<ResidentsScreenController, "snapshot" | "setSnapshot">;
@@ -20,19 +24,38 @@ async function saveVisitor({ snapshot, setSnapshot }: VisitorPorts, id: string, 
 export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPorts & { onClose(): void }) {
   const [catalog, setCatalog] = useState<CatalogResponse["characters"]>([]);
   const [choice, setChoice] = useState("");
+  const [search, setSearch] = useState("");
+  const [portraits, setPortraits] = useState<PortraitMap>({});
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     const abort = new AbortController();
+    setLoading(true);
+    setLoadError("");
     void request<CatalogResponse>("/catalog", { signal: abort.signal })
       .then((value) => {
-        if (!abort.signal.aborted) setCatalog(value.characters);
+        if (abort.signal.aborted) return;
+        setCatalog(value.characters);
+        void readPortraits(
+          value.characters.map((card) => card.id),
+          abort.signal,
+        )
+          .then((value) => {
+            if (!abort.signal.aborted) setPortraits(value);
+          })
+          .catch(() => {});
       })
       .catch((cause) => {
-        if (!abort.signal.aborted) setError(messageFrom(cause, "Could not read Character Cards."));
+        if (!abort.signal.aborted) setLoadError(messageFrom(cause, "Could not read Character Cards."));
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setLoading(false);
       });
     return () => abort.abort();
-  }, [snapshot.worldScope]);
+  }, [snapshot.worldScope, reload]);
   const available = catalog.filter(
     (card) =>
       !card.inVillage &&
@@ -40,13 +63,23 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
       !snapshot.villagers.some((person) => person.characterId === card.id) &&
       card.id !== snapshot.settings.playerPersonaId,
   );
+  const selected = available.find((card) => card.id === choice);
+  const matching = available.filter((card) =>
+    card.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+  );
   return (
-    <ModalDialog title="Add Visitor" compact onClose={onClose} dismissible={!busy}>
+    <ModalDialog
+      title="Add Visitor"
+      className={`${ELEMENT_TAG}-visitor-picker`}
+      onClose={onClose}
+      dismissible={!busy}
+      showCloseButton={!busy}
+    >
       <form
         autoComplete="off"
         onSubmit={async (event) => {
           event.preventDefault();
-          if (!choice || busy) return;
+          if (!selected || loading || busy) return;
           setBusy(true);
           setError("");
           try {
@@ -59,21 +92,76 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
           }
         }}
       >
-        <label>
-          Character Card
-          <select autoComplete="off" value={choice} onChange={(event) => setChoice(event.target.value)} disabled={busy}>
-            <option value="">Choose a card</option>
-            {available.map((card) => (
-              <option key={card.id} value={card.id}>
-                {card.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {error ? <p role="alert">{error}</p> : null}
-        <button type="submit" disabled={!choice || busy}>
-          Add Visitor
-        </button>
+        <div className={`${ELEMENT_TAG}-visitor-picker-search`}>
+          <label className={`${ELEMENT_TAG}-directory-search`}>
+            <span className={`${ELEMENT_TAG}-sr-only`}>Find a Character Card</span>
+            <StorybookSearchIcon />
+            <input
+              type="search"
+              autoComplete="off"
+              placeholder="Find a Character Card"
+              value={search}
+              disabled={busy}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+        </div>
+        <div className={`${ELEMENT_TAG}-visitor-picker-body`} aria-busy={loading}>
+          {loading ? (
+            <p role="status">Reading Character Cards…</p>
+          ) : loadError ? (
+            <div>
+              <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
+                {loadError}
+              </p>
+              <button type="button" onClick={() => setReload((value) => value + 1)}>
+                Retry cards
+              </button>
+            </div>
+          ) : matching.length ? (
+            <div className={`${ELEMENT_TAG}-visitor-picker-grid`} role="group" aria-label="Available Character Cards">
+              {matching.map((card) => (
+                <button
+                  type="button"
+                  key={card.id}
+                  className={`${ELEMENT_TAG}-visitor-picker-card`}
+                  aria-pressed={choice === card.id}
+                  disabled={busy}
+                  onClick={() => {
+                    setChoice(card.id);
+                    setError("");
+                  }}
+                >
+                  <AvatarFace portrait={portraits[card.id]} name={card.name} className={`${ELEMENT_TAG}-avatar`} />
+                  <span>{card.name}</span>
+                  {choice === card.id ? (
+                    <span className={`${ELEMENT_TAG}-visitor-picker-check`} aria-hidden="true">
+                      ✓
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p role="status">
+              {search.trim() ? "No matching Character Cards." : "No unused Character Cards available."}
+            </p>
+          )}
+        </div>
+        {error ? (
+          <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
+            {error}
+          </p>
+        ) : null}
+        <footer>
+          <span role="status">{selected ? `${selected.name} selected` : "Choose a Character Card"}</span>
+          <button type="button" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={!selected || loading || !!loadError || busy}>
+            {busy ? "Adding…" : "Add Visitor"}
+          </button>
+        </footer>
       </form>
     </ModalDialog>
   );
