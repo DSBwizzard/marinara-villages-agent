@@ -40,7 +40,7 @@ export function VenueLayoutEditor({
       project.venueId === place.id && project.lifecycle && !["complete", "cancelled"].includes(project.lifecycle.phase),
   );
   const busy = controller.venueEditBusy || !!pending?.saving;
-  const canArrange = !busy && place.constructionStatus !== "worksite";
+  const canArrange = !busy && !sceneActive && place.constructionStatus !== "worksite";
   const canManage = (id: string) =>
     id === "exterior"
       ? !!place.accessView?.canManage
@@ -110,10 +110,10 @@ export function VenueLayoutEditor({
                 </label>
               ))}
           </fieldset>
-          {sceneActive ? <p role="status">End the Scene to edit connections.</p> : null}
           {projectActive ? <p role="status">Finish the Venue project to edit connections.</p> : null}
         </>
       ) : null}
+      {sceneActive ? <p role="status">End the Scene to edit the layout.</p> : null}
       {pending?.saving ? <p role="status">Saving layout…</p> : null}
       {problem || pending?.error ? <p role="alert">{problem || pending?.error}</p> : null}
       <button

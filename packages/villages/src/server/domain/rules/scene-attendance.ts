@@ -6,7 +6,7 @@ import { agendaAt } from "./agenda-plan.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
-import { contactPath, physicallyUsableZone, sceneAccessContext } from "./venue-contact.js";
+import { contactPath, physicalVenuePath, physicallyUsableZone, sceneAccessContext } from "./venue-contact.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
@@ -190,7 +190,18 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
               unavailable: zoneClosed(village, venue, target),
               environment: village.narrative,
             }).allowed &&
-            !!contactPath(village, venue, from, target.id, actor, session, context.at),
+            // Forced access removal keeps physical egress; voluntary Move still checks every entered Zone.
+            !!(
+              contactPath(village, venue, from, target.id, actor, session, context.at) ||
+              (target.id === "exterior" &&
+                physicalVenuePath(
+                  { ...village, narrative: undefined },
+                  venue,
+                  { ...session, zoneId: from },
+                  target.id,
+                  context.at ?? new Date(session.startedAt),
+                ))
+            ),
         )?.id ?? "";
       if (!to && actor === "player") continue;
       let destinationVenueId: string | undefined;

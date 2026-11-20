@@ -3,7 +3,7 @@ import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
 import { VenueAccessPanel } from "./VenueAccessPanel.js";
 import { invitationLabel } from "../../shared/zone-access.js";
 import { useConfirmation } from "../../shared/confirmation.js";
-import { changedConnectionIds, connectionProblem } from "../../../shared/helpers/zone-contact.js";
+import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
@@ -428,11 +428,7 @@ export function VenueScreen({
           navigation.finish(claim);
           return false;
         }
-      } else if (
-        !room ||
-        room.status === "closed" ||
-        !changedConnectionIds(place.zones ?? [], layout.change.connections).length
-      ) {
+      } else if (!room || room.status === "closed") {
         void controller.commitVenueZoneLayout(place.id);
       }
       if (!navigation.owns(claim)) return false;

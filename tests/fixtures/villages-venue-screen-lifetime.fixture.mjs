@@ -17,6 +17,7 @@ import {useSaveBackgroundPace} from './packages/villages/src/client/features/set
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
 const [snapshot,rawSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('A / venue'),[venuePage,setVenuePage]=useState(window.page),[venueZoneKey,setVenueZoneKey]=useState(window.initialZone);
+const [room,setRoom]=useState(null);
 const [busy,rawBusy]=useState(false),[settingsError,rawSettingsError]=useState(''),[venueEditBusy,rawEditBusy]=useState(false),[venueEditError,rawEditError]=useState(''),[venueEditNotice,rawNotice]=useState(''),
 [venueEditDraft,rawDraft]=useState(window.draft),[venueProposalDraft,rawProposal]=useState(window.proposal),[placeProblem,rawProblem]=useState(null);
 const setSnapshot=useCallback(v=>{window.calls.snapshot++;rawSnapshot(v)},[]),setBusy=useCallback(v=>{window.calls.busy++;rawBusy(v)},[]),setSettingsError=useCallback(v=>{window.calls.settingsError++;rawSettingsError(v)},[]),
@@ -31,7 +32,7 @@ const capture=p=>{window.pending.push(Promise.resolve(p).then(value=>({value}),c
 const run=kind=>capture(actions[kind]());const ui=Object.fromEntries(Object.entries(commands).map(([key,fn])=>[key,typeof fn==='function'?(...args)=>{const p=fn(...args);capture(p);return p}:fn]));
 const jump=({id=venueId,page=venuePage,zone=venueZoneKey,active=true}={})=>flushSync(()=>{setVenueId(id);setVenuePage(page);setVenueZoneKey(zone);setScreen(active?'venue':'home');
 const v=window.seed.settings.venues.find(v=>v.id===id);rawDraft(v?{...structuredClone(v),name:'Draft '+id}:null);rawProposal(structuredClone(window.proposal));rawEditError('B marker');rawNotice('B marker');rawSettingsError('B marker');rawProblem({id,text:'B marker'});});
-window.h={run,cross:kinds=>kinds.forEach(run),retain:kind=>{window.old=actions[kind]},old:()=>capture(window.old()),jump,
+window.h={run,scene:active=>setRoom(active?{id:'active-scene',status:'active'}:null),cross:kinds=>kinds.forEach(run),retain:kind=>{window.old=actions[kind]},old:()=>capture(window.old()),jump,
 edit:patch=>rawDraft(current=>({...current,...patch})),proposal:patch=>rawProposal(current=>({...current,...patch})),
 reset:()=>flushSync(()=>{rawSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});rawBusy(true)}),
 refound:()=>flushSync(()=>{rawSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B'}});rawBusy(false);rawEditBusy(false);rawEditError('B marker');rawNotice('B marker');rawSettingsError('B marker')}),
@@ -40,7 +41,7 @@ removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
 return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{<VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
-homeBuildings:[],mobile:true,room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
+homeBuildings:[],mobile:true,room,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
 venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}

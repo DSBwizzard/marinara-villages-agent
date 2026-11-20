@@ -88,7 +88,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
   ${STORYBOOK_NIGHT}; color-scheme:dark; --move-card:#514157; --move-line:#a5ac8b; --move-caution:#d9b37c;
   width:min(58rem,calc(100vw - 2rem)); height:fit-content; padding:1.25rem;
   max-height:calc(100dvh - 2rem); border:1px solid var(--border); border-radius:1rem;
-  background:var(--popover); color:var(--foreground); font:16px/1.4 var(--menu-font); box-shadow:0 1.5rem 5rem #0005;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--secondary) 42%,transparent),transparent 65%),var(--background); color:var(--foreground); font:16px/1.4 var(--menu-font); box-shadow:0 1.5rem 5rem #0005;
 }
 .villages-founding-dialog.villages-scene-move-day { ${STORYBOOK_DAY}; --move-card:#dae7d2; --move-line:#789483; --move-caution:#8b6035; }
 .villages-scene-move::backdrop { background:#11131c70; backdrop-filter:blur(4px); }

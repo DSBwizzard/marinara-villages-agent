@@ -98,17 +98,16 @@ export function followingMovementParty(
             continue;
           const next = { ...projected, zoneId: nextId, accompanying: positions(nextId) };
           if (
-            to !== "exterior" &&
-            (!evaluateZoneAccess(venue, liveZone, "player", {
+            !evaluateZoneAccess(venue, liveZone, "player", {
               ...sceneAccessContext(next, at),
               accepting: true,
               environment: state.narrative,
             }).allowed ||
-              !evaluateZoneAccess(captured, savedZone, "player", {
-                ...sceneAccessContext(next, at),
-                accepting: true,
-                environment: capturedState.narrative,
-              }).allowed)
+            !evaluateZoneAccess(captured, savedZone, "player", {
+              ...sceneAccessContext(next, at),
+              accepting: true,
+              environment: capturedState.narrative,
+            }).allowed
           )
             continue;
           if (together) {
@@ -124,7 +123,6 @@ export function followingMovementParty(
                 (route.length !== 1 || nextId !== to)
               )
                 return false;
-              if (to === "exterior") return true;
               const live = evaluateZoneAccess(venue, liveZone, actorId, {
                 ...sceneAccessContext(next, at),
                 accepting: true,
@@ -168,7 +166,7 @@ export function followingMovementParty(
         !physicallyUsableZone(capturedState, captured, saved, at)
       )
         return staying();
-      if (to !== "exterior") {
+      {
         const livePlayer = evaluateZoneAccess(venue, zone, "player", {
           ...sceneAccessContext(next, at),
           accepting: true,
@@ -231,7 +229,7 @@ export function followingMovementParty(
           if (live.permissionId && !member.permissionIds.includes(live.permissionId))
             member.permissionIds.push(live.permissionId);
           if (hop === path.length - 1) member.permissionId = live.permissionId;
-        } else if (to !== "exterior") {
+        } else {
           const willing = local.some(
             (row) =>
               row.actorId === actorId &&

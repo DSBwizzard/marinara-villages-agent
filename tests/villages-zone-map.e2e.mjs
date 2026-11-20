@@ -122,6 +122,13 @@ await withBrowser(browser, async () => {
       );
       assert.equal(f.requests.length, 1, "Resizing visual nodes never rewrites saved coordinates");
     }
+    await f.page.evaluate(() => window.h.scene(true));
+    await expect(f.page.getByText("End the Scene to edit the layout.", { exact: true })).toBeVisible();
+    const layoutBefore = await node(map, "exterior").getAttribute("style");
+    await node(map, "exterior").press("ArrowRight");
+    assert.equal(await node(map, "exterior").getAttribute("style"), layoutBefore);
+    await expect(save).toBeDisabled();
+    assert.equal(f.requests.length, 1, "Active Scenes leave the saved arrangement unchanged");
     await f.finish();
   });
   await runCase("zones/map/move", async () => {
@@ -232,7 +239,6 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       const moves = [];
       const reactions = [];
       const layouts = [];
-      let rejectLayout = true;
       const artRequests = [];
       await page.route("http://move-map.test/*.svg", async (route) => {
         artRequests.push(new URL(route.request().url()).pathname);
@@ -253,10 +259,7 @@ installFeature(controller=><SceneScreen controller={controller}/>);
         if (path.endsWith("/venues/mill/layout")) {
           const body = route.request().postDataJSON();
           layouts.push(body);
-          if (rejectLayout) {
-            await fulfill(route, { status: 409, json: { error: "Layout changed. Try saving again." } });
-            return;
-          }
+
           snapshot.settings.venues[0].zoneLayout = body.positions;
         } else if (path.endsWith("/rooms/zone")) {
           const body = route.request().postDataJSON();
@@ -303,8 +306,8 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       assert.deepEqual(
         colors,
         night
-          ? { bg: "rgb(57, 48, 71)", ink: "rgb(240, 223, 188)" }
-          : { bg: "rgb(232, 239, 223)", ink: "rgb(33, 62, 54)" },
+          ? { bg: "rgb(48, 45, 71)", ink: "rgb(240, 223, 188)" }
+          : { bg: "rgb(183, 213, 226)", ink: "rgb(33, 62, 54)" },
       );
       await expect(picker.locator("svg :is(line, polyline)")).toHaveCount(4);
       const elbows = await picker
@@ -387,60 +390,14 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       assert.equal(moves[2].zoneId, "airstrip");
       assert.equal(moves[2].trespass, true);
       assert.equal(moves[2].follow, true);
-      // Restore matching identities while retaining a different live graph: saving positions must never write captured routes.
-      snapshot.settings.venues[0].zones = snapshot.settings.venues[0].zones.filter((z) => z.id !== "live-only");
-      await page.evaluate(async () => {
-        await window.featureController.loadSnapshot();
-      });
       await open();
-      await picker.getByRole("button", { name: "Arrange", exact: true }).click();
+      await expect(picker.getByRole("button", { name: "Arrange", exact: true })).toHaveCount(0);
       const garden = picker.locator('[data-layout-zone="garden"]');
       await garden.focus();
       await page.keyboard.press("ArrowRight");
-      await expect.poll(() => garden.evaluate((node) => Number.parseFloat(node.style.left))).toBe(17);
-      await garden.click();
-      await expect(picker.getByRole("button", { name: "Move", exact: true })).toHaveCount(0);
-      assert.equal(moves.length, 3, "Arranging never moves the player");
-      await picker.getByRole("button", { name: "Done", exact: true }).click();
-      await expect(picker.getByRole("alert")).toContainText("Layout changed");
-      await expect(picker.getByRole("button", { name: "Done", exact: true })).toBeVisible();
+      assert.equal(layouts.length, 0, "An active Scene cannot arrange or save Zone positions");
+      assert.deepEqual(snapshot.settings.venues[0].zoneLayout, positions);
       await picker.getByRole("button", { name: "Close Move to Zone", exact: true }).click();
-      await expect(picker).toHaveCount(0);
-      await open();
-      await picker.getByRole("button", { name: "Arrange", exact: true }).click();
-      await expect.poll(() => garden.evaluate((node) => Number.parseFloat(node.style.left))).toBe(17);
-      assert.equal(layouts[0].positions.garden.x, 1);
-      assert.ok(
-        layouts[0].connections.find((z) => z.id === "exterior").connectedTo.includes("garden"),
-        "Position saves preserve the live graph",
-      );
-      assert.ok(!JSON.stringify(layouts[0]).includes("image"), "Artwork is presentation only");
-      rejectLayout = false;
-      await picker.getByRole("button", { name: "Done", exact: true }).click();
-      await expect(picker.getByRole("button", { name: "Arrange", exact: true })).toBeVisible();
-      assert.equal(snapshot.settings.venues[0].zoneLayout.garden.x, 1);
-      await picker.getByRole("button", { name: "Arrange", exact: true }).click();
-      await garden.focus();
-      await page.keyboard.press("ArrowRight");
-      await picker.getByRole("button", { name: "Close Move to Zone", exact: true }).click();
-      await expect(picker).toHaveCount(0);
-      assert.equal(snapshot.settings.venues[0].zoneLayout.garden.x, 2, "Closing Arrange saves the draft");
-      assert.equal(moves.length, 3);
-      await open();
-      await picker.getByRole("button", { name: "Arrange", exact: true }).click();
-      await page.evaluate(() => {
-        const c = window.featureController;
-        c.setSnapshot({
-          ...c.snapshot,
-          settings: {
-            ...c.snapshot.settings,
-            venues: c.snapshot.settings.venues.map((v) => ({ ...v, constructionStatus: "worksite" })),
-          },
-        });
-      });
-      await expect(picker.getByRole("button", { name: "Done", exact: true })).toHaveCount(0);
-      await picker.getByRole("button", { name: "Close Move to Zone", exact: true }).click();
-      await expect(picker).toHaveCount(0);
       const composer = page.locator("[data-villages-scene-composer]");
       await composer.fill("My unsent cover story");
       await page.evaluate(() => {

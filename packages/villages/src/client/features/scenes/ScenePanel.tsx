@@ -39,7 +39,7 @@ import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
-import { SceneMoveDialog, type SceneMoveZone, type SceneMoveArrangement } from "./SceneMoveDialog.js";
+import { SceneMoveDialog, type SceneMoveZone } from "./SceneMoveDialog.js";
 import type { ZoneLayout } from "../../../shared/helpers/zone-layout.js";
 
 export function sceneZoneLabel(zone?: { name: string }): string {
@@ -257,7 +257,6 @@ export function RoomPanel({
   sceneSettings,
   movementZones,
   movementPositions,
-  movementArrangement,
   movementLighting = "day",
   onMovementTarget,
   onTravel,
@@ -312,7 +311,6 @@ export function RoomPanel({
   sceneSettings: ReactNode;
   movementZones: SceneMoveZone[];
   movementPositions?: ZoneLayout;
-  movementArrangement?: SceneMoveArrangement;
   movementLighting?: "day" | "night";
   onMovementTarget: (id: string, trespass?: boolean, companions?: string[]) => void;
   onTravel?: () => void;
@@ -1046,7 +1044,6 @@ export function RoomPanel({
           currentZoneLabel={currentZoneLabel}
           trespassing={room.trespassing}
           lighting={movementLighting}
-          arrangement={movementArrangement}
           busy={busy || !canDraft}
           onClose={() => setActionsView(null)}
           onMove={onMovementTarget}

@@ -194,7 +194,7 @@ export function physicalVenuePath(
     }
   }
 }
-/** Exit routes can cross Zones that deny entry. */
+/** Every entered Zone needs access, including intermediate Zones on the way to Entrance. */
 export function contactPath(
   state: VillageState,
   venue: VillageVenue,
@@ -214,8 +214,7 @@ export function contactPath(
     if (last === to) return path;
     for (const next of contactNeighbors(venue, last, scene)) {
       const accepting = actor === "player" || (acceptDestination && next === to);
-      if (seen.has(next) || (to !== "exterior" && !contactCanEnter(state, venue, next, actor, scene, at, accepting)))
-        continue;
+      if (seen.has(next) || !contactCanEnter(state, venue, next, actor, scene, at, accepting)) continue;
       seen.add(next);
       queue.push([...path, next]);
     }

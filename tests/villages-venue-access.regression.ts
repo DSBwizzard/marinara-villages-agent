@@ -272,7 +272,11 @@ for (const retainZonePolicy of [false, true]) {
   scene.accompanying = sceneMoveAccompanying(scene, home, bedroom, world);
   assert.deepEqual(scene.accompanying, [{ characterId: "jim", zoneId: "bedroom" }]);
   assert.equal(contactCanEnter(world, home, bedroom.id, "player", scene), true);
-  assert.equal(contactPath(world, home, bedroom.id, "exterior", "visitor", scene)?.at(-1), "exterior");
+  assert.equal(
+    contactPath(world, home, bedroom.id, "exterior", "visitor", scene),
+    null,
+    "A public Entrance does not permit crossing an inaccessible intermediate Zone",
+  );
 }
 const venue = fixture(),
   zone = (id: string) => venue.zones!.find((zone) => zone.id === id)!;

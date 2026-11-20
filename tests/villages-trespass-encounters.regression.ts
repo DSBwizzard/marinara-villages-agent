@@ -25,6 +25,7 @@ import {
 import { publicSceneAuthority } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { followingMovementParty } from "../packages/villages/src/server/domain/rules/resident-movement.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { contactPath } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 
 const at = "2026-11-10T12:00:00.000Z";
 function nativeFixture(npc = false) {
@@ -1020,6 +1021,169 @@ for (const scenario of ["ordinary", "sneaking", "staying", "escorted"]) {
   } finally {
     await host.stop();
   }
+}
+
+for (const follow of [false, true]) {
+  const host = await packagedSceneServer({
+    configure(world) {
+      world.spontaneousEvents = true;
+      const venue = world.venues[0],
+        strip = venue.zones!.find((z) => z.id === "common")!;
+      venue.access!.managerIds = ["mara"];
+      strip.name = "Airstrip";
+      strip.connectedTo = ["exterior", "hangar"];
+      strip.access = {
+        mode: "permission-required",
+        managerIds: ["mara"],
+        memberIds: [],
+        memberRoles: [],
+        inviterIds: [],
+        visitorHours: "always",
+        accompanied: false,
+      };
+      venue.zones!.find((z) => z.id === "exterior")!.connectedTo = ["common"];
+      venue.zones!.push({ ...structuredClone(strip), id: "hangar", name: "Hangar", connectedTo: ["common"] });
+    },
+    configureScene(scene, world) {
+      scene.zoneId = "hangar";
+      scene.trespass = { zoneId: "hangar", reason: "permission-required" };
+      scene.sceneAttendance!.occupants[0]!.zoneId = follow ? "hangar" : "common";
+      scene.activeIds = follow ? ["mara"] : [];
+      if (follow)
+        scene.movementAgreements = [
+          {
+            actorId: "mara",
+            incarnation: world.villagers[0]!.incarnation!,
+            from: "hangar",
+            zoneId: "hangar",
+            following: true,
+          },
+        ];
+    },
+  });
+  try {
+    const read = async (path: string) => (await host.app.inject({ method: "GET", url: "/api/villages" + path })).json();
+    const move = async (zoneId: string, trespass = false) => {
+      const { session } = await read("/rooms/active");
+      return host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/zone",
+        payload: {
+          sessionId: session.id,
+          zoneId,
+          follow,
+          ...(trespass ? { trespass: true } : {}),
+          operationId: "return-" + zoneId + "-" + trespass,
+          expectedSceneRevision: session.sceneRevision,
+        },
+      });
+    };
+    const snap = await read("");
+    const entrance = snap.sceneVenue.venue.zones.find((z: any) => z.id === "exterior");
+    assert.equal(
+      entrance.accessView.reachable,
+      false,
+      "Entrance is not reachable through a restricted intermediate Zone",
+    );
+    const before = structuredClone(host.scene());
+    const rejected = await move("exterior");
+    assert.equal(rejected.statusCode, 409, rejected.body);
+    assert.equal(host.scene().zoneId, "hangar");
+    assert.equal(host.scene().navigationReceipts?.length ?? 0, before.navigationReceipts?.length ?? 0);
+    const crossing = await move("common", true);
+    assert.equal(crossing.statusCode, 200, crossing.body);
+    assert.equal(crossing.json().session.trespassing, true);
+    assert.ok(
+      crossing.json().session.trespassReactionId,
+      "Crossing the restricted intermediate Zone exposes its local witness",
+    );
+    const exited = await move("exterior");
+    assert.equal(exited.statusCode, 200, exited.body);
+    assert.equal(exited.json().session.zoneId, "exterior");
+    assert.equal(host.calls(), 0, "Navigation and queued encounters do not purchase a GM response");
+  } finally {
+    await host.stop();
+  }
+}
+{
+  const f = nativeFixture();
+  const common = f.venue.zones!.find((z) => z.id === "common")!;
+  common.access!.mode = "permission-required";
+  common.access!.managerIds = ["c"];
+  common.access!.memberIds = [];
+  common.access!.memberRoles = [];
+  f.scene.zoneId = "garden";
+  f.scene.movementAgreements = [
+    {
+      actorId: "a",
+      incarnation: f.state.villagers.find((v) => v.characterId === "a")!.incarnation!,
+      from: "garden",
+      zoneId: "garden",
+      following: true,
+    },
+  ];
+  f.scene.sceneAttendance!.occupants.find((row) => row.characterId === "a")!.zoneId = "garden";
+  f.scene.sceneAttendance!.layout = captureSceneLayout(f.venue);
+  f.scene.continuity = captureSceneContinuity(f.state, f.scene, Date.parse(at));
+  assert.equal(contactPath(f.state, f.venue, "garden", "exterior", "player", f.scene), null);
+  assert.equal(followingMovementParty(f.state, f.venue, f.scene, "exterior").path, undefined);
+  const forcedExits = accessExits(f.scene, f.state, f.venue);
+  for (const actor of ["player", "a"])
+    assert.equal(
+      forcedExits.find((row) => row.actor === actor)?.to,
+      "exterior",
+      "Forced permission-loss exits preserve physical egress without granting voluntary passage",
+    );
+  f.state.narrative = {
+    version: 1,
+    adoptedAt: at,
+    revision: 1,
+    weatherRevision: 0,
+    weather: null,
+    situations: [],
+    conditions: [],
+    receipts: [],
+  };
+  f.state.narrative.conditions.push({
+    id: "ordinary-use",
+    revision: 1,
+    situationId: "hazard",
+    venueId: f.venue.id,
+    zoneId: common.id,
+    observation: "The grass is muddy.",
+    restriction: "ordinary-use",
+    remedy: "Let it dry.",
+    startsAt: at,
+    endsAt: null,
+    clearedAt: null,
+  });
+  f.scene.continuity = captureSceneContinuity(f.state, f.scene, Date.parse(at));
+  assert.equal(
+    accessExits(f.scene, f.state, f.venue).find((row) => row.actor === "player")?.to,
+    "exterior",
+    "Ordinary-use conditions preserve forced physical egress",
+  );
+  common.closed = true;
+  f.scene.continuity = captureSceneContinuity(f.state, f.scene, Date.parse(at));
+  assert.ok(
+    !accessExits(f.scene, f.state, f.venue).some((row) => row.actor === "player"),
+    "A physical closure still blocks the forced route",
+  );
+  common.closed = false;
+  f.state.narrative.conditions = [];
+  common.access!.mode = "public";
+  f.scene.sceneAttendance!.layout = captureSceneLayout(f.venue);
+  f.scene.continuity = captureSceneContinuity(f.state, f.scene, Date.parse(at));
+  assert.deepEqual(contactPath(f.state, f.venue, "garden", "exterior", "player", f.scene), [
+    "garden",
+    "common",
+    "exterior",
+  ]);
+  assert.deepEqual(
+    followingMovementParty(f.state, f.venue, f.scene, "exterior").path,
+    ["garden", "common", "exterior"],
+    "Safe multi-hop returns remain available, even from an unauthorized origin",
+  );
 }
 console.log(
   "Trespass encounters: explicit actor crossings, scoped consent, cold persistence, witness deduplication, real packaged reactions, provider uncertainty and unchanged Conclude passed.",

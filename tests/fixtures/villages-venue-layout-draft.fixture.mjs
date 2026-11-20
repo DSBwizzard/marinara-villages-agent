@@ -249,6 +249,14 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
       window.h.scene({ id: "cosmetic-scene", status: "active", placeId: "a", zoneId: "exterior" });
     });
     await arrangement.press("ArrowRight");
+    await expect.poll(entranceX).toBe(0);
+    await expect(save).toBeDisabled();
+    await leave();
+    await back();
+    assert.equal(requests.length, 7, "A cosmetic draft cannot save during a Scene");
+    await page.evaluate(() => window.h.scene(null));
+    await expect(page.getByText("End the Scene to edit the layout.", { exact: true })).toHaveCount(0);
+    await arrangement.press("ArrowRight");
     await expect.poll(entranceX).toBe(1);
     await expect(save).toBeEnabled();
     await save.click();
@@ -256,7 +264,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     assert.deepEqual(
       requests[7].body.connections,
       server.settings.venues[0].zones.map((zone) => ({ id: zone.id, connectedTo: zone.connectedTo })),
-      "A non-manager can save only box positions during a Scene",
+      "Outside a Scene, cosmetic positioning preserves the actual connections",
     );
     await reply(7);
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);

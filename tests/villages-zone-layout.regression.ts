@@ -174,7 +174,12 @@ state.projects = [];
 const cosmetic = command();
 cosmetic.positions.exterior = { x: 2, y: 2 };
 venue.access!.managerIds = ["other"];
-applyVenueZoneLayout(state, venue, cosmetic, true);
+assert.throws(
+  () => applyVenueZoneLayout(state, venue, cosmetic, true),
+  /End the active Scene/,
+  "Even cosmetic arrangement waits until the Scene ends",
+);
+applyVenueZoneLayout(state, venue, cosmetic);
 assert.deepEqual(
   venue.zoneLayout!.exterior,
   { x: 2, y: 2 },

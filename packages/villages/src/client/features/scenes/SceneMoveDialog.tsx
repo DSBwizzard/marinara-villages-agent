@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { ZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -17,13 +17,6 @@ export type SceneMoveZone = {
   companions?: { id: string; name: string; trespass?: true; staying?: true }[];
   automaticReactions?: boolean;
 };
-export type SceneMoveArrangement = {
-  saving: boolean;
-  error: string;
-  onPositions(positions: ZoneLayout): void;
-  onSave(): Promise<boolean>;
-};
-
 export function SceneMoveDialog({
   zones,
   positions,
@@ -32,7 +25,6 @@ export function SceneMoveDialog({
   currentZoneLabel,
   trespassing,
   lighting,
-  arrangement,
   busy,
   onClose,
   onMove,
@@ -44,7 +36,6 @@ export function SceneMoveDialog({
   currentZoneLabel: string;
   trespassing?: boolean;
   lighting: "day" | "night";
-  arrangement?: SceneMoveArrangement;
   busy: boolean;
   onClose(): void;
   onMove(id: string, trespass?: boolean): void;
@@ -52,64 +43,19 @@ export function SceneMoveDialog({
   useLetterFont("lora");
   const [selected, setSelected] = useState<string | null>(null);
   const [trespass, setTrespass] = useState(false);
-  const [arrange, setArranging] = useState(false);
-  const arranging = arrange && !!arrangement;
-  const alive = useRef(true);
-  const finishing = useRef(false);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-  const finish = async (close: boolean) => {
-    if (finishing.current || arrangement?.saving) return;
-    if (close && arrangement?.error) {
-      onClose();
-      return;
-    }
-    finishing.current = true;
-    const saved = !arranging || !arrangement || (await arrangement.onSave());
-    finishing.current = false;
-    if (!alive.current || !saved) return;
-    setArranging(false);
-    if (close) onClose();
-  };
   const target = zones.find((zone) => zone.id === selected && zone.id !== currentId);
-  const disabled = busy || !!arrangement?.saving;
   return (
     <ModalDialog
       title="Move to Zone"
-      onClose={() => void finish(true)}
-      dismissible={!arrangement?.saving}
+      onClose={onClose}
       className={`villages-scene-move villages-scene-move-${lighting}`}
       compact
       scrollBody
       headerContent={
-        <>
-          <div className="villages-scene-move-heading">
-            <h3>Move</h3>
-            <small>{venueName}</small>
-          </div>
-          {arrangement && (
-            <button
-              type="button"
-              className="villages-scene-move-arrange"
-              disabled={disabled}
-              aria-pressed={arranging}
-              onClick={() => {
-                if (arranging) void finish(false);
-                else {
-                  setSelected(null);
-                  setTrespass(false);
-                  setArranging(true);
-                }
-              }}
-            >
-              {arrangement.saving ? "Saving…" : arranging ? "Done" : "Arrange"}
-            </button>
-          )}
-        </>
+        <div className="villages-scene-move-heading">
+          <h3>Move</h3>
+          <small>{venueName}</small>
+        </div>
       }
     >
       <div className="villages-founding-editor-body">
@@ -124,16 +70,11 @@ export function SceneMoveDialog({
           artwork={(zone) => zone.image}
           currentId={currentId}
           selectedId={selected ?? currentId}
-          disabled={disabled}
-          onPositions={arranging ? arrangement?.onPositions : undefined}
-          onSelect={
-            arranging
-              ? undefined
-              : (id) => {
-                  setSelected(id === currentId ? null : id);
-                  setTrespass(false);
-                }
-          }
+          disabled={busy}
+          onSelect={(id) => {
+            setSelected(id === currentId ? null : id);
+            setTrespass(false);
+          }}
           labels={(zone) => (
             <>
               <small
@@ -159,9 +100,7 @@ export function SceneMoveDialog({
             </>
           )}
         />
-        {arranging && <p className="villages-scene-move-location">Drag to arrange · Arrow keys to nudge</p>}
-        {arrangement?.error && <p role="alert">{arrangement.error}</p>}
-        {!arranging && target && (
+        {target && (
           <div className="villages-scene-move-zone">
             {target.companions?.length ? (
               <div className="villages-scene-move-companions">
@@ -206,7 +145,7 @@ export function SceneMoveDialog({
                 <button
                   type="button"
                   className="villages-scene-move-primary"
-                  disabled={disabled}
+                  disabled={busy}
                   onClick={() => {
                     onClose();
                     onMove(target.id, target.allowed ? undefined : true);
@@ -222,7 +161,7 @@ export function SceneMoveDialog({
                   {target.status && <small>{target.status}</small>}
                 </p>
                 {target.canTrespass && (
-                  <button type="button" disabled={disabled} onClick={() => setTrespass(true)}>
+                  <button type="button" disabled={busy} onClick={() => setTrespass(true)}>
                     Trespass…
                   </button>
                 )}

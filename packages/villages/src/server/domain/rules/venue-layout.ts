@@ -29,6 +29,7 @@ export function applyVenueZoneLayout(
   value: unknown,
   sceneActive = false,
 ): void {
+  if (sceneActive) throw conflict("End the active Scene before changing the Zone layout.");
   const row = asRecord(value),
     zones = venueZones(venue);
   const ids = zones.map((zone) => zone.id);
@@ -54,7 +55,6 @@ export function applyVenueZoneLayout(
   if (problem) throw badRequest(problem.replaceAll("Exterior", "Entrance"));
   const changed = changedConnectionIds(zones, next);
   if (changed.length) {
-    if (sceneActive) throw conflict("End the active Scene before changing Zone connections.");
     if (
       !managesAccess(venue, null, "player") ||
       changed.some((id) => id !== "exterior" && !managesAccess(venue, id, "player"))
