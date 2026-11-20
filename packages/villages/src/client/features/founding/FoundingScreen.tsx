@@ -215,8 +215,8 @@ export function FoundingScreen({
     return () => layout.removeEventListener("change", update);
   }, []);
   const chapterMenu = CHAPTER_MENUS[setupStep];
-  const [venueIntro, setVenueIntro] = useState<"homes" | "community">();
-  const explainingVenues = setupStep === FOUNDING_STEP.Venues && !!venueIntro && !draftSaveError;
+  const [venueIntro, setVenueIntro] = useState(false);
+  const explainingVenues = setupStep === FOUNDING_STEP.Venues && venueIntro && !draftSaveError;
   const confirmStarterHomes = useConfirmation(setupVenues);
   const mobileScene =
     phone && !!chapterMenu && (explainingVenues || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
@@ -495,9 +495,7 @@ export function FoundingScreen({
     const openSettingEditor = () => setSettingEditorOpen(true);
     const changeStep = (step: number, openMenu = false) => {
       setSetupFocusIssue(null);
-      setVenueIntro(
-        step === FOUNDING_STEP.Venues && setupStep === FOUNDING_STEP.People && !openMenu ? "homes" : undefined,
-      );
+      setVenueIntro(step === FOUNDING_STEP.Venues && setupStep === FOUNDING_STEP.People && !openMenu);
       if (openMenu && step === FOUNDING_STEP.Setting) setSettingEditorOpen(true);
       if (phone && openMenu) {
         setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: CHAPTER_MENUS[step] }));
@@ -801,8 +799,7 @@ export function FoundingScreen({
                 disabled={busy || spriteBusy || setupEditorOpen}
                 onClick={() => {
                   if (spriteWorking.current) return;
-                  if (explainingVenues && venueIntro === "community") setVenueIntro("homes");
-                  else changeStep(setupStep - 1, explainingVenues);
+                  changeStep(setupStep - 1, explainingVenues);
                 }}
               >
                 Back
@@ -813,11 +810,8 @@ export function FoundingScreen({
                   className="villages-forging-primary"
                   disabled={advanceDisabled}
                   onClick={() => {
-                    if (explainingVenues && venueIntro === "homes") setVenueIntro("community");
-                    else {
-                      setVenueIntro(undefined);
-                      if (phone) setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }));
-                    }
+                    setVenueIntro(false);
+                    if (phone) setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }));
                   }}
                 >
                   Next
@@ -829,15 +823,13 @@ export function FoundingScreen({
           }
         >
           {explainingVenues
-            ? venueIntro === "homes"
-              ? "Each of you gets a home with an entrance, a common room, and a private room. You can change the layout after Founding."
-              : "I’ve added two Community Venues, each with an entrance and two public rooms. You can change them later; keep public space in two Venues. Choose where we’ll gather first."
+            ? "A new Village starts with 2 public locations, and each of you gets a home with two rooms to start. Don't worry, you can cram everyone into the same house later if you want to. I won't judge."
             : [
                 "",
                 desktopMap
                   ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
                   : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
-                "Choose who you’ll play and who lives here. Sprites work best in Scenes; I’ll use them when available. Portraits work too.",
+                "Choose who you’ll play and who lives here. I recommend making sure your Villagers have Sprites assigned to their Character Card, otherwise they’ll spend every Scene doing their best impression of a passport photo.",
                 "Here are your starting Venues. You can give them names and place them on the Map.",
                 "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
               ][setupStep]!}

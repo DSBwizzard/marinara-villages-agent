@@ -333,9 +333,8 @@ export async function verifyFoundingLayout(group) {
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
-            const homes = guide.getByText(/^Each of you gets a home/);
-            const community = guide.getByText(/^I’ve added two Community Venues/);
-            await expect(homes).toBeVisible();
+            const introduction = guide.getByText(/^A new Village starts with 2 public locations/);
+            await expect(introduction).toBeVisible();
             await expect(work).toHaveCount(0);
             await layer("Venue");
             await expect(hierarchy).toBeInViewport({ ratio: 1 });
@@ -345,19 +344,13 @@ export async function verifyFoundingLayout(group) {
             await expect(root).toHaveAttribute("data-step", "2");
             await expect(root.locator(".villages-selected-villager")).toHaveCount(view.count);
             await button("Next").click();
-            await expect(homes).toBeVisible();
-            await button("Next").click();
-            await expect(community).toBeVisible();
+            await expect(introduction).toBeVisible();
             await expect(work).toHaveCount(0);
             await expect(button("Next")).toBeInViewport({ ratio: 1 });
             if (process.env.VILLAGES_SCREENSHOT_DIR)
               await page.screenshot({
-                path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `community-intro-${view.width}.png`),
+                path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `venue-intro-${view.width}.png`),
               });
-            await button("Back").click();
-            await expect(homes).toBeVisible();
-            await button("Next").click();
-            await expect(community).toBeVisible();
             await button("Next").click();
             await expect(work).toBeVisible();
           }
