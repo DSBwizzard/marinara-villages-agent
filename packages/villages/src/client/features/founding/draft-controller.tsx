@@ -280,7 +280,18 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSelectedSetupVenueId(data.selectedVenueId);
     setMovingSetupVenueId(data.movingVenueId);
     setSetupEditorOpen(false);
-    setSetupWorkspace(data.workspace);
+    const shortProblem = (text: string) =>
+      text.startsWith("This Founding draft result is no longer available.")
+        ? "Founding draft result unavailable."
+        : text;
+    const workspace = { ...data.workspace };
+    if (workspace.suggestionRequest?.failure)
+      workspace.suggestionRequest = {
+        ...workspace.suggestionRequest,
+        failure: shortProblem(workspace.suggestionRequest.failure),
+      };
+    if (workspace.settingProblem) workspace.settingProblem = shortProblem(workspace.settingProblem);
+    setSetupWorkspace(workspace);
     setupEditorOriginal.current = data.editorOriginal;
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;

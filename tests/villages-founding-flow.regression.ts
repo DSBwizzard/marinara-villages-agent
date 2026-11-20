@@ -1015,4 +1015,20 @@ await main()
     "An admitted request keeps its exact opaque source ingredient until resolved",
   );
   assert.deepEqual(values.setSetupWorkspace.suggestionRequest, draft.workspace.suggestionRequest);
+  const oldProblem =
+    "This Founding draft result is no longer available. Your current setup is kept. Generate again only when you choose.";
+  draft.workspace.suggestionRequest.failure = oldProblem;
+  draft.workspace.settingProblem = oldProblem;
+  const originalRequest = structuredClone(draft.workspace.suggestionRequest);
+  createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
+  assert.deepEqual(values.setSetupWorkspace.suggestionRequest, {
+    ...originalRequest,
+    failure: "Founding draft result unavailable.",
+  });
+  assert.equal(values.setSetupWorkspace.settingProblem, "Founding draft result unavailable.");
+  assert.equal(
+    draft.workspace.suggestionRequest.failure,
+    oldProblem,
+    "Updating displayed copy does not mutate the stored source object",
+  );
 }
