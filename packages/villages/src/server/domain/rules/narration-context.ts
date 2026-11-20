@@ -181,6 +181,10 @@ function sourceScene(scene: VenueScene) {
     accessPreviousZones: scene.accessPreviousZones,
     enteredFromZoneId: scene.enteredFromZoneId,
     trespass: scene.trespass,
+    actorTrespasses: scene.actorTrespasses,
+    movementAgreements: scene.movementAgreements,
+    trespassEncounterKeys: scene.trespassEncounterKeys,
+    trespassReaction: scene.trespassReaction,
   });
   snapshot.contactGeneration = scene.contactGeneration && structuredClone(scene.contactGeneration);
   return snapshot;

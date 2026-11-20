@@ -1,3 +1,4 @@
+import { contactPosition } from "./venue-contact.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
@@ -189,6 +190,28 @@ function authority(scene: VenueScene) {
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
     version: 1 as const,
     ...(scene.trespass?.zoneId === scene.zoneId && scene.trespass ? { trespassing: true as const } : {}),
+    ...(scene.trespassReaction &&
+    scene.status === "active" &&
+    (!scene.operation ||
+      (scene.operation.status === "complete" &&
+        !scene.operation.error &&
+        scene.operation.id !== scene.trespassReaction.id)) &&
+    !scene.submissions.some((row) => row.acceptance.status === "pending" || row.acceptance.status === "held")
+      ? { trespassReactionId: scene.trespassReaction.id }
+      : {}),
+    movementCompanions: (scene.movementAgreements ?? []).flatMap((row) => {
+      const person = scene.sceneAttendance?.occupants.find((actor) => actor.characterId === row.actorId);
+      return person && row.from === scene.zoneId && contactPosition(scene, row.actorId) === row.from
+        ? [
+            {
+              id: row.actorId,
+              name: person.name,
+              zoneId: row.zoneId,
+              ...(row.trespass ? { trespass: true as const } : {}),
+            },
+          ]
+        : [];
+    }),
     ...(scene.status === "opening" && scene.visitEvent ? { visitEventOpening: true as const } : {}),
     ...(travel && destination
       ? {

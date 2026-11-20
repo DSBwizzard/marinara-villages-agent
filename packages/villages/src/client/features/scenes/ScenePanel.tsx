@@ -314,7 +314,7 @@ export function RoomPanel({
   movementPositions?: ZoneLayout;
   movementArrangement?: SceneMoveArrangement;
   movementLighting?: "day" | "night";
-  onMovementTarget: (id: string, trespass?: boolean) => void;
+  onMovementTarget: (id: string, trespass?: boolean, companions?: string[]) => void;
   onTravel?: () => void;
   currentZoneLabel: string;
 }) {

@@ -16,6 +16,7 @@ import { emptyEpisodes } from "../rules/episodes.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
 import { emptyMailbox } from "./mailbox-codec.js";
 import { immutableMemoryValue } from "../rules/memory-integrity.js";
+import { readMovementCompanions, readSceneTrespassFields } from "../rules/scene-trespass.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
   const raw = asRecord(value);
@@ -130,6 +131,7 @@ export function coerceSession(value: unknown): VenueScene {
             destinationZoneId: String(row.destinationZoneId),
             at: String(row.at),
             ...(row.trespass === true ? { trespass: true as const } : {}),
+            ...(row.companions !== undefined ? { companions: readMovementCompanions(row.companions) } : {}),
           }))
       : [],
     generationReceipts: Array.isArray(raw.generationReceipts)
@@ -152,6 +154,7 @@ export function coerceSession(value: unknown): VenueScene {
     placeName: asTrimmedString(raw.placeName),
     zoneId: asTrimmedString(raw.zoneId) || undefined,
     enteredFromZoneId: asTrimmedString(raw.enteredFromZoneId) || undefined,
+    ...readSceneTrespassFields(raw),
     ...(asRecord(raw.trespass).zoneId === raw.zoneId &&
     typeof raw.zoneId === "string" &&
     isTrespassReason(asRecord(raw.trespass).reason)

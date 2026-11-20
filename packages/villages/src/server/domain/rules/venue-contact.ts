@@ -142,14 +142,26 @@ export function sceneTrespassReason(
   scene: VenueScene,
   at: Date,
 ) {
+  return actorTrespassReason(state, venue, zone, scene, "player", scene.zoneId ?? "", at);
+}
+
+export function actorTrespassReason(
+  state: VillageState,
+  venue: VillageVenue,
+  zone: VillageVenueZone,
+  scene: VenueScene,
+  actorId: string,
+  from: string,
+  at: Date,
+) {
   if (
     !venue.access ||
     !zone.access ||
-    !contactNeighbors(venue, scene.zoneId ?? "", scene).includes(zone.id) ||
+    !contactNeighbors(venue, from, scene).includes(zone.id) ||
     !physicallyUsableZone(state, venue, zone, at)
   )
     return;
-  const { reason } = evaluateZoneAccess(venue, zone, "player", {
+  const { reason } = evaluateZoneAccess(venue, zone, actorId, {
     ...sceneAccessContext(scene, at, state.timeZone),
     accepting: true,
     environment: state.narrative,
@@ -220,6 +232,7 @@ export function liveSceneMovePermission(
   accompanying: VenueScene["accompanying"],
   at: Date | undefined,
   permissionId: string | undefined,
+  escort = accompanying,
 ): string | undefined {
   const target = resolveVenueZone(venue, zoneId);
   if (!target) throw conflict("That Zone is no longer available.");
@@ -231,7 +244,7 @@ export function liveSceneMovePermission(
   };
   if (!contactPath(state, venue, scene.zoneId, target.id, "player", liveScene, at))
     throw conflict("That route is no longer permitted.");
-  for (const companion of accompanying ?? []) {
+  for (const companion of escort ?? []) {
     const origin = contactPosition(scene, companion.characterId);
     if (
       origin !== companion.zoneId &&

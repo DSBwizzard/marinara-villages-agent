@@ -68,7 +68,7 @@ export function addressedSceneResidents<T extends { name: string; characterId: s
 export function zoneEventScene(
   scene: VenueScene,
   venue: VillageVenue,
-  intent: { targetId?: string; message?: string; zoneId?: string } = {},
+  intent: { targetId?: string; message?: string; zoneId?: string; priorityIds?: string[] } = {},
 ): VenueScene {
   const occupants = (scene.sceneAttendance?.occupants ?? []).filter(
     (person) => !scene.departedIds?.includes(person.characterId),
@@ -131,6 +131,9 @@ export function zoneEventScene(
   ];
   const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
   const priority = [
+    ...(intent.priorityIds ?? []).filter(
+      (id) => scene.activeIds.includes(id) && contactPosition(scene, id) === scene.zoneId,
+    ),
     ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
     ...named.map((person) => person.characterId),
     ...scene.activeIds.filter((id) => continuing.has(id)),

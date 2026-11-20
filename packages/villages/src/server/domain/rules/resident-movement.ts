@@ -2,7 +2,7 @@ import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { NPC_PREFIX } from "./places.js";
 import { badGateway } from "./errors.js";
-import { contactPath, contactPosition, type ContactMove } from "./venue-contact.js";
+import { actorTrespassReason, contactPath, contactPosition, type ContactMove } from "./venue-contact.js";
 import { venueZones } from "./venue-zones.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -34,6 +34,19 @@ export function residentMovementOptions(
   }
   const routes = ids.map((characterId) => ({
     characterId,
+    trespassZoneIds: zones
+      .filter((zone) =>
+        actorTrespassReason(
+          state,
+          venue,
+          zone,
+          scene,
+          characterId,
+          contactPosition(scene, characterId),
+          at ?? new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),
+        ),
+      )
+      .map((zone) => zone.id),
     zoneIds: zones
       .filter(
         (zone) =>
@@ -43,7 +56,7 @@ export function residentMovementOptions(
       .map((zone) => zone.id),
   }));
   const fits = (zoneId: string, arrivals: number) => (occupancy.get(zoneId) ?? 0) + arrivals <= MAX_ZONE_VILLAGERS;
-  const knownZones = zones.filter((zone) => zone.id === scene.zoneId || zone.seen);
+  const knownZones = zones; // Zone identity and connections are public; interiors remain private.
   const cohorts = knownZones.flatMap((zone) => {
     const members = routes.filter((row) => contactPosition(scene, row.characterId) !== zone.id);
     return members.length < 2
@@ -77,6 +90,9 @@ export function residentMovementOptions(
     destinations: routes.map((row) => ({
       ...row,
       zoneIds: row.zoneIds.filter((zoneId) => fits(zoneId, row.characterId.startsWith(NPC_PREFIX) ? 0 : 1)),
+      trespassZoneIds: row.trespassZoneIds.filter((zoneId) =>
+        fits(zoneId, row.characterId.startsWith(NPC_PREFIX) ? 0 : 1),
+      ),
     })),
     groups,
   };
@@ -86,6 +102,9 @@ export function residentMovementOptions(
 export function residentMovementPrompt(options: ReturnType<typeof residentMovementOptions>) {
   return options.zones.map(({ id, name, connectedTo }) => {
     const eligible = options.destinations.filter((row) => row.zoneIds.includes(id)).map((row) => row.characterId);
+    const trespass = options.destinations
+      .filter((row) => row.trespassZoneIds.includes(id))
+      .map((row) => row.characterId);
     const villagers = (actors: string[]) => actors.filter((actor) => !actor.startsWith(NPC_PREFIX)).length;
     const maxVillagers = Math.max(
       eligible.some((actor) => !actor.startsWith(NPC_PREFIX)) ? 1 : 0,
@@ -96,6 +115,7 @@ export function residentMovementPrompt(options: ReturnType<typeof residentMoveme
       name,
       connectedTo,
       ...(eligible.length ? { eligible } : {}),
+      ...(trespass.length ? { trespass } : {}),
       ...(maxVillagers < villagers(eligible) ? { maxVillagers } : {}),
     };
   });

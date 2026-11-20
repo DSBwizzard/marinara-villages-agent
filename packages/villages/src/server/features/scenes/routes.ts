@@ -11,6 +11,7 @@ import {
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 
 import { badRequest } from "../../domain/rules/errors.js";
+import { readMovementCompanions } from "../../domain/rules/scene-trespass.js";
 import { publicSceneChanges } from "../../domain/rules/scene-public.js";
 import { readVenueOperation } from "../../jobs/venue-coordinator.js";
 import { assertFoundedVillageReady } from "../founding/preparation.js";
@@ -22,6 +23,7 @@ import {
   greetVenue,
   leaveVenueSession,
   moveVenueZone,
+  reactToTrespass,
   retryReply,
   sendVenueTurn,
   travelVenue,
@@ -99,6 +101,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       retryOfAttemptId?: string;
       operationId?: unknown;
       trespass?: unknown;
+      companions?: unknown;
     };
   }>("/rooms/zone", async (request, reply) => {
     try {
@@ -110,6 +113,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
           request.body?.retryOfAttemptId,
           request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
           request.body?.trespass === true,
+          readMovementCompanions(request.body?.companions),
         ),
       };
     } catch (error) {
@@ -119,6 +123,20 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
 }
 export function registerSceneOperationRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.post<{
+    Body: { sessionId?: unknown; reactionId?: unknown; expectedSceneRevision?: unknown; retryOfAttemptId?: string };
+  }>("/rooms/react", async (request, reply) => {
+    try {
+      return await reactToTrespass(
+        readChatId(request.body?.sessionId),
+        readSubmissionId(request.body?.reactionId),
+        readSceneRevision(request.body?.expectedSceneRevision),
+        request.body?.retryOfAttemptId,
+      );
+    } catch (error) {
+      return fail(reply, error, "reacting to trespassing");
+    }
+  });
   app.get<{ Params: { id: string } }>("/rooms/:id/error-details", async (request, reply) => {
     try {
       return await readSceneErrorDetails(readChatId(request.params.id));

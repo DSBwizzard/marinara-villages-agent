@@ -164,6 +164,7 @@ installFeature(controller=><SceneScreen controller={controller}/>);
         startedAt: now,
         endedAt: "",
         capturedContext: true,
+        movementCompanions: [{ id: "mara", name: "Mara", zoneId: "garden", trespass: true }],
       };
       const venue = venueSnapshotFixture({
         ...snapshot.settings.venues[0],
@@ -223,6 +224,7 @@ installFeature(controller=><SceneScreen controller={controller}/>);
         connectedTo: ["exterior"],
       });
       const moves = [];
+      const reactions = [];
       const layouts = [];
       let rejectLayout = true;
       const artRequests = [];
@@ -258,9 +260,21 @@ installFeature(controller=><SceneScreen controller={controller}/>);
             zoneId: body.zoneId,
             area: body.zoneId === "exterior" ? "outside" : "public",
             sceneRevision: scene.sceneRevision + 1,
+            movementCompanions:
+              body.zoneId === "exterior" ? [{ id: "gidget", name: "Gidget", zoneId: "airstrip", trespass: true }] : [],
+            activeIds: body.companions ?? [],
+            participants: (body.companions ?? []).map((id) => ({
+              characterId: id,
+              name: id === "mara" ? "Mara" : "Gidget",
+              doing: "Crossing with you",
+            })),
             ...(body.trespass ? { trespassing: true } : {}),
           };
           value = { session: scene };
+        } else if (path.endsWith("/rooms/react")) {
+          reactions.push(route.request().postDataJSON());
+          scene = { ...scene, trespassReactionId: undefined, sceneRevision: scene.sceneRevision + 1 };
+          value = { session: scene, recordEvents: [] };
         } else if (path.endsWith("/rooms/active")) value = { session: scene };
         await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
       });
@@ -322,6 +336,7 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await page.mouse.up();
       assert.equal(moves.length, 0, "Dragging off a read-only tile never activates a move");
       await picker.getByRole("button", { name: "Garden", exact: true }).click();
+      await expect(picker.getByRole("checkbox", { name: "Mara · Trespassing", exact: true })).toBeChecked();
       await expect(picker.getByText("Move to Garden?", { exact: true })).toBeVisible();
       assert.equal(moves.length, 0, "Selecting an open Zone never moves immediately");
       await picker.getByRole("button", { name: "Stay here", exact: true }).click();
@@ -337,6 +352,8 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await expect.poll(() => moves.length).toBe(1);
       assert.equal(moves[0].zoneId, "garden");
       assert.equal(moves[0].trespass, undefined);
+      assert.deepEqual(moves[0].companions, ["mara"], "Confirmed willing companions reach the actual Move request");
+      await expect(page.locator("[data-villages-scene-composer]")).toBeVisible();
       await open();
       await picker.getByRole("button", { name: "Entrance", exact: true }).click();
       await picker.getByRole("button", { name: "Move", exact: true }).click();
@@ -347,15 +364,19 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       assert.equal(moves.length, 2);
       await picker.getByRole("button", { name: "Airstrip", exact: true }).click();
       await picker.getByRole("button", { name: "Trespass…", exact: true }).click();
+      await expect(picker.getByRole("checkbox", { name: "Gidget · Trespassing", exact: true })).toBeChecked();
+      await picker.getByRole("checkbox", { name: "Gidget · Trespassing", exact: true }).uncheck();
       await picker.getByRole("button", { name: "Stay here", exact: true }).click();
       assert.equal(moves.length, 2);
       await picker.getByRole("button", { name: "Trespass…", exact: true }).click();
+      await picker.getByRole("checkbox", { name: "Gidget · Trespassing", exact: true }).check();
       await page.screenshot({ path: `.build-tmp/move-map-${width}.png` });
       assert.ok((await picker.boundingBox()).width <= width, "Move map fits phone width");
       await picker.getByRole("button", { name: "Attempt entry", exact: true }).click();
       await expect.poll(() => moves.length).toBe(3);
       assert.equal(moves[2].zoneId, "airstrip");
       assert.equal(moves[2].trespass, true);
+      assert.deepEqual(moves[2].companions, ["gidget"]);
       // Restore matching identities while retaining a different live graph: saving positions must never write captured routes.
       snapshot.settings.venues[0].zones = snapshot.settings.venues[0].zones.filter((z) => z.id !== "live-only");
       await page.evaluate(async () => {
@@ -410,6 +431,19 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await expect(picker.getByRole("button", { name: "Done", exact: true })).toHaveCount(0);
       await picker.getByRole("button", { name: "Close Move to Zone", exact: true }).click();
       await expect(picker).toHaveCount(0);
+      const composer = page.locator("[data-villages-scene-composer]");
+      await composer.fill("My unsent cover story");
+      await page.evaluate(() => {
+        const c = window.featureController;
+        c.setRoom({ ...c.room, trespassReactionId: "test-reaction" });
+      });
+      await expect.poll(() => reactions.length).toBe(1);
+      await expect(composer).toHaveValue("My unsent cover story");
+      assert.equal(reactions[0].reactionId, "test-reaction");
+      await page.evaluate(async () => {
+        await window.featureController.loadSnapshot();
+      });
+      assert.equal(reactions.length, 1, "Snapshot refresh never repeats an automatic response");
       await page.close();
     }
   });

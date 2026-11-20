@@ -69,6 +69,7 @@ const episode = z
               "standing",
               "movement",
               "movement-request",
+              "movement-agreement",
               "departure",
               "structure",
               "room",
@@ -92,6 +93,18 @@ const episode = z
             witnesses: ids.max(32),
             observedBy: ids.max(32).optional(),
             endedContacts: ids.min(1).max(32).optional(),
+            movementAgreement: z
+              .object({
+                actorId: id,
+                incarnation: id,
+                from: id,
+                zoneId: id,
+                agrees: z.boolean(),
+                segment: z.number().int().min(0).max(23),
+                trespass: z.literal(true).optional(),
+              })
+              .strict()
+              .optional(),
             movement: z
               .object({
                 actorId: id,
@@ -102,6 +115,7 @@ const episode = z
                 spaceClass: z.enum(["residence", "workplace", "community", "other"]),
                 area: z.enum(["outside", "public", "shared", "private"]),
                 privateOwnerId: z.string().max(160),
+                trespass: z.enum(["permission-required", "outside-hours", "accompaniment-required"]).optional(),
               })
               .strict()
               .optional(),
@@ -248,7 +262,9 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
           value.commandReceipts.some(
             (receipt) =>
               receipt.id === id &&
-              ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(receipt.kind),
+              ["contact", "scene", "movement", "movement-agreement", "departure", "npc", "npc-introduction"].includes(
+                receipt.kind,
+              ),
           ),
         ),
       "Scene transition lost its native receipt or actor",
@@ -267,7 +283,9 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "Scene closure lost Player authority",
     );
     const controls = value.commandReceipts.filter((receipt) =>
-      ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(receipt.kind),
+      ["contact", "scene", "movement", "movement-agreement", "departure", "npc", "npc-introduction"].includes(
+        receipt.kind,
+      ),
     );
     memoryRequire(
       memoryHash(delta.receiptIds.toSorted()) === memoryHash(controls.map((receipt) => receipt.id).toSorted()) &&
@@ -283,7 +301,9 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
   }
   memoryRequire(
     !value.commandReceipts.some((receipt) =>
-      ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(receipt.kind),
+      ["contact", "scene", "movement", "movement-agreement", "departure", "npc", "npc-introduction"].includes(
+        receipt.kind,
+      ),
     ) || value.sceneDelta,
     "Scene control receipt lost its retained transition",
   );
@@ -298,6 +318,19 @@ export function readAcceptedEpisode(raw: unknown, seed: string): AcceptedEpisode
       "contact result changed its owning native command",
     );
   for (const receipt of value.commandReceipts) {
+    const agreement = receipt.movementAgreement;
+    memoryRequire(
+      receipt.kind === "movement-agreement"
+        ? agreement &&
+            value.sceneDelta?.receiptIds.includes(receipt.id) &&
+            agreement.actorId !== "player" &&
+            receipt.targetId === agreement.zoneId &&
+            receipt.witnesses.includes("player") &&
+            receipt.witnesses.includes(agreement.actorId) &&
+            value.actors.some((actor) => actor.id === agreement.actorId && actor.incarnation === agreement.incarnation)
+        : !agreement,
+      "movement agreement lost its deciding actor, witnesses or Scene transition",
+    );
     memoryRequire(
       receipt.kind === "mail" ? receipt.mail : !receipt.mail,
       "mail proof changed its owning native outcome",

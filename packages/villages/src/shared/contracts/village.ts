@@ -704,6 +704,8 @@ export type RoomOperation = {
   input?: {
     zoneId?: string;
     trespass?: true;
+    companions?: string[];
+    trespassReaction?: string;
     message?: string;
     mode?: string;
     targetId?: string;
@@ -740,6 +742,8 @@ export type SceneView = {
   spaceClass?: VenueClass;
   zoneId?: string;
   trespassing?: true;
+  trespassReactionId?: string;
+  movementCompanions?: { id: string; name: string; zoneId: string; trespass?: true }[];
   doorwayContacts?: { characterId: string; playerZoneId: string }[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;

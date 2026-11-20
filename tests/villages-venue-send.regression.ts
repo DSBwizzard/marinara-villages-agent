@@ -79,6 +79,15 @@ assert.deepEqual(sceneResend(interruptedMove, { zoneId: "common" }, "new"), {
   retryOfAttemptId: "attempt",
 });
 assert.throws(() => sceneResend(interruptedMove, { zoneId: "exterior" }, "new"), /Recover the saved request/);
+const partyMove = { ...interruptedMove, input: { zoneId: "common", companions: ["b", "a"] } };
+assert.deepEqual(sceneResend(partyMove, { zoneId: "common", companions: ["a", "b"] }, "new"), {
+  submissionId: "original",
+  retryOfAttemptId: "attempt",
+});
+assert.throws(
+  () => sceneResend(partyMove, { zoneId: "common", companions: ["a"] }, "new"),
+  /Recover the saved request/,
+);
 assert.throws(
   () => sceneResend(interruptedMove, { mode: "chat", message: "Hello" }, "new"),
   /Recover the saved request/,

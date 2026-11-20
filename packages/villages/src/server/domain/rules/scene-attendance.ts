@@ -161,12 +161,13 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
           positions,
           unavailable: zone.closed || zoneClosed(village, venue, zone),
         });
+      const trespass =
+        actor === "player" ? session.trespass : session.actorTrespasses?.find((row) => row.actorId === actor);
       if (
         decision?.allowed ||
-        (actor === "player" &&
-          session.trespass?.zoneId === from &&
+        (trespass?.zoneId === from &&
           zone &&
-          session.trespass.reason === decision?.reason &&
+          trespass.reason === decision?.reason &&
           physicallyUsableZone(village, venue, zone, context.at ?? new Date(session.startedAt)))
       )
         continue;

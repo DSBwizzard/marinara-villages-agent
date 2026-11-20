@@ -289,6 +289,14 @@ export function createSceneWriting({
         scene.trespass?.zoneId === scene.zoneId && scene.trespass
           ? "The player is here without permission. Reactions depend on what each person can observe or already knows. The crossing established no consent."
           : "",
+        scene.actorTrespasses?.some((row) => row.zoneId === scene.zoneId && selectedIds.includes(row.actorId))
+          ? "Private unauthorized positions: " +
+            JSON.stringify(
+              scene.actorTrespasses.filter((row) => row.zoneId === scene.zoneId && selectedIds.includes(row.actorId)),
+            ) +
+            ". This does not establish detection or anyone else's knowledge. Villagers and NPCs retain their own motives, including concealing, reporting or challenging a witnessed intrusion. Consequences require normal witnessed evidence and authority. Conclude has no special meaning or consequence."
+          : "",
+        "Sneaking, cover stories, lookouts and distractions use actual submitted actions and established observations. Friendship and presence grant no agreement. Use move.decide for a local person's actual player-heard decision to cross with the player; agrees:false withdraws it. A willing lookout can stay put and needs no movement decision. Treat plots as private to their actual participants. Warnings, reports, suspicions, trust and access changes use ordinary scoped keeps and native decisions; never universal knowledge or automatic punishment.",
         mode === "greet"
           ? scene.visitEvent
             ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
@@ -312,6 +320,9 @@ export function createSceneWriting({
           ? 'A visible resident move uses {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter the Zone."}. A full exit uses {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied actors and routes. Write arrivals before local dialogue. Stay with the player’s view.'
           : "",
         nativeCommands ? NARRATION_NATIVE : "",
+        !nativeCommands
+          ? 'An actual local decision to cross with the Player may add commands:[{"id":"agreement","type":"move.decide","who":"actor-id","to":"zone-id","agrees":true,"trespass":true,"at":"answer","source":[{"segment":"answer"}]}]. Give that actor’s complete audible dialogue segment id:"answer" and requires:["agreement"]. The words must clearly agree to that crossing; trespass:true requires agreeing to enter without permission. Use agrees:false for refusal or withdrawal. Never record consent from ambiguous words, a Player request, friendship or someone else speaking. An unauthorized visible crossing uses a normal narration segment with requires:["move"] and commands:[{"id":"move","type":"move","who":"actor-id","to":"zone-id","trespass":true,"at":"cross","source":[{"segment":"cross","perceive":{"kind":"seen","by":["player"]}}]}]; give the crossing narration id:"cross". Only supplied adjacent trespass routes are eligible.'
+          : "",
         mode === "leave" && input.trim()
           ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."
           : "",
@@ -463,6 +474,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        ...(scene.trespassReaction?.id === venueOperationId() ? { automaticTrespass: true as const } : {}),
         ...(!nativeCommands ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
@@ -648,11 +660,15 @@ export function createSceneWriting({
       reasoningEffort: null,
       verbosity: null,
       debugMode: false,
-      ...(visitEvent
+      ...(visitEvent || request.readset.automaticTrespass
         ? {
             beforeSceneDispatch: async () => {
               const current = await readVillageState();
-              if (!current.spontaneousEvents || current.seed !== request.readset.source.seed)
+              if (
+                !current.spontaneousEvents ||
+                current.seed !== request.readset.source.seed ||
+                current.setupAt !== request.readset.setupAt
+              )
                 throw conflict("Spontaneous events are off. Continue this Scene to move or speak.");
             },
           }

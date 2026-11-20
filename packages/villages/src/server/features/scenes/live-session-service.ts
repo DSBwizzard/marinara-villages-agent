@@ -8,6 +8,7 @@ import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
 import { recordSceneFollowup } from "../../domain/rules/activity-followup.js";
+import { queueTrespassReaction } from "../../domain/rules/scene-trespass.js";
 
 import {
   accessExits,
@@ -22,7 +23,7 @@ import { expirePlayerVisitsOnReturn, playerVisitAbsenceElapsed } from "../../dom
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
-import { contactPath, sceneAccessContext } from "../../domain/rules/venue-contact.js";
+import { contactPath, contactPosition, sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 export interface LiveScenePorts {
@@ -217,6 +218,21 @@ export function createLiveScenes({
       });
     }
     if (venue.access && session.sceneAttendance) {
+      const retained = (session.actorTrespasses ?? []).filter((row) => {
+        const target = resolveVenueZone(venue, row.zoneId);
+        return (
+          target &&
+          contactPosition(session, row.actorId) === row.zoneId &&
+          !evaluateZoneAccess(venue, target, row.actorId, {
+            ...sceneAccessContext(session, undefined, village.timeZone),
+            environment: village.narrative,
+          }).allowed
+        );
+      });
+      if (retained.length !== (session.actorTrespasses ?? []).length)
+        session = await changeSession(session.id, (saved) => {
+          saved.actorTrespasses = retained;
+        });
       const exits = accessExits(session, village, venue);
       if (exits.length) {
         const displaced = await changeSession(session.id, (state) => {
@@ -244,6 +260,8 @@ export function createLiveScenes({
             });
             state.accessPreviousZones ??= {};
             state.accessPreviousZones[exit.actor] = exit.from;
+            state.actorTrespasses = state.actorTrespasses?.filter((row) => row.actorId !== exit.actor);
+            state.movementAgreements = state.movementAgreements?.filter((row) => row.actorId !== exit.actor);
             if (exit.actor === "player") {
               const destination = resolveVenueZone(venue, exit.to)!;
               state.enteredFromZoneId = exit.from;
@@ -296,7 +314,15 @@ export function createLiveScenes({
     if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     const activeIds = people.map((person) => person.characterId);
-    if (session.zoneId === zoneId && JSON.stringify(activeIds) === JSON.stringify(session.activeIds)) return session;
+    const projected = structuredClone(session);
+    queueTrespassReaction(projected, village.spontaneousEvents === true);
+    if (
+      session.zoneId === zoneId &&
+      JSON.stringify(activeIds) === JSON.stringify(session.activeIds) &&
+      JSON.stringify(projected.trespassReaction) === JSON.stringify(session.trespassReaction) &&
+      JSON.stringify(projected.trespassEncounterKeys) === JSON.stringify(session.trespassEncounterKeys)
+    )
+      return session;
     return changeSession(session.id, (state) => {
       if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = zoneId;
@@ -306,6 +332,7 @@ export function createLiveScenes({
       }
       if (activeIds.some((id) => !state.activeIds.includes(id))) state.recap = "";
       state.activeIds = activeIds;
+      queueTrespassReaction(state, village.spontaneousEvents === true);
     });
   }
   async function settleEntryInvitation(admission: VenueScene): Promise<VenueScene> {
@@ -490,6 +517,10 @@ export function createLiveScenes({
       state.continuity = continuity;
       state.accompanying = accompanying;
       state.departedIds = departedIds;
+      state.movementAgreements = state.movementAgreements?.filter(
+        (row) =>
+          sameRoutine(row.actorId) && contactPosition(state, row.actorId) === state.zoneId && row.from === state.zoneId,
+      );
       state.departureDestinations = Object.fromEntries(
         Object.entries(state.departureDestinations ?? {}).filter(([id]) => departedIds.includes(id)),
       );
