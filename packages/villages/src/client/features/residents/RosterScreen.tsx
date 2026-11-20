@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
 import { PeopleBook } from "./PeopleBook.js";
@@ -19,7 +20,7 @@ export function RosterScreen({
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [visitorTab, setVisitorTab] = useState(false);
-  const [addingVisitor, setAddingVisitor] = useState(false);
+  const [addingVisitor, setAddingVisitor] = useState<HTMLElement | null>(null);
   const { error, menuPage, openPerson, portraits, screen, snapshot } = controller;
   if (screen !== "menu" || menuPage !== "villagers") return null;
   const showVisitors = selectedId
@@ -49,7 +50,14 @@ export function RosterScreen({
           <header className={`${ELEMENT_TAG}-directory-head`}>
             <StorybookHeading>People</StorybookHeading>
             {showVisitors && snapshot ? (
-              <button type="button" aria-label="Add Visitor" title="Add Visitor" onClick={() => setAddingVisitor(true)}>
+              <button
+                type="button"
+                aria-label="Add Visitor"
+                title="Add Visitor"
+                onClick={(event) =>
+                  setAddingVisitor(event.currentTarget.closest<HTMLElement>(`.${ELEMENT_TAG}-desk-workspace`))
+                }
+              >
                 <span aria-hidden="true">+</span>
               </button>
             ) : null}
@@ -155,13 +163,17 @@ export function RosterScreen({
               </button>
             </nav>
           ) : null}
-          {addingVisitor && snapshot ? (
-            <AddVisitorDialog
-              snapshot={snapshot}
-              setSnapshot={controller.setSnapshot}
-              onClose={() => setAddingVisitor(false)}
-            />
-          ) : null}
+          {addingVisitor && snapshot
+            ? createPortal(
+                <AddVisitorDialog
+                  snapshot={snapshot}
+                  setSnapshot={controller.setSnapshot}
+                  scope={addingVisitor}
+                  onClose={() => setAddingVisitor(null)}
+                />,
+                addingVisitor,
+              )
+            : null}
         </main>
       </PeopleBook>
     </div>

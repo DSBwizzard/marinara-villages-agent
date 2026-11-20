@@ -6,7 +6,12 @@ import { snapshot as base, mapImage } from "./fixtures/villages-scene-browser.fi
 
 const browser = await chromium.launch({ headless: true });
 await withBrowser(browser, async () => {
-  for (const width of [1440, 390]) {
+  for (const [width, panelWidth] of [
+    [1440, 1440],
+    [390, 390],
+    [1200, 500],
+  ]) {
+    const pageSize = panelWidth <= 700 ? 4 : 8;
     const page = await browser.newPage({ viewport: { width, height: 844 } });
     await mockEngineLookups(page);
     const village = structuredClone(base);
@@ -69,7 +74,7 @@ await withBrowser(browser, async () => {
     await page.route("http://visitor-picker.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
-        body: "<style>html,body{margin:0}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: `<style>html,body{margin:0;height:100vh;overflow:hidden}#engine-header{display:block;height:160px;width:100%;border:0}#engine-content{height:calc(100vh - 160px);width:${panelWidth}px;max-width:100%}marinara-capability-villages{display:block;height:100%}</style><button id="engine-header" onclick="this.dataset.clicked='true'">Engine Header</button><div id="engine-content"><marinara-capability-villages></marinara-capability-villages></div>`,
       }),
     );
     await page.goto("http://visitor-picker.test/");
@@ -84,7 +89,18 @@ await withBrowser(browser, async () => {
     await expect(dialog.getByRole("alert")).toHaveText("Cards could not be loaded.");
     await dialog.getByRole("button", { name: "Retry cards" }).click();
     const choices = dialog.getByRole("group", { name: "Available Character Cards" });
-    await expect(choices.getByRole("button")).toHaveCount(20);
+    await expect(choices.getByRole("button")).toHaveCount(pageSize);
+    await expect(dialog.getByText("Choose a Character Card", { exact: true })).toHaveCount(0);
+    const pages = dialog.getByRole("navigation", { name: "Character Card pages" });
+    await expect(pages).toContainText(`1 / ${Math.ceil(20 / pageSize)}`);
+    await expect(pages.getByRole("button", { name: "Previous Character Card page" })).toBeDisabled();
+    await pages.getByRole("button", { name: "Next Character Card page" }).click();
+    await expect(choices.getByRole("button")).toHaveCount(pageSize);
+    await expect(choices.getByRole("button", { name: "Feddy Fastbayer", exact: true })).toHaveCount(0);
+    await pages.getByRole("button", { name: "Previous Character Card page" }).click();
+    await page.getByRole("button", { name: "Engine Header", exact: true }).click();
+    await expect(page.locator("#engine-header")).toHaveAttribute("data-clicked", "true");
+    await expect(dialog).toBeVisible();
     await expect(choices.getByRole("button", { name: "No Portrait", exact: true })).toContainText("N");
     await expect(choices.getByRole("button", { name: "Feddy Fastbayer", exact: true }).locator("img")).toBeVisible();
     const search = dialog.getByRole("searchbox", { name: "Find a Character Card" });
@@ -106,16 +122,37 @@ await withBrowser(browser, async () => {
     await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open Feddy Fastbayer profile" })).toBeVisible();
     await page.getByRole("button", { name: "Add Visitor", exact: true }).click();
-    await expect(choices.getByRole("button")).toHaveCount(19);
+    await expect(choices.getByRole("button")).toHaveCount(pageSize);
     await expect(choices.getByRole("button", { name: "Feddy Fastbayer", exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Add Visitor", exact: true })).toBeDisabled();
     const footer = await dialog.getByRole("button", { name: "Add Visitor", exact: true }).boundingBox();
     const bounds = await dialog.boundingBox();
-    assert(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1);
+    assert(
+      bounds.x >= 0 && bounds.y >= 160 && bounds.x + bounds.width <= panelWidth + 1,
+      "Picker stays inside Villages below Engine headers: " +
+        JSON.stringify({
+          width,
+          panelWidth,
+          bounds,
+          scope: await page.locator(".marinara-capability-villages-desk-workspace").boundingBox(),
+          host: await page.locator("marinara-capability-villages").boundingBox(),
+        }),
+    );
     assert(footer.y + footer.height <= 844, "Save stays visible with a long library");
     assert(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth), "No sideways scrolling");
+    assert(await dialog.evaluate((node) => node.scrollHeight <= node.clientHeight + 1), "Dialog never scrolls");
+    const body = dialog.locator(".marinara-capability-villages-visitor-picker-body");
+    assert(await body.evaluate((node) => node.scrollHeight <= node.clientHeight + 1), "Card list never scrolls");
+    while (await pages.getByRole("button", { name: "Next Character Card page" }).isEnabled())
+      await pages.getByRole("button", { name: "Next Character Card page" }).click();
+    await expect(choices.getByRole("button")).toHaveCount(3);
+    await search.fill("No Portrait");
+    await expect(choices.getByRole("button")).toHaveCount(1);
+    await expect(pages).toHaveCount(0);
+    await search.fill("");
+    await expect(pages).toContainText(`1 / ${Math.ceil(19 / pageSize)}`);
     mkdirSync(".build-tmp/visitor-picker", { recursive: true });
-    await page.screenshot({ path: `.build-tmp/visitor-picker/${width}.png` });
+    await page.screenshot({ path: `.build-tmp/visitor-picker/${panelWidth}.png` });
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Add Visitor", exact: true })).toBeFocused();

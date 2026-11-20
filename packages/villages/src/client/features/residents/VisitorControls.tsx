@@ -21,16 +21,28 @@ async function saveVisitor({ snapshot, setSnapshot }: VisitorPorts, id: string, 
   setSnapshot((current) => (current?.worldScope === scope && next.worldScope === scope ? next : current));
 }
 
-export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPorts & { onClose(): void }) {
+export function AddVisitorDialog({
+  snapshot,
+  setSnapshot,
+  scope,
+  onClose,
+}: VisitorPorts & { scope: HTMLElement; onClose(): void }) {
   const [catalog, setCatalog] = useState<CatalogResponse["characters"]>([]);
   const [choice, setChoice] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(() => (scope.clientWidth <= 700 ? 4 : 8));
   const [portraits, setPortraits] = useState<PortraitMap>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    const observer = new ResizeObserver(() => setPageSize(scope.clientWidth <= 700 ? 4 : 8));
+    observer.observe(scope);
+    return () => observer.disconnect();
+  }, [scope]);
   useEffect(() => {
     const abort = new AbortController();
     setLoading(true);
@@ -67,9 +79,12 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
   const matching = available.filter((card) =>
     card.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
   );
+  const pageCount = Math.max(1, Math.ceil(matching.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
   return (
     <ModalDialog
       title="Add Visitor"
+      scope={scope}
       className={`${ELEMENT_TAG}-visitor-picker`}
       onClose={onClose}
       dismissible={!busy}
@@ -102,7 +117,10 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
               placeholder="Find a Character Card"
               value={search}
               disabled={busy}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(0);
+              }}
             />
           </label>
         </div>
@@ -120,7 +138,7 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
             </div>
           ) : matching.length ? (
             <div className={`${ELEMENT_TAG}-visitor-picker-grid`} role="group" aria-label="Available Character Cards">
-              {matching.map((card) => (
+              {matching.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((card) => (
                 <button
                   type="button"
                   key={card.id}
@@ -133,7 +151,7 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
                   }}
                 >
                   <AvatarFace portrait={portraits[card.id]} name={card.name} className={`${ELEMENT_TAG}-avatar`} />
-                  <span>{card.name}</span>
+                  <span className={`${ELEMENT_TAG}-visitor-picker-name`}>{card.name}</span>
                   {choice === card.id ? (
                     <span className={`${ELEMENT_TAG}-visitor-picker-check`} aria-hidden="true">
                       ✓
@@ -148,13 +166,36 @@ export function AddVisitorDialog({ snapshot, setSnapshot, onClose }: VisitorPort
             </p>
           )}
         </div>
+        {pageCount > 1 && !loading && !loadError ? (
+          <nav className={`${ELEMENT_TAG}-visitor-picker-pages`} aria-label="Character Card pages">
+            <button
+              type="button"
+              aria-label="Previous Character Card page"
+              disabled={busy || currentPage === 0}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              ←
+            </button>
+            <span role="status">
+              {currentPage + 1} / {pageCount}
+            </span>
+            <button
+              type="button"
+              aria-label="Next Character Card page"
+              disabled={busy || currentPage + 1 === pageCount}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              →
+            </button>
+          </nav>
+        ) : null}
         {error ? (
           <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
             {error}
           </p>
         ) : null}
         <footer>
-          <span role="status">{selected ? `${selected.name} selected` : "Choose a Character Card"}</span>
+          {selected ? <span role="status">{selected.name} selected</span> : null}
           <button type="button" disabled={busy} onClick={onClose}>
             Cancel
           </button>
