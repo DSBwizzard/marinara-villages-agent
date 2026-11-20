@@ -225,12 +225,24 @@ export function FoundingPersonaSelector({
                 action={person.id === draft ? "Selected" : "Select"}
                 onClick={() => {
                   onDraft(person.id);
-                  setOpen(false);
                 }}
               />
             ))}
             {!choices.length ? <p>No Personas match your search.</p> : null}
           </div>
+          <footer>
+            <button type="button" onClick={() => setOpen(false)}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              disabled={disabled || !selected}
+              onClick={() => setOpen(false)}
+            >
+              Next
+            </button>
+          </footer>
         </FoundingDialog>
       ) : null}
     </div>
@@ -269,7 +281,6 @@ export function FoundingVillagerPicker({
     .sort((a, b) => a.name.localeCompare(b.name));
   const toggle = (id: string) => {
     onChange(selectedIds.includes(id) ? selectedIds.filter((value) => value !== id) : [...selectedIds, id]);
-    if (!selectedIds.includes(id)) setOpen(false);
   };
   return (
     <section className={ELEMENT_TAG + "-founding-roster"} aria-label="Founding villagers">
@@ -350,8 +361,11 @@ export function FoundingVillagerPicker({
             {!choices.length ? <p>No character cards match your search.</p> : null}
           </div>
           <footer>
+            <button type="button" onClick={() => setOpen(false)}>
+              Back
+            </button>
             <button type="button" className="villages-forging-primary" onClick={() => setOpen(false)}>
-              Done
+              Next
             </button>
           </footer>
         </FoundingDialog>
@@ -374,7 +388,7 @@ export function VillageLorebookPicker({
   selected: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
-  founding?: { inline: boolean; onBack(): void; nextLabel: "Next" | "Done" };
+  founding?: { inline: boolean; onBack(): void };
   budget?: Parameters<typeof LoreTokenBudgetField>[0];
 }) {
   const inline = founding?.inline ?? false;
@@ -423,7 +437,7 @@ export function VillageLorebookPicker({
             if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
-              close();
+              if (!founding) close();
             }
           }}
           aria-label="Search Lorebooks"
@@ -509,7 +523,7 @@ export function VillageLorebookPicker({
               close();
             }}
           >
-            {founding?.nextLabel ?? "Done"}
+            {founding ? "Next" : "Done"}
           </button>
         </div>
       </footer>

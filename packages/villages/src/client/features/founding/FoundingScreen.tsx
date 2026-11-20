@@ -58,7 +58,6 @@ function FoundingChapter({
   mobileHeader,
   mobileReplies,
   onCloseMenu,
-  canCloseMenu,
   guide,
   bodyRef,
   children,
@@ -70,7 +69,6 @@ function FoundingChapter({
   mobileHeader?: ReactNode;
   mobileReplies: ReactNode;
   onCloseMenu(): void;
-  canCloseMenu: boolean;
   guide: ReactNode;
   bodyRef: Ref<HTMLElement>;
   children: ReactNode;
@@ -95,8 +93,6 @@ function FoundingChapter({
             className={`villages-chapter-menu${step === FOUNDING_STEP.Venues ? " villages-chapter-map" : ""}`}
             headerless={step === FOUNDING_STEP.Venues}
             scrollBody
-            dismissible={canCloseMenu}
-            showCloseButton={canCloseMenu}
             onClose={onCloseMenu}
           >
             {body}
@@ -913,29 +909,19 @@ export function FoundingScreen({
         </ol>
         {!prelude && (!phone || (!settingEditorOpen && (!chapterMenu || mobileScene))) ? modelButton : null}
         {connectionPickerOpen ? (
-          <FoundingDialog
-            title="Model Connections"
-            onClose={() => setConnectionPickerOpen(false)}
-            dismissible={!connections.saving}
-            showCloseButton={!connections.saving}
-          >
+          <FoundingDialog title="Model Connections" onClose={() => setConnectionPickerOpen(false)}>
             <div className="villages-founding-editor-body">
               <AgentConnectionsControls connections={connections} kind="founding" compact />
             </div>
             <footer>
               <button type="button" disabled={connections.saving} onClick={() => setConnectionPickerOpen(false)}>
-                Done
+                Back
               </button>
             </footer>
           </FoundingDialog>
         ) : null}
         {setupStep === FOUNDING_STEP.Maps && artSettingsOpen ? (
-          <FoundingDialog
-            title="Art settings"
-            onClose={() => setArtSettingsOpen(false)}
-            dismissible={!connections.saving}
-            showCloseButton={!connections.saving}
-          >
+          <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
               <AgentConnectionsControls connections={connections} kind="images" compact />
               <SceneryStyleFields
@@ -969,7 +955,7 @@ export function FoundingScreen({
             </div>
             <footer>
               <button type="button" disabled={connections.saving} onClick={() => setArtSettingsOpen(false)}>
-                Done
+                Back
               </button>
             </footer>
           </FoundingDialog>
@@ -992,11 +978,14 @@ export function FoundingScreen({
               </>
             }
             onClose={() => setSettingEditorOpen(false)}
-            dismissible={!busy}
-            showCloseButton={!busy}
           >
             {settingFields}
-            <footer>{nextReply}</footer>
+            <footer>
+              <button type="button" disabled={busy} onClick={() => setSettingEditorOpen(false)}>
+                Back
+              </button>
+              {nextReply}
+            </footer>
           </FoundingDialog>
         ) : null}
         <FoundingChapter
@@ -1028,7 +1017,6 @@ export function FoundingScreen({
               {nextReply}
             </>
           }
-          canCloseMenu={canCloseChapterMenu}
           onCloseMenu={closeChapterMenu}
         >
           <div hidden={setupStep !== FOUNDING_STEP.People}>

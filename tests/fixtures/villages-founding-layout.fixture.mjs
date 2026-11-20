@@ -692,7 +692,7 @@ export async function verifyFoundingLayout(group) {
           holdConnectionRead = true;
           await picker.getByRole("button", { name: "Refresh list", exact: true }).click();
           await expect.poll(() => connectionReadHeld).toBe(true);
-          await page.keyboard.press("Escape");
+          await picker.getByRole("button", { name: "Back", exact: true }).click();
           await expect(modelGate.getByRole("button", { name: "Next" })).toBeDisabled();
           await page.evaluate(() => window.expireConnectionRead());
           const timedOut = models.getByRole("alert");
@@ -701,6 +701,7 @@ export async function verifyFoundingLayout(group) {
           await timedOut.getByRole("button", { name: "Retry", exact: true }).click();
           await system.click();
           await picker.getByRole("button", { name: /^Draft model/ }).click();
+          await picker.getByRole("button", { name: "Next", exact: true }).click();
           await expect(system).toContainText("Draft model");
           assert.equal(modelSelection.systemConnectionId, "alt-talk");
           assert.equal(modelSelection.narrationConnectionId, "talk");
@@ -899,13 +900,19 @@ export async function verifyFoundingLayout(group) {
         const worldPopup = root.getByRole("dialog", { name: "The wider world", exact: true });
         if (phone) {
           await expect(worldPopup).toBeVisible();
-          await expect(worldPopup.getByRole("button", { name: "Done", exact: true })).toBeInViewport({ ratio: 0.99 });
+          await expect(worldPopup.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 0.99 });
           const popupBounds = await worldPopup.boundingBox();
           assert.ok(popupBounds.x >= frame.x + 10 && popupBounds.x + popupBounds.width <= frame.x + frame.width - 10);
           assert.ok(popupBounds.height < frame.height * 0.86, "The World form leaves the terrace visible around it");
-          await expect(worldPopup.getByRole("button", { name: "Close The wider world" })).toBeInViewport({
-            ratio: 0.99,
-          });
+          await expect(worldPopup.getByRole("button", { name: /^Close / })).toHaveCount(0);
+          await page.mouse.click(frame.x + 2, frame.y + 2);
+          await expect(worldPopup).toBeVisible();
+          await worldPopup.press("Escape");
+          await expect(worldPopup).toBeVisible();
+          await worldPopup.evaluate((node) =>
+            node.dispatchEvent(new Event("cancel", { bubbles: true, cancelable: true })),
+          );
+          await expect(worldPopup).toBeVisible();
         }
         const worldForm = phone ? worldPopup : scene;
         await expect(worldForm.getByText(/^What World does your Village take place in\?/)).toBeVisible();
@@ -951,7 +958,7 @@ export async function verifyFoundingLayout(group) {
           if (phone) await nextLine();
           await expect(worldField).toHaveValue(worldBrief);
         }
-        if (phone) await worldPopup.getByRole("button", { name: "Done", exact: true }).click();
+        if (phone) await worldPopup.getByRole("button", { name: "Next", exact: true }).click();
         else await nextLine();
         await layer("World");
         await expect(line).toHaveText(/^Got Lorebooks\?.*Scenes, new places, and daily routines\./);
@@ -960,7 +967,7 @@ export async function verifyFoundingLayout(group) {
         if (draftWithLore) {
           await scene.getByRole("button", { name: "Back", exact: true }).click();
           await expect(worldField).toHaveValue(worldBrief);
-          if (phone) await worldPopup.getByRole("button", { name: "Done", exact: true }).click();
+          if (phone) await worldPopup.getByRole("button", { name: "Next", exact: true }).click();
           else await nextLine();
         }
         await expect(root.getByRole("searchbox", { name: "Search Lorebooks" })).toHaveCount(0);
@@ -970,6 +977,12 @@ export async function verifyFoundingLayout(group) {
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
         const lorePageSize = phone ? 6 : 12;
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(lorePageSize);
+        if (phone) {
+          await expect(picker.getByRole("button", { name: /^Close / })).toHaveCount(0);
+          await page.mouse.click(frame.x + 2, frame.y + 2);
+        }
+        await picker.getByRole("searchbox", { name: "Search Lorebooks" }).press("Escape");
         await expect(loreResults.getByRole("checkbox")).toHaveCount(lorePageSize);
         const loreBudget = picker.getByRole("textbox", { name: "Lorebook Token Budget", exact: true });
         await expect(loreBudget).toBeVisible();
@@ -1060,7 +1073,7 @@ export async function verifyFoundingLayout(group) {
           await relay.check();
           const budget = picker.getByRole("textbox", { name: "Lorebook Token Budget", exact: true });
           await budget.fill("1200");
-          await picker.getByRole("button", { name: phone ? "Close Choose Lorebooks" : "Back", exact: true }).click();
+          await picker.getByRole("button", { name: "Back", exact: true }).click();
           await nextLine();
           await expect(relay).not.toBeChecked();
           await relay.check();
@@ -1071,7 +1084,7 @@ export async function verifyFoundingLayout(group) {
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `lorebooks-${view.width}-${view.height}.png`),
           });
         for (const card of await loreCards.all()) await expect(card).toBeInViewport({ ratio: 0.99 });
-        await expect(picker.getByRole("button", { name: phone ? "Done" : "Next", exact: true })).toBeInViewport({
+        await expect(picker.getByRole("button", { name: "Next", exact: true })).toBeInViewport({
           ratio: 0.99,
         });
         if (phone)
@@ -1079,7 +1092,7 @@ export async function verifyFoundingLayout(group) {
             await picker.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
             "The Lorebook page and actions fit without scrolling",
           );
-        await picker.getByRole("button", { name: phone ? "Done" : "Next", exact: true }).click();
+        await picker.getByRole("button", { name: "Next", exact: true }).click();
         await layer("Village");
         await expectPose("presenting");
         await expect(line).toHaveText(/^The Village is your whole community/);
@@ -1088,7 +1101,7 @@ export async function verifyFoundingLayout(group) {
         const namingDialog = root.getByRole("dialog", { name: "Your Village", exact: true });
         const villageBrief = root.getByLabel("Tell Mari about your village", { exact: true });
         const finishNaming = () =>
-          phone ? namingDialog.getByRole("button", { name: "Done", exact: true }).click() : nextLine();
+          phone ? namingDialog.getByRole("button", { name: "Next", exact: true }).click() : nextLine();
         if (phone) {
           await expect(line).toHaveText(/^What should we call your Village/);
           await expect(line).toBeFocused();
@@ -1096,7 +1109,7 @@ export async function verifyFoundingLayout(group) {
           await expect(button("Next")).toBeInViewport({ ratio: 1 });
           await nextLine();
           await expect(namingDialog.getByRole("textbox", { name: "Village Name" })).toBeVisible();
-          await expect(namingDialog.getByRole("button", { name: "Done" })).toBeInViewport({ ratio: 0.99 });
+          await expect(namingDialog.getByRole("button", { name: "Next" })).toBeInViewport({ ratio: 0.99 });
         } else {
           await expect(namingDialog).toHaveCount(0);
           await expect(line).toHaveText(/^What should we call your Village/);
@@ -1172,8 +1185,7 @@ export async function verifyFoundingLayout(group) {
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
         await expect(villageBrief).toHaveCount(0);
         await expect(villageName).toHaveCount(0);
-        const closeSetting = () =>
-          settingPanel.getByRole("button", { name: "Close Your first Map", exact: true }).click();
+        const closeSetting = () => settingPanel.getByRole("button", { name: "Back", exact: true }).click();
         if (phone) {
           await expect(settingPanel).toBeHidden();
           if (!draftWithLore) {
@@ -1297,6 +1309,13 @@ export async function verifyFoundingLayout(group) {
         await expect(root.locator(".villages-chapter-guide")).not.toContainText("gets a home");
         await enterChapter();
         if (view.width === 390 && view.height === 844) {
+          await root.locator(".marinara-capability-villages-founding-persona").getByRole("button").click();
+          const personas = page.getByRole("dialog", { name: "Choose Persona", exact: true });
+          await personas.getByRole("group", { name: "Choose a Persona" }).getByRole("button").first().click();
+          await expect(personas).toBeVisible();
+          await personas.press("Escape");
+          await expect(personas).toBeVisible();
+          await personas.getByRole("button", { name: "Next", exact: true }).click();
           await expect
             .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.mobileMenu))
             .toBe("people");
@@ -1308,6 +1327,7 @@ export async function verifyFoundingLayout(group) {
           await button("+ Add villager").click();
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
           await picker.getByRole("button", { name: person.name + " · Add", exact: true }).click();
+          await picker.getByRole("button", { name: "Next", exact: true }).click();
         }
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();
@@ -1317,21 +1337,25 @@ export async function verifyFoundingLayout(group) {
         const gmPicker = page.getByRole("dialog", { name: "GM", exact: true });
         await expect(gmPicker.getByRole("button", { name: "Use Engine default", exact: true })).toHaveCount(0);
         await gmPicker.getByRole("button", { name: /^Draft model/ }).click();
+        await gmPicker.getByRole("button", { name: "Next", exact: true }).click();
         await expect(modelSettings.getByRole("button", { name: /^GM / })).toContainText("Draft model");
         await modelSettings.getByRole("button", { name: /^Images / }).click();
         const imagePicker = page.getByRole("dialog", { name: "Images", exact: true });
         await expect(imagePicker.getByRole("button", { name: "Use Engine default", exact: true })).toBeVisible();
         await imagePicker.getByRole("button", { name: "Disabled", exact: true }).click();
+        await imagePicker.getByRole("button", { name: "Next", exact: true }).click();
         await expect(modelSettings.getByRole("button", { name: /^Images / })).toContainText("Disabled");
-        await modelSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await modelSettings.getByRole("button", { name: "Back", exact: true }).click();
         await button("Model Connections").click();
         await expect(modelSettings.getByRole("button", { name: /^GM / })).toContainText("Draft model");
         await expect(modelSettings.getByRole("button", { name: /^Images / })).toContainText("Disabled");
         await modelSettings.getByRole("button", { name: /^GM / }).click();
         await gmPicker.getByRole("button", { name: /^Language model/ }).click();
+        await gmPicker.getByRole("button", { name: "Next", exact: true }).click();
         await modelSettings.getByRole("button", { name: /^Images / }).click();
         await imagePicker.getByRole("button", { name: /^Image model/ }).click();
-        await modelSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await imagePicker.getByRole("button", { name: "Next", exact: true }).click();
+        await modelSettings.getByRole("button", { name: "Back", exact: true }).click();
         await expect(button("Model Connections")).toBeFocused();
         await expect(resident.getByText("No Sprites Assigned!", { exact: false })).toBeVisible();
         await expect(resident.getByRole("button", { name: "Portrait", exact: true })).toHaveCount(0);
@@ -1369,7 +1393,7 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
           });
-        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await artSettings.getByRole("button", { name: "Back", exact: true }).click();
         await expect(artSettings).toHaveCount(0);
         assert.equal(generatedImages, 0, "Changing art settings never generates an image");
         assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
@@ -1377,7 +1401,7 @@ export async function verifyFoundingLayout(group) {
         await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
           "Watercolor with muted teal and warm amber.",
         );
-        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
+        await artSettings.getByRole("button", { name: "Back", exact: true }).click();
         const image = await page.evaluate(() => {
           const canvas = document.createElement("canvas");
           canvas.width = 1536;
@@ -1601,6 +1625,8 @@ export async function verifyFoundingLayout(group) {
           const backToMap = sheet.getByRole("button", { name: "← Map", exact: true });
           await expect(backToMap).toBeFocused();
           await backToMap.press("Escape");
+          await expect(backToMap).toBeFocused();
+          await backToMap.click();
           await expect(marker).toBeFocused();
           await expect(stage).toHaveAttribute("data-navigation-zoom", zoom);
           await mapCanvas.getByRole("button", { name: "Reset map view", exact: true }).click();
@@ -1935,7 +1961,7 @@ export async function verifyFoundingLayout(group) {
         await button("Suggest").click();
         await page
           .getByRole("dialog", { name: "Suggest", exact: true })
-          .getByRole("button", { name: "Cancel", exact: true })
+          .getByRole("button", { name: "Back", exact: true })
           .click();
         assert.equal(suggestions, 0);
         failVenueConnection = true;
@@ -1950,7 +1976,7 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-step", "3");
         const repair = root.getByRole("dialog", { name: "Model Connections", exact: true });
         await expect(repair.getByRole("button", { name: /^System / })).toBeVisible();
-        await repair.getByRole("button", { name: "Done", exact: true }).click();
+        await repair.getByRole("button", { name: "Back", exact: true }).click();
         assert.equal(suggestions, 1, "checking connections never retries generation");
         failVenueConnection = false;
         await button("Retry").click();

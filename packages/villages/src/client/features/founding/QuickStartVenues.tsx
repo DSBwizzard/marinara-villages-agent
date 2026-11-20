@@ -281,22 +281,6 @@ export function QuickStartVenues({
                 {inlineVenue ? "← Map" : "← Venues"}
               </button>
             }
-            onKeyDown={
-              inlineOpen
-                ? (event) => {
-                    if (
-                      event.key !== "Escape" ||
-                      event.defaultPrevented ||
-                      (event.target instanceof Element &&
-                        event.target.closest("dialog") !== event.currentTarget.closest("dialog"))
-                    )
-                      return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    closeVenue();
-                  }
-                : undefined
-            }
             tabs={{ section, onSelect: selectSection }}
           >
             {section === "about" ? (

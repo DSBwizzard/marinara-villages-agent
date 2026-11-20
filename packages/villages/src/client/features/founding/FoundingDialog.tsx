@@ -12,7 +12,7 @@ export function FoundingDialog(props: Omit<ComponentProps<typeof ModalDialog>, "
     <>
       <span ref={anchor} hidden />
       {scope === undefined ? null : scope ? (
-        createPortal(<ModalDialog {...props} scope={scope} />, scope)
+        createPortal(<ModalDialog {...props} dismissible={false} showCloseButton={false} scope={scope} />, scope)
       ) : (
         <ModalDialog {...props} />
       )}

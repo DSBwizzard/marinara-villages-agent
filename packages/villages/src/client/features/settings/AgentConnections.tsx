@@ -313,7 +313,13 @@ export function AgentConnectionsControls({
         </div>
       ) : null}
       {job && settings ? (
-        <ModalDialog title={job.label} onClose={() => setJob(null)} className={`${P}-model-picker`}>
+        <ModalDialog
+          title={job.label}
+          onClose={() => setJob(null)}
+          className={`${P}-model-picker`}
+          dismissible={!kind}
+          showCloseButton={!kind}
+        >
           <div className={`${P}-model-picker-body`}>
             <p>{job.purpose}</p>
             {feedback}
@@ -348,7 +354,7 @@ export function AgentConnectionsControls({
                     aria-current={current || undefined}
                     disabled={busy || disabled}
                     onClick={() => {
-                      if (current || choose({ key: job.key, id: option.id })) setJob(null);
+                      if ((current || choose({ key: job.key, id: option.id })) && !kind) setJob(null);
                     }}
                   >
                     <span>
@@ -367,6 +373,16 @@ export function AgentConnectionsControls({
               Refresh list
             </button>
           </div>
+          {kind ? (
+            <footer>
+              <button type="button" onClick={() => setJob(null)}>
+                Back
+              </button>
+              <button type="button" disabled={busy || disabled} onClick={() => setJob(null)}>
+                Next
+              </button>
+            </footer>
+          ) : null}
         </ModalDialog>
       ) : null}
     </section>

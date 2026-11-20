@@ -215,6 +215,8 @@ await withBrowser(browser, async () => {
       await manage();
       await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveValue("A timber cottage");
       await page.keyboard.press("Escape");
+      await expect(sheet).toBeVisible();
+      await closeVenue();
       await expect(sheet).toHaveCount(0);
       await expect(first).toBeFocused();
       await first.click();
@@ -498,7 +500,7 @@ await withBrowser(browser, async () => {
         shortDialog.y >= shortPane.y && shortDialog.y + shortDialog.height <= shortPane.y + shortPane.height + 1,
         "Compact confirmation fits a short Villages pane",
       );
-      await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Back", exact: true }).click();
       await page.setViewportSize(viewport);
       assert.equal(calls, 0);
       await page.evaluate(() =>

@@ -81,6 +81,10 @@ export function FoundingSettingScene({
       lineRef.current?.parentElement?.scrollTo({ top: 0 });
       lineRef.current?.focus({ preventScroll: true });
     });
+  const closePopup = () => {
+    setPopup(undefined);
+    focusLine();
+  };
   useEffect(() => {
     if (enteringScene) lineRef.current?.focus({ preventScroll: true });
   }, [enteringScene]);
@@ -340,7 +344,7 @@ export function FoundingSettingScene({
                 moveTo("village-overview");
               }}
               disabled={controller.busy || setupSuggestionsBusy}
-              founding={{ inline: !phone, onBack: back, nextLabel: phone ? "Done" : "Next" }}
+              founding={{ inline: !phone, onBack: back }}
               budget={loreBudget}
             />
           </div>
@@ -412,39 +416,34 @@ export function FoundingSettingScene({
           title="The wider world"
           className="villages-setting-fields-dialog"
           scrollBody
-          onClose={() => {
-            setPopup(undefined);
-            focusLine();
-          }}
+          onClose={closePopup}
         >
           <div className="villages-setting-fields">
             <p>{worldQuestion}</p>
             {worldField}
           </div>
           <footer>
+            <button type="button" onClick={closePopup}>
+              Back
+            </button>
             <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
-              Done
+              Next
             </button>
           </footer>
         </FoundingDialog>
       ) : null}
       {phone && namingVillage && popup === "village" ? (
-        <FoundingDialog
-          title="Your Village"
-          className="villages-setting-fields-dialog"
-          scrollBody
-          onClose={() => {
-            setPopup(undefined);
-            focusLine();
-          }}
-        >
+        <FoundingDialog title="Your Village" className="villages-setting-fields-dialog" scrollBody onClose={closePopup}>
           <div className="villages-setting-fields">
             <p>{script["village-overview"][lineIndex]}</p>
             {villageFields}
           </div>
           <footer>
+            <button type="button" onClick={closePopup}>
+              Back
+            </button>
             <button type="button" className="villages-forging-primary" onClick={finishVillage}>
-              Done
+              Next
             </button>
           </footer>
         </FoundingDialog>

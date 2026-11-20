@@ -37,7 +37,7 @@ export function QuickStartButton({
           ) : null}
           <footer>
             <button type="button" onClick={() => setConfirming(false)}>
-              Cancel
+              Back
             </button>
             <button
               type="button"

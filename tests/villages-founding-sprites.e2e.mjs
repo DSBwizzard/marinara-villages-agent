@@ -151,7 +151,7 @@ await withBrowser(browser, async () => {
       if (phone)
         await root
           .getByRole("dialog", { name: "The wider world", exact: true })
-          .getByRole("button", { name: "Done", exact: true })
+          .getByRole("button", { name: "Next", exact: true })
           .click();
       else await next.click();
       await next.click();
@@ -159,7 +159,7 @@ await withBrowser(browser, async () => {
         name: phone ? "Choose Lorebooks" : "Village Lorebooks",
         exact: true,
       });
-      await lore.getByRole("button", { name: phone ? "Done" : "Next", exact: true }).click();
+      await lore.getByRole("button", { name: "Next", exact: true }).click();
       await next.click();
       if (phone) {
         await expect(root.getByRole("dialog", { name: "Your Village", exact: true })).toHaveCount(0);
@@ -170,7 +170,7 @@ await withBrowser(browser, async () => {
       if (phone)
         await root
           .getByRole("dialog", { name: "Your Village", exact: true })
-          .getByRole("button", { name: "Done", exact: true })
+          .getByRole("button", { name: "Next", exact: true })
           .click();
       else await next.click();
       await next.click();
@@ -193,10 +193,11 @@ await withBrowser(browser, async () => {
           await expect(add).toBeInViewport();
           await page.evaluate(() => window.visualViewport.dispatchEvent(new Event("scroll")));
           await expect(picker.getByRole("searchbox")).toBeInViewport();
-          await expect(picker.getByRole("button", { name: "Done", exact: true })).toBeInViewport();
+          await expect(picker.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
           await expect(add).toBeInViewport();
         }
         await add.click();
+        await picker.getByRole("button", { name: "Next", exact: true }).click();
       }
       const row = (name) =>
         root.locator(".villages-selected-villager").filter({ has: page.getByText(name, { exact: true }) });
