@@ -12,7 +12,7 @@ import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js
 import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 const at='2026-11-20T12:00:00Z',noop=()=>{},scope='a'.repeat(64);
 const line=(id,content,speakerId='__venue_scene__')=>({id,content,role:'assistant',kind:speakerId==='__venue_scene__'?'narration':'dialogue',speakerId,name:speakerId==='mara'?'Mara':'Narration',at});
-const initial={id:'A',placeId:'mill',placeName:'The Mill',zoneId:'workshop',zoneArrivalId:'arrival-workshop',status:'active',startedAt:at,endedAt:'',activeIds:['mara','jo'],participants:[{characterId:'mara',name:'Mara',doing:''},{characterId:'jo',name:'Jo',doing:''}],lines:[line('old','Old Entrance dialogue.'),line('arrival-workshop','You arrive at Workshop.'),line('new-1','Mara sets her cup down.'),line('new-2','Welcome to the Workshop.','mara'),line('new-3','The workbench is covered in tools.')],submissions:[{id:'latest',replyLineIds:['new-1','new-2','new-3']}]};
+const initial={id:'A',placeId:'mill',placeName:'The Mill',zoneId:'workshop',zoneArrivalId:'arrival-workshop',status:'active',startedAt:at,endedAt:'',activeIds:['mara','jo'],participants:[{characterId:'mara',name:'Mara',doing:''},{characterId:'jo',name:'Jo',doing:''}],lines:[line('old','Old Entrance dialogue.'),line('arrival-workshop','You arrive at Workshop.'),line('new-1','**Mara sets her cup down.**'),line('new-2','Welcome to the Workshop.','mara'),line('new-3','The workbench is covered in tools.')],submissions:[{id:'latest',replyLineIds:['new-1','new-2','new-3']}]};
 function Harness(){const [room,setRoom]=useState(initial),[draft,setDraft]=useState('Unsent draft');
 useLayoutEffect(syncVillagesStyles,[]);window.h={setRoom,room,line};
 const props={worldScope:scope,mobile:innerWidth<704,nameColors:{},speechColors:{},picture:'',draft,busy:false,error:'',greetingNotice:'',open:true,ended:false,playerName:'Player',portraits:{},sprites:{},onDraft:setDraft,onSend:noop,sendOnEnter:false,spriteCardFlipEnabled:false,onViewVenue:noop,onEnd:noop,onRetryGreeting:noop,onContinueWithoutGreeting:noop,notices:[],onDismissNotice:noop,debugDiscardEnabled:false,onDebugDiscard:noop,sceneSettings:null,movementZones:[],onMovementTarget:noop,currentZoneLabel:'Workshop'};
@@ -78,6 +78,7 @@ await withBrowser(browser, async () => {
     const reply = page.getByRole("region", { name: "Latest reply", exact: true });
     for (const text of ["Mara sets her cup down.", "Welcome to the Workshop.", "covered in tools."])
       await expect(reply).toContainText(text);
+    await expect(reply.locator("strong")).toHaveText("Mara sets her cup down.");
     await expect(reply).not.toContainText("Old Entrance");
     await expect(page.getByRole("button", { name: /^(Previous|Next) paragraph$/ })).toHaveCount(0);
     const cast = page.locator('[class$="-chat-cast-person"]');

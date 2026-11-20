@@ -144,6 +144,7 @@ await withBrowser(browser, async () => {
     session.lines[2] = asides[0];
     await load();
     await expect(reply).toContainText("A long aside with every word preserved.");
+    await expect(reply.locator("strong").first()).toHaveText("A long aside with every word preserved.");
     assert(await reply.evaluate((node) => node.scrollHeight > node.clientHeight));
     const box = await reply.boundingBox();
     assert(box.x >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= height);
