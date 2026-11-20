@@ -224,11 +224,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
     return serialized(async () => {
       const request = await recover(await read());
       if (request?.id !== id)
-        throw new VillagesRequestError(
-          404,
-          "This Founding draft result is no longer available. Your current setup is kept. Generate again only when you choose.",
-          FOUNDING_DRAFT_UNAVAILABLE,
-        );
+        throw new VillagesRequestError(404, "Founding draft result unavailable.", FOUNDING_DRAFT_UNAVAILABLE);
       return request;
     });
   }

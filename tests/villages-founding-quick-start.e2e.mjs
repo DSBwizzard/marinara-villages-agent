@@ -93,7 +93,7 @@ await withBrowser(browser, async () => {
               contentType: "application/json",
               body: JSON.stringify({
                 code: "FOUNDING_DRAFT_UNAVAILABLE",
-                error: "This Founding draft result is no longer available. Your current setup is kept.",
+                error: "Founding draft result unavailable.",
               }),
             });
           return fulfill(route, { contentType: "application/json", body: JSON.stringify(receipt) });
