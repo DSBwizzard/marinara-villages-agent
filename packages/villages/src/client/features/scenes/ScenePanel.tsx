@@ -534,11 +534,10 @@ export function RoomPanel({
   }
 
   /** Each playback moment supplies its captured presentation and source lines. */
-  const steps = useMemo(() => {
-    const steps = scenePlaybackSteps(playback.window, playerName, room.activeIds);
-    const arrival = room.zoneArrivalId ? steps.findIndex((step) => step.lineId === room.zoneArrivalId) : -1;
-    return arrival < 0 ? steps : steps.slice(arrival);
-  }, [playback.window, playerName, room.activeIds, room.zoneArrivalId]);
+  const steps = useMemo(
+    () => scenePlaybackSteps(playback.window, playerName, room.activeIds),
+    [playback.window, playerName, room.activeIds],
+  );
   const targetStep = useRef<string | null>(null);
   const positionedWindow = useRef<ScenePlaybackWindow | null>(null);
   /** A new visit opens at its latest line; each append opens at its first new paragraph. */
@@ -563,7 +562,11 @@ export function RoomPanel({
         ),
       );
     else if (playback.entry === "last") select(Math.max(0, steps.length - 1));
-    else if (bookmark?.scope === worldScope && bookmark.sceneId === room.id) {
+    else if (
+      bookmark?.scope === worldScope &&
+      bookmark.sceneId === room.id &&
+      bookmark.zoneArrivalId === room.zoneArrivalId
+    ) {
       const saved = steps.findIndex((step) => step.lineId === bookmark.lineId && step.paragraph === bookmark.paragraph);
       const newer =
         bookmark.atEnd || playback.advanceFrom !== undefined
@@ -577,6 +580,7 @@ export function RoomPanel({
     } else select(Math.max(0, steps.length - 1));
   }, [
     room.id,
+    room.zoneArrivalId,
     steps,
     reset,
     isFounded,
@@ -640,8 +644,7 @@ export function RoomPanel({
       restoring: initialRead && readingOrdinal !== readingTotal - 1,
     };
   }, [stageRoomId, readingOrdinal, readingTotal, step?.key]);
-  const atArrivalBoundary = !!room.zoneArrivalId && steps[0]?.lineId === room.zoneArrivalId;
-  const canReadPrevious = at > 0 || readingPages.index > 0 || (!atArrivalBoundary && !!playback.window.olderCursor);
+  const canReadPrevious = at > 0 || readingPages.index > 0 || !!playback.window.olderCursor;
   const canReadNext =
     at < steps.length - 1 ||
     readingPages.index < readingPages.count - 1 ||
@@ -1545,8 +1548,7 @@ export function RoomPanel({
                 onClick={() => {
                   if (!readingPages.move(-1)) {
                     if (at > 0) setReadStep(at - 1);
-                    else if (!atArrivalBoundary && playback.window.olderCursor)
-                      void playback.load(playback.window.olderCursor, "last");
+                    else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
                   }
                 }}
                 disabled={!canReadPrevious || playback.busy || retrying}

@@ -45,6 +45,7 @@ import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residentMovementOptions, residentMovementPrompt } from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { sceneContinuityView, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
+import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { assertCurrentSceneGeneration, completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import { describeSpriteExpressions } from "../../domain/rules/sprite-expressions.js";
 import { sceneVisitOptions } from "../../domain/rules/scene-visit-speech.js";
@@ -224,8 +225,12 @@ export function createSceneWriting({
             ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
           );
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
-    const remoteInvitations = mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds) : [];
-    const canInviteForVisit = remoteInvitations.length > 0;
+    const localVisitZones = (sceneLayoutVenue(venue, scene).zones ?? [])
+      .filter((zone) => showAccess || zone.seen || zone.id === scene.zoneId)
+      .map((zone) => zone.id);
+    const visitOptions =
+      mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds, localVisitZones) : [];
+    const canInviteForVisit = visitOptions.length > 0;
     const residentMovesInReply = mode === "chat";
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
@@ -313,7 +318,7 @@ export function createSceneWriting({
         nativeCommands ? NARRATION_RESPONSE : ordinarySceneCitationIds(positions),
         nativeCommands ? "" : ordinarySceneKeepSources(positions),
         canInviteForVisit
-          ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
+          ? 'Write "visit" first whenever a resident grants entry to a listed Zone, including this Venue. Use "visit":{"option":1,"segment":2,"escort":false} with the actual option number and one-based index of their invitation dialogue. Same-Venue entry lasts for this Scene; remote entry is for the next visit. Use that speaker\'s option. A group invitation gets the same entry when it includes the player. Set escort true only when they agree to lead. Omit visit for tentative plans, refusals, or unmet conditions. End before the player starts moving.'
           : "",
         residentMovesInReply
           ? 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
@@ -371,9 +376,7 @@ export function createSceneWriting({
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           showAccess ? narrationAccessPrompt(context.access) : "",
           nativeCommands && showAccess ? NARRATION_ACCESS_COMMANDS : "",
-          canInviteForVisit
-            ? "Remote visit invitations available in this Scene: " + JSON.stringify(remoteInvitations)
-            : "",
+          canInviteForVisit ? "Visit invitations available in this Scene: " + JSON.stringify(visitOptions) : "",
           housing,
           nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
@@ -444,7 +447,7 @@ export function createSceneWriting({
       "Narration",
       "## Scene reply reminder\n" +
         (canInviteForVisit
-          ? 'Start with "visit" when the reply grants the player a remote visit, followed by "segments". Otherwise start with "segments".\n'
+          ? 'Start with "visit" when the reply grants entry to any listed Zone, followed by "segments". Otherwise start with "segments".\n'
           : plainJson
             ? 'Begin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.\n'
             : "") +
@@ -480,7 +483,7 @@ export function createSceneWriting({
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
         ...(canInviteForVisit
           ? {
-              sceneVisitOptions: remoteInvitations.map(({ actorId, venueId, zoneId }) => ({
+              sceneVisitOptions: visitOptions.map(({ actorId, venueId, zoneId }) => ({
                 actorId,
                 venueId,
                 zoneId,

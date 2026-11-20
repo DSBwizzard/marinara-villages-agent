@@ -1,8 +1,11 @@
-// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move
+// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move, scene-travel/local-permission
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import {
+  initializeVenueAccess,
+  evaluateZoneAccess,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -138,7 +141,7 @@ for (const scenario of [
       calls++;
       if (calls === 1) {
         const prompt = messages.map(({ content }) => content).join("\n");
-        assert.match(prompt, /Remote visit invitations available.*Willow Hotel/);
+        assert.match(prompt, /Visit invitations available.*Willow Hotel/);
         assert.match(prompt, /Write "visit" first/);
         assert.match(prompt, /A group invitation gets the same entry when it includes the player/);
       }
@@ -603,3 +606,139 @@ for (const scenario of [
       await host.stop();
     }
   });
+
+await runCase("scene-travel/local-permission", async () => {
+  for (const mode of ["invite", "whisper", "conditional", "unlisted", "unrelated"]) {
+    const host = await packagedSceneServer({
+      configure(world) {
+        world.spontaneousEvents = false;
+        const venue = world.venues[0];
+        venue.access!.managerIds = ["mara"];
+        venue.zones!.find((zone) => zone.id === "exterior")!.connectedTo!.push("airstrip");
+        venue.zones!.push({
+          ...defaultVenueSpace("other"),
+          id: "airstrip",
+          name: "Airstrip",
+          description: "An unfenced grass airstrip.",
+          kind: "restricted",
+          connectedTo: ["exterior"],
+          seen: true,
+        });
+        venue.zones!.find((zone) => zone.id === "exterior")!.connectedTo!.push("unseen-room");
+        venue.zones!.push({
+          ...defaultVenueSpace("other"),
+          id: "unseen-room",
+          name: "Unseen private room",
+          description: "A private room beside the entrance.",
+          kind: "restricted",
+          connectedTo: ["exterior"],
+          seen: false,
+        });
+        initializeVenueAccess(venue);
+        venue.zones!.find((zone) => zone.id === "airstrip")!.access!.mode = "permission-required";
+        venue.zones!.find((zone) => zone.id === "unseen-room")!.access!.mode = "permission-required";
+        if (mode === "whisper") {
+          const resident = structuredClone(world.villagers[0]);
+          resident.characterId = "leo";
+          resident.incarnation = "leo:local-invite";
+          resident.cardSnapshot.id = "leo";
+          resident.cardSnapshot.name = "Leo";
+          world.villagers.push(resident);
+        }
+      },
+      configureScene(scene) {
+        if (mode !== "whisper") return;
+        const person = { characterId: "leo", name: "Leo", doing: "Listening" };
+        scene.activeIds.push("leo");
+        scene.participants.push(person);
+        scene.sceneAttendance!.occupants.push({ ...person, zoneId: "common" });
+      },
+    });
+    let calls = 0;
+    host.model.chatComplete = async (messages) => {
+      calls++;
+      const prompt = messages.map((message) => message.content).join("\n");
+      const choices = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]);
+      const option = choices.find((choice: { zoneId: string }) => choice.zoneId === "airstrip")?.option;
+      assert(option, "The actual fitted reply includes the host's same-Venue invitation option");
+      assert.match(
+        messages.at(-1)!.content,
+        /grants entry to any listed Zone/,
+        "The final reminder must allow local permission, too",
+      );
+      if (mode === "unrelated")
+        assert(
+          !choices.some((choice: { zoneId: string }) => choice.zoneId === "unseen-room"),
+          "Unrelated ordinary chat does not list unseen local Zones",
+        );
+      return {
+        content: JSON.stringify({
+          ...(["conditional", "unrelated"].includes(mode)
+            ? {}
+            : { visit: { option: mode === "unlisted" ? 12 : option, segment: 1, escort: false } }),
+          segments: [
+            {
+              kind: "dialogue",
+              speakerId: "mara",
+              text:
+                mode === "conditional"
+                  ? "Ask me after lunch first."
+                  : mode === "unrelated"
+                    ? "Just a quiet afternoon."
+                    : "Yes, go take a look at the Airstrip.",
+              ...(mode === "whisper" ? { delivery: "whisper", targetId: "leo" } : {}),
+            },
+          ],
+        }),
+        finishReason: "stop",
+        usage: { inputTokens: 10, outputTokens: 10 },
+      };
+    };
+    try {
+      const before = (await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).json().session;
+      const input = {
+        sessionId: before.id,
+        message: mode === "unrelated" ? "How is your afternoon?" : "May I look around the Airstrip?",
+        mode: "chat",
+        submissionId: "local-invite",
+        expectedSceneRevision: before.sceneRevision,
+      };
+      const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: input });
+      assert.equal(response.statusCode, 200, response.body);
+      const scene = response.json().session;
+      assert.equal(scene.id, before.id);
+      assert.equal(scene.travel, undefined, "A local permission uses ordinary Move in the same Scene");
+      const world = await createVillageRepository(() => host.documents as never).readAuthority();
+      const venue = world.venues[0],
+        zone = venue.zones!.find((zone) => zone.id === "airstrip")!;
+      assert.equal(venue.access!.permissions.length, mode === "invite" ? 1 : 0);
+      if (mode !== "invite") continue;
+      const grant = venue.access!.permissions[0];
+      assert.equal(grant.sceneId, scene.id);
+      assert.equal(grant.duration, "visit");
+      assert.equal(grant.accompaniedBy, null);
+      assert.equal(evaluateZoneAccess(venue, zone, "player", { sceneId: scene.id }).allowed, true);
+      assert.equal(evaluateZoneAccess(venue, zone, "player", { sceneId: "another-scene" }).allowed, false);
+      const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: input });
+      assert.equal(replay.statusCode, 200, replay.body);
+      assert.equal(calls, 1, "A saved invitation replay buys no reply and adds no new permission");
+      const moved = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/zone",
+        payload: {
+          sessionId: scene.id,
+          zoneId: "airstrip",
+          operationId: "use-local-permission",
+          expectedSceneRevision: scene.sceneRevision,
+          follow: true,
+        },
+      });
+      assert.equal(moved.statusCode, 200, moved.body);
+      assert.equal(moved.json().session.zoneId, "airstrip");
+      assert.equal(moved.json().session.trespassing, undefined);
+      assert.equal(calls, 1, "Walking an invited safe route makes no model call");
+    } finally {
+      await host.stop();
+    }
+  }
+});

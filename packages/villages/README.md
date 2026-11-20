@@ -116,9 +116,11 @@ Villagers and NPCs can naturally follow you during a Scene, through their own di
 
 A resident’s invitation to another Venue can show a destination card. Select **Visit** to start a new Scene under the destination’s current access, escort and attendance rules. The invitation handoff generates no goodbye or greeting.
 
+An invitation to a restricted Zone in the current Venue applies for the current Scene. Use **Move** to go there; visitor hours, bans and escort requirements still apply.
+
 **Send** takes place in the Zone shown in the Scene header. Put spoken dialogue in quotation marks. Unquoted text describes actions, narration, or thoughts, and residents can respond to what they observe. If you describe heading to another Zone, the GM can write up to the crossing. Choose **Venue actions → Move** to enter a permitted Zone. A pending spontaneous opening can play when you arrive. Villagers can cross Zones or leave on their own in a GM reply. **Conclude** archives the Scene without a generated reply. Send any farewell as an ordinary turn before concluding.
 
-Changing Zones starts the live view with a short arrival beat and the people actually there. Earlier narration and asides stay in **Read transcript** rather than appearing over the new Zone. Arrival itself makes no model request; any spontaneous reaction follows the existing setting.
+Changing Zones starts the live view with a short arrival beat and the people actually there. **Previous** still lets you reread earlier messages and their asides, and **Next** returns to the arrival. Reading history does not move you. The complete exchange also stays in **Read transcript**. Arrival itself makes no model request; any spontaneous reaction follows the existing setting.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
