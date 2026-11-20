@@ -327,11 +327,13 @@ await withBrowser(browser, async () => {
         pageIndex++
       )
         await greetingNext.click();
+      while (await greetingNext.isEnabled()) await greetingNext.click();
       await composer.fill("Let us make room.");
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(page.getByRole("region", { name: "Latest reply" })).toContainText(
         "They make room near the right-hand window.",
       );
+      while (await greetingNext.isEnabled()) await greetingNext.click();
       await expect(mara).toHaveAttribute("data-position", "right");
       await expect(mara).toHaveAttribute("data-attention", "right");
       await expect(mara.locator("img")).toHaveAttribute("data-facing", "right");
@@ -415,6 +417,7 @@ await withBrowser(browser, async () => {
       assert.equal(await page.evaluate(() => window.spriteFlips.length), 0, "restored Scene does not flip");
       if (count > 1) {
         const before = await mara.evaluate((node) => node.offsetLeft);
+        while (await greetingNext.isEnabled()) await greetingNext.click();
         await composer.fill("Until next time.");
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(people).toHaveCount(count - 1);
@@ -492,6 +495,10 @@ await withBrowser(browser, async () => {
         await page.evaluate(() => {
           window.holdSpriteFlips = false;
         });
+        // Reload the saved enabled setting before testing a new artwork request.
+        await page.reload();
+        await page.addScriptTag({ content: sceneBundle });
+        await expect(img).toHaveAttribute("src", thoughts);
         let releaseArtwork;
         const artworkReady = new Promise((resolve) => {
           releaseArtwork = resolve;

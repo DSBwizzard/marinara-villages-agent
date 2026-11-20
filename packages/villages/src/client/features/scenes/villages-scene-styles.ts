@@ -196,7 +196,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-chat-keyboard-done { display: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem; gap: .25rem; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn:has(.${tag}-composer)
-  > :is(.${tag}-chat-log, .${tag}-chat-vn-card, .${tag}-scene-reply-head, .${tag}-scene-latest-reply) { display: none; }
+  > :is(.${tag}-chat-log, .${tag}-chat-vn-card) { display: none; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-composer-row { flex-wrap: nowrap; gap: .375rem; }
 ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-keyboard-done {
   display: block; flex: 0 0 auto; min-height: 44px; min-width: 44px; padding: 0 .625rem;

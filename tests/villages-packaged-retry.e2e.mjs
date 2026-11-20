@@ -86,7 +86,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(desktopRetry).toBeDisabled();
     const checkRetryPlacement = async (page, button) => {
       const card = page.locator(".marinara-capability-villages-chat-vn");
-      const speakerRow = card.locator(".marinara-capability-villages-scene-reply-head");
+      const speakerRow = card.locator(".marinara-capability-villages-scene-speaker-row");
       const [control, dialogue, row] = await Promise.all([
         button.boundingBox(),
         card.boundingBox(),
@@ -207,8 +207,10 @@ await withBrowser({ close: server.stop }, async () => {
     await retryReply.click();
     await expect(phoneCurrent).toContainText("Rain patters on the mill roof.");
     await expect(retryReply).toBeVisible();
-    await expect(retryReply).toBeEnabled();
+    await expect(retryReply).toBeDisabled();
     await checkRetryPlacement(phone, retryReply);
+    await phoneNext.click();
+    await expect(retryReply).toBeEnabled();
     await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
     await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
     assert.equal(retries, 2);

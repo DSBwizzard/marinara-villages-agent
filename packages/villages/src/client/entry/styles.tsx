@@ -2,6 +2,7 @@ import { EXPLORATION_STYLES } from "../features/exploration/villages-exploration
 import { VILLAGES_FORGING_STYLES } from "../features/founding/villages-forging-styles.js";
 import { DOSSIER_STYLES } from "../features/residents/villages-dossier-styles.js";
 import { VILLAGES_SCENE_STYLES } from "../features/scenes/villages-scene-styles.js";
+import { SCENE_ASIDE_STYLES } from "../features/scenes/villages-scene-asides.js";
 import { ELEMENT_TAG, STYLE_ID } from "../shared/constants.js";
 import { LORE_ACTIVITY_STYLES } from "../shared/lore-activity-styles.js";
 
@@ -1977,11 +1978,6 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-beat { max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--foreground); font-size: 1rem; line-height: 1.45; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-name,
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-label { align-self: flex-start; margin: 0; padding: 0; border-radius: 0; background: transparent; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); font-size: .72rem; font-weight: 650; line-height: 1.35; letter-spacing: 0; text-transform: none; }
-.${ELEMENT_TAG}-scene-reply-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; min-height: 2.75rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); font-size: .8125rem; border-bottom: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
-.${ELEMENT_TAG}-scene-live-card { overflow: hidden; }
-.${ELEMENT_TAG}-scene-live-card .${ELEMENT_TAG}-scene-reply-head { padding: .2rem .75rem; }
-.${ELEMENT_TAG}-scene-live-card .${ELEMENT_TAG}-scene-latest-reply { padding: .25rem .75rem; }
-.${ELEMENT_TAG}-scene-latest-reply { max-height: min(34cqh, 19rem); min-height: 2rem; overflow-y: auto; overscroll-behavior: contain; padding: .25rem 0; }
 .${ELEMENT_TAG}-scene-message { display: flex; align-items: flex-start; gap: .75rem; padding: .65rem 0; }
 .${ELEMENT_TAG}-scene-message + .${ELEMENT_TAG}-scene-message { border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
 .${ELEMENT_TAG}-scene-message-face { flex: 0 0 2.5rem; width: 2.5rem; height: 2.5rem; display: grid; place-items: center; color: var(--foreground); }
@@ -2010,13 +2006,12 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-scene-history-visit h3 { margin: 0 auto 0 0; font-size: 1rem; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
 .${ELEMENT_TAG}-scene-history-visit time { font-size: .75rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); }
 .${ELEMENT_TAG}-scene-visit-current { border: 1px solid var(--border); border-radius: 1rem; padding: .15rem .45rem; font-size: .7rem; }
+.${ELEMENT_TAG}-scene-transcript button:focus-visible, .${ELEMENT_TAG}-scene-transcript-body:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .${ELEMENT_TAG}-scene-history-event { font-size: .875rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); font-style: italic; }
-.${ELEMENT_TAG}-scene-transcript button:focus-visible, .${ELEMENT_TAG}-scene-transcript-body:focus-visible, .${ELEMENT_TAG}-scene-latest-reply:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 @container ${ELEMENT_TAG} (max-width: 44rem) {
   .${ELEMENT_TAG}-scene-transcript { width: 100%; padding: .75rem; border: 0; }
   .${ELEMENT_TAG}-scene-message { gap: .5rem; }
   .${ELEMENT_TAG}-scene-message-face { flex-basis: 2rem; width: 2rem; height: 2rem; }
-  .${ELEMENT_TAG}-scene-latest-reply { max-height: min(26cqh, 11rem); }
 }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { padding-top: .35rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-input > .${ELEMENT_TAG}-textarea { height: 1.75rem; min-height: 0; max-height: none; overflow-y: hidden; }
@@ -2183,13 +2178,18 @@ export function syncVillagesStyles() {
     return;
   }
   if (existing) {
-    if (existing.textContent !== VILLAGES_STYLES + VILLAGES_SCENE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES)
-      existing.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
+    if (
+      existing.textContent !==
+      VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES
+    )
+      existing.textContent =
+        VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
     return;
   }
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
+  style.textContent =
+    VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
   document.head.appendChild(style);
 }
 

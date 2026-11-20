@@ -13,6 +13,7 @@ import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
+import { groupSceneMoments } from "../../../shared/helpers/scene-speech.js";
 import { zoneAccessLabel } from "../../shared/zone-access.js";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
@@ -149,25 +150,22 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           scene.latestTurn?.id === room.latestTurn?.id &&
           scene.playback.version !== room.playback.version
         ) {
-          const start = scene.retryStart;
-          sceneReading.checkpoint.current.bookmark = start
+          const start = groupSceneMoments(
+            scene.lines.filter((line) => line.role === "assistant" && !line.presenceChange),
+          )[0]?.line;
+          sceneReading.checkpoint.current.bookmark = start?.id
             ? {
                 scope: scene.playback.scope,
                 sceneId: scene.id,
                 zoneArrivalId: scene.zoneArrivalId,
+                replyId: scene.liveReplyId ?? start.id,
                 lineId: start.id,
                 paragraph: 0,
-                momentIndex: start.index,
-                anchorCursor: start.anchorCursor,
+                momentIndex: 0,
                 atEnd: false,
                 reveal: true,
               }
             : undefined;
-          sceneReading.checkpoint.current.window = {
-            ...scene.playback,
-            lines: scene.lines,
-            participants: scene.participants,
-          };
         }
         setRoom(scene);
       }

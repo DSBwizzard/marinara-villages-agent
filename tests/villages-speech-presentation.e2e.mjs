@@ -97,9 +97,15 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       const reading = page.getByRole("region", { name: "Latest reply" });
       await expect(reading).toContainText(`Main ${delivery} conversation.`);
-      await expect(reading.locator('[data-delivery="' + delivery + '"]').first()).toBeVisible();
-      for (const voice of asideVoices) await expect(reading).toContainText("Floating " + voice + " remark.");
-      await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toHaveCount(0);
+      await expect(page.locator(`.${tag}-chat-vn-card`)).toHaveAttribute("data-delivery", delivery);
+      await expect(page.getByLabel(/^(Whisper|Shout)$/u)).toHaveCount(0);
+      const band = page.locator(`.${tag}-scene-asides`);
+      await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(2);
+      for (const voice of asideVoices)
+        await expect(band.locator(`[data-register="${voice === "ordinary" ? "side" : voice}"]`)).toContainText(
+          `Floating ${voice} remark.`,
+        );
+      await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
       await page.screenshot({ path: resolve(output, `${delivery}-${width}.png`) });
     }
     const prose = "Mara sets her cup on the railing with a clink, then turns back to you.";
@@ -126,10 +132,14 @@ await withBrowser(browser, async () => {
     await page.goto("http://speech.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const reading = page.getByRole("region", { name: "Latest reply" });
-    await expect(reading).toContainText("A good place to stop for a drink.");
+
     await expect(reading).toContainText(prose);
-    await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toHaveCount(0);
-    await page.screenshot({ path: resolve(output, "narrated-sound-" + width + ".png") });
+    await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeDisabled();
+    await page.screenshot({ path: resolve(output, `narrated-sound-${width}.png`) });
+    while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+      await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    await expect(reading).toContainText("A good place to stop for a drink.");
+    await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
     assert.deepEqual(errors, []);
     await page.close();
   }

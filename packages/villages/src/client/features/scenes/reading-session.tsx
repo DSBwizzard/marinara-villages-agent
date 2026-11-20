@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
 
 export type SceneReadingBookmark = {
   scope: string;
   sceneId: string;
   zoneArrivalId?: string;
+  replyId?: string;
   lineId: string;
   paragraph: number;
   momentIndex: number;
@@ -16,7 +16,6 @@ type ReadingCheckpoint = {
   readStep: number;
   cursor: { key: string; offset: number };
   bookmark?: SceneReadingBookmark;
-  window?: ScenePlaybackWindow;
 };
 
 /** Retain committed positions while the panel is away; React state and layout stay local. */

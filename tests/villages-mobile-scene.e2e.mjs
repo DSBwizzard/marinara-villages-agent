@@ -194,7 +194,8 @@ await withBrowser(browser, async () => {
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     const reading = page.getByRole("region", { name: "Latest reply" });
     const next = page.getByRole("button", { name: "Next paragraph" });
-
+    const previous = page.getByRole("button", { name: "Previous paragraph" });
+    const counter = page.locator(`.${tag}-chat-vn-counter`);
     const screenshot = async (state = "active") => {
       if (!process.env.VILLAGES_VISUAL_OUTPUT) return;
       mkdirSync(process.env.VILLAGES_VISUAL_OUTPUT, { recursive: true });
@@ -208,6 +209,7 @@ await withBrowser(browser, async () => {
     await expect(reading).toBeVisible();
     await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
     await expect(people).toHaveCount(count);
+    await next.click();
     await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 48);
     if (mobile) {
       const positions =
@@ -221,8 +223,8 @@ await withBrowser(browser, async () => {
           .toBe(i === Math.min(2, count - 1) ? "1" : "0.72");
       }
       const scene = await page.locator(`.${tag}-room-screen`).boundingBox();
-      await expect(composer).toBeVisible();
-      const frame = await input.boundingBox();
+      await expect(composer).toHaveCount(0);
+      const frame = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
       assert.ok(
         Math.abs(scene.y + scene.height - frame.y - frame.height) < 1,
         "dialogue touches Scene bottom while reading",
@@ -236,13 +238,7 @@ await withBrowser(browser, async () => {
           assert.ok(box.y >= canvas.y - 1, "sprite heads stay clear of top controls");
           if (width === 390) {
             const dock = await page.locator(`.${tag}-chat-vn`).boundingBox();
-            if (dock.y - box.y < Math.min(160, box.height * 0.4))
-              await page.screenshot({ path: ".build-tmp/whole-reply-mobile-overlap.png" });
-            assert.ok(
-              dock.y - box.y >= Math.min(160, box.height * 0.4),
-              "character faces stay clear of the whole-reply card: " +
-                JSON.stringify({ dock, box, width, height, count }),
-            );
+            assert.ok(dock.y - box.y >= box.height * 0.7, "majority of each character stays above ordinary dock");
           }
         }
       } else {
@@ -273,6 +269,19 @@ await withBrowser(browser, async () => {
         for (let frame = 0; frame < 3; frame++) await new Promise((resolve) => requestAnimationFrame(resolve));
       });
       const baseline = await boxes();
+      if (mode === "sprites") {
+        await next.click();
+        await expect(counter).toContainText("Page 2/");
+        assert.deepEqual(await boxes(), baseline, "display paging does not move the cast");
+        await previous.click();
+        await previous.click();
+        await expect(counter).toHaveText("Paragraph 1/2");
+        for (const resident of await people.all())
+          await expect.poll(() => resident.evaluate((el) => getComputedStyle(el).opacity)).toBe("0.72");
+        await next.click();
+        assert.deepEqual(await boxes(), baseline, "speaker changes do not rearrange the cast");
+      }
+      while (await next.isEnabled()) await next.click();
       await expect(composer).toBeVisible();
       const inputAtBottom = await input.boundingBox();
       assert.ok(
@@ -338,16 +347,16 @@ await withBrowser(browser, async () => {
       }
       await screenshot();
       if (count === 4 && mode === "sprites") {
-        while ((await next.count()) > 0 && (await next.isEnabled())) await next.click();
+        while (await next.isEnabled()) await next.click();
         await composer.fill("Move to center");
         await page.getByRole("button", { name: "Send", exact: true }).click();
-        await expect(reading).toContainText("We can see one another clearly.");
+        await expect(counter).toContainText("Paragraph");
         await expect
           .poll(() => person(castIds[0]).evaluate((el) => el.style.getPropertyValue("--cast-center")))
           .toBe("50%");
       }
     } else {
-      await expect(page.getByRole("button", { name: "Next paragraph" })).toHaveCount(0);
+      await expect(next).toBeDisabled();
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }
     await page.getByRole("button", { name: "Venue actions" }).click();

@@ -7,15 +7,16 @@ const built = await build({
     contents: `
 import {createRoot} from 'react-dom/client';
 import {StrictMode,useState,useLayoutEffect} from 'react';
+import {useSceneReadingSession} from './packages/villages/src/client/features/scenes/reading-session.js';
 import {RoomPanel} from './packages/villages/src/client/features/scenes/ScenePanel.js';
 import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
 import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 const at='2026-11-20T12:00:00Z',noop=()=>{},scope='a'.repeat(64);
 const line=(id,content,speakerId='__venue_scene__')=>({id,content,role:'assistant',kind:speakerId==='__venue_scene__'?'narration':'dialogue',speakerId,name:speakerId==='mara'?'Mara':'Narration',at});
 const initial={id:'A',placeId:'mill',placeName:'The Mill',zoneId:'workshop',zoneArrivalId:'arrival-workshop',status:'active',startedAt:at,endedAt:'',activeIds:['mara','jo'],participants:[{characterId:'mara',name:'Mara',doing:''},{characterId:'jo',name:'Jo',doing:''}],lines:[line('old','Old Entrance dialogue.'),line('arrival-workshop','You arrive at Workshop.'),line('new-1','**Mara sets her cup down.**'),line('new-2','Welcome to the Workshop.','mara'),line('new-3','The workbench is covered in tools.')],submissions:[{id:'latest',replyLineIds:['new-1','new-2','new-3']}]};
-function Harness(){const [room,setRoom]=useState(initial),[draft,setDraft]=useState('Unsent draft');
+function Harness(){const reading=useSceneReadingSession(true);const [room,setRoom]=useState(initial),[draft,setDraft]=useState('Unsent draft');
 useLayoutEffect(syncVillagesStyles,[]);window.h={setRoom,room,line};
-const props={worldScope:scope,mobile:innerWidth<704,nameColors:{},speechColors:{},picture:'',draft,busy:false,error:'',greetingNotice:'',open:true,ended:false,playerName:'Player',portraits:{},sprites:{},onDraft:setDraft,onSend:noop,sendOnEnter:false,spriteCardFlipEnabled:false,onViewVenue:noop,onEnd:noop,onRetryGreeting:noop,onContinueWithoutGreeting:noop,notices:[],onDismissNotice:noop,debugDiscardEnabled:false,onDebugDiscard:noop,sceneSettings:null,movementZones:[],onMovementTarget:noop,currentZoneLabel:'Workshop'};
+const props={sceneReading:reading,worldScope:scope,mobile:innerWidth<704,nameColors:{},speechColors:{},picture:'',draft,busy:false,error:'',greetingNotice:'',open:true,ended:false,playerName:'Player',portraits:{},sprites:{},onDraft:setDraft,onSend:noop,sendOnEnter:false,spriteCardFlipEnabled:false,onViewVenue:noop,onEnd:noop,onRetryGreeting:noop,onContinueWithoutGreeting:noop,notices:[],onDismissNotice:noop,debugDiscardEnabled:false,onDebugDiscard:noop,sceneSettings:null,movementZones:[],onMovementTarget:noop,currentZoneLabel:'Workshop'};
 return <marinara-capability-villages><div className='marinara-capability-villages-root marinara-capability-villages-room-screen' data-mobile={innerWidth<704?'true':'false'}><RoomPanel {...props} room={authorSceneView(room,scope)}/></div></marinara-capability-villages>}
 syncVillagesStyles();createRoot(document.getElementById('root')).render(<StrictMode><Harness/></StrictMode>);
 `,
@@ -76,13 +77,21 @@ await withBrowser(browser, async () => {
     await page.goto("http://latest.test/");
     await page.addScriptTag({ content: built.outputFiles[0].text });
     const reply = page.getByRole("region", { name: "Latest reply", exact: true });
-    for (const text of ["Mara sets her cup down.", "Welcome to the Workshop.", "covered in tools."])
-      await expect(reply).toContainText(text);
+    const next = page.getByRole("button", { name: "Next paragraph", exact: true }),
+      previous = page.getByRole("button", { name: "Previous paragraph", exact: true });
+    await expect(reply).toContainText("Mara sets her cup down.");
+    await expect(reply).not.toContainText("Welcome to the Workshop.");
     await expect(reply.locator("strong")).toHaveText("Mara sets her cup down.");
-    await expect(reply.locator('[data-register="narration"]')).toHaveCount(2);
-    await expect(reply.locator('[data-register="speech"]')).toHaveCount(1);
+    await expect(previous).toBeDisabled();
+    await next.click();
+    await expect(reply).toHaveText("Welcome to the Workshop.");
+    await previous.click();
+    await expect(reply).toHaveText("Mara sets her cup down.");
+    await next.click();
+    await next.click();
+    await expect(reply).toHaveText("The workbench is covered in tools.");
+    await expect(next).toBeDisabled();
     await expect(reply).not.toContainText("Old Entrance");
-    await expect(page.getByRole("button", { name: /^(Previous|Next) paragraph$/ })).toHaveCount(0);
     const cast = page.locator('[class$="-chat-cast-person"]');
     await expect(cast).toHaveCount(2);
     const initialCast = await cast.evaluateAll((nodes) => nodes.map((node) => node.outerHTML));
@@ -96,6 +105,7 @@ await withBrowser(browser, async () => {
       box = await dialog.boundingBox();
     assert(Math.abs(box.height - sceneBox.height) < 2, JSON.stringify({ sceneBox, box, width }));
     assert(width < 704 ? Math.abs(box.width - sceneBox.width) < 2 : box.width < sceneBox.width * 0.6);
+    assert(Math.abs(box.x + box.width - sceneBox.x - sceneBox.width) < 2, "desktop drawer is anchored to the right");
     assert.deepEqual(
       await cast.evaluateAll((nodes) => nodes.map((node) => node.outerHTML)),
       initialCast,
@@ -116,23 +126,34 @@ await withBrowser(browser, async () => {
     });
     await expect(reply).toContainText("You arrive back at Workshop.");
     await expect(reply).not.toContainText("Welcome to the Workshop.");
-    await page.evaluate(() => {
+    await expect(previous).toBeDisabled();
+    await expect(next).toBeDisabled();
+    const long = Array.from(
+      { length: 12 },
+      (_, i) => "Sentence " + i + " stays complete while the paragraph is fitted to the phone. ",
+    ).join("");
+    await page.evaluate((long) => {
       const h = window.h,
-        lines = Array.from({ length: 65 }, (_, i) =>
-          h.line("long-" + i, "Long reply part " + i + ". " + "Words preserved. ".repeat(10)),
-        );
+        line = h.line("long", "**" + long + "**\n\nFinal reply paragraph.");
       h.setRoom({
         ...h.room,
-        lines: [...h.room.lines, ...lines],
-        submissions: [...h.room.submissions, { id: "long", replyLineIds: lines.map((l) => l.id) }],
+        lines: [...h.room.lines, line],
+        submissions: [...h.room.submissions, { id: "long", replyLineIds: [line.id] }],
       });
-    });
-    await expect(reply).toContainText("Long reply part 0.");
-    await expect(reply).toContainText("Long reply part 64.");
-    assert(
-      await reply.evaluate((node) => node.scrollHeight > node.clientHeight),
-      "whole long reply scrolls within its card",
-    );
+    }, long);
+    await expect(reply).toContainText("Sentence 0");
+    await expect(previous).toBeDisabled();
+    const parts = [];
+    for (let i = 0; i < 100; i++) {
+      const text = await reply.textContent();
+      if (text === "Final reply paragraph.") break;
+      parts.push(text);
+      await expect(next).toBeEnabled();
+      await next.click();
+    }
+    assert.equal(parts.join(""), long, "all pages preserve the paragraph exactly");
+    await expect(reply).toHaveText("Final reply paragraph.");
+    await expect(next).toBeDisabled();
     const composer = await page.getByRole("textbox", { name: "Message at The Mill" }).boundingBox();
     assert(composer.y + composer.height <= 901);
     assert.deepEqual(writes, []);
@@ -141,5 +162,5 @@ await withBrowser(browser, async () => {
   }
 });
 console.log(
-  "Latest whole reply, fresh arrivals, repeat Zone transcript sections, live cast, desktop drawer, full-screen phones, focus and draft preservation passed.",
+  "Paragraph-by-paragraph latest reply, Back/Next, fresh arrivals, repeat Zone transcript sections, live cast, desktop drawer, full-screen phones, focus and draft preservation passed.",
 );

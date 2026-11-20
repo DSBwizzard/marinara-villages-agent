@@ -143,9 +143,11 @@ await withBrowser(browser, async () => {
       const send = page.getByRole("button", { name: "Send", exact: true });
       const dock = page.locator(`.${tag}-chat-vn`);
       const images = page.locator(`.${tag}-chat-cast-person > img`);
+      while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+        await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
       await expect(composer).toBeVisible();
       await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
-      await expect(page.locator(`.${tag}-scene-message-face`).first()).toBeVisible();
+      await expect(page.locator(`.${tag}-chat-vn-portrait`).first()).toBeVisible();
       await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
       const buttonBox = await send.boundingBox();
       assert.equal(buttonBox.width, mobile ? 44 : 32);
@@ -357,6 +359,8 @@ await withBrowser(browser, async () => {
       await expect.poll(() => turns).toBe(1);
       await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
 
+      while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+        await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
       await expect(composer).toHaveValue("");
       assert.equal(turns, 1);
       if (count === 4) {

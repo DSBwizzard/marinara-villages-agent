@@ -202,7 +202,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toHaveCount(0);
     await readUntil(/Come into our Common Space/);
     await expect(page.getByText("Nearby", { exact: true })).toBeVisible();
-    await expect(page.locator('[class$="-scene-message-name"]').last()).not.toContainText(
+    await expect(page.locator('[class$="-chat-vn-name"]').last()).not.toContainText(
       /📣|through the doorway|calling from inside/i,
     );
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);

@@ -21,7 +21,7 @@ import { createStagingCursor, stagingPresentation } from "../../../shared/helper
 import { messageFrom, request } from "../../shared/api.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { villagesSpeechPaintStyle } from "../../shared/presentation.js";
+import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
@@ -29,7 +29,12 @@ import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import type { SceneFailure } from "./scene-error-report.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { hasCompletedRoomSubmission } from "./villages-room-reading";
-import { SceneHistory, SceneMessage } from "./SceneHistory.js";
+import { SceneHistory } from "./SceneHistory.js";
+import { splitVillagesParagraphs, classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
+import { groupSceneMoments, speechDelivery } from "../../../shared/helpers/scene-speech.js";
+import { useReadingPages } from "./villages-reading-viewport.js";
+import { mobileReadingCounter } from "./villages-mobile-scene.js";
+import { SceneAsides } from "./villages-scene-asides.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
@@ -205,6 +210,7 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" | "r
 export function RoomPanel({
   room,
   worldScope,
+  sceneReading,
   mobile,
   nameColors,
   speechColors,
@@ -224,6 +230,7 @@ export function RoomPanel({
   open,
   ended,
   playerName,
+  playerPortrait,
   portraits,
   sprites,
   onDraft,
@@ -513,12 +520,97 @@ export function RoomPanel({
   }
 
   const fallbackLine = room.lines.findLast((line) => line.role === "assistant" && !line.presenceChange);
-  const reply = {
-    id: room.liveReplyId ?? fallbackLine?.id ?? "",
-    lines: room.liveReplyId !== undefined ? room.lines : fallbackLine ? [fallbackLine] : [],
-  };
-  const replyLines = reply.lines.filter((line) => line.role === "assistant" && !line.presenceChange);
-  const lastLine = replyLines.at(-1);
+  const replyId = room.liveReplyId ?? fallbackLine?.id ?? "";
+  const replyLines = useMemo(
+    () =>
+      room.liveReplyId !== undefined
+        ? room.lines.filter((line) => line.role === "assistant" && !line.presenceChange)
+        : fallbackLine
+          ? [fallbackLine]
+          : [],
+    [room.liveReplyId, room.lines, fallbackLine],
+  );
+  const replyKey = JSON.stringify([worldScope, room.id, room.zoneArrivalId, replyId]);
+  const steps = useMemo(
+    () =>
+      groupSceneMoments(replyLines).flatMap(({ line, asides }) => {
+        const paragraphs = splitVillagesParagraphs(line.content);
+        return paragraphs.map((text, paragraph) => ({
+          ...line,
+          text,
+          paragraph,
+          key: JSON.stringify([replyKey, line.id, paragraph]),
+          asides: paragraph === paragraphs.length - 1 ? asides : [],
+        }));
+      }),
+    [replyLines, replyKey],
+  );
+  const { checkpoint } = sceneReading;
+  const ownsBookmark = useCallback(
+    (bookmark: typeof checkpoint.current.bookmark) =>
+      bookmark?.scope === worldScope &&
+      bookmark.sceneId === room.id &&
+      bookmark.zoneArrivalId === room.zoneArrivalId &&
+      bookmark.replyId === replyId,
+    [worldScope, room.id, room.zoneArrivalId, replyId, checkpoint],
+  );
+  const [selection, setSelection] = useState(() => ({
+    key: replyKey,
+    index: ownsBookmark(checkpoint.current.bookmark)
+      ? Math.max(
+          0,
+          steps.findIndex(
+            (step) =>
+              step.id === checkpoint.current.bookmark?.lineId &&
+              step.paragraph === checkpoint.current.bookmark?.paragraph,
+          ),
+        )
+      : 0,
+  }));
+  const at = selection.key === replyKey ? Math.min(selection.index, Math.max(0, steps.length - 1)) : 0;
+  const step = steps[at];
+  useLayoutEffect(() => {
+    if (!ownsBookmark(checkpoint.current.bookmark)) {
+      sceneReading.anchor.current = { key: "", offset: 0 };
+      sceneReading.enterAtEnd.current = false;
+    }
+  }, [replyKey, checkpoint, ownsBookmark, sceneReading.anchor, sceneReading.enterAtEnd]);
+  const reveal = at === 0 && ownsBookmark(checkpoint.current.bookmark) && !!checkpoint.current.bookmark?.reveal;
+  const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, reveal);
+  const canReadPrevious = at > 0 || readingPages.index > 0;
+  const canReadNext = readingPages.revealing || at < steps.length - 1 || readingPages.index < readingPages.count - 1;
+  useLayoutEffect(() => {
+    if (!step) return;
+    checkpoint.current.bookmark = {
+      scope: worldScope,
+      sceneId: room.id,
+      zoneArrivalId: room.zoneArrivalId,
+      replyId: replyId,
+      lineId: step.id ?? "",
+      paragraph: step.paragraph,
+      momentIndex: at,
+      atEnd: !canReadNext,
+      ...(reveal && readingPages.revealing ? { reveal: true } : {}),
+    };
+  }, [
+    checkpoint,
+    worldScope,
+    room.id,
+    room.zoneArrivalId,
+    replyId,
+    step,
+    at,
+    canReadNext,
+    reveal,
+    readingPages.revealing,
+  ]);
+  const register =
+    step?.kind === "narration" || !step || step.speakerId === "__venue_scene__"
+      ? "narration"
+      : step.kind || classifyVillagesParagraph(step.text) === "speech"
+        ? "speech"
+        : "narration";
+  const speakerPortrait = step ? portraits[step.speakerId] : playerPortrait;
   const stageRoomId = JSON.stringify([worldScope, room.id]);
   const liveFrame = useMemo(
     () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
@@ -532,14 +624,14 @@ export function RoomPanel({
       ? tailFrame
       : liveFrame;
   const stagingState = stagingFrame.state;
-  const previousReply = useRef({ sceneId: room.id, id: reply.id });
+  const previousReply = useRef({ sceneId: room.id, id: replyId });
   const animateStaging = useMemo(
-    () => previousReply.current.sceneId === room.id && previousReply.current.id !== reply.id,
-    [room.id, reply.id],
+    () => previousReply.current.sceneId === room.id && previousReply.current.id !== replyId,
+    [room.id, replyId],
   );
   useLayoutEffect(() => {
-    previousReply.current = { sceneId: room.id, id: reply.id };
-  }, [room.id, reply.id]);
+    previousReply.current = { sceneId: room.id, id: replyId };
+  }, [room.id, replyId]);
   useLayoutEffect(() => {
     const previous = previousLocation.current;
     previousLocation.current = { scope: worldScope, sceneId: room.id, zoneId: room.zoneId };
@@ -547,8 +639,8 @@ export function RoomPanel({
       setHistoryOpen(false);
   }, [worldScope, room.id, room.zoneId]);
   const canDraft = !ended && room.status === "active";
-  const canCompose = canDraft;
-  const canRetryReply = canCompose && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
+  const canCompose = canDraft && (!canReadNext || busy || !!error || !!turnRecovery);
+  const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
   const resend = !draft.trim() && !!turnRecovery;
   const sendLabel = busy ? "Sending" : resend ? "Resend" : "Send";
@@ -591,11 +683,11 @@ export function RoomPanel({
 
   useLayoutEffect(() => {
     if (readingRef.current) readingRef.current.scrollTop = 0;
-  }, [room.id, room.zoneArrivalId, reply.id]);
+  }, [room.id, room.zoneArrivalId, replyId, at, readingPages.index]);
 
   const activeParticipants = room.participants.filter((person) => room.activeIds.includes(person.characterId));
   const cast = activeParticipants;
-  const speaker = cast.find((person) => person.characterId === lastLine?.speakerId);
+  const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
   const displayed = cast.slice(0, 4);
@@ -1110,6 +1202,39 @@ export function RoomPanel({
           ))}
         </div>
       ) : null}
+      {!dialogueHidden && !historyOpen && !retrying && step?.asides.length ? (
+        <SceneAsides
+          asides={step.asides}
+          mobile={mobile}
+          positions={mobile ? mobileLayout : stageLayout}
+          renderAside={(aside, index) => (
+            <div
+              className={`${ELEMENT_TAG}-chat-vn-aside`}
+              data-register={speechDelivery(aside) === "ordinary" ? "side" : speechDelivery(aside)}
+            >
+              <SceneFace
+                actorId={aside.speakerId}
+                portrait={portraits[aside.speakerId]}
+                name={aside.name}
+                className={`${ELEMENT_TAG}-chat-vn-aside-face`}
+              />
+              <div className={`${ELEMENT_TAG}-chat-vn-aside-column`}>
+                <p className={`${ELEMENT_TAG}-chat-vn-aside-head`}>
+                  <span className={`${ELEMENT_TAG}-chat-vn-aside-name`} style={nameStyle(aside.speakerId)}>
+                    {aside.name}
+                  </span>
+                  {aside.targetId === "player" ? (
+                    <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>to you</span>
+                  ) : null}
+                </p>
+                <p className={`${ELEMENT_TAG}-chat-vn-aside-text`} style={speechStyle(aside.speakerId)}>
+                  {renderVillagesMarkdown(aside.content, `aside-${index}-`)}
+                </p>
+              </div>
+            </div>
+          )}
+        />
+      ) : null}
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
         <div
           className={`${ELEMENT_TAG}-chat-cast`}
@@ -1136,7 +1261,7 @@ export function RoomPanel({
               <div
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
-                data-active={isSpeaker && (!mobile || lastLine?.kind !== "narration") ? "true" : "false"}
+                data-active={isSpeaker && (!mobile || register !== "narration") ? "true" : "false"}
                 data-sprite={npc || selected ? "true" : "false"}
                 data-character-id={villager.characterId}
                 data-position={slot ? stagingState[villager.characterId].position : undefined}
@@ -1163,7 +1288,7 @@ export function RoomPanel({
                     framing={sprite?.framing.mode ?? "full"}
                     enabled={spriteCardFlipEnabled}
                     animate={animateStaging}
-                    stepKey={reply.id || stageRoomId}
+                    stepKey={replyId || stageRoomId}
                     onError={(url) => setFailedSpriteUrls((previous) => new Set([...previous, url]))}
                   />
                 ) : (
@@ -1278,68 +1403,131 @@ export function RoomPanel({
         </div>
       ) : null}
       <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
-        <div className={`${ELEMENT_TAG}-chat-vn-card ${ELEMENT_TAG}-scene-live-card`}>
-          <div className={`${ELEMENT_TAG}-scene-reply-head`}>
-            <span>{currentZoneLabel} · Now</span>
-            <div className={`${ELEMENT_TAG}-scene-reply-actions`}>
-              <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
-                <SceneControlIcon name={canRetryReply ? "retry" : "retry-unavailable"} /> Retry
-              </button>
-              <button
-                ref={transcriptTriggerRef}
-                type="button"
-                aria-label="Transcript"
-                aria-haspopup="dialog"
-                aria-expanded={historyOpen}
-                aria-controls={transcriptId}
-                disabled={!worldScope}
-                onClick={() => setHistoryOpen(true)}
+        <div
+          className={`${ELEMENT_TAG}-chat-vn-card`}
+          data-register={register}
+          data-delivery={step ? speechDelivery(step) : undefined}
+        >
+          <div className={`${ELEMENT_TAG}-chat-vn-row`}>
+            {register === "narration" ? (
+              <div className={`${ELEMENT_TAG}-chat-vn-portrait`} aria-hidden="true">
+                <SceneControlIcon name="narrator" />
+              </div>
+            ) : (
+              <SceneFace
+                actorId={step?.speakerId}
+                portrait={speakerPortrait}
+                name={step?.name ?? "Narration"}
+                className={`${ELEMENT_TAG}-chat-vn-portrait`}
+              />
+            )}
+            <div className={`${ELEMENT_TAG}-chat-vn-column`}>
+              <div className={`${ELEMENT_TAG}-scene-speaker-row`}>
+                <p
+                  className={`${ELEMENT_TAG}-chat-vn-name`}
+                  style={register === "speech" ? nameStyle(step?.speakerId ?? "") : undefined}
+                >
+                  {register === "narration" ? "Narration" : step?.name}
+                  {step?.viaDoorway ? (
+                    <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                      Nearby
+                    </span>
+                  ) : null}
+                </p>
+                <div className={`${ELEMENT_TAG}-scene-reply-actions`}>
+                  <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
+                    <SceneControlIcon name={canRetryReply ? "retry" : "retry-unavailable"} /> Retry
+                  </button>
+                  <button
+                    ref={transcriptTriggerRef}
+                    type="button"
+                    aria-label="Transcript"
+                    aria-haspopup="dialog"
+                    aria-expanded={historyOpen}
+                    aria-controls={transcriptId}
+                    disabled={!worldScope}
+                    onClick={() => setHistoryOpen(true)}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                      <path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1Zm0 0v15" />
+                    </svg>{" "}
+                    Transcript
+                  </button>
+                </div>
+              </div>
+              <div
+                ref={readingRef}
+                className={`${ELEMENT_TAG}-chat-vn-reading`}
+                role="region"
+                aria-label="Latest reply"
+                aria-live="polite"
+                aria-busy={busy}
+                tabIndex={0}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1Zm0 0v15" />
-                </svg>{" "}
-                Transcript
-              </button>
+                {retrying ? (
+                  waiting
+                ) : step ? (
+                  <p
+                    className={`${ELEMENT_TAG}-${register === "narration" ? "chat-vn-beat" : "chat-vn-text"}`}
+                    data-register={register}
+                    style={register === "speech" ? speechStyle(step.speakerId) : undefined}
+                  >
+                    {drawVillagesNodes(readingPages.nodes, "scene-paragraph-")}
+                  </p>
+                ) : (
+                  <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
+                    {room.status === "opening"
+                      ? `Opening the Scene in ${room.placeName}…`
+                      : activeParticipants.length === 0
+                        ? `You are alone in this Zone of ${room.placeName}.`
+                        : "…"}
+                  </p>
+                )}
+                {!ended && busy && !retrying ? waiting : null}
+              </div>
             </div>
           </div>
-          <div
-            ref={readingRef}
-            className={`${ELEMENT_TAG}-scene-latest-reply`}
-            role="region"
-            aria-label="Latest reply"
-            aria-live="polite"
-            aria-busy={busy}
-            tabIndex={0}
-          >
-            {retrying ? (
-              waiting
-            ) : replyLines.length ? (
-              replyLines.map((line) => (
-                <SceneMessage
-                  key={line.id}
-                  line={line}
-                  playerName={playerName}
-                  portraits={portraits}
-                  nameStyle={nameStyle}
-                  speechStyle={speechStyle}
-                />
-              ))
-            ) : (
-              <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
-                {room.status === "opening"
-                  ? `Opening the Scene in ${room.placeName}…`
-                  : activeParticipants.length === 0
-                    ? `You are alone in this Zone of ${room.placeName}.`
-                    : "…"}
-              </p>
-            )}
-            {!ended && busy && !retrying ? waiting : null}
+          <div className={`${ELEMENT_TAG}-room-panel-tools`}>
+            <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
+              {mobile
+                ? mobileReadingCounter(at, steps.length, readingPages.index, readingPages.count)
+                : `${steps.length ? at + 1 : 0} / ${steps.length}`}
+            </span>
+            <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-chat-vn-button`}
+                aria-label="Previous paragraph"
+                disabled={!canReadPrevious || retrying}
+                onClick={() => {
+                  if (!readingPages.move(-1) && at > 0) setSelection({ key: replyKey, index: at - 1 });
+                }}
+              >
+                ‹ Back
+              </button>
+              {!ended || canReadNext ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-chat-vn-button`}
+                  aria-label="Next paragraph"
+                  disabled={!canReadNext || retrying}
+                  onClick={() => {
+                    if (readingPages.revealing) {
+                      readingPages.finishReveal();
+                      return;
+                    }
+                    if (!readingPages.move(1) && at < steps.length - 1) setSelection({ key: replyKey, index: at + 1 });
+                  }}
+                >
+                  Next ›
+                </button>
+              ) : (
+                <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
+                  Return to map
+                </button>
+              )}
+            </span>
           </div>
-          {ended ? (
-            <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
-              Return to map
-            </button>
-          ) : null}
         </div>
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
