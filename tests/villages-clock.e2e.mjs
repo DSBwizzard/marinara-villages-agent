@@ -135,7 +135,7 @@ await withBrowser(browser, async () => {
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
       const next = mari.getByRole("button", { name: "Next", exact: true });
       for (let line = 0; line < 3; line++) await next.click();
-      await scene.getByRole("button", { name: "Draft with Mari", exact: true }).click();
+      await next.click();
       for (let line = 0; line < 2; line++) await next.click();
       const world = scene.getByLabel("World description");
       await world.fill("A string of settlements along the coast");
