@@ -90,7 +90,7 @@ try {
   assert.equal(scene.status, "active");
   assert.equal((await request("/rooms/greet", { sessionId: scene.id })).session.id, scene.id);
   assert(scene.lines[0].content.includes("Juniper Crossing"));
-  assert(scene.lines[1].content.includes("I'm your first Visitor"));
+  assert.equal(scene.lines[1].id, `${scene.id}-visitors-0`);
   assert(scene.lines.at(-1).content.includes("heads back down the road"));
   assert.equal(server.calls(), 1, "One saved generated opening precedes the fixed tutorial");
   const snapshot = await request("");
@@ -206,7 +206,7 @@ try {
   assert.equal(server.records.get("villages-village").data.visitorIntroduction.completedAt, "");
   scene = (await request("/rooms/continue", { sessionId: scene.id })).session;
   assert.equal(scene.status, "active");
-  assert(scene.lines[0].content.includes("I'm your first Visitor"));
+  assert.equal(scene.lines[0].id, `${scene.id}-visitors-0`);
   assert.equal(server.calls(), 1, "Explicit fallback does not buy a replacement greeting");
   await request("/rooms/end", { sessionId: scene.id, expectedSceneRevision: scene.sceneRevision });
   assert(server.records.get("villages-village").data.visitorIntroduction.completedAt);

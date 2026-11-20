@@ -73,25 +73,31 @@ export function appendVisitorIntroductionTutorial(scene: VenueScene) {
   if (!scene.visitorIntroduction) return;
   const mari = scene.participants.find((person) => person.characterId === PROFESSOR_MARI_ID)!;
   const paragraphs: ["narration" | "dialogue", string][] = [
+    ["dialogue", "Wondering why I'm here?"],
+    ["dialogue", "Me too!"],
     [
       "dialogue",
-      "I'm your first Visitor. Villagers live here; Visitors come and go. You can choose unused Character Cards in People, under Visitors, and let chance bring them along.",
+      "Just kidding. I’m your first Visitor. A prestigious position, mostly involving turning up and making myself interesting.",
     ],
     [
       "dialogue",
-      "Once you've met someone in a Scene, they stay in People even when they're away. Write them a letter. A friendship doesn't have to fit inside the village boundary.",
+      "Apparently, people insist on having lives elsewhere. Very inconsiderate. So to solve this, you can choose unused Character Cards you’d like to allow to visit your Village. Just add them in the People menu, under Visitors.",
     ],
     [
       "dialogue",
-      "A letter can invite them back, or ask for a little space. An invitation is encouragement, not a summons. You can also turn their visits off in Character Tools.",
+      "Once you’ve met a Visitor in a Scene, you can write them letters or expect to see them visit again every once in a while. Feel free to get to know them. A village boundary is a rather poor excuse to abandon a promising friendship.",
     ],
     [
       "dialogue",
-      "Most Visitors stay for a couple of nights. They can be company without taking on a Villager's regular work and agenda. If you later ask them to move in, your history together comes with them.",
+      "Of course, since free will remains a terribly inconvenient feature, you can switch them off in Character Tools if you’d rather stop someone’s visits altogether.",
     ],
     [
       "dialogue",
-      "Today's just a quick hello for me. I'll leave you to it—there's an entire village waiting, and I've already used rather a lot of dialogue boxes. Do keep in touch.",
+      "So that's all I have for you about Visitors. All the company, considerably less paperwork. And who knows, if they like it enough, maybe you can convince them to move into the Village proper.",
+    ],
+    [
+      "dialogue",
+      "Today’s just a quick hello for me. I’ll let you get back to village life before this tutorial develops footnotes. Do write sometime. I’m excellent company when I’m not explaining buttons.",
     ],
     [
       "narration",

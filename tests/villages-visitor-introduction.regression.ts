@@ -149,7 +149,6 @@ appendVisitorIntroductionTutorial(scene);
 assert.deepEqual(scene.lines, tutorial, "The fixed tutorial appends only once");
 scene.status = "active";
 assert(scene.lines.every((line) => line.heardBy.includes("player") && line.heardBy.length === 2));
-assert(scene.lines.some((line) => line.content.includes("not a summons")));
 completeVisitorIntroduction(state, scene);
 assert.equal(state.visitors[0]!.firstMetAt, due.toISOString());
 assert.equal(
