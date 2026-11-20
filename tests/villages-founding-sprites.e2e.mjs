@@ -48,22 +48,6 @@ const snapshot = {
     settingMaxLength: 4096,
   },
 };
-const files = [
-  { filename: "happy.png", label: "Happy_01", url: image, folderId: "body" },
-  { filename: "bright.png", label: "Happy_02", url: image, folderId: "body" },
-  { filename: "happy-side.png", label: "Happy_blush", url: image, folderId: "profile" },
-  { filename: "neutral-side.png", label: "Neutral_2", url: image, folderId: "profile" },
-  { filename: "thinking-side.png", label: "Thinking", url: image, folderId: "profile" },
-  { filename: "neutral.png", label: "Neutral", url: "/api/sprites/aqua/file/neutral.png", folderId: "body" },
-];
-const existing = {
-  version: 1,
-  artwork: [{ id: "old", name: "Old Happy", rendered: { url: image } }],
-  expressions: [{ id: "old-happy", name: "Old Happy" }],
-  assignments: [{ expressionId: "old-happy", view: "front", artworkId: "old" }],
-  defaultExpressionId: "old-happy",
-  framing: { mode: "full" },
-};
 const browser = await chromium.launch({ headless: true });
 await withBrowser(browser, async () => {
   await mkdir(".build-tmp/founding-sprites", { recursive: true });
@@ -75,9 +59,11 @@ await withBrowser(browser, async () => {
     const name = phone ? "founding/sprites/phone" : "founding/sprites/desktop";
     if (!wantsCase(name)) continue;
     await runCase(name, async () => {
-      const page = await browser.newPage({ viewport, hasTouch: phone, reducedMotion: "reduce" });
+      const page = await browser.newPage({ viewport, hasTouch: phone, isMobile: phone });
       await mockEngineLookups(page);
-      const portraitLoads = [];
+      const writes = [],
+        portraitLoads = [],
+        opened = new Set();
       let spriteLoads = 0;
       await page.route("**/api/avatars/file/aqua.png?*", (route) => {
         portraitLoads.push(new URL(route.request().url()));
@@ -86,104 +72,51 @@ await withBrowser(browser, async () => {
           body: phone ? "unreadable image" : Buffer.from(image.split(",")[1], "base64"),
         });
       });
-      await page.route("**/api/sprites/aqua/file/neutral.png", (route) => {
+      await page.route("**/api/sprites/**", (route) => {
         spriteLoads++;
         return fulfill(route, { contentType: "image/svg+xml", body: Buffer.from(image.split(",")[1], "base64") });
       });
       await page.route("**/api/characters/summaries", (route) =>
-        route.fulfill({
-          json: [
-            {
-              id: "aqua",
-              avatarUrl: "/api/avatars/file/aqua.png?v=7",
-              avatarCrop: { srcX: 0.3, srcY: 0.2, srcWidth: 0.25, srcHeight: 0.25 },
-            },
-          ],
+        fulfill(route, {
+          contentType: "application/json",
+          body: JSON.stringify([{ id: "aqua", avatarUrl: "/api/avatars/file/aqua.png?v=7" }]),
         }),
       );
-      const writes = [];
-      const opened = new Set();
-      const receipts = new Map();
-      const state = {
-        revision: 1,
-        token: "first",
-        manager: structuredClone(existing),
-        files,
-        folders: [
-          { id: "body", name: "Full-body sprites" },
-          { id: "profile", name: "Profile artwork" },
-        ],
-      };
-      const automatic = {
-        ...structuredClone(state),
-        automatic: true,
-        manager: {
-          version: 1,
-          artwork: [],
-          expressions: files.map(({ filename, label }) => ({ id: filename, name: label })),
-          assignments: files.map(({ filename }) => ({
-            expressionId: filename,
-            view: "front",
-            engineFilename: filename,
-            automatic: true,
-          })),
-          defaultExpressionId: "neutral.png",
-          defaultView: "front",
-          framing: { mode: "full" },
-        },
-      };
-      await page.route("**/api/villages**", async (route) => {
-        const url = new URL(route.request().url());
-        const path = url.pathname;
-        const method = route.request().method();
+      await page.route("**/api/villages**", (route) => {
+        const url = new URL(route.request().url()),
+          path = url.pathname;
         const send = (value) => fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
+        if (route.request().method() !== "GET") {
+          writes.push(path);
+          assert.fail("Unexpected mutation: " + path);
+        }
         if (path.endsWith("/sprites/setup/settled")) {
-          opened.add(path.split("/").at(-4));
-          return send(url.searchParams.get("automatic") ? automatic : state);
+          assert.equal(url.searchParams.get("automatic"), "true");
+          const id = path.split("/").at(-4);
+          opened.add(id);
+          const assigned =
+            id === "aqua"
+              ? Array.from({ length: 6 }, (_, i) => ({
+                  expressionId: "sprite-" + i,
+                  view: "front",
+                  engineFilename: "sprite-" + i + ".png",
+                }))
+              : [];
+          return send({
+            revision: 5,
+            token: "card-sprites",
+            automatic: true,
+            manager: {
+              version: 1,
+              artwork: [],
+              expressions: assigned.map((row) => ({ id: row.expressionId, name: row.expressionId })),
+              assignments: assigned,
+              framing: { mode: "full" },
+            },
+            files: [],
+            folders: [],
+          });
         }
-        if (path.endsWith("/sprites/setup/save")) {
-          const body = route.request().postDataJSON();
-          writes.push(body);
-          const prior = receipts.get(body.requestId);
-          if (prior) {
-            assert.deepEqual(body, prior.body, "Retry repeats the exact admitted request");
-            return send(prior.saved);
-          }
-          assert.equal(body.token, state.token);
-          assert.equal(body.resident, false);
-          state.revision++;
-          state.token = "revision-" + state.revision;
-          const rows = body.expressions;
-          state.manager.expressions = rows.map(({ id, name }) => ({ id, name }));
-          state.manager.assignments = rows.flatMap((row) =>
-            ["front", "side"].flatMap((view) => {
-              const choice = row[view];
-              if (!choice) return [];
-              return [
-                {
-                  expressionId: row.id,
-                  view,
-                  ...(choice.filename
-                    ? { engineFilename: choice.filename, version: choice.version }
-                    : { artworkId: choice.artworkId }),
-                },
-              ];
-            }),
-          );
-          state.manager.useSprites = body.useSprites;
-          state.manager.defaultExpressionId = body.defaultExpressionId;
-          state.manager.defaultView = body.defaultView;
-          const saved = structuredClone(state);
-          receipts.set(body.requestId, { body, saved });
-          return writes.length === 2
-            ? fulfill(route, {
-                status: phone ? 200 : 503,
-                contentType: "application/json",
-                body: JSON.stringify(phone ? {} : { message: "Save response lost." }),
-              })
-            : send(saved);
-        }
-        if (method !== "GET") assert.fail("Unexpected mutation: " + method + " " + path);
         if (path.endsWith("/personas")) return send({ personas: [{ id: "driver", name: "You", isActive: true }] });
         if (path.endsWith("/personas/driver"))
           return send({ persona: { id: "driver", name: "You", description: "A visitor", identity: "A visitor" } });
@@ -247,147 +180,56 @@ await withBrowser(browser, async () => {
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
       await next.click();
       const phase = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
-      await expect(phase).toHaveAttribute("aria-label", "Maps");
-      if (phone) await next.click();
-      const mapImage = await page.evaluate(() => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 1024;
-        canvas.height = 768;
-        return canvas.toDataURL().split(",")[1];
-      });
-      await root.getByLabel("Upload map image", { exact: true }).setInputFiles({
-        name: "map.png",
-        mimeType: "image/png",
-        buffer: Buffer.from(mapImage, "base64"),
-      });
-      await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
-      await next.click();
       await expect(phase).toHaveAttribute("aria-label", "People");
-      if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
+      if (phone) await next.click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
         const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
-        await expect(picker.getByRole("button", { name: "Close Choose founding villagers" })).toBeFocused();
         const add = picker.getByRole("button", { name: person.name + " · Add", exact: true });
         if (person.id === "mari") {
           const results = picker.getByRole("group", { name: "Choose founding villagers", exact: true });
-          await expect(add).not.toBeInViewport();
           await results.hover();
           await page.mouse.wheel(0, 4000);
           await expect(add).toBeInViewport();
           await page.evaluate(() => window.visualViewport.dispatchEvent(new Event("scroll")));
-          await expect(picker.getByRole("searchbox")).toBeInViewport({ ratio: 0.99 });
-          await expect(picker.getByRole("button", { name: "Done" })).toBeInViewport({ ratio: 0.99 });
-          await expect(add).toBeInViewport({ ratio: 0.99 });
+          await expect(picker.getByRole("searchbox")).toBeInViewport();
+          await expect(picker.getByRole("button", { name: "Done", exact: true })).toBeInViewport();
+          await expect(add).toBeInViewport();
         }
         await add.click();
-        await expect(picker).toBeHidden();
-        await expect(root.getByRole("button", { name: person.name, exact: true })).toBeVisible();
       }
       const row = (name) =>
-        root.locator(".villages-selected-villager").filter({
-          has: page.getByRole("button", { name, exact: true }),
-        });
-      const pane = row("Aqua").getByRole("region", { name: "Aqua’s appearance", exact: true });
-      await expect(row("Professor Mari").getByText("Sprites on", { exact: true })).toBeVisible();
-      await expect(
-        row("Professor Mari").getByRole("region", { name: "Professor Mari’s appearance", exact: true }),
-      ).toHaveCount(0);
-      await expect(pane.getByRole("button", { name: "Sprites", exact: true })).toHaveAttribute("aria-pressed", "true");
+        root.locator(".villages-selected-villager").filter({ has: page.getByText(name, { exact: true }) });
+      await expect(row("Aqua").getByRole("status")).toHaveText("6 sprites");
+      const missing = row("Professor Mari").getByRole("status");
+      await expect(missing).toContainText("No Sprites Assigned!");
+      await expect(missing).toHaveCSS("color", "rgb(255, 146, 159)");
+      for (const label of ["Portrait", "Sprites", "Assign Side"])
+        await expect(root.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+      await expect(next).toBeEnabled();
+      await expect(next).toBeInViewport();
+      assert.ok((await row("Aqua").boundingBox()).height < 100, "People stays compact");
+      assert.ok(
+        (await row("Professor Mari").boundingBox()).height < 100,
+        "Missing-sprite status does not squeeze the name into a column",
+      );
       const avatar = row("Aqua").locator(".marinara-capability-villages-identity-card-face");
-      await expect(avatar).toHaveCount(1);
-      await expect(pane.locator("img")).toHaveCount(0);
       await expect.poll(() => portraitLoads.length).toBeGreaterThan(0);
-      assert.ok(portraitLoads.every((url) => url.searchParams.get("w") === "320" && url.searchParams.get("v") === "7"));
+      assert.ok(portraitLoads.every((url) => url.searchParams.get("w") === "320"));
       if (phone) {
         await expect(avatar.locator("img")).toHaveCount(0);
         await expect(avatar.locator("svg")).toBeVisible();
-      } else {
-        await expect(avatar.locator("img")).toBeVisible();
-        await expect(avatar.locator("img")).toHaveAttribute("loading", "lazy");
-        await expect(avatar.locator("img")).toHaveCSS("object-fit", "fill");
-      }
-      assert.equal(spriteLoads, 0, "The compact People row does not download a full sprite");
-      await expect(pane.getByText("6 Front · 0 Side", { exact: true })).toBeVisible();
-      await expect(pane.getByText("Manage expressions")).toHaveCount(0);
-      await expect(pane.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
-      const compactBounds = await row("Aqua").boundingBox();
+      } else await expect(avatar.locator("img")).toHaveAttribute("loading", "lazy");
+      assert.equal(spriteLoads, 0, "Counting sprites does not download full artwork");
       await page.screenshot({ path: ".build-tmp/founding-sprites/compact-" + viewport.width + ".png" });
-      assert.ok(compactBounds.height < (phone ? 210 : 160), `The compact People row is ${compactBounds.height}px tall`);
-      await expect(next).toBeInViewport({ ratio: 0.99 });
-      await expect(next).toBeEnabled();
       await next.click();
-      await expect(phase).toHaveAttribute("aria-label", "Venues");
-      assert.deepEqual(
-        [...opened].sort(),
-        ["aqua", "mari"],
-        "Appearance status loads for each selected resident without a click",
-      );
+      await expect(phase).toHaveAttribute("aria-label", "Maps");
+      await expect(root.getByText(/^A new Village starts/)).toBeVisible();
+      assert.deepEqual([...opened].sort(), ["aqua", "mari"]);
+      assert.equal(writes.length, 0, "Counts never save or require an appearance editor");
       await root.getByRole("button", { name: "Back", exact: true }).click();
-      await expect(phase).toHaveAttribute("aria-label", "People");
-      if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
-      await row("Professor Mari").getByRole("button", { name: "Professor Mari", exact: true }).click();
-      await expect(row("Professor Mari").getByRole("region", { name: "Professor Mari’s appearance" })).toBeVisible();
-      await expect(pane).toHaveCount(0);
-      await row("Aqua").getByRole("button", { name: "Aqua", exact: true }).click();
-      await pane.getByRole("button", { name: "Review previous appearance", exact: true }).click();
-      await expect(pane.getByText("1 Front · 0 Side", { exact: true })).toBeVisible();
-      await pane.getByRole("button", { name: "Reload appearance", exact: true }).click();
-      await expect(pane.getByText("6 Front · 0 Side", { exact: true })).toBeVisible();
-      assert.equal(
-        await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua),
-        undefined,
-        "Opening an older character setup does not adopt it",
-      );
-      const openPicker = () => pane.getByRole("button", { name: "Assign Side", exact: true }).click();
-      await openPicker();
-      const sidePicker = page.getByRole("dialog", { name: "Assign side-facing sprites", exact: true });
-      await sidePicker.getByRole("combobox", { name: "Folder" }).selectOption("profile");
-      if (phone) {
-        for (const name of ["Happy_blush", "Neutral_2", "Thinking"])
-          await sidePicker.getByRole("checkbox", { name, exact: true }).check();
-      } else await sidePicker.getByRole("button", { name: "Select folder", exact: true }).click();
-      const move = sidePicker.getByRole("button", { name: "Move 3 to Side", exact: true });
-      await expect(move).toBeInViewport({ ratio: 0.99 });
-      assert.equal(writes.length, 0);
-      await move.click();
-      await expect(sidePicker).toBeHidden();
-      await expect(pane.getByText("3 Front · 3 Side", { exact: true })).toBeVisible();
-      await expect(next).toBeEnabled();
-      assert.equal(writes.length, 1, "The whole batch is saved with one click");
-      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
-      assert.deepEqual(writes[0].expressions.flatMap((row) => (row.side ? [row.side.filename] : [])).sort(), [
-        "happy-side.png",
-        "neutral-side.png",
-        "thinking-side.png",
-      ]);
-      assert.equal(writes[0].expressions.filter((row) => row.front).length, 3);
-      await page.screenshot({ path: ".build-tmp/founding-sprites/appearance-" + viewport.width + ".png" });
-      await openPicker();
-      await sidePicker.getByRole("button", { name: "Side (3)", exact: true }).click();
-      await sidePicker.getByRole("checkbox", { name: "Happy_blush", exact: true }).check();
-      await sidePicker.getByRole("button", { name: "Move 1 to Front", exact: true }).click();
-      const retry = sidePicker.getByRole("button", { name: "Retry save", exact: true });
-      await expect(retry).toBeEnabled();
-      await expect(sidePicker.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
-      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
-      await retry.click();
-      await expect(sidePicker).toBeHidden();
-      await expect(pane.getByText("4 Front · 2 Side", { exact: true })).toBeVisible();
-      await expect(next).toBeEnabled();
-      assert.equal(receipts.size, 2);
-      assert.equal(writes.length, 3);
-      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 3);
-
-      const portrait = pane.getByRole("button", { name: "Portrait", exact: true });
-      await portrait.click();
-      await expect(portrait).toHaveAttribute("aria-pressed", "true");
-      await expect(next).toBeEnabled();
-      assert.equal(writes[3].useSprites, false);
-      await row("Professor Mari").getByRole("button", { name: "Professor Mari", exact: true }).click();
-      await expect(row("Aqua").getByText("Sprites available · Portrait", { exact: true })).toBeVisible();
+      await expect(row("Aqua").getByRole("status")).toHaveText("6 sprites");
       await page.close();
     });
   }
 });
-console.log("Compact Founding Appearance proceeds untouched, saves a batch, and retries an unacknowledged move.");

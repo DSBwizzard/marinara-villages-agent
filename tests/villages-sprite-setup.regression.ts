@@ -212,20 +212,17 @@ world = coerceVillageState({
 const resident = await service.settled(id, true);
 const sprite = managerResidentSprite(resident.manager, id)!;
 assert.equal(sprite.named, true);
-assert.equal(sprite.expressions.filter((row) => row.view === "front").length, 2);
-assert.equal(sprite.expressions.filter((row) => row.view === "side").length, 17);
+assert.equal(sprite.expressions.filter((row) => row.view === "front").length, 19);
+assert.equal(sprite.expressions.filter((row) => row.view === "side").length, 0);
 assert.equal(sprite.expressions[2].assetId, id);
 assert.equal(sprite.expressions[2].filename, "side-1.png");
 assert.equal(sprite.expressions[2].version, version);
 const projected = projectVillager(world.villagers[0], "Mara", "", [], "", "", null);
 assert.equal(projected.sprite?.images[2].url, "/api/sprites/mara/file/side-1.png?v=100");
-assert.equal(resolveSpriteExpression(sprite, "happy", true, "front", 0.999), sprite.expressions[1].expressionId);
-assert.equal(resolveSpriteExpression(sprite, "happy", true, "side", 0.999), sprite.expressions.at(-1)?.expressionId);
+assert.equal(resolveSpriteExpression(sprite, "happy", true, 0.999), sprite.expressions.at(-1)?.expressionId);
+assert.equal(resolveSpriteExpression(sprite, "happy", true, 0.999), sprite.expressions.at(-1)?.expressionId);
 const frontImg = projected.sprite!.images.find((img) => img.view === "front")!;
-assert.equal(
-  selectSpriteImage(projected.sprite!.images, frontImg.expressionId!, "left", undefined, true)?.mirrored,
-  true,
-);
+assert.equal(selectSpriteImage(projected.sprite!.images, frontImg.expressionId!)?.mirrored, false);
 
 libraryAvailable = false;
 const rows = resident.manager.assignments.map(({ expressionId, artworkId, view, engineFilename, version }) => ({

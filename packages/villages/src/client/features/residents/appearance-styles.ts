@@ -48,7 +48,7 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-expression-image img { display:block; width:100%; height:100%; object-fit:contain; object-position:center top; transform:scale(2.65); transform-origin:50% 8%; }
 .appearance-expressions small { color:var(--appearance-ink); opacity:.82; }
 .appearance-preview { background:var(--appearance-panel); border:1px solid var(--appearance-line); border-radius:.65rem; padding:.75rem; min-width:0; }
-.appearance-views { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.55rem; }
+.appearance-views { display:grid; grid-template-columns:minmax(0,1fr); gap:.55rem; }
 .appearance-view {
   display:flex; flex-direction:column; align-items:center; min-width:0;
   border:1px solid var(--appearance-line); border-radius:.45rem; padding:.35rem;
@@ -94,24 +94,6 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-picker-grid label:has(:checked) { border-color:var(--appearance-pick); background:var(--menu-selected,#875363); }
 .appearance-picker-grid img { display:block; width:100%; height:7rem; object-fit:contain; }
 .appearance-picker-grid :is(span,small) { text-align:center; font-size:.85rem; }
-.villages-forging-card .appearance-compact {
-  height:auto; overflow:visible; padding:0; background:transparent;
-}
-.appearance-compact-row,.appearance-compact-sprites { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem .65rem; }
-.appearance-compact-row .appearance-mode { flex:1 1 10rem; margin:0; }
-.appearance-compact-sprites { flex:1 1 auto; }
-.appearance-compact-sprites>button { flex:1; }
-.appearance-compact-sprites [role=status] { font-size:.85rem; }
-.villages-forging-v2 .appearance-compact>.appearance-link { align-self:flex-start; background:transparent; }
-.villages-appearance dialog.appearance-move-picker[open] { display:flex; flex-direction:column; overflow:hidden; }
-.appearance-move-picker > :is(header,footer) { flex:none; }
-.appearance-move-picker > .appearance-picker-body { overscroll-behavior:contain; }
-.appearance-move-picker .appearance-picker-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
-.appearance-move-picker footer { flex-wrap:wrap; }
-.appearance-move-picker footer > p { flex:0 0 100%; }
-@media (max-width:727px) {
-  .appearance-move-picker .appearance-picker-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-}
 @container (max-width:34rem) {
   .appearance-layout { grid-template-columns:1fr; }
   .appearance-expressions { max-height:9rem; }

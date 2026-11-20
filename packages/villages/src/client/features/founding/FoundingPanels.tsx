@@ -238,8 +238,6 @@ export function FoundingPersonaSelector({
 }
 
 export function FoundingVillagerPicker({
-  onEditSprites,
-  activeId,
   appearance,
   catalog,
   portraits,
@@ -252,9 +250,7 @@ export function FoundingVillagerPicker({
   selectedIds: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
-  onEditSprites(id: string): void;
-  activeId?: string | null;
-  appearance?(id: string, expanded: boolean): ReactNode;
+  appearance?(id: string): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -279,23 +275,19 @@ export function FoundingVillagerPicker({
     <section className={ELEMENT_TAG + "-founding-roster"} aria-label="Founding villagers">
       <div className="villages-people-selected">
         {selected.map((person) => (
-          <div className="villages-selected-villager" key={person.id} data-selected={activeId === person.id}>
-            <button
-              type="button"
-              className="villages-selected-resident"
-              disabled={disabled}
-              aria-label={person.name}
-              aria-pressed={activeId === person.id}
-              onClick={() => onEditSprites(person.id)}
-            >
+          <div className="villages-selected-villager" key={person.id}>
+            <div className="villages-selected-resident">
               <AvatarFace
                 portrait={portraits[person.id]}
                 name={person.name}
                 className={ELEMENT_TAG + "-identity-card-face"}
                 glyph="person"
               />
-              <strong className="villages-selected-name">{person.name}</strong>
-            </button>
+              <span className="villages-selected-labels">
+                <strong className="villages-selected-name">{person.name}</strong>
+                {appearance?.(person.id)}
+              </span>
+            </div>
             <button
               type="button"
               className="villages-remove-resident"
@@ -305,7 +297,6 @@ export function FoundingVillagerPicker({
             >
               ×
             </button>
-            {appearance?.(person.id, activeId === person.id)}
           </div>
         ))}
       </div>

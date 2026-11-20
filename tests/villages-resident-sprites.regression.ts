@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
 import {
+  emptySpriteManager,
+  managerResidentSprite,
+} from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
+import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -18,9 +22,31 @@ const images = [
   { view: "front" as const, label: "happy", url: "/front-happy" },
   { view: "side" as const, label: "neutral", url: "/side-neutral" },
 ];
-assert.deepEqual(selectSpriteImage(images, "happy", "left"), { image: images[1], mirrored: false });
-assert.deepEqual(selectSpriteImage(images, "happy", "right"), { image: images[1], mirrored: false });
-assert.deepEqual(selectSpriteImage(images.slice(0, 2), "happy", "left"), { image: images[1], mirrored: false });
+const legacyManager = emptySpriteManager();
+legacyManager.expressions = [
+  { id: "paired", name: "Happy" },
+  { id: "single", name: "Thoughtful" },
+];
+legacyManager.assignments = [
+  { expressionId: "paired", view: "front", engineFilename: "happy.png" },
+  { expressionId: "paired", view: "side", engineFilename: "happy-alt.png" },
+  { expressionId: "single", view: "side", engineFilename: "thoughtful.png" },
+];
+legacyManager.defaultExpressionId = "paired";
+legacyManager.defaultView = "side";
+const storedManager = structuredClone(legacyManager);
+const ordinary = managerResidentSprite(legacyManager, "resident")!;
+assert.deepEqual(
+  ordinary.expressions.map(({ filename, view }) => ({ filename, view })),
+  [
+    { filename: "happy-alt.png", view: "front" },
+    { filename: "thoughtful.png", view: "front" },
+  ],
+);
+assert.deepEqual(legacyManager, storedManager, "Reading ordinary sprites preserves all paired saved assignments");
+assert.deepEqual(selectSpriteImage(images, "happy"), { image: images[1], mirrored: false });
+assert.deepEqual(selectSpriteImage(images, "happy"), { image: images[1], mirrored: false });
+assert.deepEqual(selectSpriteImage(images.slice(0, 2), "happy"), { image: images[1], mirrored: false });
 const customImages = [
   {
     view: "side" as const,
@@ -31,14 +57,10 @@ const customImages = [
   },
   { view: "front" as const, label: "running", expressionId: "e-running", url: "/running" },
 ];
-assert.equal(selectSpriteImage(customImages, "", "left")?.image.url, "/delighted");
-assert.equal(selectSpriteImage(customImages, "e-running", "left")?.image.url, "/running");
-assert.equal(
-  selectSpriteImage(customImages, "pleased", "front")?.image.url,
-  "/delighted",
-  "unavailable labels use the default",
-);
-assert.equal(selectSpriteImage(customImages, "unknown", "front")?.image.url, "/delighted");
+assert.equal(selectSpriteImage(customImages, "")?.image.url, "/delighted");
+assert.equal(selectSpriteImage(customImages, "e-running")?.image.url, "/running");
+assert.equal(selectSpriteImage(customImages, "pleased")?.image.url, "/delighted", "unavailable labels use the default");
+assert.equal(selectSpriteImage(customImages, "unknown")?.image.url, "/delighted");
 const directionalImages = [
   { view: "front" as const, label: "neutral", expressionId: "e-neutral", isDefault: true, url: "/front-default" },
   { view: "side" as const, label: "smile", expressionId: "e-smile", url: "/side-smile" },
@@ -50,29 +72,26 @@ const directionalImages = [
   },
 ];
 assert.deepEqual(
-  selectSpriteImage(directionalImages, "e-smile", "front"),
-  { image: directionalImages[0], mirrored: false },
-  "player attention uses the front default when the expression has only side artwork",
+  selectSpriteImage(directionalImages, "e-smile"),
+  { image: directionalImages[1], mirrored: false },
+  "The chosen expression is used regardless of its old facing",
 );
-assert.deepEqual(selectSpriteImage(directionalImages, "e-smile", "left"), {
+assert.deepEqual(selectSpriteImage(directionalImages, "e-smile"), {
   image: directionalImages[1],
-  mirrored: true,
+  mirrored: false,
 });
 assert.deepEqual(
-  selectSpriteImage(directionalImages, "missing", "right"),
-  { image: directionalImages[2], mirrored: false },
-  "left-facing originals mirror toward a resident on the right",
+  selectSpriteImage(directionalImages, "missing"),
+  { image: directionalImages[0], mirrored: false },
+  "Missing expressions use the ordinary default",
 );
-assert.equal(selectSpriteImage([], "e-smile", "front"), null);
+assert.equal(selectSpriteImage([], "e-smile"), null);
 const exactDefaultImages = [
   { ...directionalImages[0], isDefault: false },
   { ...directionalImages[2], isDefault: true },
 ];
-assert.equal(selectSpriteImage(exactDefaultImages, "", "front", undefined, true, "side")?.image.url, "/side-default");
-assert.equal(
-  selectSpriteImage(exactDefaultImages, "e-neutral", "front", undefined, true, "side")?.image.url,
-  "/front-default",
-);
+assert.equal(selectSpriteImage(exactDefaultImages, "")?.image.url, "/side-default");
+assert.equal(selectSpriteImage(exactDefaultImages, "e-neutral")?.image.url, "/front-default");
 const semanticSprite = {
   assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
   expressions: [
@@ -94,7 +113,7 @@ const catalog = describeSpriteExpressions({
   expressions: [...semanticSprite.expressions, { ...semanticSprite.expressions[0], view: "side" as const }],
 });
 const described = JSON.parse(catalog);
-assert.deepEqual(described.views, ["front", "side"], "the writer sees every available view of one expression");
+assert.equal(Object.hasOwn(described, "views"), false, "The writer sees one sprite pool");
 assert.equal(described.id, "e-running");
 assert.equal(validateSpriteExpression(semanticSprite, "e-running"), "e-running");
 assert.equal(validateSpriteExpression(semanticSprite, "running"), "", "new selections require stable IDs");
@@ -159,21 +178,17 @@ const grouped = JSON.parse(
 assert.equal(grouped.name, "happy");
 assert.equal(grouped.id, "g-e-base");
 assert.equal(grouped.isDefault, true);
-assert.deepEqual(grouped.views, ["front", "side"]);
+assert.equal(Object.hasOwn(grouped, "views"), false);
 assert.equal(choices.length, 2, "a single suffixed sad image stays an individual choice");
 assert.equal(validateSpriteExpression(variantSprite, grouped.id, false), "");
-assert.equal(resolveSpriteExpression(variantSprite, grouped.id, false, "front", 0.9), "");
-assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, "front", 0), "e-base");
-assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, "front", 0.99), "e-second");
-assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, "side", 0), "e-side");
-assert.equal(
-  resolveSpriteExpression(variantSprite, "e-first", true, "front", 0.99),
-  "e-first",
-  "concrete choices never reroll",
-);
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, false, 0.9), "");
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, 0), "e-base");
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, 0.99), "e-side");
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, 0), "e-base");
+assert.equal(resolveSpriteExpression(variantSprite, "e-first", true, 0.99), "e-first", "concrete choices never reroll");
 assert.ok(!describeSpriteExpressions(variantSprite, false).includes('"id":"g-'));
 assert.equal(
-  resolveSpriteExpression(semanticSprite, grouped.id, true, "front", 0),
+  resolveSpriteExpression(semanticSprite, grouped.id, true, 0),
   "",
   "groups cannot select another resident's artwork",
 );
@@ -192,13 +207,12 @@ const numberedId = "g-e-one";
 assert.deepEqual(JSON.parse(describeSpriteExpressions(numberedPairs, true)), {
   id: numberedId,
   name: "Big_Smile",
-  views: ["front", "side"],
   isDefault: true,
 });
-assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "front", 0.5), "e-two");
-assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, "side", 0.5), "e-three");
-assert.equal(resolveSpriteExpression(numberedPairs, numberedId, false, "side", 0.5), "");
-assert.equal(resolveSpriteExpression(numberedPairs, "e-one", true, "side", 0.99), "e-one");
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, 0.5), "e-two");
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, true, 0.5), "e-two");
+assert.equal(resolveSpriteExpression(numberedPairs, numberedId, false, 0.5), "");
+assert.equal(resolveSpriteExpression(numberedPairs, "e-one", true, 0.99), "e-one");
 const withPlainFront = {
   ...numberedPairs,
   expressions: [
@@ -206,8 +220,8 @@ const withPlainFront = {
     { ...numberedPairs.expressions[4], name: "Big_Smile_03" },
   ],
 };
-assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "front", 0.99), "e-one");
-assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, "side", 0), "e-three");
+assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, 0.99), "e-three");
+assert.equal(resolveSpriteExpression(withPlainFront, numberedId, true, 0), "e-one");
 
 const named = {
   named: true as const,
@@ -220,12 +234,12 @@ const named = {
     { expressionId: "e-f", name: "Happy_pajamas_talk", view: "side" as const },
   ],
 };
-assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, "front", 0.99), "e-b");
-assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, "side", 0.99), "e-d");
-assert.equal(resolveSpriteExpression(named, "happy_pajamas", false, "side", 0.99), "e-c");
-assert.equal(resolveSpriteExpression(named, "happy_formal", true, "front", 0), "e-a");
-assert.equal(resolveSpriteExpression(named, "unhappy", true, "front", 0), "e-e");
-assert.equal(resolveSpriteExpression(named, "unknown_pajamas", true, "front", 0), "");
+assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, 0.99), "e-d");
+assert.equal(resolveSpriteExpression(named, "happy_pajamas_wounded", true, 0.99), "e-d");
+assert.equal(resolveSpriteExpression(named, "happy_pajamas", false, 0.99), "e-b");
+assert.equal(resolveSpriteExpression(named, "happy_formal", true, 0), "e-a");
+assert.equal(resolveSpriteExpression(named, "unhappy", true, 0), "e-e");
+assert.equal(resolveSpriteExpression(named, "unknown_pajamas", true, 0), "");
 
 const cueLines = [
   { speakerId: "a", staging: [{ characterId: "a", look: { target: "villager" as const, characterId: "b" } }] },
@@ -244,7 +258,7 @@ resolveSceneSpriteExpressions(
   () => 0.99,
 );
 assert.equal(cueLines[1].staging[0].expression, "e-side", "Gaze-only cues persist to later variant selection");
-assert.equal(cueLines[2].staging[0].expression, "e-second", "Explicit player attention selects the front view");
+assert.equal(cueLines[2].staging[0].expression, "e-side", "Attention does not switch sprite pools");
 const persisted = JSON.parse(JSON.stringify(cueLines));
 resolveSceneSpriteExpressions(
   persisted,

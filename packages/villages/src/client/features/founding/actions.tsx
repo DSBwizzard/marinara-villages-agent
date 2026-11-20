@@ -446,7 +446,6 @@ export function useFoundVillage(ports: {
     setSnapshot,
     setupBlocker,
 
-    setupSpriteRevisions,
     setupFoundingVillagerIds,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -520,7 +519,6 @@ export function useFoundVillage(ports: {
           // Founding is authoritative: submit the complete graph, including
           // the named public center, rather than relying on stored destinations.
           venues: setupVenues,
-          foundingSpriteRevisions: setupSpriteRevisions,
           foundingCharacterIds: setupFoundingVillagerIds,
           foundingResidentAdmissions: selectedResidentAdmissions,
         }),
@@ -563,7 +561,6 @@ export function useFoundVillage(ports: {
     setupLoreTokenBudgetDraft,
     personaDraft,
     setupMapSrc,
-    setupSpriteRevisions,
     setupFoundingVillagerIds,
     selectedResidentAdmissions,
     setSnapshot,

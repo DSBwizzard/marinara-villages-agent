@@ -1247,10 +1247,6 @@ export function RoomPanel({
             const selected = selectSpriteImage(
               (sprite?.images ?? []).filter((image) => !failedSpriteUrls.has(image.url)),
               staged?.expression ?? "",
-              facing,
-              staged?.sideExpression,
-              sprite?.named,
-              sprite?.defaultView,
             );
             return (
               <div
@@ -1279,7 +1275,7 @@ export function RoomPanel({
                     url={selected.image.url}
                     facing={facing}
                     mirrored={selected.mirrored}
-                    view={selected.image.view}
+                    view="front"
                     framing={sprite?.framing.mode ?? "full"}
                     enabled={spriteCardFlipEnabled}
                     animate={animateStaging}

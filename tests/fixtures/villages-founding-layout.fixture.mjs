@@ -375,25 +375,47 @@ export async function verifyFoundingLayout(group) {
                 const dialogueStart = dialogue.getBoundingClientRect().toJSON();
                 const slide = stage.getAnimations()[0];
                 const reveal = body.getAnimations()[0];
+                const speech = root.querySelector(".villages-chapter-guide").getAnimations()[0];
                 slide.pause();
                 reveal.pause();
+                speech.pause();
                 slide.currentTime = 0;
                 reveal.currentTime = 0;
+                speech.currentTime = 0;
                 const start = stage.getBoundingClientRect().toJSON();
                 slide.currentTime = 110;
                 reveal.currentTime = 110;
+                speech.currentTime = 110;
                 const middle = stage.getBoundingClientRect().toJSON();
                 const dialogueMiddle = dialogue.getBoundingClientRect().toJSON();
                 const mapHidden = getComputedStyle(body).visibility === "hidden";
+                const dialogueHidden = getComputedStyle(dialogue).visibility === "hidden";
                 slide.finish();
+                speech.finish();
                 const end = stage.getBoundingClientRect().toJSON();
                 const dialogueEnd = dialogue.getBoundingClientRect().toJSON();
                 reveal.finish();
-                return { original, start, middle, end, mapHidden, dialogueStart, dialogueMiddle, dialogueEnd };
+                const dialogueVisible = getComputedStyle(dialogue).visibility === "visible";
+                return {
+                  original,
+                  start,
+                  middle,
+                  end,
+                  mapHidden,
+                  dialogueStart,
+                  dialogueMiddle,
+                  dialogueEnd,
+                  dialogueHidden,
+                  dialogueVisible,
+                };
               });
               assert.ok(Math.abs(move.start.x - move.original.x) < 1, "Mari starts at her teaching position");
               assert.ok(move.end.x < move.middle.x && move.middle.x < move.start.x, "Mari slides left continuously");
               assert.ok(move.mapHidden, "The map waits until Mari has moved aside");
+              assert.ok(
+                move.dialogueHidden && move.dialogueVisible,
+                "Dialogue appears only after Mari finishes sliding",
+              );
               assert.deepEqual(
                 move.dialogueStart,
                 move.dialogueMiddle,
@@ -1266,15 +1288,9 @@ export async function verifyFoundingLayout(group) {
         await imagePicker.getByRole("button", { name: /^Image model/ }).click();
         await modelSettings.getByRole("button", { name: "Done", exact: true }).click();
         await expect(button("Model Connections")).toBeFocused();
-        await resident.getByRole("button", { name: characters[0].name, exact: true }).click();
-        await expect(resident.getByRole("button", { name: characters[0].name, exact: true })).toHaveAttribute(
-          "aria-pressed",
-          "true",
-        );
-        await expect(
-          resident.getByRole("region", { name: characters[0].name + "’s appearance", exact: true }),
-        ).toHaveCount(0);
-        await expect(resident.getByText("Portrait", { exact: true })).toBeVisible();
+        await expect(resident.getByText("No Sprites Assigned!", { exact: false })).toBeVisible();
+        await expect(resident.getByRole("button", { name: "Portrait", exact: true })).toHaveCount(0);
+        await expect(resident.getByRole("button", { name: "Assign Side", exact: true })).toHaveCount(0);
         await expect(settingNext()).toBeEnabled();
         await bounds("people");
         await settingNext().click();

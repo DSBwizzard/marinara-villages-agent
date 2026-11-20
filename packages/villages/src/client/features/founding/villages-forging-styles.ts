@@ -21,12 +21,13 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-life-heading h3 { margin:0; }
 .villages-forging-v2 .villages-initial-residents { margin:1.4rem 0 .65rem; }
 .villages-selected-villager { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:.4rem .65rem; padding:.5rem .65rem; }
-.villages-selected-villager>.appearance-compact { grid-column:1 / -1; }
 .villages-selected-resident>.marinara-capability-villages-identity-card-face { flex:none; width:2.5rem; height:2.5rem; }
 .villages-forging-v2 .villages-selected-resident { display:flex;align-items:center;gap:.65rem;flex:1;min-width:0;padding:0;border:0;background:transparent!important;text-align:left; }
 .villages-selected-name { flex:1; min-width:0; overflow-wrap:anywhere; }
 .villages-appearance-summary { display:block; color:#d5dabc; font-size:.78rem; line-height:1.25; }
-.villages-selected-villager>.villages-appearance-summary { grid-column:1 / -1; margin:-.3rem 0 0 3.15rem; }
+.villages-selected-labels { display:flex; flex-wrap:wrap; align-items:baseline; gap:.15rem .65rem; min-width:0; }
+.villages-selected-labels>.villages-selected-name { flex:0 1 auto; max-width:100%; }
+.villages-appearance-summary[data-no-sprites] { color:#ff929f; }
 .villages-forging-v2 .villages-remove-resident { flex:none; min-width:44px; min-height:44px; padding:.25rem; border:0; background:transparent; color:#c4a8ff; }
 .villages-people-selected+button { width:100%; }
 .villages-space-connections { min-width:0; max-width:100%; margin:.75rem 0; }
@@ -143,7 +144,6 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-people-action { flex:none; font-size:.8rem; color:#c4a8ff; }
 .villages-people-selected,.villages-people-choices { display:grid; gap:.5rem; margin:.5rem 0; }
 .villages-selected-villager { min-width:0; border:1px solid #43547d; border-radius:.65rem; background:#19243f; }
-.villages-selected-villager[data-selected=true] { border-color:#aa87ff;background:#30305c;box-shadow:inset 0 0 0 1px #aa87ff; }
 .villages-forging-v2 .villages-selected-villager>.villages-people-identity { border:0; box-shadow:none; background:transparent!important; }
 .villages-embedded-backstory { margin:0 .65rem; border-top:1px solid #596b9b; min-width:0; }
 .villages-forging-v2 .villages-embedded-backstory .villages-backstory-row { flex-wrap:wrap; }

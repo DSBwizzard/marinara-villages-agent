@@ -144,8 +144,6 @@ export function FoundingScreen({
     setPersonaDraft,
     setSelectedSetupVenueId,
     setSetupFocusIssue,
-    setSetupSpriteRevisions,
-    setupSpriteRevisions,
     setSetupFoundingVillagerIds,
     setSetupMapBusy,
     setSetupMapProblem,
@@ -287,30 +285,9 @@ export function FoundingScreen({
     [setSetupWorkspace],
   );
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
-  const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
   useLetterFont(screen === "setup" ? "lora" : undefined);
   const [openVenueFromMap, setOpenVenueFromMap] = useState<{ id: string }>();
-  const availableSpriteIds = setupFoundingVillagerIds.filter((id) => catalog?.some((person) => person.id === id));
-  const activeSpriteId = spriteId && availableSpriteIds.includes(spriteId) ? spriteId : (availableSpriteIds[0] ?? null);
-  const [spriteBusy, setSpriteBusy] = useState(false);
-  const spriteWorking = useRef(false);
-  const spriteBusyChanged = useCallback((value: boolean) => {
-    spriteWorking.current = value;
-    setSpriteBusy(value);
-  }, []);
-  const spriteSaved = useCallback(
-    (id: string, revision?: number) => {
-      setSetupSpriteRevisions((prior) => {
-        if (prior[id] === revision) return prior;
-        const next = { ...prior };
-        if (revision === undefined) delete next[id];
-        else next[id] = revision;
-        return next;
-      });
-    },
-    [setSetupSpriteRevisions],
-  );
   const reviewIndex = Math.min(reviewPage, Math.max(0, Math.ceil(setupVenues.length / 3) - 1));
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
@@ -342,7 +319,16 @@ export function FoundingScreen({
         { duration: 220, easing: "ease" },
       );
     });
-    if (desktopMap && bodyRef.current)
+    const dialogue = rootRef.current?.querySelector<HTMLElement>(".villages-chapter-guide");
+    if (dialogue)
+      animations.push(
+        dialogue.animate([{ visibility: "hidden" }, { visibility: "visible" }], {
+          duration: 0,
+          delay: 220,
+          fill: "backwards",
+        }),
+      );
+    if (desktopMap && bodyRef.current) {
       animations.push(
         bodyRef.current.animate(
           [
@@ -352,6 +338,7 @@ export function FoundingScreen({
           { duration: 180, delay: 220, easing: "ease-out", fill: "backwards" },
         ),
       );
+    }
     const stop = () => animations.forEach((animation) => animation.cancel());
     motion.addEventListener("change", stop);
     return () => {
@@ -657,7 +644,6 @@ export function FoundingScreen({
       </div>
     );
     const chooseRoster = (ids: string[]) => {
-      if (spriteWorking.current) return;
       clearFieldValidation("villagers");
       const actors = [
         { id: "player", name: "Your" },
@@ -708,8 +694,7 @@ export function FoundingScreen({
       setSetupMapReviewed(false);
       setSetupProblem("");
     };
-    const chapterDisabled =
-      busy || spriteBusy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError;
+    const chapterDisabled = busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError;
     const advanceDisabled =
       chapterDisabled || (setupStep === FOUNDING_STEP.Maps && (setupMapBusy || !!setupMapRequest));
     const validateVillage = () => {
@@ -721,7 +706,6 @@ export function FoundingScreen({
       return false;
     };
     const advanceSetup = () => {
-      if (spriteWorking.current) return;
       if (connectionSetupProblem) {
         openConnectionPicker();
         return;
@@ -829,7 +813,7 @@ export function FoundingScreen({
       </>
     );
     const closeChapterMenu = () => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }));
-    const canCloseChapterMenu = !busy && !spriteBusy && !setupEditorOpen;
+    const canCloseChapterMenu = !busy && !setupEditorOpen;
     const guide =
       setupStep > FOUNDING_STEP.Setting ? (
         <FoundingGuide
@@ -840,9 +824,8 @@ export function FoundingScreen({
             <>
               <button
                 type="button"
-                disabled={busy || spriteBusy || setupEditorOpen}
+                disabled={busy || setupEditorOpen}
                 onClick={() => {
-                  if (spriteWorking.current) return;
                   changeStep(setupStep - 1, explainingStarters);
                 }}
               >
@@ -1061,11 +1044,10 @@ export function FoundingScreen({
                   personas={personas}
                   draft={personaDraft}
                   onDraft={(id) => {
-                    if (spriteWorking.current) return;
                     setPersonaDraft(id);
                     clearFieldValidation("persona");
                   }}
-                  disabled={busy || spriteBusy}
+                  disabled={busy}
                 />
 
                 <h3 className="villages-initial-residents" aria-label="Initial residents">
@@ -1077,20 +1059,12 @@ export function FoundingScreen({
                   </p>
                 ) : null}
                 <FoundingVillagerPicker
-                  onEditSprites={(id) => {
-                    if (!spriteWorking.current) setSpriteId(id);
-                  }}
-                  activeId={activeSpriteId}
-                  appearance={(id, expanded) =>
+                  appearance={(id) =>
                     setupStep === FOUNDING_STEP.People ? (
                       <Appearance
                         key={id}
                         characterId={id}
                         name={wizardVillagers.find((person) => person.id === id)?.name ?? "Resident"}
-                        selectedRevision={setupSpriteRevisions[id]}
-                        onSave={(revision) => spriteSaved(id, revision)}
-                        onBusyChange={expanded ? spriteBusyChanged : undefined}
-                        summaryOnly={!expanded}
                       />
                     ) : null
                   }
@@ -1098,7 +1072,7 @@ export function FoundingScreen({
                   portraits={portraits}
                   selectedIds={setupFoundingVillagerIds}
                   onChange={chooseRoster}
-                  disabled={busy || spriteBusy}
+                  disabled={busy}
                 />
               </section>
             </div>
