@@ -477,6 +477,10 @@ export function FoundingScreen({
         aria-label={setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
         title={setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
         aria-haspopup="dialog"
+        disabled={
+          setupStep === FOUNDING_STEP.Maps &&
+          (busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest)
+        }
         onClick={() => {
           if (setupStep === FOUNDING_STEP.Maps) {
             connections.refresh();
