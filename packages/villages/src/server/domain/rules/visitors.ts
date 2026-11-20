@@ -43,6 +43,7 @@ const trusted = (state: VillageState, now: Date) =>
   Math.max(now.getTime(), Date.parse(state.clock?.trustedAt ?? now.toISOString()));
 
 export function visitingCharacter(state: VillageState, now: Date) {
+  if (state.visitorIntroduction && !state.visitorIntroduction.completedAt) return;
   if (calendarReplay(state, local(state, now))) return;
   const at = now.toISOString();
   return state.visitors?.find(
@@ -57,6 +58,7 @@ export function visitingCharacter(state: VillageState, now: Date) {
 /** The daytime draw is tied to the local date. Saving the trip consumes it. */
 function potentialArrival(state: VillageState, at: Date) {
   if (
+    (state.visitorIntroduction && !state.visitorIntroduction.completedAt) ||
     !state.foundedAt ||
     calendarReplay(state, at) ||
     at.getTime() + 60_000 < trusted(state, at) ||
@@ -345,6 +347,7 @@ export function sameVisitorPhase(state: VillageState, id: string, before: Date, 
 }
 
 export function nextVisitorTransition(state: VillageState, now: Date): number {
+  if (state.visitorIntroduction && !state.visitorIntroduction.completedAt) return Infinity;
   const active = visitingCharacter(state, now);
   const at = local(state, now);
   if (active) {

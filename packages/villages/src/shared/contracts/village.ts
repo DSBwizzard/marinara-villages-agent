@@ -55,7 +55,7 @@ export type VillageVisitorView = VillageVillagerView & {
   met: boolean;
   firstMetAt?: string;
   visitsEnabled: boolean;
-  visit?: { arrivedAt: string; leavesAt: string; offerHome: boolean; stayingWithPlayer: boolean };
+  visit?: { arrivedAt: string; leavesAt: string; offerHome: boolean; stayingWithPlayer: boolean; introductory?: true };
 };
 
 export type ResidentSprite = {
@@ -729,6 +729,7 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  visitorIntroduction?: true;
   visitEventOpening?: true;
   lore?: import("./lore.js").LoreUse[];
   currentTime?: string;

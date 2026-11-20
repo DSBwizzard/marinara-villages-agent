@@ -1,0 +1,117 @@
+import assert from "node:assert/strict";
+import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import {
+  completeVisitorIntroduction,
+  PROFESSOR_MARI_ID,
+  visitorIntroductionDue,
+  visitorIntroductionId,
+  visitorIntroductionVenue,
+  writeVisitorIntroduction,
+} from "../packages/villages/src/server/domain/rules/visitor-introduction.js";
+import { settleVisitorTrip } from "../packages/villages/src/server/domain/rules/visitors.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
+
+const state = socialWorldFixture();
+state.setupAt = "2026-11-01T08:30:00.000Z";
+state.foundedAt = "2026-10-01T00:00:00.000Z";
+state.clock = null;
+state.visitorIntroduction = { sceneId: "", completedAt: "" };
+const due = new Date(Date.parse(state.setupAt) + 86_400_000);
+assert(!visitorIntroductionDue(state, new Date(due.getTime() - 1)));
+assert(
+  visitorIntroductionDue(state, due),
+  "24 elapsed hours across the clock change, measured from completed founding",
+);
+assert(
+  !visitorIntroductionDue({ ...state, visitorIntroduction: undefined }, due),
+  "Existing worlds do not replay onboarding",
+);
+assert.deepEqual(coerceVillageState(state).visitorIntroduction, state.visitorIntroduction);
+assert.throws(
+  () => coerceVillageState({ ...state, visitorIntroduction: { completedAt: "bad", sceneId: "" } }),
+  /Visitor introduction/,
+);
+const venue = venueFixture({ id: "garden", name: "Garden", classes: ["community"] });
+state.venues.push(venue);
+const attendance = captureSceneAttendance(state, venue.id, due);
+assert(visitorIntroductionVenue(state, venue, attendance, due));
+for (const zoneId of ["exterior", venue.zones!.find((zone) => zone.kind === "public")!.id]) {
+  assert(
+    !visitorIntroductionVenue(
+      state,
+      venue,
+      { ...attendance, occupants: [{ characterId: "a", name: "A", doing: "busy", zoneId }] },
+      due,
+    ),
+    "A person at or within hearing of the entrance defers the visit",
+  );
+}
+assert(!visitorIntroductionVenue(state, { ...venue, constructionStatus: "worksite" }, attendance, due));
+assert(
+  !visitorIntroductionVenue(
+    state,
+    { ...venue, zones: venue.zones!.filter((zone) => zone.kind !== "public") },
+    attendance,
+    due,
+  ),
+);
+const [resident] = state.villagers;
+state.visitors = [
+  {
+    ...resident!,
+    characterId: PROFESSOR_MARI_ID,
+    cardSnapshot: { ...resident!.cardSnapshot, id: PROFESSOR_MARI_ID, name: "Professor Mari" },
+    visitsEnabled: true,
+    visitsRevision: "mari",
+  },
+];
+for (let i = 0; i < 100; i++) {
+  state.seed = "arrival-" + i;
+  settleVisitorTrip(state, due);
+  assert.equal(state.visitors[0]!.trip, undefined, "Chance arrivals wait for the introduction");
+}
+const scene = coerceSession({
+  version: 5,
+  id: visitorIntroductionId(state),
+  villageSeed: state.seed,
+  placeId: venue.id,
+  placeName: venue.name,
+  startedAt: due.toISOString(),
+  zoneId: "exterior",
+  sceneAttendance: attendance,
+});
+writeVisitorIntroduction(scene, state);
+scene.continuity = captureSceneContinuity(state, scene, due.getTime());
+assert.equal(coerceSession(scene).visitorIntroduction, true);
+assert(scene.lines.every((line) => line.heardBy.includes("player") && line.heardBy.length === 2));
+assert(scene.lines.some((line) => line.content.includes("Garden")));
+assert(scene.lines.some((line) => line.content.includes("not a summons")));
+completeVisitorIntroduction(state, scene);
+assert.equal(state.visitors[0]!.firstMetAt, due.toISOString());
+assert.equal(
+  state.visitorIntroduction.completedAt,
+  "",
+  "Publication records the meeting but leaves the tutorial pending until its conclusion",
+);
+scene.status = "closed";
+scene.endedAt = new Date(due.getTime() + 60000).toISOString();
+completeVisitorIntroduction(state, scene);
+assert.equal(state.visitorIntroduction.completedAt, scene.endedAt);
+assert.equal(state.visitors[0]!.trip!.leavesAt, scene.endedAt);
+const saved = JSON.stringify(state.visitorIntroduction);
+completeVisitorIntroduction(state, { ...scene, status: "active", endedAt: "" });
+assert.equal(
+  JSON.stringify(state.visitorIntroduction),
+  saved,
+  "A delayed publication cannot reopen a completed introduction",
+);
+completeVisitorIntroduction({ ...state, setupAt: "2027-01-01T00:00:00Z" }, scene);
+assert.equal(JSON.stringify(state.visitorIntroduction), saved, "Another world cannot conclude this tutorial");
+assert(!visitorIntroductionDue(state, new Date(due.getTime() + 86_400_000)));
+console.log(
+  "Mari's first visit respects elapsed founding time, quiet public entrances, saved meeting identity and once-only conclusion.",
+);

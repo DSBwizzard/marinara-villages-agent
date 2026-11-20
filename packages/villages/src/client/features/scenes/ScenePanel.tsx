@@ -540,9 +540,10 @@ export function RoomPanel({
         if (bookmark.reveal) setRevealStep(steps[saved]?.key);
         select(saved);
       } else if (!playback.restoring) select(Math.max(0, steps.length - 1));
-    } else select(Math.max(0, steps.length - 1));
+    } else select(room.visitorIntroduction ? 0 : Math.max(0, steps.length - 1));
   }, [
     room.id,
+    room.visitorIntroduction,
     steps,
     reset,
     isFounded,
@@ -638,7 +639,7 @@ export function RoomPanel({
       newest();
     }
   }, [worldScope, room.id, room.zoneId, newest]);
-  const canDraft = !ended && room.status === "active";
+  const canDraft = !ended && room.status === "active" && !room.visitorIntroduction;
   const canCompose =
     canDraft &&
     (!canReadNext || busy || !!error || !!turnRecovery || !!playback.error) &&
@@ -912,7 +913,7 @@ export function RoomPanel({
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={busy || !!contactRecovery || !movementZones.length}
+                  disabled={busy || !!contactRecovery || !movementZones.length || room.visitorIntroduction}
                   onClick={() => {
                     actionsRef.current?.querySelector("button")?.focus();
                     setActionsView("move");
@@ -1479,16 +1480,25 @@ export function RoomPanel({
                       readingPages.finishReveal();
                       return;
                     }
+                    if (room.visitorIntroduction && !canReadNext) {
+                      onEnd();
+                      return;
+                    }
                     if (!readingPages.move(1)) {
                       if (at < steps.length - 1) setReadStep(at + 1);
                       else if (!playback.atLatest && playback.window.newerCursor)
                         void playback.load(playback.window.newerCursor, "first");
                     }
                   }}
-                  disabled={(!canReadNext && !readingPages.revealing) || playback.busy || retrying}
-                  aria-label="Next paragraph"
+                  disabled={
+                    (!canReadNext && !readingPages.revealing && !room.visitorIntroduction) ||
+                    playback.busy ||
+                    retrying ||
+                    (busy && room.visitorIntroduction)
+                  }
+                  aria-label={room.visitorIntroduction && !canReadNext ? "Continue" : "Next paragraph"}
                 >
-                  <span>Next</span> ›
+                  <span>{room.visitorIntroduction && !canReadNext ? "Continue" : "Next"}</span> ›
                 </button>
               ) : ended ? (
                 <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>

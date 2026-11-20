@@ -1,5 +1,6 @@
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
+import { prepareIntroductionVisitor } from "../features/world/visitor-introduction.js";
 import { activationScope, bindActivationService } from "../adapters/engine/activation-scope.js";
 import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
 import {
@@ -553,6 +554,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
       retry: sceneRetry,
+      prepareIntroductionVisitor: (state, at) =>
+        prepareIntroductionVisitor(state, at, mutateVillageMemoryState, (id) => spriteSetup().automaticManager(id)),
       selectActiveScene: sceneRepository.selectActiveScene,
       readTerminal: sceneTerminals.read,
       withSceneWork: backendWork.sceneFence.run,

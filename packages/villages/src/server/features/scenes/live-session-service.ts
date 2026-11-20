@@ -13,6 +13,7 @@ import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
 import { recordSceneFollowup } from "../../domain/rules/activity-followup.js";
+import { completeVisitorIntroduction } from "../../domain/rules/visitor-introduction.js";
 
 import {
   accessExits,
@@ -157,6 +158,10 @@ export function createLiveScenes({
   async function recordClosure(session: VenueScene) {
     if (!session.openingGatheringId && !["player", "scene"].includes(session.endReason)) return;
     await mutateVillageState((state) => {
+      if (session.visitorIntroduction) {
+        completeVisitorIntroduction(state, session);
+        return;
+      }
       if (session.openingGatheringId) completeOpeningGathering(state, session);
       if (state.seed === session.villageSeed && session.endedAt && ["player", "scene"].includes(session.endReason)) {
         recordClosedRelationshipScene(state, session);
@@ -191,6 +196,15 @@ export function createLiveScenes({
   ): Promise<VenueScene> {
     await observeVillageClock();
     if (session.status === "closed") return session;
+    if (session.visitorIntroduction) {
+      // This fixed introduction resumes its admitted cast instead of live routines.
+      const state = await readVillageState();
+      if (session.villageSeed !== state.seed || session.continuity?.setupAt !== state.setupAt)
+        throw conflict("That introduction belongs to another Village.");
+      if (state.visitorIntroduction && !state.visitorIntroduction.sceneId)
+        await mutateVillageState((current) => completeVisitorIntroduction(current, session));
+      return session;
+    }
     if (session.pendingAccessClaim) {
       const settled = await withSceneWork(session.id, () => settleEntryInvitation(session));
       return refreshZoneParticipants(settled, completing, true);

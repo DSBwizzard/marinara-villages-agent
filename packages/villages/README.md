@@ -152,6 +152,10 @@ Residents follow routines, and their availability changes through the day. Found
 
 ### Visitors
 
+In newly founded Villages, Professor Mari is the first Visitor. Starting 24 elapsed Village hours after founding finishes, the next fresh visit to a suitable public Venue with a quiet Entrance begins her scripted introduction. An active Scene, opening gathering, nearby conversation, or local event defers it. Read through her explanation and choose **Continue** to conclude the Scene and resume play. The introduction makes no model request, resumes after a reload, and runs once. Existing worlds keep their current progress without replaying it.
+
+Mari is reserved for this introduction during Founding. Afterward, she remains a met Visitor who can receive letters, return under the ordinary visit rules, or move in. Other selected Visitors become eligible for chance visits after the introduction concludes.
+
 Open **People → Visitors** to browse profiles or choose **Add Visitor** and select an unused Character Card. Villages sets up available standing sprites for Villagers and Visitors with untouched Appearance. It uses recognizable expression labels when available and chooses one standing sprite when the labels give no expression clues. The portrait is the fallback. **Character Tools → Appearance** lets you adjust the sprites and set up side views.
 
 The Visitors tab uses the same portrait cards as Villagers. After meeting a Visitor, their Overview shows when you first met, the end of their current visit, **Find** when they are publicly available, and **Write a letter** addressed to them. Their Relationships and Memories remain available between visits.

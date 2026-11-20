@@ -72,6 +72,7 @@ export type VenueRecordEvent = {
   travel?: { venueId: string; zoneId: string; grantId: string; label: string };
 };
 export type VenueScene = {
+  visitorIntroduction?: true;
   /** Provisional writer cast, validated before publication; never persisted as Scene authority. */
   pendingNpcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   /** Private captured writing context; never part of a client projection. */

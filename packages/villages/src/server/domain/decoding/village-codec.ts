@@ -90,6 +90,18 @@ import { readStartingHistory } from "./starting-history-codec.js";
 import { emptyMailbox, readMailboxState } from "./mailbox-codec.js";
 import { emptyResidentPlans, readResidentPlans } from "./resident-plans-codec.js";
 
+function readVisitorIntroduction(value: unknown): NonNullable<VillageState["visitorIntroduction"]> {
+  const raw = asRecord(value);
+  memoryRequire(
+    typeof raw.sceneId === "string" &&
+      raw.sceneId.length <= 160 &&
+      typeof raw.completedAt === "string" &&
+      (!raw.completedAt || (raw.sceneId && asIsoString(raw.completedAt))),
+    "invalid saved Visitor introduction",
+  );
+  return { sceneId: raw.sceneId as string, completedAt: raw.completedAt as string };
+}
+
 export function defaultVillageState(): VillageState {
   return {
     worldPlaces: emptyPlaceRegistry(),
@@ -1607,6 +1619,9 @@ export function coerceVillageState(value: unknown): VillageState {
       return true;
     }),
     ...(raw.visitors === undefined ? {} : { visitors: coerceVisitors(raw.visitors, seen) }),
+    ...(raw.visitorIntroduction === undefined
+      ? {}
+      : { visitorIntroduction: readVisitorIntroduction(raw.visitorIntroduction) }),
     // A stored box keeps its internal formatting, so it is bounded but not
     // trimmed to nothing; an empty box means "this village wrote nothing", which
     // is what the renderer answers with the shipped text.

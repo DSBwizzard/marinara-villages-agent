@@ -192,6 +192,11 @@ export function useCloseRoom(ports: {
       receiveRoomRecordEvents(answer.recordEvents ?? []);
       setRoomDraft("");
       setRoomGreetingNotice("");
+      if (room.visitorIntroduction) {
+        setRoomOpen(false);
+        setRoom(null);
+        setScreen("home");
+      }
       void loadSnapshot();
     } catch (cause) {
       if (!lifetime.owns(claim) || leavingRoomPendingRef.current) return;
@@ -1305,6 +1310,7 @@ export function useOpenRoom(ports: {
         setRoom(currentRoom(session));
         setRoomTargetId("");
         setLastSceneEnding("");
+        setRoomEnded(session.status === "closed");
         setRoomOpen(true);
         void loadSnapshot();
         if (session.status === "opening" && !session.visitEventOpening)

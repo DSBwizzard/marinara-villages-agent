@@ -5,6 +5,7 @@ import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resid
 import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
+import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
@@ -66,6 +67,8 @@ export function createResidentRoster({
     const card = scope ? null : await findVillagerCard(characterId);
     if (!scope && !card) throw notFound("That character is not in your library.");
     const village = await readVillageState();
+    if (characterId === PROFESSOR_MARI_ID && village.visitorIntroduction && !village.visitorIntroduction.completedAt)
+      throw badRequest("Meet Professor Mari on her first visit before moving her in.");
     const worldScope = villageWorldScope(village);
     if (scope && worldScope !== scope) throw conflict("The Village changed.");
     const expectedVisitor = village.visitors?.find((person) => person.characterId === characterId);
@@ -147,6 +150,8 @@ export function createResidentRoster({
 
   async function setVisitor(characterId: string, scope: string, visitsEnabled: boolean) {
     const village = await readVillageState();
+    if (characterId === PROFESSOR_MARI_ID && village.visitorIntroduction && !village.visitorIntroduction.completedAt)
+      throw badRequest("Professor Mari will introduce Visitors on her first visit.");
     if (!village.foundedAt || villageWorldScope(village) !== scope) throw conflict("The Village changed.");
     const existing = village.visitors?.some((person) => person.characterId === characterId);
     const card = existing ? null : await findVillagerCard(characterId);

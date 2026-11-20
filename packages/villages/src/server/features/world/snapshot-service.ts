@@ -155,13 +155,34 @@ export function createVillageSnapshot({
         destination,
       );
     });
-    const position = visitorPosition(village, now, presence);
+    const introductionVisitor =
+      residenceAccess?.visitorIntroduction && capturedVenue
+        ? village.visitors?.find(
+            (person) =>
+              person.characterId === residenceAccess.activeIds[0] &&
+              person.incarnation ===
+                residenceAccess.continuity?.facts.visitors?.find((saved) => saved.characterId === person.characterId)
+                  ?.incarnation,
+          )
+        : undefined;
+    const position = introductionVisitor
+      ? {
+          person: introductionVisitor,
+          venueId: residenceAccess!.placeId,
+          zoneId: residenceAccess!.zoneId!,
+          name: capturedVenue!.name,
+          sleeping: false,
+        }
+      : visitorPosition(village, now, presence);
     const visit = position?.sleeping ? undefined : position;
-    const visiting = visitingCharacter(village, now);
+    const ordinaryVisitor = visitingCharacter(village, now);
+    const visiting = introductionVisitor ?? ordinaryVisitor;
+    const trip = visiting?.trip;
     const visitors = village.visitors?.map((visitor) => {
       const card = cardsById.get(visitor.characterId);
-      const stayingWithPlayer = visiting === visitor && visiting.trip.lodging?.hostId === "player";
-      const canSeeTrip = visiting === visitor && visitor.firstMetAt && (visit?.person === visitor || stayingWithPlayer);
+      const stayingWithPlayer = visiting === visitor && trip?.lodging?.hostId === "player";
+      const canSeeTrip =
+        trip && visiting === visitor && visitor.firstMetAt && (visit?.person === visitor || stayingWithPlayer);
       return {
         ...projectVillager(
           visitor,
@@ -178,10 +199,11 @@ export function createVillageSnapshot({
         ...(canSeeTrip
           ? {
               visit: {
-                arrivedAt: visiting.trip.arrivedAt,
-                leavesAt: visiting.trip.leavesAt,
+                arrivedAt: trip.arrivedAt,
+                leavesAt: trip.leavesAt,
                 stayingWithPlayer,
-                offerHome: !!playerGuestRoom(village, visiting, now),
+                offerHome: !!ordinaryVisitor && !!playerGuestRoom(village, ordinaryVisitor, now),
+                ...(introductionVisitor === visitor ? { introductory: true as const } : {}),
               },
             }
           : {}),

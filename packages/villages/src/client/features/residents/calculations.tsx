@@ -22,6 +22,7 @@ export function visitorVisitLabel(
   visitor: Pick<import("../../../shared/contracts/village.js").VillageVisitorView, "visit" | "met" | "visitsEnabled">,
   timeZone?: string,
 ) {
+  if (visitor.visit?.introductory) return "Visiting";
   if (visitor.visit)
     return (
       "Visiting until " +

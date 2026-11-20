@@ -587,6 +587,8 @@ export type ReturnCatchupCapture = {
 
 export type VillageState = {
   visitors?: VillageVisitor[];
+  /** Absent in existing worlds; new founding schedules Mari's first visit. */
+  visitorIntroduction?: { sceneId: string; completedAt: string };
   worldPlaces: import("./places.js").PlaceRegistry;
   narrative?: import("./narrative-model.js").NarrativeState;
   narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;

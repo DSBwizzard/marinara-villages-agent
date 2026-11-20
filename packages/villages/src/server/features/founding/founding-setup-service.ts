@@ -9,6 +9,7 @@ import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
+import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
@@ -162,6 +163,8 @@ export function createFoundingSetup({
         if (lore?.length) image.lore = lore;
       }
     const assignedResidents = new Set(places.flatMap((place) => place.residentIds));
+    if (assignedResidents.has(PROFESSOR_MARI_ID))
+      throw badRequest("Professor Mari will visit after founding. Choose another founding Villager.");
     const circumstances = readFoundingCircumstances(input.circumstances, places, villageNow().toISOString());
     const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
     if (input.foundingCharacterIds !== undefined)
@@ -243,6 +246,7 @@ export function createFoundingSetup({
         state.personalizeVenueImagesByDefault = readBool(input.personalizeVenueImagesByDefault);
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
       state.setupAt ||= villageNow().toISOString();
+      state.visitorIntroduction = { sceneId: "", completedAt: "" };
       for (const venue of state.venues)
         for (const zone of venue.zones ?? [])
           initializeRoomContinuity(
