@@ -79,6 +79,8 @@ try {
             kind: "dialogue",
             speakerId: "__professor_mari__",
             text: "Juniper Crossing! A village with an entrance this inviting? The interface almost undersold you.",
+            expression: "playful",
+            look: { target: "player" },
           },
         ],
       }),
@@ -90,6 +92,11 @@ try {
   assert.equal(scene.status, "active");
   assert.equal((await request("/rooms/greet", { sessionId: scene.id })).session.id, scene.id);
   assert(scene.lines[0].content.includes("Juniper Crossing"));
+  assert(
+    scene.lines[0].staging.some(
+      (cue: any) => cue.characterId === "__professor_mari__" && cue.expression && cue.look?.target === "player",
+    ),
+  );
   assert.equal(scene.lines[1].id, `${scene.id}-visitors-0`);
   assert(scene.lines.at(-1).content.includes("heads back down the road"));
   assert.equal(server.calls(), 1, "One saved generated opening precedes the fixed tutorial");

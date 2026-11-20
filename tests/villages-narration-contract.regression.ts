@@ -1,4 +1,4 @@
-// Test cases: narration-contract/ordinary, narration-contract/exact-prose, narration-contract/private-keep, narration-contract/independent-failure, narration-contract/authority-shape, narration-contract/initial-closure
+// Test cases: narration-contract/ordinary, narration-contract/exact-prose, narration-contract/dialogue-staging, narration-contract/private-keep, narration-contract/independent-failure, narration-contract/authority-shape, narration-contract/initial-closure
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -65,6 +65,35 @@ await runCase("narration-contract/exact-prose", () => {
       ),
     /ambiguous/,
   );
+});
+
+await runCase("narration-contract/dialogue-staging", () => {
+  const line = {
+    kind: "dialogue",
+    speakerId: "mari",
+    text: "Well, look who founded a village and didn't send me a ribbon to cut.",
+    expression: "playful",
+    look: { target: "player" },
+  };
+  const raw = { segments: [line] },
+    original = structuredClone(raw),
+    parsed = readNarrationReply(raw, ["mari"]).segments[0];
+  assert.equal(parsed.text, line.text);
+  assert.deepEqual(parsed.staging, [{ characterId: "mari", expression: "playful", look: { target: "player" } }]);
+  assert(!Object.hasOwn(parsed, "expression") && !Object.hasOwn(parsed, "look"));
+  assert.deepEqual(raw, original, "The retained response is immutable");
+  assert.deepEqual(
+    readNarrationReply(
+      { segments: [{ ...line, expression: {}, look: { target: "villager", characterId: "hidden" } }] },
+      ["mari"],
+    ).segments[0].staging,
+    [],
+    "Invalid optional artwork cannot introduce unseen actors or invalidate speech",
+  );
+  for (const extra of [{ staging: [] }, { access: true }, { commands: [] }])
+    assert.throws(() => readNarrationReply({ segments: [{ ...line, ...extra }] }, ["mari"]));
+  assert.throws(() => readNarrationReply({ segments: [{ ...line, speakerId: "player" }] }, ["mari"]));
+  assert.throws(() => readNarrationReply({ segments: [{ ...line, kind: "narration" }] }, ["mari"]));
 });
 
 await runCase("narration-contract/private-keep", () => {
