@@ -24,6 +24,8 @@ export type NarrationReadset = {
   ordinaryDialogue?: true;
   playerNavigation?: "explicit" | "conclude";
   sceneResidentMovement?: true;
+  sceneFollowing?: true | 2;
+  automaticTrespass?: true;
   sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string }[];
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;

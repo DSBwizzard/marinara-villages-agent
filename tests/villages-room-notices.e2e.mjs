@@ -266,8 +266,8 @@ await withBrowser(browser, async () => {
     .filter({ hasText: arrival.content })
     .screenshot({ path: "artifacts/attendance-notice-detail.png" });
   await expect(stack).toContainText("★");
-  await expect(page.locator(".marinara-capability-villages-chat-vn-reading")).not.toContainText(arrival.content);
-  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText(/1\s*\/\s*1$/u);
+  await expect(page.getByRole("region", { name: "Latest reply" })).not.toContainText(arrival.content);
+  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText("Paragraph 1/1");
   await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
   await expect(page.locator('[data-character-id="bob"]')).toHaveCount(0);
   await expect(composer).toBeEnabled();
@@ -288,7 +288,6 @@ await withBrowser(browser, async () => {
   await mount(empty);
   await expect(empty.getByRole("textbox", { name: "Message at The Park" })).toBeEnabled();
   await expect(empty.locator('[data-character-id="jimmy"]')).toBeVisible();
-  await expect(empty.locator(".marinara-capability-villages-chat-vn-counter")).toHaveCount(0);
   await expect(empty.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
   await empty.close();
   session.lines = history;

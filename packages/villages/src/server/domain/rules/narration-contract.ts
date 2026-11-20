@@ -324,6 +324,7 @@ export const CHARACTER_DIALOGUE_DIRECTION =
 const sceneTurnDirection =
   "Treat only quoted player text as spoken aloud. Unquoted text is action, narration, or internal thoughts that cannot be accessed by residents unless made observable. Never quote or speak for the player. " +
   sceneOutcomeDirection +
+  "Travel can cross open ground. Describe doors, gates, fences or other barriers only when established. " +
   CHARACTER_DIALOGUE_DIRECTION +
   "Let addressed residents who heard the player react in character, including silence or evasion. Let other present residents join as their attention and character suggest, without everyone taking a turn. Let residents pursue their own aims, disagree, or deflect. Let mutual interest develop through words and actions. When someone crosses a boundary, portray the conflict and its consequences within the rating. Let warmth and reconciliation follow from what happens in the Scene. " +
   "Continue from the latest beat. Avoid echoing dialogue or recapping unchanged details unless the player asks or the current beat depends on them. When their motives, commitments, or surroundings give them a reason to act, let residents start or finish a brief action or exchange within their abilities and the Scene's rules. Let quiet moments stay quiet.";
@@ -367,7 +368,7 @@ export const SCENE_NARRATION_FORMAT =
 export const ORDINARY_SCENE_FORMAT =
   'One JSON object: {"segments":[{"kind":"dialogue","speakerId":"resident-id","text":"…"}]}. Copy supplied speaker IDs; leadSpeakerId is context. Narration: {kind:"narration",text}. Local speech by default. Dialogue can use delivery:"whisper" with targetId or delivery:"shout" to connected Zones. Place presentation:"aside" after its main line (max ' +
   MAX_SCENE_ASIDES +
-  "). Omit unused fields. Put lasting updates and their sources in the top-level keep array. Confirm only with requires:[effect ID]; independent:true only if prose survives rejection. Native changes need game confirmation.";
+  "). Dialogue may include follow. Omit unused fields. Put lasting updates and their sources in the top-level keep array. Confirm only with requires:[effect ID]; independent:true only if prose survives rejection. Native changes need game confirmation.";
 export const ordinarySceneCitationIds = (positions: boolean) =>
   `Give cited ${positions ? "effects" : "lines and effects"} fresh IDs (start with a letter, up to 48 letters/digits/_/-).`;
 

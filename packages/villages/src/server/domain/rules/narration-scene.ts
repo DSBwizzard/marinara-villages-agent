@@ -46,7 +46,7 @@ export function applyNarrationScene(
     const contacts = context.scene.doorwayContacts ?? [];
     memoryRequire(
       contacts.length && (by === "player" || contacts.some((row) => row.characterId === by)),
-      "that doorway contact was not admitted",
+      "that cross-Zone contact was not admitted",
     );
     contactEndedIds = by === "player" ? contacts.map((row) => row.characterId) : [by];
   } else {
@@ -60,7 +60,7 @@ export function applyNarrationScene(
     kind: closed ? "scene" : "contact",
     targetId: closed ? context.scene.id : by,
     revision: readset.sceneRevision,
-    text: closed ? "The Player ended the Scene." : "Doorway contact ended.",
+    text: closed ? "The Player ended the Scene." : "Contact ended.",
     witnesses: narrationWitnesses(sources),
     ...(observedBy.length ? { observedBy } : {}),
     ...(!closed ? { endedContacts: contactEndedIds } : {}),

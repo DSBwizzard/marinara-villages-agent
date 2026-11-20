@@ -192,7 +192,7 @@ await withBrowser(browser, async () => {
     const person = (id) => page.locator(`.${tag}-chat-cast-person[data-character-id="${id}"]`);
     const input = page.locator(`.${tag}-chat-input`);
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
-    const reading = page.getByRole("region", { name: "Current paragraph" });
+    const reading = page.getByRole("region", { name: "Latest reply" });
     const next = page.getByRole("button", { name: "Next paragraph" });
     const previous = page.getByRole("button", { name: "Previous paragraph" });
     const counter = page.locator(`.${tag}-chat-vn-counter`);
@@ -209,6 +209,7 @@ await withBrowser(browser, async () => {
     await expect(reading).toBeVisible();
     await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
     await expect(people).toHaveCount(count);
+    await next.click();
     await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 48);
     if (mobile) {
       const positions =
@@ -355,7 +356,7 @@ await withBrowser(browser, async () => {
           .toBe("50%");
       }
     } else {
-      await expect(counter).toHaveText("2 / 2");
+      await expect(next).toBeDisabled();
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }
     await page.getByRole("button", { name: "Venue actions" }).click();
@@ -364,7 +365,7 @@ await withBrowser(browser, async () => {
     await expect
       .poll(
         async () => {
-          const ended = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
+          const ended = await page.locator(`.${tag}-chat-vn`).boundingBox();
           return Math.abs(ended.y + ended.height - height);
         },
         { message: `ended dialogue reaches its normal bottom position (${count}, ${mode}, ${width}x${height})` },

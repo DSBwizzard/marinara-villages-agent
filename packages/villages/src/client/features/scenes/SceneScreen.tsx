@@ -13,11 +13,15 @@ import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
+import { groupSceneMoments } from "../../../shared/helpers/scene-speech.js";
+import { zoneAccessLabel } from "../../shared/zone-access.js";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
+import { useVillageLighting } from "../../shared/useVillageLighting.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
 
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
+  const lighting = useVillageLighting(controller.snapshot?.village, "storybook");
   const [showPlace, setShowPlace] = useState(false);
   const displayedSubmissionId = controller.room?.latestTurn?.published ? controller.room.latestTurn.id : undefined;
   useEffect(() => {
@@ -112,7 +116,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     room?.operation?.kind === "turn" &&
     roomErrorTrace?.submissionId === room.operation.id &&
     (room.operation.status === "interrupted" || (room.operation.status === "complete" && !!room.operation.error));
-
+  const liveVenue = snapshot?.settings.venues.find((venue) => venue.id === room?.placeId);
   async function changeReply() {
     const target = room.retryReply;
     const remembered = replyRetry.current;
@@ -146,24 +150,22 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           scene.latestTurn?.id === room.latestTurn?.id &&
           scene.playback.version !== room.playback.version
         ) {
-          const start = scene.retryStart;
-          sceneReading.checkpoint.current.bookmark = start
+          const start = groupSceneMoments(
+            scene.lines.filter((line) => line.role === "assistant" && !line.presenceChange),
+          )[0]?.line;
+          sceneReading.checkpoint.current.bookmark = start?.id
             ? {
                 scope: scene.playback.scope,
                 sceneId: scene.id,
+                zoneArrivalId: scene.zoneArrivalId,
+                replyId: scene.liveReplyId ?? start.id,
                 lineId: start.id,
                 paragraph: 0,
-                momentIndex: start.index,
-                anchorCursor: start.anchorCursor,
+                momentIndex: 0,
                 atEnd: false,
                 reveal: true,
               }
             : undefined;
-          sceneReading.checkpoint.current.window = {
-            ...scene.playback,
-            lines: scene.lines,
-            participants: scene.participants,
-          };
         }
         setRoom(scene);
       }
@@ -355,18 +357,23 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           movementZones={(() => {
             const venue = sceneVenues.find((entry) => entry.id === room.placeId);
-            return (venue?.zones ?? [])
-              .filter((zone) => {
-                if (zone.id === room.zoneId) return false;
-                if (zone.closed) return false;
-                return zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false;
-              })
-              .map((zone) => ({
-                id: zone.id,
-                label: sceneZoneLabel(zone) + (zone.accessView?.decision.reason === "invitation" ? " (invited)" : ""),
-              }));
+            if (!venue) return [];
+            return (venue.zones ?? []).map((zone) => ({
+              id: zone.id,
+              label: sceneZoneLabel(zone),
+              connectedTo: zone.connectedTo ?? [],
+              image: ((lighting === "night" && zone.dayNight ? zone.nightImage : null) ?? zone.image)?.url,
+              allowed:
+                !zone.closed && zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false,
+              status: zoneAccessLabel(zone, venue, true),
+              canTrespass: !!zone.accessView?.canTrespass,
+              companions: zone.accessView?.companions,
+              automaticReactions: snapshot.settings.spontaneousEvents,
+            }));
           })()}
-          onMovementTarget={(zoneId) => void moveRoom(zoneId)}
+          movementPositions={liveVenue?.zoneLayout}
+          movementLighting={lighting === "night" ? "night" : "day"}
+          onMovementTarget={(zoneId, trespass) => void moveRoom(zoneId, trespass)}
           onTravel={() => {
             if (!room.travel || roomBusy || contactReviewPending.current || sceneLifetime.current !== room.id) return;
             const source = room.id;

@@ -1043,7 +1043,11 @@ await runCase("scene-narration/input-playback", async () => {
     const projected = await query.projectSceneResponse(reloaded as unknown as Record<string, unknown>);
     const scope = projected.playback.scope;
     const playback = await query.readPlaybackPage("scene", { scope, first: "1" });
-    for (const lines of [projected.lines, (await query.readHistoryPage("scene", { scope })).lines, playback.lines]) {
+    assert(
+      projected.lines.every((line) => line.role === "assistant"),
+      "live Scene shows only its latest reply",
+    );
+    for (const lines of [(await query.readHistoryPage("scene", { scope })).lines, playback.lines]) {
       const own = lines.filter((line) => line.kind === "input");
       assert.equal(own.length, 1);
       assert.equal(own[0].content, message);

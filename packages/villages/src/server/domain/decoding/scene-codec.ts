@@ -3,6 +3,7 @@ import type { VenueOperation } from "../models/operation-model.js";
 import type { ActiveVenue, VenueScene } from "../models/scene-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
+import { z } from "zod";
 
 import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
@@ -16,6 +17,7 @@ import { emptyEpisodes } from "../rules/episodes.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
 import { emptyMailbox } from "./mailbox-codec.js";
 import { immutableMemoryValue } from "../rules/memory-integrity.js";
+import { readMovementCompanions, readSceneTrespassFields } from "../rules/scene-trespass.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
   const raw = asRecord(value);
@@ -124,12 +126,31 @@ export function coerceSession(value: unknown): VenueScene {
               typeof row.destinationZoneId === "string" &&
               typeof row.at === "string",
           )
-          .map((row) => ({
-            id: String(row.id),
-            originZoneId: String(row.originZoneId),
-            destinationZoneId: String(row.destinationZoneId),
-            at: String(row.at),
-          }))
+          .map((row) => {
+            const path =
+              row.follow === true && row.path !== undefined
+                ? z.array(z.string().min(1).max(160)).min(2).max(64).parse(row.path)
+                : undefined;
+            if (
+              path &&
+              (new Set(path).size !== path.length ||
+                path[0] !== row.originZoneId ||
+                path.at(-1) !== row.destinationZoneId)
+            )
+              throw conflict("That saved movement route changed.");
+            return {
+              id: String(row.id),
+              originZoneId: String(row.originZoneId),
+              destinationZoneId: String(row.destinationZoneId),
+              at: String(row.at),
+              ...(row.trespass === true ? { trespass: true as const } : {}),
+              ...(row.follow === true ? { follow: true as const } : {}),
+              ...(path ? { path } : {}),
+              ...(row.companions !== undefined
+                ? { companions: readMovementCompanions(row.companions, row.follow === true ? 32 : 4) }
+                : {}),
+            };
+          })
       : [],
     generationReceipts: Array.isArray(raw.generationReceipts)
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
@@ -151,6 +172,17 @@ export function coerceSession(value: unknown): VenueScene {
     placeName: asTrimmedString(raw.placeName),
     zoneId: asTrimmedString(raw.zoneId) || undefined,
     enteredFromZoneId: asTrimmedString(raw.enteredFromZoneId) || undefined,
+    ...readSceneTrespassFields(raw),
+    ...(asRecord(raw.trespass).zoneId === raw.zoneId &&
+    typeof raw.zoneId === "string" &&
+    isTrespassReason(asRecord(raw.trespass).reason)
+      ? {
+          trespass: {
+            zoneId: raw.zoneId,
+            reason: asRecord(raw.trespass).reason as import("../../../shared/helpers/venue-access.js").TrespassReason,
+          },
+        }
+      : {}),
     pendingRoomQuestions: Array.isArray(raw.pendingRoomQuestions)
       ? raw.pendingRoomQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
       : [],
@@ -253,3 +285,4 @@ export function coerceSession(value: unknown): VenueScene {
     recap: asString(raw.recap).slice(0, 600),
   };
 }
+import { isTrespassReason } from "../../../shared/helpers/venue-access.js";

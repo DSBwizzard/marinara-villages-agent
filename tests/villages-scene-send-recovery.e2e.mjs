@@ -324,10 +324,11 @@ await withBrowser(browser, async () => {
           await expect
             .poll(
               async () =>
-                (await next.isEnabled()) || ((await composer.isVisible()) && (await composer.inputValue()) === ""),
+                ((await next.count()) > 0 && (await next.isEnabled())) ||
+                ((await composer.isVisible()) && (await composer.inputValue()) === ""),
             )
             .toBe(true);
-          while (await next.isEnabled()) await next.click();
+          while ((await next.count()) > 0 && (await next.isEnabled())) await next.click();
           await expect(composer).toHaveValue("");
         }
       }
@@ -350,6 +351,7 @@ await withBrowser(browser, async () => {
       },
     };
     await zoneSelect.getByRole("button", { name: "Hall", exact: true }).click();
+    await zoneSelect.getByRole("button", { name: "Move", exact: true }).click();
     await expectSceneError(page, "Review the saved action before moving");
     assert.equal(zonePosts, 0, "movement does not replace an unresolved Contact action");
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -502,10 +504,11 @@ await withBrowser(browser, async () => {
     await expect
       .poll(
         async () =>
-          (await retryNext.isEnabled()) || ((await composer.isVisible()) && (await composer.inputValue()) === ""),
+          ((await retryNext.count()) > 0 && (await retryNext.isEnabled())) ||
+          ((await composer.isVisible()) && (await composer.inputValue()) === ""),
       )
       .toBe(true);
-    while (await retryNext.isEnabled()) await retryNext.click();
+    while ((await retryNext.count()) > 0 && (await retryNext.isEnabled())) await retryNext.click();
     await expect(composer).toHaveValue("");
     await expect(composer).toBeEnabled();
     assert.equal(turns[3].message, "Same draft");
@@ -580,11 +583,11 @@ await withBrowser(browser, async () => {
       await expect
         .poll(
           async () =>
-            (await next.isEnabled()) ||
+            ((await next.count()) > 0 && (await next.isEnabled())) ||
             ((await composer.isVisible()) && (await composer.isEnabled()) && (await composer.inputValue()) === ""),
         )
         .toBe(true);
-      while (await next.isEnabled()) await next.click();
+      while ((await next.count()) > 0 && (await next.isEnabled())) await next.click();
       await expect(composer).toBeEnabled();
       await expect(composer).toHaveValue("");
       await expect(page.locator("." + tag + "-room-error")).toHaveCount(0);
@@ -656,7 +659,7 @@ await withBrowser(browser, async () => {
     await load();
     await expect(page.locator(`.${tag}-room-time`)).toHaveText(session.currentTime);
     const liveNext = page.getByRole("button", { name: "Next paragraph", exact: true });
-    while (await liveNext.isEnabled()) await liveNext.click();
+    while ((await liveNext.count()) > 0 && (await liveNext.isEnabled())) await liveNext.click();
     await page.screenshot({ path: `.build-tmp/scene-status/live-initial-${mobile ? "mobile" : "desktop"}.png` });
     await composer.fill("Mara, dinner tomorrow sounds good.");
     const beforeLiveSend = turns.length;
@@ -664,7 +667,7 @@ await withBrowser(browser, async () => {
     liveStale = true;
     await send.click();
     await expect(page.locator(`.${tag}-room-time`)).toHaveText("Monday, 2 November · 11:57");
-    while (await liveNext.isEnabled()) await liveNext.click();
+    while ((await liveNext.count()) > 0 && (await liveNext.isEnabled())) await liveNext.click();
     await expect(composer).toHaveValue("Mara, dinner tomorrow sounds good.");
     await expect(send).toBeEnabled();
     await expect(page.locator(`.${tag}-room-time`)).toHaveText("Monday, 2 November · 11:57");

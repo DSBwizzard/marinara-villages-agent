@@ -238,6 +238,7 @@ const documents = {
 let completions = 0;
 let answer: { content: string; finishReason: string } | undefined;
 let lastInput = "";
+const contactMessage = "I call out across the terrace.";
 const model = {
   connectionId: "synthetic",
   model: "fixture",
@@ -248,9 +249,13 @@ const model = {
     completions++;
     assert.match(messages[0].content, /GM of Villages/);
     const prompt = messages.map(({ content }) => content).join("\n");
-    if (prompt.includes("Requested Contact shortcut:")) assert.match(prompt, /Native changes use commands/u);
     assert.equal(messages.at(-2)?.role, "user");
     lastInput = messages.at(-2)!.content;
+    if (lastInput === contactMessage) {
+      assert.match(prompt, /Native changes use commands/u);
+      assert.match(prompt, /Contact context: .*"boundaryZoneId":"kitchen"/u);
+      assert.doesNotMatch(prompt, /"kind":"knock"|doorway contact/iu);
+    }
     assert(answer, "Only an explicitly supplied synthetic response may dispatch");
     const selected = answer;
     answer = undefined;
@@ -422,10 +427,15 @@ try {
 
   const beforeContact = completions;
   provide({ segments: [{ kind: "dialogue", speakerId: "aqua", text: "I am here." }] });
-  await request("/rooms/turn", {
-    ...submit("contact"),
+  const contact = {
+    ...submit("contact", contactMessage),
     mode: "contact",
-    contact: { kind: "call", boundaryZoneId: "kitchen" },
+    contact: { boundaryZoneId: "kitchen" },
+  };
+  await request("/rooms/turn", contact);
+  await request("/rooms/turn", {
+    ...contact,
+    contact: { ...contact.contact, kind: "knock" },
   });
   assert.equal(completions, beforeContact + 1);
   assert.equal(turnOf("contact")?.mode, "contact");

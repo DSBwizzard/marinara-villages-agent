@@ -40,7 +40,7 @@ await withBrowser(browser, async () => {
       speakerId: "mara",
       name: "Mara",
       kind: "dialogue",
-      content: "The kettle is ready. There is a chair for everyone. Stay for a cup.",
+      content: "The kettle is ready.",
       heardBy: residents.map((person) => person.characterId),
       at: now,
     };
@@ -123,11 +123,13 @@ await withBrowser(browser, async () => {
     async function load() {
       await page.goto("http://asides.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+      while (await next.isEnabled()) await next.click();
       await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
     }
     await load();
     const dock = page.locator(`.${tag}-chat-vn`);
-    const reading = page.getByRole("region", { name: "Current paragraph" });
+    const reading = page.getByRole("region", { name: "Latest reply" });
     const npc = page.locator('[data-character-id="npc:eli"][data-sprite="true"] > img[data-npc-sprite]');
     const spriteHeight = () => npc.evaluate((image) => image.getBoundingClientRect().height);
     const before = {
@@ -241,7 +243,7 @@ await withBrowser(browser, async () => {
       }, visible);
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
       await expect(band).toBeHidden();
-      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
+      await expect(page.getByRole("region", { name: "Latest reply" })).toBeHidden();
       await expect(page.getByRole("button", { name: "Retry reply", exact: true })).toBeHidden();
       const composerBox = await composer.boundingBox();
       assert.ok(composerBox.y >= 0 && composerBox.y + composerBox.height <= visible);
@@ -275,10 +277,10 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
     await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Save me the good chair.");
-    await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
+    await page.getByRole("button", { name: "Close transcript", exact: true }).click();
     // Long speech remains complete and scrollable, while the dock stays unchanged.
     asides[0].content = "**A long aside with every word preserved.** ".repeat(35);
+    asides[0].asideFor = "main";
     session.lines[2] = asides[0];
     await load();
     await expect(band).toContainText("A long aside with every word preserved.");

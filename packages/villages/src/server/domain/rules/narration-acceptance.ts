@@ -922,7 +922,7 @@ export function acceptNarrationContinuity(
     sceneEffects.every(
       (effect) =>
         native.receipts[effect.effectId] &&
-        ["contact", "scene", "movement", "departure", "npc", "npc-introduction"].includes(
+        ["contact", "scene", "movement", "movement-agreement", "departure", "npc", "npc-introduction"].includes(
           native.receipts[effect.effectId].kind,
         ),
     ),

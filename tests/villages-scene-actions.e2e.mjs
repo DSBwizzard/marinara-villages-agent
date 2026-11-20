@@ -99,6 +99,19 @@ await withBrowser(browser, async () => {
           ...scene,
           sceneRevision: scene.sceneRevision + 1,
           zoneId: body.zoneId,
+          zoneArrivalId: "arrival-move-" + moves,
+          lines: [
+            ...scene.lines,
+            {
+              id: "arrival-move-" + moves,
+              role: "assistant",
+              kind: "narration",
+              speakerId: "__venue_scene__",
+              name: "Narration",
+              content: "You arrive.",
+              at: now,
+            },
+          ],
           area: "outside",
           activeIds: body.zoneId === "hall" ? ["mara"] : [],
           operation: { id: body.operationId, kind: "move", status: "complete", input: { zoneId: body.zoneId } },
@@ -123,6 +136,14 @@ await withBrowser(browser, async () => {
           sceneRevision: scene.sceneRevision + 1,
           lines: [
             ...scene.lines,
+            {
+              id: "contact-player",
+              role: "user",
+              speakerId: "player",
+              name: "Player",
+              content: lastContact.message,
+              at: now,
+            },
             {
               id: "contact-answer",
               role: "assistant",
@@ -181,16 +202,11 @@ await withBrowser(browser, async () => {
     assert.equal(lastContact.mode, "chat");
     assert.equal(lastContact.contact, undefined);
     finishContact();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("No answer.");
+    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("No answer.");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     await next.click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
-    while (await next.isEnabled()) {
-      await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
-      await expect(composer).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
-      await next.click();
-    }
+    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("quiet doorway");
+    while (await next.isEnabled()) await next.click();
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     await expect(composer).toHaveValue("Typed while the reply was pending");
     const preservedDraft = "Draft survives Zone changes. ".repeat(35);
@@ -202,19 +218,19 @@ await withBrowser(browser, async () => {
     await dockAtBottom('[class$="-chat-input"]');
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-ready-" + width + ".png") });
-    await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
-    await expect(composer).toHaveCount(0);
-    await dockAtBottom('[class$="-chat-vn-card"]');
-    if (process.env.VILLAGES_VISUAL_OUTPUT)
-      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-reading-" + width + ".png") });
-    while (await next.isEnabled()) await next.click();
     await expect(composer).toHaveValue(preservedDraft);
     const picker = page.getByRole("dialog", { name: "Move to Zone" });
     const selectMove = async () => {
       await page.getByRole("button", { name: "Venue actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-      await expect(picker.getByRole("button", { name: "Close Move to Zone" })).toBeFocused();
-      assert.ok((await picker.boundingBox()).height < 260, "A short list opens as a compact dialog");
+      await expect(picker.getByRole("button", { name: "Arrange", exact: true })).toHaveCount(0);
+      await expect(picker.getByRole("button", { name: "Close Move to Zone", exact: true })).toBeFocused();
+      assert.ok((await picker.boundingBox()).height < 700, "The route diagram fits the Scene viewport");
+      await expect(picker.getByRole("region", { name: "Zone layout", exact: true })).toBeVisible();
+      await expect(picker.locator('[data-layout-zone="' + scene.zoneId + '"]')).toHaveAttribute(
+        "aria-current",
+        "location",
+      );
       await expect(composer).toHaveValue(preservedDraft);
       await dockAtBottom('[class$="-chat-input"]');
     };
@@ -224,6 +240,7 @@ await withBrowser(browser, async () => {
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-move-" + width + ".png") });
     await picker.getByRole("button", { name: "Entrance", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
     await page.getByRole("button", { name: /^1 Scene error$/ }).click();
     await expect(page.getByText(/Scene changed/).last()).toBeVisible();
     await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
@@ -238,15 +255,17 @@ await withBrowser(browser, async () => {
     assert.equal(moves, 0);
     await selectMove();
     await picker.getByRole("button", { name: "Entrance", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await expect(composer).toHaveValue(preservedDraft);
     assert.equal(moves, 1);
-    assert.equal(scene.lines.length, lineCount);
+    assert.equal(scene.lines.length, lineCount + moves, "movement appends an arrival without deleting history");
     assert.equal(scene.submissions.length, 0);
     for (const zoneId of ["hall", "exterior", "hall", "exterior"]) {
       await selectMove();
       await picker.getByRole("button", { name: zoneId === "hall" ? "Common Space" : "Entrance", exact: true }).click();
+      await picker.getByRole("button", { name: "Move", exact: true }).click();
       await expect(composer).toHaveValue(preservedDraft);
       await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
       await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(zoneId === "hall" ? 1 : 0);
@@ -262,12 +281,12 @@ await withBrowser(browser, async () => {
     assert.equal(await page.locator("[data-scene-scope]").count(), 0);
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
-    while (await next.isEnabled()) await next.click();
+    await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
+
     await expect(composer).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     assert.equal(moves, 5);
-    assert.equal(scene.lines.length, lineCount);
+    assert.equal(scene.lines.length, lineCount + moves);
     await expect(page.getByLabel("Contact Zone")).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });

@@ -137,6 +137,7 @@ export const serverFeatureInterfaces = Object.freeze({
 
 /** Named client presentation contracts; entry and shell assemble private feature implementations. */
 export const clientFeatureInterfaces = Object.freeze({
+  "venues/layout-draft.tsx": ["VenueLayoutDraft"],
   "projects/ProjectDesign.tsx": ["ClassChoices"],
   "background/BackgroundPanel.tsx": ["BackgroundWorkPanel"],
   "exploration/MapStage.tsx": ["defaultView", "MapStage", "MobileMapView", "PROJECT_BLUEPRINT_IMAGE", "TOWN_MAP_FITS"],

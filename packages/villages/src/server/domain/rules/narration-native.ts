@@ -20,7 +20,12 @@ import { applyNarrationScene } from "./narration-scene.js";
 import { narrationAppointment } from "./narration-appointment.js";
 import { applyNarrationResidence } from "./narration-residence.js";
 import { applyNarrationPlace } from "./narration-place.js";
-import { applyNarrationMove, applyNarrationMoveRequest, applyNarrationDeparture } from "./narration-movement.js";
+import {
+  applyNarrationMove,
+  applyNarrationMoveRequest,
+  applyNarrationDeparture,
+  applyNarrationMovementDecision,
+} from "./narration-movement.js";
 import { assertSceneMovementCapacity } from "./resident-movement.js";
 import { selectSceneEffects, resolveNarrationEffects } from "./scene-acceptance.js";
 import {
@@ -333,6 +338,12 @@ export function prepareNarrationNative(
         sceneEffect: { contactEndedIds: [] },
       };
     }
+    if (command.type === "move.decide")
+      return {
+        receipt: applyNarrationMovementDecision(candidate, command, readset, context, sources, receiptId, row.segment),
+        sources,
+        sceneEffect: { contactEndedIds: [] },
+      };
     if (command.type === "move.request")
       return {
         receipt: applyNarrationMoveRequest(candidate, command, readset, context, sources, receiptId),

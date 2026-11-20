@@ -29,7 +29,26 @@ const bundle = await build({
 });
 await writeFile(entry, bundle.outputFiles[0].contents);
 const { packagedSceneServer } = await import(pathToFileURL(entry).href);
-const server = await packagedSceneServer();
+const server = await packagedSceneServer({
+  configureScene(scene) {
+    scene.zoneId = "exterior";
+    scene.activeIds = [];
+  },
+});
+const entrance = (await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).json().session;
+const moved = await server.app.inject({
+  method: "POST",
+  url: "/api/villages/rooms/zone",
+  payload: {
+    sessionId: entrance.id,
+    zoneId: "common",
+    operationId: "retry-test-arrival",
+    expectedSceneRevision: entrance.sceneRevision,
+  },
+});
+assert.equal(moved.statusCode, 200, moved.body);
+assert.ok(moved.json().session.zoneArrivalId, "Retry keeps the replacement's first paragraph after an actual Move");
+assert.equal(server.calls(), 0, "Arrival does not purchase narration");
 await withBrowser({ close: server.stop }, async () => {
   const browser = await chromium.launch({ headless: true });
   await withBrowser(browser, async () => {
@@ -66,7 +85,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(desktopRetry).toBeVisible();
     await expect(desktopRetry).toBeDisabled();
     const checkRetryPlacement = async (page, button) => {
-      const card = page.locator(".marinara-capability-villages-chat-vn-card");
+      const card = page.locator(".marinara-capability-villages-chat-vn");
       const speakerRow = card.locator(".marinara-capability-villages-scene-speaker-row");
       const [control, dialogue, row] = await Promise.all([
         button.boundingBox(),
@@ -75,7 +94,10 @@ await withBrowser({ close: server.stop }, async () => {
       ]);
       assert.ok(control && dialogue && row);
       assert.ok(control.y >= dialogue.y && control.y + control.height <= dialogue.y + dialogue.height);
-      assert.ok(Math.abs(control.x + control.width - row.x - row.width) <= 2, "Retry trails the speaker row");
+      assert.ok(
+        control.x >= row.x && control.x + control.width <= row.x + row.width,
+        "Retry stays in the reply header",
+      );
       assert.ok(Math.abs(control.y + control.height / 2 - row.y - row.height / 2) <= 2);
       assert.ok(control.width <= 64, "Retry has a compact label");
       await expect(button).toHaveText("Retry");
@@ -109,7 +131,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect
       .poll(async () => {
         const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-        if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+        if ((await next.isVisible()) && (await next.count()) > 0 && (await next.isEnabled())) await next.click();
         return page.locator("marinara-capability-villages").textContent();
       })
       .toContain("Hello there.");
@@ -145,22 +167,21 @@ await withBrowser({ close: server.stop }, async () => {
       };
     };
     await composer.fill("Keep this unsent draft");
-    const current = page.getByRole("region", { name: "Current paragraph" });
+    const current = page.getByRole("region", { name: "Latest reply" });
     await expect(desktopRetry).toBeEnabled();
     await checkRetryPlacement(page, desktopRetry);
     try {
       await desktopRetry.click();
       await expect(current).toHaveText("Retrying reply…");
       await expect(desktopRetry).toBeDisabled();
-      await expect(page.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(1);
+      await expect(page.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(2);
       await expect(desktopRetry).toHaveText("Retry");
       await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
     } finally {
       firstRetry.resolve();
     }
-    await expect(current).toHaveAttribute("aria-busy", "true");
-    await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
-    await expect(current).toHaveText(firstReply);
+
+    await expect(current).toContainText(firstReply);
     await expect(composer).toHaveValue("Keep this unsent draft");
     assert.equal(retries, 1);
 
@@ -170,12 +191,13 @@ await withBrowser({ close: server.stop }, async () => {
     await phone.goto("http://villages.test/");
     await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
     const retryReply = phone.getByRole("button", { name: "Retry reply", exact: true });
-    const phoneCurrent = phone.getByRole("region", { name: "Current paragraph" });
+    const phoneCurrent = phone.getByRole("region", { name: "Latest reply" });
     const phoneNext = phone.getByRole("button", { name: "Next paragraph", exact: true });
     await expect
       .poll(async () => {
         if (await retryReply.isEnabled()) return true;
-        if ((await phoneNext.isVisible()) && (await phoneNext.isEnabled())) await phoneNext.click();
+        if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
+          await phoneNext.click();
         return retryReply.isEnabled();
       })
       .toBe(true);
@@ -183,13 +205,14 @@ await withBrowser({ close: server.stop }, async () => {
     await checkRetryPlacement(phone, retryReply);
     assert.equal((await retryReply.boundingBox()).height, 44);
     await retryReply.click();
-    await expect(phoneCurrent).toHaveText("Rain patters on the mill roof.");
+    await expect(phoneCurrent).toContainText("Rain patters on the mill roof.");
     await expect(retryReply).toBeVisible();
     await expect(retryReply).toBeDisabled();
     await checkRetryPlacement(phone, retryReply);
-    await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
     await phoneNext.click();
-    await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
+    await expect(retryReply).toBeEnabled();
+    await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
+    await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
     assert.equal(retries, 2);
 
     const phoneComposer = phone.getByRole("textbox", { name: "Message at The Mill" });
@@ -198,9 +221,9 @@ await withBrowser({ close: server.stop }, async () => {
     await retryReply.click();
     await expect(retryReply).toBeEnabled();
     failedRetryExpected = false;
-    await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
+    await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
     await expect(phone.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await expect(phone.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(1);
+    await expect(phone.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(2);
     await expect(retryReply).toHaveText("Retry");
     assert.equal(retries, 3);
     await phone.reload();
@@ -208,19 +231,20 @@ await withBrowser({ close: server.stop }, async () => {
     await expect
       .poll(async () => {
         if (await retryReply.isEnabled()) return true;
-        if ((await phoneNext.isVisible()) && (await phoneNext.isEnabled())) await phoneNext.click();
+        if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
+          await phoneNext.click();
         return retryReply.isEnabled();
       })
       .toBe(true);
     await retryReply.click();
-    await expect(phoneCurrent).toHaveText("The rain eases over the mill.");
+    await expect(phoneCurrent).toContainText("The rain eases over the mill.");
     assert.equal(retries, 4);
     const active = await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
     const { session } = active.json();
     assert.ok(session.retryStart, "the retried reply has a public reading anchor");
     assert.ok(
-      session.retryStart.index < session.playback.moments[0].index,
-      "the reader found the start of the replacement outside the latest playback window",
+      session.lines.length === 24 && session.lines[0].content === "The rain eases over the mill.",
+      "the live reply includes the entire replacement, beyond the old playback window",
     );
   });
 });

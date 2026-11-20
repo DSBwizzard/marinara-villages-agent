@@ -95,7 +95,7 @@ await withBrowser(browser, async () => {
       ];
       await page.goto("http://speech.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      const reading = page.getByRole("region", { name: "Current paragraph" });
+      const reading = page.getByRole("region", { name: "Latest reply" });
       await expect(reading).toContainText(`Main ${delivery} conversation.`);
       await expect(page.locator(`.${tag}-chat-vn-card`)).toHaveAttribute("data-delivery", delivery);
       await expect(page.getByLabel(/^(Whisper|Shout)$/u)).toHaveCount(0);
@@ -131,14 +131,13 @@ await withBrowser(browser, async () => {
     ];
     await page.goto("http://speech.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const reading = page.getByRole("region", { name: "Current paragraph" });
-    // Reopening an existing scene starts at its most recent line.
-    await expect(reading).toContainText("A good place to stop for a drink.");
-    await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
+    const reading = page.getByRole("region", { name: "Latest reply" });
+
     await expect(reading).toContainText(prose);
     await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeDisabled();
     await page.screenshot({ path: resolve(output, `narrated-sound-${width}.png`) });
-    await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+      await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
     await expect(reading).toContainText("A good place to stop for a drink.");
     await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
     assert.deepEqual(errors, []);

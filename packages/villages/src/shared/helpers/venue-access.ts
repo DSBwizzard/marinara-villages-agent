@@ -20,6 +20,7 @@ export type AccessPermission = {
   duration: "visit" | "standing";
   /** Unclaimed future invitations bind to exactly one Scene on acceptance. */
   sceneId: string | null;
+  excludedSceneId?: string;
   accompaniedBy: string | null;
   outsideHours: boolean;
   revoked: boolean;
@@ -74,6 +75,10 @@ export type AccessReason =
   | "invitation"
   | "accompaniment-required"
   | "permission-required";
+export type TrespassReason = "permission-required" | "outside-hours" | "accompaniment-required";
+export function isTrespassReason(reason: unknown): reason is TrespassReason {
+  return reason === "permission-required" || reason === "outside-hours" || reason === "accompaniment-required";
+}
 export type ZoneAccessDecision = {
   allowed: boolean;
   available: boolean;
@@ -89,6 +94,19 @@ export type ZoneAccessDecision = {
 /** Explicit player projections. Never serialize the authoritative ledger. */
 export type ZoneAccessView = {
   reachable?: boolean;
+  routeBlocked?: boolean;
+  accessNeededVia?: string;
+  canTrespass?: boolean;
+  companions?: { id: string; name: string; staying?: true; trespass?: true }[];
+  nextOpening?: string;
+  canAllowAfterHours?: boolean;
+  invitation?: {
+    issuerId: string;
+    duration: AccessPermission["duration"];
+    future: boolean;
+    accompanied: boolean;
+    outsideHours: boolean;
+  };
   decision: ZoneAccessDecision;
   policy?: ZoneAccessPolicy;
   permissions?: AccessPermission[];
@@ -119,6 +137,7 @@ export type AccessCommand = {
       duration: "visit" | "standing";
       accompanied: boolean;
       outsideHours: boolean;
+      visitTiming?: "this" | "next";
       sceneId?: string;
     }
   | { action: "revoke"; permissionId: string }

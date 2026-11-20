@@ -174,6 +174,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.deepEqual(f.requests[0].body, {
           venueId: "other",
           zoneId: "private-room",
+          follow: true,
           ...(initial === null ? {} : { expectedSceneRevision: 0 }),
         });
         assert.deepEqual(f.requests[1].body, { sessionId: "A-new" });
@@ -198,7 +199,12 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal((await f.state()).busy, false);
         assert.equal(await f.loads(), 1);
         if (kind === "zone")
-          assert.deepEqual(f.requests[0].body, { sessionId: "A", zoneId: "exterior", expectedSceneRevision: 0 });
+          assert.deepEqual(f.requests[0].body, {
+            sessionId: "A",
+            zoneId: "exterior",
+            follow: true,
+            expectedSceneRevision: 0,
+          });
         if (kind === "greet") assert.deepEqual(f.requests[0].body, { sessionId: "A" });
         await f.finish();
       }
