@@ -296,7 +296,6 @@ export function createSceneWriting({
             ) +
             ". This does not establish detection or anyone else's knowledge. Villagers and NPCs retain their own motives, including concealing, reporting or challenging a witnessed intrusion. Consequences require normal witnessed evidence and authority. Conclude has no special meaning or consequence."
           : "",
-        "Sneaking, cover stories, lookouts and distractions use actual submitted actions and established observations. Friendship and presence grant no agreement. Use move.decide for a local person's actual player-heard decision to cross with the player; agrees:false withdraws it. A willing lookout can stay put and needs no movement decision. Treat plots as private to their actual participants. Warnings, reports, suspicions, trust and access changes use ordinary scoped keeps and native decisions; never universal knowledge or automatic punishment.",
         mode === "greet"
           ? scene.visitEvent
             ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
@@ -317,11 +316,11 @@ export function createSceneWriting({
           ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
           : "",
         residentMovesInReply
-          ? 'A visible resident move uses {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter the Zone."}. A full exit uses {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied actors and routes. Write arrivals before local dialogue. Stay with the player’s view.'
+          ? 'A visible resident move uses {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter the Zone."}; add trespass:true only for a supplied unauthorized adjacent route. A full exit uses {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied actors and routes. Write arrivals before local dialogue. Stay with the player’s view.'
           : "",
         nativeCommands ? NARRATION_NATIVE : "",
         !nativeCommands
-          ? 'An actual local decision to cross with the Player may add commands:[{"id":"agreement","type":"move.decide","who":"actor-id","to":"zone-id","agrees":true,"trespass":true,"at":"answer","source":[{"segment":"answer"}]}]. Give that actor’s complete audible dialogue segment id:"answer" and requires:["agreement"]. The words must clearly agree to that crossing; trespass:true requires agreeing to enter without permission. Use agrees:false for refusal or withdrawal. Never record consent from ambiguous words, a Player request, friendship or someone else speaking. An unauthorized visible crossing uses a normal narration segment with requires:["move"] and commands:[{"id":"move","type":"move","who":"actor-id","to":"zone-id","trespass":true,"at":"cross","source":[{"segment":"cross","perceive":{"kind":"seen","by":["player"]}}]}]; give the crossing narration id:"cross". Only supplied adjacent trespass routes are eligible.'
+          ? 'For explicit local heard consent to cross one adjacent connection with Player: commands:[{id:"agree",type:"move.decide",who:"actor-id",to:"zone-id",agrees:true,at:"answer",source:[{segment:"answer"}]}]. Complete dialogue id:"answer",requires:["agree"]. agrees:false withdraws. trespass:true needs explicit illegal-entry consent. Never infer consent.'
           : "",
         mode === "leave" && input.trim()
           ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."

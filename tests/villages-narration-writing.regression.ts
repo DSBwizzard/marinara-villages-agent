@@ -390,7 +390,8 @@ await runCase("narration-writing/single-request", async () => {
     worldRules: f.state.worldRules,
     world: f.state.worldName,
   });
-  assert(Buffer.byteLength(JSON.stringify(messages)) < 9_000, "the ordinary fixture stays below 9 KB");
+  const promptBytes = Buffer.byteLength(JSON.stringify(messages));
+  assert(promptBytes < 9_000, `the ordinary fixture stays below 9 KB (${promptBytes} bytes)`);
   assert(!f.messages().some((row) => row.content.includes("input:[")));
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);

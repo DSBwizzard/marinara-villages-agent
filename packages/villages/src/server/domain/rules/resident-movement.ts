@@ -56,7 +56,7 @@ export function residentMovementOptions(
       .map((zone) => zone.id),
   }));
   const fits = (zoneId: string, arrivals: number) => (occupancy.get(zoneId) ?? 0) + arrivals <= MAX_ZONE_VILLAGERS;
-  const knownZones = zones; // Zone identity and connections are public; interiors remain private.
+  const knownZones = zones.filter((zone) => zone.id === scene.zoneId || zone.seen);
   const cohorts = knownZones.flatMap((zone) => {
     const members = routes.filter((row) => contactPosition(scene, row.characterId) !== zone.id);
     return members.length < 2

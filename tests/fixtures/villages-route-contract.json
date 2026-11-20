@@ -216,6 +216,10 @@
       "path": "/venues/:venueId/zones/:zoneId/name"
     },
     {
+      "method": "post",
+      "path": "/rooms/react"
+    },
+    {
       "method": "get",
       "path": "/rooms/:id/error-details"
     },

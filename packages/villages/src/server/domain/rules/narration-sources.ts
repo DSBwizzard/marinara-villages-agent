@@ -221,13 +221,15 @@ export function readSceneNarrationReply(
         ? payload.segments.map((value, index) => {
             const row = asRecord(value);
             if (row.kind !== "crossing" && row.kind !== "departure") return value;
-            const { kind, who, to, ...line } = row;
+            const { kind, who, to, trespass, ...line } = row;
             memoryRequire(kind === "crossing" || !Object.hasOwn(row, "to"), "a Scene departure has no destination");
+            memoryRequire(kind === "crossing" || trespass === undefined, "only a crossing can trespass");
             const at = line.id ?? "segment-" + index;
             movements.push({
               type: kind === "crossing" ? "move" : "depart",
               who,
               ...(kind === "crossing" ? { to } : {}),
+              ...(trespass === undefined ? {} : { trespass }),
               at,
               source: [{ segment: at, perceive: { kind: "seen", by: ["player"] } }],
             });

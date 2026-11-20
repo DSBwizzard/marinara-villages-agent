@@ -171,6 +171,7 @@ export function SceneMoveDialog({
                 {target.companions.map((person) => (
                   <label key={person.id}>
                     <input
+                      autoComplete="off"
                       type="checkbox"
                       checked={(companions ?? target.companions!.map((row) => row.id)).includes(person.id)}
                       onChange={(event) => {

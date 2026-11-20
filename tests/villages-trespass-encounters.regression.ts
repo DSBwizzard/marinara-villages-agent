@@ -95,7 +95,23 @@ function nativeFixture(npc = false) {
   );
   const accept = (raw: unknown) =>
     acceptNarration(state, { raw, readset, responseDigest: memoryHash(raw) }, "trespass-turn", at);
-  return { state, venue, scene, input, accept };
+  return { state, venue, scene, input, accept, readset };
+}
+
+for (const trespass of [true, false]) {
+  const f = nativeFixture();
+  f.readset.sceneResidentMovement = true;
+  const result = f.accept({
+    segments: [
+      { kind: "crossing", who: "a", to: "garden", trespass, text: "A crosses the open grass into the Garden." },
+    ],
+  });
+  assert.equal(
+    result.held,
+    !trespass,
+    "The ordinary crossing adapter preserves explicit unauthorized entry and native checks",
+  );
+  if (trespass) assert.equal(result.episode!.commandReceipts[0].movement!.trespass, "permission-required");
 }
 
 for (const actor of ["a", "npc:guard"]) {
@@ -459,7 +475,7 @@ for (const select of [true, false]) {
   let calls = 0;
   host.model.chatComplete = async (messages) => {
     calls++;
-    assert.match(JSON.stringify(messages), /type\\?":\\?"move.decide/);
+    assert.match(JSON.stringify(messages), /move\.decide/);
     return {
       content: JSON.stringify({
         segments: [
