@@ -1395,9 +1395,9 @@ async function mediaConnectionOwnership() {
     }) as T;
   }
   type Operation = "image" | "resolve" | "map" | "store" | "location" | "private";
-  type Stage = "agent" | "connections" | "provider" | "lore" | "inspect" | "read" | "upload" | "write";
+  type Stage = "agent" | "connections" | "provider" | "lore" | "inspect" | "read" | "upload" | "write" | "usage";
   type Variant =
-    "ordinary" | "cas" | "context" | "only-empty" | "claim-cas" | "failure" | "provider-failure" | "disposed";
+    "ordinary" | "cas" | "context" | "only-empty" | "claim-cas" | "failure" | "provider-failure" | "disposed" | "pace";
   const scenarios: Array<[Operation, Stage, Variant?]> = [
     ["image", "agent"],
     ["image", "connections"],
@@ -1414,6 +1414,7 @@ async function mediaConnectionOwnership() {
     ["location", "upload"],
     ["private", "write"],
     ["private", "provider"],
+    ["private", "usage", "pace"],
     ["store", "write", "cas"],
     ["location", "write", "context"],
     ["location", "write", "only-empty"],
@@ -1443,7 +1444,7 @@ async function mediaConnectionOwnership() {
         setting: "Quiet harbor",
         setupAt: new Date().toISOString(),
         foundedAt: new Date().toISOString(),
-        backgroundPace: "off",
+        backgroundPace: "balanced",
         selectedLorebookIds: ["visual"],
         useVisualLoreByDefault: true,
         venues: [
@@ -1510,12 +1511,14 @@ async function mediaConnectionOwnership() {
           return structuredClone([...records.values()].filter((row) => row.kind === kind));
         },
         async create(input) {
+          if (input.id === "villages-ai-usage") await pause("usage");
           const row = { ...structuredClone(input), revision: 1 };
           records.set(input.id, row);
           return structuredClone(row);
         },
         async update(input) {
           if (input.id === "villages-village") await pause("write");
+          if (input.id === "villages-ai-usage") await pause("usage");
           const old = records.get(input.id);
           if (!old || old.revision !== input.expectedRevision) return null;
           const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
@@ -1673,7 +1676,7 @@ async function mediaConnectionOwnership() {
           ),
         );
       }
-      if (["cas", "context", "only-empty", "claim-cas"].includes(variant)) {
+      if (["cas", "context", "only-empty", "claim-cas", "pace"].includes(variant)) {
         const row = a.records.get("villages-village")!,
           state = b.scope.run(() => structuredClone(a.world()));
         if (variant === "cas") state.spriteCardFlipEnabled = false;
@@ -1686,6 +1689,7 @@ async function mediaConnectionOwnership() {
           };
         if (variant === "claim-cas")
           state.venues[0]!.zones!.find((zone) => zone.id === "own-room")!.initialImageAttemptedAt = "winning claim";
+        if (variant === "pace") state.backgroundPace = "off";
         a.records.set(row.id, { ...row, revision: row.revision + 1, data: state });
       }
       if (variant === "disposed") a.scope.dispose();
@@ -1714,6 +1718,7 @@ async function mediaConnectionOwnership() {
         operation !== "store" &&
         operation !== "resolve" &&
         variant !== "claim-cas" &&
+        variant !== "pace" &&
         !(operation === "location" && stage === "write" && ["context", "only-empty"].includes(variant));
       assert.equal(draws.length, paid ? 1 : 0, "one Engine image dispatch, with no replay or failed-claim spending");
       b.scope.run(() => assert.equal(a.requests().length, paid ? 1 : 0, "the native image ledger belongs to A"));
@@ -1780,8 +1785,13 @@ async function mediaConnectionOwnership() {
         );
       if (operation === "private") {
         const zone = b.scope.run(() => a.world().venues[0]!.zones!.find((entry) => entry.id === "own-room")!);
-        assert(zone.initialImageAttemptedAt, "private draw claims before provider dispatch");
-        if (variant !== "claim-cas") assert.equal(zone.image?.id, "A-image");
+        if (variant === "pace") {
+          assert(!zone.initialImageAttemptedAt && !zone.picture?.claim && !zone.image);
+          assert.equal(a.world().zonePictureBudget?.used, 0);
+        } else {
+          assert(zone.initialImageAttemptedAt, "private draw claims before provider dispatch");
+          if (variant !== "claim-cas") assert.equal(zone.image?.id, "A-image");
+        }
         await b.scope.run(() => a.scope.run(() => generateFirstZoneImage("equal-venue", "own-room")));
         assert.equal(
           calls.filter((call) => call.owner === "A" && call.path === AVATAR_PATH).length,

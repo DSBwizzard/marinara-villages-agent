@@ -14,12 +14,15 @@ import {
   MAX_IMAGE_PIXELS,
 } from "../../domain/rules/image-generation-rules.js";
 import type { villagesImageConnectionChoice } from "../settings/connections.js";
+export class AutomaticArtworkPaused extends Error {}
+
 export type ImageGenerationPorts = {
   loadEngineImageStyleSupport?: typeof loadEngineImageStyleSupport;
   villageEngineJson: typeof villageEngineJson;
   villagesImageConnectionChoice: typeof villagesImageConnectionChoice;
   decodeVillageImageDataUrl: typeof decodeVillageImageDataUrl;
   readLoreImageReferences?: typeof readLoreImageReferences;
+  dispatchAutomaticArtwork?<T>(start: () => Promise<T>): Promise<T>;
 };
 /** Cheap validation, connection selection, one Engine dispatch and decoding share one owner. */
 export function createImageGeneration(ports: ImageGenerationPorts) {
@@ -72,6 +75,7 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     referenceImages?: string[];
     loreImages?: Parameters<typeof readLoreImageReferences>[0];
     beforeDispatch?: () => Promise<void>;
+    automaticZoneArtwork?: true;
     connectionId?: string;
     sceneryStyleProfileId?: unknown;
     name: string;
@@ -140,6 +144,7 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     const answer = asRecord(
       await guardedClockGeneration(() =>
         villageEngineJson<unknown>(IMAGE_GENERATION_PATH, {
+          ...(input.automaticZoneArtwork ? { providerDispatch: ports.dispatchAutomaticArtwork } : {}),
           body: {
             connectionId,
             referenceImages,

@@ -11,6 +11,7 @@ import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
 import { zonePictureContext, zonePictureBaseline } from "../../domain/rules/zone-picture.js";
 import { resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import type { LocationImagePorts } from "./location-image-service.js";
+import { AutomaticArtworkPaused } from "./image-generation-service.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import {
   inspectedLoreUse,
@@ -77,6 +78,7 @@ export function createZonePictures(
       async () => {
         const village = await ports.readVillageState();
         if (JSON.stringify([village.seed, village.foundedAt]) !== identity) return;
+        if (automatic && village.backgroundPace === "off") return;
         const { venue, zone } = find(village, venueId, zoneId);
         if (
           !venue ||
@@ -258,8 +260,11 @@ export function createZonePictures(
           )
           .digest("hex");
         let claimed = false;
+        let budgetWindow = "";
         await ports.mutateVillageState((state) => {
           claimed = false;
+          budgetWindow = "";
+          if (automatic && state.backgroundPace === "off") return;
           const current = valid(state);
           if (!current) return;
           if (current.picture?.claim !== zone.picture?.claim) return;
@@ -290,6 +295,7 @@ export function createZonePictures(
               startedAt: sameWindow ? budget.startedAt : new Date(stamp).toISOString(),
               used: used + 1,
             };
+            budgetWindow = state.zonePictureBudget.startedAt;
           }
           current.picture = {
             ...current.picture,
@@ -361,6 +367,7 @@ export function createZonePictures(
           if (valid(await ports.readVillageState())?.picture?.claim !== claim) return;
           const usedLore = included ? inspectedLoreUse(inspection, "Image") : [];
           const decoded = await ports.generateVillageImage({
+            ...(automatic ? { automaticZoneArtwork: true as const } : {}),
             loreImages: inspectedLoreImages(inspection, usedLore),
             beforeDispatch: async () => {
               const current = await ports.resolveVillageImageEditing!();
@@ -449,6 +456,19 @@ export function createZonePictures(
               observation: observed ? zoneObservationKey(observed) : undefined,
             };
         } catch (error) {
+          if (error instanceof AutomaticArtworkPaused) {
+            await ports.mutateVillageState((state) => {
+              if (JSON.stringify([state.seed, state.foundedAt]) !== identity) return;
+              const current = find(state, venueId, zone.id).zone;
+              if (current?.picture?.claim === claim) {
+                current.picture = zone.picture;
+                current.initialImageAttemptedAt = zone.initialImageAttemptedAt;
+              }
+              if (budgetWindow && state.zonePictureBudget?.startedAt === budgetWindow)
+                state.zonePictureBudget.used = Math.max(0, state.zonePictureBudget.used - 1);
+            });
+            return;
+          }
           await ports.mutateVillageState((state) => {
             const current = find(state, venueId, zone.id).zone;
             if (JSON.stringify([state.seed, state.foundedAt]) === identity && current?.picture?.claim === claim)

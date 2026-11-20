@@ -240,6 +240,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     }
     const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(inspection, "Image") : [];
     const decoded = await generateVillageImage({
+      ...(!fromObservation ? { automaticZoneArtwork: true as const } : {}),
       loreImages: inspectedLoreImages(inspection, usedLore),
       beforeDispatch: async () => {
         await observeVillageClock();
