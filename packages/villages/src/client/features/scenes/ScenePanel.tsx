@@ -420,7 +420,12 @@ export function RoomPanel({
     room.status === "opening" &&
     (error || sceneErrors.some((item) => ["room", "greeting", "operation"].includes(item.id))) ? (
       <>
-        <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onEnd} disabled={busy}>
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-button`}
+          onClick={room.visitorIntroduction ? onMap : onEnd}
+          disabled={busy}
+        >
           Back to map
         </button>
         <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onRetryGreeting} disabled={busy}>

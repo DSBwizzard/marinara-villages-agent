@@ -14,7 +14,13 @@ const browser = await chromium.launch({
 const bundle = resolve(process.env.VILLAGES_GREETING_CLIENT_BUNDLE || "packages/villages/client.js");
 const errors = [];
 
-async function fixture({ restored = true, recovery = "failed", connectionError = "", width = 375 } = {}) {
+async function fixture({
+  restored = true,
+  recovery = "failed",
+  connectionError = "",
+  width = 375,
+  visitorIntroduction = false,
+} = {}) {
   const page = await browser.newPage({
     viewport: { width, height: 740 },
     isMobile: width < 600,
@@ -24,6 +30,7 @@ async function fixture({ restored = true, recovery = "failed", connectionError =
   page.on("pageerror", (error) => errors.push(error.message));
   let session = restored ? opening("visit-1") : null;
   let greetingCalls = 0;
+  let endCalls = 0;
   const greetingBodies = [];
   let recoveryPending = false;
   let releaseRecovery = null;
@@ -46,6 +53,7 @@ async function fixture({ restored = true, recovery = "failed", connectionError =
       lastActivityAt: now,
       endedAt: "",
       status: "opening",
+      ...(visitorIntroduction ? { visitorIntroduction: true } : {}),
       activeIds: ["mara"],
       participants: [{ characterId: "mara", name: "Mara", doing: "listening" }],
       submissions: [],
@@ -133,6 +141,7 @@ async function fixture({ restored = true, recovery = "failed", connectionError =
     if (path.endsWith("/rooms/active") && failActiveReads) return abort(route, "failed");
     if (path.endsWith("/rooms/turn"))
       return fulfill(route, { status: 400, json: { error: "A line can be at most 4000 characters." } });
+    if (path.endsWith("/rooms/end")) endCalls++;
     let value;
     if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity"))
       value = { session, debugDiscardEnabled: false };
@@ -235,6 +244,9 @@ async function fixture({ restored = true, recovery = "failed", connectionError =
     get calls() {
       return greetingCalls;
     },
+    get ends() {
+      return endCalls;
+    },
     get held() {
       return releaseRecovery !== null;
     },
@@ -254,6 +266,19 @@ async function fixture({ restored = true, recovery = "failed", connectionError =
 
 await withBrowser(browser, async () => {
   await mkdir(".build-tmp/scene-errors", { recursive: true });
+  const intro = await fixture({
+    visitorIntroduction: true,
+    recovery: "configuration",
+    connectionError: 'GM connection is not configured: "missing-gm".\nLanguage model connection not found',
+  });
+  const introDock = intro.page.getByRole("group", { name: "Scene opening", exact: true });
+  await introDock.getByRole("button", { name: "Back to map", exact: true }).click();
+  await expect(intro.page.locator('[data-pin-id="mill"]')).toBeVisible();
+  assert.equal(intro.ends, 0, "Leaving a failed Mari opening keeps mandatory onboarding pending");
+  await intro.page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+  await expect(introDock.getByRole("button", { name: "Retry opening", exact: true })).toBeVisible();
+  assert.equal(intro.calls, 1, "Returning to the saved introduction never dispatches an automatic retry");
+  await intro.page.close();
   for (const width of [1440, 390, 320]) {
     const connectionError = 'GM connection is not configured: "missing-gm".\nLanguage model connection not found';
     const f = await fixture({ connectionError, recovery: "configuration", width });
