@@ -343,6 +343,32 @@ for (const invalid of ["missing-purpose", "layout-mismatch"]) {
 }
 
 const direct = fixture("Direct");
+for (const [roll, expected] of [
+  [0, "hall"],
+  [0.999999, "garden"],
+] as const) {
+  const automatic = fixture("Automatic opening");
+  automatic.state.seed = "opening-selection";
+  automatic.retryWith(() => {});
+  const originalRandom = Math.random;
+  let rolls = 0;
+  Math.random = () => {
+    rolls++;
+    return rolls === 1 ? roll : 1 - roll;
+  };
+  try {
+    await automatic.service.runVillageSetup(input("Automatic opening"));
+    assert.equal(automatic.state.opening?.openingVenueId, expected);
+    const rollsAfterSetup = rolls;
+    assert.equal(automatic.attempts[0]!.opening?.openingVenueId, expected);
+    assert.equal(automatic.attempts[1]!.opening?.openingVenueId, expected, "A save retry retains the same host");
+    await assert.rejects(automatic.service.runVillageSetup(input("Automatic opening")), /already founded/);
+    assert.equal(rolls, rollsAfterSetup, "A replay does not reroll the saved opening");
+    assert.equal(automatic.state.opening?.openingVenueId, expected);
+  } finally {
+    Math.random = originalRandom;
+  }
+}
 for (const setting of ["A farm", "An abandoned farm"]) {
   const everyday = fixture("Everyday");
   const payload = { ...input("Everyday"), setting };

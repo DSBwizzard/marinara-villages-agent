@@ -570,7 +570,7 @@ console.log(
   const collision = separateFoundingTemplates(["a"], "founding-home:a");
   assert.equal(new Set(collision.map((row) => row.id)).size, 4, "Opening IDs never collide with replacement homes");
   assert.equal(separate.length, 6);
-  const stored = parsePlaces(separate, new Set(["a", "b", "c"]), true, "community");
+  const stored = parsePlaces(separate, new Set(["a", "b", "c"]), true);
   assert.ok(
     stored
       .filter((row) => row.classes?.includes("residence"))
@@ -588,7 +588,6 @@ console.log(
       ),
       new Set(["a", "b", "c"]),
       true,
-      "community",
     ),
   );
   for (const ordinary of [
@@ -602,7 +601,7 @@ console.log(
         : row,
     ),
   ])
-    assert.doesNotThrow(() => parsePlaces(ordinary, new Set(["a", "b", "c"]), true, "community"));
+    assert.doesNotThrow(() => parsePlaces(ordinary, new Set(["a", "b", "c"]), true));
   for (const opening of ["founding-garden", "founding-home:a"]) {
     const replacement = separateFoundingTemplates(["a"], opening);
     assert.equal(new Set(replacement.map((row) => row.id)).size, replacement.length);

@@ -34,8 +34,6 @@ export function QuickStartVenues({
   onMapOpened,
   onGenerateImage,
   onUploadImage,
-  openingVenueId,
-  onOpeningVenue,
   actions,
   onRetrySaving,
 }: {
@@ -58,8 +56,6 @@ export function QuickStartVenues({
   onMapOpened?(): void;
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
-  openingVenueId?: string;
-  onOpeningVenue?(venueId: string): void;
   actions?: ReactNode;
   onRetrySaving?(): void;
 }) {
@@ -290,22 +286,6 @@ export function QuickStartVenues({
                   locked
                   nameOfCharacter={(id) => actors.find((actor) => actor.id === id)?.name ?? "Resident"}
                 />
-                {onOpeningVenue &&
-                selected.spaces?.some(
-                  (zone) =>
-                    zone.venueClass !== "residence" &&
-                    (!zone.access || (zone.access.mode === "public" && !zone.access.accompanied)),
-                ) ? (
-                  <button
-                    type="button"
-                    className={P + "-button"}
-                    disabled={busy || imageBusy}
-                    aria-pressed={selected.id === openingVenueId}
-                    onClick={() => onOpeningVenue(selected.id)}
-                  >
-                    Opening gathering
-                  </button>
-                ) : null}
               </>
             ) : null}
             {section === "manage" && !connectionsOpen ? (

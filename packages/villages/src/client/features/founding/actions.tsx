@@ -506,7 +506,6 @@ export function useFoundVillage(ports: {
           worldName: setupWorldName,
           setting: setupSetting.trim(),
           worldRules: ports.setupContext.rules,
-          openingVenueId: ports.setupContext.openingVenueId,
           playerBackground: setupPlayerBackground,
           circumstances: activeFoundingCircumstances(ports.setupContext.circumstances, setupVenues),
           selectedLorebookIds: setupLorebookDraft,

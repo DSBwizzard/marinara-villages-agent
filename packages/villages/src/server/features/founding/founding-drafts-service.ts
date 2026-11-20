@@ -216,7 +216,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       rows.some((row) => row.residentIds.length + Number(row.playerHome) > 4)
     )
       throw badRequest(
-        "Assign homes for one to three residents and choose an opening gathering Venue before suggestions.",
+        "Assign homes for one to three residents and include a public gathering Venue before suggestions.",
       );
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && !rows.some((row) => row.id === targetId))

@@ -429,7 +429,7 @@ export function useFoundingSetupBlocker(ports: {
         return "Place every starting Venue.";
       if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap) return "Check the Venue positions on the map.";
 
-      const shapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.openingVenueId);
+      const shapeProblem = foundingVenueShapeProblem(setupVenues);
       if (!snapshot?.isFounded && shapeProblem) return shapeProblem;
       const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
       const villagerHomes = residences;

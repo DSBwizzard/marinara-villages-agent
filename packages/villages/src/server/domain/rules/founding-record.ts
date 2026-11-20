@@ -13,7 +13,7 @@ import { validVenueClasses } from "./venue-model.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import { assertSharedPlayspace, sharedPlayspace } from "./shared-playspace.js";
+import { assertSharedPlayspace } from "./shared-playspace.js";
 import { captureZoneObservation } from "./zone-observation.js";
 
 export function foundingImage(value: unknown): VillageVenueImage | null {
@@ -149,7 +149,6 @@ export function parsePlaces(
   value: unknown,
   residents: ReadonlySet<string>,
   founding: true,
-  openingVenueId: string,
   at = new Date(),
 ): VillageVenue[] {
   if (!founding) throw badRequest("Establish starting Venues through Founding.");
@@ -159,7 +158,7 @@ export function parsePlaces(
     seen = new Set<string>(),
     names = new Set<string>();
   let playerHomes = 0;
-  const shapeProblem = foundingVenueShapeProblem(venues, openingVenueId);
+  const shapeProblem = foundingVenueShapeProblem(venues);
   if (shapeProblem) throw badRequest(shapeProblem);
   for (const venue of venues) {
     if (seen.has(venue.id) || names.has(venue.name.toLowerCase()))
@@ -197,8 +196,6 @@ export function parsePlaces(
     projects: [],
   };
   assertSharedPlayspace(sharedWorld, at);
-  if (!sharedPlayspace(sharedWorld, at).venues.some((venue) => venue.venueId === openingVenueId))
-    throw badRequest("Choose an accessible public Venue for the opening gathering.");
   return venues;
 }
 

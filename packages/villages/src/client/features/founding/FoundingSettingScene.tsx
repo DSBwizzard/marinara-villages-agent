@@ -288,11 +288,7 @@ export function FoundingSettingScene({
         Back
       </button>
     ) : null;
-  const draftLabel = waitingForMari
-    ? setupSuggestionsBusy
-      ? "Drafting Map…"
-      : "Resume Map draft"
-    : "Draft Map with Mari";
+  const draftLabel = waitingForMari ? (setupSuggestionsBusy ? "Drafting Map…" : "Resume Map draft") : "Suggest";
   return (
     <section
       className="villages-setting-guide"

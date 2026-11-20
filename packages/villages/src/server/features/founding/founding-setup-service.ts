@@ -21,6 +21,7 @@ import {
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
 import { initialOpening } from "../../domain/rules/opening-project.js";
+import { sharedPlayspace } from "../../domain/rules/shared-playspace.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
@@ -93,7 +94,6 @@ export function createFoundingSetup({
     setting?: unknown;
     worldRules?: unknown;
     worldName?: unknown;
-    openingVenueId?: unknown;
     playerBackground?: unknown;
     circumstances?: unknown;
     selectedLorebookIds?: unknown;
@@ -119,7 +119,6 @@ export function createFoundingSetup({
     if (typeof (input.worldRules ?? "") !== "string" || String(input.worldRules ?? "").length > 4096)
       throw badRequest("Standing rules must be text of at most 4,096 characters.");
     const worldRules = asTrimmedString(input.worldRules);
-    const openingVenueId = asTrimmedString(input.openingVenueId);
 
     if (input.worldName !== undefined && readWorldName(input.worldName) === null)
       throw badRequest("Use a world name within 120 characters.");
@@ -147,7 +146,7 @@ export function createFoundingSetup({
     if (!Array.isArray(input.venues)) throw badRequest("The setup needs the places you put on the map.");
     const cards = await listVillagerCards();
     const cardNames = new Map(cards.map((card) => [card.id, card.name]));
-    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, openingVenueId, villageNow());
+    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, villageNow());
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
     );
@@ -212,6 +211,7 @@ export function createFoundingSetup({
     });
 
     const addedResidents: VillagerCard[] = [];
+    const openingRoll = Math.random();
     await mutateVillageState((state) => {
       if (isVillageFounded(state) || villageWorldScope(state) !== villageWorldScope(village))
         throw conflict("The village changed during setup. Reload it before saving.");
@@ -250,7 +250,6 @@ export function createFoundingSetup({
             "founding:" + state.setupAt,
             state.setupAt,
           );
-      state.opening = initialOpening([...assignedResidents], openingVenueId, randomUUID());
       state.foundingPreparation = {
         status: "pending",
         completedIds: [],
@@ -282,6 +281,10 @@ export function createFoundingSetup({
         addedResidents.push(card);
       }
       const at = state.setupAt;
+      const shared = sharedPlayspace(state, villageNow());
+      if (!shared.sufficient) throw badRequest("Provide public shared Zones in at least two Venues.");
+      const openingVenueId = shared.venues[Math.floor(openingRoll * shared.venues.length)]!.venueId;
+      state.opening = initialOpening([...assignedResidents], openingVenueId, randomUUID());
       seedFoundingCircumstances(state, circumstances, ["player", ...assignedResidents], at);
     });
 

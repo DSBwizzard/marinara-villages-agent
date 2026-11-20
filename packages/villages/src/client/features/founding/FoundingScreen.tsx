@@ -552,7 +552,7 @@ export function FoundingScreen({
       setMovingSetupVenueId(issue.field === "placement" ? issue.venueId : null);
     };
     const mapReady = !setupMapBusy;
-    const venueShapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.openingVenueId);
+    const venueShapeProblem = foundingVenueShapeProblem(setupVenues);
     const standardHomes = setupVenues.every(
       (venue) => !venue.classes?.includes("residence") || foundingHomeMembers(venue).length === 1,
     );
@@ -1175,8 +1175,6 @@ export function FoundingScreen({
                     />
                   </>
                 }
-                openingVenueId={setupContext.openingVenueId}
-                onOpeningVenue={(openingVenueId) => setSetupContext({ ...setupContext, openingVenueId })}
                 people={wizardVillagers}
                 selectedId={selectedSetupVenueId}
                 busy={setupSuggestionsBusy}
@@ -1297,7 +1295,6 @@ export function FoundingScreen({
                           {venueHasPrivate(venue) ? " / Private" : ""}
                         </summary>
                         <p>{venue.description}</p>
-                        {venue.id === setupContext.openingVenueId ? <p>Opening gathering</p> : null}
                         {venue.residentIds?.length || venue.occupancy.playerHome ? (
                           <p>
                             Household:{" "}
@@ -1360,7 +1357,7 @@ export function FoundingScreen({
                     />
                   </FoundingField>
                   <h3>After founding</h3>
-                  <p>Prepare local routines and optional initial Wishes, then meet at the selected opening Venue.</p>
+                  <p>Prepare local routines and optional initial Wishes, then meet in one of your public locations.</p>
                 </section>
               </div>
             </>

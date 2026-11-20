@@ -121,7 +121,7 @@ const placed = restored.map((row: any, index: number) => ({
 const establishedHome = parsePlace(placed[0]);
 assert.equal(establishedHome.destinations!.a.sleep, "ada-room");
 assert.equal(establishedHome.destinations!.player.sleep, "common:base");
-assert.throws(() => parsePlaces(placed, new Set(["a", "b"]), true, "community"), /one assigned resident/);
+assert.throws(() => parsePlaces(placed, new Set(["a", "b"]), true), /one assigned resident/);
 const shared = changeFoundingZoneOwner(restored[0], "ada-room", "");
 assert.equal(shared.destinations!.a.sleep, "ada-room");
 assert.equal(shared.spaces!.find((zone) => zone.id === "ada-room")!.access!.mode, "permission-required");
@@ -247,7 +247,6 @@ assert.doesNotThrow(() =>
     })),
     new Set(["a", "b"]),
     true,
-    "community",
   ),
 );
 console.log("Founding homes: fixed starting households, legacy access, sleeping and draft persistence passed.");
