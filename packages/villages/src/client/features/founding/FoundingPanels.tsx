@@ -399,9 +399,10 @@ export function VillageLorebookPicker({
   const options = [...visible, ...missing.map((id) => ({ id, name: id, enabled: false }))];
   const filtered = options.filter((book) => book.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const [page, setPage] = useState(0);
-  const pages = Math.max(1, Math.ceil(filtered.length / 12));
+  const pageSize = founding && !inline ? 6 : 12;
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageIndex = Math.min(page, pages - 1);
-  const shown = filtered.slice(pageIndex * 12, (pageIndex + 1) * 12);
+  const shown = filtered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
   const status = error ? (
     <p role="alert">{error}</p>
   ) : books === null ? (
@@ -454,25 +455,27 @@ export function VillageLorebookPicker({
               data-selected={checked}
               title={state ? `${book.name} · ${state}` : book.name}
             >
-              <input
-                autoComplete="off"
-                type="checkbox"
-                aria-label={state ? `${book.name} · ${state}` : book.name}
-                checked={checked}
-                disabled={
-                  disabled ||
-                  stale ||
-                  (!book.enabled && !checked && !selected.includes(book.id)) ||
-                  (!checked && active.length >= 24)
-                }
-                onChange={() => setPending(checked ? active.filter((id) => id !== book.id) : [...active, book.id])}
-              />
+              <span className="villages-lorebook-check" data-unavailable={!!state || undefined}>
+                <input
+                  autoComplete="off"
+                  type="checkbox"
+                  aria-label={state ? `${book.name} · ${state}` : book.name}
+                  checked={checked}
+                  disabled={
+                    disabled ||
+                    stale ||
+                    (!book.enabled && !checked && !selected.includes(book.id)) ||
+                    (!checked && active.length >= 24)
+                  }
+                  onChange={() => setPending(checked ? active.filter((id) => id !== book.id) : [...active, book.id])}
+                />
+                {state ? (
+                  <span className="villages-lorebook-state" aria-hidden="true" title={state}>
+                    ⊘
+                  </span>
+                ) : null}
+              </span>
               <span className="villages-lorebook-name">{book.name}</span>
-              {state ? (
-                <span className="villages-lorebook-state" aria-hidden="true" title={state}>
-                  ⊘
-                </span>
-              ) : null}
             </label>
           );
         })}

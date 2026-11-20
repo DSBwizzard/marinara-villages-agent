@@ -969,7 +969,8 @@ export async function verifyFoundingLayout(group) {
         const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
-        await expect(loreResults.getByRole("checkbox")).toHaveCount(12);
+        const lorePageSize = phone ? 6 : 12;
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(lorePageSize);
         const loreBudget = picker.getByRole("textbox", { name: "Lorebook Token Budget", exact: true });
         await expect(loreBudget).toBeVisible();
         await expect(loreBudget).toHaveAccessibleDescription(
@@ -999,7 +1000,7 @@ export async function verifyFoundingLayout(group) {
           await loreCards.evaluateAll((cards) =>
             cards.every((card) => {
               const label = card.getBoundingClientRect();
-              const text = card.querySelector("span").getBoundingClientRect();
+              const text = card.querySelector(".villages-lorebook-name").getBoundingClientRect();
               return text.bottom <= label.bottom + 1 && text.right <= label.right + 1;
             }),
           ),
@@ -1012,11 +1013,27 @@ export async function verifyFoundingLayout(group) {
           "Lorebooks use two columns",
         );
         await expect(loreResults.getByRole("checkbox", { name: /Community archive 1.*Disabled/ })).toBeDisabled();
+        const unavailableCheck = loreResults.locator(".villages-lorebook-check[data-unavailable]").first();
+        assert.deepEqual(
+          await unavailableCheck.locator(".villages-lorebook-state").boundingBox(),
+          await unavailableCheck.getByRole("checkbox").boundingBox(),
+          "The disabled symbol occupies the checkbox position",
+        );
+        if (phone) {
+          const popup = await loreDialog.boundingBox();
+          assert.ok(
+            popup.x >= frame.x + 8 &&
+              popup.x + popup.width <= frame.x + frame.width - 8 &&
+              popup.y >= frame.y + 12 &&
+              popup.y + popup.height <= frame.y + frame.height - 12,
+            "The phone Lorebook popup leaves background visible on every side",
+          );
+        }
         await picker.getByRole("button", { name: "Next Lorebooks page", exact: true }).click();
         await expect(loreResults.getByRole("checkbox")).toHaveCount(6);
         await loreResults.getByRole("checkbox").first().check();
         await picker.getByRole("button", { name: "Previous Lorebooks page", exact: true }).click();
-        await expect(loreResults.getByRole("checkbox")).toHaveCount(12);
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(lorePageSize);
         for (const card of await loreCards.all()) await expect(card).toBeInViewport({ ratio: 0.99 });
         await picker.getByRole("button", { name: "Next Lorebooks page", exact: true }).click();
         await expect(loreResults.getByRole("checkbox").first()).toBeChecked();
