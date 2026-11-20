@@ -657,7 +657,11 @@ await withBrowser(browser, async () => {
       const visitorTile = visitors.getByRole("button", { name: "Open River Visitor profile" });
       await expect(visitorTile).toBeVisible();
       const visitorBox = await visitorTile.boundingBox();
-      assert.deepEqual(visitorBox, villagerTile, "Visitors use the same tile geometry as Villagers.");
+      for (const dimension of ["x", "y", "width", "height"])
+        assert(
+          Math.abs(visitorBox[dimension] - villagerTile[dimension]) < 1,
+          "Visitor and Villager tile geometry matches within pixel rounding.",
+        );
       await visitors.getByRole("searchbox", { name: "Find a person" }).fill("missing");
       await expect(visitorTile).toHaveCount(0);
       await visitors.getByRole("searchbox", { name: "Find a person" }).fill("");
