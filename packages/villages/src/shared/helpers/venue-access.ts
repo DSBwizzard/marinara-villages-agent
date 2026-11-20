@@ -97,6 +97,7 @@ export type ZoneAccessView = {
   routeBlocked?: boolean;
   accessNeededVia?: string;
   canTrespass?: boolean;
+  companions?: { id: string; name: string; staying?: true; trespass?: true }[];
   nextOpening?: string;
   canAllowAfterHours?: boolean;
   invitation?: {

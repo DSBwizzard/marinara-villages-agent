@@ -380,7 +380,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 !zone.closed && zone.accessView?.decision.allowed === true && zone.accessView.reachable !== false,
               status: zoneAccessLabel(zone, venue, true),
               canTrespass: !!zone.accessView?.canTrespass,
-              companions: room.movementCompanions?.filter((row) => row.zoneId === zone.id),
+              companions: zone.accessView?.companions,
               automaticReactions: snapshot.settings.spontaneousEvents,
             }));
           })()}
@@ -401,7 +401,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 }
               : undefined
           }
-          onMovementTarget={(zoneId, trespass, companions) => void moveRoom(zoneId, trespass, companions)}
+          onMovementTarget={(zoneId, trespass) => void moveRoom(zoneId, trespass)}
           onTravel={() => {
             if (!room.travel || roomBusy || contactReviewPending.current || sceneLifetime.current !== room.id) return;
             const source = room.id;

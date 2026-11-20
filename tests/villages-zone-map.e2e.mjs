@@ -164,7 +164,6 @@ installFeature(controller=><SceneScreen controller={controller}/>);
         startedAt: now,
         endedAt: "",
         capturedContext: true,
-        movementCompanions: [{ id: "mara", name: "Mara", zoneId: "garden", trespass: true }],
       };
       const venue = venueSnapshotFixture({
         ...snapshot.settings.venues[0],
@@ -194,6 +193,13 @@ installFeature(controller=><SceneScreen controller={controller}/>);
         };
       }
       venue.zones.find((z) => z.id === "garden").image = { id: "known-day", url: "http://move-map.test/known-day.svg" };
+      venue.zones.find((z) => z.id === "garden").accessView.companions = [
+        { id: "mara", name: "Mara" },
+        { id: "aqua", name: "Aqua", staying: true },
+      ];
+      venue.zones.find((z) => z.id === "airstrip").accessView.companions = [
+        { id: "gidget", name: "Gidget", trespass: true },
+      ];
       venue.zones.find((z) => z.id === "garden").dayNight = true;
       venue.zones.find((z) => z.id === "garden").nightImage = {
         id: "known-night",
@@ -255,15 +261,18 @@ installFeature(controller=><SceneScreen controller={controller}/>);
         } else if (path.endsWith("/rooms/zone")) {
           const body = route.request().postDataJSON();
           moves.push(body);
+          const companions =
+            venue.zones
+              .find((row) => row.id === body.zoneId)
+              ?.accessView.companions?.filter((row) => !row.staying)
+              .map((row) => row.id) ?? [];
           scene = {
             ...scene,
             zoneId: body.zoneId,
             area: body.zoneId === "exterior" ? "outside" : "public",
             sceneRevision: scene.sceneRevision + 1,
-            movementCompanions:
-              body.zoneId === "exterior" ? [{ id: "gidget", name: "Gidget", zoneId: "airstrip", trespass: true }] : [],
-            activeIds: body.companions ?? [],
-            participants: (body.companions ?? []).map((id) => ({
+            activeIds: companions,
+            participants: companions.map((id) => ({
               characterId: id,
               name: id === "mara" ? "Mara" : "Gidget",
               doing: "Crossing with you",
@@ -336,7 +345,9 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await page.mouse.up();
       assert.equal(moves.length, 0, "Dragging off a read-only tile never activates a move");
       await picker.getByRole("button", { name: "Garden", exact: true }).click();
-      await expect(picker.getByRole("checkbox", { name: "Mara · Trespassing", exact: true })).toBeChecked();
+      await expect(picker.getByText("Coming with you: Mara", { exact: true })).toBeVisible();
+      await expect(picker.getByText("Staying here: Aqua", { exact: true })).toBeVisible();
+      await expect(picker.getByRole("checkbox")).toHaveCount(0);
       await expect(picker.getByText("Move to Garden?", { exact: true })).toBeVisible();
       assert.equal(moves.length, 0, "Selecting an open Zone never moves immediately");
       await picker.getByRole("button", { name: "Stay here", exact: true }).click();
@@ -352,7 +363,8 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       await expect.poll(() => moves.length).toBe(1);
       assert.equal(moves[0].zoneId, "garden");
       assert.equal(moves[0].trespass, undefined);
-      assert.deepEqual(moves[0].companions, ["mara"], "Confirmed willing companions reach the actual Move request");
+      assert.equal(moves[0].follow, true, "Ordinary movement includes the authoritative following party");
+      assert.equal(moves[0].companions, undefined, "Players do not select a separate crossing party");
       await expect(page.locator("[data-villages-scene-composer]")).toBeVisible();
       await open();
       await picker.getByRole("button", { name: "Entrance", exact: true }).click();
@@ -364,19 +376,17 @@ installFeature(controller=><SceneScreen controller={controller}/>);
       assert.equal(moves.length, 2);
       await picker.getByRole("button", { name: "Airstrip", exact: true }).click();
       await picker.getByRole("button", { name: "Trespass…", exact: true }).click();
-      await expect(picker.getByRole("checkbox", { name: "Gidget · Trespassing", exact: true })).toBeChecked();
-      await picker.getByRole("checkbox", { name: "Gidget · Trespassing", exact: true }).uncheck();
+      await expect(picker.getByText("Coming with you: Gidget (trespassing)", { exact: true })).toBeVisible();
       await picker.getByRole("button", { name: "Stay here", exact: true }).click();
       assert.equal(moves.length, 2);
       await picker.getByRole("button", { name: "Trespass…", exact: true }).click();
-      await picker.getByRole("checkbox", { name: "Gidget · Trespassing", exact: true }).check();
       await page.screenshot({ path: `.build-tmp/move-map-${width}.png` });
       assert.ok((await picker.boundingBox()).width <= width, "Move map fits phone width");
       await picker.getByRole("button", { name: "Attempt entry", exact: true }).click();
       await expect.poll(() => moves.length).toBe(3);
       assert.equal(moves[2].zoneId, "airstrip");
       assert.equal(moves[2].trespass, true);
-      assert.deepEqual(moves[2].companions, ["gidget"]);
+      assert.equal(moves[2].follow, true);
       // Restore matching identities while retaining a different live graph: saving positions must never write captured routes.
       snapshot.settings.venues[0].zones = snapshot.settings.venues[0].zones.filter((z) => z.id !== "live-only");
       await page.evaluate(async () => {

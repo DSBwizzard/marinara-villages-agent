@@ -1,4 +1,5 @@
 import { sharedPlayspace } from "../../domain/rules/shared-playspace.js";
+import { followingMovementParty } from "../../domain/rules/resident-movement.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import {
   prepareMovementParty,
@@ -39,6 +40,7 @@ import {
   sceneAccessContext,
   sceneMoveAccompanying,
   sceneTrespassReason,
+  actorTrespassReason,
   type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
 import { MAX_ZONE_VILLAGERS, venueClasses } from "../../domain/rules/venue-model.js";
@@ -247,6 +249,7 @@ export function createSceneCommands({
     operationId?: string,
     trespass = false,
     companions: string[] = [],
+    follow = false,
   ): Promise<VenueScene> {
     return withSceneActivation(() =>
       moveVenueZoneInActivation(
@@ -257,6 +260,7 @@ export function createSceneCommands({
         operationId,
         trespass,
         readMovementCompanions(companions),
+        follow,
       ),
     );
   }
@@ -268,15 +272,19 @@ export function createSceneCommands({
     operationId?: string,
     trespass = false,
     companions: string[] = [],
+    follow = false,
   ): Promise<VenueScene> {
-    operationId ??= `${trespass ? "trespass" : "move"}:${zoneId}:${expectedSceneRevision ?? (await readSession(sessionId)).sceneRevision}`;
+    if (follow && companions.length) throw badRequest("Following uses the Scene's companions.");
+    operationId ??= `${follow ? "follow:" : ""}${trespass ? "trespass" : "move"}:${zoneId}:${expectedSceneRevision ?? (await readSession(sessionId)).sceneRevision}`;
     const saved = await readSession(sessionId);
     const receipt = saved.navigationReceipts?.find((entry) => entry.id === operationId);
+    if (follow && !receipt && saved.operation?.id !== operationId) await requireLiveVenueSession(sessionId);
     if (receipt) {
       if (
         receipt.destinationZoneId !== zoneId ||
         !!receipt.trespass !== trespass ||
-        JSON.stringify(receipt.companions ?? []) !== JSON.stringify(companions)
+        !!receipt.follow !== follow ||
+        (!follow && JSON.stringify(receipt.companions ?? []) !== JSON.stringify(companions))
       )
         throw conflict("That navigation ID belongs to a different move.");
       // A delayed retry must never move the player back after newer navigation.
@@ -292,7 +300,12 @@ export function createSceneCommands({
       sessionId,
       operationId,
       "move",
-      { zoneId, ...(trespass ? { trespass: true } : {}), ...(companions.length ? { companions } : {}) },
+      {
+        zoneId,
+        ...(trespass ? { trespass: true } : {}),
+        ...(companions.length ? { companions } : {}),
+        ...(follow ? { follow: true } : {}),
+      },
       expectedSceneRevision,
       retryOfAttemptId,
       () => {
@@ -300,7 +313,7 @@ export function createSceneCommands({
         return work.serializeNavigation(async () => {
           work.markMovement(sessionId);
           try {
-            return await moveVenueZoneOnce(sessionId, zoneId, trespass, companions);
+            return await moveVenueZoneOnce(sessionId, zoneId, trespass, companions, follow);
           } finally {
             work.clearMovement(sessionId);
           }
@@ -314,6 +327,7 @@ export function createSceneCommands({
     zoneId: string,
     trespass = false,
     companions: string[] = [],
+    follow = false,
   ): Promise<VenueScene> {
     assertVenueOwnership();
     let session = await requireLiveVenueSession(sessionId);
@@ -324,10 +338,16 @@ export function createSceneCommands({
       await markZoneSeen(session);
       return refreshZoneParticipants(session, true);
     }
+    if (follow) {
+      const snapshot = venueOperationSnapshot<unknown>();
+      if (snapshot)
+        session = { ...(await createSceneHistory(villagesDocuments()).decode(snapshot)), operation: session.operation };
+    }
     const blocker = narrationBlocker(session);
     if (blocker) throw conflict(blocker);
     if (session.status !== "active") throw conflict("Wait for the current scene to finish opening.");
-    const village = sceneContinuityView(await readVillageState(), session),
+    const liveVillage = await readVillageState();
+    const village = sceneContinuityView(liveVillage, session),
       location = findLocation(village, session.placeId),
       venue = location && sceneLayoutVenue(location, session);
     const zone = venue && resolveVenueZone(venue, zoneId);
@@ -341,17 +361,40 @@ export function createSceneCommands({
           originZoneId: zone.id,
           destinationZoneId: zone.id,
           at: villageNow().toISOString(),
+          ...(follow ? { follow: true as const } : {}),
         });
       });
     if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
     const escort = trespass ? session.accompanying : sceneMoveAccompanying(session, venue, zone, village);
-    let party = prepareMovementParty(village, venue, session, zoneId, companions, escort);
+    const plan = (state: VillageState, current: NonNullable<typeof venue>) =>
+      follow
+        ? followingMovementParty(state, current, session, zoneId, escort)
+        : prepareMovementParty(state, current, session, zoneId, companions, escort);
+    const liveVenue = findLocation(liveVillage, venue.id);
+    if (!liveVenue) throw conflict("That Place is no longer available.");
+    let party = follow ? plan(liveVillage, liveVenue) : plan(village, venue);
+    if ("path" in party && party.path && party.playerTrespass !== trespass)
+      throw conflict("That crossing's access changed. Review Move again.");
+    const sharedPath = "path" in party && !party.playerTrespass && party.path;
     const accompanying = party.accompanying;
     const accessAt = sceneAccessContext(session, undefined, village.timeZone).at!;
-    const trespassReason = trespass ? sceneTrespassReason(village, venue, zone, session, accessAt) : undefined;
+    const trespassReason = trespass
+      ? follow
+        ? actorTrespassReason(
+            village,
+            venue,
+            zone,
+            { ...session, accompanying },
+            "player",
+            requireSceneZoneId(session),
+            accessAt,
+          )
+        : sceneTrespassReason(village, venue, zone, session, accessAt)
+      : undefined;
     if (trespass && !trespassReason) throw conflict("That crossing is currently unavailable.");
     if (
       !trespass &&
+      !sharedPath &&
       !contactPath(
         village,
         venue,
@@ -387,32 +430,50 @@ export function createSceneCommands({
     await mutateVillageState((state) => {
       const current = findLocation(state, venue.id);
       if (!current) throw conflict("That Zone is no longer available.");
-      party = prepareMovementParty(state, current, session, zoneId, companions, escort);
+      const liveParty = plan(state, current);
+      if (JSON.stringify(liveParty) !== JSON.stringify(party))
+        throw conflict("Your companions' route changed. Review Move again.");
+      party = liveParty;
       reactionsEnabled = state.spontaneousEvents === true;
       for (const member of party.moves)
-        if (member.permissionId) claimVisitPermission(current, member.permissionId, session.id);
+        for (const permission of "permissionIds" in member
+          ? member.permissionIds
+          : member.permissionId
+            ? [member.permissionId]
+            : [])
+          claimVisitPermission(current, permission, session.id);
       if (trespass) {
         const destination = resolveVenueZone(current, zone.id);
         if (
           !destination ||
           !trespassReason ||
           !contactNeighbors(current, requireSceneZoneId(session)).includes(destination.id) ||
-          sceneTrespassReason(state, current, destination, session, accessAt) !== trespassReason
+          sceneTrespassReason(
+            state,
+            current,
+            destination,
+            follow ? { ...session, accompanying } : session,
+            accessAt,
+          ) !== trespassReason
         )
           throw conflict("That crossing is currently unavailable.");
         return;
       }
-      const permission = liveSceneMovePermission(
-        state,
-        current,
-        zone.id,
-        session,
-        accompanying,
-        accessAt,
-        decision.permissionId,
-        escort,
-      );
-      claimVisitPermission(current, permission, session.id);
+      if (sharedPath && "playerPermissionIds" in party) {
+        for (const permission of party.playerPermissionIds) claimVisitPermission(current, permission, session.id);
+      } else {
+        const permission = liveSceneMovePermission(
+          state,
+          current,
+          zone.id,
+          session,
+          accompanying,
+          accessAt,
+          decision.permissionId,
+          escort,
+        );
+        claimVisitPermission(current, permission, session.id);
+      }
       visitEvent =
         session.visitEvent === "waiting" && state.spontaneousEvents && !session.submissions.length
           ? visitEventHere(state, venue.id, zone.id, people.length, accessAt.toISOString())
@@ -420,12 +481,24 @@ export function createSceneCommands({
             : "waiting"
           : undefined;
     });
-    if (!trespass || party.moves.some((member) => member.permissionId))
+    if (
+      !trespass ||
+      party.moves.some((member) => member.permissionId || ("permissionIds" in member && member.permissionIds.length))
+    )
       await changeSceneVenues(session, (state) => {
         const captured = findLocation(state, venue.id)!;
-        if (!trespass) claimVisitPermission(captured, decision.permissionId, session.id);
+        if (!trespass) {
+          if (sharedPath && "playerPermissionIds" in party)
+            for (const permission of party.playerPermissionIds) claimVisitPermission(captured, permission, session.id);
+          else claimVisitPermission(captured, decision.permissionId, session.id);
+        }
         for (const member of party.moves)
-          if (member.permissionId) claimVisitPermission(captured, member.permissionId, session.id);
+          for (const permission of "permissionIds" in member
+            ? member.permissionIds
+            : member.permissionId
+              ? [member.permissionId]
+              : [])
+            claimVisitPermission(captured, permission, session.id);
       });
     const moved = await changeSession(sessionId, (state) => {
       if (state.navigationReceipts?.some((entry) => entry.id === operationId)) return;
@@ -438,7 +511,12 @@ export function createSceneCommands({
         destinationZoneId: zone.id,
         at,
         ...(trespass ? { trespass: true as const } : {}),
-        ...(companions.length ? { companions } : {}),
+        ...(sharedPath ? { path: sharedPath } : {}),
+        ...(follow
+          ? { follow: true as const, companions: party.moves.map((row) => row.actorId) }
+          : companions.length
+            ? { companions }
+            : {}),
       });
       state.enteredFromZoneId = state.zoneId;
       state.zoneId = zone.id;
@@ -450,9 +528,13 @@ export function createSceneCommands({
         if (prior && prior !== entry.zoneId) state.accessPreviousZones[entry.characterId] = prior;
       }
       state.accompanying = accompanying ?? [];
-      state.actorTrespasses = (state.actorTrespasses ?? []).filter((row) => !companions.includes(row.actorId));
+      state.actorTrespasses = (state.actorTrespasses ?? []).filter(
+        (row) => !party.moves.some((member) => member.actorId === row.actorId),
+      );
       state.actorTrespasses.push(...party.moves.flatMap((member) => (member.trespass ? [member.trespass] : [])));
-      state.movementAgreements = (state.movementAgreements ?? []).filter((row) => row.from === zone.id);
+      state.movementAgreements = (state.movementAgreements ?? []).filter((row) =>
+        row.following ? contactPosition(state, row.actorId) === zone.id : row.from === zone.id,
+      );
       state.doorwayContacts = movedAttentionContacts(venue, session, state);
       for (const person of people) {
         if (!state.participants.some((entry) => entry.characterId === person.characterId))
@@ -524,9 +606,14 @@ export function createSceneCommands({
         .catch(() => {});
     });
   }
-  function enterVenue(placeId: string, requestedZoneId?: string, expectedSceneRevision?: number): Promise<VenueScene> {
+  function enterVenue(
+    placeId: string,
+    requestedZoneId?: string,
+    expectedSceneRevision?: number,
+    follow = false,
+  ): Promise<VenueScene> {
     return withSceneActivation(() =>
-      serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision)),
+      serializedNavigation(() => enterVenueOnce(placeId, requestedZoneId, expectedSceneRevision, undefined, follow)),
     );
   }
   function travelVenue(sourceId: string, offerId: string, expectedRevision: number): Promise<VenueScene> {
@@ -575,6 +662,7 @@ export function createSceneCommands({
     requestedZoneId?: string,
     expectedSceneRevision?: number,
     travel?: { source: VenueScene; offerId: string; grantId: string; village: VillageState },
+    follow = false,
   ): Promise<VenueScene> {
     const pointer = await readActive();
     if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
@@ -634,12 +722,12 @@ export function createSceneCommands({
         throw venueRefusal("SCENE_STALE", "Refresh this Scene before moving to another Zone.");
       return coordinateVenue(
         existing.id,
-        `move:${zone.id}:${expectedSceneRevision}`,
+        `${follow ? "follow:" : ""}move:${zone.id}:${expectedSceneRevision}`,
         "move",
-        { zoneId: zone.id },
+        { zoneId: zone.id, ...(follow ? { follow: true } : {}) },
         expectedSceneRevision,
         undefined,
-        () => moveVenueZoneOnce(existing.id, zone.id),
+        () => moveVenueZoneOnce(existing.id, zone.id, false, [], follow),
       );
     }
     const id = travel
@@ -1435,6 +1523,7 @@ export function createSceneCommands({
               String(operation.input.zoneId),
               operation.input.trespass === true,
               readMovementCompanions(operation.input.companions),
+              operation.input.follow === true,
             ),
           { recovery: true },
         );

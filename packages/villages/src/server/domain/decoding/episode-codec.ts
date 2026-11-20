@@ -102,6 +102,7 @@ const episode = z
                 agrees: z.boolean(),
                 segment: z.number().int().min(0).max(23),
                 trespass: z.literal(true).optional(),
+                following: z.literal(true).optional(),
               })
               .strict()
               .optional(),

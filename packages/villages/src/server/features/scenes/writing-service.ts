@@ -316,11 +316,11 @@ export function createSceneWriting({
           ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
           : "",
         residentMovesInReply
-          ? 'A visible resident move uses {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter the Zone."}; add trespass:true only for a supplied unauthorized adjacent route. A full exit uses {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied actors and routes. Write arrivals before local dialogue. Stay with the player’s view.'
+          ? 'A visible move uses {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter the Zone."}; trespass:true needs a supplied unauthorized adjacent route. An exit uses {"kind":"departure","who":"resident-id","text":"They head out."}. Use supplied routes; arrivals precede dialogue. Stay with the player.'
           : "",
         nativeCommands ? NARRATION_NATIVE : "",
         !nativeCommands
-          ? 'For explicit local heard consent to cross one adjacent connection with Player: commands:[{id:"agree",type:"move.decide",who:"actor-id",to:"zone-id",agrees:true,at:"answer",source:[{segment:"answer"}]}]. Complete dialogue id:"answer",requires:["agree"]. agrees:false withdraws. trespass:true needs explicit illegal-entry consent. Never infer consent.'
+          ? 'Following uses commands:[{id:"f",type:"move.decide",who:"actor-id",agrees:true,at:"s",source:[{segment:"s"}]}]; own dialogue id:"s",requires:["f"]. Or cite seen following narration with perceive:{kind:"seen",by:["player"]}. agrees:false stops; to limits one crossing. trespass:true needs their own heard commitment to sneaking together for this outing. Never infer consent.'
           : "",
         mode === "leave" && input.trim()
           ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."
@@ -473,6 +473,7 @@ export function createSceneWriting({
       fitted,
       readset: {
         ...readset,
+        sceneFollowing: true,
         ...(scene.trespassReaction?.id === venueOperationId() ? { automaticTrespass: true as const } : {}),
         ...(!nativeCommands ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",

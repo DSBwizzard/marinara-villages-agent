@@ -11,6 +11,8 @@ import {
 } from "./venue-contact.js";
 import { sceneZoneOccupants } from "./scene-attendance.js";
 import { findLocation } from "./places.js";
+import { followingMovementParty } from "./resident-movement.js";
+import { contactPosition } from "./venue-contact.js";
 import { VillagesRequestError } from "./errors.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
@@ -264,7 +266,12 @@ export function villageSettings(
       const zones = venueZones(venue).map((originalZone) => {
         const visible = observedZone(originalZone, authoring);
         const scene = residenceAccess?.placeId === venue.id ? residenceAccess : null;
-        const accompanying = scene ? sceneMoveAccompanying(scene, venue, originalZone, village) : undefined;
+        const escort = scene ? sceneMoveAccompanying(scene, venue, originalZone, village) : undefined;
+        const party =
+          scene && liveSceneWorld && liveVenue
+            ? followingMovementParty(liveSceneWorld, liveVenue, scene, originalZone.id, escort)
+            : undefined;
+        const accompanying = party?.accompanying ?? escort;
         const closed = zoneClosed(village, venue, originalZone);
         const access = {
           ...context,
@@ -296,7 +303,7 @@ export function villageSettings(
           physicalVenuePath(village, venue, movement, originalZone.id, context.at, true);
         const liveZone = liveVenue && resolveVenueZone(liveVenue, originalZone.id);
         const trespassReason =
-          scene && context?.at && sceneTrespassReason(village, venue, originalZone, scene, context.at);
+          movement && context?.at && sceneTrespassReason(village, venue, originalZone, movement, context.at);
         const canTrespass = !!(
           scene &&
           scene.status === "active" &&
@@ -307,7 +314,7 @@ export function villageSettings(
           !accessView.decision.allowed &&
           contactNeighbors(liveVenue, scene.zoneId ?? "").includes(originalZone.id) &&
           trespassReason &&
-          sceneTrespassReason(liveSceneWorld, liveVenue, liveZone, scene, context.at) === trespassReason
+          sceneTrespassReason(liveSceneWorld, liveVenue, liveZone, movement!, context.at) === trespassReason
         );
         let reachable = false;
         if (
@@ -319,21 +326,24 @@ export function villageSettings(
           originalZone.id !== scene.zoneId &&
           accessView.decision.allowed &&
           !closed &&
-          contactPath(village, venue, movement.zoneId, originalZone.id, "player", movement, context?.at) &&
+          ((party?.path && !party.playerTrespass) ||
+            contactPath(village, venue, movement.zoneId, originalZone.id, "player", movement, context?.at)) &&
           sceneZoneOccupants(movement, venue, originalZone.id).filter(
             (person) => !person.characterId.startsWith("npc:"),
           ).length <= MAX_ZONE_VILLAGERS
         ) {
           try {
-            liveSceneMovePermission(
-              liveSceneWorld,
-              liveVenue,
-              originalZone.id,
-              scene,
-              accompanying,
-              context?.at,
-              evaluateZoneAccess(venue, originalZone, "player", access).permissionId,
-            );
+            if (!party?.path || party.playerTrespass)
+              liveSceneMovePermission(
+                liveSceneWorld,
+                liveVenue,
+                originalZone.id,
+                scene,
+                accompanying,
+                context?.at,
+                evaluateZoneAccess(venue, originalZone, "player", access).permissionId,
+                escort,
+              );
             reachable = true;
           } catch (error) {
             if (!(error instanceof VillagesRequestError)) throw error;
@@ -387,6 +397,37 @@ export function villageSettings(
                 ...accessView,
                 reachable,
                 canTrespass,
+                companions:
+                  scene && party
+                    ? [
+                        ...new Set([
+                          ...party.moves.map((row) => row.actorId),
+                          ...party.staying,
+                          ...(party.accompanying ?? [])
+                            .filter(
+                              (row) =>
+                                contactPosition(scene, row.characterId) === scene.zoneId && row.zoneId !== scene.zoneId,
+                            )
+                            .map((row) => row.characterId),
+                        ]),
+                      ].flatMap((id) => {
+                        const person = scene.sceneAttendance?.occupants.find(
+                          (row) => row.characterId === id && contactPosition(scene, id) === scene.zoneId,
+                        );
+                        return person
+                          ? [
+                              {
+                                id,
+                                name: person.name,
+                                ...(party.staying.includes(id) ? { staying: true as const } : {}),
+                                ...(party.moves.find((row) => row.actorId === id)?.trespass
+                                  ? { trespass: true as const }
+                                  : {}),
+                              },
+                            ]
+                          : [];
+                      })
+                    : undefined,
                 routeBlocked: !reachable && !!scene && !route,
                 accessNeededVia:
                   !reachable && !approach && movement && route
@@ -397,6 +438,7 @@ export function villageSettings(
               }
             : accessView,
         };
+        if ("companions" in zone.accessView && !zone.accessView.companions?.length) delete zone.accessView.companions;
         return {
           ...zone,
           closed,

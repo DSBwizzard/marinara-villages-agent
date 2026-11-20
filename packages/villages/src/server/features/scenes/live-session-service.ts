@@ -263,6 +263,7 @@ export function createLiveScenes({
             state.actorTrespasses = state.actorTrespasses?.filter((row) => row.actorId !== exit.actor);
             state.movementAgreements = state.movementAgreements?.filter((row) => row.actorId !== exit.actor);
             if (exit.actor === "player") {
+              state.movementAgreements = [];
               const destination = resolveVenueZone(venue, exit.to)!;
               state.enteredFromZoneId = exit.from;
               state.zoneId = exit.to;
@@ -519,7 +520,9 @@ export function createLiveScenes({
       state.departedIds = departedIds;
       state.movementAgreements = state.movementAgreements?.filter(
         (row) =>
-          sameRoutine(row.actorId) && contactPosition(state, row.actorId) === state.zoneId && row.from === state.zoneId,
+          sameRoutine(row.actorId) &&
+          contactPosition(state, row.actorId) === state.zoneId &&
+          (row.following || row.from === state.zoneId),
       );
       state.departureDestinations = Object.fromEntries(
         Object.entries(state.departureDestinations ?? {}).filter(([id]) => departedIds.includes(id)),

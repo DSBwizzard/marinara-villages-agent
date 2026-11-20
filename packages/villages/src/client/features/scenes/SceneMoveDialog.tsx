@@ -14,7 +14,7 @@ export type SceneMoveZone = {
   allowed?: boolean;
   canTrespass?: boolean;
   image?: string;
-  companions?: { id: string; name: string; trespass?: true }[];
+  companions?: { id: string; name: string; trespass?: true; staying?: true }[];
   automaticReactions?: boolean;
 };
 export type SceneMoveArrangement = {
@@ -47,12 +47,11 @@ export function SceneMoveDialog({
   arrangement?: SceneMoveArrangement;
   busy: boolean;
   onClose(): void;
-  onMove(id: string, trespass?: boolean, companions?: string[]): void;
+  onMove(id: string, trespass?: boolean): void;
 }) {
   useLetterFont("lora");
   const [selected, setSelected] = useState<string | null>(null);
   const [trespass, setTrespass] = useState(false);
-  const [companions, setCompanions] = useState<string[] | null>(null);
   const [arrange, setArranging] = useState(false);
   const arranging = arrange && !!arrangement;
   const alive = useRef(true);
@@ -133,7 +132,6 @@ export function SceneMoveDialog({
               : (id) => {
                   setSelected(id === currentId ? null : id);
                   setTrespass(false);
-                  setCompanions(null);
                 }
           }
           labels={(zone) => (
@@ -166,37 +164,33 @@ export function SceneMoveDialog({
         {!arranging && target && (
           <div className="villages-scene-move-zone">
             {target.companions?.length ? (
-              <fieldset className="villages-scene-move-companions" disabled={disabled}>
-                <legend>Cross with</legend>
-                {target.companions.map((person) => (
-                  <label key={person.id}>
-                    <input
-                      autoComplete="off"
-                      type="checkbox"
-                      checked={(companions ?? target.companions!.map((row) => row.id)).includes(person.id)}
-                      onChange={(event) => {
-                        const selected = companions ?? target.companions!.map((row) => row.id);
-                        setCompanions(
-                          event.target.checked ? [...selected, person.id] : selected.filter((id) => id !== person.id),
-                        );
-                      }}
-                    />
-                    {person.name}
-                    {person.trespass ? " · Trespassing" : ""}
-                  </label>
-                ))}
-              </fieldset>
+              <div className="villages-scene-move-companions">
+                {target.companions.some((row) => !row.staying) && (
+                  <p>
+                    Coming with you:{" "}
+                    {target.companions
+                      .filter((row) => !row.staying)
+                      .map((row) => row.name + (row.trespass ? " (trespassing)" : ""))
+                      .join(", ")}
+                  </p>
+                )}
+                {target.companions.some((row) => row.staying) && (
+                  <p>
+                    Staying here:{" "}
+                    {target.companions
+                      .filter((row) => row.staying)
+                      .map((row) => row.name)
+                      .join(", ")}
+                  </p>
+                )}
+              </div>
             ) : null}
             {target.allowed || (target.canTrespass && trespass) ? (
               <div className="villages-scene-move-confirm">
                 <p>
                   {target.allowed ? `Move to ${target.label}?` : `Enter ${target.label} without permission?`}
                   {target.automaticReactions &&
-                  (!target.allowed ||
-                    target.companions?.some(
-                      (row) =>
-                        row.trespass && (companions ?? target.companions!.map((person) => person.id)).includes(row.id),
-                    )) ? (
+                  (!target.allowed || target.companions?.some((row) => row.trespass && !row.staying)) ? (
                     <small>May start a GM response.</small>
                   ) : null}
                 </p>
@@ -215,11 +209,7 @@ export function SceneMoveDialog({
                   disabled={disabled}
                   onClick={() => {
                     onClose();
-                    onMove(
-                      target.id,
-                      target.allowed ? undefined : true,
-                      companions ?? target.companions?.map((row) => row.id),
-                    );
+                    onMove(target.id, target.allowed ? undefined : true);
                   }}
                 >
                   {target.allowed ? "Move" : "Attempt entry"}

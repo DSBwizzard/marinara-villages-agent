@@ -120,10 +120,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .villages-scene-move .villages-zone-map-art { position:absolute; z-index:-2; inset:0; width:100%; height:100%; object-fit:cover; opacity:.65; pointer-events:none; }
 .villages-scene-move .villages-zone-map-tile:has(.villages-zone-map-art)::before { content:""; position:absolute; z-index:-1; inset:0; background:linear-gradient(90deg,var(--tile-surface) 12%,color-mix(in srgb,var(--tile-surface) 94%,transparent) 48%,color-mix(in srgb,var(--tile-surface) 25%,transparent)); pointer-events:none; }
 .villages-scene-move-zone { padding-top:1rem; border-top:1px solid var(--border); }
-.villages-scene-move-companions { display:flex; flex-wrap:wrap; gap:.5rem 1rem; margin:0 0 .75rem; padding:0; border:0; }
-.villages-scene-move-companions legend { font-size:.85rem; color:var(--muted-foreground); }
-.villages-scene-move .villages-scene-move-companions label { display:flex; align-items:center; gap:.4rem; margin:0; min-height:44px; }
-.villages-scene-move .villages-scene-move-companions input { width:auto; min-height:0; margin:0; }
+.villages-scene-move .villages-scene-move-companions p { margin:0 0 .5rem; font-size:.85rem; color:var(--muted-foreground); }
 .villages-scene-move-confirm { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; }
 .villages-scene-move-confirm p { flex:1; min-width:8rem; }
 .villages-scene-move-confirm small { display:block; font-size:.8rem; color:var(--muted-foreground); }

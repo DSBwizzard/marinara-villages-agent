@@ -378,7 +378,7 @@ export function useMoveRoom(ports: {
     clearCompletionOnRetire: false,
   });
   return useCallback(
-    async (zoneId: string, trespass = false, companions: string[] = []) => {
+    async (zoneId: string, trespass = false) => {
       if (
         !room?.id ||
         roomEnded ||
@@ -404,17 +404,14 @@ export function useMoveRoom(ports: {
         );
         if (!owns()) return;
         if (hasPendingContact(operation)) throw new Error("Review the saved action before moving.");
-        if (
-          operation?.input?.trespass !== (trespass ? true : undefined) ||
-          JSON.stringify(operation?.input?.companions ?? []) !== JSON.stringify([...companions].sort())
-        )
+        if (operation?.input?.trespass !== (trespass ? true : undefined) || operation?.input?.follow !== true)
           operationId = createVillagesClientId();
         const resend = sceneResend(
           operation,
           {
             zoneId,
+            follow: true,
             ...(trespass ? { trespass: true } : {}),
-            ...(companions.length ? { companions: [...companions].sort() } : {}),
           },
           operationId,
         );
@@ -426,8 +423,8 @@ export function useMoveRoom(ports: {
           body: JSON.stringify({
             sessionId: room.id,
             zoneId,
+            follow: true,
             ...(trespass ? { trespass: true } : {}),
-            ...(companions.length ? { companions: [...companions].sort() } : {}),
             operationId,
             expectedSceneRevision: room.sceneRevision ?? 0,
             retryOfAttemptId: resend.retryOfAttemptId,
@@ -1332,7 +1329,12 @@ export function useOpenRoom(ports: {
         try {
           const { session } = await request<{ session: SceneView }>("/rooms/zone", {
             method: "POST",
-            body: JSON.stringify({ sessionId: room.id, zoneId, expectedSceneRevision: room.sceneRevision ?? 0 }),
+            body: JSON.stringify({
+              sessionId: room.id,
+              zoneId,
+              follow: true,
+              expectedSceneRevision: room.sceneRevision ?? 0,
+            }),
           });
           if (!owns()) return;
           setRoom(currentRoom(session));
@@ -1383,6 +1385,7 @@ export function useOpenRoom(ports: {
           method: "POST",
           body: JSON.stringify({
             venueId: place.id,
+            follow: true,
             zoneId: zoneId ?? place.zones?.find((zone) => zone.kind === "exterior")?.id,
             expectedSceneRevision: room?.sceneRevision,
           }),

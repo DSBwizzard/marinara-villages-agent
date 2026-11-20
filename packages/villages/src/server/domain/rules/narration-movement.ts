@@ -212,28 +212,60 @@ export function applyNarrationMove(
 
 export function applyNarrationMovementDecision(
   state: VillageState,
-  command: { who: string; to: string; agrees: boolean; trespass?: true },
+  command: { who: string; to?: string; agrees: boolean; trespass?: true },
   readset: NarrationReadset,
   context: NarrationSourceContext,
   sources: ContinuityEvidence[],
   receiptId: string,
   segment: number,
 ) {
-  memoryRequire(command.who !== "player", "the player chooses companions using Move");
-  assertNarrationDecision(
-    state,
-    command.who,
-    { ...context, positions: (moment) => narrationPositions(context, moment) },
-    sources,
+  memoryRequire(command.who !== "player", "following needs a non-player actor");
+  memoryRequire(
+    command.to !== undefined || readset.sceneFollowing === true,
+    "the saved request did not offer ongoing following",
   );
   const positions = narrationPositions(context, { index: segment, side: "after" }),
-    venue = findLocation(state, context.scene.placeId);
+    venue = findLocation(state, context.scene.placeId),
+    actor = context.actors.find((row) => row.id === command.who),
+    line = context.lines[segment];
   memoryRequire(
     venue &&
-      positions[command.who] === positions.player &&
-      sources.every((source) => source.perceptions.some((row) => row.actorId === "player" && row.channel === "words")),
-    "movement agreement needs a local actor's actual decision heard by the player",
+      actor &&
+      continuityActor(state, actor.id)?.incarnation === actor.incarnation &&
+      positions.player &&
+      positions[command.who] === positions.player,
+    "following needs this current local actor",
   );
+  const enacted =
+    command.to === undefined &&
+    !command.trespass &&
+    line?.kind === "narration" &&
+    sources.length > 0 &&
+    sources.every(
+      (source) =>
+        source.kind === "observation" &&
+        source.seed === context.seed &&
+        source.episodeId === context.episodeId &&
+        memoryHash(source.positions) === memoryHash(positions) &&
+        source.unitId === line.id &&
+        source.fingerprint === memoryHash(line) &&
+        source.excerpt === line.content &&
+        source.moment?.index === segment &&
+        source.moment.side === "after" &&
+        source.perceptions.some((row) => row.actorId === "player" && row.channel === "sight"),
+    );
+  if (!enacted) {
+    assertNarrationDecision(
+      state,
+      command.who,
+      { ...context, positions: (moment) => narrationPositions(context, moment) },
+      sources,
+    );
+    memoryRequire(
+      sources.every((source) => source.perceptions.some((row) => row.actorId === "player" && row.channel === "words")),
+      "the Player must hear that actor's decision",
+    );
+  }
   const localScene = {
     ...context.scene,
     zoneId: positions.player,
@@ -242,7 +274,7 @@ export function applyNarrationMovementDecision(
       .map(([characterId, zoneId]) => ({ characterId, zoneId })),
   };
   memoryRequire(
-    !command.agrees || contactNeighbors(venue, positions.player, localScene).includes(command.to),
+    !command.to || !command.agrees || contactNeighbors(venue, positions.player, localScene).includes(command.to),
     "agreement covers one adjacent crossing",
   );
   const options = residentMovementOptions(
@@ -253,32 +285,41 @@ export function applyNarrationMovementDecision(
     new ZonedDate(readset.calendar.instant, readset.calendar.timeZone),
   );
   memoryRequire(
-    options.zones.some((row) => row.id === command.to),
+    !command.to || options.zones.some((row) => row.id === command.to),
     "movement decision needs a supplied Zone",
   );
   memoryRequire(
-    !command.agrees ||
+    !command.to ||
+      !command.agrees ||
       (command.trespass ? options.destinations[0]?.trespassZoneIds : options.destinations[0]?.zoneIds)?.includes(
         command.to,
       ),
     "movement agreement needs a current usable destination and explicit consent to unauthorized entry",
   );
-  const actor = context.actors.find((row) => row.id === command.who)!;
   const receipt: AcceptedEpisode["commandReceipts"][number] = {
     id: receiptId,
     kind: "movement-agreement",
-    targetId: command.to,
+    targetId: command.to ?? positions.player,
     revision: readset.sceneRevision,
-    text: command.who + (command.agrees ? " agreed to cross with the Player." : " declined to cross with the Player."),
-    witnesses: narrationWitnesses(sources),
+    text:
+      command.who +
+      (command.to
+        ? command.agrees
+          ? " agreed to cross with the Player."
+          : " declined to cross with the Player."
+        : command.agrees
+          ? " is following the Player."
+          : " stopped following the Player."),
+    witnesses: [...new Set([...narrationWitnesses(sources), ...(enacted ? [actor.id] : [])])],
     movementAgreement: {
       actorId: command.who,
       incarnation: actor.incarnation,
       from: positions.player,
-      zoneId: command.to,
+      zoneId: command.to ?? positions.player,
       agrees: command.agrees,
       segment,
       ...(command.trespass ? { trespass: true as const } : {}),
+      ...(command.to === undefined ? { following: true as const } : {}),
     },
   };
   return receipt;

@@ -3,7 +3,10 @@ import { fixture } from "./fixtures/villages-projects.fixture.js";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import {
+  initializeVenueAccess,
+  evaluateZoneAccess,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import {
@@ -20,6 +23,8 @@ import {
   settleTrespassReaction,
 } from "../packages/villages/src/server/domain/rules/scene-trespass.js";
 import { publicSceneAuthority } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { followingMovementParty } from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 
 const at = "2026-11-10T12:00:00.000Z";
 function nativeFixture(npc = false) {
@@ -93,11 +98,253 @@ function nativeFixture(npc = false) {
     context,
     context.parts.map((part) => part.block.evidenceId!),
   );
+  readset.sceneFollowing = true;
   const accept = (raw: unknown) =>
     acceptNarration(state, { raw, readset, responseDigest: memoryHash(raw) }, "trespass-turn", at);
   return { state, venue, scene, input, accept, readset };
 }
 
+for (const mode of ["spoken", "seen", "seen-trespass", "private", "request", "stop", "legacy"]) {
+  const f = nativeFixture(),
+    seen = mode.startsWith("seen");
+  if (mode === "legacy") delete f.readset.sceneFollowing;
+  const result = f.accept({
+    segments: [
+      {
+        id: "follow",
+        kind: seen ? "narration" : "dialogue",
+        ...(seen ? {} : { speakerId: "a" }),
+        text:
+          mode === "stop"
+            ? "I'll stay here."
+            : seen
+              ? "A falls into step beside the Player."
+              : "I'll come with you and sneak around this place together.",
+        ...(mode === "private" ? { delivery: "whisper", targetId: "b" } : {}),
+        requires: ["follow-choice"],
+      },
+    ],
+    commands: [
+      {
+        id: "follow-choice",
+        type: "move.decide",
+        who: "a",
+        agrees: mode !== "stop",
+        ...(mode === "seen-trespass" ? { trespass: true } : {}),
+        at: "follow",
+        source:
+          mode === "request"
+            ? [{ input: f.input, ground: { kind: "spoken", to: ["a"] } }]
+            : [{ segment: "follow", ...(seen ? { perceive: { kind: "seen", by: ["player"] } } : {}) }],
+      },
+    ],
+  });
+  assert.equal(
+    result.held,
+    ["seen-trespass", "private", "request", "legacy"].includes(mode),
+    mode + JSON.stringify(result.rejected),
+  );
+  if (result.held) continue;
+  applyAcceptedSceneDelta(f.scene, result.episode!);
+  assert.equal(
+    f.scene.movementAgreements?.some((row) => row.following),
+    mode !== "stop",
+  );
+  if (mode === "stop") continue;
+  const cold = coerceSession(JSON.parse(JSON.stringify(f.scene)));
+  assert.equal(cold.movementAgreements![0].following, true);
+  let party = followingMovementParty(f.state, f.venue, cold, "garden");
+  assert.deepEqual(party.staying, ["a"], "Ordinary following never grants trespass willingness");
+  cold.movementAgreements![0].trespass = true;
+  party = followingMovementParty(f.state, f.venue, cold, "garden");
+  assert.equal(party.moves[0]?.trespass?.reason, "permission-required");
+  f.venue.zones!.find((row) => row.id === "garden")!.closed = true;
+  assert.deepEqual(followingMovementParty(f.state, f.venue, cold, "garden").staying, ["a"]);
+}
+
+{
+  const f = nativeFixture();
+  const actor = f.readset.source.actors.find((row) => row.id === "a")!;
+  f.scene.movementAgreements = [
+    { actorId: "a", incarnation: actor.incarnation, from: "common", zoneId: "common", following: true },
+    { actorId: "a", incarnation: actor.incarnation, from: "common", zoneId: "garden", trespass: true },
+  ];
+  const result = f.accept({
+    segments: [
+      { id: "no", kind: "dialogue", speakerId: "a", text: "No, I will not enter the Garden.", requires: ["decline"] },
+    ],
+    commands: [
+      {
+        id: "decline",
+        type: "move.decide",
+        who: "a",
+        to: "garden",
+        agrees: false,
+        at: "no",
+        source: [{ segment: "no" }],
+      },
+    ],
+  });
+  assert.equal(result.held, false);
+  applyAcceptedSceneDelta(f.scene, result.episode!);
+  assert.deepEqual(
+    f.scene.movementAgreements,
+    [],
+    "A refusal overrides broader following and earlier crossing willingness",
+  );
+  f.scene.navigationReceipts = [
+    {
+      id: "mixed",
+      originZoneId: "common",
+      destinationZoneId: "garden",
+      follow: true,
+      companions: ["a", "b", "c", "npc:guard", "npc:other"],
+      at,
+    },
+  ];
+  assert.equal(
+    coerceSession(JSON.parse(JSON.stringify(f.scene))).navigationReceipts![0].companions!.length,
+    5,
+    "Automatic rosters preserve NPCs beyond the four-resident limit",
+  );
+}
+{
+  const f = nativeFixture(),
+    actor = f.readset.source.actors.find((row) => row.id === "a")!,
+    garden = f.venue.zones!.find((row) => row.id === "garden")!;
+  garden.access!.memberIds = ["player"];
+  f.venue.access!.permissions.push({
+    id: "player-escort",
+    zoneId: "garden",
+    visitorId: "a",
+    issuerId: "c",
+    duration: "standing",
+    sceneId: null,
+    accompaniedBy: "player",
+    outsideHours: false,
+    revoked: false,
+    issuedAt: at,
+    sourceLineIds: [],
+  });
+  f.scene.movementAgreements = [
+    { actorId: "a", incarnation: actor.incarnation, from: "common", zoneId: "common", following: true },
+  ];
+  assert.equal(
+    followingMovementParty(f.state, f.venue, f.scene, "garden").moves[0]?.permissionId,
+    "player-escort",
+    "The Player arrives with a follower whose invitation requires them",
+  );
+  garden.access!.mode = "public";
+  f.venue.access!.permissions = [];
+  const middle = {
+    ...defaultVenueSpace("other"),
+    id: "middle",
+    name: "Middle",
+    kind: "public" as const,
+    description: "A connecting room.",
+    seen: true,
+    connectedTo: ["common", "garden"],
+    access: { ...garden.access!, mode: "public" as const },
+  };
+  f.venue.zones!.push(middle);
+  f.venue.zones!.find((row) => row.id === "common")!.connectedTo = ["middle"];
+  garden.connectedTo = ["middle"];
+  f.scene.sceneAttendance!.layout = captureSceneLayout(f.venue);
+  f.scene.movementAgreements = [{ actorId: "a", incarnation: actor.incarnation, from: "common", zoneId: "garden" }];
+  assert.deepEqual(
+    followingMovementParty(f.state, f.venue, f.scene, "garden").staying,
+    ["a"],
+    "A one-edge agreement cannot become a longer trip",
+  );
+  f.scene.movementAgreements[0].following = true;
+  assert.equal(followingMovementParty(f.state, f.venue, f.scene, "garden").moves[0]?.actorId, "a");
+  f.scene.sceneAttendance!.occupants.push(
+    ...["d", "e", "f", "g"].map((characterId) => ({
+      characterId,
+      name: characterId,
+      doing: "Waiting",
+      zoneId: "middle",
+    })),
+  );
+  assert.deepEqual(
+    followingMovementParty(f.state, f.venue, f.scene, "garden", [{ characterId: "a", zoneId: "garden" }]).staying,
+    ["a"],
+    "A required escort cannot cross an overfull intermediate Zone",
+  );
+  f.scene.sceneAttendance!.occupants = f.scene.sceneAttendance!.occupants.filter(
+    (row) => !["d", "e", "f", "g"].includes(row.characterId),
+  );
+  f.venue.zones!.push({ ...middle, id: "side", name: "Side", connectedTo: ["common", "garden"] });
+  f.venue.zones!.find((row) => row.id === "common")!.connectedTo!.push("side");
+  garden.connectedTo!.push("side");
+  f.scene.sceneAttendance!.layout = captureSceneLayout(f.venue);
+  f.scene.continuity = captureSceneContinuity(f.state, f.scene, Date.parse(at));
+  middle.access = { ...middle.access!, mode: "permission-required", memberIds: ["a"], managerIds: ["c"] };
+  assert.equal(
+    followingMovementParty(f.state, f.venue, f.scene, "garden").moves[0]?.actorId,
+    "a",
+    "A shared live/captured route avoids the Player's revoked shortcut",
+  );
+  middle.access.memberIds = ["player"];
+  assert.equal(
+    followingMovementParty(f.state, f.venue, f.scene, "garden").moves[0]?.actorId,
+    "a",
+    "The group uses an alternate route when the player's shortest route bars a follower",
+  );
+  middle.access.mode = "public";
+  f.scene.sceneAttendance!.occupants.push(
+    ...["d", "e", "f", "g"].map((characterId) => ({
+      characterId,
+      name: characterId,
+      doing: "Waiting",
+      zoneId: "middle",
+    })),
+  );
+  assert.equal(
+    followingMovementParty(f.state, f.venue, f.scene, "garden").moves[0]?.actorId,
+    "a",
+    "A free alternate route avoids a full intermediate room",
+  );
+}
+{
+  const f = nativeFixture(),
+    actor = f.readset.source.actors.find((row) => row.id === "a")!,
+    garden = f.venue.zones!.find((row) => row.id === "garden")!;
+  garden.access!.memberIds = ["a"];
+  const grant = {
+    id: "changing-escort",
+    zoneId: "garden",
+    visitorId: "player",
+    issuerId: "c",
+    duration: "standing" as const,
+    sceneId: null,
+    accompaniedBy: "a",
+    outsideHours: false,
+    revoked: false,
+    issuedAt: at,
+    sourceLineIds: [],
+  };
+  f.venue.access!.permissions.push(grant);
+  f.scene.movementAgreements = [
+    { actorId: "a", incarnation: actor.incarnation, from: "common", zoneId: "common", following: true },
+  ];
+  f.scene.continuity = captureSceneContinuity(f.state, f.scene, Date.parse(at));
+  const positions = { player: "garden", a: "garden", b: "common" };
+  assert.equal(
+    evaluateZoneAccess(f.venue, garden, "player", { positions, at: new Date(at), sceneId: f.scene.id }).allowed,
+    true,
+  );
+  grant.accompaniedBy = "b";
+  assert.equal(
+    evaluateZoneAccess(f.venue, garden, "player", { positions, at: new Date(at), sceneId: f.scene.id }).allowed,
+    false,
+  );
+  const party = followingMovementParty(f.state, f.venue, f.scene, "garden");
+  assert.ok(
+    !party.path || party.playerTrespass,
+    "A matching pre-crossing denial cannot authorize an ordinary arrival with mismatched escorts",
+  );
+}
 for (const trespass of [true, false]) {
   const f = nativeFixture();
   f.readset.sceneResidentMovement = true;
@@ -545,6 +792,231 @@ for (const select of [true, false]) {
       expectedSceneRevision: response.json().session.sceneRevision,
     });
     assert.ok(response.statusCode >= 400, "The same move ID cannot replay with a different party");
+  } finally {
+    await host.stop();
+  }
+}
+for (const scenario of ["ordinary", "sneaking", "staying", "escorted"]) {
+  const host = await packagedSceneServer({
+    configure(world) {
+      world.spontaneousEvents = false;
+      const venue = world.venues[0];
+      venue.access!.managerIds = ["player"];
+      venue.zones!.find((row) => row.id === "common")!.connectedTo!.push("garden");
+      venue.zones!.push({
+        ...defaultVenueSpace("other"),
+        id: "garden",
+        name: "Garden",
+        description: "A public garden with an open path.",
+        kind: scenario === "ordinary" || scenario === "escorted" ? "public" : "restricted",
+        connectedTo: ["common"],
+        seen: true,
+        access: {
+          mode: scenario === "ordinary" || scenario === "escorted" ? "public" : "permission-required",
+          managerIds: ["player"],
+          memberIds: [],
+          memberRoles: [],
+          inviterIds: [],
+          visitorHours: "always",
+          accompanied: false,
+        },
+      });
+      if (scenario === "escorted") {
+        const common = venue.zones!.find((row) => row.id === "common")!,
+          garden = venue.zones!.find((row) => row.id === "garden")!;
+        common.connectedTo = common.connectedTo!.map((id) => (id === "garden" ? "middle" : id));
+        garden.connectedTo = ["middle"];
+        venue.zones!.push({
+          ...defaultVenueSpace("other"),
+          id: "middle",
+          name: "Middle",
+          description: "A room reached with Mara as escort.",
+          kind: "restricted",
+          seen: true,
+          connectedTo: ["common", "garden"],
+          access: { ...garden.access!, mode: "permission-required", managerIds: ["mara"], memberIds: ["mara"] },
+        });
+        venue.access!.permissions.push({
+          id: "escorted-middle",
+          zoneId: "middle",
+          visitorId: "player",
+          issuerId: "mara",
+          duration: "visit",
+          sceneId: null,
+          accompaniedBy: "mara",
+          outsideHours: false,
+          revoked: false,
+          issuedAt: new Date().toISOString(),
+          sourceLineIds: [],
+        });
+      }
+    },
+    configureScene(scene) {
+      scene.zoneId = "exterior";
+      scene.area = "outside";
+      scene.accompanying = [{ characterId: "mara", zoneId: "exterior" }];
+    },
+  });
+  let calls = 0;
+  host.model.chatComplete = async () => {
+    calls++;
+    return {
+      content: JSON.stringify({
+        segments: [
+          {
+            id: "f",
+            kind: "dialogue",
+            speakerId: "mara",
+            text:
+              scenario === "sneaking"
+                ? "I'll sneak around this place with you for this outing."
+                : "I'll come with you.",
+            requires: ["follow"],
+          },
+        ],
+        commands: [
+          {
+            id: "follow",
+            type: "move.decide",
+            who: "mara",
+            agrees: true,
+            ...(scenario === "sneaking" ? { trespass: true } : {}),
+            at: "f",
+            source: [{ segment: "f" }],
+          },
+        ],
+      }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  try {
+    const get = async (path: string) => host.app.inject({ method: "GET", url: "/api/villages" + path });
+    const post = async (path: string, payload: unknown) =>
+      host.app.inject({ method: "POST", url: "/api/villages" + path, payload });
+    let scene = (await get("/rooms/active")).json().session;
+    let result = await post("/rooms/turn", {
+      sessionId: scene.id,
+      mode: "chat",
+      message: "Come along with me?",
+      submissionId: "follow-me",
+      expectedSceneRevision: scene.sceneRevision,
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    scene = result.json().session;
+    assert.equal(host.scene().movementAgreements?.[0].following, true);
+    for (const zoneId of ["common", "garden"]) {
+      const snapshot = (await get("/")).json();
+      scene = (await get("/rooms/active")).json().session;
+      const zone = snapshot.sceneVenue.venue.zones.find((row: any) => row.id === zoneId);
+      assert.equal(zone.accessView.reachable, true, "The confirmation uses the same checked shared route");
+      assert.equal(
+        zone.accessView.companions.find((row: any) => row.id === "mara").staying === true,
+        scenario === "staying" && zoneId === "garden",
+      );
+      const request = {
+        sessionId: scene.id,
+        zoneId,
+        follow: true,
+        operationId: "follow-" + zoneId,
+        expectedSceneRevision: scene.sceneRevision,
+      };
+      let faulted = false;
+      if (scenario === "escorted" && zoneId === "garden") {
+        const update = host.documents.update;
+        host.documents.update = async (input) => {
+          const saved = await update(input);
+          if (
+            !faulted &&
+            input.id === "villages-village" &&
+            saved?.data.venues?.[0].access?.permissions.some(
+              (grant: any) => grant.id === "escorted-middle" && grant.sceneId === scene.id,
+            )
+          ) {
+            faulted = true;
+            throw Error("Synthetic lost acknowledgement after native invitation claim");
+          }
+          return saved;
+        };
+      }
+      result = await post("/rooms/zone", request);
+      if (scenario === "escorted" && zoneId === "garden") {
+        assert.equal(faulted, true);
+        if (result.statusCode >= 400) {
+          scene = (await get("/rooms/active")).json().session;
+          result = await post("/rooms/zone", {
+            ...request,
+            expectedSceneRevision: scene.sceneRevision,
+            retryOfAttemptId: scene.operation.attemptId,
+          });
+        }
+      }
+      assert.equal(result.statusCode, 200, result.body);
+      scene = result.json().session;
+      const stays = scenario === "staying" && zoneId === "garden";
+      if (scenario === "escorted" && zoneId === "garden") {
+        assert.deepEqual(host.scene().navigationReceipts!.find((row) => row.id === "follow-garden")!.path, [
+          "common",
+          "middle",
+          "garden",
+        ]);
+        assert.equal(
+          host.scene().continuity!.facts.venues[0].access!.permissions.find((row) => row.id === "escorted-middle")!
+            .sceneId,
+          scene.id,
+          "Intermediate invitation is claimed in the captured view",
+        );
+        assert.equal(
+          host.records
+            .get("villages-village")
+            .data.venues[0].access.permissions.find((row: any) => row.id === "escorted-middle").sceneId,
+          scene.id,
+          "Intermediate invitation is claimed in live authority",
+        );
+      }
+      assert.equal(
+        host.scene().accompanying?.find((row) => row.characterId === "mara")?.zoneId,
+        stays ? "common" : zoneId,
+      );
+      assert.equal(
+        host.scene().movementAgreements?.some((row) => row.following),
+        !stays,
+        "Following persists across ordinary Moves and ends on separation",
+      );
+      result = await post("/rooms/zone", { ...request, expectedSceneRevision: scene.sceneRevision });
+      assert.equal(result.statusCode, 200, result.body);
+    }
+    scene = (await get("/rooms/active")).json().session;
+    result = await post("/rooms", {
+      venueId: "mill",
+      zoneId: "exterior",
+      follow: true,
+      expectedSceneRevision: scene.sceneRevision,
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    scene = result.json().session;
+    assert.equal(
+      host.scene().accompanying?.find((row) => row.characterId === "mara")?.zoneId,
+      scenario === "staying" ? "common" : "exterior",
+      "Same-Venue Visits reuse ordinary following, including multi-hop egress",
+    );
+    assert.equal(calls, 1, "Repeated movement never needs repeated agreement/model calls");
+    result = await post("/rooms/zone", {
+      sessionId: scene.id,
+      zoneId: "exterior",
+      follow: true,
+      operationId: "same-zone",
+      expectedSceneRevision: scene.sceneRevision,
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    result = await post("/rooms/zone", {
+      sessionId: scene.id,
+      zoneId: "exterior",
+      follow: true,
+      operationId: "same-zone",
+      expectedSceneRevision: result.json().session.sceneRevision,
+    });
+    assert.equal(result.statusCode, 200, result.body, "An automatic no-op receipt replays with its original mode");
   } finally {
     await host.stop();
   }

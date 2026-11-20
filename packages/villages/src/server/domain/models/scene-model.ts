@@ -95,6 +95,8 @@ export type VenueScene = {
     at: string;
     trespass?: true;
     companions?: string[];
+    follow?: true;
+    path?: string[];
   }[];
   generationReceipts?: {
     operationId: string;

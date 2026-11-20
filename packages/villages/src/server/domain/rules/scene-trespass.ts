@@ -10,7 +10,7 @@ import { evaluateZoneAccess } from "./venue-access.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { conflict } from "./errors.js";
 
-/** Agreement is scoped to one actual adjacent crossing; it never grants access. */
+/** Legacy explicit crossing requests retain their original scope when recovered. */
 export function prepareMovementParty(
   state: VillageState,
   venue: VillageVenue,
@@ -78,7 +78,14 @@ export type ActorTrespass = {
   zoneId: string;
   reason: import("../../../shared/helpers/venue-access.js").TrespassReason;
 };
-export type MovementAgreement = { actorId: string; incarnation: string; from: string; zoneId: string; trespass?: true };
+export type MovementAgreement = {
+  actorId: string;
+  incarnation: string;
+  from: string;
+  zoneId: string;
+  trespass?: true;
+  following?: true;
+};
 export type TrespassReaction = { id: string; key: string; zoneId: string; intruders: string[]; witnesses: string[] };
 const id = z.string().min(1).max(160),
   ids = z.array(id).max(32);
@@ -89,9 +96,18 @@ const fields = z.object({
     .optional(),
   movementAgreements: z
     .array(
-      z.object({ actorId: id, incarnation: id, from: id, zoneId: id, trespass: z.literal(true).optional() }).strict(),
+      z
+        .object({
+          actorId: id,
+          incarnation: id,
+          from: id,
+          zoneId: id,
+          trespass: z.literal(true).optional(),
+          following: z.literal(true).optional(),
+        })
+        .strict(),
     )
-    .max(32)
+    .max(64)
     .optional(),
   trespassEncounterKeys: z.array(z.string().regex(/^[a-f0-9]{64}$/)).optional(),
   trespassReaction: z
@@ -108,12 +124,12 @@ const fields = z.object({
 export function readSceneTrespassFields(raw: Record<string, unknown>) {
   return fields.parse(raw);
 }
-export function readMovementCompanions(value: unknown): string[] {
+export function readMovementCompanions(value: unknown, limit = 4): string[] {
   return value === undefined
     ? []
     : z
         .array(id)
-        .max(4)
+        .max(limit)
         .refine((rows) => new Set(rows).size === rows.length)
         .parse(value)
         .sort();
@@ -129,7 +145,10 @@ export function trespassEncounter(scene: VenueScene): Omit<TrespassReaction, "id
       .map((row) => row.actorId),
   ].sort();
   if (!intruders.length) return;
-  const party = scene.navigationReceipts?.findLast((row) => row.destinationZoneId === scene.zoneId)?.companions ?? [];
+  const party =
+    scene.navigationReceipts?.findLast(
+      (row) => row.destinationZoneId === scene.zoneId && row.originZoneId !== row.destinationZoneId,
+    )?.companions ?? [];
   const witnesses = (scene.sceneAttendance?.occupants ?? [])
     .filter(
       (row) =>

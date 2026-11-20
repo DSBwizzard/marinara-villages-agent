@@ -705,6 +705,7 @@ export type RoomOperation = {
     zoneId?: string;
     trespass?: true;
     companions?: string[];
+    follow?: true;
     trespassReaction?: string;
     message?: string;
     mode?: string;

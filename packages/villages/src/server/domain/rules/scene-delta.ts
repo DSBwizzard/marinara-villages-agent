@@ -65,12 +65,14 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
     }
   }
   scene.movementAgreements = (scene.movementAgreements ?? []).filter(
-    (row) => row.from === scene.zoneId && contactPosition(scene, row.actorId) === row.from,
+    (row) => (row.following || row.from === scene.zoneId) && contactPosition(scene, row.actorId) === scene.zoneId,
   );
   for (const decision of episode.commandReceipts
     .flatMap((row) => (row.movementAgreement ? [row.movementAgreement] : []))
     .sort((a, b) => a.segment - b.segment)) {
-    scene.movementAgreements = scene.movementAgreements.filter((row) => row.actorId !== decision.actorId);
+    scene.movementAgreements = scene.movementAgreements.filter(
+      (row) => row.actorId !== decision.actorId || (decision.agrees && !!row.following !== !!decision.following),
+    );
     if (
       decision.agrees &&
       decision.from === scene.zoneId &&

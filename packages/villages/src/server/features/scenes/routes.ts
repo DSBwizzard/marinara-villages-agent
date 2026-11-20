@@ -68,6 +68,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       zoneId?: unknown;
       expectedSceneRevision?: unknown;
       travel?: { sourceId?: unknown; offerId?: unknown };
+      follow?: unknown;
     };
   }>("/rooms", async (request, reply) => {
     try {
@@ -87,6 +88,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
           request.body?.expectedSceneRevision === undefined
             ? undefined
             : readSceneRevision(request.body.expectedSceneRevision),
+          request.body?.follow === true,
         ),
       };
     } catch (error) {
@@ -102,6 +104,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       operationId?: unknown;
       trespass?: unknown;
       companions?: unknown;
+      follow?: unknown;
     };
   }>("/rooms/zone", async (request, reply) => {
     try {
@@ -114,6 +117,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
           request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
           request.body?.trespass === true,
           readMovementCompanions(request.body?.companions),
+          request.body?.follow === true,
         ),
       };
     } catch (error) {
