@@ -7,8 +7,9 @@ import { evaluateZoneAccess } from "./venue-access.js";
 import { zoneClosed } from "./venue-zones.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
 import { hasAssociatedNpc } from "./places.js";
+import { PROFESSOR_MARI_ID } from "../../../shared/helpers/professor-mari.js";
 
-export const PROFESSOR_MARI_ID = "__professor_mari__";
+export { PROFESSOR_MARI_ID } from "../../../shared/helpers/professor-mari.js";
 export const visitorIntroductionId = (state: VillageState) =>
   "mari-first-visit-" + memoryHash(villageWorldScope(state)).slice(0, 32);
 
@@ -60,16 +61,18 @@ export function visitorIntroductionVenue(
 
 export function writeVisitorIntroduction(scene: VenueScene, state: VillageState) {
   const mari = state.visitors!.find((person) => person.characterId === PROFESSOR_MARI_ID)!;
+  scene.visitorIntroduction = true;
+  scene.status = "opening";
+  const participant = { characterId: PROFESSOR_MARI_ID, name: mari.cardSnapshot.name, doing: "visiting" };
+  scene.participants = [participant];
+  scene.activeIds = [PROFESSOR_MARI_ID];
+  scene.sceneAttendance!.occupants.push({ ...participant, zoneId: scene.zoneId! });
+}
+
+export function appendVisitorIntroductionTutorial(scene: VenueScene) {
+  if (!scene.visitorIntroduction) return;
+  const mari = scene.participants.find((person) => person.characterId === PROFESSOR_MARI_ID)!;
   const paragraphs: ["narration" | "dialogue", string][] = [
-    ["narration", "Professor Mari pauses at the entrance, looking from the building to you with an approving smile."],
-    [
-      "dialogue",
-      `${state.name} is looking decidedly like a village. And ${scene.placeName}—a lovely place for a story to bump into you.`,
-    ],
-    [
-      "dialogue",
-      "A whole day since we finished founding it! I promised I wouldn't hover over your tutorial. Your shoulder. I meant your shoulder.",
-    ],
     [
       "dialogue",
       "I'm your first Visitor. Villagers live here; Visitors come and go. You can choose unused Character Cards in People, under Visitors, and let chance bring them along.",
@@ -95,23 +98,22 @@ export function writeVisitorIntroduction(scene: VenueScene, state: VillageState)
       "Mari gives a small wave and heads back down the road. The entrance settles into its ordinary rhythm again.",
     ],
   ];
-  scene.visitorIntroduction = true;
-  scene.status = "active";
-  const participant = { characterId: PROFESSOR_MARI_ID, name: mari.cardSnapshot.name, doing: "visiting" };
-  scene.participants = [participant];
-  scene.activeIds = [PROFESSOR_MARI_ID];
-  scene.sceneAttendance!.occupants.push({ ...participant, zoneId: scene.zoneId! });
-  scene.lines = paragraphs.map(([kind, content], index) => ({
-    id: `${scene.id}-${index}`,
-    role: "assistant",
-    kind,
-    content,
-    at: scene.startedAt,
-    speakerId: kind === "dialogue" ? PROFESSOR_MARI_ID : "__venue_scene__",
-    name: kind === "dialogue" ? mari.cardSnapshot.name : "Narration",
-    zoneId: scene.zoneId,
-    heardBy: ["player", PROFESSOR_MARI_ID],
-  }));
+  const at = scene.lines.at(-1)?.at ?? scene.startedAt;
+  for (const [index, [kind, content]] of paragraphs.entries()) {
+    const id = `${scene.id}-visitors-${index}`;
+    if (scene.lines.some((line) => line.id === id)) continue;
+    scene.lines.push({
+      id,
+      role: "assistant",
+      kind,
+      content,
+      at,
+      speakerId: kind === "dialogue" ? PROFESSOR_MARI_ID : "__venue_scene__",
+      name: kind === "dialogue" ? mari.name : "Narration",
+      zoneId: scene.zoneId,
+      heardBy: ["player", PROFESSOR_MARI_ID],
+    });
+  }
 }
 
 export function completeVisitorIntroduction(state: VillageState, scene: VenueScene) {
@@ -127,12 +129,14 @@ export function completeVisitorIntroduction(state: VillageState, scene: VenueSce
   const visitor = state.visitors?.find((person) => person.characterId === PROFESSOR_MARI_ID);
   const captured = scene.continuity.facts.visitors?.find((person) => person.characterId === PROFESSOR_MARI_ID);
   if (!visitor || visitor.incarnation !== captured?.incarnation) return;
-  visitor.firstMetAt ||= scene.startedAt;
-  visitor.trip ??= {
-    arrivedAt: scene.startedAt,
-    leavesAt: new Date(Date.parse(scene.startedAt) + 2 * 86_400_000).toISOString(),
-  };
-  if (scene.status === "closed")
+  if (scene.lines.some((line) => line.kind === "dialogue" && line.speakerId === PROFESSOR_MARI_ID)) {
+    visitor.firstMetAt ||= scene.startedAt;
+    visitor.trip ??= {
+      arrivedAt: scene.startedAt,
+      leavesAt: new Date(Date.parse(scene.startedAt) + 2 * 86_400_000).toISOString(),
+    };
+  }
+  if (scene.status === "closed" && visitor.trip)
     visitor.trip.leavesAt = new Date(
       Math.max(Date.parse(scene.startedAt) + 1, Date.parse(scene.endedAt)),
     ).toISOString();

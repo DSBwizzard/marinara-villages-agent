@@ -47,13 +47,52 @@ try {
   row.data.villagers[0].agenda.activeDay.blocks[0].zoneId = "common";
   row.revision++;
   const entered = await request("/rooms", { venueId: publicVenue.id, zoneId: "exterior" });
-  const scene = entered.session;
+  let scene = entered.session;
   assert.equal(scene.visitorIntroduction, true);
-  assert.equal(scene.status, "active");
+  assert.equal(scene.status, "opening");
+  assert.equal(scene.lines.length, 0);
   assert.deepEqual(scene.activeIds, ["__professor_mari__"]);
+  assert.equal(server.calls(), 0, "Arrival and artwork make no model request");
+  const premature = await server.app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/end",
+    payload: { sessionId: scene.id, expectedSceneRevision: scene.sceneRevision },
+  });
+  assert.equal(premature.statusCode, 409, premature.body);
+  assert.equal(server.records.get("villages-village").data.visitorIntroduction.completedAt, "");
+  const complete = server.model.chatComplete;
+  server.model.chatComplete = async (messages: any[]) => {
+    await complete(messages);
+    const prompt = JSON.stringify(messages);
+    assert.match(prompt, /Juniper Crossing/);
+    assert(prompt.includes(publicVenue.name));
+    assert.match(prompt, /personalized opening greeting/);
+    assert.match(prompt, /warmly sarcastic/);
+    assert.match(prompt, /GM-only/);
+    assert.match(prompt, /server appends the fixed Visitor tutorial/);
+    assert.match(prompt, /brief stop rather than an overnight stay/);
+    assert(!prompt.includes("They rented a room just outside"));
+    return {
+      content: JSON.stringify({
+        segments: [
+          {
+            kind: "dialogue",
+            speakerId: "__professor_mari__",
+            text: "Juniper Crossing! A village with an entrance this inviting? The interface almost undersold you.",
+          },
+        ],
+      }),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  scene = (await request("/rooms/greet", { sessionId: scene.id })).session;
+  assert.equal(scene.status, "active");
   assert.equal((await request("/rooms/greet", { sessionId: scene.id })).session.id, scene.id);
-  assert(scene.lines.some((line: any) => line.content.includes("Juniper Crossing")));
-  assert.equal(server.calls(), 0, "Script, artwork and arrival dispatch no model request");
+  assert(scene.lines[0].content.includes("Juniper Crossing"));
+  assert(scene.lines[1].content.includes("I'm your first Visitor"));
+  assert(scene.lines.at(-1).content.includes("heads back down the road"));
+  assert.equal(server.calls(), 1, "One saved generated opening precedes the fixed tutorial");
   const snapshot = await request("");
   assert.equal(
     snapshot.visitorNotice.venueId,
@@ -82,6 +121,8 @@ try {
     ids,
     "Recovery keeps the exact script and source",
   );
+  await request("/rooms/greet", { sessionId: scene.id });
+  assert.equal(server.calls(), 0, "Reload reuses the saved opening without buying another greeting");
   const active = await request("/rooms/active");
   assert.equal(active.session.id, scene.id, "Reload restores the introduction until the player concludes it");
   assert.deepEqual(active.session.activeIds, ["__professor_mari__"], "Attendance cannot replace the scripted cast");
@@ -103,7 +144,10 @@ try {
   await request("/rooms/end", { sessionId: scene.id, expectedSceneRevision: active.session.sceneRevision });
   const stored = server.records.get("villages-village").data;
   assert(stored.visitorIntroduction.completedAt);
-  assert.equal(stored.visitors[0].firstMetAt, scene.startedAt);
+  assert(
+    stored.visitors[0].firstMetAt >= scene.startedAt,
+    "The first meeting is recorded when Mari's greeting is accepted",
+  );
   const closed = fixtureSceneState(server.records.get("villages-venue-visit-" + scene.id).data, server.records);
   assert.equal(closed.endReason, "scene");
   const ordinary = await request("/rooms", { venueId: publicVenue.id, zoneId: "exterior" });
@@ -128,6 +172,47 @@ try {
 } finally {
   await server.stop();
 }
+server = await packagedSceneServer({
+  configure(world, stamp) {
+    world.setupAt = new Date(Date.parse(stamp) - 86_400_000).toISOString();
+    world.visitorIntroduction = { sceneId: "", completedAt: "" };
+  },
+});
+try {
+  const initial = (await request("/rooms/active")).session;
+  await request("/rooms/end", { sessionId: initial.id, expectedSceneRevision: initial.sceneRevision });
+  const venue = server.records.get("villages-village").data.venues.find((row: any) => row.id !== "mill");
+  let scene = (await request("/rooms", { venueId: venue.id, zoneId: "exterior" })).session;
+  const complete = server.model.chatComplete;
+  server.model.chatComplete = async (messages: any[]) => {
+    await complete(messages);
+    throw new Error("Synthetic greeting failure");
+  };
+  const failed = await server.app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/greet",
+    payload: { sessionId: scene.id },
+  });
+  assert.equal(failed.statusCode, 500, failed.body);
+  scene = (await request("/rooms/active")).session;
+  assert.equal(scene.status, "opening");
+  assert.equal(scene.lines.length, 0);
+  const ended = await server.app.inject({
+    method: "POST",
+    url: "/api/villages/rooms/end",
+    payload: { sessionId: scene.id, expectedSceneRevision: scene.sceneRevision },
+  });
+  assert.equal(ended.statusCode, 409, ended.body);
+  assert.equal(server.records.get("villages-village").data.visitorIntroduction.completedAt, "");
+  scene = (await request("/rooms/continue", { sessionId: scene.id })).session;
+  assert.equal(scene.status, "active");
+  assert(scene.lines[0].content.includes("I'm your first Visitor"));
+  assert.equal(server.calls(), 1, "Explicit fallback does not buy a replacement greeting");
+  await request("/rooms/end", { sessionId: scene.id, expectedSceneRevision: scene.sceneRevision });
+  assert(server.records.get("villages-village").data.visitorIntroduction.completedAt);
+} finally {
+  await server.stop();
+}
 console.log(
-  "Packaged Mari introduction survives restart, preserves its script, concludes once, and makes no provider requests.",
+  "Packaged Mari introduction saves one personalized greeting before its fixed tutorial and resumes without another request.",
 );

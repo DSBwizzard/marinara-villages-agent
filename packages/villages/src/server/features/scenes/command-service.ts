@@ -20,6 +20,7 @@ import { captureSceneAttendance, sameSceneRoutine, sceneZoneOccupants } from "..
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
 import { sceneContinuityView, cloneSceneFacts, captureSceneContinuity } from "../../domain/rules/scene-continuity.js";
 import {
+  appendVisitorIntroductionTutorial,
   completeVisitorIntroduction,
   PROFESSOR_MARI_ID,
   visitorIntroductionDue,
@@ -908,7 +909,7 @@ export function createSceneCommands({
       aborted,
       Promise.resolve().then(async () => {
         let admission = await readSession(id);
-        if (admission.visitorIntroduction) return admission;
+        if (admission.visitorIntroduction && admission.status !== "opening") return admission;
         const freshVisit =
           admission.status === "opening" && admission.visitEvent && admission.operation?.kind !== "greet";
         if (freshVisit) admission = await requireLiveVenueSession(id);
@@ -1017,8 +1018,10 @@ export function createSceneCommands({
     const session = await changeSession(id, (state) => {
       if (state.operation?.token !== expected?.token || state.operation?.attemptId !== expected?.attemptId)
         throw conflict("The Scene request changed before the greeting could be skipped.");
-      if (state.status === "opening") state.status = "active";
-      else if (state.status !== "active") throw conflict("That Scene has already ended.");
+      if (state.status === "opening") {
+        appendVisitorIntroductionTutorial(state);
+        state.status = "active";
+      } else if (state.status !== "active") throw conflict("That Scene has already ended.");
       delete state.visitEvent;
       if (state.operation?.kind === "greet" && state.operation.status === "complete") {
         state.operation.error = "";
@@ -1256,6 +1259,8 @@ export function createSceneCommands({
     const scene = await readSession(id);
     if (scene.status === "closed" && (scene.operation?.id !== "close" || scene.operation.status === "complete"))
       return finishClosedScene(scene);
+    if (scene.visitorIntroduction && scene.status === "opening")
+      throw conflict("Finish Mari's greeting or continue with the Visitor explanation before ending this Scene.");
     const resumingAbandon =
       scene.operation?.id === "close" && typeof scene.operation.input.abandonOperationId === "string";
     if (abandonOperationId && !resumingAbandon)
@@ -1303,6 +1308,8 @@ export function createSceneCommands({
   async function closeLiveScene(session: VenueScene): Promise<VenueScene> {
     if (session.pendingAccessClaim) session = await requireLiveVenueSession(session.id);
     const closed = await changeSession(session.id, (state) => {
+      if (state.visitorIntroduction && state.status === "opening")
+        throw conflict("Finish Mari's greeting or continue with the Visitor explanation before ending this Scene.");
       state.status = "closed";
       state.endedAt ||= villageNow().toISOString();
       state.endReason ||= state.visitorIntroduction ? "scene" : "player";

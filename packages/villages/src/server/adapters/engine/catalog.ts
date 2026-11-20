@@ -12,6 +12,8 @@ import type {
 } from "../../domain/models/world.js";
 import { asRecord, asString, asStringArray, asTrimmedString, condense } from "../../domain/rules/coerce.js";
 import { villagesResources } from "./runtime-host.js";
+import { PROFESSOR_MARI_ID } from "../../../shared/helpers/professor-mari.js";
+import { MARI_VILLAGES_CONTEXT } from "../../domain/rules/professor-mari.js";
 
 export type { VillagerCard } from "../../domain/models/catalog-model.js";
 
@@ -48,7 +50,14 @@ export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot):
 export function readEffectiveVillagerCard(
   villager: VillageCardCharacter & { admission?: VillagerCard["admission"] },
 ): VillagerCard {
-  return { ...villagerCardFromSnapshot(villager.cardSnapshot), admission: villager.admission };
+  const card = villagerCardFromSnapshot(villager.cardSnapshot);
+  return {
+    ...card,
+    admission: villager.admission,
+    ...(villager.characterId === PROFESSOR_MARI_ID
+      ? { scenario: [card.scenario, MARI_VILLAGES_CONTEXT].filter(Boolean).join("\n\n") }
+      : {}),
+  };
 }
 
 /**

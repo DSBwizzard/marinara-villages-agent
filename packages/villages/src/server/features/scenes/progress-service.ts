@@ -1,6 +1,7 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import { applyAcceptedSceneDelta } from "../../domain/rules/scene-delta.js";
+import { appendVisitorIntroductionTutorial } from "../../domain/rules/visitor-introduction.js";
 import {
   acceptedNarrationEpisode,
   abandonNarration,
@@ -175,6 +176,7 @@ export function createSceneProgress({
           else delete entry.recordEvents;
           entry.acceptance = { status: "applied", rejected: accepted.rejected };
           if (entry.id === "greeting") {
+            appendVisitorIntroductionTutorial(saved);
             if (saved.status === "opening") saved.status = "active";
             delete saved.visitEvent;
           }

@@ -16,6 +16,20 @@ const menuArtAssets = [
 ];
 
 const sceneSprite = "npc-silhouette.webp";
+const mariVisitorSprites = [
+  "Happy",
+  "Happy_2",
+  "Neutral",
+  "Neutral_2",
+  "Neutral_3",
+  "Playful",
+  "Thinking",
+  "Thinking_2",
+  "Wave",
+  "Angry",
+  "Sad",
+  "Surprised",
+].map((name) => `mari-visitor-sprites/${name}.png`);
 
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
@@ -39,7 +53,14 @@ export const villagesDefinition = {
     description,
     runtimeDisabled: false,
   },
-  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", ...menuArtAssets, sceneSprite],
+  assetPaths: [
+    ...letterFontAssets,
+    "villages-icon.png",
+    "icon-licenses.txt",
+    ...menuArtAssets,
+    sceneSprite,
+    ...mariVisitorSprites,
+  ],
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
@@ -53,7 +74,12 @@ export const villagesDefinition = {
       iconPaths: ["villages-icon.png"],
     },
     assets: {
-      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), ...menuArtAssets, sceneSprite],
+      paths: [
+        ...letterFontAssets.filter((path) => path.endsWith(".json")),
+        ...menuArtAssets,
+        sceneSprite,
+        ...mariVisitorSprites,
+      ],
     },
   },
 };

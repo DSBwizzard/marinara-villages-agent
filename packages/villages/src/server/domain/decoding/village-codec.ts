@@ -80,6 +80,7 @@ import {
 } from "../rules/prompt-preset.js";
 
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
+import { withMariSpriteDefaults } from "../rules/professor-mari.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
@@ -187,7 +188,7 @@ export function defaultVillageState(): VillageState {
     maps: [],
   };
 }
-function coerceCardCharacter(value: unknown): VillageCardCharacter | null {
+function coerceCardCharacter(value: unknown, applySpriteDefaults: boolean): VillageCardCharacter | null {
   const raw = asRecord(value);
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
@@ -201,7 +202,8 @@ function coerceCardCharacter(value: unknown): VillageCardCharacter | null {
     throw new Error("This saved resident needs a current writing-style assignment.");
   const relationshipScene = asRecord(raw.relationshipScene);
   const relationshipSceneEndedAt = asIsoString(relationshipScene.endedAt);
-  const spriteManager = coerceSpriteManager(raw.spriteManager);
+  const savedSprites = coerceSpriteManager(raw.spriteManager);
+  const spriteManager = applySpriteDefaults ? withMariSpriteDefaults(characterId, savedSprites) : savedSprites;
   return {
     incarnation: raw.incarnation,
     ...(relationshipSceneEndedAt && typeof relationshipScene.id === "string" && relationshipScene.id.length <= 180
@@ -233,8 +235,8 @@ function coerceCardCharacter(value: unknown): VillageCardCharacter | null {
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
   };
 }
-function coerceVillager(value: unknown): VillageVillager | null {
-  const person = coerceCardCharacter(value);
+function coerceVillager(value: unknown, applySpriteDefaults: boolean): VillageVillager | null {
+  const person = coerceCardCharacter(value, applySpriteDefaults);
   if (!person) return null;
   const raw = asRecord(value);
   return {
@@ -249,11 +251,11 @@ function coerceVillager(value: unknown): VillageVillager | null {
     scheduleInfluence: influenceSettings(raw.scheduleInfluence),
   };
 }
-function coerceVisitors(value: unknown, residentIds: Set<string>): VillageVisitor[] {
+function coerceVisitors(value: unknown, residentIds: Set<string>, applySpriteDefaults: boolean): VillageVisitor[] {
   memoryRequire(Array.isArray(value), "invalid saved Visitor list");
   return value.map((entry) => {
     const raw = asRecord(entry);
-    const person = coerceCardCharacter(entry);
+    const person = coerceCardCharacter(entry, applySpriteDefaults);
     const firstMetAt = asIsoString(raw.firstMetAt);
     const trip = asRecord(raw.trip);
     const arrivedAt = asIsoString(trip.arrivedAt);
@@ -1433,7 +1435,7 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
   };
 }
 
-export function coerceVillageState(value: unknown): VillageState {
+export function coerceVillageState(value: unknown, { applySpriteDefaults = true } = {}): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 19) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null)
@@ -1444,7 +1446,9 @@ export function coerceVillageState(value: unknown): VillageState {
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
-    ? raw.villagers.map((entry) => coerceVillager(entry)).filter((entry): entry is VillageVillager => entry !== null)
+    ? raw.villagers
+        .map((entry) => coerceVillager(entry, applySpriteDefaults))
+        .filter((entry): entry is VillageVillager => entry !== null)
     : [];
   const seen = new Set<string>();
 
@@ -1618,7 +1622,7 @@ export function coerceVillageState(value: unknown): VillageState {
       seen.add(entry.characterId);
       return true;
     }),
-    ...(raw.visitors === undefined ? {} : { visitors: coerceVisitors(raw.visitors, seen) }),
+    ...(raw.visitors === undefined ? {} : { visitors: coerceVisitors(raw.visitors, seen, applySpriteDefaults) }),
     ...(raw.visitorIntroduction === undefined
       ? {}
       : { visitorIntroduction: readVisitorIntroduction(raw.visitorIntroduction) }),

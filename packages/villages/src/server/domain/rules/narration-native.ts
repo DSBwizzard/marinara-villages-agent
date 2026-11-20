@@ -518,6 +518,17 @@ export function acceptNarration(
       at,
     );
   memoryRequire(!narrationIsAbandoned(state, publication, submissionId), "this narration was explicitly abandoned");
+  if (publication.readset.source.scene.visitorIntroduction) {
+    const raw = publication.raw;
+    memoryRequire(
+      Object.keys(raw).every((key) => ["segments", "keep", "commands"].includes(key)) &&
+        Array.isArray(raw.segments) &&
+        raw.segments.every((row) => ["dialogue", "narration"].includes(asRecord(row).kind as string)) &&
+        (raw.commands === undefined || (Array.isArray(raw.commands) && raw.commands.length === 0)) &&
+        (raw.keep === undefined || (Array.isArray(raw.keep) && raw.keep.length === 0)),
+      "Mari's introduction can only contain her opening greeting; no commands or lasting changes.",
+    );
+  }
   const evaluate = (prepared: ReturnType<typeof prepareNarrationNative>) =>
     prepared.routingFailure
       ? {

@@ -171,6 +171,7 @@ function sourceScene(scene: VenueScene) {
     privateAccessOwnerId: scene.privateAccessOwnerId,
     startedAt: scene.startedAt,
     openingGatheringId: scene.openingGatheringId,
+    visitorIntroduction: scene.visitorIntroduction,
     lastActivityAt: scene.lastActivityAt,
     status: scene.status,
     participants: scene.participants,

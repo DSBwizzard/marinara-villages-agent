@@ -5,6 +5,7 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
 import {
+  appendVisitorIntroductionTutorial,
   completeVisitorIntroduction,
   PROFESSOR_MARI_ID,
   visitorIntroductionDue,
@@ -14,6 +15,13 @@ import {
 } from "../packages/villages/src/server/domain/rules/visitor-introduction.js";
 import { settleVisitorTrip } from "../packages/villages/src/server/domain/rules/visitors.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
+import {
+  narrationContinuityContext,
+  fittedNarrationReadset,
+} from "../packages/villages/src/server/domain/rules/narration-context.js";
+import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
+import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 
 const state = socialWorldFixture();
 state.setupAt = "2026-11-01T08:30:00.000Z";
@@ -87,8 +95,60 @@ const scene = coerceSession({
 writeVisitorIntroduction(scene, state);
 scene.continuity = captureSceneContinuity(state, scene, due.getTime());
 assert.equal(coerceSession(scene).visitorIntroduction, true);
+assert.equal(scene.status, "opening");
+assert.equal(scene.lines.length, 0);
+completeVisitorIntroduction(state, scene);
+assert.equal(state.visitorIntroduction.sceneId, scene.id);
+assert.equal(state.visitors[0]!.firstMetAt, undefined, "Arrival alone is not a spoken meeting");
+const opening = zoneEventScene(scene, venue);
+const context = narrationContinuityContext(state, opening, venue, "greeting", "", due.toISOString());
+const readset = fittedNarrationReadset(
+  state,
+  context,
+  context.parts.map((part) => part.block.evidenceId!),
+);
+readset.ordinaryFormatRecovery = 6;
+readset.ordinaryReplyRecovery = true;
+readset.positionedSceneSources = true;
+readset.quotedSceneSources = true;
+assert.equal(readset.source.scene.visitorIntroduction, true, "The saved request retains its intro-only authority");
+for (const raw of [
+  {
+    segments: [
+      { id: "spoken", kind: "dialogue", speakerId: PROFESSOR_MARI_ID, text: "I promise to return tomorrow." },
+      { kind: "keep", for: [PROFESSOR_MARI_ID], text: "Mari will return tomorrow.", source: ["spoken"] },
+    ],
+  },
+  {
+    segments: [{ id: "leave", kind: "narration", text: "Mari leaves the conversation.", requires: ["departure"] }],
+    commands: [
+      {
+        id: "departure",
+        type: "depart",
+        who: PROFESSOR_MARI_ID,
+        at: "leave",
+        source: [{ segment: "leave", perceive: { kind: "seen", by: ["player"] } }],
+      },
+    ],
+  },
+  {
+    segments: [{ kind: "dialogue", speakerId: PROFESSOR_MARI_ID, text: "I promise to return tomorrow." }],
+    keep: [{ id: "promise", for: [PROFESSOR_MARI_ID], text: "Mari will return tomorrow.", source: ["segment-0"] }],
+  },
+]) {
+  const before = memoryHash(state);
+  assert.throws(
+    () => acceptNarration(state, { readset, raw, responseDigest: memoryHash(raw) }, "greeting", due.toISOString()),
+    /opening greeting/,
+  );
+  assert.equal(memoryHash(state), before, "A generated opening cannot change native state, including on recovery");
+}
+appendVisitorIntroductionTutorial(scene);
+const tutorial = structuredClone(scene.lines);
+appendVisitorIntroductionTutorial(scene);
+assert.deepEqual(scene.lines, tutorial, "The fixed tutorial appends only once");
+scene.status = "active";
 assert(scene.lines.every((line) => line.heardBy.includes("player") && line.heardBy.length === 2));
-assert(scene.lines.some((line) => line.content.includes("Garden")));
 assert(scene.lines.some((line) => line.content.includes("not a summons")));
 completeVisitorIntroduction(state, scene);
 assert.equal(state.visitors[0]!.firstMetAt, due.toISOString());

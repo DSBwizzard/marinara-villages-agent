@@ -7,7 +7,7 @@ const moods = new Set(
   (
     "neutral idle default happy joy smiling smile sad angry surprised scared afraid fearful disgusted thinking laughing " +
     "smirk embarrassed blush blushing confused worried nervous annoyed bored tired sleepy serious calm excited " +
-    "shocked crying proud determined shy amused grin irritated wave sit hurt"
+    "shocked crying proud determined shy amused grin irritated wave sit hurt playful"
   ).split(" "),
 );
 const animationFrame =

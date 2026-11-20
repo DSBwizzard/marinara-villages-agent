@@ -158,10 +158,12 @@ export function createSceneWriting({
                 : "They rented a room just outside the Village. They can describe it consistently if asked.";
         return (
           venueCardProfile(card, player.name, false, false) +
-          (visitor
-            ? "\nVillage role: On a two-night visit. They can speak, react, and form relationships. Their attendance is supplied by the Village. They have no local job, Agenda, Wish or Project role. " +
-              stay
-            : "")
+          (scene.visitorIntroduction
+            ? "\nVillage role: Professor Mari is making the Village's first Visitor introduction, a brief stop rather than an overnight stay. She has no local job, Agenda, Wish or Project role."
+            : visitor
+              ? "\nVillage role: On a two-night visit. They can speak, react, and form relationships. Their attendance is supplied by the Village. They have no local job, Agenda, Wish or Project role. " +
+                stay
+              : "")
         );
       }
       const npc = findNpc(village, person.characterId);
@@ -176,7 +178,8 @@ export function createSceneWriting({
       cast.some((person) =>
         village.visitors?.some((visitor) => visitor.characterId === person.characterId && visitor.trip),
       );
-    const nativeCommands = mode !== "chat" || !!scene.contactGeneration?.instruction || lodgingDiscussion;
+    const nativeCommands =
+      !scene.visitorIntroduction && (mode !== "chat" || !!scene.contactGeneration?.instruction || lodgingDiscussion);
     const addressed = nativeCommands
       ? []
       : addressedSceneResidents(input, cast, scene.sceneAttendance?.occupants ?? cast);
@@ -314,15 +317,18 @@ export function createSceneWriting({
         nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP,
       ]),
       metadata: blocksFor([
+        scene.visitorIntroduction ? "Public Village name: " + JSON.stringify(village.name) : "",
         scene.contactGeneration?.instruction ?? "",
         mode === "greet"
-          ? scene.visitEvent
-            ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
-                scene.visitEvent === "place"
-                  ? "Let a plausible local development give the player something to notice or react to. The place can initiate this even when nobody is present."
-                  : "Let a present resident initiate from their own activity, desire or commitment, or let an observable local development draw the player's attention."
-              } Show one brief beat. Respect current attendance and hearing. The player chooses whether to engage. Keep any lasting result subject to ordinary evidence and native authority.`
-            : "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
+          ? scene.visitorIntroduction
+            ? "Professor Mari's first visit: write only her personalized opening greeting, two to four short spoken sentences, with at most one brief observable arrival beat. Use her existing card's voice: playful, warmly sarcastic, with one light fourth-wall aside. React specifically to this Village's public name/setting and/or the current Venue's observable entrance. Do not reveal GM-only player context, private rooms, unseen people or secrets. Do not invent established Village history or repeat a stock joke. She remembers helping the player found the Village a day ago. End at a natural transition into explaining Visitors. The server appends the fixed Visitor tutorial and farewell immediately after this opening: do not explain the mechanics, say goodbye, end the Scene, move anyone, or propose keeps, commands, offers or lasting changes. Do not supply the player's actions, thoughts or speech."
+            : scene.visitEvent
+              ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
+                  scene.visitEvent === "place"
+                    ? "Let a plausible local development give the player something to notice or react to. The place can initiate this even when nobody is present."
+                    : "Let a present resident initiate from their own activity, desire or commitment, or let an observable local development draw the player's attention."
+                } Show one brief beat. Respect current attendance and hearing. The player chooses whether to engage. Keep any lasting result subject to ordinary evidence and native authority.`
+              : "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
           : mode === "leave"
             ? "Respond to the submitted departure from the current Zone and close when it is complete. End before the player arrives anywhere else. Any goodbye from the player comes from their submission."
             : "",

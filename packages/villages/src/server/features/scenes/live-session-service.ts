@@ -13,7 +13,7 @@ import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
 import { recordSceneFollowup } from "../../domain/rules/activity-followup.js";
-import { completeVisitorIntroduction } from "../../domain/rules/visitor-introduction.js";
+import { completeVisitorIntroduction, PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 
 import {
   accessExits,
@@ -201,7 +201,12 @@ export function createLiveScenes({
       const state = await readVillageState();
       if (session.villageSeed !== state.seed || session.continuity?.setupAt !== state.setupAt)
         throw conflict("That introduction belongs to another Village.");
-      if (state.visitorIntroduction && !state.visitorIntroduction.sceneId)
+      if (
+        state.visitorIntroduction &&
+        (!state.visitorIntroduction.sceneId ||
+          (session.status === "active" &&
+            !state.visitors?.find((person) => person.characterId === PROFESSOR_MARI_ID)?.trip))
+      )
         await mutateVillageState((current) => completeVisitorIntroduction(current, session));
       return session;
     }

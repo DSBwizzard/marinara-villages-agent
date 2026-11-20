@@ -23,6 +23,8 @@ import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, badGateway, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { automaticVisitorSprites } from "../../domain/rules/visitor-sprites.js";
+import { withMariSpriteDefaults } from "../../domain/rules/professor-mari.js";
+import { PROFESSOR_MARI_ID, MARI_SPRITE_FOLDER, mariSpriteFiles } from "../../../shared/helpers/professor-mari.js";
 
 export interface SpriteSetupPorts {
   villagesDocuments: typeof villagesDocuments;
@@ -97,7 +99,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     return { ...current, token: hash([villageWorldScope(world), current]) };
   }
 
-  async function files(id: string) {
+  async function engineFiles(id: string) {
     const key = encodeURIComponent(id);
     await ports.villageEngineJson("/api/characters/" + key);
     let response: unknown,
@@ -137,6 +139,12 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       ];
     });
     return { files: items, folders };
+  }
+
+  async function files(id: string) {
+    if (id !== PROFESSOR_MARI_ID) return engineFiles(id);
+    const library = await engineFiles(id).catch(() => ({ files: [], folders: [] }));
+    return { files: [...mariSpriteFiles, ...library.files], folders: [MARI_SPRITE_FOLDER, ...library.folders] };
   }
 
   async function read(id: string, resident = false): Promise<SpriteAppearance> {
@@ -289,6 +297,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
   }
 
   async function automaticManager(id: string) {
+    if (id === PROFESSOR_MARI_ID) return withMariSpriteDefaults(id, null);
     const library = await files(id).catch(() => null);
     return library ? automaticVisitorSprites(library.files, library.folders) : null;
   }

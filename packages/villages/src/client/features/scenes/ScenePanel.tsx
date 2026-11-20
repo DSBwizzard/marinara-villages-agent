@@ -1480,7 +1480,7 @@ export function RoomPanel({
                       readingPages.finishReveal();
                       return;
                     }
-                    if (room.visitorIntroduction && !canReadNext) {
+                    if (room.visitorIntroduction && room.status === "active" && !canReadNext) {
                       onEnd();
                       return;
                     }
@@ -1491,14 +1491,21 @@ export function RoomPanel({
                     }
                   }}
                   disabled={
-                    (!canReadNext && !readingPages.revealing && !room.visitorIntroduction) ||
+                    (!canReadNext &&
+                      !readingPages.revealing &&
+                      !(room.visitorIntroduction && room.status === "active")) ||
                     playback.busy ||
                     retrying ||
                     (busy && room.visitorIntroduction)
                   }
-                  aria-label={room.visitorIntroduction && !canReadNext ? "Continue" : "Next paragraph"}
+                  aria-label={
+                    room.visitorIntroduction && room.status === "active" && !canReadNext ? "Continue" : "Next paragraph"
+                  }
                 >
-                  <span>{room.visitorIntroduction && !canReadNext ? "Continue" : "Next"}</span> ›
+                  <span>
+                    {room.visitorIntroduction && room.status === "active" && !canReadNext ? "Continue" : "Next"}
+                  </span>{" "}
+                  ›
                 </button>
               ) : ended ? (
                 <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>

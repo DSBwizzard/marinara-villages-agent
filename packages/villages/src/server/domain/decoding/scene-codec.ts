@@ -38,15 +38,18 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     ["villagers", "venues", "residences", "projects"].some((key) => !Array.isArray(facts[key]))
   )
     throw conflict("This saved Scene has an unsupported or invalid captured context. Its history is preserved.");
-  const decoded = coerceVillageState({
-    ...facts,
-    version: 19,
-    setupAt: raw.setupAt,
-    continuity: emptyContinuity(),
-    episodes: emptyEpisodes(),
-    mailbox: emptyMailbox(),
-    startingHistory: emptyStartingHistory(),
-  });
+  const decoded = coerceVillageState(
+    {
+      ...facts,
+      version: 19,
+      setupAt: raw.setupAt,
+      continuity: emptyContinuity(),
+      episodes: emptyEpisodes(),
+      mailbox: emptyMailbox(),
+      startingHistory: emptyStartingHistory(),
+    },
+    { applySpriteDefaults: false },
+  );
   const keepCapturedLighting = (venue: import("../models/world.js").VillageVenue, value: unknown) => {
     const zones = asRecord(value).zones;
     if (!Array.isArray(zones)) return;
