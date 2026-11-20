@@ -136,6 +136,7 @@ export function VillagerDossier({
   inspectors,
   onInspectSection,
   onVenue,
+  onDirectory,
   error,
 }: {
   navigation: DossierNavigation;
@@ -162,6 +163,7 @@ export function VillagerDossier({
   inspectors: Partial<Record<DossierSection, ReactNode>>;
   onInspectSection: (section: DossierSection | null) => void;
   onVenue: (id: string) => void;
+  onDirectory?: () => void;
   error?: string;
 }) {
   const { visible, backgroundRevision, viewing } = useVillageActivity();
@@ -333,6 +335,16 @@ export function VillagerDossier({
         <div className={`${P}-root ${P}-dossier-root`} data-visitor={visitor ? "true" : undefined}>
           <PeopleBook label={`${name} profile`}>
             <div className={`${P}-dossier-identity`}>
+              {onDirectory ? (
+                <button
+                  type="button"
+                  className={`${P}-dossier-back`}
+                  aria-label={`Back to ${visitor ? "Visitors" : "Villagers"}`}
+                  onClick={onDirectory}
+                >
+                  <span aria-hidden="true">←</span> {visitor ? "Visitors" : "Villagers"}
+                </button>
+              ) : null}
               <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
                 <div className={`${P}-dossier-journal-content`}>
                   <h1>{name}</h1>

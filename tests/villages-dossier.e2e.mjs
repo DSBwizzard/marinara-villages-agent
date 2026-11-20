@@ -671,6 +671,16 @@ await withBrowser(browser, async () => {
       await visitorTile.click();
       await expect(page.getByRole("heading", { name: "River Visitor", exact: true })).toBeVisible();
       const visitorProfile = page.locator(`.${P}-dossier-root`);
+      const visitorBack = visitorProfile.getByRole("button", { name: "Back to Visitors", exact: true });
+      await expect(visitorBack).toBeVisible();
+      await visitorBack.click();
+      await expect(visitors).toBeVisible();
+      await expect(visitors.getByRole("button", { name: "Visitors", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(visitorTile).toBeFocused();
+      await visitorTile.click();
       await expect(visitorProfile.getByText(/^First met /)).toBeVisible();
       await expect(visitorProfile.getByRole("button", { name: "Find River Visitor", exact: true })).toBeVisible();
       await expect(visitorProfile.getByRole("button", { name: "Write a letter", exact: true })).toBeVisible();
@@ -690,10 +700,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Turn visits off", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Agenda records", exact: true })).toHaveCount(0);
-      await page
-        .getByRole("navigation", { name: "Village navigation" })
-        .getByRole("button", { name: "People", exact: true })
-        .click();
+      await visitorBack.click();
       await expect(visitorTile).toBeFocused();
       await visitors.getByRole("button", { name: "Villagers", exact: true }).click();
       await expect(selector).toBeVisible();
@@ -914,7 +921,25 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
     const overview = profile.getByRole("region", { name: "Overview content" });
-    await expect(profile.getByRole("button", { name: "← Back to Villagers", exact: true })).toHaveCount(0);
+    const villagerBack = profile.getByRole("button", { name: "Back to Villagers", exact: true });
+    await expect(villagerBack).toBeVisible();
+    const backBounds = await villagerBack.boundingBox();
+    const nameTop = await profile.getByRole("heading", { name: "Mara", exact: true }).evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect().top;
+    });
+    assert(
+      backBounds.y + backBounds.height <= nameTop + 1,
+      "Back button is above the person's name: " + JSON.stringify({ width, height, backBounds, nameTop }),
+    );
+    await villagerBack.click();
+    await expect(selector).toBeVisible();
+    await expect(selector.getByRole("button", { name: "Villagers", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await selector.getByRole("button", { name: "Open Mara profile" }).click();
     await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toHaveCount(0);
     await expect(selector.getByText(/^[0-9]+ villagers$/)).toHaveCount(0);
     await expect(overview.getByRole("heading", { name: "Relationships", exact: true })).toHaveCount(0);

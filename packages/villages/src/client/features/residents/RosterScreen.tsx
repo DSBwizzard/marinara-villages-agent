@@ -26,6 +26,11 @@ export function RosterScreen({
   const showVisitors = selectedId
     ? !!snapshot?.visitors?.some((visitor) => visitor.characterId === selectedId)
     : visitorTab;
+  if (selectedId && visitorTab !== showVisitors) {
+    setVisitorTab(showVisitors);
+    setSearch("");
+    setPage(0);
+  }
   const chooseTab = async (visitors: boolean) => {
     if (visitors === showVisitors || (selectedId && onDirectory && !(await onDirectory()))) return;
     setVisitorTab(visitors);

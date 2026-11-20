@@ -16,7 +16,13 @@ import { VisitorProfileControls } from "./VisitorControls.js";
 import { visitorFirstMetLabel, visitorVisitLabel } from "./calculations.js";
 import { VillageIcon } from "../../shared/VillageIcon.js";
 
-export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
+export function ResidentsScreen({
+  controller,
+  onDirectory,
+}: {
+  controller: ResidentsScreenController;
+  onDirectory?: () => Promise<boolean>;
+}) {
   const navigationLifetime = useVillageMutationLifetime(controller.snapshot?.isFounded);
   const documentGuard = useContext(DeskLeaveGuard);
   const canLeaveDocument = async () => !documentGuard?.guard.current || (await documentGuard.guard.current());
@@ -339,6 +345,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
     return (
       <>
         <VillagerDossier
+          onDirectory={onDirectory}
           key={`${snapshot?.worldScope}:${personProfile.actorId}`}
           navigation={personProfile}
           villageDate={snapshot?.village.dateLabel}

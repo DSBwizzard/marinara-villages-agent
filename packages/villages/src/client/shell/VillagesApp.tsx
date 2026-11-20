@@ -521,7 +521,10 @@ function PeoplePages({
       </div>
       {person ? (
         <RetainedView key={person.actorId} active={active && controller.screen === "person"}>
-          <ResidentsScreen controller={{ ...controller, screen: "person", personProfile: person }} />
+          <ResidentsScreen
+            controller={{ ...controller, screen: "person", personProfile: person }}
+            onDirectory={onDirectory}
+          />
         </RetainedView>
       ) : null}
     </div>
