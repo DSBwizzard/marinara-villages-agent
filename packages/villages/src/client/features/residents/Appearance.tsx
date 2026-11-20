@@ -244,6 +244,7 @@ export function Appearance({
   onBusyChange,
   onLeaveGuard,
   host,
+  summaryOnly = false,
 }: {
   characterId: string;
   name: string;
@@ -255,6 +256,7 @@ export function Appearance({
   onBusyChange?(busy: boolean): void;
   onLeaveGuard?(guard: (() => Promise<boolean>) | null): void;
   host?: HTMLElement;
+  summaryOnly?: boolean;
 }) {
   const base = "/characters/" + encodeURIComponent(characterId) + "/sprites/setup";
   const readPath = base + "/settled" + (resident ? "?resident=true" : "");
@@ -610,7 +612,21 @@ export function Appearance({
       </button>
     ) : null;
   if (!resident) {
-    if (data && !choice.expressions.length && !previousAppearance && !error && !stale && !locked) return null;
+    const summary = (
+      <span className="villages-appearance-summary" role="status">
+        {!data
+          ? error
+            ? "Appearance unavailable"
+            : "Checking appearance…"
+          : baseline.expressions.length
+            ? baseline.useSprites
+              ? "Sprites on"
+              : "Sprites available · Portrait"
+            : "Portrait"}
+      </span>
+    );
+    if (summaryOnly || (data && !choice.expressions.length && !previousAppearance && !error && !stale && !locked))
+      return summary;
     const front = baseline.expressions.filter((row) => row.front);
     const side = baseline.expressions.filter((row) => row.side);
     const moveEntries = (view: SpriteView) =>

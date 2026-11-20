@@ -1,6 +1,7 @@
 import { FoundingHelp } from "./FoundingField.js";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
 import { FoundingDialog } from "./FoundingDialog.js";
+import { FoundingPagination } from "./FoundingPagination.js";
 import type {
   CatalogEntry,
   PersonaEntry,
@@ -239,7 +240,7 @@ export function FoundingPersonaSelector({
 export function FoundingVillagerPicker({
   onEditSprites,
   activeId,
-  activeAppearance,
+  appearance,
   catalog,
   portraits,
   selectedIds,
@@ -253,7 +254,7 @@ export function FoundingVillagerPicker({
   disabled: boolean;
   onEditSprites(id: string): void;
   activeId?: string | null;
-  activeAppearance?: ReactNode;
+  appearance?(id: string, expanded: boolean): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -304,7 +305,7 @@ export function FoundingVillagerPicker({
             >
               ×
             </button>
-            {activeId === person.id ? activeAppearance : null}
+            {appearance?.(person.id, activeId === person.id)}
           </div>
         ))}
       </div>
@@ -406,7 +407,10 @@ export function VillageLorebookPicker({
   const missing = [...new Set([...selected, ...active])].filter((id) => !byId.has(id));
   const options = [...visible, ...missing.map((id) => ({ id, name: id, enabled: false }))];
   const filtered = options.filter((book) => book.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  const shown = filtered.slice(0, 50);
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(filtered.length / 12));
+  const pageIndex = Math.min(page, pages - 1);
+  const shown = filtered.slice(pageIndex * 12, (pageIndex + 1) * 12);
   const status = error ? (
     <p role="alert">{error}</p>
   ) : books === null ? (
@@ -416,23 +420,29 @@ export function VillageLorebookPicker({
   ) : null;
   const choices = (
     <>
-      <input
-        autoComplete="off"
-        autoFocus={inline}
-        type="search"
-        className="villages-lorebook-search"
-        value={query}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            close();
-          }
-        }}
-        aria-label="Search Lorebooks"
-        placeholder="Search Lorebooks"
-        onChange={(event) => setQuery(event.target.value)}
-      />
+      <div className="villages-lorebook-search-row">
+        <input
+          autoComplete="off"
+          autoFocus={inline}
+          type="search"
+          className="villages-lorebook-search"
+          value={query}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              close();
+            }
+          }}
+          aria-label="Search Lorebooks"
+          placeholder="Search Lorebooks"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(0);
+          }}
+        />
+        <FoundingPagination compact page={pageIndex} count={pages} onPage={setPage} label="Lorebooks" />
+      </div>
       {status}
       {stale ? <p role="alert">Lorebooks changed. Close and reopen this picker.</p> : null}
       <div className="villages-lorebook-results" role="group" aria-label="Lorebooks">
@@ -448,10 +458,16 @@ export function VillageLorebookPicker({
               ? ""
               : "Disabled";
           return (
-            <label key={book.id} className="villages-lorebook-option" data-selected={checked}>
+            <label
+              key={book.id}
+              className="villages-lorebook-option"
+              data-selected={checked}
+              title={state ? `${book.name} · ${state}` : book.name}
+            >
               <input
                 autoComplete="off"
                 type="checkbox"
+                aria-label={state ? `${book.name} · ${state}` : book.name}
                 checked={checked}
                 disabled={
                   disabled ||
@@ -461,19 +477,16 @@ export function VillageLorebookPicker({
                 }
                 onChange={() => setPending(checked ? active.filter((id) => id !== book.id) : [...active, book.id])}
               />
-              <span>
-                {book.name}
-                {state ? <small>{state}</small> : null}
-              </span>
+              <span className="villages-lorebook-name">{book.name}</span>
+              {state ? (
+                <span className="villages-lorebook-state" aria-hidden="true" title={state}>
+                  ⊘
+                </span>
+              ) : null}
             </label>
           );
         })}
         {books !== null && options.length > 0 && filtered.length === 0 ? <p>No matches</p> : null}
-        {filtered.length > shown.length ? (
-          <p>
-            {shown.length} of {filtered.length} matches
-          </p>
-        ) : null}
       </div>
     </>
   );
@@ -533,6 +546,7 @@ export function VillageLorebookPicker({
           disabled={disabled}
           onClick={() => {
             setQuery("");
+            setPage(0);
             setPendingBudget(undefined);
             setPending([...selected]);
             setBaseSelection([...selected]);
@@ -577,7 +591,7 @@ export function VillageLorebookPicker({
         inline ? (
           <div className="villages-lorebook-inline">{editor}</div>
         ) : (
-          <FoundingDialog title="Choose Lorebooks" scrollBody onClose={close}>
+          <FoundingDialog title="Choose Lorebooks" className="villages-lorebook-dialog" onClose={close}>
             {editor}
           </FoundingDialog>
         )

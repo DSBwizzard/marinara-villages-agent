@@ -3,11 +3,13 @@ export function FoundingPagination({
   count,
   onPage,
   label,
+  compact = false,
 }: {
   page: number;
   count: number;
   onPage(page: number): void;
   label: string;
+  compact?: boolean;
 }) {
   if (count <= 1) return null;
   return (
@@ -18,7 +20,7 @@ export function FoundingPagination({
         onClick={() => onPage(page - 1)}
         aria-label={`Previous ${label} page`}
       >
-        Previous
+        {compact ? "‹" : "Previous"}
       </button>
       <span aria-live="polite">
         {page + 1} / {count}
@@ -29,7 +31,7 @@ export function FoundingPagination({
         onClick={() => onPage(page + 1)}
         aria-label={`Next ${label} page`}
       >
-        Next
+        {compact ? "›" : "Next"}
       </button>
     </nav>
   );

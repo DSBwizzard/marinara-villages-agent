@@ -880,7 +880,7 @@ export async function verifyFoundingLayout(group) {
         const picker = phone ? loreDialog : scene.getByRole("region", { name: "Village Lorebooks", exact: true });
         await expect(picker.getByRole("searchbox", { name: "Search Lorebooks" })).toBeVisible();
         const loreResults = picker.getByRole("group", { name: "Lorebooks", exact: true });
-        await expect(loreResults.getByRole("checkbox")).toHaveCount(18);
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(12);
         const loreCards = loreResults.locator(".villages-lorebook-option");
         assert.ok(
           await loreCards.evaluateAll((cards) =>
@@ -898,17 +898,26 @@ export async function verifyFoundingLayout(group) {
           secondBook.x > firstBook.x + firstBook.width && Math.abs(secondBook.y - firstBook.y) < 1,
           "Lorebooks use two columns",
         );
+        await expect(loreResults.getByRole("checkbox", { name: /Community archive 1.*Disabled/ })).toBeDisabled();
+        await picker.getByRole("button", { name: "Next Lorebooks page", exact: true }).click();
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(6);
+        await loreResults.getByRole("checkbox").first().check();
+        await picker.getByRole("button", { name: "Previous Lorebooks page", exact: true }).click();
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(12);
+        for (const card of await loreCards.all()) await expect(card).toBeInViewport({ ratio: 0.99 });
+        await picker.getByRole("button", { name: "Next Lorebooks page", exact: true }).click();
+        await expect(loreResults.getByRole("checkbox").first()).toBeChecked();
+        await loreResults.getByRole("checkbox").first().uncheck();
+        await picker.getByRole("searchbox", { name: "Search Lorebooks" }).fill("Relay");
+        await expect(loreResults.getByRole("checkbox")).toHaveCount(1);
+        await expect(picker.getByRole("navigation", { name: "Lorebooks pages" })).toHaveCount(0);
+        await picker.getByRole("searchbox", { name: "Search Lorebooks" }).fill("");
+        await expect(loreResults.getByRole("checkbox", { name: "Relay Belt", exact: true })).toBeVisible();
         assert.ok(
-          (await loreResults.evaluate((node) => {
-            const bounds = node.getBoundingClientRect();
-            return [...node.children].filter((child) => {
-              const box = child.getBoundingClientRect();
-              return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom + 1;
-            }).length;
-          })) >= 6,
-          "At least six lorebooks fit before scrolling",
+          await loreResults.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+          "Lorebooks paginate instead of scrolling",
         );
-        await expect(loreResults.getByRole("checkbox", { name: /Community archive 1 Disabled/ })).toBeDisabled();
+        for (const card of await loreCards.all()) await expect(card).toBeInViewport({ ratio: 0.99 });
         await expect(button("Choose lorebooks")).toHaveCount(0);
         if (!phone) {
           await expect(line).toHaveText(/^Which Lorebooks should I have/);
@@ -931,6 +940,15 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `lorebooks-${view.width}-${view.height}.png`),
           });
+        for (const card of await loreCards.all()) await expect(card).toBeInViewport({ ratio: 0.99 });
+        await expect(picker.getByRole("button", { name: phone ? "Done" : "Next", exact: true })).toBeInViewport({
+          ratio: 0.99,
+        });
+        if (phone)
+          assert.ok(
+            await picker.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+            "The Lorebook page and actions fit without scrolling",
+          );
         await picker.getByRole("button", { name: phone ? "Done" : "Next", exact: true }).click();
         await layer("Village");
         await expectPose("presenting");
@@ -1290,6 +1308,7 @@ export async function verifyFoundingLayout(group) {
         await expect(
           resident.getByRole("region", { name: characters[0].name + "’s appearance", exact: true }),
         ).toHaveCount(0);
+        await expect(resident.getByText("Portrait", { exact: true })).toBeVisible();
         await expect(settingNext()).toBeEnabled();
         await bounds("people");
         await settingNext().click();

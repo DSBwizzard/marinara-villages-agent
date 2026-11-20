@@ -296,17 +296,16 @@ export function FoundingScreen({
     setSpriteBusy(value);
   }, []);
   const spriteSaved = useCallback(
-    (revision?: number) => {
-      if (!activeSpriteId) return;
+    (id: string, revision?: number) => {
       setSetupSpriteRevisions((prior) => {
-        if (prior[activeSpriteId] === revision) return prior;
+        if (prior[id] === revision) return prior;
         const next = { ...prior };
-        if (revision === undefined) delete next[activeSpriteId];
-        else next[activeSpriteId] = revision;
+        if (revision === undefined) delete next[id];
+        else next[id] = revision;
         return next;
       });
     },
-    [activeSpriteId, setSetupSpriteRevisions],
+    [setSetupSpriteRevisions],
   );
   const reviewIndex = Math.min(reviewPage, Math.max(0, Math.ceil(setupVenues.length / 3) - 1));
   const rootRef = useRef<HTMLDivElement>(null);
@@ -867,7 +866,7 @@ export function FoundingScreen({
                 desktopMap
                   ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
                   : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
-                "Choose who you’ll play and who lives here.",
+                "Choose who you’ll play and who lives here. Sprites work best in Scenes; I’ll use them when available. Portraits work too.",
                 "Here are your starting Venues. You can give them names and place them on the Map.",
                 "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
               ][setupStep]!}
@@ -1066,15 +1065,16 @@ export function FoundingScreen({
                     if (!spriteWorking.current) setSpriteId(id);
                   }}
                   activeId={activeSpriteId}
-                  activeAppearance={
-                    setupStep === FOUNDING_STEP.People && activeSpriteId ? (
+                  appearance={(id, expanded) =>
+                    setupStep === FOUNDING_STEP.People ? (
                       <Appearance
-                        key={activeSpriteId}
-                        characterId={activeSpriteId}
-                        name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
-                        selectedRevision={setupSpriteRevisions[activeSpriteId]}
-                        onSave={spriteSaved}
-                        onBusyChange={spriteBusyChanged}
+                        key={id}
+                        characterId={id}
+                        name={wizardVillagers.find((person) => person.id === id)?.name ?? "Resident"}
+                        selectedRevision={setupSpriteRevisions[id]}
+                        onSave={(revision) => spriteSaved(id, revision)}
+                        onBusyChange={expanded ? spriteBusyChanged : undefined}
+                        summaryOnly={!expanded}
                       />
                     ) : null
                   }

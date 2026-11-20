@@ -289,6 +289,10 @@ await withBrowser(browser, async () => {
           has: page.getByRole("button", { name, exact: true }),
         });
       const pane = row("Aqua").getByRole("region", { name: "Aqua’s appearance", exact: true });
+      await expect(row("Professor Mari").getByText("Sprites on", { exact: true })).toBeVisible();
+      await expect(
+        row("Professor Mari").getByRole("region", { name: "Professor Mari’s appearance", exact: true }),
+      ).toHaveCount(0);
       await expect(pane.getByRole("button", { name: "Sprites", exact: true })).toHaveAttribute("aria-pressed", "true");
       const avatar = row("Aqua").locator(".marinara-capability-villages-identity-card-face");
       await expect(avatar).toHaveCount(1);
@@ -314,7 +318,11 @@ await withBrowser(browser, async () => {
       await expect(next).toBeEnabled();
       await next.click();
       await expect(phase).toHaveAttribute("aria-label", "Venues");
-      assert.deepEqual([...opened], ["aqua"], "No Appearance action or load for the other resident is needed");
+      assert.deepEqual(
+        [...opened].sort(),
+        ["aqua", "mari"],
+        "Appearance status loads for each selected resident without a click",
+      );
       await root.getByRole("button", { name: "Back", exact: true }).click();
       await expect(phase).toHaveAttribute("aria-label", "People");
       if (phone && !(await root.getByRole("dialog", { name: "People", exact: true }).count())) await next.click();
@@ -376,6 +384,8 @@ await withBrowser(browser, async () => {
       await expect(portrait).toHaveAttribute("aria-pressed", "true");
       await expect(next).toBeEnabled();
       assert.equal(writes[3].useSprites, false);
+      await row("Professor Mari").getByRole("button", { name: "Professor Mari", exact: true }).click();
+      await expect(row("Aqua").getByText("Sprites available · Portrait", { exact: true })).toBeVisible();
       await page.close();
     });
   }
