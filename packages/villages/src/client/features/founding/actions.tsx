@@ -1,3 +1,4 @@
+import { FOUNDING_STEP } from "./founding-steps.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
@@ -14,6 +15,7 @@ import { measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
+import { activeFoundingCircumstances } from "./draft-model.js";
 import { venueHasCommon } from "./villages-founding-editor";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
@@ -444,7 +446,6 @@ export function useFoundVillage(ports: {
     setSnapshot,
     setupBlocker,
 
-    setupSpriteRevisions,
     setupFoundingVillagerIds,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -485,8 +486,9 @@ export function useFoundVillage(ports: {
               ? "exterior-description"
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
-        setSetupStep(2);
-        window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
+        setSetupStep(FOUNDING_STEP.Venues);
+        if (!window.matchMedia("(max-width:727px)").matches)
+          window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);
       return;
@@ -504,9 +506,8 @@ export function useFoundVillage(ports: {
           worldName: setupWorldName,
           setting: setupSetting.trim(),
           worldRules: ports.setupContext.rules,
-          openingVenueId: ports.setupContext.openingVenueId,
           playerBackground: setupPlayerBackground,
-          circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),
+          circumstances: activeFoundingCircumstances(ports.setupContext.circumstances, setupVenues),
           selectedLorebookIds: setupLorebookDraft,
           personalizeVenueImagesByDefault: personalizeHomes,
           sceneryArtStyle: sceneryStyle,
@@ -518,7 +519,6 @@ export function useFoundVillage(ports: {
           // Founding is authoritative: submit the complete graph, including
           // the named public center, rather than relying on stored destinations.
           venues: setupVenues,
-          foundingSpriteRevisions: setupSpriteRevisions,
           foundingCharacterIds: setupFoundingVillagerIds,
           foundingResidentAdmissions: selectedResidentAdmissions,
         }),
@@ -561,7 +561,6 @@ export function useFoundVillage(ports: {
     setupLoreTokenBudgetDraft,
     personaDraft,
     setupMapSrc,
-    setupSpriteRevisions,
     setupFoundingVillagerIds,
     selectedResidentAdmissions,
     setSnapshot,

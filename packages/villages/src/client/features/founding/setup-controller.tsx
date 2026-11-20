@@ -1,5 +1,6 @@
+import { FOUNDING_STEP } from "./founding-steps.js";
 import { zoneDayNightDefault } from "../../../shared/helpers/zone-day-night.js";
-import { reconcileFoundingHome } from "./founding-homes.js";
+import { foundingHomeMembers, reconcileFoundingHome } from "./founding-homes.js";
 import { applyFoundingVenueDraft, foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
@@ -32,7 +33,6 @@ export function createFoundingDraftSetting(
     | "setSetupLocationName"
     | "setSetupSetting"
     | "setSetupWorldName"
-    | "setSetupContext"
     | "setupLorebookDraft"
     | "setupLoreTokenBudgetDraft"
   > & {
@@ -49,8 +49,7 @@ export function createFoundingDraftSetting(
     if (!pending && !setupWorkspace.settingBrief?.trim()) return;
     const { name, startingLocationName, setting: description, worldName, context } = ports.setupDraftData;
     const current = { name, startingLocationName, description, worldName, rules: context?.rules ?? "" };
-    if (!pending && mode !== "replace" && [name, startingLocationName, description].some((value) => value.trim()))
-      return;
+    if (!pending && mode !== "replace" && [startingLocationName, description].some((value) => value.trim())) return;
     const baseline = pending ? pending.settingReplacement : current;
     setupSuggestionsClaim.current = true;
     setSetupSuggestionsBusy(true);
@@ -61,6 +60,7 @@ export function createFoundingDraftSetting(
         : {
             mode: "draft-setting",
             brief: setupWorkspace.settingBrief!.trim(),
+            ...(name.trim() ? { villageName: name.trim() } : {}),
             worldBrief: setupWorkspace.settingWorldBrief?.trim() ?? "",
             ...(worldName.trim() ? { worldName: worldName.trim() } : {}),
             ...(current.rules.trim() ? { worldRules: current.rules.trim() } : {}),
@@ -77,18 +77,13 @@ export function createFoundingDraftSetting(
       // Fields may have been edited while Mari was working, including after a reload.
       const apply = (field: keyof FoundingSetting, value: string) =>
         (baseline ? value === baseline[field] : !value.trim()) ? setting[field] : value;
-      ports.setSetupName((value) => apply("name", value));
+      if (!input?.villageName) ports.setSetupName((value) => apply("name", value));
       ports.setSetupLocationName((value) => apply("startingLocationName", value));
       ports.setSetupSetting((value) => apply("description", value));
       ports.setSetupWorldName((value) => (value.trim() ? value : apply("worldName", value)));
-      ports.setSetupContext((context) => ({
-        ...context,
-        rules: context.rules.trim() ? context.rules : apply("rules", context.rules),
-      }));
       setSetupWorkspace((workspace) => ({
         ...workspace,
         settingBeat: "village",
-        settingManual: undefined,
         suggestionRequest: undefined,
         settingDraft: setting,
         settingEditorOpen: true,
@@ -96,7 +91,7 @@ export function createFoundingDraftSetting(
       }));
     } catch (cause) {
       if (!signal?.aborted && !(cause instanceof Error && cause.name === "AbortError")) {
-        const problem = messageFrom(cause, "Mari couldn’t draft the setting. You can fill it in yourself.");
+        const problem = messageFrom(cause, "Mari couldn’t draft the Map. Try again or edit the Map details here.");
         setSetupWorkspace((workspace) =>
           workspace.settingProblem === problem ? workspace : { ...workspace, settingProblem: problem },
         );
@@ -186,7 +181,11 @@ export function createFoundingSuggestSetupVenues(ports: {
     const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData.roster ?? [];
     const replacementSource = JSON.stringify(setupVenues);
     const rows = options.separateHomes
-      ? separateFoundingTemplates(roster, ports.setupContext?.openingVenueId ?? "founding-community")
+      ? separateFoundingTemplates(
+          roster,
+          ports.setupContext?.openingVenueId ?? "founding-community",
+          ports.setupDraftData.workspace?.unusedHomes?.map((venue) => venue.id),
+        )
       : replacing
         ? quickStartTemplates(setupVenues)
         : setupVenues;
@@ -270,10 +269,20 @@ export function createFoundingSuggestSetupVenues(ports: {
         const next = rows.map((row) => {
           const proposal = result.venues.find((item) => item.id === row.id);
           if (!proposal) throw new Error("Suggestions did not return every template Venue. Your draft is unchanged.");
-          return replaceQuickStartVenue(row, proposal);
+          const drafted = replaceQuickStartVenue(row, proposal);
+          const resident =
+            options.separateHomes && row.classes?.includes("residence") ? foundingHomeMembers(row)[0] : undefined;
+          const placed = setupVenuesRef.current.find((venue) => {
+            if (!resident) return venue.id === row.id;
+            if (!venue.classes?.includes("residence")) return false;
+            const members = foundingHomeMembers(venue);
+            return members.length === 1 && members[0] === resident;
+          });
+          const { mapId = "", x = null, y = null } = placed?.presentation ?? {};
+          return { ...drafted, presentation: { ...drafted.presentation, mapId, x, y } };
         });
         setSetupVenues(
-          arrangeQuickStartVenues(options.separateHomes ? next.map((row) => reconcileFoundingHome(row)) : next, true),
+          arrangeQuickStartVenues(options.separateHomes ? next.map((row) => reconcileFoundingHome(row)) : next),
         );
         ports.onQuickStartApplied?.();
         ports.setSetupWorkspace((state) => ({
@@ -397,11 +406,11 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === FOUNDING_STEP.Review && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep || step === 3) {
+    if (step > setupStep || step === FOUNDING_STEP.Review) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
@@ -421,25 +430,27 @@ export function createFoundingGotoSetupStep(ports: {
             ? "Describe the starting location."
             : "";
       const mapProblem =
-        !snapshot?.isFounded && !setupMapSrc && !setupMapBusy
-          ? "Generate or upload map artwork on Map before continuing."
+        !snapshot?.isFounded && (setupMapBusy || !setupMapSrc)
+          ? setupMapBusy
+            ? "Wait for the requested map artwork."
+            : "Generate or upload map artwork on Maps before continuing."
           : "";
       const problem =
         placeProblem ||
         connectionSetupProblem ||
-        (step >= 2 ? peopleProblem : "") ||
-        (step >= 3 ? mapProblem : "") ||
-        (step >= 3 ? setupBlocker(step === 3) : "");
+        (step > FOUNDING_STEP.People ? peopleProblem : "") ||
+        (step > FOUNDING_STEP.Maps ? mapProblem : "") ||
+        (step === FOUNDING_STEP.Review ? setupBlocker(true) : "");
       if (problem) {
-        if (placeProblem || problem === connectionSetupProblem) setSetupStep(0);
-        else if (step >= 2 && peopleProblem) setSetupStep(1);
-        else if (step >= 3 && mapProblem) setSetupStep(2);
+        if (placeProblem || problem === connectionSetupProblem) setSetupStep(FOUNDING_STEP.Setting);
+        else if (step > FOUNDING_STEP.People && peopleProblem) setSetupStep(FOUNDING_STEP.People);
+        else if (step > FOUNDING_STEP.Maps && mapProblem) setSetupStep(FOUNDING_STEP.Maps);
         setSetupProblem(problem);
         return;
       }
     }
     setSetupProblem("");
-    if (step === 3) setSetupMapReviewed(true);
+    if (step === FOUNDING_STEP.Review) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();

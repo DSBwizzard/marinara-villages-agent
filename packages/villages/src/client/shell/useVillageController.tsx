@@ -86,6 +86,7 @@ import {
   useSetScheduleInfluence,
 } from "../features/residents/actions.js";
 import { calculatePersonaPortraitId, calculatePortraitWanted } from "../features/residents/calculations.js";
+import { FOUNDING_STEP } from "../features/founding/founding-steps.js";
 import {
   useResidentAgendaPolling,
   useResidentInspection,
@@ -1181,7 +1182,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * pictures for a list nobody is looking at is the one kind of work this could
    * do that the player would never see the result of.
    */
-  const portraitWanted = calculatePortraitWanted({ ...founding, catalog, screen, snapshot });
+  const portraitWanted = calculatePortraitWanted({
+    catalog,
+    snapshot,
+    includeCatalog: screen === "setup" && founding.setupStep === FOUNDING_STEP.People,
+  });
 
   /**
    * The faces behind everybody the tab can draw.

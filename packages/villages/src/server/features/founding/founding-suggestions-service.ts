@@ -3,7 +3,8 @@ import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import type { DocumentSlot, createDocumentMutator } from "../../adapters/storage/document-store.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
-import { badRequest, notFound, safeFailureMessage } from "../../domain/rules/errors.js";
+import { badRequest, VillagesRequestError, safeFailureMessage } from "../../domain/rules/errors.js";
+import { FOUNDING_DRAFT_UNAVAILABLE } from "../../../shared/contracts/founding.js";
 import type { suggestStartingVenues, generateFoundingVenueImage } from "./founding-drafts.js";
 
 const DOCUMENT = "villages-founding-suggestions";
@@ -223,9 +224,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
     return serialized(async () => {
       const request = await recover(await read());
       if (request?.id !== id)
-        throw notFound(
-          "This Founding draft is no longer available. It may not have started, or a newer attempt replaced it. Generate again only when you choose.",
-        );
+        throw new VillagesRequestError(404, "Founding draft result unavailable.", FOUNDING_DRAFT_UNAVAILABLE);
       return request;
     });
   }

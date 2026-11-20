@@ -9,6 +9,7 @@ import {
   quickStartTemplates,
   separateFoundingTemplates,
   replaceQuickStartVenue,
+  upgradeUntouchedStartingLayout,
 } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingZoneProblem } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
@@ -122,7 +123,7 @@ assert.deepEqual(
   [
     [1, 1],
     [1, 1],
-    [1, 0],
+    [2, 0],
   ],
 );
 assert.equal(templates[1].privateSpaces![0].ownerId, "buster");
@@ -132,6 +133,45 @@ assert.equal(
 );
 assert.equal(templates[2].category, "public-center");
 assert.equal(parsed[1].privateDescription, "A resident berth with a blue blanket.");
+const standardCommunity = replaceQuickStartVenue(templates[2], parsed[2]);
+assert.equal(standardCommunity.spaces!.length, 2);
+assert.deepEqual(
+  standardCommunity.spaces!.map((zone) => zone.connectedTo),
+  [["exterior"], ["exterior"]],
+);
+assert.ok(standardCommunity.spaces!.every((zone) => zone.access?.mode === "public" && !zone.ownerId));
+assert.equal(standardCommunity.privateSpaces!.length, 0);
+assert.deepEqual(foundingVenueIssues([standardCommunity]), []);
+assert.doesNotThrow(() => parsePlace(standardCommunity, true));
+for (const owner of ["player", "buster"]) {
+  const legacy = newSetupVenue("old:" + owner, "residence", 0.3, 0.6, owner === "player");
+  legacy.residentIds = owner === "player" ? [] : [owner];
+  legacy.name = "Keep this Venue name";
+  legacy.form = "Keep this structure";
+  legacy.destinations = { [owner]: { home: "common:base", sleep: "common:base" } };
+  const source = JSON.parse(JSON.stringify(legacy));
+  const upgraded = upgradeUntouchedStartingLayout(source);
+  assert.equal(upgraded.privateSpaces!.length, 1);
+  assert.equal(upgraded.privateSpaces![0].ownerId, owner);
+  assert.deepEqual(upgraded.privateSpaces![0].access!.memberIds, [owner]);
+  assert.equal(upgraded.destinations![owner].sleep, "private:base");
+  assert.equal(upgraded.name, source.name);
+  assert.equal(upgraded.form, source.form);
+  assert.deepEqual(upgraded.presentation, source.presentation);
+  assert.equal(source.privateSpaces!.length, 0, "Upgrading does not mutate retained source data");
+  assert.equal(upgradeUntouchedStartingLayout(upgraded), upgraded, "The upgrade is idempotent");
+  for (const edit of [
+    { name: "Authored room" },
+    { description: "Authored room description" },
+    { image: { id: "saved", ref: "global-gallery:saved", url: "/saved.png" } },
+    { connectedTo: ["exterior"] },
+  ]) {
+    const edited = { ...source, spaces: [{ ...source.spaces[0], ...edit }] };
+    assert.equal(upgradeUntouchedStartingLayout(edited), edited, "Customized rooms stay unchanged");
+  }
+}
+const legacyCommunity = newSetupVenue("old-community", "community", 0.4, 0.5);
+assert.equal(upgradeUntouchedStartingLayout(legacyCommunity).spaces!.length, 2);
 for (const layout of ["common", "private"]) {
   const suggestion = {
     ...suggestions[0],
@@ -148,6 +188,11 @@ for (const layout of ["common", "private"]) {
     layout,
     "a private sleeping room is optional",
   );
+  const fixed = replaceQuickStartVenue(fresh, suggestion as any);
+  assert.equal(fixed.layout, "both", "Older generated layouts fill the standard template");
+  assert.equal(fixed.spaces!.length, 1);
+  assert.equal(fixed.privateSpaces!.length, 1);
+  assert.deepEqual(foundingVenueIssues([fixed]), []);
 }
 assert.throws(
   () =>
@@ -257,7 +302,7 @@ const request = {
 const generated = await service.suggestStartingVenues(request);
 assert.deepEqual(generated.venues, parsed);
 assert.equal(calls, 1, "one explicit generation makes one model request");
-assert.match(system, /single-person Residence/);
+assert.match(system, /Every Residence, including the player's/);
 assert.match(system, /dumpster.*train car.*stolen hearse/);
 assert.match(system, /Sleeps in a stolen hearse/);
 assert.match(system, /discarded shelters/);
@@ -525,7 +570,7 @@ console.log(
   const collision = separateFoundingTemplates(["a"], "founding-home:a");
   assert.equal(new Set(collision.map((row) => row.id)).size, 4, "Opening IDs never collide with replacement homes");
   assert.equal(separate.length, 6);
-  const stored = parsePlaces(separate, new Set(["a", "b", "c"]), true, "community");
+  const stored = parsePlaces(separate, new Set(["a", "b", "c"]), true);
   assert.ok(
     stored
       .filter((row) => row.classes?.includes("residence"))
@@ -543,7 +588,6 @@ console.log(
       ),
       new Set(["a", "b", "c"]),
       true,
-      "community",
     ),
   );
   for (const ordinary of [
@@ -557,7 +601,7 @@ console.log(
         : row,
     ),
   ])
-    assert.doesNotThrow(() => parsePlaces(ordinary, new Set(["a", "b", "c"]), true, "community"));
+    assert.doesNotThrow(() => parsePlaces(ordinary, new Set(["a", "b", "c"]), true));
   for (const opening of ["founding-garden", "founding-home:a"]) {
     const replacement = separateFoundingTemplates(["a"], opening);
     assert.equal(new Set(replacement.map((row) => row.id)).size, replacement.length);

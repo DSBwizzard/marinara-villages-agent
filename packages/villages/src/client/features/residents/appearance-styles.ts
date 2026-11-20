@@ -29,6 +29,7 @@ export const APPEARANCE_STYLES = String.raw`
 .villages-appearance .appearance-link { border:0; padding-inline:.35rem; text-decoration:underline; text-underline-offset:.2em; }
 .appearance-layout { display:grid; grid-template-columns:minmax(10rem,1fr) minmax(0,3fr); gap:.75rem; }
 .appearance-sprite-body { min-height:0; overflow:auto; }
+.appearance-sprite-body summary { cursor:pointer; padding:.45rem .2rem; }
 .appearance-mode { display:flex; max-width:33rem; margin-bottom:.7rem; }
 .villages-appearance .appearance-mode button { flex:1; }
 .villages-appearance .appearance-mode button[aria-pressed=true] { background:var(--menu-selected,#875363); }
@@ -47,13 +48,15 @@ export const APPEARANCE_STYLES = String.raw`
 .appearance-expression-image img { display:block; width:100%; height:100%; object-fit:contain; object-position:center top; transform:scale(2.65); transform-origin:50% 8%; }
 .appearance-expressions small { color:var(--appearance-ink); opacity:.82; }
 .appearance-preview { background:var(--appearance-panel); border:1px solid var(--appearance-line); border-radius:.65rem; padding:.75rem; min-width:0; }
-.appearance-views { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.55rem; }
+.appearance-views { display:grid; grid-template-columns:minmax(0,1fr); gap:.55rem; }
 .appearance-view {
   display:flex; flex-direction:column; align-items:center; min-width:0;
   border:1px solid var(--appearance-line); border-radius:.45rem; padding:.35rem;
   text-align:center; background:color-mix(in srgb,#566a93 23%,transparent);
 }
 .appearance-full-sprite { display:block; width:100%; height:clamp(10rem,23dvh,20rem); object-fit:contain; }
+.appearance-sprite-previews:has(> :only-child) { grid-template-columns:minmax(0,1fr); }
+.appearance-sprite-previews .appearance-full-sprite { height:clamp(7rem,21dvh,16rem); }
 .appearance-gallery { display:flex; gap:.35rem; max-width:100%; overflow-x:auto; padding:.25rem; }
 .villages-appearance .appearance-gallery button { flex:0 0 5rem; min-width:0; padding:.3rem; font-size:.75rem; }
 .appearance-gallery img { display:block; width:100%; height:3.4rem; object-fit:contain; }
@@ -95,5 +98,5 @@ export const APPEARANCE_STYLES = String.raw`
   .appearance-layout { grid-template-columns:1fr; }
   .appearance-expressions { max-height:9rem; }
 }
-@container (max-width:21rem) { .appearance-views { grid-template-columns:1fr; } }
+@container (max-width:21rem) { .appearance-views:not(.appearance-sprite-previews) { grid-template-columns:1fr; } }
 `;

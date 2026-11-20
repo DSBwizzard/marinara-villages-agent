@@ -336,7 +336,7 @@ await withBrowser(browser, async () => {
       );
       await expect(mara).toHaveAttribute("data-position", "right");
       await expect(mara).toHaveAttribute("data-attention", "left");
-      await expect(mara.locator("img")).toHaveAttribute("data-facing", "left");
+      await expect(mara.locator("img")).toHaveAttribute("data-facing", "front");
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
       await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
       const firstFlips = await page.evaluate(() => window.spriteFlips);
@@ -378,7 +378,7 @@ await withBrowser(browser, async () => {
       }
       await next.click();
       await expect(mara).toHaveAttribute("data-attention", "right", "side cue appears with the final paragraph");
-      await expect(mara.locator("img")).toHaveAttribute("data-facing", "right");
+      await expect(mara.locator("img")).toHaveAttribute("data-facing", "front");
       await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
       assert.equal(
         await page.evaluate(() => window.spriteFlips.length),
@@ -556,7 +556,7 @@ await withBrowser(browser, async () => {
       await page.close();
     }
   }
-  // A side-only expression must not override a later turn toward the player.
+  // Old facing metadata does not change the selected expression when attention changes.
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 1440, height: 900 },
@@ -640,19 +640,19 @@ await withBrowser(browser, async () => {
     const people = page.locator(".marinara-capability-villages-chat-cast-person");
     const previous = page.getByRole("button", { name: "Previous paragraph" });
     await expect(people).toHaveCount(2);
-    await expect(people.first().locator("img")).toHaveAttribute("src", front);
-    await expect(people.last().locator("img")).toHaveAttribute("src", front);
+    await expect(people.first().locator("img")).toHaveAttribute("src", side);
+    await expect(people.last().locator("img")).toHaveAttribute("src", side);
     await previous.click();
     await expect(people.first()).toHaveAttribute("data-attention", "right");
     await expect(people.last()).toHaveAttribute("data-attention", "left");
     await expect(people.first().locator("img")).toHaveAttribute("src", side);
     await expect(people.last().locator("img")).toHaveAttribute("src", side);
     await expect(people.first().locator("img")).toHaveCSS("transform", "none");
-    await expect(people.last().locator("img")).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
+    await expect(people.last().locator("img")).toHaveCSS("transform", "none");
     await page.getByRole("button", { name: "Next paragraph" }).click();
     for (const person of await people.all()) {
       await expect(person).toHaveAttribute("data-attention", "front");
-      await expect(person.locator("img")).toHaveAttribute("src", front);
+      await expect(person.locator("img")).toHaveAttribute("src", side);
       await expect(person.locator("img")).toHaveAttribute("data-facing", "front");
       await expect(person.locator("img")).toHaveAttribute("data-flipping", "false");
     }
@@ -662,8 +662,8 @@ await withBrowser(browser, async () => {
       });
     await page.reload();
     await page.addScriptTag({ content: sceneBundle });
-    await expect(people.first().locator("img")).toHaveAttribute("src", front);
-    await expect(people.last().locator("img")).toHaveAttribute("src", front);
+    await expect(people.first().locator("img")).toHaveAttribute("src", side);
+    await expect(people.last().locator("img")).toHaveAttribute("src", side);
     await page.close();
   }
   console.log(

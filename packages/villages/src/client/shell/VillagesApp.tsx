@@ -548,9 +548,7 @@ function VillageDestinations({ controller, daylight, people, openMapVenue, arriv
       ))}
       {people}
       {screen === "preparing" ? <PreparationScreen controller={controller} /> : null}
-      {screen === "setup" ? (
-        <FoundingScreen controller={controller} host={controller.element} storybookDaylight={daylight} />
-      ) : null}
+      {screen === "setup" ? <FoundingScreen controller={controller} storybookDaylight={daylight} /> : null}
     </>
   );
 }

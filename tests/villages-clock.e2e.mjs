@@ -118,7 +118,7 @@ await withBrowser(browser, async () => {
       await expect(scene.locator('.villages-setting-stage img[src$="mari-founding-looking-up.webp"]')).toHaveCount(1);
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
       await page.clock.fastForward(350);
-      const models = scene.getByRole("region", { name: "Choose your models" });
+      const models = scene.getByRole(width === 390 ? "dialog" : "region", { name: "Choose your models" });
       await expect(models).toBeVisible();
       await expect(phases).toHaveCount(0);
       await expect(mari).toHaveCount(0);
@@ -131,13 +131,18 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);
       await expect(scene).toHaveAttribute("data-lighting", "day");
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      if (width === 390) await expect(scene).toHaveCSS("background-position", /, 50% 100%$/);
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
-      await scene.getByRole("button", { name: "Draft with Mari", exact: true }).click();
-      const world = scene.getByLabel(width === 390 ? "World description" : "The larger world");
+      const next = mari.getByRole("button", { name: "Next", exact: true });
+      for (let line = 0; line < 3; line++) await next.click();
+      await next.click();
+      for (let line = 0; line < 2; line++) await next.click();
+      const world = scene.getByLabel("World description");
       await world.fill("A string of settlements along the coast");
       await page.clock.fastForward(3000);
       await expect(scene).toHaveAttribute("data-lighting", "night");
       await expect(scene).toHaveCSS("background-image", /mari-founding-overlook\.webp/);
+      if (width === 390) await expect(scene).toHaveCSS("background-position", /, 50% 100%$/);
       await expect(world).toHaveValue("A string of settlements along the coast");
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-night-" + width + ".png" });
       holdSnapshot = true;
@@ -154,6 +159,7 @@ await withBrowser(browser, async () => {
       await fulfill(heldSnapshot, { status: 503, json: { error: "Village snapshot unavailable" } });
       await expect(page.getByRole("alert")).toContainText("Village snapshot unavailable");
       await page.getByRole("button", { name: "Try again", exact: true }).click();
+      if (width === 390) await next.click();
       await expect(world).toHaveValue("A string of settlements along the coast");
       assert.equal(foundingSceneChecks, 0, "Founding remounts never ask for an active Scene");
     });

@@ -31,13 +31,13 @@ export function QuickStartButton({
             <>
               <p>
                 Replace all starting Venue names, descriptions, Zones and artwork with AI-written Residences and two
-                Community Venues. Images can be added in each Zone afterwards.
+                Community Venues. Existing map pins stay in place. Images can be added in each Zone afterwards.
               </p>
             </>
           ) : null}
           <footer>
             <button type="button" onClick={() => setConfirming(false)}>
-              Cancel
+              Back
             </button>
             <button
               type="button"

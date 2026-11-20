@@ -32,7 +32,7 @@ Create or check your model connections in Engine before founding. Choose them on
 | **GM**     | Writes new Scenes and proposes their gameplay updates.                    |
 | **Images** | Generates artwork when requested. Choose **Disabled** to supply your own. |
 
-Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. In **Settings → General Preferences → Model Connections**, select a job to change its model or replace a missing connection. Set up providers and keys in Engine's **Connections** panel.
+Choose a specific language connection for **both System and GM** before continuing. You can use the same one for both. Founding shows **Images** alongside them. Use the **Model Connections** gear beside the progress stars or in a mobile form's header to change these choices during Founding. After founding, use **Settings → General Preferences → Model Connections**. Set up providers and keys in Engine's **Connections** panel.
 
 An image connection is optional if you upload your map. Founding requires an uploaded or generated map; the initial grid is a placeholder. Sprite setup makes no model requests.
 
@@ -40,12 +40,15 @@ An image connection is optional if you upload your map. Founding requires an upl
 
 ## Found your Village
 
-The setup steps are **Setting → People → Venues and Map → Review**.
+The setup steps are **Setting → People → Maps → Venues → Review**.
 
-1. **Setting:** Name the Village, then name and describe its **Starting location**, such as a harbour between a river and cliffs. The Village is the shared community across its maps; Founding establishes its first location. This description supplies context rather than enforcing a travel boundary. Select lorebooks for world history and references. Use **World rules** for standing constraints. The clock follows Engine’s timezone. **Art settings** selects one Engine preset or custom style for the map and Venue images, with map-specific details and exclusions. Changes save with the draft and apply to future generations; existing artwork stays intact.
-2. **People:** Choose your Persona and one to three residents. Their cards and lorebooks supply backstory. Select a resident to open **Appearance**, choose **Portrait** or **Sprites**, then **Save** any changes. The same screen is available under **Character Tools** after founding.
-3. **Venues and Map:** Open any starting Venue from its card or map pin. **About** has the Venue description and household. Select a person to move them into that Residence. **Zones** opens the same Zone list used in play. Select a Zone to edit its details, artwork, sleeping assignments, personal space and visitor access. **Manage** is where you add, remove and connect Zones. Edits save automatically. **Map**, **Done**, or Escape returns to the overview. **Suggest** replaces the current draft with AI-written separate Residences and two ordinary Community-class Venues after confirmation. Pending requests recover automatically, and **Retry** appears after a confirmed failure. Drag map pins to position Venues. Upload or generate the map before continuing.
-4. **Review:** Check the map, households and where everyone sleeps. Use **First day** to describe what’s happening as play begins. Every founder needs exactly one home and an accessible sleeping destination. Every Venue needs connected Zones and descriptions, with Entrance plus at most six Zones. Choose **Opening gathering** in a suitable Venue’s About view. The Village opens there once local routines are usable; optional personal routines and Wishes continue preparing in the background.
+Use **Back** and **Next** to navigate Founding. Clicking outside a popup or pressing Escape does not dismiss it.
+
+1. **Setting:** Mari guides every Founding through the World, optional Lorebooks, Village and first Map. Name the Village, then name and describe its **Starting location**, such as a harbour between a river and cliffs. The Village is the shared community across its maps; Founding establishes its first location. This description supplies context rather than enforcing a travel boundary. Select lorebooks for world history and references, twelve per page on desktop or six on phones. Use **World rules** for standing constraints. The clock follows Engine’s timezone.
+2. **People:** Choose your Persona and one to three residents. Their cards and lorebooks supply backstory. Each compact row shows the number of Character Card sprites available for Scenes, or a red **No Sprites Assigned!** warning. There is no appearance picker in Founding. Appearance is available under **Character Tools** after founding. Mari then introduces the two public locations and starter homes in one turn before the map workspace opens.
+3. **Maps:** Upload or generate artwork for the first Map. On desktop, Mari slides aside before her dialogue and the workspace appear; reduced motion shows them immediately. The **Art settings** gear contains the image connection, a style dropdown, Map details and exclusions. Map prompts preserve these details, world rules and style while fitting supporting setting text and whole Lorebook entries into the image allowance. Art settings apply to future map and Venue generations; existing artwork stays intact. Artwork must finish before continuing to Venue placement; a simple placeholder does not qualify.
+4. **Venues:** On desktop, open the in-game Venue page from the compact list or a map pin. On a phone, the map fills the workspace: tap a pin to open its Venue and **← Map** to return with the same zoom and position. Back and Next stay visible in both views. The map uses the gameplay framing, markers and labels. Drag a Venue icon to reposition it; releasing saves the move. Drops outside the visible map and cancelled gestures keep the previous position. Tap an icon to open its Venue without moving it. Drag the background to pan, pinch or use the zoom buttons, and **Reset** restores the default view. Arrow keys move a focused Venue icon; on the map background they pan. **About** shows the assigned villager, **Zones** opens the rooms, and **Manage** lets you edit the Venue details. Each starting Residence belongs to exactly one person, assigned from **People**. The expanded map workspace continues directly from Maps into Venue placement. **Suggest** drafts starting Venues after confirmation and keeps existing pins in place. Pending requests are checked without generating again. A confirmed failure or server-confirmed unavailable result stops checking and enables explicit **Retry**; transient connection errors keep the same request ID. Every starting Residence, including the player's, has Entrance → Common Space → Private Space, with a fixed resident and a private sleeping destination already assigned. Each Community Venue has Entrance plus public Gathering and Activity spaces. Choose **Opening gathering** in a suitable Venue's **About** view. Open a Venue to edit room details, artwork, or visitor access. Use **Manage → Zone connections** to change the layout. Edits save automatically. Older untouched single-space starters receive these defaults; customized layouts and interrupted work are preserved.
+5. **Review:** Check the map, households and where everyone sleeps. Use **First day** to describe what’s happening as play begins. Every founder needs exactly one home and an accessible sleeping destination. Every Venue needs connected Zones and descriptions, with Entrance plus at most six Zones. The Village opens at the selected opening Venue once local routines are usable; optional personal routines and Wishes continue preparing in the background.
 
 Founding describes the start of play. Current Venue and Zone records describe physical conditions thereafter. Restoring part of an abandoned mall changes that same mall; it keeps its identity and any unrestored spaces. Historical descriptions and lorebooks cannot undo the restoration. Resolving a broader circumstance does not repair buildings, remove unrelated restrictions or change standing rules.
 
@@ -59,7 +62,7 @@ Setup drafts save on your device, so finish them in the same browser. If your co
 
 Characters keep their authored histories, relationships, secrets, and limits on what they know. Sharing a homeworld does not automatically make them acquainted. Optional lorebooks provide reference context without being rewritten.
 
-After founding, the residents gather at the selected opening Venue for an everyday moment. Respond in your own words or actions, continue the Scene, or conclude it when you are ready. Residents return to their routines, and Projects are available whenever you want them.
+After founding, the residents gather at the Community Venue for an everyday moment. Respond in your own words or actions, continue the Scene, or conclude it when you are ready. Residents return to their routines, and Projects are available whenever you want them.
 
 Selected lorebooks are read from Engine for new generation. Constant entries need no keyword, but still need room in the lore allowance. Current-message matches take priority, followed by recent shared dialogue, setting matches, and remaining Constants. Recent dialogue is bounded and must already be available to the request, visible to you, and heard by every represented resident. Lore retrieval does not grant character knowledge.
 
@@ -84,7 +87,7 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 
 A **Place** is a discovered or introduced location in the world. Visit it and move through its Zones for Scenes before it joins the village simulation. **Discover Places** supports explicit exploration, search and first-visit preparation. The optional Places map layer starts off; unplaced Places remain visitable. [Places and establishment](../../docs/places.md) explains discovery, supporting characters and promotion.
 
-A **Venue** is an established village location, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In Founding, choose **Edit layout** to arrange Zones and change connections. During play, **About** shows who lives or works at a Venue and offers **Visit** to enter. Choose a room in **Zones** to see its known artwork and access status.
+A **Venue** is an established village location, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In Founding, choose **Manage → Zone connections** to arrange Zones and change connections. During play, **About** shows who lives or works at a Venue and offers **Visit** to enter. Choose a room in **Zones** to see its known artwork and access status.
 
 In **Manage → Zone connections**, managers select a Zone and choose which other Zones connect to it. Passages work both ways and every Zone needs a path to the Entrance. **Save connections** applies a valid draft, and leaving the editor also saves a valid draft in the background. If a Zone is disconnected, Keep editing returns to the draft and Discard and leave restores the saved connections. A failed save retains the draft and displays its error when you return to the editor. Refreshing or closing the browser discards unsaved edits.
 
@@ -104,11 +107,7 @@ Scenes use one GM response for dialogue and gameplay updates. This build require
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
-Ordinary visits can open quietly so you can look around or move without a narration request. Turn on **Spontaneous events** in Settings to allow a fresh visit to roll for a brief surprise opening. A development can start at the entrance, or a resident can take the initiative when you reach their Zone. An ordinary visit can spend one automatic GM call, and a short Village-time cooldown applies at each Venue.
-
-A resident’s invitation to another Venue can show a destination card. Select **Visit** to start a new Scene under the destination’s current access, escort and attendance rules. The invitation handoff generates no goodbye or greeting.
-
-**Send** takes place in the Zone shown in the Scene header. Put spoken dialogue in quotation marks. Unquoted text describes actions, narration, or thoughts, and residents can respond to what they observe. If you describe heading to another Zone, the GM can write up to the crossing. Choose **Venue actions → Move** to enter a permitted Zone. A pending spontaneous opening can play when you arrive. Villagers can cross Zones or leave on their own in a GM reply. **Conclude** archives the Scene without a generated reply. Send any farewell as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
+Write dialogue, actions, thoughts, or a mixture in the message box and choose **Send**. Open **Venue actions** for **Move** or **Conclude**. Move goes to a permitted Zone without a generated arrival reply. Conclude archives the Scene without generating a reply. Send any farewell or departure as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
@@ -124,7 +123,7 @@ The GM first tries to continue in character. Attempts, threats, ordinary refusal
 
 You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
 
-Once a Scene and its saved effects are settled, its playback can retire. Accepted exchanges and relevant Project evidence remain available to continuity and recovery. Scene playback includes the original input for each accepted exchange, including private thoughts, for anyone with access to this Engine instance. Characters learn only what they actually heard or witnessed.
+Once a Scene and its saved effects are settled, its playback can retire. Accepted exchanges and relevant Project evidence remain available to continuity and recovery. Scene playback includes your original submissions, including private thoughts, for anyone with access to this Engine instance. Characters learn only what they actually heard or witnessed.
 
 New Scenes follow the Village's current time. Residents can leave for commitments and others can arrive while you stay in the Venue. Each exchange keeps the time, participants and witnesses admitted for that request; a scheduled departure waits for that exchange to settle. Accepted changes count as you play, before **Conclude**.
 
@@ -214,7 +213,7 @@ Day/night imagery is standard, with one image reused for AI-known constant light
 
 The map's artwork changes tint with Village time, leaving markers and controls readable. Morning begins at 05:00, daytime at 08:00, evening at 17:00 and night at 20:00 in the saved Village timezone, including daylight-saving changes. The server clock and saved development time advance govern presentation; the browser's local timezone does not. Active Scenes select their saved day/night background from the time admitted between exchanges, while concluded Scenes retain their captured presentation. Clock changes never request artwork.
 
-In **Appearance → Sprites**, use **Add Front sprites** or **Add Side sprites** to select a batch from the character’s Engine library. Choose **No folder** or an Engine folder in either picker. Engine labels such as `happy_01`, `happy_blush` and `happy_pajamas_04` group automatically under `happy`. Front and Side can have different numbers of variants. Choose right-facing art for Side so Villages can mirror it to face left.
+**Character Tools → Appearance** uses one sprite gallery. Use **Add sprites** to choose images from **No folder** or an Engine folder. Engine labels such as `happy_01`, `happy_blush` and `happy_pajamas_04` group automatically under `happy`. Sprite selection does not change with facing. Older paired assignments retain their artwork and use one stable image for each expression.
 
 Use **Remove** below a sprite to remove its assignment. Reopen the picker to add it again. Upload and edit the original images in Engine. Re-select a linked sprite after editing it in Engine to update the saved version or label. You can add up to 200 sprites per save. **Portrait** shows the card portrait and keeps the sprite selection for later.
 
@@ -257,9 +256,9 @@ Failures do not automatically purchase replacement responses. Explicit interpret
 
 **Visual Settings** contains **Random sprite variants**, **Card-flip sprite changes**, **Character chat colors**, **Dynamic Images** and scenery style, each with a short explanation. Toggles and style presets save immediately; custom style text saves after a short typing pause. Pending edits survive settings navigation, and failed saves retain the latest draft with Retry. The personalization default remains compatible with saved worlds but is no longer exposed here. Random variants and card flips default On; reduced-motion preferences still disable flip animation.
 
-Folder sprites use Engine labels. For `happy_pajamas_wounded`, Villages looks for the full look, then `happy_pajamas`, then `happy` artwork in that facing. It uses the other facing when the expression is unavailable in the requested one. **Random sprite variants** chooses among matches. With it off, Villages uses the first match.
+Folder sprites use Engine labels. For `happy_pajamas_wounded`, Villages looks for the full look, then `happy_pajamas`, then `happy` artwork from the assigned sprites. **Random sprite variants** chooses among matches. With it off, Villages uses the first match.
 
-Each new expression cue saves the concrete Front and Side choices. Turning, refreshing the page, and reading backward use the recorded choices while the selected artwork remains available. Random picks can repeat.
+Each new expression cue saves one concrete sprite choice. Turning, refreshing the page, and reading backward use the recorded choices while the selected artwork remains available. Random picks can repeat.
 
 ## Settings and saved worlds
 
@@ -267,6 +266,6 @@ In **General Settings**, choose your connections. **Writing Settings** control p
 
 **Send on Enter** defaults Off. Normally, Enter adds a newline. When enabled, Enter sends and Shift+Enter adds a newline.
 
-Progress saves as you play, and refresh restores it. The current test build requires fresh storage and uses **Village format 19** and **Scene format 5**. The new reader rejects older worlds, setup records, Scenes and checkpoints and preserves their stored bytes. Those saves require their matching runtime in separate storage.
+Progress saves as you play, and refresh restores it. The current test build requires fresh storage and uses **Village format 18** and **Scene format 5**. The new reader rejects older worlds, setup records, Scenes and checkpoints and preserves their stored bytes. Those saves require their matching runtime in separate storage.
 
 Installed package files remain on the Marinara server, but model-driven play still needs a working connection to your configured provider. Before changing or removing a test installation, arrange a backup and confirm how to keep its world with the server operator. **Reset the village and start over** is a separate destructive action.

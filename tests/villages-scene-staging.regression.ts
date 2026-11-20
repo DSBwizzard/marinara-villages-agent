@@ -253,15 +253,15 @@ const art = [
   { view: "side" as const, expressionId: "e-composed", label: "e-composed", isDefault: true, url: "/side" },
 ];
 assert.equal(
-  selectSpriteImage(art, "e-thinking", "left")?.image.url,
+  selectSpriteImage(art, "e-thinking")?.image.url,
   "/thinking",
   "A turn preserves the selected expression when its side view is missing",
 );
-assert.equal(selectSpriteImage(art, "", "left")?.mirrored, true);
-assert.equal(selectSpriteImage(art, "unavailable", "front")?.image.url, "/side");
+assert.equal(selectSpriteImage(art, "")?.mirrored, false);
+assert.equal(selectSpriteImage(art, "unavailable")?.image.url, "/side");
 assert.equal(
-  selectSpriteImage([{ view: "side", label: "composed", isDefault: true, url: "/side" }], "", "left")?.mirrored,
-  true,
+  selectSpriteImage([{ view: "side", label: "composed", isDefault: true, url: "/side" }], "")?.mirrored,
+  false,
 );
-assert.equal(selectSpriteImage([], "", "left"), null, "missing art keeps portrait fallback");
+assert.equal(selectSpriteImage([], ""), null, "missing art keeps portrait fallback");
 console.log("Villages scene staging: validation, persistent state, gaze, spacing, cast boundaries, and replay passed");

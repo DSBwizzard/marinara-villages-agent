@@ -1,4 +1,5 @@
 import type { VillageVenueImage } from "./village.js";
+export const FOUNDING_DRAFT_UNAVAILABLE = "FOUNDING_DRAFT_UNAVAILABLE";
 export type FoundingDraftZone = {
   dayNight?: boolean;
   id: string;

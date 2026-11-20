@@ -98,27 +98,24 @@ const spriteImages = [
     isDefault: false,
   })),
 ];
-assert.equal(selectSpriteImage(spriteImages, side, "left")?.image.expressionId, side);
-assert.equal(selectSpriteImage(spriteImages, second, "front", side, true)?.image.expressionId, second);
+assert.equal(selectSpriteImage(spriteImages, side)?.image.expressionId, side);
+assert.equal(selectSpriteImage(spriteImages, second)?.image.expressionId, second);
 assert.equal(
-  selectSpriteImage(spriteImages, second, "right", side, true)?.image.expressionId,
-  side,
-  "Turning back reuses the same Side",
+  selectSpriteImage(spriteImages, second)?.image.expressionId,
+  second,
+  "Attention does not change the sprite",
 );
 assert.equal(
   selectSpriteImage(
     spriteImages.filter((image) => image.expressionId !== side),
     second,
-    "right",
-    side,
-    true,
   )?.image.expressionId,
   second,
   "An unavailable Side falls back to the selected Front",
 );
-assert.equal(selectSpriteImage(spriteImages, side, "front", undefined, true)?.image.expressionId, side);
+assert.equal(selectSpriteImage(spriteImages, side)?.image.expressionId, side);
 const initialImages = projectVillager(world.villagers[0], "A", "", [], "", "", null).sprite!.images;
-assert.equal(selectSpriteImage(initialImages, "", "right", undefined, true)?.image.expressionId, side);
+assert.equal(selectSpriteImage(initialImages, "")?.image.expressionId, first);
 const scene = zoneEventScene(
   coerceSession({
     version: 5,
@@ -287,22 +284,22 @@ assert.deepEqual(
 );
 assert.deepEqual(
   lines[0].staging,
-  [{ characterId: "a", expression: second, sideExpression: side }],
-  "Both captured views survive cold recovery and the model cannot supply a concrete side override",
+  [{ characterId: "a", expression: second }],
+  "The captured expression survives cold recovery without a separate facing choice",
 );
 assert.deepEqual(lines[1].staging, [], "Hidden cues cannot affect public playback");
 assert.deepEqual(
   lines[2].staging,
-  [{ characterId: "a", expression: second, sideExpression: side }],
-  "Offstage or foreign cues do not change the pose",
+  [{ characterId: "a", expression: side }],
+  "Offstage or foreign cues cannot select outside the assigned expression pool",
 );
 assert.deepEqual(lines[2].heardBy, ["a", "b", "player"]);
 assert.deepEqual(lines[3].physicalIdsAfter, ["a"]);
 assert(
-  [first, second].includes(lines[4].staging![0].expression!),
-  "A departure clears the old gaze before selecting the next pose",
+  [first, second, side].includes(lines[4].staging![0].expression!),
+  "A departure retains one concrete choice from the assigned sprite pool",
 );
-assert.equal(lines[4].staging![0].sideExpression, side);
+assert.equal(lines[4].staging![0].sideExpression, undefined);
 assert.deepEqual(lines[5].staging, []);
 const visible = publicSceneResponse({ lines });
 assert(!JSON.stringify(visible).includes(group), "Playback receives concrete artwork only");

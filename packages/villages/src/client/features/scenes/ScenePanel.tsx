@@ -28,7 +28,7 @@ import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import { isSceneConnectionError } from "./scene-error-message.js";
 import type { SceneFailure } from "./scene-error-report.js";
-import { CardFlipSprite } from "./villages-card-flip-sprite.js";
+import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { scenePlaybackSteps } from "./scene-playback.js";
 import { useScenePlayback } from "./useScenePlayback.js";
@@ -1252,10 +1252,6 @@ export function RoomPanel({
             const selected = selectSpriteImage(
               (sprite?.images ?? []).filter((image) => !failedSpriteUrls.has(image.url)),
               staged?.expression ?? "",
-              facing,
-              staged?.sideExpression,
-              sprite?.named,
-              sprite?.defaultView,
             );
             return (
               <div
@@ -1284,7 +1280,7 @@ export function RoomPanel({
                     url={selected.image.url}
                     facing={facing}
                     mirrored={selected.mirrored}
-                    view={selected.image.view}
+                    view="front"
                     framing={sprite?.framing.mode ?? "full"}
                     enabled={spriteCardFlipEnabled}
                     animate={animateStaging}

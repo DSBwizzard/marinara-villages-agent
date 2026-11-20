@@ -13,6 +13,7 @@ import {
 } from "../packages/villages/src/server/features/media/sprite-setup-service.js";
 import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
 import { retainedSpriteFiles } from "../packages/villages/src/server/adapters/storage/sprite-files.js";
+import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
 
 const id = "mara";
 const documents = new Map<string, unknown>();
@@ -60,6 +61,7 @@ const happySide = Array.from({ length: 17 }, (_, index) => "side-" + (index + 1)
 const looseFiles = ["new-front.png", ...happySide];
 let catalogReads = 0;
 let libraryAvailable = true;
+const catalog: { folders: unknown[]; sprites: unknown[] } = { folders: [], sprites: [] };
 const service = createSpriteSetup({
   villagesDocuments: () => ({
     getById: async (_pkg: string, key: string) => ({ data: structuredClone(documents.get(key)) }),
@@ -74,15 +76,17 @@ const service = createSpriteSetup({
     if (!url.endsWith("/catalog")) throw new Error(url);
     catalogReads++;
     if (!libraryAvailable) throw new Error("Unavailable");
-    return {
-      folders: [],
-      sprites: looseFiles.map((filename, index) => ({
-        filename,
-        label: index === 0 ? "Happy_2" : "Happy_" + index,
-        folderId: null,
-        url: "/api/sprites/mara/file/" + filename + "?v=" + version,
-      })),
-    };
+    return catalog.folders.length
+      ? catalog
+      : {
+          folders: [],
+          sprites: looseFiles.map((filename, index) => ({
+            filename,
+            label: index === 0 ? "Happy_2" : "Happy_" + index,
+            folderId: null,
+            url: "/api/sprites/mara/file/" + filename + "?v=" + version,
+          })),
+        };
   },
   writes: createSpriteWrites(),
   readVillageState: async () => structuredClone(world),
@@ -101,7 +105,9 @@ assert.deepEqual(
   "Reading legacy data does not change the founding revision",
 );
 assert.deepEqual((await service.settled(id)).manager, initial.manager, "Migrated expression IDs are deterministic");
-assert.equal(await service.preparedManager(id), null);
+const implicit = await service.preparedManager(id);
+assert.equal(implicit?.assignments.length, looseFiles.length, "Use Engine art without adopting the older draft");
+assert.ok(implicit.assignments.every((slot) => slot.view === "front" && slot.automatic));
 assert.equal(initial.manager.expressions.length, 1);
 assert.equal(initial.files[0].version, version);
 const happyId = initial.manager.expressions[0].id;
@@ -206,15 +212,17 @@ world = coerceVillageState({
 const resident = await service.settled(id, true);
 const sprite = managerResidentSprite(resident.manager, id)!;
 assert.equal(sprite.named, true);
-assert.equal(sprite.expressions.filter((row) => row.view === "front").length, 2);
-assert.equal(sprite.expressions.filter((row) => row.view === "side").length, 17);
+assert.equal(sprite.expressions.filter((row) => row.view === "front").length, 19);
+assert.equal(sprite.expressions.filter((row) => row.view === "side").length, 0);
 assert.equal(sprite.expressions[2].assetId, id);
 assert.equal(sprite.expressions[2].filename, "side-1.png");
 assert.equal(sprite.expressions[2].version, version);
 const projected = projectVillager(world.villagers[0], "Mara", "", [], "", "", null);
 assert.equal(projected.sprite?.images[2].url, "/api/sprites/mara/file/side-1.png?v=100");
-assert.equal(resolveSpriteExpression(sprite, "happy", true, "front", 0.999), sprite.expressions[1].expressionId);
-assert.equal(resolveSpriteExpression(sprite, "happy", true, "side", 0.999), sprite.expressions.at(-1)?.expressionId);
+assert.equal(resolveSpriteExpression(sprite, "happy", true, 0.999), sprite.expressions.at(-1)?.expressionId);
+assert.equal(resolveSpriteExpression(sprite, "happy", true, 0.999), sprite.expressions.at(-1)?.expressionId);
+const frontImg = projected.sprite!.images.find((img) => img.view === "front")!;
+assert.equal(selectSpriteImage(projected.sprite!.images, frontImg.expressionId!)?.mirrored, false);
 
 libraryAvailable = false;
 const rows = resident.manager.assignments.map(({ expressionId, artworkId, view, engineFilename, version }) => ({
@@ -258,6 +266,52 @@ await assert.rejects(
   service.save(id, { ...body, token: portrait.token, requestId: "stale", resident: true }, signal),
   /Appearance changed/,
 );
+assert.equal((await service.preparedManager("new-character"))?.useSprites, false, "Unavailable library uses Portrait");
+libraryAvailable = true;
+Object.assign(catalog, {
+  folders: [
+    { id: "expressions", name: "Expressions", category: "expressions" },
+    { id: "body", name: "Full body", category: "full-body" },
+  ],
+  sprites: [
+    { filename: "neutral-expression.png", label: "Neutral", folderId: "expressions" },
+    { filename: "happy-body.png", label: "Happy", folderId: "body" },
+    { filename: "neutral-body.png", label: "Neutral", folderId: "body" },
+  ],
+});
+const automatic = await service.settled("new-character");
+assert.equal(automatic.automatic, true);
+assert.equal(automatic.revision, 0);
+assert.deepEqual(await service.preparedManager("new-character"), automatic.manager, "Opening Appearance is optional");
+assert.deepEqual(
+  automatic.manager.assignments.map((slot) => slot.engineFilename),
+  ["happy-body.png", "neutral-body.png"],
+);
+assert.equal(automatic.manager.assignments[1].expressionId, automatic.manager.defaultExpressionId);
+assert.equal(automatic.manager.defaultView, "front");
+const [happy, neutral] = automatic.manager.expressions;
+const appearance = await service.save(
+  "new-character",
+  {
+    token: automatic.token,
+    automatic: true,
+    requestId: "auto-side",
+    useSprites: false,
+    expressions: [
+      { ...happy, front: { filename: "happy-body.png" } },
+      { ...neutral, side: { filename: "neutral-body.png" } },
+    ],
+    defaultExpressionId: happy.id,
+    defaultView: "front",
+  },
+  signal,
+);
+assert.equal(appearance.manager.assignments[0].automatic, true);
+assert.equal(appearance.manager.assignments[1].automatic, undefined);
+assert.deepEqual(await service.preparedManager("new-character", appearance.revision), appearance.manager);
+assert.equal((await service.preparedManager("new-character", appearance.revision))?.useSprites, false);
+catalog.sprites = [];
+assert.equal((await service.preparedManager("empty-character"))?.useSprites, false, "Empty library uses Portrait");
 console.log(
   "Appearance saves independent Engine references, preserves owned art and retries, and resolves 2 Front and 17 Side sprites.",
 );

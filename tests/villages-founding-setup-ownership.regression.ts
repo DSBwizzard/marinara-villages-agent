@@ -12,6 +12,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { DEFAULT_TOWN_MAP_VIEW } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import { emptySpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 import { createFoundingSetup } from "../packages/villages/src/server/features/founding/founding-setup-service.js";
 import {
   configureFoundingSetup,
@@ -160,13 +161,23 @@ function fixture(name: string) {
       note("cards");
       return [structuredClone(card)];
     },
-    async preparedSpriteManager(id) {
+    async preparedSpriteManager(id, revision) {
       note("sprites:" + id);
       assert(
         !state.villagers.some((resident) => resident.characterId === id),
         "Existing residents retain their sprites.",
       );
-      return null;
+      assert.equal(revision, undefined, "Automatic appearance needs no acknowledged draft");
+      const expression = { id: "e-adc201ed-e4b1-422b-8c79-4c6b09ba456d", name: "Neutral" };
+      return {
+        ...emptySpriteManager(),
+        expressions: [expression],
+        assignments: [
+          { expressionId: expression.id, view: "front", engineFilename: "full_neutral.png", automatic: true },
+        ],
+        defaultExpressionId: expression.id,
+        defaultView: "front",
+      };
     },
     async prepareFoundedVillage() {
       note("prepare");
@@ -332,6 +343,32 @@ for (const invalid of ["missing-purpose", "layout-mismatch"]) {
 }
 
 const direct = fixture("Direct");
+for (const [roll, expected] of [
+  [0, "hall"],
+  [0.999999, "garden"],
+] as const) {
+  const automatic = fixture("Automatic opening");
+  automatic.state.seed = "opening-selection";
+  automatic.retryWith(() => {});
+  const originalRandom = Math.random;
+  let rolls = 0;
+  Math.random = () => {
+    rolls++;
+    return rolls === 1 ? roll : 1 - roll;
+  };
+  try {
+    await automatic.service.runVillageSetup(input("Automatic opening"));
+    assert.equal(automatic.state.opening?.openingVenueId, expected);
+    const rollsAfterSetup = rolls;
+    assert.equal(automatic.attempts[0]!.opening?.openingVenueId, expected);
+    assert.equal(automatic.attempts[1]!.opening?.openingVenueId, expected, "A save retry retains the same host");
+    await assert.rejects(automatic.service.runVillageSetup(input("Automatic opening")), /already founded/);
+    assert.equal(rolls, rollsAfterSetup, "A replay does not reroll the saved opening");
+    assert.equal(automatic.state.opening?.openingVenueId, expected);
+  } finally {
+    Math.random = originalRandom;
+  }
+}
 for (const setting of ["A farm", "An abandoned farm"]) {
   const everyday = fixture("Everyday");
   const payload = { ...input("Everyday"), setting };
@@ -351,6 +388,7 @@ assert.equal(result.village.name, "Direct");
 assert.equal(direct.state.maps[0].name, "Direct", "Older setup callers retain the original map name");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
 assert.equal(direct.state.villagers[0]!.cardSnapshot.description, "Private card Direct");
+assert.equal(direct.state.villagers[0]!.spriteManager?.assignments[0].automatic, true);
 assert.equal(direct.state.villagers[0]!.agenda!.personalizationPending, true);
 assert.equal(direct.state.foundingPreparation!.status, "pending");
 assert.equal(direct.state.venues.length, 4);

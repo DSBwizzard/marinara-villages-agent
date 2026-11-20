@@ -198,7 +198,7 @@ export function AgentConnectionsControls({
   disabled = false,
 }: {
   connections: ReturnType<typeof useAgentConnections>;
-  kind?: "language" | "images";
+  kind?: "founding" | "images";
   compact?: boolean;
   disabled?: boolean;
 }) {
@@ -210,7 +210,7 @@ export function AgentConnectionsControls({
   const language = options.filter((option) => option.category === "language");
   const images = options.filter((option) => option.category === "image_generation");
   const progress = !readFailed && (connections.refreshing || !settings) ? CONNECTION_SETUP_PROBLEMS.reading : "";
-  const foundingLanguage = kind === "language";
+  const founding = kind === "founding";
 
   const pickingImages = job?.key === "imageConnectionId";
   const modelOptions = pickingImages ? images : language;
@@ -220,13 +220,14 @@ export function AgentConnectionsControls({
   const specialChoices = [];
   if (pickingImages)
     specialChoices.push({ id: VILLAGES_IMAGE_CONNECTION_DISABLED, name: "Disabled", detail: "", needsReview: false });
-  if (!foundingLanguage) specialChoices.push({ id: "", name: "Use Engine default", detail: "", needsReview: false });
+  if (!founding || pickingImages)
+    specialChoices.push({ id: "", name: "Use Engine default", detail: "", needsReview: false });
   const problem = error ? (
     <div
       className={`${P}-model-problem`}
       role="alert"
-      data-founding-problem={foundingLanguage ? "" : undefined}
-      tabIndex={foundingLanguage ? -1 : undefined}
+      data-founding-problem={founding ? "" : undefined}
+      tabIndex={founding ? -1 : undefined}
     >
       <span>{error}</span>
       {readFailed ? (
@@ -237,11 +238,7 @@ export function AgentConnectionsControls({
     </div>
   ) : null;
   const feedback = progress ? (
-    <p
-      role="status"
-      data-founding-problem={foundingLanguage ? "" : undefined}
-      tabIndex={foundingLanguage ? -1 : undefined}
-    >
+    <p role="status" data-founding-problem={founding ? "" : undefined} tabIndex={founding ? -1 : undefined}>
       {progress}
     </p>
   ) : (
@@ -264,7 +261,7 @@ export function AgentConnectionsControls({
       {settings ? (
         <div className={`${P}-model-rows`}>
           {jobs
-            .filter((entry) => !kind || (entry.key === "imageConnectionId") === (kind === "images"))
+            .filter((entry) => kind !== "images" || entry.key === "imageConnectionId")
             .map((entry) => {
               const artwork = entry.key === "imageConnectionId";
               const saving = pending?.key === entry.key;
@@ -272,7 +269,7 @@ export function AgentConnectionsControls({
               const selected = (artwork ? images : language).find((option) => option.id === id);
               const off = artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
               const missing = !!id && !off && !selected;
-              const needsChoice = foundingLanguage && !id;
+              const needsChoice = founding && !artwork && !id;
               let value = "Engine default";
               if (off) value = "Disabled";
               else if (missing) value = "Missing connection";
@@ -286,7 +283,7 @@ export function AgentConnectionsControls({
                   aria-haspopup="dialog"
                   aria-disabled={pending ? true : undefined}
                   aria-describedby={saving ? pendingId : undefined}
-                  data-founding-problem={saving && foundingLanguage ? "" : undefined}
+                  data-founding-problem={saving && founding ? "" : undefined}
                   disabled={(busy && !pending) || disabled}
                   onClick={() => {
                     if (pending) return;
@@ -316,7 +313,14 @@ export function AgentConnectionsControls({
         </div>
       ) : null}
       {job && settings ? (
-        <ModalDialog title={job.label} onClose={() => setJob(null)} className={`${P}-model-picker`}>
+        <ModalDialog
+          title={job.label}
+          onClose={() => setJob(null)}
+          className={`${P}-model-picker`}
+          dismissible={!kind}
+          showCloseButton={!kind}
+          focusHeaderOnMobile={!!kind}
+        >
           <div className={`${P}-model-picker-body`}>
             <p>{job.purpose}</p>
             {feedback}
@@ -351,7 +355,7 @@ export function AgentConnectionsControls({
                     aria-current={current || undefined}
                     disabled={busy || disabled}
                     onClick={() => {
-                      if (current || choose({ key: job.key, id: option.id })) setJob(null);
+                      if ((current || choose({ key: job.key, id: option.id })) && !kind) setJob(null);
                     }}
                   >
                     <span>
@@ -370,6 +374,16 @@ export function AgentConnectionsControls({
               Refresh list
             </button>
           </div>
+          {kind ? (
+            <footer>
+              <button type="button" onClick={() => setJob(null)}>
+                Back
+              </button>
+              <button type="button" disabled={busy || disabled} onClick={() => setJob(null)}>
+                Next
+              </button>
+            </footer>
+          ) : null}
         </ModalDialog>
       ) : null}
     </section>

@@ -436,7 +436,7 @@ async function checkPackage(width) {
   const missingBook = loreDialog.getByRole("checkbox", { name: /^saved-book/ });
   await expect(missingBook).toBeChecked();
   await expect(missingBook).toBeEnabled();
-  await expect(loreDialog.getByText("Missing", { exact: true })).toBeVisible();
+  await expect(missingBook).toHaveAccessibleName("saved-book · Missing");
   await missingBook.uncheck();
   await loreDialog.getByRole("searchbox", { name: "Search Lorebooks", exact: true }).press("Escape");
   await expect(editLore).toBeFocused();

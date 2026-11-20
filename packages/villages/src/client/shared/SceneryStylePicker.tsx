@@ -4,11 +4,9 @@ import type { VillageImageStyleCatalog } from "../../shared/helpers/scenery-styl
 export function SceneryStylePicker({
   profileId,
   onChange,
-  asButtons,
 }: {
   profileId: string | null;
   onChange(value: string | null): void;
-  asButtons?: boolean;
 }) {
   const [catalog, setCatalog] = useState<VillageImageStyleCatalog | null>(null);
   const [failed, setFailed] = useState(false);
@@ -41,23 +39,13 @@ export function SceneryStylePicker({
   const choose = (id: string) => onChange(id === "@custom" ? null : id);
   return (
     <>
-      {asButtons ? (
-        <div role="group" aria-label="Scenery style preset" className="villages-founding-tabs">
-          {choices.map(({ id, name }) => (
-            <button type="button" key={id} aria-pressed={id === selected} onClick={() => choose(id)}>
-              {name}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <select aria-label="Scenery style preset" value={selected} onChange={(event) => choose(event.target.value)}>
-          {choices.map(({ id, name }) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          ))}
-        </select>
-      )}
+      <select aria-label="Scenery style preset" value={selected} onChange={(event) => choose(event.target.value)}>
+        {choices.map(({ id, name }) => (
+          <option key={id} value={id}>
+            {name}
+          </option>
+        ))}
+      </select>
       {failed ? <small>Styles unavailable</small> : null}
     </>
   );

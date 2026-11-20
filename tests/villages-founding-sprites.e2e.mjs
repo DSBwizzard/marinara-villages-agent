@@ -15,6 +15,14 @@ const people = [
   { id: "aqua", name: "Aqua", summary: "A coastal resident" },
   { id: "mari", name: "Professor Mari", summary: "A patient teacher" },
 ];
+const catalog = [
+  ...people,
+  ...Array.from({ length: 24 }, (_, index) => ({
+    id: "card-" + index,
+    name: "Card " + (index + 1),
+    summary: "Another coastal resident",
+  })),
+];
 const snapshot = {
   status: "ready",
   isFounded: false,
@@ -40,103 +48,81 @@ const snapshot = {
     settingMaxLength: 4096,
   },
 };
-const files = [
-  { filename: "happy.png", label: "Happy_01", url: image, folderId: "body" },
-  { filename: "bright.png", label: "Happy_02", url: image, folderId: "body" },
-  { filename: "happy-side.png", label: "Happy_blush", url: image, folderId: "profile" },
-  { filename: "neutral.png", label: "Neutral", url: image, folderId: "body" },
-];
-const existing = {
-  version: 1,
-  artwork: [{ id: "old", name: "Old Happy", rendered: { url: image } }],
-  expressions: [{ id: "old-happy", name: "Old Happy" }],
-  assignments: [{ expressionId: "old-happy", view: "front", artworkId: "old" }],
-  defaultExpressionId: "old-happy",
-  framing: { mode: "full" },
-};
 const browser = await chromium.launch({ headless: true });
 await withBrowser(browser, async () => {
   await mkdir(".build-tmp/founding-sprites", { recursive: true });
   for (const viewport of [
     { width: 1366, height: 850 },
-    { width: 390, height: 844 },
+    { width: 390, height: 620 },
   ]) {
-    const name = viewport.width > 600 ? "founding/sprites/desktop" : "founding/sprites/phone";
+    const phone = viewport.width <= 727;
+    const name = phone ? "founding/sprites/phone" : "founding/sprites/desktop";
     if (!wantsCase(name)) continue;
     await runCase(name, async () => {
-      const page = await browser.newPage({ viewport, hasTouch: viewport.width < 600 });
+      const page = await browser.newPage({ viewport, hasTouch: phone, isMobile: phone });
       await mockEngineLookups(page);
+      const writes = [],
+        portraitLoads = [],
+        opened = new Set();
+      let spriteLoads = 0;
+      await page.route("**/api/avatars/file/aqua.png?*", (route) => {
+        portraitLoads.push(new URL(route.request().url()));
+        return fulfill(route, {
+          contentType: phone ? "image/png" : "image/svg+xml",
+          body: phone ? "unreadable image" : Buffer.from(image.split(",")[1], "base64"),
+        });
+      });
+      await page.route("**/api/sprites/**", (route) => {
+        spriteLoads++;
+        return fulfill(route, { contentType: "image/svg+xml", body: Buffer.from(image.split(",")[1], "base64") });
+      });
       await page.route("**/api/characters/summaries", (route) =>
-        route.fulfill({
-          json: [
-            {
-              id: "aqua",
-              avatarUrl: image,
-              avatarCrop: { srcX: 0.3, srcY: 0.2, srcWidth: 0.25, srcHeight: 0.25 },
-            },
-          ],
+        fulfill(route, {
+          contentType: "application/json",
+          body: JSON.stringify([{ id: "aqua", avatarUrl: "/api/avatars/file/aqua.png?v=7" }]),
         }),
       );
-      const writes = [];
-      let saved;
-      const state = {
-        revision: 1,
-        token: "first",
-        manager: structuredClone(existing),
-        files,
-        folders: [
-          { id: "body", name: "Full-body sprites" },
-          { id: "profile", name: "Profile artwork" },
-        ],
-      };
-      await page.route("**/api/villages**", async (route) => {
-        const path = new URL(route.request().url()).pathname;
-        const method = route.request().method();
+      await page.route("**/api/villages**", (route) => {
+        const url = new URL(route.request().url()),
+          path = url.pathname;
         const send = (value) => fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
-        if (path.endsWith("/sprites/setup/settled")) return send(state);
-        if (path.endsWith("/sprites/setup/save")) {
-          const body = route.request().postDataJSON();
-          writes.push(body);
-          if (saved) {
-            assert.deepEqual(body, writes[0], "Retry repeats the exact admitted request");
-            return send(saved);
-          }
-          assert.equal(body.token, "first");
-          assert.equal(body.resident, false);
-          state.revision++;
-          const rows = body.expressions;
-          state.manager.expressions = rows.map(({ id, name }) => ({ id, name }));
-          state.manager.assignments = rows.flatMap((row) =>
-            ["front", "side"].flatMap((view) => {
-              const choice = row[view];
-              if (!choice) return [];
-              return [
-                {
-                  expressionId: row.id,
-                  view,
-                  ...(choice.filename
-                    ? { engineFilename: choice.filename, version: choice.version }
-                    : { artworkId: choice.artworkId }),
-                },
-              ];
-            }),
-          );
-          state.manager.useSprites = body.useSprites;
-          state.manager.defaultExpressionId = body.defaultExpressionId;
-          saved = structuredClone(state);
-          return fulfill(route, {
-            status: 503,
-            contentType: "application/json",
-            body: JSON.stringify({ message: "Save response lost." }),
+        if (route.request().method() !== "GET") {
+          writes.push(path);
+          assert.fail("Unexpected mutation: " + path);
+        }
+        if (path.endsWith("/sprites/setup/settled")) {
+          assert.equal(url.searchParams.get("automatic"), "true");
+          const id = path.split("/").at(-4);
+          opened.add(id);
+          const assigned =
+            id === "aqua"
+              ? Array.from({ length: 6 }, (_, i) => ({
+                  expressionId: "sprite-" + i,
+                  view: "front",
+                  engineFilename: "sprite-" + i + ".png",
+                }))
+              : [];
+          return send({
+            revision: 5,
+            token: "card-sprites",
+            automatic: true,
+            manager: {
+              version: 1,
+              artwork: [],
+              expressions: assigned.map((row) => ({ id: row.expressionId, name: row.expressionId })),
+              assignments: assigned,
+              framing: { mode: "full" },
+            },
+            files: [],
+            folders: [],
           });
         }
-        if (method !== "GET") assert.fail("Unexpected mutation: " + method + " " + path);
         if (path.endsWith("/personas")) return send({ personas: [{ id: "driver", name: "You", isActive: true }] });
         if (path.endsWith("/personas/driver"))
           return send({ persona: { id: "driver", name: "You", description: "A visitor", identity: "A visitor" } });
         if (path.endsWith("/connections"))
           return send({ systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" });
-        if (path.endsWith("/catalog")) return send({ characters: people });
+        if (path.endsWith("/catalog")) return send({ characters: catalog });
         if (path.endsWith("/lorebooks")) return send({ books: [] });
         if (path.endsWith("/image-style-profiles")) return send({ defaultProfileId: "", profiles: [] });
         return send(snapshot);
@@ -158,89 +144,95 @@ await withBrowser(browser, async () => {
       );
       await page.goto("http://founding-sprites.test/");
       await page.addScriptTag({ content: bundle });
-      const phone = viewport.width <= 727;
       const root = page.locator(".villages-forging-v2"),
-        next = root.getByRole("button", { name: phone ? "Next" : "Let’s set up their homes", exact: true });
-      for (const reply of ["START", "Next", "Set it up myself"])
+        next = root.getByRole("button", { name: "Next", exact: true });
+      for (const reply of ["START", "Next", "Next", "Next", "Next", "Next", "Next", "Next"])
         await root.getByRole("button", { name: reply, exact: true }).click();
+      if (phone)
+        await root
+          .getByRole("dialog", { name: "The wider world", exact: true })
+          .getByRole("button", { name: "Next", exact: true })
+          .click();
+      else await next.click();
+      await next.click();
+      const lore = root.getByRole(phone ? "dialog" : "region", {
+        name: phone ? "Choose Lorebooks" : "Village Lorebooks",
+        exact: true,
+      });
+      await lore.getByRole("button", { name: "Next", exact: true }).click();
+      await next.click();
+      if (phone) {
+        await expect(root.getByRole("dialog", { name: "Your Village", exact: true })).toHaveCount(0);
+        await next.click();
+      }
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
+      await root.getByLabel("What is the village like?", { exact: true }).fill("A village beside the sea.");
+      if (phone)
+        await root
+          .getByRole("dialog", { name: "Your Village", exact: true })
+          .getByRole("button", { name: "Next", exact: true })
+          .click();
+      else await next.click();
+      await next.click();
+      await next.click();
+      if (phone) await root.getByRole("button", { name: "Edit Map", exact: true }).click();
       await root.getByLabel("First map name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      for (const reply of ["Next", "Next", phone ? "Next" : "Let’s meet the villagers"])
-        await root.getByRole("button", { name: reply, exact: true }).click();
+      await next.click();
+      const phase = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
+      await expect(phase).toHaveAttribute("aria-label", "People");
       if (phone) await next.click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
-        await page
-          .getByRole("dialog", { name: "Choose founding villagers", exact: true })
-          .getByRole("button", { name: person.name + " · Add", exact: true })
-          .click();
+        const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
+        const add = picker.getByRole("button", { name: person.name + " · Add", exact: true });
+        if (person.id === "mari") {
+          const results = picker.getByRole("group", { name: "Choose founding villagers", exact: true });
+          await results.hover();
+          await page.mouse.wheel(0, 4000);
+          await expect(add).toBeInViewport();
+          await page.evaluate(() => window.visualViewport.dispatchEvent(new Event("scroll")));
+          await expect(picker.getByRole("searchbox")).toBeInViewport();
+          await expect(picker.getByRole("button", { name: "Confirm", exact: true })).toBeInViewport();
+          await expect(add).toBeInViewport();
+        }
+        await add.click();
+        await expect(picker.locator("footer").getByRole("button")).toHaveCount(1);
+        await picker.getByRole("button", { name: "Confirm", exact: true }).click();
+        await expect(picker).toHaveCount(0);
       }
-      const pane = root.getByRole("region", { name: "Aqua’s appearance", exact: true });
-      await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toHaveAttribute("aria-pressed", "true");
-      await expect(pane.getByRole("button", { name: "Add Front sprites", exact: true })).toHaveCount(0);
-      const portrait = pane.locator(".appearance-portrait img");
-      await expect(portrait).toHaveJSProperty("complete", true);
-      const crop = await portrait.evaluate((image) => {
-        const frame = image.parentElement;
-        const bounds = frame.getBoundingClientRect();
-        return {
-          contained: image.offsetParent === frame && getComputedStyle(frame).overflow === "hidden",
-          square: Math.abs(bounds.width - bounds.height) < 1,
-          enlarged: image.getBoundingClientRect().width > bounds.width,
-          fits: bounds.width > 0 && bounds.width <= 176,
-        };
-      });
-      assert.deepEqual(crop, { contained: true, square: true, enlarged: true, fits: true });
-      assert.equal(
-        await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua),
-        undefined,
-        "Opening an older character setup does not adopt it",
-      );
-      await pane.getByRole("button", { name: "Sprites", exact: true }).click();
-      await expect(pane.getByRole("img", { name: "Old Happy · Front" })).toBeVisible();
-      await pane.getByRole("button", { name: "Add Front sprites", exact: true }).click();
-      const frontPicker = page.getByRole("dialog", { name: "Add Front sprites", exact: true });
-      await frontPicker.getByRole("combobox", { name: "Sprite source" }).selectOption("body");
-      await frontPicker.getByRole("checkbox", { name: "Happy_01", exact: true }).check();
-      await frontPicker.getByRole("checkbox", { name: "Happy_02", exact: true }).check();
-      await frontPicker.getByRole("button", { name: "Add 2 Front sprites", exact: true }).click();
-      await pane.getByRole("button", { name: "Add Side sprites", exact: true }).click();
-      const sidePicker = page.getByRole("dialog", { name: "Add Side sprites", exact: true });
-      await sidePicker.getByRole("combobox", { name: "Sprite source" }).selectOption("profile");
-      await sidePicker.getByRole("checkbox", { name: "Happy_blush", exact: true }).check();
-      await sidePicker.getByRole("button", { name: "Add 1 Side sprite", exact: true }).click();
-      await pane.getByRole("button", { name: "happy", exact: true }).click();
-      await expect(pane.getByRole("heading", { name: "Front · 2" })).toBeVisible();
-      await expect(pane.getByRole("heading", { name: "Side · 1" })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Happy_01 · Front" })).toBeVisible();
-      await expect(pane.getByRole("img", { name: "Happy_blush · Side" })).toBeVisible();
-      await pane
-        .getByRole("region", { name: "Front", exact: true })
-        .getByRole("button", { name: "Set as default" })
-        .click();
-      await expect(next).toBeDisabled();
-      assert.equal(writes.length, 0);
-      await pane.getByRole("button", { name: "Save", exact: true }).click();
-      await expect(pane.getByRole("button", { name: "Retry save", exact: true })).toBeEnabled();
-      await expect(pane.getByRole("button", { name: "Portrait", exact: true })).toBeDisabled();
-      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), undefined);
-      await pane.getByRole("button", { name: "Retry save", exact: true }).click();
+      const row = (name) =>
+        root.locator(".villages-selected-villager").filter({ has: page.getByText(name, { exact: true }) });
+      await expect(row("Aqua").getByRole("status")).toHaveText("6 sprites");
+      const missing = row("Professor Mari").getByRole("status");
+      await expect(missing).toContainText("No Sprites Assigned!");
+      await expect(missing).toHaveCSS("color", "rgb(255, 146, 159)");
+      for (const label of ["Portrait", "Sprites", "Assign Side"])
+        await expect(root.getByRole("button", { name: label, exact: true })).toHaveCount(0);
       await expect(next).toBeEnabled();
-      assert.equal(await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua), 2);
-      assert.equal(writes[0].expressions.length, 4);
-      assert.equal(writes[0].expressions[0].front.artworkId, "old");
-      assert.equal(writes[0].expressions[3].side.filename, "happy-side.png");
-      if (viewport.width > 600) {
-        const removeButton = pane.getByRole("button", { name: "Remove Happy_01 from Front" });
-        await removeButton.scrollIntoViewIfNeeded();
-        const remove = await removeButton.boundingBox();
-        const footer = await pane.locator(".appearance-footer").boundingBox();
-        assert.ok(remove && footer && remove.y + remove.height <= footer.y, "Save should leave Remove visible");
-      }
-      await page.screenshot({ path: ".build-tmp/founding-sprites/appearance-" + viewport.width + ".png" });
+      await expect(next).toBeInViewport();
+      assert.ok((await row("Aqua").boundingBox()).height < 100, "People stays compact");
+      assert.ok(
+        (await row("Professor Mari").boundingBox()).height < 100,
+        "Missing-sprite status does not squeeze the name into a column",
+      );
+      const avatar = row("Aqua").locator(".marinara-capability-villages-identity-card-face");
+      await expect.poll(() => portraitLoads.length).toBeGreaterThan(0);
+      assert.ok(portraitLoads.every((url) => url.searchParams.get("w") === "320"));
+      if (phone) {
+        await expect(avatar.locator("img")).toHaveCount(0);
+        await expect(avatar.locator("svg")).toBeVisible();
+      } else await expect(avatar.locator("img")).toHaveAttribute("loading", "lazy");
+      assert.equal(spriteLoads, 0, "Counting sprites does not download full artwork");
+      await page.screenshot({ path: ".build-tmp/founding-sprites/compact-" + viewport.width + ".png" });
+      await next.click();
+      await expect(phase).toHaveAttribute("aria-label", "Maps");
+      await expect(root.getByText(/^A new Village starts/)).toBeVisible();
+      assert.deepEqual([...opened].sort(), ["aqua", "mari"]);
+      assert.equal(writes.length, 0, "Counts never save or require an appearance editor");
+      await root.getByRole("button", { name: "Back", exact: true }).click();
+      await expect(row("Aqua").getByRole("status")).toHaveText("6 sprites");
       await page.close();
     });
   }
 });
-console.log("Founding Appearance selects Engine sprites by facing and adopts only an acknowledged save.");

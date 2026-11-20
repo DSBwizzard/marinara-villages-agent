@@ -40,7 +40,6 @@ export function useFoundingKeyboardOverlay(root: RefObject<HTMLElement | null>, 
         height = window.innerHeight;
         width = window.innerWidth;
         remember(node);
-        node.style.setProperty("--founding-viewport-height", `${height}px`);
         const room = `${node.getBoundingClientRect().height}px`;
         node.style.height = room;
         node.style.maxHeight = room;
