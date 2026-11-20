@@ -1,9 +1,8 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import assert from "node:assert/strict";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import {
   finishConstruction,
@@ -96,7 +95,7 @@ function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
   const parsed = { ...parsePlace(source, false), zones };
   initializeVenueAccess(parsed);
-  return coerceVillageState({ ...defaultVillageState(), venues: [parsed] }).venues[0]!;
+  return coerceVillageState({ ...defaultVillageState(), venues: [...[parsed], ...sharedVenuesFixture()] }).venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
   for (const role of ["residence", "workplace", "community", "other"]) {
@@ -104,7 +103,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
     assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
-    let saved = coerceVillageState({ ...defaultVillageState(), venues: [venue] });
+    let saved = coerceVillageState({ ...defaultVillageState(), venues: [...[venue], ...sharedVenuesFixture()] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
       saved = coerceVillageState(saved);
@@ -190,7 +189,7 @@ initial.maps = [
     revision: 1,
   },
 ];
-initial.venues = [privateOnly, place("exterior", "residence", "b"), vacant];
+initial.venues = [...[privateOnly, place("exterior", "residence", "b"), vacant], ...sharedVenuesFixture()];
 initial.venues[0]!.zones![1]!.description =
   "A secret journal, personal hammock and old furnishings. Fixed hammock hooks remain anchored to the beams.";
 initial.villagers = coerceVillageState({
@@ -234,7 +233,7 @@ assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "
 const legacy = structuredClone(privateOnly);
 delete legacy.layoutVersion;
 assert.throws(
-  () => coerceVillageState({ ...defaultVillageState(), venues: [legacy] }),
+  () => coerceVillageState({ ...defaultVillageState(), venues: [...[legacy], ...sharedVenuesFixture()] }),
   /fresh-format/,
   "Incomplete old layouts are rejected without repair",
 );

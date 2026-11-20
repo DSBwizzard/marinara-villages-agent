@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 // Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/checkpoint-pages, repair/journal-integrity, repair/places
 import assert from "node:assert/strict";
@@ -21,7 +23,6 @@ import {
 import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { nativeHistoryFixture, retainAuthoredNote } from "./helpers/continuity.fixture.js";
@@ -401,7 +402,7 @@ await runCase("repair/checkpoint-retention", async () => {
   await f.repo.mutateAuthority(
     (state) => {
       state.foundedAt = state.setupAt;
-      state.venues = [venue()];
+      state.venues = [...[venue()], ...sharedVenuesFixture()];
       const common = state.venues[0].zones!.find((zone) => zone.id === "common")!;
       initializeRoomContinuity(state, "cafe", common.id, common.description, "room-seed", state.setupAt);
     },
@@ -856,7 +857,7 @@ await runCase("repair/domain-editors", async () => {
     });
   oldHome.zones!.find((z) => z.id === "bedroom")!.description = "A red scarf rests here.";
   await f.repo.mutateAuthority((s) => {
-    s.venues = [oldHome, newHome];
+    s.venues = [...[oldHome, newHome], ...sharedVenuesFixture()];
   });
   const home = await f.prepare({
     ...edit(repairId("home", "a"), { destination: repairId("new-home", "bedroom") }, "fix-home"),

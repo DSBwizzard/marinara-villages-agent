@@ -159,7 +159,7 @@ assert.throws(() =>
 assert.throws(() =>
   parseFoundingVenueSuggestions({ venues: [{ ...suggestion, commonPurpose: "" }] }, ["home"], template),
 );
-assert.throws(() =>
+assert.doesNotThrow(() =>
   parseFoundingVenueSuggestions(
     { venues: [{ ...suggestion, layout: "both" }] },
     ["home"],

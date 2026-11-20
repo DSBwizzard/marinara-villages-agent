@@ -1,7 +1,8 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: narration-circumstance/native, narration-circumstance/finite-authority, narration-circumstance/consequence, narration-circumstance/race, narration-circumstance/recovery, narration-circumstance/context, narration-circumstance/strict-boundary, narration-circumstance/request-clock, narration-circumstance/protected-update, narration-circumstance/inherited-knowers, narration-circumstance/sibling-condition, narration-circumstance/corrected-active-condition, narration-circumstance/room-damage, narration-circumstance/room-damage-holds
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { readNarrativeState } from "../packages/villages/src/server/domain/decoding/narrative-codec.js";
 import { ensureNarrative, admitNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
@@ -59,9 +60,14 @@ function fixture(interior = false) {
     );
   synchronizeVenueZones(venue);
   initializeVenueAccess(venue);
-  state.venues = [venue];
+  state.venues = [...[venue], ...sharedVenuesFixture()];
   ensureNarrative(state, at);
-  if (interior && admitNarrative(state, at, "selection")!.targets[0]!.exterior) state.seed += "a";
+  if (
+    interior &&
+    admitNarrative(state, at, "selection", "scene", { venueId: venue.id, zoneId: venue.zones![1]!.id })!.targets[0]!
+      .exterior
+  )
+    state.seed += "a";
   const target = admitNarrative(state, at, "selection")!.targets[0]!;
   if (interior) {
     assert(!target.exterior);
@@ -585,7 +591,8 @@ await runCase("narration-circumstance/protected-update", () => {
       "resident",
     );
     const nextAt = new Date(Date.parse(at) + day * 86400000).toISOString(),
-      selected = admitNarrative(f.state, nextAt, "selection")!.targets[0]!;
+      selected = admitNarrative(f.state, nextAt, "selection", "scene", { venueId: f.venue.id, zoneId: f.scene.zoneId })!
+        .targets[0]!;
     assert.equal(selected.zoneId, f.scene.zoneId);
     const scene = zoneEventScene(
       coerceSession({ ...structuredClone(f.scene), id: "update-scene", startedAt: nextAt, lastActivityAt: nextAt }),

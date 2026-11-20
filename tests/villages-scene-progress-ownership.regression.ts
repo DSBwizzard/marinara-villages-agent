@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/accepted-notices, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -6,7 +8,6 @@ import {
   activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
@@ -395,7 +396,7 @@ await runCase("scene-narration/native-circumstance", async () => {
       turn = f.turn(),
       venue = structuredClone(turn.narration!.readset.source.venue);
     for (const zone of venue.zones ?? []) if (zone.id !== scene.zoneId) zone.description = "";
-    f.world.venues = [venue];
+    f.world.venues = [venue, ...sharedVenuesFixture()];
     ensureNarrative(f.world, at);
     scene.continuity = captureSceneContinuity(f.world, scene, Date.parse(at));
     const context = narrationContinuityContext(

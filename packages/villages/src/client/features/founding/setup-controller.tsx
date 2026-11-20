@@ -186,7 +186,7 @@ export function createFoundingSuggestSetupVenues(ports: {
     const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData.roster ?? [];
     const replacementSource = JSON.stringify(setupVenues);
     const rows = options.separateHomes
-      ? separateFoundingTemplates(roster, ports.setupContext?.communityVenueId ?? "founding-community")
+      ? separateFoundingTemplates(roster, ports.setupContext?.openingVenueId ?? "founding-community")
       : replacing
         ? quickStartTemplates(setupVenues)
         : setupVenues;
@@ -232,7 +232,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         targetVenueId: options.venueId,
         villageName: ports.setupName,
         context: ports.setupContext,
-        communityVenueId: ports.setupContext?.communityVenueId,
+        openingVenueId: ports.setupContext?.openingVenueId,
         playerPersonaId: personaDraft,
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,

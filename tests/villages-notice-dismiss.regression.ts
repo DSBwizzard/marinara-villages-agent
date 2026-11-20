@@ -1,9 +1,9 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readNarrationSubmission } from "../packages/villages/src/server/domain/decoding/narration-submission.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 

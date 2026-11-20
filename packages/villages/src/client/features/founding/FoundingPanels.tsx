@@ -34,7 +34,9 @@ export function newSetupVenue(
 ): SetupVenueDraft {
   const name =
     venueClass === "community"
-      ? "Meeting place"
+      ? index === 1
+        ? "Meeting place"
+        : `Shared space ${index}`
       : venueClass !== "residence"
         ? "New Venue"
         : playerHome

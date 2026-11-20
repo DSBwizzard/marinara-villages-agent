@@ -1,10 +1,9 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: resident-planning/one-gm, resident-planning/housing, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/catchup-relationship, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   readEffectiveVillagerCard,
   readVillagerCard,
@@ -67,7 +66,7 @@ function fixture(now = new Date()) {
     timeZone: "UTC",
     backgroundPace: "lively",
   });
-  state.venues = [venueFixture({ id: "square", name: "Square", category: "public" })];
+  state.venues = [...[venueFixture({ id: "square", name: "Square", category: "public" })], ...sharedVenuesFixture()];
   const zone = state.venues[0].zones!.find((row) => row.kind !== "exterior")!.id,
     room = { kind: "room" as const, placeId: "square", zoneId: zone };
   state.villagers = ["mara", "leo"].map((id) => ({

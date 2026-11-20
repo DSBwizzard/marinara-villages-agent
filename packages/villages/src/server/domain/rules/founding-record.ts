@@ -13,7 +13,7 @@ import { validVenueClasses } from "./venue-model.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import { communityVenueEligible } from "./community-venue.js";
+import { assertSharedPlayspace, sharedPlayspace } from "./shared-playspace.js";
 import { captureZoneObservation } from "./zone-observation.js";
 
 export function foundingImage(value: unknown): VillageVenueImage | null {
@@ -149,18 +149,17 @@ export function parsePlaces(
   value: unknown,
   residents: ReadonlySet<string>,
   founding: true,
-  communityVenueId: string,
+  openingVenueId: string,
   at = new Date(),
 ): VillageVenue[] {
   if (!founding) throw badRequest("Establish starting Venues through Founding.");
-  if (!Array.isArray(value) || value.length > 5)
-    throw badRequest("Founding supports at most four Residences and one Community Venue.");
+  if (!Array.isArray(value) || value.length > 16) throw badRequest("Founding supports at most sixteen Venues.");
   const venues = value.map(parsePlace),
     assigned = new Set<string>(),
     seen = new Set<string>(),
     names = new Set<string>();
   let playerHomes = 0;
-  const shapeProblem = foundingVenueShapeProblem(venues, communityVenueId);
+  const shapeProblem = foundingVenueShapeProblem(venues, openingVenueId);
   if (shapeProblem) throw badRequest(shapeProblem);
   for (const venue of venues) {
     if (seen.has(venue.id) || names.has(venue.name.toLowerCase()))
@@ -190,45 +189,16 @@ export function parsePlaces(
         throw badRequest("Every household member needs an accessible sleeping destination and a route from Entrance.");
     }
   }
-  const community = venues.find((venue) => venue.id === communityVenueId);
-  if (
-    !community ||
-    community.classes!.includes("residence") ||
-    community.residentIds!.length ||
-    community.occupancy.playerHome ||
-    community.workerIds!.length
-  )
-    throw badRequest("Choose a separate, non-residential Community Venue without residents or workers.");
-  if (asRecord(value.find((row) => row.id === community.id)).access === undefined) community.access!.managerIds = [];
-  if (
-    community.access!.managerIds.length ||
-    community.access!.visitorHours !== null ||
-    community.access!.bans.some((ban) => ban.active) ||
-    community.zones!.some(
-      (zone) =>
-        zone.ownerId || zone.controllerIds?.length || zone.access?.managerIds?.length || zone.access?.inviterIds.length,
-    )
-  )
-    throw badRequest("The starting Community Venue must be unowned and always open.");
-  const common = community.zones!.find(
-    (zone) =>
-      zone.kind === "public" &&
-      zone.description.trim() &&
-      !zone.ownerId &&
-      !zone.controllerIds?.length &&
-      zone.access?.mode === "public" &&
-      !zone.access.accompanied &&
-      !Array.isArray(zone.access.visitorHours) &&
-      !zone.access.managerIds?.length &&
-      ["player", ...assigned].every((actor) =>
-        accessibleVenueRoute({ projects: [] }, community, actor, zone.id, at, true),
-      ),
-  );
-  if (!common) throw badRequest("The starting Community Venue needs an Entrance and a usable public common Zone.");
-  if (!communityVenueEligible(community))
-    throw badRequest(
-      "Every Community Venue Zone must be public, unowned and open without accompaniment or opening hours.",
-    );
+  const sharedWorld = {
+    venues,
+    villagers: [...assigned].map((characterId) => ({
+      characterId,
+    })) as import("../models/world.js").VillageState["villagers"],
+    projects: [],
+  };
+  assertSharedPlayspace(sharedWorld, at);
+  if (!sharedPlayspace(sharedWorld, at).venues.some((venue) => venue.venueId === openingVenueId))
+    throw badRequest("Choose an accessible public Venue for the opening gathering.");
   return venues;
 }
 

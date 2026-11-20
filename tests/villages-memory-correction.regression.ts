@@ -1,3 +1,4 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: memory-correction/scope, memory-correction/guards, memory-correction/concurrency, memory-correction/runtime
 import assert from "node:assert/strict";
 import Fastify from "fastify";
@@ -5,10 +6,7 @@ import { runCase } from "../scripts/test-cases.mjs";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { continuityHolderKey } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";

@@ -26,7 +26,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       setting?: unknown;
       worldRules?: unknown;
       worldName?: unknown;
-      communityVenueId?: unknown;
+      openingVenueId?: unknown;
       playerBackground?: unknown;
       circumstances?: unknown;
       selectedLorebookIds?: unknown;
@@ -55,7 +55,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
         setting: body.setting,
         worldRules: body.worldRules,
         worldName: body.worldName,
-        communityVenueId: body.communityVenueId,
+        openingVenueId: body.openingVenueId,
         playerBackground: body.playerBackground,
         circumstances: body.circumstances,
         selectedLorebookIds: body.selectedLorebookIds,

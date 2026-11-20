@@ -1,9 +1,10 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { mutableSceneSubmission } from "../packages/villages/src/server/domain/rules/scene-submissions.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { operationEvidenceStore } from "../packages/villages/src/server/adapters/storage/operation-evidence.js";
@@ -56,7 +57,7 @@ function turn(index: number): VenueSubmission {
 async function populate(fixture: ReturnType<typeof f>, count: number) {
   const world = { ...defaultVillageState(), seed, setupAt: at, foundedAt: at };
   const venue = venueFixture({ id: "hall", name: "Hall" });
-  world.venues = [venue];
+  world.venues = [...[venue], ...sharedVenuesFixture()];
   await createVillageRepository(() => fixture.gate.documents).mutateAuthority(
     (state) => {
       Object.assign(state, world);

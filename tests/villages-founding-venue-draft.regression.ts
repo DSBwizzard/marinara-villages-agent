@@ -74,7 +74,7 @@ const raw = {
   ],
 };
 assert.deepEqual(readFoundingZoneIds(["new-kitchen"], source), ["new-kitchen"]);
-const plan = parseFoundingVenueDraft({ venues: [raw] }, source, ["new-kitchen"], false, now);
+const plan = parseFoundingVenueDraft({ venues: [raw] }, source, ["new-kitchen"], now);
 const drafted = applyFoundingVenueDraft(home, plan);
 assert.deepEqual(home, original);
 assert.equal(drafted.dayNight, true);
@@ -96,7 +96,7 @@ const same = applyFoundingVenueDraft(drafted, {
 assert.equal(same.dayNight, drafted.dayNight, "unchanged Entrance prose keeps its existing automatic choice");
 assert.equal(same.spaces![0].dayNight, drafted.spaces![0].dayNight, "unchanged Zone prose keeps its automatic choice");
 assert.throws(
-  () => parseFoundingVenueDraft({ venues: [{ ...raw, dayNight: "yes" }] }, source, ["new-kitchen"], false, now),
+  () => parseFoundingVenueDraft({ venues: [{ ...raw, dayNight: "yes" }] }, source, ["new-kitchen"], now),
   /daylight decision/,
 );
 
@@ -111,8 +111,7 @@ assert.equal(drafted.spaces!.at(-1)!.name, "Kitchen");
 const disconnected = structuredClone(home);
 [...disconnected.spaces!, ...disconnected.privateSpaces!].forEach((zone) => (zone.connectedTo = []));
 assert.doesNotThrow(
-  () =>
-    parseFoundingVenueDraft({ venues: [raw] }, readFoundingVenueDraftSource(disconnected), ["new-kitchen"], false, now),
+  () => parseFoundingVenueDraft({ venues: [raw] }, readFoundingVenueDraftSource(disconnected), ["new-kitchen"], now),
   "Drafting repairs a disconnected source",
 );
 const mixed = { ...home, classes: ["workplace", "residence"] as ("workplace" | "residence")[] };
@@ -130,7 +129,6 @@ const mixedPlan = parseFoundingVenueDraft(
   { venues: [mixedReply] },
   readFoundingVenueDraftSource(mixed),
   ["new-kitchen", "new-bedroom"],
-  false,
   now,
 );
 assert.equal(
@@ -145,7 +143,7 @@ assert.deepEqual(
 const bad = (change: (row: typeof raw) => void, pattern: RegExp) => {
   const row = structuredClone(raw);
   change(row);
-  assert.throws(() => parseFoundingVenueDraft({ venues: [row] }, source, ["new-kitchen"], false, now), pattern);
+  assert.throws(() => parseFoundingVenueDraft({ venues: [row] }, source, ["new-kitchen"], now), pattern);
 };
 bad((row) => {
   row.zones.pop();
@@ -195,7 +193,7 @@ const input = {
   targetVenue: foundingVenueDraftSource(home),
   newZoneIds: ["new-kitchen"],
   setting: "A coastal community",
-  communityVenueId: "community",
+  openingVenueId: "community",
   context: { rules: "", circumstances: [] },
   venues: [
     {

@@ -1,7 +1,8 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { createNarrative } from "../packages/villages/src/server/features/narrative/narrative-service.js";
@@ -28,7 +29,7 @@ const venue = venueDraft(
   null,
 );
 synchronizeVenueZones(venue);
-state.venues = [venue];
+state.venues = [...[venue], ...sharedVenuesFixture()];
 ensureNarrative(state, now.toISOString());
 function addCircumstance(id: string) {
   state.narrative!.situations.push({
