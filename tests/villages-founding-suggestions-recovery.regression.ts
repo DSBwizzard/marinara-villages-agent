@@ -158,6 +158,16 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
   assert.equal(authoredDraft.setting?.worldName, authoredSetting.worldName);
   assert.equal(authoredDraft.setting?.rules, authoredSetting.worldRules);
   assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredSetting, village: brief });
+  const sparseBrief = "Besmoa has a Wendy’s.";
+  await writer.suggestStartingVenues({ ...draftInput, villageName: "Besmoa", brief: sparseBrief });
+  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", villageName: "Besmoa", village: sparseBrief });
+  assert.match(prompt[0]!.content, /"description" \(a short in-world paragraph about that place/u);
+  assert.match(prompt[0]!.content, /Describe the place itself, never a map, its coverage/u);
+  assert.match(
+    prompt[0]!.content,
+    /With sparse input, add a few plausible local details consistent with the supplied facts/u,
+  );
+  assert.doesNotMatch(prompt[0]!.content, /the area the map will cover|first map covers|first map area/u);
 }
 {
   const app = Fastify();
