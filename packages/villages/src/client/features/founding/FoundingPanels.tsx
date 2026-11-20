@@ -361,11 +361,8 @@ export function FoundingVillagerPicker({
             {!choices.length ? <p>No character cards match your search.</p> : null}
           </div>
           <footer>
-            <button type="button" onClick={() => setOpen(false)}>
-              Back
-            </button>
             <button type="button" className="villages-forging-primary" onClick={() => setOpen(false)}>
-              Next
+              Confirm
             </button>
           </footer>
         </FoundingDialog>

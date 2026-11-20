@@ -406,13 +406,19 @@ export function FoundingSettingScene({
                   Edit Map
                 </button>
               ) : null}
+              {!phone ? next : null}
+              {dismiss}
               {brief.trim() || waitingForMari ? (
-                <button type="button" ref={draftButton} disabled={!canDraft} onClick={submitBrief}>
+                <button
+                  type="button"
+                  className="villages-founding-draft-map"
+                  ref={draftButton}
+                  disabled={!canDraft}
+                  onClick={submitBrief}
+                >
                   {draftLabel}
                 </button>
               ) : null}
-              {dismiss}
-              {!phone ? next : null}
             </div>
           </>
         )}

@@ -1002,6 +1002,15 @@ export async function verifyFoundingLayout(group) {
           "Maximum lorebook information added to each model request.",
         );
         const loreFooter = picker.locator(".villages-lorebook-footer");
+        if (!phone) {
+          const actions = await loreFooter.locator(".villages-lorebook-actions").boundingBox();
+          const pages = await picker.getByRole("navigation", { name: "Lorebooks pages" }).boundingBox();
+          const selected = await loreFooter.locator(":scope > span").boundingBox();
+          assert.ok(
+            actions.x + actions.width <= pages.x && pages.x + pages.width <= selected.x,
+            "Lorebook Back/Next sit left of pagination and the selected count",
+          );
+        }
         const loreElements = [
           phone ? picker : scene.locator(".villages-setting-dialogue"),
           loreResults,
@@ -1221,6 +1230,21 @@ export async function verifyFoundingLayout(group) {
         await nextLine();
         await expect(line).toHaveText(/^Where should your first Map take us/);
         const mapMessage = await line.textContent();
+        const draftMapButton = button("Draft Map with Mari");
+        const draftMapBounds = await draftMapButton.boundingBox();
+        const mapReplies = await draftMapButton.locator("..").boundingBox();
+        assert.ok(
+          Math.abs(draftMapBounds.x + draftMapBounds.width - mapReplies.x - mapReplies.width) < 1,
+          "Draft Map with Mari sits at the right edge of its action row",
+        );
+        if (!phone) {
+          const backBounds = await button("Back").boundingBox();
+          const nextBounds = await button("Next").boundingBox();
+          assert.ok(
+            backBounds.x + backBounds.width <= nextBounds.x && nextBounds.x + nextBounds.width <= draftMapBounds.x,
+            "Map Back/Next stay together on the left",
+          );
+        }
         await expect(currentStar).toHaveAttribute("aria-label", "Setting");
         assert.equal(settingCalls, 0, "The opening beats do not call a model");
         await expect(villageBrief).toHaveCount(0);
@@ -1393,7 +1417,12 @@ export async function verifyFoundingLayout(group) {
           await button("+ Add villager").click();
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
           await picker.getByRole("button", { name: person.name + " · Add", exact: true }).click();
-          await picker.getByRole("button", { name: "Next", exact: true }).click();
+          await expect(picker.locator("footer").getByRole("button")).toHaveCount(1);
+          if (process.env.VILLAGES_SCREENSHOT_DIR && person.id === characters[0].id)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `villager-confirm-${view.width}-${view.height}.png`),
+            });
+          await picker.getByRole("button", { name: "Confirm", exact: true }).click();
         }
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();

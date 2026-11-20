@@ -193,11 +193,13 @@ await withBrowser(browser, async () => {
           await expect(add).toBeInViewport();
           await page.evaluate(() => window.visualViewport.dispatchEvent(new Event("scroll")));
           await expect(picker.getByRole("searchbox")).toBeInViewport();
-          await expect(picker.getByRole("button", { name: "Next", exact: true })).toBeInViewport();
+          await expect(picker.getByRole("button", { name: "Confirm", exact: true })).toBeInViewport();
           await expect(add).toBeInViewport();
         }
         await add.click();
-        await picker.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(picker.locator("footer").getByRole("button")).toHaveCount(1);
+        await picker.getByRole("button", { name: "Confirm", exact: true }).click();
+        await expect(picker).toHaveCount(0);
       }
       const row = (name) =>
         root.locator(".villages-selected-villager").filter({ has: page.getByText(name, { exact: true }) });
