@@ -15,7 +15,7 @@ export function registerPlaceRoutes(app: FastifyInstance) {
         .object({
           mapId: z.string().min(1).max(200),
           worldScope: z.string().min(1).max(100),
-          requestId: z.string().uuid(),
+          requestId: z.string().regex(/^[a-zA-Z0-9-]{1,100}$/),
         })
         .strict()
         .safeParse(request.body);

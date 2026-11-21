@@ -196,6 +196,20 @@ async function currentSceneAndWritingHttp() {
       const scene = await app.inject({ method: "GET", url: "/rooms/active" });
       assert.equal(scene.statusCode, 200);
       assert.equal(scene.json().session, null, "the current Scene route remains available in a fresh world");
+      for (const [requestId, expected] of [
+        ["m1-fallback", 409],
+        ["", 400],
+        ["has spaces", 400],
+        ["a".repeat(101), 400],
+      ] as const) {
+        const npc = await app.inject({
+          method: "POST",
+          url: "/npcs/prepare",
+          payload: { mapId: "map", worldScope: "different-world", requestId },
+        });
+        assert.equal(npc.statusCode, expected, "LAN fallback IDs reach the world-scope guard; malformed IDs never do");
+        if (expected === 409) assert.match(npc.body, /The Village changed/);
+      }
       if (!reload) {
         const initial = await app.inject({ method: "GET", url: "/narration" });
         assert.equal(initial.statusCode, 200);
