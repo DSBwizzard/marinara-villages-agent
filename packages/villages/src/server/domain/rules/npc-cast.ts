@@ -2,7 +2,6 @@ import type { VillageState } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { cardCharacters } from "./visitors.js";
 import { findLocation } from "./places.js";
-import type { VillageNpcView } from "../../../shared/contracts/village.js";
 import { namedNpcIds, npcIndex, npcNameKeys, npcNameKey, selectNpcCandidates } from "./npc-index.js";
 import { readPlayerIdentity } from "./village-projections.js";
 
@@ -60,28 +59,4 @@ export function worldCharacterReferences(
       })),
     ...npcs.map((npc) => ({ id: npc.id, name: npc.name, kind: "npc" })),
   ];
-}
-
-export function publicNpcDirectory(state: VillageState): VillageNpcView[] {
-  return Object.values(state.worldPlaces.npcs)
-    .filter((npc) => !npc.disabled && npc.listed === true)
-    .map((npc) => {
-      const met = state.episodes.records.some(
-        (episode) =>
-          episode.actors.some((actor) => actor.id === "player") &&
-          episode.commandReceipts.some(
-            (receipt) =>
-              receipt.kind === "npc" && receipt.targetId === npc.id && receipt.observedBy?.includes("player"),
-          ),
-      );
-      const mapId = npc.mapId ?? "";
-      return {
-        characterId: npc.id,
-        name: npc.label || "Stranger",
-        mapId,
-        mapName: state.maps.find((map) => map.id === mapId)?.name ?? "",
-        met,
-        appearance: met ? (npc.appearance ?? "") : "",
-      };
-    });
 }

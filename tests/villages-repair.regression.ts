@@ -1672,7 +1672,7 @@ await runCase("repair/places", async () => {
 
 await runCase("repair/npcs", async () => {
   const { readNpc } = await import("../packages/villages/src/server/domain/rules/places.js");
-  const { publicNpcDirectory } = await import("../packages/villages/src/server/domain/rules/npc-cast.js");
+  const { npcEncounterIndex } = await import("../packages/villages/src/server/domain/rules/npc-encounters.js");
   const { namedNpcIds } = await import("../packages/villages/src/server/domain/rules/npc-index.js");
   const f = await fixture();
   const id = "npc:incidental";
@@ -1712,11 +1712,11 @@ await runCase("repair/npcs", async () => {
     { memories: true },
   );
   const original = await f.read();
-  assert.equal(publicNpcDirectory(original).length, 0);
+  assert.equal(npcEncounterIndex(original).size, 0);
   assert(namedNpcIds(original.worldPlaces, "Tomas Reed").has(id));
   assert((await f.api.index()).people.some((person) => person.id === id));
   const npcRecord = await f.api.inspect(repairId("npc", id));
-  assert(npcRecord.fields.some((field) => field.key === "listed"));
+  assert(!npcRecord.fields.some((field) => field.key === "listed"), "meeting history is automatic");
   const review = await f.prepare(
     edit(
       npcRecord.id,
@@ -1724,7 +1724,6 @@ await runCase("repair/npcs", async () => {
         name: "Vesper Cedar",
         label: "Vesper",
         appearance: "Green silk coat and round glasses.",
-        listed: true,
         mapId: "map",
         newPlace: "garage",
         newRole: "Mechanic",
@@ -1736,7 +1735,7 @@ await runCase("repair/npcs", async () => {
   const changed = await f.read();
   assert.equal(changed.worldPlaces.npcs[id].appearance, "Green silk coat and round glasses.");
   assert.deepEqual(changed.worldPlaces.npcs[id].associations, [{ placeId: "garage", role: "Mechanic" }]);
-  assert.equal(publicNpcDirectory(changed)[0].characterId, id);
+  assert.equal(npcEncounterIndex(changed).size, 0, "identity repairs do not fabricate meetings");
   assert(!namedNpcIds(changed.worldPlaces, "Tomas Reed").has(id));
   assert(namedNpcIds(changed.worldPlaces, "Vesper Cedar").has(id));
   assert.deepEqual(changed.continuity, original.continuity, "identity correction does not rewrite witnessed memories");

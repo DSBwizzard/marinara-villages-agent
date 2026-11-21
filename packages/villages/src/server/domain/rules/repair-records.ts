@@ -231,7 +231,6 @@ export function worldRepairRecords(
           { value: "", label: "Unassigned" },
           ...state.maps.map((map) => ({ value: map.id, label: map.name })),
         ]),
-        { key: "listed", label: "Show in People", type: "boolean", value: npc.listed === true },
         text("facts", "Established facts (one per line)", npc.facts.join("\n")),
         text("availability", "Availability", npc.availability),
         ...npc.associations.flatMap((row, index) => [
@@ -694,7 +693,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         characterization: str("characterization"),
         appearance: str("appearance"),
         mapId: str("mapId") || undefined,
-        listed: values.listed === true,
         associations,
         facts: str("facts")
           .split("\n")

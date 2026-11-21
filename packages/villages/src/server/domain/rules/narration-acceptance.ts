@@ -992,6 +992,7 @@ export function acceptNarrationContinuity(
     id: source.episodeId,
     seed: state.seed,
     sceneId: source.scene.id,
+    placeName: source.scene.placeName,
     submissionId,
     operationId: source.episodeId,
     capturedAt: readset.capturedAt,

@@ -152,6 +152,14 @@
       "path": "/artwork/:size/:id/:extension"
     },
     {
+      "method": "get",
+      "path": "/npcs"
+    },
+    {
+      "method": "get",
+      "path": "/npcs/:characterId/encounters"
+    },
+    {
       "method": "put",
       "path": "/visitors/:characterId"
     },

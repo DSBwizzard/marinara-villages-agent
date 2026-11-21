@@ -1,5 +1,4 @@
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
-import { publicNpcDirectory } from "../../domain/rules/npc-cast.js";
 import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
@@ -332,7 +331,6 @@ export function createVillageSnapshot({
       })),
       residences: village.residences,
       villagers,
-      npcs: publicNpcDirectory(village),
       ...(visitors?.length ? { visitors } : {}),
       ...(visit
         ? {

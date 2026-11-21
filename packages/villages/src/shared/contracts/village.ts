@@ -61,11 +61,19 @@ export type VillageVisitorView = VillageVillagerView & {
 export type VillageNpcView = {
   characterId: string;
   name: string;
-  mapId: string;
-  mapName: string;
-  met: boolean;
-  appearance: string;
+  at: string;
+  placeName: string;
+  excerpt: string;
 };
+
+export type NpcEncounter = {
+  id: string;
+  at: string;
+  placeName: string;
+  lines: { speaker: string; text: string }[];
+};
+
+export type NpcPage<T> = { scope: string; revision: string; items: T[]; nextCursor: string | null };
 
 export type ResidentSprite = {
   assetId: string;
@@ -192,7 +200,6 @@ export type VillageSnapshot = {
   }[];
   villagers: VillageVillagerView[];
   visitors?: VillageVisitorView[];
-  npcs?: VillageNpcView[];
   visitorNotice?: { venueId: string; venueName: string; name?: string };
   /**
    * Whether the village has been founded yet. Not part of the settings: it is a

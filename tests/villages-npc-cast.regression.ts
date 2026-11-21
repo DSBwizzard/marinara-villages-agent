@@ -4,7 +4,6 @@ import { runCase } from "../scripts/test-cases.mjs";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
 import {
   assertDistinctNpcName,
-  publicNpcDirectory,
   worldCharacterReferences,
 } from "../packages/villages/src/server/domain/rules/npc-cast.js";
 import {
@@ -16,6 +15,7 @@ import { establishPlace } from "../packages/villages/src/server/domain/rules/pla
 import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { namedNpcIds, npcIndex } from "../packages/villages/src/server/domain/rules/npc-index.js";
 import { immutableMemoryValue } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { npcEncounterIndex } from "../packages/villages/src/server/domain/rules/npc-encounters.js";
 const at = "2026-11-21T12:00:00.000Z";
 const names = ["Rasha Dunmore", "Bex Alder", "Corin Vale", "Dima Reed", "Elio Moss", "Zora Finch"];
 function fixture() {
@@ -46,9 +46,8 @@ function populateFixture(f: ReturnType<typeof fixture>) {
 await runCase("npc-cast/privacy", () => {
   const f = fixture();
   populateFixture(f);
-  const people = publicNpcDirectory(f.state);
-  assert.equal(people.length, 6);
-  assert(people.every((person) => !person.met && !person.appearance));
+  const people = [...npcEncounterIndex(f.state).values()];
+  assert.equal(people.length, 0, "authored/legacy listed NPCs are not people the Player has met");
   assert(!JSON.stringify(people).includes("PRIVATE_CAST_PERSONALITY"));
   assert(!JSON.stringify(people).includes(names[0]));
 });
@@ -151,7 +150,7 @@ await runCase("npc-cast/bounded-retrieval", () => {
   });
   assert(references.filter((row) => row.kind === "npc").length <= 8);
   assert(!JSON.stringify(references).includes("PRIVATE_EXTRA_"));
-  assert.equal(publicNpcDirectory(f.state).length, 6, "encounter history does not expand People");
+  assert.equal(npcEncounterIndex(f.state).size, 0, "private registry growth does not add encounters");
 });
 await runCase("npc-cast/linked-references", () => {
   const f = fixture();

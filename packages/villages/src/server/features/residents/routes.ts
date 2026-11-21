@@ -22,6 +22,7 @@ import { agendaWeek } from "../../domain/rules/agenda-overview.js";
 import { readKeepsakes } from "../../domain/rules/mailbox-view.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { keepsakeArt } from "./keepsake-art.js";
+import { readNpcPeople } from "../../domain/rules/npc-encounters.js";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
   const scopeQuery = z.object({ scope: z.string().regex(/^[a-f0-9]{64}$/) });
@@ -173,6 +174,32 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
 export function registerResidentRoutes(engine: FastifyInstance) {
   const app = engine;
   const scopeId = z.string().regex(/^[a-f0-9]{64}$/);
+  const npcQuery = z
+    .object({
+      scope: scopeId,
+      query: z.string().max(200).optional(),
+      cursor: z
+        .string()
+        .regex(/^[a-f0-9]{64}:\d{1,12}$/)
+        .optional(),
+    })
+    .strict();
+  app.get("/npcs", async (request, reply) => {
+    try {
+      return readNpcPeople(await readVillageState({ memories: true }), npcQuery.parse(request.query));
+    } catch (error) {
+      return fail(reply, error, "reading people met");
+    }
+  });
+  app.get<{ Params: { characterId: string } }>("/npcs/:characterId/encounters", async (request, reply) => {
+    try {
+      const query = npcQuery.parse(request.query);
+      const characterId = z.string().min(1).max(160).parse(request.params.characterId);
+      return readNpcPeople(await readVillageState({ memories: true }), { ...query, characterId });
+    } catch (error) {
+      return fail(reply, error, "reading encounters");
+    }
+  });
   app.put<{ Params: CharacterParams }>("/visitors/:characterId", async (request, reply) => {
     try {
       const { scope, enabled } = z.object({ scope: scopeId, enabled: z.boolean() }).strict().parse(request.body);

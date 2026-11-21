@@ -15,7 +15,6 @@ import { VillagerWishJournal } from "./villages-wish-journal.js";
 import { VisitorProfileControls } from "./VisitorControls.js";
 import { visitorFirstMetLabel, visitorVisitLabel } from "./calculations.js";
 import { VillageIcon } from "../../shared/VillageIcon.js";
-import { NpcProfile } from "./NpcProfile.js";
 
 export function ResidentsScreen({
   controller,
@@ -73,8 +72,7 @@ export function ResidentsScreen({
   // RENDERED. It is the same promise the places list already makes about pictures:
   // nothing in this village happens because the player looked at it.
   if (screen === "person" && personProfile) {
-    const npc = snapshot?.npcs?.find((entry) => entry.characterId === personProfile.actorId);
-    if (npc) return <NpcProfile key={npc.characterId} npc={npc} controller={controller} onDirectory={onDirectory} />;
+    if (personProfile.actorId.startsWith("npc:")) return null;
     const visitor = snapshot?.visitors?.find((entry) => entry.characterId === personProfile.actorId);
     const person = visitor ?? snapshot?.villagers.find((entry) => entry.characterId === personProfile.actorId);
     const selectedAgendas = (agendas ?? []).filter((entry) => entry.characterId === personProfile.actorId);

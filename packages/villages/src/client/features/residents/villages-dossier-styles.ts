@@ -7,6 +7,17 @@ export const DOSSIER_STYLES = `
 .${P}-people-session{height:100%;min-height:0}.${P}-people-session[hidden]{display:none}
 .${P}-people-layout{height:100%;min-height:0;min-width:0;width:100%;margin:0;display:grid;grid-template-columns:clamp(280px,27%,420px) minmax(0,1fr);gap:36px}
 .${P}-people-index{height:100%;min-height:0;min-width:0}
+.${P}-people-layout:has(.${P}-npc-encounters){grid-template-columns:minmax(0,760px)}
+.${P}-npc-encounters{min-width:0}
+.${P}-directory-reading:has(>.${P}-npc-encounters){overflow-y:auto;scrollbar-width:thin}
+.${P}-npc-row{border-bottom:1px solid var(--dossier-line);padding:8px 0}
+.${P}-directory-root .${P}-npc-row>button{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;background:transparent;border:0;padding:12px 4px}
+.${P}-npc-row small{font-size:16px;opacity:.8}
+.${P}-npc-row>button>span{font-size:18px;line-height:1.4}
+.${P}-npc-history{border-left:2px solid var(--dossier-line);padding:0 12px;margin:0 4px 16px;font-size:18px}
+.${P}-npc-history article+article{border-top:1px solid var(--dossier-line)}
+.${P}-npc-history h3{font-size:18px;margin:12px 0}
+.${P}-npc-history p{white-space:pre-wrap;margin:8px 0}
 .${P}-dossier-root,.${P}-directory-root{--dossier-ink:var(--menu-dossier-ink,#f0dfbc);--dossier-line:var(--menu-dossier-line,#a39b8460);--notebook-hand:var(--menu-font,Georgia,serif);color:var(--dossier-ink);background:transparent;box-sizing:border-box;height:100%;min-height:0;min-width:0;overflow:visible;position:relative;font:400 20px/1.6 var(--notebook-hand);padding:0;container-type:size}
 .${P}-dossier-root{display:grid;grid-template-columns:minmax(0,1fr) clamp(200px,38%,520px);gap:24px}
 .${P}-dossier-root>.${P}-dossier-desk{height:100%;grid-column:1;grid-row:1;position:static}

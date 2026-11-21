@@ -7,6 +7,7 @@ import { AvatarFace } from "./ResidentPanels.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AddVisitorDialog } from "./VisitorControls.js";
 import { visitorVisitLabel } from "./calculations.js";
+import { NpcEncounters } from "./NpcEncounters.js";
 
 export function RosterScreen({
   controller,
@@ -45,8 +46,8 @@ export function RosterScreen({
   };
   const notice = snapshot?.visitorNotice;
   const visitVenue = notice && snapshot.settings.venues.find((venue) => venue.id === notice.venueId);
-  const people = ((showNpcs ? snapshot?.npcs : showVisitors ? snapshot?.visitors : snapshot?.villagers) ?? []).filter(
-    (person) => person.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+  const people = ((showVisitors ? snapshot?.visitors : snapshot?.villagers) ?? []).filter((person) =>
+    person.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
   );
   const pageCount = Math.max(1, Math.ceil(people.length / 4));
   const currentPage = Math.min(page, pageCount - 1);
@@ -109,7 +110,15 @@ export function RosterScreen({
             </p>
           ) : null}
           <div className={`${ELEMENT_TAG}-directory-reading`}>
-            {people.length ? (
+            {showNpcs ? (
+              <NpcEncounters
+                key={`${snapshot?.worldScope}:${search}`}
+                scope={snapshot?.worldScope ?? ""}
+                search={search}
+                selectedId={selectedId}
+                timeZone={snapshot?.clock?.timeZone}
+              />
+            ) : people.length ? (
               <div className={`${ELEMENT_TAG}-directory-grid`}>
                 {people.slice(currentPage * 4, currentPage * 4 + 4).map((person) => {
                   const visitor = showVisitors
@@ -132,12 +141,6 @@ export function RosterScreen({
                       <span className={`${ELEMENT_TAG}-directory-text`}>
                         <strong>{person.name}</strong>
                         {visitor ? <small>{visitorVisitLabel(visitor, snapshot?.clock?.timeZone)}</small> : null}
-                        {"mapName" in person ? (
-                          <small>
-                            {person.mapName}
-                            {person.met ? "" : " · Not met"}
-                          </small>
-                        ) : null}
                         {"missing" in person && person.missing ? <small>Card missing</small> : null}
                       </span>
                     </button>
@@ -149,20 +152,16 @@ export function RosterScreen({
                 {!snapshot
                   ? "Reading people…"
                   : search.trim()
-                    ? showNpcs
-                      ? "No matching NPCs."
-                      : showVisitors
-                        ? "No matching visitors."
-                        : "No matching villagers."
-                    : showNpcs
-                      ? "No NPCs yet."
-                      : showVisitors
-                        ? "No visitors yet."
-                        : "No villagers yet."}
+                    ? showVisitors
+                      ? "No matching visitors."
+                      : "No matching villagers."
+                    : showVisitors
+                      ? "No visitors yet."
+                      : "No villagers yet."}
               </p>
             )}
           </div>
-          {pageCount > 1 ? (
+          {!showNpcs && pageCount > 1 ? (
             <nav className={`${ELEMENT_TAG}-directory-pagination`} aria-label="People pages">
               <button
                 type="button"
