@@ -8,6 +8,7 @@ import type { VillageNpcView } from "../../../shared/contracts/village.js";
 import { namedNpcIds, npcIndex, npcNameKeys, npcNameKey, selectNpcCandidates } from "./npc-index.js";
 
 export const MAP_NPC_COUNT = 6;
+export const mapNpcOperationId = (seed: string, mapId: string) => "map-npcs-" + memoryHash([seed, mapId]).slice(0, 40);
 
 export function assertDistinctNpcName(state: VillageState, name: string, exceptId?: string) {
   const keys = new Set(npcNameKeys(name));

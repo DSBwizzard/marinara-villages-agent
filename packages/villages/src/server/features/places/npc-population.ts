@@ -3,6 +3,7 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 import {
   establishMapNpcs,
   MAP_NPC_INSTRUCTION,
+  mapNpcOperationId,
   populatedMapIds,
   worldCharacterReferences,
 } from "../../domain/rules/npc-cast.js";
@@ -41,7 +42,7 @@ export function createNpcPopulation(ports: NpcPopulationPorts) {
   async function prepare(mapId: string, retryId?: string) {
     const world = await ports.readVillageState({ memories: true });
     if (!world.setupAt || !populatedMapIds(world).includes(mapId)) return;
-    const id = "map-npcs-" + memoryHash([world.seed, mapId]).slice(0, 40);
+    const id = mapNpcOperationId(world.seed, mapId);
     const prior = world.worldPlaces.operations[id];
     if (prior?.status === "ready" || (prior && !retryId)) return;
     const retryKey = retryId && "npc-retry:" + memoryHash([mapId, retryId]);
