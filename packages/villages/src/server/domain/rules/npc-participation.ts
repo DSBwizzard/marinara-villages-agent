@@ -4,25 +4,20 @@ import type { NpcIdentity } from "../models/places.js";
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { badGateway } from "./errors.js";
-import { readNpc, findNpc } from "./places.js";
+import { findLocation, findNpc, readNpc } from "./places.js";
+import { assertDistinctNpcName } from "./npc-cast.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 
 export type NpcAdmission = { localKey: string; npc: NpcIdentity; segment: number; zoneId: string; source: string };
 export const npcAdmissionFields = {
   localKey: z.string().regex(/^new:[a-z0-9-]{1,60}$/),
   existingId: z.string().min(1).max(160).optional(),
-  name: z.string().min(1).max(100).optional(),
-  label: z.string().max(100).optional(),
-  characterization: z.string().min(1).max(1000).optional(),
+  name: z.string().trim().min(1).max(100).optional(),
+  label: z.string().trim().min(1).max(100).optional(),
+  appearance: z.string().trim().min(1).max(1000).optional(),
+  characterization: z.string().trim().min(1).max(1000).optional(),
 };
-export type NpcAdmissionRequest = {
-  localKey: string;
-  existingId?: string;
-  name?: string;
-  label?: string;
-  characterization?: string;
-};
-
+export type NpcAdmissionRequest = z.infer<z.ZodObject<typeof npcAdmissionFields>>;
 export function witnessedNpcName(source: ContinuityEvidence, actorId: string, name: string): boolean {
   if (!name.trim() || name !== name.trim() || name.length > 100 || /[\r\n]/.test(name)) return false;
   const pattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -61,30 +56,32 @@ export function prepareNpcAdmission(
         captured &&
         captured.id === current.id &&
         memoryHash(captured) === memoryHash(current) &&
-        request.name === undefined &&
-        request.label === undefined &&
-        request.characterization === undefined,
+        !["name", "label", "characterization", "appearance", "playerIntroduction"].some((key) =>
+          Object.hasOwn(request, key),
+        ),
       "existing NPC admission needs its exact fitted identity",
     );
     npc = structuredClone(captured);
   } else {
     memoryRequire(
-      request.name?.trim() && request.characterization?.trim(),
-      "a new supporting person needs their complete identity",
+      request.name && request.label && request.appearance && request.characterization,
+      "an improvised NPC needs a compact complete identity and appearance",
     );
+    assertDistinctNpcName(state, request.name);
+    assertDistinctNpcName(state, request.label);
     const id = "npc:" + memoryHash([state.seed, scene.id, operationId, request.localKey]);
-    memoryRequire(
-      !state.worldPlaces.npcs[id],
-      "the supporting identity is already retained; replay its accepted Episode",
-    );
+    memoryRequire(!state.worldPlaces.npcs[id], "replay the accepted NPC introduction");
     npc = readNpc({
       id,
       revision: 1,
       name: request.name,
-      label: request.label?.trim() || "Stranger",
+      label: request.label,
+      appearance: request.appearance,
       characterization: request.characterization,
+      mapId: findLocation(state, scene.placeId)?.presentation.mapId,
+      listed: false,
       facts: [],
-      associations: [],
+      associations: [{ placeId: scene.placeId, role: "Encountered here" }],
       availability: "",
       disabled: false,
       source: "scene:" + scene.id + ":" + operationId + ":" + request.localKey,
@@ -96,10 +93,6 @@ export function prepareNpcAdmission(
       !scene.sceneAttendance?.occupants.some((person) => person.characterId === npc.id),
     "use movement for a person already captured in the Scene",
   );
-  if (!npc.associations.some((row) => row.placeId === scene.placeId)) {
-    npc.associations = [...npc.associations.slice(-11), { placeId: scene.placeId, role: "Encountered here" }];
-    if (request.existingId) npc.revision++;
-  }
   return { localKey: request.localKey, npc, segment, zoneId, source };
 }
 

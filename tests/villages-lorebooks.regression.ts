@@ -22,7 +22,7 @@ import {
   publicSceneAuthority,
   publicSceneResponse,
 } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import {
   fittedNarrationReadset,

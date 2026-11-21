@@ -35,6 +35,7 @@ const episode = z
     id,
     seed: id,
     sceneId: id.optional(),
+    placeName: z.string().max(200).optional(),
     opportunity: z
       .object({ id, kind: z.enum(["encounter", "routine", "relationship"]), venueId: z.string().max(160), zoneId: id })
       .strict()

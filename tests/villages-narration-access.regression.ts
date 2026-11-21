@@ -6,7 +6,7 @@ import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import {

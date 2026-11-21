@@ -196,6 +196,17 @@ async function currentSceneAndWritingHttp() {
       const scene = await app.inject({ method: "GET", url: "/rooms/active" });
       assert.equal(scene.statusCode, 200);
       assert.equal(scene.json().session, null, "the current Scene route remains available in a fresh world");
+      assert.equal(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/npcs/prepare",
+            payload: { mapId: "map", worldScope: "world", requestId: "retired" },
+          })
+        ).statusCode,
+        404,
+        "Map NPC generation is retired",
+      );
       if (!reload) {
         const initial = await app.inject({ method: "GET", url: "/narration" });
         assert.equal(initial.statusCode, 200);

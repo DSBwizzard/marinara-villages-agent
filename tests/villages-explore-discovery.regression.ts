@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
 import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { admitLocation } from "../packages/villages/src/server/domain/rules/place-admission.js";
 
 const host = await packagedSceneServer({
@@ -55,7 +55,16 @@ host.model.chatComplete = async (messages: any[]) => {
   calls++;
   const packet = JSON.parse(messages[1].content);
   assert.equal(packet.task, "explore");
-  assert.equal(packet.knownPeople.length, 0);
+  assert(packet.knownPeople.some((person: any) => person.kind === "resident"));
+  assert(packet.knownPeople.filter((person: any) => person.kind === "npc").length <= 4);
+  assert(
+    packet.knownPeople.every(
+      (person: any) =>
+        typeof person.id === "string" &&
+        typeof person.name === "string" &&
+        Object.keys(person).sort().join(",") === "id,kind,name",
+    ),
+  );
   assert(
     packet.relatedPlaces.every(
       (place: any) => typeof place.knownToPlayer === "boolean" && !place.zones && !place.access,
@@ -90,7 +99,6 @@ try {
     place: {
       name: "  ATRIUM  ",
       description: "A different claimed layout.",
-      people: [{ ref: "new", name: "New person", characterization: "Should never be created." }],
     },
   });
   await empty("venue-name", { place: { name: "The Mill", description: "A duplicate of the map Venue." } });
@@ -121,7 +129,6 @@ try {
     place: {
       name: "ruined   arch",
       description: "An invented replacement.",
-      people: [{ ref: "new", name: "New person", characterization: "Should never replace the keeper." }],
     },
   });
   const arch = await explore("unknown-name");
@@ -169,6 +176,19 @@ try {
     invalid = await explore("hallucinated-id");
   assert.equal(invalid.json().status, "failed", invalid.body);
   assert.equal(calls, beforeInvalid + 2, "Unsupplied IDs remain invalid under the existing two-attempt budget");
+
+  reply = () => ({
+    place: {
+      name: "Invented keeper's lookout",
+      description: "An unfamiliar lookout.",
+      people: [{ ref: "keeper", name: "Invented keeper", characterization: "A new person." }],
+    },
+  });
+  const beforePerson = calls,
+    invalidPerson = await explore("invented-person");
+  assert.equal(invalidPerson.json().status, "failed", invalidPerson.body);
+  assert.equal(calls, beforePerson + 2);
+  assert.deepEqual(state().worldPlaces.npcs, npcs, "Discovery cannot invent an NPC");
 
   let arrivals = 0;
   const together = Promise.withResolvers<void>();

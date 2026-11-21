@@ -8,6 +8,7 @@ import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { badRequest } from "./errors.js";
 import { readVenueAccess, readZonePolicy } from "./venue-access.js";
 import { validVenueClasses } from "./venue-model.js";
+import { selectNpcCandidates } from "./npc-index.js";
 
 export const NPC_PREFIX = "npc:";
 
@@ -24,6 +25,9 @@ const npcSchema = z
     name: z.string().trim().min(1).max(100),
     label: z.string().max(100),
     characterization: z.string().max(1000),
+    mapId: z.string().max(200).optional(),
+    appearance: z.string().max(1000).optional(),
+    listed: z.boolean().optional(),
     facts: z.array(z.string().max(500)).max(12),
     associations: z.array(z.object({ placeId: z.string().max(200), role: z.string().max(160) })).max(12),
     availability: z.string().max(500),
@@ -37,7 +41,7 @@ const operationSchema = z
     id: z.string().min(1).max(100),
     attempt: z.number().int().positive(),
     fingerprint: z.string().min(1).max(8000),
-    kind: z.enum(["explore", "prepare"]),
+    kind: z.enum(["explore", "prepare", "populate"]),
     placeId: z.string().max(200),
     status: z.enum(["started", "ready", "failed"]),
     input: z
@@ -233,10 +237,26 @@ export function hasAssociatedNpc(state: VillageState, placeId: string): boolean 
 }
 
 export function npcProfile(npc: NpcIdentity): string {
-  return `${npc.name} (${npc.id}, player-facing label: ${npc.label || npc.name}): ${npc.characterization}\nEstablished facts: ${npc.facts.join("; ")}.\nCurrent associations: ${npc.associations.map((row) => `${row.placeId}: ${row.role}`).join("; ")}.\nAvailability: ${npc.availability || "No established restriction"}. This is a supporting character, not a simulated Villager. Association is not attendance or mechanical authority.`;
+  return [
+    `${npc.name} (${npc.id}, display label: ${npc.label || npc.name}): ${npc.characterization}`,
+    npc.appearance ? `Appearance: ${npc.appearance}` : "",
+    npc.facts.length ? `Facts: ${npc.facts.join("; ")}` : "",
+    npc.associations.length
+      ? `Associations: ${npc.associations.map((row) => `${row.placeId}: ${row.role}`).join("; ")}`
+      : "",
+    npc.availability ? `Availability: ${npc.availability}` : "",
+    "Supporting NPC; no simulation or relationship scores. Associations grant neither presence nor authority.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
-export function capturePlaceContext(state: VillageState, placeId: string, actors: readonly string[]): PlaceRegistry {
+export function capturePlaceContext(
+  state: VillageState,
+  placeId: string,
+  actors: readonly string[],
+  query = "",
+): PlaceRegistry {
   const registry = emptyPlaceRegistry(),
     source = placeRegistry(state);
   if (!source) return registry;
@@ -267,15 +287,12 @@ export function capturePlaceContext(state: VillageState, placeId: string, actors
   ]);
   const candidates = [
     ...active,
-    ...Object.values(source.npcs)
-      .filter(
-        (npc) =>
-          !npc.disabled &&
-          !actors.includes(npc.id) &&
-          (authorityIds.has(npc.id) || npc.associations.some((association) => association.placeId === placeId)),
-      )
-      .sort((a, b) => Number(authorityIds.has(b.id)) - Number(authorityIds.has(a.id)))
-      .slice(0, Math.max(0, 8 - active.length)),
+    ...selectNpcCandidates(
+      source,
+      { placeId, mapId: location?.presentation.mapId, query, authorityIds: [...authorityIds] },
+      actors,
+      Math.max(0, 8 - active.length),
+    ),
   ];
   registry.npcs = Object.fromEntries(candidates.map((npc) => [npc.id, structuredClone(npc)]));
   return registry;

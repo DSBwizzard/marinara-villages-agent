@@ -6,6 +6,8 @@ export type AcceptedEpisode = {
   id: string;
   seed: string;
   sceneId?: string;
+  /** Historical public Place label captured with this Scene exchange. */
+  placeName?: string;
   opportunity?: { id: string; kind: "encounter" | "routine" | "relationship"; venueId: string; zoneId: string };
   submissionId: string;
   operationId: string;

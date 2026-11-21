@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  establishPlace,
-  projectPlace,
-  classifyPlace,
-} from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace, projectPlace } from "./helpers/places.fixture.js";
+import { classifyPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+
 import { findLocation, findNpc, readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import {
   encodeContinuityPages,

@@ -1,4 +1,5 @@
-// Test cases: narration-place/discovery, narration-place/existing, narration-place/evidence, narration-place/limits, narration-place/replay, narration-place/complete-witness
+// Test cases: narration-place/discovery, narration-place/npc-association, narration-place/existing, narration-place/evidence, narration-place/limits, narration-place/replay, narration-place/complete-witness
+
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
@@ -11,7 +12,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/narration-context.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
-import { establishPlace, projectPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace, projectPlace } from "./helpers/places.fixture.js";
 import { readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
@@ -138,6 +139,34 @@ await runCase("narration-place/discovery", () => {
     if (field === "zone") location.zones[1].state = { recent: { text: "PRIVATE" } };
     else location[field] = { recent: { text: "PRIVATE" } };
     assert.throws(() => readPlaceRegistry(malformed), /Invalid saved Place/);
+  }
+});
+await runCase("narration-place/npc-association", () => {
+  for (const race of [false, true]) {
+    const f = fixture();
+    establishPlace(
+      f.state,
+      { ...draft, people: [{ ref: "keeper", name: "Rasha", characterization: "An orchard keeper.", role: "Keeper" }] },
+      "known",
+      f.state.maps[0].id,
+      "test",
+      at,
+      true,
+    );
+    const npc = Object.values(f.state.worldPlaces.npcs)[0];
+    npc.mapId = f.state.maps[0].id;
+    const turn = f.prepare({
+      type: "place.discover",
+      place: { ...draft, people: [{ ref: "keeper", existingId: npc.id, role: "Keeper" }] },
+    });
+    assert(turn.readset.npcCandidates.some((row) => row.npc.id === npc.id));
+    if (race) {
+      npc.characterization = "A concurrent edit.";
+      assert.throws(() => turn.accept(), /fitted NPC identity changed/);
+    } else {
+      assert.equal(turn.accept().held, false);
+      assert.equal(f.state.worldPlaces.npcs[npc.id].associations.length, 2);
+    }
   }
 });
 await runCase("narration-place/existing", () => {

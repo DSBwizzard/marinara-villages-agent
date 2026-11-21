@@ -228,14 +228,10 @@ export function narrationContinuityContext(
       state,
       scene.placeId,
       actors.map((actor) => actor.id),
+      input,
     ).npcs,
   )
     .filter((npc) => !actors.some((actor) => actor.id === npc.id))
-    .sort(
-      (a, b) =>
-        Number(input.toLocaleLowerCase("en-US").includes(b.name.toLocaleLowerCase("en-US"))) -
-        Number(input.toLocaleLowerCase("en-US").includes(a.name.toLocaleLowerCase("en-US"))),
-    )
     .slice(0, 4)
     .map((npc) => ({ npc, holder: continuityActor(state, npc.id)! }));
   const holders = [

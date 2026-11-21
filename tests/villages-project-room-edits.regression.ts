@@ -11,7 +11,8 @@ import { projectRoomEntries } from "../packages/villages/src/server/domain/rules
 import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { admitLocation } from "../packages/villages/src/server/domain/rules/place-admission.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
+
 import { projectDesignKey } from "../packages/villages/src/server/domain/rules/project-terms.js";
 import {
   PROJECT_DURATION_MS,

@@ -25,6 +25,8 @@ import {
   projectPlace,
 } from "../../domain/rules/place-discovery.js";
 import { findNamedLocation, locationSummary, placeSummary } from "../../domain/rules/places.js";
+import { worldCharacterReferences } from "../../domain/rules/npc-cast.js";
+
 import type { PlaceDirectory } from "../../../shared/contracts/places.js";
 import type { PlaceOperation } from "../../domain/models/places.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
@@ -219,9 +221,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
             .filter((row) => !row.disabled && row.location.presentation.mapId === input.mapId)
             .slice(-8)
             .map((place) => ({ ...placeSummary(place), knownToPlayer: place.knownBy.includes("player") })),
-          knownPeople: Object.values(world.worldPlaces.npcs)
-            .filter((row) => !row.disabled && row.associations.some((association) => association.placeId === placeId))
-            .slice(0, 4),
+          knownPeople: worldCharacterReferences(world, { placeId, mapId: input.mapId, query: input.intent }),
         }),
       },
     ];

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
 import { fixtureVillageState } from "./helpers/village-storage.fixture.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 

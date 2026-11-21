@@ -8,7 +8,7 @@ import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
 import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { applyAccessCommand, evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
