@@ -464,7 +464,7 @@ await withBrowser(browser, async () => {
       await actions.screenshot({
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-artwork-actions-${width}.png`),
       });
-    await expect(detail.getByText("An open living area.", { exact: true })).toHaveCount(0);
+    await expect(detail.getByText("An open living area.", { exact: true })).toHaveCount(1);
     await viewFullImage.click();
     const viewer = page.getByRole("dialog", { name: "Main Bay", exact: true });
     const fullArtwork = viewer.getByRole("img", { name: `Main Bay at ${place.name}` });
