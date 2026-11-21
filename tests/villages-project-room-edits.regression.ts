@@ -174,6 +174,7 @@ await runCase("project-room-edits/admitted-renovation", async () => {
       {
         name: "Shed",
         description: "A bare approach.",
+        classes: ["community"],
         zones: [{ id: "room", name: "Room", kind: "public", description: "A bare floor." }],
       },
       placeId,
@@ -186,7 +187,7 @@ await runCase("project-room-edits/admitted-renovation", async () => {
     place.location.presentation.y = 0.7;
     seedObservedProjectRoom(state, place.location, "room", "A bare floor.\n\nA lattice window.");
     place.visited = true;
-    admitLocation(state, placeId, ["community"]);
+    admitLocation(state, placeId);
   });
   const venue = f.state().venues.find((row) => row.id === placeId)!;
   const [floor] = projectRoomEntries(f.state(), venue, "room", at)!;

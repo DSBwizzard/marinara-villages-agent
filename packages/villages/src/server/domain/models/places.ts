@@ -22,6 +22,7 @@ export type WorldPlace = {
   knownBy: string[];
   report: boolean;
   prepared: boolean;
+  classified?: boolean;
   visited: boolean;
   disabled: boolean;
 };

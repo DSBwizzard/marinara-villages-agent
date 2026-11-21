@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { establishPlace, projectPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import {
+  establishPlace,
+  projectPlace,
+  classifyPlace,
+} from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { findLocation, findNpc, readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import {
   encodeContinuityPages,
@@ -102,13 +106,14 @@ assert.throws(() =>
 const { admitLocation } = await import("../packages/villages/src/server/domain/rules/place-admission.js");
 const { villageVenueUsage } = await import("../packages/villages/src/server/domain/rules/venue-capacity.js");
 state.setupAt = "2026-11-03T12:00:00.000Z";
-assert.throws(() => admitLocation(state, place.id, ["workplace"]), /Visit/);
+assert.throws(() => admitLocation(state, place.id), /Visit/);
 assert.equal(villageVenueUsage(state).total, 0);
 place.visited = true;
-assert.throws(() => admitLocation(state, place.id, ["community"]), /supported by its Venue Class/);
+assert.throws(() => classifyPlace(state, place, ["community"]), /supported by its Venue Class/);
 const sameZone = place.location.zones![1],
   sameNpc = state.worldPlaces.npcs["npc:place:lantern:jo"];
-admitLocation(state, place.id, ["community", "workplace"]);
+classifyPlace(state, place, ["community", "workplace"]);
+admitLocation(state, place.id);
 assert.equal(place.location.zones!.find((zone) => zone.kind === "staff")!.venueClass, "workplace");
 assert.equal(state.venues[0], place.location);
 assert.equal(state.venues[0].zones![1], sameZone);
@@ -134,7 +139,8 @@ const waiting = establishPlace(
   true,
 );
 waiting.visited = true;
-assert.throws(() => admitLocation(full, waiting.id, ["community"]), /no room/);
+classifyPlace(full, waiting, ["community"]);
+assert.throws(() => admitLocation(full, waiting.id), /no room/);
 assert.equal(full.worldPlaces.places[waiting.id], waiting, "Rejected admission preserves the location");
 const { applyAccessCommand } = await import("../packages/villages/src/server/domain/rules/venue-access.js");
 const { sceneActorIds } = await import("../packages/villages/src/server/domain/rules/places.js");

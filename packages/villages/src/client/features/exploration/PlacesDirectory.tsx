@@ -5,10 +5,9 @@ import type {
   PlaceOperationView,
   PlaceSummary,
 } from "../../../shared/contracts/places.js";
-import type { VillageSnapshot, VillageVenue, VenueClass } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { ClassChoices } from "../projects/ProjectDesign.js";
 import { LocationNavigator } from "./villages-exploration.js";
 
 export function PlacesDirectory({
@@ -35,7 +34,7 @@ export function PlacesDirectory({
   onClose(): void;
   onVisit(place: VillageVenue): void;
   onVenue(place: VillageVenue): void;
-  onAdmit(place: PlaceSummary, classes: VenueClass[]): void;
+  onAdmit(place: PlaceSummary): void;
   venueActions?(place: VillageVenue): { label: string; onSelect: () => void }[];
 }) {
   const [page, setPage] = useState<PlaceDirectory>({ items: [], nextCursor: null });
@@ -45,8 +44,6 @@ export function PlacesDirectory({
   const [error, setError] = useState("");
   const [intent, setIntent] = useState("");
   const [exploring, setExploring] = useState(false);
-  const [admitting, setAdmitting] = useState(false);
-  const [classes, setClasses] = useState<VenueClass[]>(["community"]);
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const read = useRef(0);
@@ -76,7 +73,6 @@ export function PlacesDirectory({
     const ticket = ++read.current;
     setSelectedId(place.id);
     setError("");
-    setAdmitting(false);
     if (place.venue) {
       const venue = snapshot.settings.venues.find((row) => row.id === place.id);
       if (venue) onVenue(venue);
@@ -93,7 +89,6 @@ export function PlacesDirectory({
         return;
       }
       setDetail(row);
-      setClasses(row.location.zones?.some((zone) => zone.kind === "staff") ? ["workplace"] : ["community"]);
     } catch (cause) {
       if (ticket === read.current) setError(messageFrom(cause, "Could not read this Place."));
     }
@@ -128,7 +123,6 @@ export function PlacesDirectory({
           setDetail(row);
           setSelectedId(row.id);
           onSearch(row.name);
-          setAdmitting(false);
         }
       }
     } catch {
@@ -141,28 +135,19 @@ export function PlacesDirectory({
     <section aria-label="Place details">
       <h3>{detail.name}</h3>
       <p>{detail.description}</p>
+      {detail.classified ? (
+        <p>{detail.location.classes.map((value) => value[0].toUpperCase() + value.slice(1)).join(" · ")}</p>
+      ) : null}
       <div className="villages-place-buttons">
         <button disabled={busy || sceneActive} onClick={() => onVisit(detail.location)}>
           Visit
         </button>
-        {detail.visited ? (
-          <button disabled={busy || sceneActive || detail.report} onClick={() => setAdmitting((value) => !value)}>
+        {detail.visited && detail.classified ? (
+          <button disabled={busy || sceneActive || detail.report} onClick={() => onAdmit(detail)}>
             Add as Venue
           </button>
         ) : null}
       </div>
-      {admitting ? (
-        <form
-          autoComplete="off"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onAdmit(detail, classes);
-          }}
-        >
-          <ClassChoices value={classes} onChange={setClasses} />
-          <button disabled={busy || sceneActive}>Choose map position</button>
-        </form>
-      ) : null}
     </section>
   ) : null;
   return (

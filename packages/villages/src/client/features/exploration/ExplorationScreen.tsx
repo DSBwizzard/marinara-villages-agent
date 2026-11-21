@@ -1,5 +1,5 @@
 import { createVillagesClientId } from "../../shared/request-id.js";
-import type { VillageSnapshot, VillageVenue, VenueClass } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { MapStage } from "./MapStage.js";
 import { ExplorationNavigation, MapIcon } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -78,7 +78,7 @@ export function ExplorationScreen({
     else if (choosingMap.current) mapChoice.current?.focus({ preventScroll: true });
     choosingMap.current = showAllMaps;
   }, [showAllMaps]);
-  const [placingPlace, setPlacingPlace] = useState<(PlaceSummary & { classes: VenueClass[] }) | null>(null);
+  const [placingPlace, setPlacingPlace] = useState<PlaceSummary | null>(null);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraft | null>(null);
   const [markerError, setMarkerError] = useState("");
   const [hasSavedMarkers, setHasSavedMarkers] = useState(false);
@@ -408,9 +408,9 @@ export function ExplorationScreen({
                     .find((action) => action.label === "Visit")
                     ?.onSelect();
                 }}
-                onAdmit={(place, classes) => {
+                onAdmit={(place) => {
                   closeExploration();
-                  setPlacingPlace({ ...place, classes });
+                  setPlacingPlace(place);
                   setSelectedMapId(place.mapId);
                   setShowAllMaps(false);
                 }}
@@ -480,7 +480,6 @@ export function ExplorationScreen({
                         method: "POST",
                         body: JSON.stringify({
                           worldScope: snapshot!.worldScope,
-                          classes: place.classes,
                           requestId: createVillagesClientId(),
                           expectedRevision: place.revision,
                           expectedMapRevision: selectedMap?.revision,

@@ -7,6 +7,7 @@ import type { VillageState, VillageVenue } from "../models/world.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { badRequest } from "./errors.js";
 import { readVenueAccess, readZonePolicy } from "./venue-access.js";
+import { validVenueClasses } from "./venue-model.js";
 
 export const NPC_PREFIX = "npc:";
 const npcSchema = z
@@ -56,6 +57,7 @@ const savedPlace = z
     knownBy: z.array(z.string().max(200)),
     report: z.boolean(),
     prepared: z.boolean(),
+    classified: z.boolean().optional(),
     visited: z.boolean(),
     disabled: z.boolean(),
     location: z
@@ -140,6 +142,7 @@ export function readPlaceRegistry(value: unknown): PlaceRegistry {
       const parsed = savedPlace.safeParse(row);
       if (!parsed.success) throw badRequest("Invalid saved Place.");
       const place = parsed.data as WorldPlace;
+      if (place.classified && !validVenueClasses(place.location.classes)) throw badRequest("Invalid Place Classes.");
       place.location.access = readVenueAccess(place.location.access);
       if (!place.location.access) throw badRequest("Saved Place has no access record.");
       for (const zone of place.location.zones ?? []) {

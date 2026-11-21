@@ -25,6 +25,7 @@ function configure(world: VillageState, now: string) {
     {
       name: "Quiet place",
       description: "A small building beside a path.",
+      classes: ["other"],
       controllers: ["player"],
       zones: ["grant", "ban", "refusal"].map((id) => ({
         id,
@@ -193,6 +194,7 @@ await runCase("roster-access/pending-place", async () => {
         place: {
           name: "Quiet place",
           description: "A small building beside a path.",
+          classes: ["other"],
           controllers: ["mara"],
           zones: ["grant", "ban", "refusal"].map((id) => ({
             id,

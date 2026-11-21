@@ -9,7 +9,7 @@ const bundle = await build({
   stdin: {
     loader: "tsx",
     resolveDir: process.cwd(),
-    contents: `import {useState} from "react";import {createRoot} from "react-dom/client";import {PlacesDirectory} from "./packages/villages/src/client/features/exploration/PlacesDirectory.js";import {syncVillagesStyles} from "./packages/villages/src/client/entry/styles.js";syncVillagesStyles();function App(){const [search,onSearch]=useState("");return <PlacesDirectory snapshot={window.snapshot} mapId="map" mobile={innerWidth<600} search={search} onSearch={onSearch} focusSearch={false} sceneActive={false} onClose={()=>window.closed=true} onVisit={place=>window.visited=place.id} onVenue={place=>window.venue=place.id} onAdmit={(place,classes)=>window.admission={id:place.id,classes}}/>}createRoot(document.getElementById("root")).render(<App/>);`,
+    contents: `import {useState} from "react";import {createRoot} from "react-dom/client";import {PlacesDirectory} from "./packages/villages/src/client/features/exploration/PlacesDirectory.js";import {syncVillagesStyles} from "./packages/villages/src/client/entry/styles.js";syncVillagesStyles();function App(){const [search,onSearch]=useState("");return <PlacesDirectory snapshot={window.snapshot} mapId="map" mobile={innerWidth<600} search={search} onSearch={onSearch} focusSearch={false} sceneActive={false} onClose={()=>window.closed=true} onVisit={place=>window.visited=place.id} onVenue={place=>window.venue=place.id} onAdmit={place=>window.admission={id:place.id}}/>}createRoot(document.getElementById("root")).render(<App/>);`,
   },
   bundle: true,
   write: false,
@@ -85,10 +85,12 @@ await withBrowser(browser, async () => {
       await expect.poll(() => page.evaluate(() => window.visited)).toBe(place.id);
       assert(!paths.some((path) => path.endsWith("/prepare")), "Visit delegates first arrival to ordinary Scene entry");
       place.visited = true;
+      place.classified = true;
       await page.getByRole("button", { name: "The Lantern · Place", exact: true }).click();
       await page.getByRole("button", { name: "Add as Venue", exact: true }).click();
-      await page.getByRole("button", { name: "Choose map position", exact: true }).click();
-      await expect.poll(() => page.evaluate(() => window.admission)).toEqual({ id: place.id, classes: ["community"] });
+      await expect(page.getByRole("checkbox")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Choose map position", exact: true })).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => window.admission)).toEqual({ id: place.id });
       await page.getByRole("button", { name: "Explore", exact: true }).click();
       const submit = page
         .locator("form")

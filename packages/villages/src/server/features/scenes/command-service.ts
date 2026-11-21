@@ -674,6 +674,7 @@ export function createSceneCommands({
         const offer = sceneTravelOffer(current);
         if (!offer?.travel || offer.id !== offerId) throw conflict("That invitation is no longer offered here.");
         const { venueId, zoneId, grantId } = offer.travel;
+        if (venueId !== current.placeId) await prepareVisit(venueId);
         const session = await withVillageSceneAcceptance(
           (village) =>
             enterVenueOnce(venueId, zoneId, undefined, {
@@ -692,6 +693,23 @@ export function createSceneCommands({
     });
   }
 
+  async function prepareVisit(placeId: string): Promise<void> {
+    const world = await readVillageState({ memories: true });
+    const discovery = world.worldPlaces.places[placeId];
+    if (!discovery || (discovery.prepared && discovery.classified)) return;
+    const result = await preparePlace(
+      {
+        worldScope: villageWorldScope(world),
+        requestId: "visit:" + randomUUID(),
+        mapId: discovery.location.presentation.mapId,
+        expectedRevision: discovery.revision,
+        intent: "Visit this Place",
+      },
+      placeId,
+    );
+    if (result.status !== "ready") throw conflict("Could not enter this Place. Its discovery is retained.");
+  }
+
   async function enterVenueOnce(
     placeId: string,
     requestedZoneId?: string,
@@ -707,21 +725,7 @@ export function createSceneCommands({
       await rollActiveAgendas();
     }
     if (!existing && !travel) {
-      const world = await readVillageState({ memories: true });
-      const discovery = world.worldPlaces.places[placeId];
-      if (discovery && !discovery.prepared) {
-        const result = await preparePlace(
-          {
-            worldScope: villageWorldScope(world),
-            requestId: "visit:" + randomUUID(),
-            mapId: discovery.location.presentation.mapId,
-            expectedRevision: discovery.revision,
-            intent: "Visit this Place",
-          },
-          placeId,
-        );
-        if (result.status !== "ready") throw conflict("Could not enter this Place. Its discovery is retained.");
-      }
+      await prepareVisit(placeId);
     }
     const source = travel?.village ?? (await readVillageState());
     const now = villageNow();

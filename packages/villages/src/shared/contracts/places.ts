@@ -12,7 +12,7 @@ export type PlaceSummary = {
 };
 
 export type PlaceDirectory = { items: PlaceSummary[]; nextCursor: string | null };
-export type PlaceDetail = PlaceSummary & { location: import("./village.js").VillageVenue };
+export type PlaceDetail = PlaceSummary & { classified: boolean; location: import("./village.js").VillageVenue };
 export type PlaceRequest = {
   worldScope: string;
   requestId: string;
