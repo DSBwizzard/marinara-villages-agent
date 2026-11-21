@@ -1,9 +1,9 @@
-// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name
+// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import {
   prepareNpcAdmission,
@@ -68,12 +68,19 @@ function fixture() {
   scene.contactGeneration = zoneEventScene(scene, place.location).contactGeneration;
   const request = {
     localKey: "new:visitor",
-    name: "Visitor",
-    label: "Traveler",
-    characterization: "A cautious traveler with a private concern.",
+    existingId: existing.id,
   };
   const prepare = (key = "npc-operation") =>
-    prepareNpcAdmission(state, scene, request, key, 1, "parlor", "  A traveler steps inside. 🌼  ");
+    prepareNpcAdmission(
+      state,
+      scene,
+      request,
+      key,
+      1,
+      "parlor",
+      "  A traveler steps inside. 🌼  ",
+      structuredClone(existing),
+    );
   const venue = place.location;
   const publication = (raw: Record<string, unknown>, input = "I privately worry. Hello.", operation = "native-npc") => {
     const context = narrationContinuityContext(state, zoneEventScene(scene, venue), venue, operation, input, at);
@@ -100,9 +107,7 @@ const rawArrival = (existingId?: string): any => ({
       type: "npc.admit",
       at: "arrive",
       localKey: "new:visitor",
-      ...(existingId
-        ? { existingId }
-        : { name: "Visitor", label: "Traveler", characterization: "A cautious traveler with a private concern." }),
+      existingId: existingId ?? "npc:cafe:mara",
       source: [{ segment: "arrive", perceive: { kind: "seen", by: ["player"] } }],
     },
   ],
@@ -129,7 +134,7 @@ await runCase("npc-admission/native", () => {
     receipt = ep.commandReceipts[0],
     id = receipt.targetId;
   assert.equal(receipt.kind, "npc");
-  assert.equal(receipt.admission!.npc.name, "Visitor");
+  assert.equal(receipt.admission!.npc.name, "Mara");
   assert.equal(ep.segments[1].speakerId, id);
   assert.equal(ep.segments[0].content, "  A traveler steps inside. 🌼  ");
   assert(ep.segments[0].physicalIdsAfter?.includes(id));
@@ -301,7 +306,7 @@ await runCase("npc-admission/returning", () => {
     pending = race.publication(rawArrival(race.existing.id));
   race.existing.revision++;
   const hash = memoryHash(race.state);
-  assert.throws(() => acceptNarration(race.state, pending, "stale", at), /fitted identity/);
+  assert.throws(() => acceptNarration(race.state, pending, "stale", at), /fitted (NPC )?identity/);
   assert.equal(memoryHash(race.state), hash);
 });
 await runCase("npc-admission/unused-context", () => {
@@ -465,10 +470,10 @@ await runCase("npc-admission/identity", () => {
     before = memoryHash(f.state),
     first = f.prepare();
   assert.deepEqual(first, f.prepare());
-  assert.notEqual(first.npc.id, f.prepare("another-operation").npc.id);
+  assert.equal(first.npc.id, f.prepare("another-operation").npc.id);
   assert(first.npc.id.startsWith("npc:"));
   assert.equal(first.source, "  A traveler steps inside. 🌼  ");
-  assert.equal(first.npc.label, "Traveler");
+  assert.equal(first.npc.label, "Mara");
   assert.equal(memoryHash(f.state), before, "provisional metadata never changes authority");
   assert.throws(
     () => prepareNpcAdmission(f.state, f.scene, { ...f.request, name: " " }, "operation", 0, "parlor", "Observed"),
@@ -555,7 +560,7 @@ await runCase("npc-admission/existing", () => {
   assert.equal(arrival.npc.characterization, captured.characterization);
   assert.throws(
     () => prepareNpcAdmission(f.state, f.scene, request, "operation", 1, "parlor", "Mara steps inside."),
-    /fitted identity/,
+    /fitted (NPC )?identity/,
   );
   assert.throws(
     () =>
@@ -569,12 +574,12 @@ await runCase("npc-admission/existing", () => {
         "Mara steps inside.",
         captured,
       ),
-    /fitted identity/,
+    /fitted (NPC )?identity/,
   );
   f.existing.revision++;
   assert.throws(
     () => prepareNpcAdmission(f.state, f.scene, request, "operation", 1, "parlor", "Mara steps inside.", captured),
-    /fitted identity/,
+    /fitted (NPC )?identity/,
   );
   f.existing.revision--;
   f.scene.participants.push({ characterId: f.existing.id, name: "Mara", doing: "Here" });
@@ -590,7 +595,7 @@ await runCase("npc-admission/fences", () => {
   const lines: any[] = [
     {
       kind: "dialogue",
-      speakerId: f.existing.id,
+      speakerId: "npc:another",
       content: "Earlier private conversation.",
       heardBy: [f.existing.id, id],
       soundOnly: { characterIds: [id], player: false, text: "Voices." },
@@ -613,7 +618,11 @@ await runCase("npc-admission/fences", () => {
 });
 
 await runCase("npc-admission/name", () => {
-  const f = fixture(),
+  const prepareName = (f: ReturnType<typeof fixture>) => {
+    f.existing.name = "Rasha Dunmore";
+    return f;
+  };
+  const f = prepareName(fixture()),
     raw = rawArrival();
   raw.segments[1].text = "My name is Rasha Dunmore.";
   const reveal = {
@@ -629,7 +638,7 @@ await runCase("npc-admission/name", () => {
   assert.equal(result.held, false, JSON.stringify(result.rejected));
   const episode = readAcceptedEpisode(result.episode!, f.state.seed),
     id = episode.commandReceipts[0].targetId;
-  assert.equal(episode.segments[1].name, "Traveler");
+  assert.equal(episode.segments[1].name, "Mara");
   assert.equal(f.state.worldPlaces.npcs[id].label, "Rasha Dunmore");
   applyAcceptedSceneDelta(f.scene, episode);
   assert.equal(f.scene.participants[0].name, "Rasha Dunmore");
@@ -639,7 +648,7 @@ await runCase("npc-admission/name", () => {
   forged.commandReceipts[1].text = "Someone else";
   assert.throws(() => readAcceptedEpisode(forged, f.state.seed), /Player-heard name/);
 
-  const returning = fixture(),
+  const returning = prepareName(fixture()),
     returned = rawArrival(returning.existing.id);
   returned.segments[1] = raw.segments[1];
   returned.commands.push(reveal);
@@ -649,18 +658,25 @@ await runCase("npc-admission/name", () => {
   assert.equal(returning.state.worldPlaces.npcs[returning.existing.id].label, "Rasha Dunmore");
   assert(acceptNarration(returning.state, returningPublication, "returned", at).replayed);
 
-  const other = fixture(),
+  const other = prepareName(fixture()),
     whispered = rawArrival(other.existing.id);
   whispered.segments.push({ ...raw.segments[0], id: "second", requires: ["second-admission"] });
   whispered.segments[1] = raw.segments[1];
   [whispered.segments[1], whispered.segments[2]] = [whispered.segments[2], whispered.segments[1]];
   whispered.segments[2] = { ...whispered.segments[2], delivery: "whisper", targetId: "new:second" };
+  other.state.worldPlaces.npcs["npc:second"] = {
+    ...structuredClone(other.existing),
+    id: "npc:second",
+    name: "Other",
+    label: "Other",
+  };
   whispered.commands.push(
     {
       ...rawArrival().commands[0],
       id: "second-admission",
       at: "second",
       localKey: "new:second",
+      existingId: "npc:second",
       source: [{ segment: "second", perceive: { kind: "seen", by: ["player"] } }],
     },
     reveal,
@@ -669,4 +685,105 @@ await runCase("npc-admission/name", () => {
   assert.equal(privateResult.held, false, JSON.stringify(privateResult.rejected));
   assert(privateResult.rejected.some((row) => row.reason.includes("heard by the Player")));
   assert.equal(other.state.worldPlaces.npcs[other.existing.id].label, "Mara");
+});
+
+function improvisedArrival(): any {
+  const raw = rawArrival();
+  delete raw.commands[0].existingId;
+  Object.assign(raw.commands[0], {
+    name: "Tomas Reed",
+    label: "Man in a red suit",
+    appearance: "Lean, greying hair, round glasses and a red suit.",
+    characterization: "Reserved and mechanically knowledgeable.",
+  });
+  raw.segments[0].actors = ["new:visitor"];
+  raw.segments[0].text = "A man in a red suit steps over to talk.";
+  raw.segments[1].text = "I can take a look at your bicycle.";
+  raw.keep = [
+    {
+      for: ["new:visitor"],
+      class: "information",
+      text: "The player said their bicycle was broken.",
+      source: [
+        { input: "My bicycle is broken.", ground: { kind: "spoken", to: ["new:visitor"], at: { after: "arrive" } } },
+      ],
+    },
+  ];
+  return raw;
+}
+await runCase("npc-admission/improvised", () => {
+  const f = fixture(),
+    raw = improvisedArrival(),
+    publication = f.publication(raw, "My bicycle is broken.");
+  const result = acceptNarration(f.state, publication, "new-person", at);
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  const id = result.episode!.commandReceipts.find((row) => row.kind === "npc")!.targetId;
+  assert.equal(f.state.worldPlaces.npcs[id].listed, false);
+  assert.equal(f.state.worldPlaces.npcs[id].appearance, raw.commands[0].appearance);
+  assert(
+    continuityViews(f.state.continuity, continuityActor(f.state, id)!, at, new Set()).some((view) =>
+      view.version.text.includes("bicycle"),
+    ),
+  );
+  const cold = decodeContinuityPagesSync(
+    ...(() => {
+      const encoded = encodeContinuityPages(
+        {
+          continuity: f.state.continuity,
+          episodes: f.state.episodes,
+          worldPlaces: f.state.worldPlaces,
+          mailbox: f.state.mailbox,
+        },
+        "a".repeat(32),
+      );
+      return [encoded.manifest, "a".repeat(32), f.state.seed, (key: string) => encoded.pages.get(key) ?? null] as const;
+    })(),
+  ).value;
+  assert.deepEqual(cold.worldPlaces.npcs[id], f.state.worldPlaces.npcs[id]);
+  assert(acceptNarration(f.state, publication, "new-person", at).replayed);
+  const returnContext = narrationContinuityContext(
+    f.state,
+    zoneEventScene(f.scene, f.venue),
+    f.venue,
+    "return",
+    "The man in the red suit and my bicycle",
+    at,
+  );
+  assert(returnContext.npcCandidates.some((row) => row.npc.id === id));
+  assert(returnContext.parts.some((part) => part.block.text.includes("bicycle")));
+});
+await runCase("npc-admission/improvised-limit", () => {
+  const f = fixture(),
+    raw = improvisedArrival();
+  raw.commands.push({
+    ...raw.commands[0],
+    id: "second-admit",
+    localKey: "new:second",
+    name: "Nell Birch",
+    label: "Courier",
+  });
+  const before = memoryHash(f.state);
+  assert.throws(() => acceptNarration(f.state, f.publication(raw), "two-new-people", at), /at most one new NPC/);
+  assert.equal(memoryHash(f.state), before);
+});
+await runCase("npc-admission/improvised-collision", () => {
+  for (const field of ["name", "label"]) {
+    const f = fixture(),
+      raw = improvisedArrival();
+    raw.commands[0][field] = "Mara";
+    const before = memoryHash(f.state);
+    assert.throws(() => acceptNarration(f.state, f.publication(raw), field, at), /already identifies/);
+    assert.equal(memoryHash(f.state), before);
+  }
+});
+await runCase("npc-admission/premature-action", () => {
+  const f = fixture(),
+    raw = improvisedArrival();
+  raw.segments.unshift({ kind: "narration", text: "The man waves before arriving.", actors: ["new:visitor"] });
+  const before = memoryHash(f.state);
+  assert.throws(
+    () => acceptNarration(f.state, f.publication(raw), "premature-action", at),
+    /before their admitted arrival/,
+  );
+  assert.equal(memoryHash(f.state), before);
 });

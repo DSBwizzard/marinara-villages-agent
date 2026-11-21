@@ -1,4 +1,5 @@
 import { placeRegistry, readNpc, findLocation, sceneActorIds } from "./places.js";
+import { assertDistinctNpcName } from "./npc-cast.js";
 import { cardCharacters, findCardCharacter, setVisitorVisits } from "./visitors.js";
 import { projectAgreementCurrent } from "./project-terms.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
@@ -225,8 +226,36 @@ export function worldRepairRecords(
         text("name", "Name", npc.name),
         text("label", "Display label", npc.label),
         text("characterization", "Characterization", npc.characterization),
+        text("appearance", "Appearance", npc.appearance ?? ""),
+        choices("mapId", "Map", npc.mapId ?? "", [
+          { value: "", label: "Unassigned" },
+          ...state.maps.map((map) => ({ value: map.id, label: map.name })),
+        ]),
+        { key: "listed", label: "Show in People", type: "boolean", value: npc.listed === true },
         text("facts", "Established facts (one per line)", npc.facts.join("\n")),
         text("availability", "Availability", npc.availability),
+        ...npc.associations.flatMap((row, index) => [
+          choices("association-place:" + index, "Associated Place", row.placeId, [
+            { value: "", label: "Remove association" },
+            ...[
+              ...state.venues,
+              ...Object.values(state.worldPlaces.places)
+                .filter((place) => !place.disabled)
+                .map((place) => place.location),
+            ].map((place) => ({ value: place.id, label: place.name })),
+          ]),
+          text("association-role:" + index, "Role", row.role),
+        ]),
+        choices("newPlace", "Add Place", "", [
+          { value: "", label: "None" },
+          ...[
+            ...state.venues,
+            ...Object.values(state.worldPlaces.places)
+              .filter((place) => !place.disabled)
+              .map((place) => place.location),
+          ].map((place) => ({ value: place.id, label: place.name })),
+        ]),
+        text("newRole", "New role", ""),
         { key: "disabled", label: "Disabled", type: "boolean", value: npc.disabled },
       ],
       { revision: npc.revision, source: [npc.source, ...npc.associations.map((row) => row.placeId + ": " + row.role)] },
@@ -642,11 +671,31 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
     if (kind === "npc") {
       const npc = state.worldPlaces.npcs[id];
       if (!npc) throw conflict("This supporting character changed.");
+      if (str("name") !== npc.name) assertDistinctNpcName(state, str("name"), npc.id);
+      if (str("label") !== npc.label) assertDistinctNpcName(state, str("label"), npc.id);
+      if (str("mapId") && !state.maps.some((map) => map.id === str("mapId"))) throw badRequest("Choose a saved Map.");
+      const associations = npc.associations.flatMap((_row, index) => {
+        const placeId = str("association-place:" + index);
+        return placeId ? [{ placeId, role: str("association-role:" + index) }] : [];
+      });
+      if (str("newPlace")) {
+        if (!str("newRole").trim()) throw badRequest("Describe this person's role at the Place.");
+        associations.push({ placeId: str("newPlace"), role: str("newRole") });
+      }
+      if (
+        associations.some((row) => !findLocation(state, row.placeId)) ||
+        new Set(associations.map((row) => row.placeId)).size !== associations.length
+      )
+        throw badRequest("Choose distinct established Places for this NPC.");
       state.worldPlaces.npcs[id] = readNpc({
         ...npc,
         name: str("name"),
         label: str("label"),
         characterization: str("characterization"),
+        appearance: str("appearance"),
+        mapId: str("mapId") || undefined,
+        listed: values.listed === true,
+        associations,
         facts: str("facts")
           .split("\n")
           .map((s) => s.trim())

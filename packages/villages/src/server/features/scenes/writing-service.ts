@@ -36,6 +36,7 @@ import { fittedNarrationReadset, narrationContinuityContext } from "../../domain
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
+import { worldCharacterReferences } from "../../domain/rules/npc-cast.js";
 import { findCardCharacter, introductoryVisitorStay, visitorLodging } from "../../domain/rules/visitors.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
@@ -47,6 +48,7 @@ import {
   NARRATION_CIRCUMSTANCE_COMMANDS,
   NARRATION_HOUSING_COMMANDS,
   NARRATION_NATIVE,
+  NARRATION_NPC_COMMANDS,
   NARRATION_PROJECT_COMMANDS,
 } from "../../domain/rules/narration-command-contract.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
@@ -162,6 +164,7 @@ export function createSceneWriting({
       const resident = findCardCharacter(village, person.characterId);
       return resident ? [readEffectiveVillagerCard(resident)] : [];
     });
+    const scoredRelationships = cards.length > 0;
     const profiles = cast.map((person) => {
       const card = cards.find((row) => row.id === person.characterId);
       if (card) {
@@ -282,9 +285,7 @@ export function createSceneWriting({
     const residentMovesInReply = mode === "chat";
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
-    const npcIntroduction =
-      !context.codeRequestedMemory &&
-      (nativeCommands || cast.some(({ characterId }) => characterId.startsWith("npc:")));
+    const npcIntroduction = !context.codeRequestedMemory && !scene.visitorIntroduction;
     const agendaDiscussed =
       /\b(?:agenda|schedule|free|available|tomorrow|tonight|meet|appointment|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|midnight|o['’]clock|\d{1,2}(?::\d{2}|\s*[ap]\.?m\.?))\b/iu.test(
         input,
@@ -315,6 +316,11 @@ export function createSceneWriting({
       : [];
     const agendaContext = "agenda-context";
     const location = sceneLocationContext(scene, venue, selectedIds);
+    const otherPeople = worldCharacterReferences(village, {
+      placeId: scene.placeId,
+      mapId: venue.presentation.mapId,
+      query: input,
+    }).filter((person) => !selectedIds.includes(person.id));
     const playerZone = location.player.zone;
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
@@ -333,8 +339,8 @@ export function createSceneWriting({
       format: blocksFor([
         nativeCommands ? SCENE_NARRATION_FORMAT : ORDINARY_SCENE_FORMAT,
         nativeCommands ? SCENE_NARRATION_KEEP : ORDINARY_SCENE_KEEP,
-        nativeCommands ? RELATIONSHIP_DIRECTION : "",
-        nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP,
+        nativeCommands && scoredRelationships ? RELATIONSHIP_DIRECTION : "",
+        scoredRelationships ? (nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP) : "",
       ]),
       metadata: blocksFor([
         scene.visitorIntroduction ? "Public Village name: " + JSON.stringify(village.name) : "",
@@ -373,7 +379,7 @@ export function createSceneWriting({
         residentMovesInReply
           ? 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
           : "",
-        nativeCommands ? NARRATION_NATIVE : "",
+        scene.visitorIntroduction ? "" : nativeCommands ? NARRATION_NATIVE : NARRATION_NPC_COMMANDS,
         !nativeCommands && !scene.visitorIntroduction
           ? "Agreement to accompany: dialogue follow:{agrees:true}, also on spoken asides. Memory alone does not enable following. trespass:true needs explicit outing-wide sneaking consent. Omit to for ongoing following; to limits one adjacent crossing. agrees:false stops. Questions/conditions grant no consent. Use one form per decision. Observed following uses native move.decide with player-seen evidence."
           : "",
@@ -381,7 +387,7 @@ export function createSceneWriting({
           ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."
           : "",
         npcIntroduction
-          ? 'When a supporting character tells the player their own name aloud, add an optional commands entry {type:"npc.introduce",who:"npc-id",name:"exact spoken name",at:"dialogue-segment-id",source:["dialogue-segment-id"],independent:true}. Use the exact name as spoken. Keep their role label until the player hears them give a name.'
+          ? 'On a heard NPC self-introduction, add commands:[{type:"npc.introduce",who:"npc-id or localKey",name:"canonical name",at:"speech-id",source:["speech-id"],independent:true}]. Keep role labels until heard.'
           : "",
       ]),
       identity: blocksFor([
@@ -403,6 +409,16 @@ export function createSceneWriting({
       ),
       transcript: context.parts.filter((part) => part.block.transcript).map((part) => part.block),
       frame: blocksFor([
+        otherPeople.length
+          ? JSON.stringify({
+              establishedPeople: otherPeople,
+              locationPeople: {
+                residents: venue.residentIds,
+                workers: venue.workerIds,
+                controllers: venue.access?.managerIds,
+              },
+            })
+          : "",
         JSON.stringify({
           location,
           dialogueSpeakers: selectedIds.filter((id) => id !== "player"),

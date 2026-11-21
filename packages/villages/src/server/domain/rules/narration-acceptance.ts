@@ -50,6 +50,7 @@ export type NarrationPublication = {
     moves: (ContactMove & { effectId: string })[];
     playerMoves: { effectId: string; zoneId: string; segment: number }[];
     admissions: NpcAdmission[];
+    npcCandidateHashes?: Record<string, string>;
     sceneEffects?: { effectId: string; contactEndedIds: string[]; closed?: true }[];
     movementDependencies?: string[];
     damage?: Record<string, { id: string; root: string }[]>;
@@ -260,7 +261,9 @@ export function acceptNarrationContinuity(
       current = findNpc(state, row.npc.id),
       actor = continuityActor(state, row.npc.id);
     memoryRequire(
-      current && actor?.incarnation === row.incarnation && memoryHash(current) === memoryHash(arrival?.npc ?? row.npc),
+      current &&
+        actor?.incarnation === row.incarnation &&
+        memoryHash(current) === (native.npcCandidateHashes?.[row.npc.id] ?? memoryHash(arrival?.npc ?? row.npc)),
       "fitted NPC identity changed while narration was being prepared",
     );
     return actor;

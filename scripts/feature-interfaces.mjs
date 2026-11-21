@@ -5,6 +5,7 @@
  * Type-only consumers obey the same boundary as runtime consumers.
  */
 export const serverFeatureInterfaces = Object.freeze({
+  "places/npc-population.ts": ["prepareMapNpcs"],
   "founding/founding-compact.ts": ["proposeCompactFounding"],
   "founding/founding-drafts.ts": ["readFoundingImageLore"],
   "founding/founding-progress.ts": ["reportFoundingProgress"],

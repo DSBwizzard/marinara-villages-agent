@@ -162,6 +162,14 @@ Starting history honors the resident cards, your backstory, and selected lore, i
 
 Residents follow routines, and their availability changes through the day. Founding admits the chosen characters; accepted sprite copies and your original library cards stay separate.
 
+### NPCs
+
+**People** has Villagers, Visitors and NPCs tabs. Each populated Map starts with six seeded supporting NPCs. They retain identity, appearance and individual Memories without Villager Agendas, jobs or background simulation. Preparation runs once; failed or interrupted work uses **Retry NPCs** rather than spending again on a visit or refresh.
+
+The GM can introduce one new individual in an ordinary response, retaining continuity after the witnessed encounter. These improvised people do not automatically appear in People. Names and location associations reuse established characters; a house or business name never creates a replacement owner. NPC cards use role labels until introductions, and reveal appearance after meeting. **Inspect memories** opens the existing privileged Memory tools. **REPAIR** includes listed and unlisted NPCs, their Memories, appearance, Map, location associations, visibility and availability, with reviewed changes and Undo.
+
+NPC context is selected locally from relevant identities and history, within the Scene's existing recall budget. The GM does not receive the whole population or perform separate NPC-management work. See [Places and supporting characters](../../docs/places.md).
+
 ### Visitors
 
 In newly founded Villages, Professor Mari is the first Visitor. Starting 24 elapsed Village hours after founding finishes, the next fresh visit to a suitable public Venue with a quiet Entrance begins her introduction. An active Scene, opening gathering, nearby conversation, or local event defers it. One GM request writes a playful, wry greeting and farewell about the Village or Venue using her existing character card; the fixed Visitor explanation appears between them. Read through it and choose **Continue** to conclude the Scene. Mari then stays for another 24 Village hours, available for ordinary conversations through People → Visitors, initially at the same Venue when accessible. She stays off-map overnight during this introductory visit. Afterwards, letters and occasional return visits remain available. Reloading or chatting does not extend the stay or regenerate her introduction. If generation fails, the ordinary greeting recovery controls remain available, including continuing with the fixed explanation and a short fallback farewell. The introduction runs once; existing worlds and saved dialogue keep their progress without replaying it.

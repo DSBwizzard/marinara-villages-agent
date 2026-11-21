@@ -6,7 +6,7 @@ import type { VillageState } from "../packages/villages/src/server/domain/models
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {

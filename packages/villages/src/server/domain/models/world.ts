@@ -1008,6 +1008,8 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   /** Newest first, so the window on the map opens on what just happened. */
   villagers: VillageVillagerView[];
   visitors?: import("../../../shared/contracts/village.js").VillageVisitorView[];
+  npcs?: import("../../../shared/contracts/village.js").VillageNpcView[];
+  npcPreparation?: import("../../../shared/contracts/village.js").VillageSnapshot["npcPreparation"];
   visitorNotice?: import("../../../shared/contracts/village.js").VillageSnapshot["visitorNotice"];
   /**
    * True once the village has been founded, which is what tells the tab to draw

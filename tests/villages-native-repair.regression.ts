@@ -10,7 +10,7 @@ import {
   repairId,
   retainAdministrativeCircumstance,
 } from "../packages/villages/src/server/domain/rules/repair-records.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { findLocation } from "../packages/villages/src/server/domain/rules/places.js";
 import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { retainNativeFact } from "../packages/villages/src/server/domain/rules/native-continuity.js";

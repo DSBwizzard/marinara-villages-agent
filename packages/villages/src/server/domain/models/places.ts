@@ -6,6 +6,9 @@ export type NpcIdentity = {
   name: string;
   label: string;
   characterization: string;
+  mapId?: string;
+  appearance?: string;
+  listed?: boolean;
   facts: string[];
   associations: { placeId: string; role: string }[];
   availability: string;
@@ -37,7 +40,7 @@ export type PlaceOperation = {
   id: string;
   attempt: number;
   fingerprint: string;
-  kind: "explore" | "prepare";
+  kind: "explore" | "prepare" | "populate";
   placeId: string;
   status: "started" | "ready" | "failed";
   input: { mapId: string; intent: string; placeRevision?: number };

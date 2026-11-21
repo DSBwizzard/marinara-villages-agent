@@ -115,7 +115,7 @@ export const DOSSIER_STYLES = `
 .${P}-directory-pagination{display:flex;align-items:center;justify-content:center;gap:16px;flex:none;margin-top:12px;font-size:17px}
 .${P}-directory-root .${P}-directory-pagination button{min-width:44px;min-height:44px;padding:4px 10px;background:transparent;border-color:var(--dossier-line)}
 .${P}-people-sections{display:flex;align-items:stretch;flex:none;margin:0 0 18px;gap:0}
-.${P}-directory-root .${P}-people-sections button{min-width:132px;min-height:48px;border:0;border-bottom:3px solid transparent;border-radius:10px 10px 0 0;background:var(--menu-field,#74536755);padding:10px 18px}
+.${P}-directory-root .${P}-people-sections button{flex:1;min-width:0;min-height:48px;border:0;border-bottom:3px solid transparent;border-radius:10px 10px 0 0;background:var(--menu-field,#74536755);padding:10px 8px}
 .${P}-directory-root .${P}-people-sections button[aria-pressed=true]{background:var(--menu-card,#969b7eb0);border-bottom-color:var(--menu-selected-ink,#fff0d5);color:var(--menu-selected-ink,#fff0d5)}
 .${P}-visitor-overview{background:var(--menu-field,#74536755);border-radius:12px;padding:24px;margin-bottom:22px}
 .${P}-visitor-overview>p{font-size:24px;margin-bottom:24px}

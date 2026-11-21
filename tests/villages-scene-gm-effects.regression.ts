@@ -215,6 +215,20 @@ for (const scenario of scenarios)
       held = ["capacity", "past-appointment", "halt"].includes(scenario);
     const host = await packagedSceneServer({
       configure(world, now) {
+        if (scenario === "npc")
+          world.worldPlaces.npcs["npc:nell"] = {
+            id: "npc:nell",
+            revision: 1,
+            name: "Nell",
+            label: "Courier",
+            characterization: "A cheerful courier who collects leaves.",
+            facts: [],
+            associations: [{ placeId: world.venues[0].id, role: "Courier" }],
+            availability: "",
+            disabled: false,
+            source: "fixture",
+            updatedAt: new Date(now).toISOString(),
+          };
         if (scenario === "capacity")
           world.villagers = ["mara", "bryn", "cora", "dev", "eli"].map((characterId) => ({
             ...structuredClone(world.villagers[0]),
@@ -301,9 +315,7 @@ for (const scenario of scenarios)
               type: "npc.admit",
               at: "arrival",
               localKey: "new:nell",
-              name: "Nell",
-              label: "Courier",
-              characterization: "A cheerful courier who collects leaves.",
+              existingId: "npc:nell",
               source: [seen("arrival")],
             },
           ],
