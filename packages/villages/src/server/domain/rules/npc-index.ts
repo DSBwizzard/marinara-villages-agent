@@ -11,7 +11,10 @@ export const npcNameKey = (name: string) =>
 export const npcNameKeys = (name: string) => {
   const full = npcNameKey(name),
     first = full.split(" ")[0];
-  return first.length >= 3 ? [full, first] : [full];
+  return first.length >= 3 &&
+    !/^(the|a|an|mr|mrs|ms|mx|dr|doctor|professor|sir|lady|lord|captain|chief|officer)$/u.test(first)
+    ? [full, first]
+    : [full];
 };
 type NpcIndex = {
   names: Map<string, Set<string>>;

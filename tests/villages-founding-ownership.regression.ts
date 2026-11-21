@@ -15,7 +15,6 @@ import {
 } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { routineVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { mapNpcOperationId } from "../packages/villages/src/server/domain/rules/npc-cast.js";
 import {
   createFoundingPreparation,
   type FoundingPreparationPorts,
@@ -322,51 +321,36 @@ async function interactiveOpeningNeedsNoIdeas() {
   assert.equal(f.state().foundingPreparation!.status, "ready");
   assert.equal(f.state().projects.length, 0);
 }
-async function heldNpcPopulation() {
-  for (const status of ["started", "failed"] as const) {
-    const f = fixture("held-npcs");
-    const mapId = "map";
-    f.state().maps = [
-      {
-        id: mapId,
-        name: "Town",
-        width: 1440,
-        height: 900,
-        revision: 1,
-        view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-        artwork: { id: "map", ref: "global-gallery:map", url: "/map.png" },
-      },
-    ];
-    f.state().venues[0].presentation.mapId = mapId;
-    const id = mapNpcOperationId(f.state().seed, mapId);
-    f.state().worldPlaces.operations[id] = {
-      id,
-      attempt: 1,
-      fingerprint: "captured",
-      kind: "populate",
-      placeId: "",
-      status,
-      input: { mapId, intent: "" },
-      messages: [{ role: "system", content: "Create the cast." }],
-      connectionId: "system",
-    };
-    f.ports.prepareMapNpcs = async () => {};
-    await f.service.prepareFoundedVillage();
-    assert.equal(f.state().foundingPreparation!.status, "failed");
-    assert.match(f.state().foundingPreparation!.error, /NPC preparation incomplete/);
-    assert.equal(f.counts().preparationRequests, 0, "a held cast does not advance founding");
-    f.ports.prepareMapNpcs = async (_mapId, retryId) => {
-      assert(retryId, "only explicit Retry resumes the cast");
-      f.state().worldPlaces.operations[id].status = "ready";
-    };
-    f.gate.resolve();
-    await f.service.retryFoundedVillagePreparation({ actionId: "retry-cast" });
-    await f.service.prepareFoundedVillage();
-    assert.equal(f.state().foundingPreparation!.status, "ready");
-  }
+async function foundingDoesNotPopulateNpcs() {
+  const f = fixture("no-npc-population");
+  f.state().maps = [
+    {
+      id: "map",
+      name: "Town",
+      width: 1440,
+      height: 900,
+      revision: 1,
+      view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+      artwork: { id: "map", ref: "global-gallery:map", url: "/map.png" },
+    },
+  ];
+  f.state().venues[0].presentation.mapId = "map";
+  f.gate.resolve();
+  await f.service.prepareFoundedVillage();
+  assert.equal(f.state().foundingPreparation!.status, "ready");
+  assert.equal(
+    Object.keys(f.state().worldPlaces.npcs).length,
+    0,
+    "founding a populated Map does not create an NPC cast",
+  );
+  assert.equal(
+    Object.values(f.state().worldPlaces.operations).length,
+    0,
+    "there is no population purchase or recovery slot",
+  );
 }
 async function main() {
-  await heldNpcPopulation();
+  await foundingDoesNotPopulateNpcs();
   await interactiveOpeningNeedsNoIdeas();
   await partialOpeningCount();
   await independentFounding();

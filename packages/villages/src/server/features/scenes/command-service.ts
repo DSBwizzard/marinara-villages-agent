@@ -73,7 +73,6 @@ function visitEventHere(state: VillageState, placeId: string, zoneId: string, oc
 }
 
 export interface SceneCommandPorts {
-  prepareMapNpcs?(mapId: string): Promise<void>;
   rollVisitEvent?: () => "local" | "place" | "quiet";
   retry?: ReturnType<typeof import("./retry-service.js").createSceneRetry>;
   generate: typeof import("./writing.js").generate;
@@ -176,7 +175,6 @@ export function createSceneCommands({
   withVillageSceneAcceptance,
   settleVisitorAttendance,
   prepareIntroductionVisitor,
-  prepareMapNpcs,
   mutateVillageState: mutateVillageStateWithoutPlaces,
   readVillageState: readVillageStateWithoutPlaces,
 }: SceneCommandPorts) {
@@ -698,7 +696,6 @@ export function createSceneCommands({
     expectedSceneRevision?: number,
     travel?: { source: VenueScene; offerId: string; grantId: string; village: VillageState },
     follow = false,
-    populationPrepared = false,
   ): Promise<VenueScene> {
     const pointer = await readActive();
     if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
@@ -963,21 +960,6 @@ export function createSceneCommands({
           ? checked.permissionId
           : undefined;
       });
-    if (prepareMapNpcs && !populationPrepared) {
-      await prepareMapNpcs(place.presentation.mapId);
-      const current = await readVillageState();
-      if (current.seed !== village.seed || current.setupAt !== village.setupAt) throw conflict("The Village changed.");
-      // Mari's planned introduction retains its final quietness check instead of becoming an ordinary Scene.
-      if (!introduction)
-        return enterVenueOnce(
-          placeId,
-          requestedZoneId,
-          expectedSceneRevision,
-          travel ? { ...travel, village: current } : undefined,
-          follow,
-          true,
-        );
-    }
     const participants = sceneAttendance.occupants
       .filter((person) => person.zoneId === zone.id)
       .map(({ characterId, name, doing }) => ({ characterId, name, doing }));

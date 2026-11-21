@@ -40,6 +40,7 @@ export type PlaceOperation = {
   id: string;
   attempt: number;
   fingerprint: string;
+  /** Historical population receipts remain readable; no new population work is dispatched. */
   kind: "explore" | "prepare" | "populate";
   placeId: string;
   status: "started" | "ready" | "failed";

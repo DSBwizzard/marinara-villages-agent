@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
@@ -7,10 +7,6 @@ import { AvatarFace } from "./ResidentPanels.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AddVisitorDialog } from "./VisitorControls.js";
 import { visitorVisitLabel } from "./calculations.js";
-import { messageFrom, request } from "../../shared/api.js";
-import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
-import type { VillageSnapshot } from "../../../shared/contracts/village.js";
-import { createVillagesClientId } from "../../shared/request-id.js";
 
 export function RosterScreen({
   controller,
@@ -24,12 +20,8 @@ export function RosterScreen({
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [tab, setTab] = useState<"Villagers" | "Visitors" | "NPCs">("Villagers");
-  const [preparing, setPreparing] = useState(false);
-  const [preparationError, setPreparationError] = useState("");
   const [addingVisitor, setAddingVisitor] = useState<HTMLElement | null>(null);
   const { error, menuPage, openPerson, portraits, screen, snapshot } = controller;
-  const selection = useMemo(() => ({ worldScope: snapshot?.worldScope }), [snapshot?.worldScope]);
-  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, undefined, selection);
   if (screen !== "menu" || menuPage !== "villagers") return null;
   const selectedTab = selectedId
     ? selectedId.startsWith("npc:")
@@ -116,51 +108,6 @@ export function RosterScreen({
               {error}
             </p>
           ) : null}
-          {showNpcs
-            ? (snapshot?.npcPreparation ?? [])
-                .filter((row) => row.status !== "ready")
-                .map((row) => (
-                  <div key={row.mapId} className={`${ELEMENT_TAG}-dossier-sheet`}>
-                    <p>
-                      {row.mapName} ·{" "}
-                      {row.status === "started"
-                        ? "Preparation interrupted or running"
-                        : row.status === "failed"
-                          ? "Preparation failed"
-                          : "No NPC cast yet"}
-                    </p>
-                    {row.error ? <p role="alert">{row.error}</p> : null}
-                    <button
-                      type="button"
-                      disabled={preparing}
-                      onClick={async () => {
-                        const claim = lifetime.begin();
-                        if (!claim) return;
-                        setPreparing(true);
-                        setPreparationError("");
-                        try {
-                          const next = await request<VillageSnapshot>("/npcs/prepare", {
-                            method: "POST",
-                            body: JSON.stringify({
-                              worldScope: snapshot.worldScope,
-                              mapId: row.mapId,
-                              requestId: createVillagesClientId(),
-                            }),
-                          });
-                          if (lifetime.owns(claim)) controller.setSnapshot(next);
-                        } catch (cause) {
-                          if (lifetime.owns(claim)) setPreparationError(messageFrom(cause, "NPC preparation failed."));
-                        } finally {
-                          if (lifetime.finish(claim)) setPreparing(false);
-                        }
-                      }}
-                    >
-                      {preparing ? "Preparing…" : row.status === "unprepared" ? "Prepare NPCs" : "Retry NPCs"}
-                    </button>
-                  </div>
-                ))
-            : null}
-          {preparationError && showNpcs ? <p role="alert">{preparationError}</p> : null}
           <div className={`${ELEMENT_TAG}-directory-reading`}>
             {people.length ? (
               <div className={`${ELEMENT_TAG}-directory-grid`}>

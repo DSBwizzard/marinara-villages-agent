@@ -14,7 +14,6 @@ import {
 import { continuityWishes } from "../../domain/rules/continuity-library.js";
 
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
-import { populatedMapIds, mapNpcOperationId } from "../../domain/rules/npc-cast.js";
 import type {
   backgroundJobSnapshot,
   backgroundWorkSummaries,
@@ -31,7 +30,6 @@ import type { mutateVillageState, readVillageState } from "../world/village-stor
 
 import type { reportFoundingProgress } from "./founding-progress.js";
 export interface FoundingPreparationPorts {
-  prepareMapNpcs?(mapId: string, retryId?: string): Promise<void>;
   backgroundJobSnapshot: typeof backgroundJobSnapshot;
   readFoundingResidentContext: typeof readFoundingResidentContext;
   queueFoundingWish: typeof queueFoundingWish;
@@ -72,19 +70,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       const initial = await readVillageState();
       seed = initial.seed;
       if (initial.foundingPreparation?.status !== "pending") return;
-      const populated = await readVillageState({ memories: true });
-      for (const mapId of populatedMapIds(populated))
-        await ports.prepareMapNpcs?.(mapId, initial.foundingPreparation.retryActions?.at(-1));
-      if (ports.prepareMapNpcs) {
-        const prepared = await readVillageState({ memories: true });
-        if (prepared.seed !== initial.seed) return;
-        if (
-          populatedMapIds(prepared).some(
-            (mapId) => prepared.worldPlaces.operations[mapNpcOperationId(prepared.seed, mapId)]?.status !== "ready",
-          )
-        )
-          throw new Error("NPC preparation incomplete. Retry deliberately.");
-      }
       await initializeTasks(initial.seed);
       const targeted = !!initial.foundingPreparation.selectedTasks?.length;
       try {

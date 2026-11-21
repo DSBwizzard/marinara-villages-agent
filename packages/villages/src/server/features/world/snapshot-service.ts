@@ -1,5 +1,5 @@
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
-import { populatedMapIds, publicNpcDirectory } from "../../domain/rules/npc-cast.js";
+import { publicNpcDirectory } from "../../domain/rules/npc-cast.js";
 import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
@@ -333,17 +333,6 @@ export function createVillageSnapshot({
       residences: village.residences,
       villagers,
       npcs: publicNpcDirectory(village),
-      npcPreparation: populatedMapIds(village).map((mapId) => {
-        const operation = Object.values(village.worldPlaces.operations).find(
-          (row) => row.kind === "populate" && row.input.mapId === mapId,
-        );
-        return {
-          mapId,
-          mapName: village.maps.find((map) => map.id === mapId)!.name,
-          status: operation?.status ?? "unprepared",
-          ...(operation?.error ? { error: operation.error } : {}),
-        };
-      }),
       ...(visitors?.length ? { visitors } : {}),
       ...(visit
         ? {

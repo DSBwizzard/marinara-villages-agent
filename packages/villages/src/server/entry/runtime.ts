@@ -112,12 +112,7 @@ import { configureFoundingPreparation, prepareFoundedVillage } from "../features
 import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
 import { configureVillageBootstrap, draftVillageVenueDescriptions } from "../features/founding/village-bootstrap.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
-import {
-  completeWithRoom,
-  configureModelCompletions,
-  reopenSavedResponse,
-} from "../features/generation/model-requests.js";
-import { createNpcPopulation, configureNpcPopulation, prepareMapNpcs } from "../features/places/npc-population.js";
+import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
 import { createImageGeneration } from "../features/media/image-generation-service.js";
 import {
   configureImageGeneration,
@@ -434,19 +429,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       completeWithRoom,
     }),
   );
-  const releaseNpcPopulation = configureNpcPopulation(
-    createNpcPopulation({
-      readVillageState: readVillageMemoryState,
-      mutateVillageState: mutateVillageMemoryState,
-      villagesLanguageModels,
-      villagesConnectionIdFor,
-      completeWithRoom,
-      reopenSavedResponse,
-      readVillageLore,
-      mutateDocument,
-      now: villageNow,
-    }),
-  );
   const releaseFoundingDrafts = configureFoundingDrafts(
     createFoundingDrafts({
       resolveVillageImageEditing,
@@ -571,7 +553,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
-      prepareMapNpcs,
       retry: sceneRetry,
       prepareIntroductionVisitor: (state, at) =>
         prepareIntroductionVisitor(state, at, mutateVillageMemoryState, (id) => spriteSetup().automaticManager(id)),
@@ -1004,7 +985,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFounding = configureFoundingPreparation(
     createFoundingPreparation({
-      prepareMapNpcs,
       backgroundJobSnapshot,
       readFoundingResidentContext,
       queueFoundingWish,
@@ -1021,7 +1001,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseGraph = () => {
-    releaseNpcPopulation();
     releaseRetainedCleanup();
     retainedCleanup.dispose();
     releaseRepairs();

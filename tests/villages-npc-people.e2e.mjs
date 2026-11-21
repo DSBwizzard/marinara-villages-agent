@@ -24,7 +24,6 @@ await withBrowser(browser, async () => {
         met: i === 0,
         appearance: i === 0 ? "A red suit and round glasses." : "",
       }));
-      village.npcPreparation = [{ mapId: "map", mapName: "Town", status: "ready" }];
       let memoryReads = 0;
       await page.route("**/api/capability-packages/villages/assets/npc-silhouette.webp", (route) =>
         route.fulfill({ path: resolve("packages/villages/npc-silhouette.webp") }),

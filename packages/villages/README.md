@@ -164,9 +164,9 @@ Residents follow routines, and their availability changes through the day. Found
 
 ### NPCs
 
-**People** has Villagers, Visitors and NPCs tabs. Each populated Map starts with six seeded supporting NPCs. They retain identity, appearance and individual Memories without Villager Agendas, jobs or background simulation. Preparation runs once; failed or interrupted work uses **Retry NPCs** rather than spending again on a visit or refresh.
+**People** has Villagers, Visitors and NPCs tabs. NPCs retain identity, appearance and individual Memories without Villager Agendas, jobs or background simulation. Maps do not generate a starting NPC population. Existing NPCs and their history remain intact.
 
-The GM can introduce one new individual in an ordinary response, retaining continuity after the witnessed encounter. These improvised people do not automatically appear in People. Names and location associations reuse established characters; a house or business name never creates a replacement owner. NPC cards use role labels until introductions, and reveal appearance after meeting. **Inspect memories** opens the existing privileged Memory tools. **REPAIR** includes listed and unlisted NPCs, their Memories, appearance, Map, location associations, visibility and availability, with reviewed changes and Undo.
+The GM can introduce one new individual in an ordinary response, retaining continuity after the witnessed encounter. These people do not automatically appear in People. Names and location associations reuse established characters; a house or business name never creates a replacement owner. NPC cards use role labels until introductions, and reveal appearance after meeting. **Inspect memories** opens the existing privileged Memory tools. **REPAIR** includes listed and unlisted NPCs, their Memories, appearance, Map, location associations, visibility and availability, with reviewed changes and Undo.
 
 NPC context is selected locally from relevant identities and history, within the Scene's existing recall budget. The GM does not receive the whole population or perform separate NPC-management work. See [Places and supporting characters](../../docs/places.md).
 
