@@ -194,7 +194,6 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-search input:focus-visible{outline-offset:-3px}
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-search .${P}-storybook-search-icon{display:block;position:absolute;left:14px;top:50%;transform:translateY(-50%);width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;pointer-events:none}
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-list{display:flex;flex-direction:column;flex:1}
-.${P}-desk-workspace[data-desk="places"] .${P}-discover-places{order:2;margin:16px 0 4px;background:var(--secondary);color:inherit;border:1px solid var(--menu-field-border);border-radius:7px;font:inherit}
 .${P}-desk-workspace[data-desk="places"] .${P}-navigator-place{flex:none;border:1px solid transparent;border-bottom-color:var(--border);border-radius:7px}
 .${P}-desk-workspace[data-desk="places"] .${P}-navigator-place[data-selected="true"]{background:var(--menu-selected);border-color:var(--menu-selected-border,#c78d9370);color:var(--menu-selected-ink,#fff0d5)}
 .${P}-desk-workspace[data-desk="places"] .${P}-explore-row{padding:10px 8px;gap:10px;font:inherit;color:inherit;background:transparent;border:0;border-radius:6px}

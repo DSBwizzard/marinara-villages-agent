@@ -43,6 +43,13 @@ await withBrowser(browser, async () => {
         location: { ...snapshot.settings.venues[0], id: "place:lantern", name: "The Lantern" },
       };
       const venue = { ...place, id: snapshot.settings.venues[0].id, name: "Village Hall", venue: true, visited: true };
+      const discovered = {
+        ...place,
+        id: "place:lookout",
+        name: "Cliff Lookout",
+        location: { ...place.location, id: "place:lookout", name: "Cliff Lookout" },
+      };
+      let found = false;
       const explorations = [],
         paths = [];
       await page.route("http://places.test/", (route) =>
@@ -59,15 +66,20 @@ await withBrowser(browser, async () => {
         let value;
         if (path === "/places")
           value = {
-            items: [venue, place, { ...venue, id: "late", name: "New Venue" }].filter((row) =>
-              row.name.toLowerCase().includes((url.searchParams.get("query") ?? "").trim().toLowerCase()),
+            items: [venue, place, { ...venue, id: "late", name: "New Venue" }, ...(found ? [discovered] : [])].filter(
+              (row) => row.name.toLowerCase().includes((url.searchParams.get("query") ?? "").trim().toLowerCase()),
             ),
             nextCursor: null,
           };
         else if (path === "/places/explore") {
           explorations.push(route.request().postDataJSON());
           value = { status: explorations.length === 1 ? "failed" : "ready", placeId: "" };
+          if (explorations.length === 3) {
+            found = true;
+            value.placeId = discovered.id;
+          }
         } else if (path === "/places/place%3Alantern" || path === "/places/place:lantern") value = place;
+        else if (path === "/places/place%3Alookout" || path === "/places/place:lookout") value = discovered;
         else throw Error("Unexpected Places route " + path);
         await fulfill(route, { status: 200, json: value });
       });
@@ -80,6 +92,8 @@ await withBrowser(browser, async () => {
       await page.getByLabel("Search places", { exact: true }).fill(" Lantern ");
       await expect(page.getByRole("button", { name: "The Lantern · Place", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "The Lantern · Place", exact: true }).click();
+      await expect(page.getByLabel("Explore", { exact: true })).toBeInViewport();
+      await expect(page.getByRole("button", { name: "Explore", exact: true })).toBeInViewport();
       await expect(page.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Visit", exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.visited)).toBe(place.id);
@@ -91,7 +105,9 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("checkbox")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Choose map position", exact: true })).toHaveCount(0);
       await expect.poll(() => page.evaluate(() => window.admission)).toEqual({ id: place.id });
-      await page.getByRole("button", { name: "Explore", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Explore", exact: true })).toHaveCount(1);
+      await expect(page.getByLabel("Explore", { exact: true })).toBeVisible();
+      assert.equal(explorations.length, 0, "Search and browsing do not Explore");
       const submit = page
         .locator("form")
         .filter({ has: page.getByLabel("Explore", { exact: true }) })
@@ -107,6 +123,14 @@ await withBrowser(browser, async () => {
         explorations.map((row) => row.intent),
         ["", "A duck"],
       );
+      await expect(page.getByRole("status")).toHaveText("No new Place found.");
+      await expect(page.getByLabel("Search places", { exact: true })).toHaveValue(" Lantern ");
+      await page.getByLabel("Explore", { exact: true }).fill("A lookout");
+      await submit.click();
+      await expect(page.getByRole("button", { name: "Cliff Lookout · Place", exact: true })).toBeVisible();
+      await expect(page.getByLabel("Search places", { exact: true })).toHaveValue("Cliff Lookout");
+      await expect(page.getByRole("button", { name: "Explore", exact: true })).toHaveCount(1);
+      await expect(page.getByLabel("Explore", { exact: true })).toBeInViewport();
       await expect(page.getByRole("alert")).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Prepare|Establish|Retry request|Dismiss request/ })).toHaveCount(
         0,

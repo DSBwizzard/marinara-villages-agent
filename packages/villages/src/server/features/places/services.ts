@@ -24,7 +24,7 @@ import {
   placeDraftSchema,
   projectPlace,
 } from "../../domain/rules/place-discovery.js";
-import { locationSummary, placeSummary } from "../../domain/rules/places.js";
+import { findNamedLocation, locationSummary, placeSummary } from "../../domain/rules/places.js";
 import type { PlaceDirectory } from "../../../shared/contracts/places.js";
 import type { PlaceOperation } from "../../domain/models/places.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
@@ -201,7 +201,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
           relatedPlaces: Object.values(world.worldPlaces.places)
             .filter((row) => !row.disabled && row.location.presentation.mapId === input.mapId)
             .slice(-8)
-            .map(placeSummary),
+            .map((place) => ({ ...placeSummary(place), knownToPlayer: place.knownBy.includes("player") })),
           knownPeople: Object.values(world.worldPlaces.npcs)
             .filter((row) => !row.disabled && row.associations.some((association) => association.placeId === placeId))
             .slice(0, 4),
@@ -271,9 +271,11 @@ export async function generatePlace(value: unknown, placeId?: string) {
     if (raw.existingId !== undefined)
       return kind === "explore" && typeof raw.existingId === "string" && candidateIds.has(raw.existingId);
     if (raw.place === null) return kind === "explore";
+    const draft = validateDraft(raw.place);
+    if (kind === "explore" && findNamedLocation(world, admitted.input.mapId, draft.name)) return true;
     establishPlace(
       { ...world, worldPlaces: structuredClone(world.worldPlaces) },
-      validateDraft(raw.place),
+      draft,
       admitted.placeId,
       admitted.input.mapId,
       `request:${admitted.id}`,
@@ -333,30 +335,35 @@ export async function generatePlace(value: unknown, placeId?: string) {
         const prior = placeId ? state.worldPlaces.places[placeId] : undefined;
         if (placeId && (!prior || prior.revision !== admitted.input.placeRevision))
           throw conflict("The Place changed during preparation.");
+        const draft = raw.place ? validateDraft(raw.place) : undefined;
+        const duplicate =
+          kind === "explore" && draft ? findNamedLocation(state, admitted.input.mapId, draft.name) : undefined;
+        const selectedId = typeof raw.existingId === "string" ? raw.existingId : duplicate?.id;
         if (packet.classifyOnly) {
           classifyPlace(state, prior!, classificationSchema.parse(raw).classes);
           prior!.revision++;
-        } else if (typeof raw.existingId === "string") {
-          const existing = state.worldPlaces.places[raw.existingId];
-          if (
-            kind !== "explore" ||
-            !candidateIds.has(raw.existingId) ||
-            (!existing && !state.venues.some((venue) => venue.id === raw.existingId)) ||
-            existing?.disabled
-          )
+        } else if (selectedId !== undefined) {
+          if (kind !== "explore" || (raw.existingId !== undefined && !candidateIds.has(selectedId)))
             throw conflict("The selected Place is unavailable.");
-          if (existing) {
-            existing.knownBy = [...new Set([...existing.knownBy, "player"])];
+          const existing = candidateIds.has(selectedId) ? state.worldPlaces.places[selectedId] : undefined;
+          saved.placeId = "";
+          if (
+            existing &&
+            !existing.disabled &&
+            !existing.knownBy.includes("player") &&
+            existing.location.presentation.mapId === admitted.input.mapId
+          ) {
+            existing.knownBy.push("player");
             existing.revision++;
+            saved.placeId = existing.id;
           }
-          saved.placeId = raw.existingId;
         } else if (raw.place === null) {
           if (placeId) throw badRequest("The known Place could not be prepared. Its discovery is retained.");
           saved.placeId = "";
         } else {
           const created = establishPlace(
             state,
-            validateDraft(raw.place),
+            draft!,
             admitted.placeId,
             input.mapId,
             `request:${admitted.id}`,

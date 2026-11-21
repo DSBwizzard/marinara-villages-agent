@@ -58,7 +58,6 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full .${P}-mailbox-launch { position:relative; display:grid; place-items:center; width:44px; height:44px; padding:10px; border:0; border-radius:8px; background:transparent; color:var(--explore-muted); cursor:pointer; }
 .${P}-mailbox-launch svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.7; }
 .${P}-mailbox-dot { position:absolute; top:7px; right:6px; width:7px; height:7px; border-radius:50%; background:#e7bb73; box-shadow:0 0 0 2px var(--explore-background); }
-.${P}-discover-places { margin:0 12px 8px; min-height:44px; padding:8px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; }
 .${P}-stage[data-exploration="true"] { flex:1; display:block; width:100%!important; height:100%!important; aspect-ratio:auto!important; border:0; border-radius:0; touch-action:none; user-select:none; }
 .${P}-stage[data-exploration="true"] .${P}-canvas { overflow:clip; cursor:grab; }
 .${P}-stage[data-exploration="true"][data-mobile-gesturing="true"] .${P}-canvas { cursor:grabbing; }

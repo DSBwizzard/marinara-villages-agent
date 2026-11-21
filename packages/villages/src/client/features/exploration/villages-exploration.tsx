@@ -220,7 +220,6 @@ export function LocationNavigator({
   onClose,
   mobile,
   focusSearch,
-  onDiscover,
   children,
 }: {
   rows: ExplorationRow[];
@@ -230,7 +229,6 @@ export function LocationNavigator({
   onClose: () => void;
   mobile: boolean;
   focusSearch: boolean;
-  onDiscover: () => void;
   children?: ReactNode;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
@@ -272,14 +270,11 @@ export function LocationNavigator({
           type="search"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
-          placeholder="Find a place"
+          placeholder="Search known places"
         />
       </label>
+      {children}
       <div ref={listRef} className={P + "-explore-list"}>
-        <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
-          Explore
-        </button>
-        {children}
         {filtered.map((row) => (
           <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
             <button

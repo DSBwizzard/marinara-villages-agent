@@ -8,6 +8,7 @@ import type {
 import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
 import { LocationNavigator } from "./villages-exploration.js";
 
 export function PlacesDirectory({
@@ -43,7 +44,7 @@ export function PlacesDirectory({
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
   const [intent, setIntent] = useState("");
-  const [exploring, setExploring] = useState(false);
+  const [noNewPlace, setNoNewPlace] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const read = useRef(0);
@@ -98,6 +99,7 @@ export function PlacesDirectory({
     const ticket = ++read.current;
     setBusy(true);
     setError("");
+    setNoNewPlace(false);
     try {
       const result = await request<PlaceOperationView>("/places/explore", {
         method: "POST",
@@ -105,20 +107,15 @@ export function PlacesDirectory({
       });
       if (ticket !== read.current || result.status !== "ready") return;
       setCursor("");
-      onSearch("");
       setRefresh((n) => n + 1);
-      if (result.placeId) {
+      if (!result.placeId) setNoNewPlace(true);
+      else {
         const row = await request<PlaceDetail | { promoted: true; id: string }>(
           "/places/" + encodeURIComponent(result.placeId),
         );
         if (ticket !== read.current) return;
         if ("promoted" in row) {
-          const venue = snapshot.settings.venues.find((item) => item.id === row.id);
-          if (venue) {
-            setSelectedId(row.id);
-            onSearch(venue.name);
-            onVenue(venue);
-          }
+          setNoNewPlace(true);
         } else {
           setDetail(row);
           setSelectedId(row.id);
@@ -161,7 +158,6 @@ export function PlacesDirectory({
       }}
       disabled={busy}
       onClose={onClose}
-      onDiscover={() => setExploring((value) => !value)}
       rows={page.items.map((place) => {
         const venue = place.venue && snapshot.settings.venues.find((row) => row.id === place.id);
         return {
@@ -175,29 +171,27 @@ export function PlacesDirectory({
         };
       })}
     >
-      <style>{`.villages-place-tools{display:grid;gap:.6rem;padding:.75rem;min-width:0;overflow-wrap:anywhere}.villages-place-tools form,.villages-place-tools label{display:grid;gap:.4rem}.villages-place-tools input{box-sizing:border-box;width:100%;min-width:0;font:inherit}.villages-place-tools p{margin:.2rem 0}.villages-place-tools button{min-height:2.5rem}.villages-place-buttons{display:flex;gap:.5rem;flex-wrap:wrap}`}</style>
+      <style>{`.villages-place-tools{display:grid;gap:.6rem;padding:.75rem;min-width:0;overflow-wrap:anywhere}.${ELEMENT_TAG}-location-navigator>.villages-place-tools{flex:none}.villages-place-tools form,.villages-place-tools label{display:grid;gap:.4rem}.villages-place-tools input{box-sizing:border-box;width:100%;min-width:0;font:inherit}.villages-place-tools p{margin:.2rem 0}.villages-place-tools button{min-height:2.5rem}.villages-place-buttons{display:flex;gap:.5rem;flex-wrap:wrap}`}</style>
       <div className="villages-place-tools">
-        {exploring ? (
-          <form
-            autoComplete="off"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void explore();
-            }}
-          >
-            <label>
-              Explore
-              <input
-                autoComplete="off"
-                value={intent}
-                maxLength={1000}
-                onChange={(event) => setIntent(event.target.value)}
-                placeholder="What are you looking for?"
-              />
-            </label>
-            <button disabled={busy}>Explore</button>
-          </form>
-        ) : null}
+        <form
+          autoComplete="off"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void explore();
+          }}
+        >
+          <label>
+            <span className={ELEMENT_TAG + "-sr-only"}>Explore</span>
+            <input
+              autoComplete="off"
+              value={intent}
+              maxLength={1000}
+              onChange={(event) => setIntent(event.target.value)}
+              placeholder="Somewhere new (optional)"
+            />
+          </label>
+          <button disabled={busy}>Explore</button>
+        </form>
         {cursor || page.nextCursor ? (
           <div className="villages-place-buttons">
             <button disabled={busy || !cursor} onClick={() => setCursor("")}>
@@ -209,6 +203,7 @@ export function PlacesDirectory({
           </div>
         ) : null}
         {busy ? <p role="status">Working…</p> : null}
+        {noNewPlace ? <p role="status">No new Place found.</p> : null}
         {error ? <p role="alert">{error}</p> : null}
       </div>
     </LocationNavigator>

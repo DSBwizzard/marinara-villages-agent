@@ -10,6 +10,13 @@ import { readVenueAccess, readZonePolicy } from "./venue-access.js";
 import { validVenueClasses } from "./venue-model.js";
 
 export const NPC_PREFIX = "npc:";
+
+export function findNamedLocation(state: VillageState, mapId: string, name: string): VillageVenue | undefined {
+  const key = (value: string) => value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
+  return [...state.venues, ...Object.values(state.worldPlaces.places).map((place) => place.location)].find(
+    (location) => location.presentation.mapId === mapId && key(location.name) === key(name),
+  );
+}
 const npcSchema = z
   .object({
     id: z.string().startsWith(NPC_PREFIX).max(200),
