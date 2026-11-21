@@ -1152,6 +1152,7 @@ export function FoundingScreen({
           {setupStep === FOUNDING_STEP.Venues ? (
             <div className="villages-founding-places">
               <QuickStartVenues
+                daylight={storybookDaylight}
                 mobile={phone}
                 inlineVenue={desktopMap || phone}
                 venues={setupVenues}

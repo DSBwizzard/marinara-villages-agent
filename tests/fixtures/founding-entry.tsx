@@ -7,6 +7,7 @@ import { useVillageLighting } from "../../packages/villages/src/client/shared/us
 installFeature(function FoundingFixture(controller) {
   const daylight = useVillageLighting(controller.snapshot?.village, "storybook") !== "night";
   if (controller.screen === "setup") return <FoundingScreen controller={controller} storybookDaylight={daylight} />;
-  if (controller.screen === "preparing") return <PreparationScreen controller={controller} />;
+  if (controller.screen === "preparing")
+    return <PreparationScreen controller={controller} storybookDaylight={daylight} />;
   return <ExplorationScreen controller={controller} />;
 });

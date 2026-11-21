@@ -379,7 +379,12 @@ export function AgentConnectionsControls({
               <button type="button" onClick={() => setJob(null)}>
                 Back
               </button>
-              <button type="button" disabled={busy || disabled} onClick={() => setJob(null)}>
+              <button
+                type="button"
+                className="villages-forging-primary"
+                disabled={busy || disabled}
+                onClick={() => setJob(null)}
+              >
                 Next
               </button>
             </footer>

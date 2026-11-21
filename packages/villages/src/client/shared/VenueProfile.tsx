@@ -16,6 +16,7 @@ export function VenueProfile({
   entranceImage,
   zoneImage,
   fallback,
+  daylight = fallback === "day",
   roomBackdrop,
   onKeyDown,
   navigation,
@@ -31,6 +32,7 @@ export function VenueProfile({
   entranceImage?: string;
   zoneImage?: { url: string; name: string };
   fallback?: "day" | "night";
+  daylight?: boolean;
   roomBackdrop?: boolean;
   onKeyDown?: ComponentProps<"section">["onKeyDown"];
   navigation: ReactNode;
@@ -44,7 +46,7 @@ export function VenueProfile({
       aria-label="Venue"
       data-room-backdrop={roomBackdrop || undefined}
       data-storybook-backdrop={!!fallback || undefined}
-      data-storybook-daylight={fallback === "day" || undefined}
+      data-storybook-daylight={daylight || undefined}
       onKeyDown={onKeyDown}
     >
       <figure className={P + "-venue-photo"}>

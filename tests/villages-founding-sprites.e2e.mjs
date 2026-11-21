@@ -59,6 +59,8 @@ await withBrowser(browser, async () => {
     const name = phone ? "founding/sprites/phone" : "founding/sprites/desktop";
     if (!wantsCase(name)) continue;
     await runCase(name, async () => {
+      snapshot.village.timeZone = "UTC";
+      snapshot.village.instant = phone ? "2026-11-20T00:00:00.000Z" : "2026-11-20T12:00:00.000Z";
       const page = await browser.newPage({ viewport, hasTouch: phone, isMobile: phone });
       await mockEngineLookups(page);
       const writes = [],
@@ -206,7 +208,7 @@ await withBrowser(browser, async () => {
       await expect(row("Aqua").getByRole("status")).toHaveText("6 sprites");
       const missing = row("Professor Mari").getByRole("status");
       await expect(missing).toContainText("No Sprites Assigned!");
-      await expect(missing).toHaveCSS("color", "rgb(255, 146, 159)");
+      await expect(missing).toHaveCSS("color", phone ? "rgb(243, 182, 183)" : "rgb(134, 47, 55)");
       for (const label of ["Portrait", "Sprites", "Assign Side"])
         await expect(root.getByRole("button", { name: label, exact: true })).toHaveCount(0);
       await expect(next).toBeEnabled();

@@ -71,6 +71,9 @@ export async function verifyFoundingLayout(group) {
             : "founding/layout/phone";
       if (!wantsCase(caseName)) continue;
       await runCase(caseName, async () => {
+        const daylight = view.height >= 768 || view.width === 1280;
+        snapshot.village.timeZone = "UTC";
+        snapshot.village.instant = daylight ? "2026-11-20T12:00:00.000Z" : "2026-11-20T00:00:00.000Z";
         const context = await browser.newContext({
           viewport: { width: view.width, height: view.height },
           hasTouch: view.width < 600,
@@ -328,6 +331,41 @@ export async function verifyFoundingLayout(group) {
         await page.addScriptTag({ content: foundingBundle });
         const root = page.locator(".villages-forging-v2"),
           button = (name) => root.getByRole("button", { name, exact: true });
+        const palette = (day) => ({
+          ink: day ? "rgb(33, 62, 54)" : "rgb(240, 223, 188)",
+          panel: day ? "rgb(232, 239, 223)" : "rgb(57, 48, 71)",
+          card: day ? "rgb(218, 231, 210)" : "rgb(81, 65, 87)",
+          primary: day ? "rgb(167, 195, 166)" : "rgb(150, 155, 126)",
+        });
+        const checkPalette = async (day = daylight) => {
+          await expect(root).toHaveAttribute("data-lighting", day ? "day" : "night");
+          await expect(root).toHaveCSS("color", palette(day).ink);
+          for (const panel of await root
+            .locator(".villages-setting-dialogue,dialog[open],.villages-forging-card:not(.villages-quick-map-panel)")
+            .all()) {
+            if (await panel.isVisible()) await expect(panel).toHaveCSS("background-color", palette(day).panel);
+          }
+          for (const primary of await root.locator(".villages-forging-primary").all()) {
+            if (await primary.isVisible()) await expect(primary).toHaveCSS("background-color", palette(day).primary);
+          }
+          for (const row of await root.locator(".villages-selected-villager").all())
+            await expect(row).toHaveCSS("background-color", palette(day).card);
+        };
+        const setDaylight = async (day) => {
+          await page.evaluate(
+            (day) =>
+              window.featureController.setSnapshot((current) => ({
+                ...current,
+                village: {
+                  ...current.village,
+                  timeZone: "UTC",
+                  instant: day ? "2026-11-20T12:00:00.000Z" : "2026-11-20T00:00:00.000Z",
+                },
+              })),
+            day,
+          );
+          await checkPalette(day);
+        };
         const phone = view.width <= 727;
         const work = root.locator(".villages-forging-body");
         const enterChapter = async () => {
@@ -493,6 +531,7 @@ export async function verifyFoundingLayout(group) {
         const manageVenue = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
 
         const bounds = async (phase) => {
+          await checkPalette();
           await expect
             .poll(() =>
               stage.evaluate((node) => node.getAnimations().some((animation) => animation.playState === "running")),
@@ -569,6 +608,16 @@ export async function verifyFoundingLayout(group) {
                 phase + "-" + view.width + "x" + view.height + "-" + view.housing + ".png",
               ),
             });
+          if (phase === "people" && process.env.VILLAGES_SCREENSHOT_DIR) {
+            await setDaylight(!daylight);
+            await page.screenshot({
+              path: resolve(
+                process.env.VILLAGES_SCREENSHOT_DIR,
+                `people-${!daylight ? "day" : "night"}-${view.width}.png`,
+              ),
+            });
+            await setDaylight(daylight);
+          }
         };
         await expect(root).toHaveAttribute("data-step", "0");
         const start = button("START");
@@ -813,19 +862,22 @@ export async function verifyFoundingLayout(group) {
             await hierarchy
               .locator("[data-active] .villages-founding-hierarchy-star path")
               .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill)),
-            Array(activeCount).fill("rgb(255, 240, 195)"),
+            Array(activeCount).fill(palette(daylight).ink),
           );
           const inactiveStars = await hierarchy
             .locator("g:not([data-active]) > .villages-founding-hierarchy-star path")
             .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill));
-          assert.deepEqual(inactiveStars, Array(9 - activeCount).fill("rgb(212, 176, 199)"));
+          assert.deepEqual(
+            inactiveStars,
+            Array(9 - activeCount).fill(daylight ? "rgb(61, 91, 83)" : "rgb(208, 193, 179)"),
+          );
           assert.deepEqual(await stage.boundingBox(), stageBounds, "The chart leaves Mari’s standing mark in place");
         };
         await layer("World");
         await expect(hierarchy.locator(".villages-founding-hierarchy-star")).toHaveCount(9);
         await expect(line).toHaveText(/^See these five layers\?/);
         await expect(button("Choose lorebooks")).toHaveCount(0);
-        await expect(hierarchy).toHaveCSS("background-color", /^rgba\(.+, 0\.[1-9]/);
+        await expect(hierarchy).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
         const presenting = await expectPose("presenting");
         const portraitBox = await presenting.boundingBox();
         const treeBox = await hierarchy.boundingBox();
@@ -1419,11 +1471,34 @@ export async function verifyFoundingLayout(group) {
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
           await picker.getByRole("button", { name: person.name + " · Add", exact: true }).click();
           await expect(picker.locator("footer").getByRole("button")).toHaveCount(1);
-          await expect(picker).toHaveCSS("background-image", /linear-gradient\(155deg, rgba\(59, 49, 73/);
+          await checkPalette();
           await expect(picker.getByRole("button", { name: "Confirm", exact: true })).toHaveCSS(
             "background-color",
-            "rgb(165, 172, 139)",
+            palette(daylight).primary,
           );
+          if (person.id === characters[0].id) {
+            const search = picker.getByRole("searchbox");
+            await search.fill(person.name);
+            const selectedIds = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
+            const pickerBounds = await picker.boundingBox();
+            await setDaylight(!daylight);
+            await expect(search).toHaveValue(person.name);
+            assert.deepEqual(await page.evaluate(() => window.featureController.setupFoundingVillagerIds), selectedIds);
+            assert.deepEqual(
+              await picker.boundingBox(),
+              pickerBounds,
+              "Changing the palette leaves the open picker in place",
+            );
+            if (process.env.VILLAGES_SCREENSHOT_DIR)
+              await page.screenshot({
+                path: resolve(
+                  process.env.VILLAGES_SCREENSHOT_DIR,
+                  `villager-picker-${!daylight ? "day" : "night"}-${view.width}.png`,
+                ),
+              });
+            await setDaylight(daylight);
+            await search.clear();
+          }
           if (process.env.VILLAGES_SCREENSHOT_DIR && person.id === characters[0].id)
             await page.screenshot({
               path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `villager-confirm-${view.width}-${view.height}.png`),
@@ -1469,6 +1544,14 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
         const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
+        await expect(artSettings.getByRole("button", { name: "Back", exact: true })).toHaveCSS(
+          "background-color",
+          daylight ? "rgb(214, 230, 217)" : "rgb(81, 65, 87)",
+        );
+        await expect(artSettings.locator("fieldset")).toHaveCSS(
+          "border-top-color",
+          daylight ? "rgb(120, 148, 131)" : "rgba(180, 127, 146, 0.667)",
+        );
         await expect(artSettings.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
         await expect(artSettings.getByRole("button", { name: /^System / })).toHaveCount(0);
         await expect(artSettings.getByRole("button", { name: /^GM / })).toHaveCount(0);

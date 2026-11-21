@@ -17,6 +17,7 @@ import { foundingVenueIssues, type FoundingIssue } from "./villages-founding-wor
 export function QuickStartVenues({
   inlineVenue = false,
   mobile = false,
+  daylight = false,
   venues,
   locationName,
   people,
@@ -39,6 +40,7 @@ export function QuickStartVenues({
 }: {
   inlineVenue?: boolean;
   mobile?: boolean;
+  daylight?: boolean;
   venues: SetupVenueDraft[];
   locationName: string;
   people: { id: string; name: string }[];
@@ -259,6 +261,7 @@ export function QuickStartVenues({
           key={selected.id}
         >
           <VenueProfile
+            daylight={daylight}
             name={selected.name || "Venue"}
             type={selected.venueType || selected.classes?.join(" · ") || "Venue"}
             mapName={locationName}
@@ -268,7 +271,9 @@ export function QuickStartVenues({
             }
             fallback={
               !selected.presentation.image?.url && !(section === "zones" && zoneDetails && zone && image)
-                ? "night"
+                ? daylight
+                  ? "day"
+                  : "night"
                 : undefined
             }
             roomBackdrop={section === "zones" && zoneDetails && !!image}
