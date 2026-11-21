@@ -332,10 +332,10 @@ export async function verifyFoundingLayout(group) {
         const root = page.locator(".villages-forging-v2"),
           button = (name) => root.getByRole("button", { name, exact: true });
         const palette = (day) => ({
-          ink: day ? "rgb(33, 62, 54)" : "rgb(240, 223, 188)",
-          panel: day ? "rgb(232, 239, 223)" : "rgb(57, 48, 71)",
+          ink: day ? "rgb(23, 57, 47)" : "rgb(240, 223, 188)",
+          panel: day ? "rgb(250, 248, 238)" : "rgb(57, 48, 71)",
           card: day ? "rgb(218, 231, 210)" : "rgb(81, 65, 87)",
-          primary: day ? "rgb(167, 195, 166)" : "rgb(150, 155, 126)",
+          primary: day ? "rgb(69, 105, 77)" : "rgb(150, 155, 126)",
         });
         const checkPalette = async (day = daylight) => {
           await expect(root).toHaveAttribute("data-lighting", day ? "day" : "night");
@@ -876,8 +876,11 @@ export async function verifyFoundingLayout(group) {
         await layer("World");
         await expect(hierarchy.locator(".villages-founding-hierarchy-star")).toHaveCount(9);
         await expect(line).toHaveText(/^See these five layers\?/);
+        await expect(line).toHaveCSS("color", palette(daylight).ink);
+        if (phone) assert.ok(await line.evaluate((node) => parseFloat(getComputedStyle(node).fontSize) >= 16));
         await expect(button("Choose lorebooks")).toHaveCount(0);
         await expect(hierarchy).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        if (daylight) await expect(hierarchy).toHaveCSS("background-color", palette(daylight).panel);
         const presenting = await expectPose("presenting");
         const portraitBox = await presenting.boundingBox();
         const treeBox = await hierarchy.boundingBox();
@@ -1546,7 +1549,7 @@ export async function verifyFoundingLayout(group) {
         const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
         await expect(artSettings.getByRole("button", { name: "Back", exact: true })).toHaveCSS(
           "background-color",
-          daylight ? "rgb(214, 230, 217)" : "rgb(81, 65, 87)",
+          daylight ? "rgb(250, 248, 238)" : "rgb(81, 65, 87)",
         );
         await expect(artSettings.locator("fieldset")).toHaveCSS(
           "border-top-color",
