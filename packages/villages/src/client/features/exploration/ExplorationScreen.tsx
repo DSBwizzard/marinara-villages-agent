@@ -5,8 +5,8 @@ import { ExplorationNavigation, MapIcon } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
-import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
+import { RetainedView } from "../../shared/RetainedView.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -68,9 +68,9 @@ export function ExplorationScreen({
     settingsError,
     snapshot,
     townMapImage,
-    venueExplorationActions,
   } = controller;
   const [focusSearch, setFocusSearch] = useState(false);
+  const directoryVenue = useRef<string | null>(null);
   const mapChoice = useRef<HTMLButtonElement>(null);
   const mapHeading = useRef<HTMLHeadingElement>(null);
   const choosingMap = useRef(showAllMaps);
@@ -185,20 +185,6 @@ export function ExplorationScreen({
     }
   };
   const navigatorOpen = !placingProjectId && exploreSheet?.tab === "places";
-  const selectPlace = (place: VillageVenue) => {
-    setFocusSearch(false);
-    explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    explorationReturnTab.current = "map";
-    if (place.presentation.mapId !== selectedMap?.id) {
-      setSelectedMapId(place.presentation.mapId);
-      setExplorationSearch(explorationSearch);
-    } else {
-      const point = placeSpot(place);
-      if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
-    }
-    setOpenPlaceId(place.id);
-    setExploreSheet({ tab: "places" });
-  };
   const pins = markerDraft
     ? places.flatMap((place) => {
         const point = markerDraft.placements[place.id];
@@ -223,10 +209,7 @@ export function ExplorationScreen({
             ...pin,
             text: place?.name ?? pin.text,
             selected: pin.id === openPlaceId,
-            onSelect:
-              place && !busy && !placingProjectId && !placingPlace
-                ? () => (navigatorOpen ? openPlace(place) : openMapVenue(place))
-                : undefined,
+            onSelect: place && !busy && !placingProjectId && !placingPlace ? () => openMapVenue(place) : undefined,
           };
         });
   const navigation = (
@@ -358,6 +341,47 @@ export function ExplorationScreen({
         </div>
       ) : null}
       <div className={ELEMENT_TAG + "-room"}>
+        <RetainedView active={navigatorOpen && !showAllMaps && !markerDraft && !arrival}>
+          <PlacesDirectory
+            key={snapshot!.worldScope}
+            snapshot={snapshot!}
+            mapId={selectedMap?.id ?? ""}
+            focusSearch={focusSearch}
+            search={explorationSearch.places}
+            onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
+            onMap={async (mapId) => {
+              if (mapId && mapId !== selectedMap?.id) {
+                setSelectedMapId(mapId);
+                setExplorationSearch(explorationSearch);
+              }
+              await closeExploration();
+              setOpenPlaceId(
+                snapshot.settings.venues.find(
+                  (venue) =>
+                    venue.id === directoryVenue.current && venue.presentation.mapId === (mapId || selectedMap?.id),
+                )?.id ?? null,
+              );
+              setFocusSearch(false);
+            }}
+            onLocation={(place) => {
+              setFocusSearch(false);
+              directoryVenue.current = snapshot.settings.venues.some((venue) => venue.id === place.id)
+                ? place.id
+                : null;
+              if (snapshot.settings.venues.some((venue) => venue.id === place.id)) {
+                if (place.presentation.mapId !== selectedMap?.id) {
+                  setSelectedMapId(place.presentation.mapId);
+                  setExplorationSearch(explorationSearch);
+                } else {
+                  const point = placeSpot(place);
+                  if (point)
+                    setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
+                }
+              }
+              openPlace(place);
+            }}
+          />
+        </RetainedView>
         {showAllMaps ? (
           <div className={ELEMENT_TAG + "-maps-overview"}>
             <div className={ELEMENT_TAG + "-maps-heading"}>
@@ -381,33 +405,8 @@ export function ExplorationScreen({
             </div>
           </div>
         ) : (
-          <>
-            {!markerDraft && navigatorOpen ? (
-              <PlacesDirectory
-                key={snapshot!.worldScope}
-                snapshot={snapshot!}
-                mapId={selectedMap?.id ?? ""}
-                mobile={mobile}
-                focusSearch={focusSearch}
-                search={explorationSearch.places}
-                onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
-                onClose={() => {
-                  closeExploration();
-                  setFocusSearch(false);
-                }}
-                onVenue={selectPlace}
-                venueActions={(place) =>
-                  venueExplorationActions(place).filter(
-                    (action) => action.label !== "Visit" || !room || room.status === "closed",
-                  )
-                }
-                onLocation={openPlace}
-              />
-            ) : null}
+          <RetainedView active={!navigatorOpen || !!markerDraft || !!arrival}>
             <div className={`${ELEMENT_TAG}-home-map-paper`}>
-              <div className={`${ELEMENT_TAG}-places-title`}>
-                <StorybookHeading>Locations</StorybookHeading>
-              </div>
               {!placingProjectId && !markerDraft && !arrival ? (
                 <div className={`${ELEMENT_TAG}-map-tools`}>
                   <button
@@ -563,7 +562,7 @@ export function ExplorationScreen({
                 </MapStage>
               </div>
             </div>
-          </>
+          </RetainedView>
         )}
       </div>
       {arrival ? (

@@ -2,76 +2,118 @@ import { useEffect, useRef, useState } from "react";
 import type {
   PlaceDetail,
   PlaceDirectory,
+  PlaceKind,
   PlaceOperationView,
   PlaceSummary,
 } from "../../../shared/contracts/places.js";
 import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { request, messageFrom } from "../../shared/api.js";
+import { useVillageActivity } from "../../shared/activity.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
-import { LocationNavigator } from "./villages-exploration.js";
+import { ELEMENT_TAG as P } from "../../shared/constants.js";
+import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
+import { VillageIcon } from "../../shared/VillageIcon.js";
+import { MapIcon } from "./villages-exploration.js";
+import { LOCATIONS_DIRECTORY_STYLES } from "./locations-directory-styles.js";
+
+const kinds = [
+  ["all", "All"],
+  ["venues", "Venues"],
+  ["other", "Other locations"],
+] as const;
 
 export function PlacesDirectory({
   snapshot,
   mapId,
-  mobile,
   search,
   onSearch,
   focusSearch,
-  onClose,
+  onMap,
   onLocation,
-  onVenue,
-  venueActions,
 }: {
   snapshot: VillageSnapshot;
   mapId: string;
-  mobile: boolean;
   search: string;
   onSearch(value: string): void;
   focusSearch: boolean;
-  onClose(): void;
+  onMap(mapId: string): void;
   onLocation(place: VillageVenue): void;
-  onVenue(place: VillageVenue): void;
-  venueActions?(place: VillageVenue): { label: string; onSelect: () => void }[];
 }) {
-  const [page, setPage] = useState<PlaceDirectory>({ items: [], nextCursor: null });
+  const { viewing = true, visible } = useVillageActivity();
+  const active = viewing && visible;
+  const lifetime = useRef({ mounted: true, exploring: false, navigation: 0 });
+  const owner = lifetime.current;
+  const [kind, setKind] = useState<PlaceKind>("all");
+  const [filterMap, setFilterMap] = useState("");
   const [cursor, setCursor] = useState("");
-  const [selectedId, setSelectedId] = useState("");
+  const [result, setResult] = useState<{ key: string; page: PlaceDirectory } | null>(null);
   const [error, setError] = useState("");
   const [intent, setIntent] = useState("");
   const [noNewPlace, setNoNewPlace] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [refresh, setRefresh] = useState(0);
-  const read = useRef(0);
-  useEffect(
-    () => () => {
-      read.current++;
-    },
-    [],
-  );
+  const scroll = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const key = JSON.stringify([snapshot.worldScope, search, filterMap, kind, cursor]);
+  const page = result?.key === key ? result.page : null;
   useEffect(() => {
+    owner.mounted = true;
+    return () => {
+      owner.mounted = false;
+      owner.navigation++;
+    };
+  }, [owner]);
+  useEffect(() => {
+    owner.navigation++;
+  }, [active, key, owner]);
+  useEffect(() => {
+    if (active && focusSearch) searchRef.current?.focus({ preventScroll: true });
+  }, [active, focusSearch]);
+  useEffect(() => {
+    if (!active) return;
     let current = true;
+    const abort = new AbortController();
+    setLoading(true);
     const timer = setTimeout(() => {
-      void request<PlaceDirectory>("/places?" + new URLSearchParams({ query: search, cursor, limit: "50" }))
+      void request<PlaceDirectory>(
+        "/places?" + new URLSearchParams({ query: search, mapId: filterMap, kind, cursor, limit: "50" }),
+        { signal: abort.signal },
+      )
         .then((value) => {
-          if (current) setPage(value);
+          if (current) {
+            setResult({ key, page: value });
+            setError("");
+          }
         })
         .catch((cause) => {
           if (current) setError(messageFrom(cause, "Could not read locations."));
+        })
+        .finally(() => {
+          if (current) setLoading(false);
         });
     }, 150);
     return () => {
       current = false;
       clearTimeout(timer);
+      abort.abort();
     };
-  }, [search, cursor, refresh]);
+  }, [active, search, filterMap, kind, cursor, key, refresh]);
+  const firstPage = () => {
+    setCursor("");
+    if (scroll.current) scroll.current.scrollTop = 0;
+  };
+  const turnPage = (value: string | null) => {
+    if (value === null) return;
+    setCursor(value);
+    if (scroll.current) scroll.current.scrollTop = 0;
+  };
   const select = async (place: PlaceSummary) => {
-    const ticket = ++read.current;
-    setSelectedId(place.id);
+    const ticket = ++owner.navigation;
     setError("");
     if (place.venue) {
       const venue = snapshot.settings.venues.find((row) => row.id === place.id);
-      if (venue) onVenue(venue);
+      if (venue) onLocation(venue);
       else setError("Refresh the Village to open this Venue.");
       return;
     }
@@ -79,110 +121,221 @@ export function PlacesDirectory({
       const row = await request<PlaceDetail | { promoted: true; id: string }>(
         "/places/" + encodeURIComponent(place.id),
       );
-      if (ticket !== read.current) return;
+      if (ticket !== owner.navigation) return;
       if ("promoted" in row) {
         setError("This location is now a Venue. Refresh Locations.");
-        return;
-      }
-      onLocation(row.location);
+        setRefresh((n) => n + 1);
+      } else onLocation(row.location);
     } catch (cause) {
-      if (ticket === read.current) setError(messageFrom(cause, "Could not read this location."));
+      if (ticket === owner.navigation) setError(messageFrom(cause, "Could not read this location."));
     }
   };
   const explore = async () => {
-    if (busy) return;
-    const ticket = ++read.current;
+    if (owner.exploring) return;
+    owner.exploring = true;
+    const ticket = ++owner.navigation;
     setBusy(true);
     setError("");
     setNoNewPlace(false);
     try {
       const result = await request<PlaceOperationView>("/places/explore", {
         method: "POST",
-        body: JSON.stringify({ worldScope: snapshot.worldScope, requestId: createVillagesClientId(), mapId, intent }),
+        body: JSON.stringify({
+          worldScope: snapshot.worldScope,
+          requestId: createVillagesClientId(),
+          mapId: filterMap || mapId,
+          intent,
+        }),
       });
-      if (ticket !== read.current || result.status !== "ready") return;
-      setCursor("");
+      if (result.status !== "ready" || !owner.mounted) return;
       setRefresh((n) => n + 1);
+      if (ticket !== owner.navigation) return;
       if (!result.placeId) setNoNewPlace(true);
       else {
         const row = await request<PlaceDetail | { promoted: true; id: string }>(
           "/places/" + encodeURIComponent(result.placeId),
         );
-        if (ticket !== read.current) return;
-        if ("promoted" in row) {
-          setNoNewPlace(true);
-        } else {
-          setSelectedId(row.id);
-          onSearch(row.name);
-          onLocation(row.location);
-        }
+        if (ticket !== owner.navigation) return;
+        if ("promoted" in row) setNoNewPlace(true);
+        else onLocation(row.location);
       }
     } catch {
-      // Exploration is optional; a failed attempt returns to idle without request management.
+      // Exploration returns to idle after the server's existing bounded retry.
     } finally {
-      if (ticket === read.current) setBusy(false);
+      owner.exploring = false;
+      if (owner.mounted) setBusy(false);
     }
   };
   return (
-    <LocationNavigator
-      mobile={mobile}
-      focusSearch={focusSearch}
-      search={search}
-      onSearch={(value) => {
-        setCursor("");
-        onSearch(value);
+    <section
+      className={P + "-locations-directory"}
+      aria-label="Locations directory"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onMap(filterMap);
+        }
       }}
-      disabled={busy}
-      onClose={onClose}
-      rows={page.items.map((place) => {
-        const venue = place.venue && snapshot.settings.venues.find((row) => row.id === place.id);
-        return {
-          id: place.id,
-          name: place.name,
-          detail: place.venue
-            ? "Venue"
-            : ["Location", place.report ? "Reported" : place.visited ? "Visited" : ""].filter(Boolean).join(" · "),
-          selected: place.id === selectedId,
-          actions: venue ? venueActions?.(venue) : undefined,
-          onSelect: () => void select(place),
-        };
-      })}
     >
-      <style>{`.villages-place-tools{display:grid;gap:.6rem;padding:.75rem;min-width:0;overflow-wrap:anywhere}.${ELEMENT_TAG}-location-navigator>.villages-place-tools{flex:none}.villages-place-tools form,.villages-place-tools label{display:grid;gap:.4rem}.villages-place-tools input{box-sizing:border-box;width:100%;min-width:0;font:inherit}.villages-place-tools p{margin:.2rem 0}.villages-place-tools button{min-height:2.5rem}.villages-place-buttons{display:flex;gap:.5rem;flex-wrap:wrap}`}</style>
-      <div className="villages-place-tools">
+      <style>{LOCATIONS_DIRECTORY_STYLES}</style>
+      <div ref={scroll} className={P + "-locations-scroll"}>
+        <header className={P + "-locations-header"}>
+          <StorybookHeading>Locations</StorybookHeading>
+          <button type="button" className={P + "-locations-map"} onClick={() => onMap(filterMap)}>
+            <MapIcon name="map" />
+            Map
+          </button>
+        </header>
+        <label className={P + "-locations-map-filter"}>
+          <span className={P + "-sr-only"}>Filter by map</span>
+          <select
+            value={filterMap}
+            onChange={(event) => {
+              setFilterMap(event.target.value);
+              firstPage();
+            }}
+          >
+            <option value="">All maps</option>
+            {snapshot.settings.maps.map((map) => (
+              <option key={map.id} value={map.id}>
+                {map.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={P + "-locations-search"}>
+          <span className={P + "-sr-only"}>Search locations</span>
+          <StorybookSearchIcon />
+          <input
+            ref={searchRef}
+            autoComplete="off"
+            type="search"
+            maxLength={200}
+            value={search}
+            onChange={(event) => {
+              onSearch(event.target.value);
+              firstPage();
+            }}
+            placeholder="Search known locations"
+          />
+        </label>
+        <nav className={P + "-locations-filters"} aria-label="Location categories">
+          {kinds.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={kind === value}
+              onClick={() => {
+                setKind(value);
+                firstPage();
+              }}
+            >
+              <span>{label}</span>
+              {value !== "all" ? <small>{page?.counts[value] ?? "…"}</small> : null}
+            </button>
+          ))}
+        </nav>
         <form
+          className={P + "-locations-discover"}
           autoComplete="off"
           onSubmit={(event) => {
             event.preventDefault();
             void explore();
           }}
         >
-          <label>
-            <span className={ELEMENT_TAG + "-sr-only"}>Explore</span>
+          <label htmlFor={P + "-location-intent"}>Discover somewhere new</label>
+          <div>
             <input
+              id={P + "-location-intent"}
               autoComplete="off"
               value={intent}
               maxLength={1000}
               onChange={(event) => setIntent(event.target.value)}
               placeholder="New location (optional)"
             />
-          </label>
-          <button disabled={busy}>Explore</button>
-        </form>
-        {cursor || page.nextCursor ? (
-          <div className="villages-place-buttons">
-            <button disabled={busy || !cursor} onClick={() => setCursor("")}>
-              First page
-            </button>
-            <button disabled={busy || !page.nextCursor} onClick={() => setCursor(page.nextCursor ?? "")}>
-              Next page
-            </button>
+            <button disabled={busy}>Explore</button>
           </div>
-        ) : null}
-        {busy ? <p role="status">Working…</p> : null}
+        </form>
+        {busy ? <p role="status">Exploring…</p> : null}
         {noNewPlace ? <p role="status">No new location found.</p> : null}
         {error ? <p role="alert">{error}</p> : null}
+        {!page && loading ? <p role="status">Loading…</p> : null}
+        {page && page.total === 0 ? (
+          <p role="status">{search || filterMap || kind !== "all" ? "No matching locations." : "No locations yet."}</p>
+        ) : null}
+        {([true, false] as const).map((venue) => {
+          const items = page?.items.filter((place) => place.venue === venue) ?? [];
+          if (!items.length) return null;
+          return (
+            <section
+              className={P + "-locations-group"}
+              key={String(venue)}
+              aria-label={venue ? "Village Venues" : "Other locations"}
+            >
+              <header>
+                <h2>{venue ? "Village Venues" : "Other locations"}</h2>
+                <small>A–Z</small>
+              </header>
+              <ul>
+                {items.map((place) => (
+                  <li key={place.id}>
+                    <button
+                      type="button"
+                      data-exploration-row={place.id}
+                      onClick={() => void select(place)}
+                      disabled={busy}
+                      aria-label={place.name + (place.venue ? " · Venue" : "")}
+                    >
+                      <VillageIcon name={place.venue ? "places" : "compass"} />
+                      <span className={P + "-location-caption"}>
+                        <strong>{place.name}</strong>
+                        <small>{snapshot.settings.maps.find((map) => map.id === place.mapId)?.name}</small>
+                      </span>
+                      <span className={P + "-location-status"}>
+                        {place.venue ? (
+                          <span className={P + "-venue-badge"}>Venue</span>
+                        ) : place.report ? (
+                          <small>Reported</small>
+                        ) : !place.visited ? (
+                          <small>Unvisited</small>
+                        ) : null}
+                      </span>
+                      <span aria-hidden="true" className={P + "-location-chevron"}>
+                        ›
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
       </div>
-    </LocationNavigator>
+      <footer className={P + "-locations-pagination"} aria-label="Location pages">
+        <span>
+          {page
+            ? page.total
+              ? `${page.offset + 1}–${page.offset + page.items.length} of ${page.total}`
+              : "0 results"
+            : "Loading…"}
+        </span>
+        <div>
+          <button
+            type="button"
+            disabled={loading || !page?.previousCursor}
+            onClick={() => turnPage(page?.previousCursor ?? null)}
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            disabled={loading || !page?.nextCursor}
+            onClick={() => turnPage(page?.nextCursor ?? null)}
+          >
+            Next <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      </footer>
+    </section>
   );
 }

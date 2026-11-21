@@ -586,7 +586,7 @@ export function VenueScreen({
             disabled={navigationBusy}
             onClick={returnToMap}
           >
-            {fromMap ? "← Map" : "← Back to map"}
+            {fromMap ? "← Map" : "← Locations"}
           </button>
           {activeScene ? (
             <button type="button" className={`${ELEMENT_TAG}-venue-back`} disabled={navigationBusy} onClick={back}>

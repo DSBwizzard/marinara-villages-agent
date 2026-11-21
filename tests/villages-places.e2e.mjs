@@ -4,6 +4,7 @@ import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
+import { placeDirectoryPage } from "./fixtures/villages-places.fixture.mjs";
 import { mkdir } from "node:fs/promises";
 const bundle = await build({
   stdin: {
@@ -23,13 +24,13 @@ function App(){
  const [location,setLocation]=useState(null),[section,setSection]=useState('about');
  const [zone,setZone]=useState('exterior'),[screen,setScreen]=useState('home');
  const loadSnapshot=useCallback(async()=>{},[]);
- const open=place=>{setLocation(place);setScreen('venue');setSection('about');window.locationOpened=place.id};
+ const open=place=>{if(snapshot.settings.venues.some(row=>row.id===place.id)){window.venue=place.id;return;}setLocation(place);setScreen('venue');setSection('about');window.locationOpened=place.id};
  window.poll=()=>setSnapshot(current=>structuredClone(current));
  window.reopen=()=>setScreen('venue');
  return <>
-  <div hidden={screen!=='home'}><PlacesDirectory snapshot={snapshot} mapId='map' mobile={innerWidth<600}
-   search={search} onSearch={onSearch} focusSearch={false} onClose={()=>window.closed=true}
-   onLocation={open} onVenue={place=>window.venue=place.id}/></div>
+  <RetainedView active={screen==='home'}><PlacesDirectory snapshot={snapshot} mapId='map'
+   search={search} onSearch={onSearch} focusSearch={false} onMap={()=>window.closed=true}
+   onLocation={open}/></RetainedView>
   {location?<RetainedView active={screen==='venue'}><VenueScreen controller={{
    snapshot,venueId:location.id,screen:'venue',mobile:innerWidth<600,
    venueSection:section,setVenueSection:setSection,venueZoneKey:zone,setVenueZoneKey:setZone,
@@ -122,7 +123,7 @@ await withBrowser(browser, async () => {
         fulfill(route, {
           status: 200,
           contentType: "text/html",
-          body: '<style>html,body{margin:0;background:#16233a;color:#eee;font-family:Arial}:root{--background:#16233a;--foreground:#eee;--border:#718297;--popover:#24334c;--muted-foreground:#ddd}#root{height:100vh;position:relative}</style><marinara-capability-villages><div class="marinara-capability-villages-root" id="root"></div></marinara-capability-villages>',
+          body: '<style>html,body{margin:0;background:#16233a;color:#eee;font-family:Arial}:root{--background:#16233a;--foreground:#eee;--border:#718297;--popover:#24334c;--muted-foreground:#ddd}#root{height:100vh;position:relative;container:village-desk/inline-size}</style><marinara-capability-villages><div class="marinara-capability-villages-root" id="root"></div></marinara-capability-villages>',
         }),
       );
       await page.route("**/api/villages/**", async (route) => {
@@ -131,12 +132,10 @@ await withBrowser(browser, async () => {
         paths.push(path);
         let value;
         if (path === "/places")
-          value = {
-            items: [venue, place, { ...venue, id: "late", name: "New Venue" }, ...(found ? [discovered] : [])].filter(
-              (row) => row.name.toLowerCase().includes((url.searchParams.get("query") ?? "").trim().toLowerCase()),
-            ),
-            nextCursor: null,
-          };
+          value = placeDirectoryPage(
+            [venue, place, { ...venue, id: "late", name: "New Venue" }, ...(found ? [discovered] : [])],
+            url.searchParams,
+          );
         else if (path === "/places/explore") {
           explorations.push(route.request().postDataJSON());
           value = { status: explorations.length === 1 ? "failed" : "ready", placeId: "" };
@@ -154,12 +153,12 @@ await withBrowser(browser, async () => {
       await page.goto("http://places.test/");
       await page.evaluate((value) => (window.snapshot = value), snapshot);
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
-      await expect(page.getByRole("complementary", { name: "Locations navigator" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Locations directory" })).toBeVisible();
       await page.getByRole("button", { name: "Village Hall · Venue", exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.venue)).toBe(venue.id);
       await page.getByLabel("Search locations", { exact: true }).fill(" Lantern ");
-      await expect(page.getByRole("button", { name: "The Lantern · Location", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "The Lantern · Location", exact: true }).click();
+      await expect(page.getByRole("button", { name: "The Lantern", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "The Lantern", exact: true }).click();
       const profile = page.getByRole("region", { name: "Location", exact: true });
       await expect(profile).toBeVisible();
       await expect(profile.getByText(place.description, { exact: true })).toHaveCount(1);
@@ -177,13 +176,13 @@ await withBrowser(browser, async () => {
       await expect(profile.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
       await profile.getByRole("button", { name: "Visit location", exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.visited)).toBe(place.id);
-      await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
+      await profile.getByRole("button", { name: "← Locations", exact: true }).click();
       const detailReads = () => paths.filter((path) => /\/places\/place(?::|%3A)lantern$/.test(path)).length;
       const hiddenReads = detailReads();
       await page.evaluate(() => window.poll());
       await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       assert.equal(detailReads(), hiddenReads, "A hidden retained location does not refresh");
-      await expect(page.getByLabel("Explore", { exact: true })).toBeInViewport();
+      await expect(page.getByLabel("Discover somewhere new", { exact: true })).toBeInViewport();
       await expect(page.getByRole("button", { name: "Explore", exact: true })).toBeInViewport();
       await expect(page.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
       assert(!paths.some((path) => path.endsWith("/prepare")), "Visit delegates first arrival to ordinary Scene entry");
@@ -197,16 +196,16 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Choose map position", exact: true })).toHaveCount(0);
       await expect.poll(() => page.evaluate(() => window.admission)).toEqual({ id: place.id });
       await expect(page.getByRole("button", { name: "Explore", exact: true })).toHaveCount(1);
-      await expect(page.getByLabel("Explore", { exact: true })).toBeVisible();
+      await expect(page.getByLabel("Discover somewhere new", { exact: true })).toBeVisible();
       assert.equal(explorations.length, 0, "Search and browsing do not Explore");
       const submit = page
         .locator("form")
-        .filter({ has: page.getByLabel("Explore", { exact: true }) })
+        .filter({ has: page.getByLabel("Discover somewhere new", { exact: true }) })
         .getByRole("button", { name: "Explore", exact: true });
       await submit.click();
       await expect.poll(() => explorations.length).toBe(1);
       await expect(submit).toBeEnabled();
-      await page.getByLabel("Explore", { exact: true }).fill("A duck");
+      await page.getByLabel("Discover somewhere new", { exact: true }).fill("A duck");
       await submit.click();
       await expect.poll(() => explorations.length).toBe(2);
       await expect(submit).toBeEnabled();
@@ -216,15 +215,16 @@ await withBrowser(browser, async () => {
       );
       await expect(page.getByRole("status")).toHaveText("No new location found.");
       await expect(page.getByLabel("Search locations", { exact: true })).toHaveValue(" Lantern ");
-      await page.getByLabel("Explore", { exact: true }).fill("A lookout");
+      await page.getByLabel("Discover somewhere new", { exact: true }).fill("A lookout");
       await submit.click();
       await expect(profile).toBeVisible();
       await expect.poll(() => page.evaluate(() => window.locationOpened)).toBe(discovered.id);
-      await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Cliff Lookout · Location", exact: true })).toBeVisible();
-      await expect(page.getByLabel("Search locations", { exact: true })).toHaveValue("Cliff Lookout");
+      await profile.getByRole("button", { name: "← Locations", exact: true }).click();
+      await expect(page.getByLabel("Search locations", { exact: true })).toHaveValue(" Lantern ");
+      await page.getByLabel("Search locations", { exact: true }).fill("Cliff Lookout");
+      await expect(page.getByRole("button", { name: "Cliff Lookout", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Explore", exact: true })).toHaveCount(1);
-      await expect(page.getByLabel("Explore", { exact: true })).toBeInViewport();
+      await expect(page.getByLabel("Discover somewhere new", { exact: true })).toBeInViewport();
       await expect(page.getByRole("alert")).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Prepare|Establish|Retry request|Dismiss request/ })).toHaveCount(
         0,
@@ -234,7 +234,7 @@ await withBrowser(browser, async () => {
       await page.getByRole("button", { name: "New Venue · Venue", exact: true }).click();
       await expect(page.getByRole("alert")).toHaveText("Refresh the Village to open this Venue.");
       await page.getByLabel("Search locations", { exact: true }).fill("Lantern");
-      await page.getByRole("button", { name: "The Lantern · Location · Visited", exact: true }).click();
+      await page.getByRole("button", { name: "The Lantern", exact: true }).click();
       await expect(profile).toBeVisible();
       promoted = true;
       await page.evaluate(() => window.poll());
@@ -254,7 +254,7 @@ await withBrowser(browser, async () => {
       await page.getByRole("button", { name: "Back", exact: true }).click();
       assert(
         await page
-          .getByRole("complementary")
+          .getByRole("region", { name: "Locations directory", exact: true })
           .evaluate((element) => element.getBoundingClientRect().width <= innerWidth),
         "The list fits the viewport",
       );

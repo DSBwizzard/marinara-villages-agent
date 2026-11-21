@@ -129,7 +129,7 @@ await withBrowser(browser, async () => {
     };
     await mount();
     const mapImage = (name) => page.getByRole("img", { name: "A map of " + name + ".", exact: true });
-    const places = page.getByRole("complementary", { name: "Locations navigator" });
+    const places = page.getByRole("region", { name: "Locations directory" });
     await expect(page.getByRole("combobox", { name: "Displayed map" })).toHaveCount(0);
     await expect(places).toHaveCount(0);
     await expect(mapImage("Maple House")).toBeVisible();

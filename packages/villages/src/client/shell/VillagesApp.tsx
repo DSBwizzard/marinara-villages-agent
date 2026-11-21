@@ -40,7 +40,6 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   const outgoing = useRef<Animation | null>(null);
   const incoming = useRef<Animation | null>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  const placesView = useRef<"atlas" | "venue">("atlas");
   const peopleOrigin = useRef<{ screen: Controller["screen"]; menuPage: MenuPage; focus: HTMLElement | null } | null>(
     null,
   );
@@ -69,7 +68,6 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     moving.current = false;
     peopleOrigin.current = null;
     returnFocus.current = null;
-    placesView.current = "atlas";
     setMapArrival(null);
     setMailRecipient("");
     setArtworkError("");
@@ -81,8 +79,6 @@ function VillagesContent({ element }: { element: HTMLElement }) {
   }, [controller.snapshot?.worldScope]);
   useLayoutEffect(() => {
     if (controller.screen === "home" || controller.screen === "room") peopleOrigin.current = null;
-    if (controller.screen === "venue" && !arriving) placesView.current = "venue";
-    else if (controller.screen === "home" && controller.exploreSheet?.tab === "places") placesView.current = "atlas";
   }, [controller.screen, controller.exploreSheet?.tab, arriving]);
   useLayoutEffect(() => {
     if (!active || !documentRef.current) {
@@ -248,7 +244,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     },
     closeExploration: () => {
       returnFocus.current = controller.explorationOrigin.current;
-      void move(null, controller.closeExploration);
+      return move(null, controller.closeExploration);
     },
     openRoom: async (place, zone) => {
       await move(null, () => controller.openRoom(place, zone));
@@ -285,7 +281,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     controller.setScreen("home");
   };
   const goTo = async (target: DeskDestination) => {
-    if (target === active) {
+    if (target === active && !(target === "places" && controller.screen === "venue")) {
       if (target === "people" && controller.screen === "person") await directory();
       return;
     }
@@ -297,14 +293,6 @@ function VillagesContent({ element }: { element: HTMLElement }) {
       setMailRecipient("");
       await move("mailbox", () => controller.setMailboxOpen(true));
     } else {
-      const place =
-        placesView.current === "venue"
-          ? controller.snapshot?.settings.venues.find((entry) => entry.id === controller.venueId)
-          : undefined;
-      if (place) {
-        navigation.openPlace(place);
-        return;
-      }
       await move("places", () => {
         controller.setMailboxOpen(false);
         showMap();

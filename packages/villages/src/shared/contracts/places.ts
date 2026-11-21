@@ -11,7 +11,15 @@ export type PlaceSummary = {
   venue: boolean;
 };
 
-export type PlaceDirectory = { items: PlaceSummary[]; nextCursor: string | null };
+export type PlaceKind = "all" | "venues" | "other";
+export type PlaceDirectory = {
+  items: PlaceSummary[];
+  nextCursor: string | null;
+  previousCursor: string | null;
+  offset: number;
+  total: number;
+  counts: Record<PlaceKind, number>;
+};
 export type PlaceDetail = PlaceSummary & { classified: boolean; location: import("./village.js").VillageVenue };
 export type PlaceRequest = {
   worldScope: string;

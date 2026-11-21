@@ -32,15 +32,19 @@ import { sceneQueries } from "../scenes/services.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 
 export async function listPlaces(query: Record<string, unknown>): Promise<PlaceDirectory> {
+  const input = z
+    .object({
+      query: z.string().trim().max(200).default(""),
+      mapId: z.string().max(200).default(""),
+      kind: z.enum(["all", "venues", "other"]).default("all"),
+      cursor: z.coerce.number().int().nonnegative().default(0),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    })
+    .safeParse(query);
+  if (!input.success) throw badRequest("Invalid Locations page.");
+  const { mapId, kind, cursor, limit } = input.data;
   const state = await readVillageState({ memories: true });
-  const search = String(query.query ?? "")
-    .trim()
-    .toLocaleLowerCase()
-    .slice(0, 200);
-  const start = Number(query.cursor ?? 0),
-    limit = Math.min(100, Number(query.limit ?? 50));
-  if (!Number.isSafeInteger(start) || start < 0 || !Number.isSafeInteger(limit) || limit < 1)
-    throw badRequest("Invalid Places page.");
+  const search = input.data.query.toLocaleLowerCase();
   // shortcut: directory search scans private records; add a storage index if measured library size needs it.
   const rows = [
     ...state.venues.map((venue) => ({
@@ -54,12 +58,25 @@ export async function listPlaces(query: Record<string, unknown>): Promise<PlaceD
       .filter((place) => !place.disabled && place.knownBy.includes("player"))
       .map(placeSummary),
   ].filter(
-    (place) =>
-      (!query.mapId || place.mapId === query.mapId) && (!search || place.name.toLocaleLowerCase().includes(search)),
+    (place) => (!mapId || place.mapId === mapId) && (!search || place.name.toLocaleLowerCase().includes(search)),
   );
+  const venues = rows.filter((place) => place.venue).length;
+  const filtered = rows
+    .filter((place) => kind === "all" || (kind === "venues" ? place.venue : !place.venue))
+    .sort(
+      (a, b) =>
+        (kind === "all" && a.venue !== b.venue ? Number(b.venue) - Number(a.venue) : 0) ||
+        a.name.localeCompare(b.name, "en", { sensitivity: "base" }) ||
+        a.id.localeCompare(b.id, "en"),
+    );
+  const start = filtered.length ? Math.min(cursor, Math.floor((filtered.length - 1) / limit) * limit) : 0;
   return {
-    items: rows.slice(start, start + limit),
-    nextCursor: start + limit < rows.length ? String(start + limit) : null,
+    items: filtered.slice(start, start + limit),
+    nextCursor: start + limit < filtered.length ? String(start + limit) : null,
+    previousCursor: start > 0 ? String(Math.max(0, start - limit)) : null,
+    offset: start,
+    total: filtered.length,
+    counts: { all: rows.length, venues, other: rows.length - venues },
   };
 }
 

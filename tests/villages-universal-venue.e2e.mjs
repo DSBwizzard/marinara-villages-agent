@@ -236,10 +236,10 @@ await withBrowser(browser, async () => {
       .getByRole("navigation", { name: "Village exploration" })
       .getByRole("button", { name: "Locations", exact: true });
     await placesButton.click();
-    const placesDirectory = page.getByRole("complementary", { name: "Locations navigator" });
+    const placesDirectory = page.getByRole("region", { name: "Locations directory" });
     const placesSearch = placesDirectory.getByRole("searchbox", { name: "Search locations", exact: true });
     await expect(placesSearch).toBeFocused();
-    await placesDirectory.getByRole("button", { name: /^(Collapse|Close) locations$/ }).click();
+    await placesDirectory.getByRole("button", { name: "Map", exact: true }).click();
     await expect(placesDirectory).toHaveCount(0);
     await expect(placesButton).toBeFocused();
     await placesButton.click();
@@ -249,9 +249,8 @@ await withBrowser(browser, async () => {
     await placesButton.press("Enter");
     await expect(placesSearch).toBeFocused();
     const openProfile = async (id = place.id) => {
-      const navigator = page.getByRole("complementary", { name: "Locations navigator" });
+      const navigator = page.getByRole("region", { name: "Locations directory" });
       await navigator.locator(`[data-exploration-row="${id}"]`).click();
-      await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     };
     await openProfile();
     const profile = page.locator(`.${prefix}-venue-profile`);
@@ -287,17 +286,15 @@ await withBrowser(browser, async () => {
     await deskNavigation.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(desk).toHaveAttribute("data-desk", "settings");
     await deskNavigation.getByRole("button", { name: "Locations", exact: true }).click();
-    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
-    await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
-    await expect(page.getByRole("complementary", { name: "Locations navigator" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Locations directory" })).toBeVisible();
     await expect(desk).not.toHaveAttribute("data-venue", "true");
     await checkArtworkBottom();
     await openProfile();
     let selectedVenue = place.id;
     const chooseVenue = async (id) => {
-      await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
+      await profile.getByRole("button", { name: "← Locations", exact: true }).click();
       const row = page
-        .getByRole("complementary", { name: "Locations navigator" })
+        .getByRole("region", { name: "Locations directory" })
         .locator(`[data-exploration-row="${selectedVenue}"]`);
       await expect(row).toBeFocused();
       await openProfile(id);
@@ -535,7 +532,7 @@ await withBrowser(browser, async () => {
     await expect(saveName).toBeEnabled();
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    await profile.getByRole("button", { name: "← Back to map", exact: true }).click();
+    await profile.getByRole("button", { name: "← Locations", exact: true }).click();
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
       .getByRole("button", { name: "Cancel", exact: true })
@@ -599,6 +596,8 @@ await withBrowser(browser, async () => {
         .getByRole("navigation", { name: "Village navigation" })
         .getByRole("button", { name: "Locations", exact: true })
         .click();
+      await expect(page.getByRole("region", { name: "Locations directory", exact: true })).toBeVisible();
+      await openProfile();
     }
     await expect(profile).toBeVisible();
     for (const section of ["About", "Zones", "Manage"]) {
@@ -634,6 +633,7 @@ await withBrowser(browser, async () => {
       .getByRole("navigation", { name: "Village navigation" })
       .getByRole("button", { name: "Locations", exact: true })
       .click();
+    await openProfile();
     await expect(profile).toBeVisible();
     await expect(tabs.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute("aria-pressed", "true");
     await tabs.getByRole("button", { name: "About", exact: true }).click();

@@ -374,9 +374,8 @@ await withBrowser(browser, async () => {
       .getByRole("navigation", { name: "Village exploration" })
       .getByRole("button", { name: "Locations", exact: true })
       .click();
-    const places = page.getByRole("complementary", { name: "Locations navigator" });
+    const places = page.getByRole("region", { name: "Locations directory" });
     await places.getByRole("button", { name: /^The Mill/ }).click();
-    await places.getByRole("button", { name: "View venue", exact: true }).click();
     await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     await expect(next).toBeEnabled();

@@ -18,7 +18,6 @@ import {
 } from "../features/exploration/calculations.js";
 import { useExplorationOutsideClick, useRemovedVenueNavigation } from "../features/exploration/controller-hooks.js";
 import { useExplorationState } from "../features/exploration/useExplorationState.js";
-import { createVenueExplorationActions } from "../features/exploration/venue-actions.js";
 import { useExplorationViewport } from "../features/exploration/villages-exploration";
 import {
   useFoundVillage,
@@ -1261,16 +1260,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const nameOfCharacter = useResidentsNameOfCharacter({ catalog, snapshot });
 
-  const venueExplorationActions = createVenueExplorationActions({
-    openMenu,
-    openPlace: openVenue,
-    openRoom,
-    setExploreSheet,
-    setFocusedProjectId,
-    setSiteProjectId,
-    snapshot,
-  });
-
   const savedPins: MapPin[] = calculateSavedPins({
     mapId: selectedMap?.id,
     mobile,
@@ -1607,7 +1596,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venueEditDraft,
     venueEditError,
     venueEditNotice,
-    venueExplorationActions,
     venueId,
     venueSection,
     setVenueSection,

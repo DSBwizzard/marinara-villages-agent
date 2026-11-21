@@ -19,7 +19,7 @@ export type ExplorationScreenController = {
   readonly returnToScene: () => void;
   readonly openPlace: (place: VillageVenue) => void;
   readonly busy: boolean;
-  readonly closeExploration: () => void;
+  readonly closeExploration: () => void | Promise<void>;
   readonly error: string;
   readonly explorationOrigin: React.RefObject<HTMLElement | null>;
   readonly explorationReturnTab: React.RefObject<ExplorationTab>;
@@ -48,5 +48,4 @@ export type ExplorationScreenController = {
   readonly settingsError: string;
   readonly snapshot: VillageSnapshot;
   readonly townMapImage: string;
-  readonly venueExplorationActions: (place: VillageVenue) => { label: string; onSelect: () => void }[];
 };

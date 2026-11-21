@@ -1,23 +1,12 @@
 import { VillageIcon } from "../../shared/VillageIcon.js";
-import { StorybookHeading, StorybookSearchIcon } from "../../shared/StorybookHeading.js";
 import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
-import { type CSSProperties, type DOMAttributes, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { type CSSProperties, type DOMAttributes, type ReactNode, useLayoutEffect } from "react";
 
 const P = "marinara-capability-villages";
 
 export type ExplorationTab = "map" | "places" | "people" | "projects" | "more";
 
 export type ExplorationSheet = { tab: "places" | "people" };
-
-export type ExplorationRow = {
-  id: string;
-  name: string;
-  detail: string;
-  onSelect?: () => void;
-  selected?: boolean;
-  actions?: { label: string; onSelect: () => void }[];
-  content?: ReactNode;
-};
 
 export type ExplorationPin = {
   id: string;
@@ -40,7 +29,7 @@ export function useExplorationViewport(host: HTMLElement, active: boolean): void
       const focused =
         document.activeElement instanceof Element &&
         host.contains(document.activeElement) &&
-        document.activeElement.matches("." + P + "-explore-sheet input");
+        document.activeElement.matches("." + P + "-locations-directory input");
       const inset =
         focused && viewport && viewport.scale === 1
           ? Math.max(0, host.getBoundingClientRect().bottom - viewport.offsetTop - viewport.height)
@@ -209,110 +198,5 @@ export function ExplorationMarkers({
           );
         })}
     </>
-  );
-}
-
-export function LocationNavigator({
-  rows,
-  search,
-  onSearch,
-  disabled,
-  onClose,
-  mobile,
-  focusSearch,
-  children,
-}: {
-  rows: ExplorationRow[];
-  search: string;
-  onSearch: (value: string) => void;
-  disabled: boolean;
-  onClose: () => void;
-  mobile: boolean;
-  focusSearch: boolean;
-  children?: ReactNode;
-}) {
-  const searchRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const selectedId = rows.find((row) => row.selected)?.id;
-  useEffect(() => {
-    if (focusSearch) searchRef.current?.focus({ preventScroll: true });
-  }, [focusSearch]);
-  useEffect(() => {
-    const list = listRef.current;
-    if (list && list.scrollHeight > list.clientHeight)
-      list.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
-  }, [selectedId]);
-  const filtered = rows.filter((row) => row.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
-  return (
-    <aside
-      className={P + "-location-navigator " + P + "-explore-sheet"}
-      data-layout={mobile ? "navigator-sheet" : "navigator-rail"}
-      aria-label="Locations navigator"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.stopPropagation();
-          onClose();
-        }
-      }}
-    >
-      <header>
-        <StorybookHeading as="h2">Locations</StorybookHeading>
-        <button type="button" aria-label={mobile ? "Close locations" : "Collapse locations"} onClick={onClose}>
-          <MapIcon name="close" />
-        </button>
-      </header>
-      <label className={P + "-explore-search"}>
-        <span className={P + "-sr-only"}>Search locations</span>
-        <StorybookSearchIcon />
-        <input
-          ref={searchRef}
-          autoComplete="off"
-          type="search"
-          value={search}
-          onChange={(event) => onSearch(event.target.value)}
-          placeholder="Search known locations"
-        />
-      </label>
-      {children}
-      <div ref={listRef} className={P + "-explore-list"}>
-        {filtered.map((row) => (
-          <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
-            <button
-              type="button"
-              className={P + "-explore-row"}
-              aria-label={row.name + (row.detail ? " · " + row.detail : "")}
-              data-exploration-row={row.id}
-              aria-pressed={row.selected === true}
-              disabled={disabled || !row.onSelect}
-              onClick={row.onSelect}
-            >
-              <MapIcon name="places" />
-              <span>
-                <strong>{row.name}</strong>
-                <small>{row.detail}</small>
-              </span>
-              <span className={P + "-place-chevron"} aria-hidden="true">
-                ›
-              </span>
-            </button>
-            {row.selected ? (
-              <div className={P + "-navigator-actions"}>
-                {row.actions?.map((action) => (
-                  <button key={action.label} type="button" disabled={disabled} onClick={action.onSelect}>
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {row.selected ? row.content : null}
-          </div>
-        ))}
-        {filtered.length === 0 ? (
-          <p className={P + "-explore-empty"} role="status">
-            {search.trim() ? "No matching locations." : "No locations yet."}
-          </p>
-        ) : null}
-      </div>
-    </aside>
   );
 }

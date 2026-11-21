@@ -122,7 +122,7 @@ await withBrowser(browser, async () => {
       .getByRole("navigation", { name: "Village exploration" })
       .getByRole("button", { name: "Locations", exact: true })
       .click();
-    const panel = page.getByRole("complementary", { name: "Locations navigator", exact: true });
+    const panel = page.getByRole("region", { name: "Locations directory", exact: true });
     await expect(panel).toBeVisible();
     const bounds = await panel.boundingBox();
     const host = await home.boundingBox();
