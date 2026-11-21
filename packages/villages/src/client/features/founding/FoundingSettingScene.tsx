@@ -50,13 +50,14 @@ export function FoundingSettingScene({
   controller,
   connectionProblem,
   phone,
-  inactive,
+  editorOpen,
   enteringScene,
   title,
   villageNameField,
   villageInvalid,
   villageBriefError,
   mapFields,
+  mapEditorHeader,
   onValidateVillage,
   onEditSetting,
   onBeatChange,
@@ -66,13 +67,14 @@ export function FoundingSettingScene({
   controller: FoundingScreenController;
   connectionProblem: string;
   phone: boolean;
-  inactive: boolean;
+  editorOpen: boolean;
   enteringScene: boolean;
   title: ReactNode;
   villageNameField: ReactNode;
   villageInvalid: boolean;
   villageBriefError: string;
   mapFields: ReactNode;
+  mapEditorHeader: ReactNode;
   onValidateVillage(): boolean;
   onEditSetting(): void;
   onBeatChange(): void;
@@ -187,6 +189,7 @@ export function FoundingSettingScene({
   const submitBrief = () => {
     if (!canDraft) return;
     setPopup(undefined);
+    if (phone) setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: false }));
     const { setupLocationName, setupSetting } = controller;
     if (!waitingForMari && [setupLocationName, setupSetting].some((value) => value.trim())) setConfirmReplace(true);
     else void draftSetupSetting("request");
@@ -289,6 +292,23 @@ export function FoundingSettingScene({
       </button>
     ) : null;
   const draftLabel = waitingForMari ? (setupSuggestionsBusy ? "Drafting Map…" : "Resume Map draft") : "Suggest";
+  const suggestReply =
+    brief.trim() || waitingForMari ? (
+      <button
+        type="button"
+        className="villages-founding-draft-map"
+        ref={draftButton}
+        disabled={!canDraft}
+        onClick={submitBrief}
+      >
+        {draftLabel}
+      </button>
+    ) : null;
+  const closeEditor = () => {
+    setSetupWorkspace((workspace) => ({ ...workspace, settingEditorOpen: false }));
+    focusLine();
+  };
+  const inactive = phone && editorOpen;
   return (
     <section
       className="villages-setting-guide"
@@ -399,26 +419,28 @@ export function FoundingSettingScene({
               {!waitingForMari ? backReply : null}
               {phone ? (
                 <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
-                  Edit Map
+                  Next
                 </button>
               ) : null}
               {!phone ? next : null}
               {dismiss}
-              {brief.trim() || waitingForMari ? (
-                <button
-                  type="button"
-                  className="villages-founding-draft-map"
-                  ref={draftButton}
-                  disabled={!canDraft}
-                  onClick={submitBrief}
-                >
-                  {draftLabel}
-                </button>
-              ) : null}
+              {!phone ? suggestReply : null}
             </div>
           </>
         )}
       </div>
+      {phone && editorOpen ? (
+        <FoundingDialog title="Your first Map" headerContent={mapEditorHeader} onClose={closeEditor}>
+          {mapFields}
+          <footer className="villages-founding-replies">
+            <button type="button" disabled={controller.busy} onClick={closeEditor}>
+              Back
+            </button>
+            {next}
+            {suggestReply}
+          </footer>
+        </FoundingDialog>
+      ) : null}
       {phone && popup === "world" && beat === "world" ? (
         <FoundingDialog
           title="The wider world"

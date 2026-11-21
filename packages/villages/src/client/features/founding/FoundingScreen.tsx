@@ -762,7 +762,6 @@ export function FoundingScreen({
         />
       </FoundingField>
     );
-    const settingTitleLabel = "Your first Map";
     const settingFields = (
       <>
         <FoundingField
@@ -962,26 +961,6 @@ export function FoundingScreen({
             {connectionPrompt}
           </FoundingDialog>
         ) : null}
-        {phone && setupStep === FOUNDING_STEP.Setting && settingEditorOpen && !prelude ? (
-          <FoundingDialog
-            title={settingTitleLabel}
-            headerContent={
-              <>
-                <h3>{settingTitleLabel}</h3>
-                {modelButton}
-              </>
-            }
-            onClose={() => setSettingEditorOpen(false)}
-          >
-            {settingFields}
-            <footer>
-              <button type="button" disabled={busy} onClick={() => setSettingEditorOpen(false)}>
-                Back
-              </button>
-              {nextReply}
-            </footer>
-          </FoundingDialog>
-        ) : null}
         <FoundingChapter
           step={setupStep}
           explanation={explainingStarters}
@@ -1065,13 +1044,19 @@ export function FoundingScreen({
                 controller={controller}
                 connectionProblem={connections.setupProblem}
                 phone={phone}
-                inactive={phone && settingEditorOpen}
+                editorOpen={settingEditorOpen && !prelude}
                 enteringScene={enteringScene}
                 title={title}
                 villageNameField={villageNameField}
                 villageInvalid={villageNameError || !!villageBriefError}
                 villageBriefError={villageBriefError}
                 mapFields={settingFields}
+                mapEditorHeader={
+                  <>
+                    <h3>Your first Map</h3>
+                    {modelButton}
+                  </>
+                }
                 onValidateVillage={validateVillage}
                 onEditSetting={openSettingEditor}
                 onBeatChange={() => {

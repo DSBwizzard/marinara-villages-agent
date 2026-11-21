@@ -877,7 +877,10 @@ export async function verifyFoundingLayout(group) {
         await expect(hierarchy.locator(".villages-founding-hierarchy-star")).toHaveCount(9);
         await expect(line).toHaveText(/^See these five layers\?/);
         await expect(line).toHaveCSS("color", palette(daylight).ink);
-        if (phone) assert.ok(await line.evaluate((node) => parseFloat(getComputedStyle(node).fontSize) >= 16));
+        await expect(line).toHaveCSS(
+          "font-size",
+          await page.evaluate(() => getComputedStyle(document.documentElement).fontSize),
+        );
         await expect(button("Choose lorebooks")).toHaveCount(0);
         await expect(hierarchy).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
         if (daylight) await expect(hierarchy).toHaveCSS("background-color", palette(daylight).panel);
@@ -1286,6 +1289,14 @@ export async function verifyFoundingLayout(group) {
         await nextLine();
         await expect(line).toHaveText(/^Where should your first Map take us/);
         const mapMessage = await line.textContent();
+        if (phone) {
+          await expect(settingPanel).toBeHidden();
+          await expect(button("Suggest")).toHaveCount(0);
+          await expect(button("Edit Map")).toHaveCount(0);
+          await button("Next").click();
+          await expect(settingPanel).toBeVisible();
+          await expect(settingPanel.getByRole("button", { name: "Suggest", exact: true })).toBeVisible();
+        }
         const draftMapButton = button("Suggest");
         const draftMapBounds = await draftMapButton.boundingBox();
         const mapReplies = await draftMapButton.locator("..").boundingBox();
@@ -1306,13 +1317,7 @@ export async function verifyFoundingLayout(group) {
         await expect(villageBrief).toHaveCount(0);
         await expect(villageName).toHaveCount(0);
         const closeSetting = () => settingPanel.getByRole("button", { name: "Back", exact: true }).click();
-        if (phone) {
-          await expect(settingPanel).toBeHidden();
-          if (!draftWithLore) {
-            await button("Edit Map").click();
-            await expect(settingPanel).toBeVisible();
-          }
-        } else {
+        if (!phone) {
           const dialogue = scene.locator(".villages-setting-dialogue");
           await expect(dialogue.getByRole("region", { name: "Your first Map" })).toBeVisible();
           await expect(dialogue.getByRole("button", { name: "Back", exact: true })).toBeVisible();
@@ -1346,7 +1351,8 @@ export async function verifyFoundingLayout(group) {
           const originalEditorHeight = (await settingPanel.boundingBox()).height;
           if (phone) await closeSetting();
           await expect(line).toHaveText(mapMessage);
-          await expect(button("Suggest")).toBeEnabled();
+          if (phone) await expect(button("Suggest")).toHaveCount(0);
+          else await expect(button("Suggest")).toBeEnabled();
           if (process.env.VILLAGES_SCREENSHOT_DIR)
             await page.screenshot({
               path: resolve(
@@ -1373,7 +1379,10 @@ export async function verifyFoundingLayout(group) {
           await expect(line).toHaveText(/^Each Map covers one locale/);
           await nextLine();
           await expect(line).toHaveText(mapMessage);
-          if (phone) await expect(settingPanel).toBeHidden();
+          if (phone) {
+            await expect(settingPanel).toBeHidden();
+            await button("Next").click();
+          }
           await button("Suggest").click();
           await expect(line).toContainText("I’ll replace your first Map details");
           await button("Replace and draft").click();
@@ -1407,8 +1416,8 @@ export async function verifyFoundingLayout(group) {
           if (phone) {
             await closeSetting();
             await expect(line).toHaveText(mapMessage);
-            await expect(button("Suggest")).toBeEnabled();
-            await button("Edit Map").click();
+            await expect(button("Suggest")).toHaveCount(0);
+            await button("Next").click();
           }
         }
 
@@ -1435,7 +1444,7 @@ export async function verifyFoundingLayout(group) {
           await finishNaming();
           await nextLine();
           await nextLine();
-          if (phone) await button("Edit Map").click();
+          if (phone) await button("Next").click();
           await expect(mapName).toHaveValue("Old Harbour");
         }
         if (phone && process.env.VILLAGES_SCREENSHOT_DIR)
