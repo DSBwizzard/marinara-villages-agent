@@ -271,7 +271,7 @@ await withBrowser(browser, async () => {
     const home = page.locator("." + P + "-home-full");
     const venue = home.getByRole("region", { name: "Venue", exact: true });
     const nav = page.getByRole("navigation", { name: "Village exploration" });
-    const navigator = page.getByRole("complementary", { name: "Places navigator" });
+    const navigator = page.getByRole("complementary", { name: "Locations navigator" });
     const canvas = home.getByRole("group", { name: "Map navigation" });
     const stage = home.locator("." + P + "-stage");
     const art = canvas.locator("img").first();
@@ -289,13 +289,13 @@ await withBrowser(browser, async () => {
       if (!(await navigator.isVisible()))
         await page
           .getByRole("navigation", { name: "Village exploration" })
-          .getByRole("button", { name: "Places", exact: true })
+          .getByRole("button", { name: "Locations", exact: true })
           .click();
       await expect(navigator).toBeVisible();
       await expect(page.locator("[data-desk]")).toHaveAttribute("data-phase", "open");
     };
     const closePlaces = async () => {
-      await navigator.getByRole("button", { name: /^(Close|Collapse) places$/ }).click();
+      await navigator.getByRole("button", { name: /^(Close|Collapse) locations$/ }).click();
       await expect(navigator).toHaveCount(0);
       await expect(page.locator(`[data-desk]`)).toHaveAttribute("data-desk", "none");
     };
@@ -370,7 +370,7 @@ await withBrowser(browser, async () => {
     await expect(navigator.getByRole("searchbox")).toHaveValue("unPLACED");
     await page.setViewportSize({ width, height });
     await navigator.getByRole("searchbox").fill("missing location");
-    await expect(navigator.getByRole("status")).toHaveText("No matching places.");
+    await expect(navigator.getByRole("status")).toHaveText("No matching locations.");
     await navigator.getByRole("searchbox").fill("");
     await select("Village Market");
     await expect(navigator.locator('[data-selected="true"] .' + P + "-explore-row")).toHaveAttribute(
@@ -619,7 +619,7 @@ await withBrowser(browser, async () => {
         const n = await page.getByRole("navigation", { name: "Village navigation" }).boundingBox(),
           s = await navigator.getByRole("searchbox").boundingBox();
         const drawer = await navigator.boundingBox(),
-          close = await navigator.getByRole("button", { name: "Close places" }).boundingBox();
+          close = await navigator.getByRole("button", { name: "Close locations" }).boundingBox();
         assert.ok(
           s.y >= drawer.y && close.y >= drawer.y,
           "short-phone search and Close remain inside the visible drawer",

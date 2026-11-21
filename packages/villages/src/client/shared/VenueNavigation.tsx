@@ -10,14 +10,16 @@ export function VenueSections({
   section,
   disabled,
   onSelect,
+  manage = true,
 }: {
   section: VenueSection;
   disabled?: boolean;
+  manage?: boolean;
   onSelect(section: VenueSection): void;
 }) {
   return (
     <nav className={`${P}-venue-sections`} aria-label="Venue sections">
-      {SECTIONS.map((entry) => (
+      {SECTIONS.filter((entry) => entry !== "manage" || manage).map((entry) => (
         <button
           type="button"
           key={entry}

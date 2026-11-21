@@ -1282,7 +1282,7 @@ export function createRepairService(ports: RepairPorts) {
       { label: "Standing rules", value: world.worldRules },
       { label: "Residents", value: world.villagers.map((p) => p.cardSnapshot.name).join(", ") },
       { label: "Memories", value: String(world.continuity.records.length) },
-      { label: "Places", value: world.venues.map((v) => v.name).join(", ") },
+      { label: "Locations", value: world.venues.map((v) => v.name).join(", ") },
       { label: "Projects", value: world.projects.map((p) => `${p.title} · ${p.status}`).join("\n") },
     ];
     const before = summarize(simulation.value.before),

@@ -11,7 +11,6 @@ import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { PlacesDirectory } from "./PlacesDirectory.js";
-import type { PlaceSummary } from "../../../shared/contracts/places.js";
 
 type MarkerDraft = {
   mapId: string;
@@ -52,6 +51,8 @@ export function ExplorationScreen({
     openPlace,
     openPlaceId,
     placingProjectId,
+    placingPlace,
+    setPlacingPlace,
     savedPins,
     savedTownMapShape,
     savedTownMapView,
@@ -78,7 +79,6 @@ export function ExplorationScreen({
     else if (choosingMap.current) mapChoice.current?.focus({ preventScroll: true });
     choosingMap.current = showAllMaps;
   }, [showAllMaps]);
-  const [placingPlace, setPlacingPlace] = useState<PlaceSummary | null>(null);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraft | null>(null);
   const [markerError, setMarkerError] = useState("");
   const [hasSavedMarkers, setHasSavedMarkers] = useState(false);
@@ -391,7 +391,6 @@ export function ExplorationScreen({
                 focusSearch={focusSearch}
                 search={explorationSearch.places}
                 onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
-                sceneActive={!!room && room.status !== "closed"}
                 onClose={() => {
                   closeExploration();
                   setFocusSearch(false);
@@ -402,23 +401,12 @@ export function ExplorationScreen({
                     (action) => action.label !== "Visit" || !room || room.status === "closed",
                   )
                 }
-                onVisit={(place) => {
-                  closeExploration();
-                  venueExplorationActions(place)
-                    .find((action) => action.label === "Visit")
-                    ?.onSelect();
-                }}
-                onAdmit={(place) => {
-                  closeExploration();
-                  setPlacingPlace(place);
-                  setSelectedMapId(place.mapId);
-                  setShowAllMaps(false);
-                }}
+                onLocation={openPlace}
               />
             ) : null}
             <div className={`${ELEMENT_TAG}-home-map-paper`}>
               <div className={`${ELEMENT_TAG}-places-title`}>
-                <StorybookHeading>Places</StorybookHeading>
+                <StorybookHeading>Locations</StorybookHeading>
               </div>
               {!placingProjectId && !markerDraft && !arrival ? (
                 <div className={`${ELEMENT_TAG}-map-tools`}>

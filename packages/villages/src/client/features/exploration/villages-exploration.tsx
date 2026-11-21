@@ -129,7 +129,7 @@ export function ExplorationNavigation({
           onClick={(event) => onChoose(tab, event.currentTarget)}
         >
           {tab === "more" ? <VillageIcon name="settings" /> : <MapIcon name={tab} />}
-          <span>{tab[0].toUpperCase() + tab.slice(1)}</span>
+          <span>{tab === "places" ? "Locations" : tab[0].toUpperCase() + tab.slice(1)}</span>
         </button>
       ))}
     </nav>
@@ -247,7 +247,7 @@ export function LocationNavigator({
     <aside
       className={P + "-location-navigator " + P + "-explore-sheet"}
       data-layout={mobile ? "navigator-sheet" : "navigator-rail"}
-      aria-label="Places navigator"
+      aria-label="Locations navigator"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -256,13 +256,13 @@ export function LocationNavigator({
       }}
     >
       <header>
-        <StorybookHeading as="h2">Places</StorybookHeading>
-        <button type="button" aria-label={mobile ? "Close places" : "Collapse places"} onClick={onClose}>
+        <StorybookHeading as="h2">Locations</StorybookHeading>
+        <button type="button" aria-label={mobile ? "Close locations" : "Collapse locations"} onClick={onClose}>
           <MapIcon name="close" />
         </button>
       </header>
       <label className={P + "-explore-search"}>
-        <span className={P + "-sr-only"}>Search places</span>
+        <span className={P + "-sr-only"}>Search locations</span>
         <StorybookSearchIcon />
         <input
           ref={searchRef}
@@ -270,7 +270,7 @@ export function LocationNavigator({
           type="search"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
-          placeholder="Search known places"
+          placeholder="Search known locations"
         />
       </label>
       {children}
@@ -309,7 +309,7 @@ export function LocationNavigator({
         ))}
         {filtered.length === 0 ? (
           <p className={P + "-explore-empty"} role="status">
-            {search.trim() ? "No matching places." : "No places yet."}
+            {search.trim() ? "No matching locations." : "No locations yet."}
           </p>
         ) : null}
       </div>

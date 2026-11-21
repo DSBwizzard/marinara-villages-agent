@@ -127,7 +127,9 @@ export function DeskWorkspace({
                 }}
               >
                 <VillageIcon name={destination} />
-                <span>{destination[0].toUpperCase() + destination.slice(1)}</span>
+                <span>
+                  {destination === "places" ? "Locations" : destination[0].toUpperCase() + destination.slice(1)}
+                </span>
               </button>
             ))}
           </nav>

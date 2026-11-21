@@ -14,6 +14,7 @@ export function useVenueZoneSelection(ports: {
   useEffect(() => {
     if (venueZoneKey === "exterior") return;
     const venue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
+    if (!venue) return;
     const available =
       venue?.zones?.some((zone) => zone.id === venueZoneKey) ||
       (venueZoneKey.startsWith("class:")

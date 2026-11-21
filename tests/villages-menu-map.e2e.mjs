@@ -129,7 +129,7 @@ await withBrowser(browser, async () => {
     };
     await mount();
     const mapImage = (name) => page.getByRole("img", { name: "A map of " + name + ".", exact: true });
-    const places = page.getByRole("complementary", { name: "Places navigator" });
+    const places = page.getByRole("complementary", { name: "Locations navigator" });
     await expect(page.getByRole("combobox", { name: "Displayed map" })).toHaveCount(0);
     await expect(places).toHaveCount(0);
     await expect(mapImage("Maple House")).toBeVisible();
@@ -218,7 +218,7 @@ await withBrowser(browser, async () => {
     await expect(places).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
+      .getByRole("button", { name: "Locations", exact: true })
       .click();
     await expect(page.getByRole("button", { name: /Corner Café.*Venue/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Lobby.*Workplace/ })).toHaveCount(0);
@@ -330,7 +330,7 @@ await withBrowser(browser, async () => {
     await expect(places).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
+      .getByRole("button", { name: "Locations", exact: true })
       .click();
     await expect(page.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
     await expect(page.locator("[data-desk]")).toHaveAttribute("data-desk", "places");

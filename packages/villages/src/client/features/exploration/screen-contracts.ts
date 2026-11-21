@@ -10,6 +10,10 @@ export type ExplorationScreenController = {
   readonly selectedMap: import("../../../shared/contracts/village.js").VillageMap | null;
   readonly setSelectedMapId: (id: string) => void;
   readonly showAllMaps: boolean;
+  readonly placingPlace: import("../../../shared/contracts/places.js").PlaceSummary | null;
+  readonly setPlacingPlace: React.Dispatch<
+    React.SetStateAction<import("../../../shared/contracts/places.js").PlaceSummary | null>
+  >;
   readonly setShowAllMaps: React.Dispatch<React.SetStateAction<boolean>>;
   readonly room: { status: string } | null;
   readonly returnToScene: () => void;

@@ -14,33 +14,28 @@ import { LocationNavigator } from "./villages-exploration.js";
 export function PlacesDirectory({
   snapshot,
   mapId,
-  sceneActive,
   mobile,
   search,
   onSearch,
   focusSearch,
   onClose,
-  onVisit,
+  onLocation,
   onVenue,
-  onAdmit,
   venueActions,
 }: {
   snapshot: VillageSnapshot;
   mapId: string;
-  sceneActive: boolean;
   mobile: boolean;
   search: string;
   onSearch(value: string): void;
   focusSearch: boolean;
   onClose(): void;
-  onVisit(place: VillageVenue): void;
+  onLocation(place: VillageVenue): void;
   onVenue(place: VillageVenue): void;
-  onAdmit(place: PlaceSummary): void;
   venueActions?(place: VillageVenue): { label: string; onSelect: () => void }[];
 }) {
   const [page, setPage] = useState<PlaceDirectory>({ items: [], nextCursor: null });
   const [cursor, setCursor] = useState("");
-  const [detail, setDetail] = useState<PlaceDetail | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
   const [intent, setIntent] = useState("");
@@ -62,7 +57,7 @@ export function PlacesDirectory({
           if (current) setPage(value);
         })
         .catch((cause) => {
-          if (current) setError(messageFrom(cause, "Could not read Places."));
+          if (current) setError(messageFrom(cause, "Could not read locations."));
         });
     }, 150);
     return () => {
@@ -86,12 +81,12 @@ export function PlacesDirectory({
       );
       if (ticket !== read.current) return;
       if ("promoted" in row) {
-        setError("This Place is now a Venue. Refresh Places.");
+        setError("This location is now a Venue. Refresh Locations.");
         return;
       }
-      setDetail(row);
+      onLocation(row.location);
     } catch (cause) {
-      if (ticket === read.current) setError(messageFrom(cause, "Could not read this Place."));
+      if (ticket === read.current) setError(messageFrom(cause, "Could not read this location."));
     }
   };
   const explore = async () => {
@@ -117,9 +112,9 @@ export function PlacesDirectory({
         if ("promoted" in row) {
           setNoNewPlace(true);
         } else {
-          setDetail(row);
           setSelectedId(row.id);
           onSearch(row.name);
+          onLocation(row.location);
         }
       }
     } catch {
@@ -128,25 +123,6 @@ export function PlacesDirectory({
       if (ticket === read.current) setBusy(false);
     }
   };
-  const selectedContent = detail ? (
-    <section aria-label="Place details">
-      <h3>{detail.name}</h3>
-      <p>{detail.description}</p>
-      {detail.classified ? (
-        <p>{detail.location.classes.map((value) => value[0].toUpperCase() + value.slice(1)).join(" · ")}</p>
-      ) : null}
-      <div className="villages-place-buttons">
-        <button disabled={busy || sceneActive} onClick={() => onVisit(detail.location)}>
-          Visit
-        </button>
-        {detail.visited && detail.classified ? (
-          <button disabled={busy || sceneActive || detail.report} onClick={() => onAdmit(detail)}>
-            Add as Venue
-          </button>
-        ) : null}
-      </div>
-    </section>
-  ) : null;
   return (
     <LocationNavigator
       mobile={mobile}
@@ -163,9 +139,10 @@ export function PlacesDirectory({
         return {
           id: place.id,
           name: place.name,
-          detail: place.venue ? "Venue" : place.visited ? "Visited" : place.report ? "Reported" : "Place",
+          detail: place.venue
+            ? "Venue"
+            : ["Location", place.report ? "Reported" : place.visited ? "Visited" : ""].filter(Boolean).join(" · "),
           selected: place.id === selectedId,
-          content: place.id === detail?.id ? <div className="villages-place-tools">{selectedContent}</div> : null,
           actions: venue ? venueActions?.(venue) : undefined,
           onSelect: () => void select(place),
         };
@@ -187,7 +164,7 @@ export function PlacesDirectory({
               value={intent}
               maxLength={1000}
               onChange={(event) => setIntent(event.target.value)}
-              placeholder="New place (optional)"
+              placeholder="New location (optional)"
             />
           </label>
           <button disabled={busy}>Explore</button>
@@ -203,7 +180,7 @@ export function PlacesDirectory({
           </div>
         ) : null}
         {busy ? <p role="status">Working…</p> : null}
-        {noNewPlace ? <p role="status">No new Place found.</p> : null}
+        {noNewPlace ? <p role="status">No new location found.</p> : null}
         {error ? <p role="alert">{error}</p> : null}
       </div>
     </LocationNavigator>

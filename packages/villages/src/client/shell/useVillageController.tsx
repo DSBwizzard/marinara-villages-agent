@@ -318,6 +318,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSelectedMapId,
     showAllMaps,
     setShowAllMaps,
+    placingPlace,
+    setPlacingPlace,
   } = useExplorationState(snapshot);
   const townMapImage = selectedMap?.artwork.url ?? "";
 
@@ -1386,6 +1388,15 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     openPerson,
     openPlace,
     openPlaceId,
+    placingPlace,
+    setPlacingPlace,
+    beginPlaceAdmission: (place: import("../../shared/contracts/places.js").PlaceSummary) => {
+      closeExploration();
+      setPlacingPlace(place);
+      setSelectedMapId(place.mapId);
+      setShowAllMaps(false);
+      setScreen("home");
+    },
     openRoom,
     openSetup,
     openVenue,

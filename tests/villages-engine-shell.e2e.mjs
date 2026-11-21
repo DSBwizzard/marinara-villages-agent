@@ -120,9 +120,9 @@ await withBrowser(browser, async () => {
     await page.screenshot({ path: resolve(output, `warm-engine-map-${viewport.width}.png`) });
     await home
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
+      .getByRole("button", { name: "Locations", exact: true })
       .click();
-    const panel = page.getByRole("complementary", { name: "Places navigator", exact: true });
+    const panel = page.getByRole("complementary", { name: "Locations navigator", exact: true });
     await expect(panel).toBeVisible();
     const bounds = await panel.boundingBox();
     const host = await home.boundingBox();
