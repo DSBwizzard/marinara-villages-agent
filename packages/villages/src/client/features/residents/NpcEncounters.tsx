@@ -7,7 +7,7 @@ import { ELEMENT_TAG as P } from "../../shared/constants.js";
 function useNpcPage<T>(scope: string, path: string) {
   const [cursors, setCursors] = useState<string[]>([]);
   const [retry, setRetry] = useState(0);
-  const [result, setResult] = useState<{ key: string; page?: NpcPage<T>; error?: string }>();
+  const [result, setResult] = useState<{ key: string; access: number; page?: NpcPage<T>; error?: string }>();
   const { visible } = useVillageActivity();
   const focus = useFocusRevision(visible);
   const cursor = cursors.at(-1);
@@ -17,34 +17,44 @@ function useNpcPage<T>(scope: string, path: string) {
     if (!visible || !scope) return;
     const controller = new AbortController(),
       access = villageAccessRevision();
-    const denied = () => {
+    const denied = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      setResult({
+        key,
+        access: villageAccessRevision(),
+        error: typeof detail === "string" ? detail : "Access was denied. Refresh to try again.",
+      });
       controller.abort();
-      setResult(undefined);
     };
     window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
     void request<NpcPage<T>>(url, { signal: controller.signal })
       .then((page) => {
         if (!controller.signal.aborted && access === villageAccessRevision() && page.scope === scope)
-          setResult({ key, page });
+          setResult({ key, access, page });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
-          setResult({ key, error: error instanceof Error ? error.message : "Could not read encounters." });
+          setResult({
+            key,
+            access: villageAccessRevision(),
+            error: error instanceof Error ? error.message : "Could not read encounters.",
+          });
       });
     return () => {
       controller.abort();
       window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
     };
   }, [scope, url, key, visible]);
+  const current = result?.key === key && result.access === villageAccessRevision() ? result : undefined;
   return {
-    page: result?.key === key ? result.page : undefined,
-    error: result?.key === key ? result.error : undefined,
+    page: current?.page,
+    error: current?.error,
     refresh: () => {
       setCursors([]);
       setRetry((value) => value + 1);
     },
     pagination: (label: string) =>
-      cursors.length || (result?.key === key && result.page?.nextCursor) ? (
+      cursors.length || current?.page?.nextCursor ? (
         <nav className={`${P}-directory-pagination`} aria-label={`${label} pages`}>
           <button
             type="button"
@@ -58,8 +68,8 @@ function useNpcPage<T>(scope: string, path: string) {
           <button
             type="button"
             aria-label={`Next ${label.toLowerCase()} page`}
-            disabled={!result?.page?.nextCursor || result.key !== key}
-            onClick={() => result?.page?.nextCursor && setCursors((prior) => [...prior, result.page!.nextCursor!])}
+            disabled={!current?.page?.nextCursor}
+            onClick={() => current?.page?.nextCursor && setCursors((prior) => [...prior, current.page!.nextCursor!])}
           >
             →
           </button>

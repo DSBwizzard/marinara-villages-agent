@@ -26,7 +26,10 @@ await withBrowser(browser, async () => {
       }));
       let memoryReads = 0,
         historyReads = 0,
-        blockedSearch;
+        blockedSearch,
+        denyNpcRead = false,
+        holdNpcRead = false,
+        releaseNpcRead;
       const blocked = new Promise((resolve) => {
         blockedSearch = resolve;
       });
@@ -39,6 +42,17 @@ await withBrowser(browser, async () => {
         }
         if (url.pathname.endsWith("/npcs")) {
           assert.equal(url.searchParams.get("scope"), village.worldScope);
+          if (denyNpcRead) {
+            denyNpcRead = false;
+            return fulfill(route, {
+              status: 403,
+              json: { code: "REVIEW_ROUTE_DENIED", message: "NPC access temporarily unavailable." },
+            });
+          }
+          if (holdNpcRead)
+            await new Promise((resolve) => {
+              releaseNpcRead = resolve;
+            });
           const query = url.searchParams.get("query") ?? "";
           if (query === "stale") await blocked;
           const filtered = people.filter((person) => person.name.toLowerCase().includes(query.toLowerCase()));
@@ -52,6 +66,8 @@ await withBrowser(browser, async () => {
             },
           });
         }
+        if (url.pathname.endsWith("/mailbox"))
+          return fulfill(route, { status: 403, json: { message: "Mailbox access temporarily unavailable." } });
         if (url.pathname.endsWith("/encounters")) {
           historyReads++;
           assert(url.pathname.includes("npc%3Aperson-0"));
@@ -132,6 +148,28 @@ await withBrowser(browser, async () => {
       await expect(rows).toHaveCount(1);
       await expect(rows.first()).toContainText("Acquaintance 5");
       await search.fill("");
+      await expect(rows).toHaveCount(4);
+      denyNpcRead = true;
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(directory.getByRole("alert")).toContainText("NPC access temporarily unavailable.");
+      await expect(directory.getByText("Reading people…", { exact: true })).toHaveCount(0);
+      await expect(rows).toHaveCount(0);
+      await directory.getByRole("button", { name: "Refresh", exact: true }).click();
+      await expect(rows).toHaveCount(4);
+
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "Mailbox", exact: true })
+        .click();
+      const mailbox = page.getByRole("dialog", { name: "Mailbox", exact: true });
+      await expect(mailbox.getByText("Mailbox access temporarily unavailable.", { exact: true })).toBeVisible();
+      holdNpcRead = true;
+      await mailbox.getByRole("button", { name: "Close Mailbox", exact: true }).click();
+      await expect.poll(() => !!releaseNpcRead).toBe(true);
+      await expect(rows).toHaveCount(0);
+      await expect(directory.getByText("Reading people…", { exact: true })).toBeVisible();
+      holdNpcRead = false;
+      releaseNpcRead();
       await expect(rows).toHaveCount(4);
       const nextPage = directory.getByRole("button", { name: "Next people page" });
       await nextPage.scrollIntoViewIfNeeded();
