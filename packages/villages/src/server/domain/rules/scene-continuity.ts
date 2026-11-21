@@ -57,6 +57,7 @@ export const sceneContinuityFields = [
   "playerPersonaIdentity",
   "playerBackground",
   "villagers",
+  "visitors",
   "venues",
   "residences",
   "projects",
@@ -78,6 +79,12 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
   const facts = cloneSceneFacts(
     Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])) as unknown as SceneContinuity["facts"],
   );
+  const attending = new Set([
+    ...scene.participants.map((person) => person.characterId),
+    ...(scene.sceneAttendance?.occupants ?? []).map((person) => person.characterId),
+  ]);
+  if (facts.visitors) facts.visitors = facts.visitors.filter((person) => attending.has(person.characterId));
+  else delete facts.visitors;
   facts.worldPlaces = capturePlaceContext(
     state,
     scene.placeId,
@@ -96,5 +103,5 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
 export function sceneContinuityView(current: VillageState, scene: VenueScene): VillageState {
   const context = scene.continuity;
   if (!context || context.seed !== current.seed || scene.villageSeed !== current.seed) return current;
-  return { ...current, ...cloneSceneFacts(context.facts) };
+  return { ...current, ...cloneSceneFacts(context.facts), visitors: context.facts.visitors ?? [] };
 }

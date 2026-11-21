@@ -473,7 +473,7 @@ export function encodeScenePresentations(
     lines,
     scene.submissions.filter((turn) => turn.acceptance.status === "applied"),
   );
-  const byId = new Map(positions.map((position) => [position.id, position]));
+  const byId = new Map(positions.map(({ id, position, publicDigest }) => [id, { id, position, publicDigest }]));
   const sources = groupSceneMoments(lines).map(({ line, asides }) => {
     const selected = [line, ...asides],
       edges = selected.map((line) => boundaries.get(line.id));

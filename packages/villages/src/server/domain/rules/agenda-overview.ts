@@ -3,9 +3,9 @@ import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import type { ContinuityEvidence, ContinuityWrite } from "../models/continuity-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
-import type { VillageAgendaBlock, VillageState } from "../models/world.js";
+import type { VillageState } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
-import { restingAgendaBlock } from "./agenda-plan.js";
+import { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityProtectionUnits, continuityViews, latestRelationshipScores, relationshipKey } from "./continuity.js";
@@ -22,8 +22,6 @@ import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 export const AGENDA_SHARED_WARMTH = 60;
 const dateAt = (world: VillageState, instant: Date) =>
   new ZonedDate(instant, world.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-const scheduled = (block: VillageAgendaBlock) =>
-  !(!block.venueId && flexibleAgendaBlock(block) && block.activity === "Taking care of their own affairs");
 const dayOffset = (now: ZonedDate, offset: number) => {
   const day = new ZonedDate(now, now.zone);
   day.setDate(day.getDate() + offset);
@@ -65,7 +63,7 @@ export function agendaSpeechOptions(world: VillageState, actorIds: readonly stri
         return agendaBlocksFor(agenda, day)
           .filter(
             (block) =>
-              scheduled(block) &&
+              scheduledAgendaActivity(block) &&
               !!block.venueId &&
               (offset > 0 || block.endMinute > currentMinute) &&
               (!currentOnly || block.startMinute <= currentMinute),
@@ -128,7 +126,7 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
       const day = dayOffset(at, offset),
         date = agendaDateKey(day);
       const visible = known.filter((row) => row.time.date === date);
-      const effective = resident.agenda ? agendaBlocksFor(resident.agenda, day).filter(scheduled) : [];
+      const effective = resident.agenda ? agendaBlocksFor(resident.agenda, day).filter(scheduledAgendaActivity) : [];
       const times: (Omit<AgendaTime, "date"> & {
         activity: string;
         source?: "told" | "seen" | "agreed";
@@ -196,6 +194,7 @@ export function sceneAgendaEvidence(
   memoryRequire(
     actor &&
       resident?.agenda &&
+      !readset.visitorIds?.includes(actorId) &&
       write.holders.some((row) => row.kind === "actor" && row.id === "player") &&
       write.about?.some((row) => row.id === actorId && row.incarnation === actor.incarnation) &&
       !write.target &&

@@ -115,6 +115,7 @@ const saved = z
           }
           return (
             row.format === 1 &&
+            (row.visitorIntroductionFarewell === undefined || row.visitorIntroductionFarewell === true) &&
             typeof row.setupAt === "string" &&
             Number.isFinite(Date.parse(row.capturedAt)) &&
             Number.isSafeInteger(row.sceneRevision) &&
@@ -130,6 +131,7 @@ const saved = z
             Array.isArray(row.offered) &&
             Array.isArray(row.npcCandidates) &&
             row.npcCandidates.length <= 4 &&
+            z.array(z.string().min(1).max(160)).max(32).optional().safeParse(row.visitorIds).success &&
             agendaOptions.optional().safeParse(row.agendaOptions).success &&
             agendaVenues.optional().safeParse(row.agendaVenues).success &&
             repairs.safeParse(row.repairs).success &&
@@ -142,6 +144,11 @@ const saved = z
             row.source.episodeId === sceneEpisodeId(row.source.seed, row.source.scene.id, row.source.operationId) &&
             Array.isArray(row.source.actors) &&
             row.source.actors.length <= 32 &&
+            z
+              .array(z.object({ characterId: id, arrivedAt: at, leavesAt: at }).strict())
+              .max(32)
+              .optional()
+              .safeParse(row.source.visitorTrips).success &&
             subjects.safeParse(row.source.subjects).success &&
             JSON.stringify(row.source.subjects) === JSON.stringify(row.admission.subjects) &&
             row.source.historical &&

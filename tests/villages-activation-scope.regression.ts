@@ -36,7 +36,7 @@ function fixture(name: string) {
   let onVillageRead: (() => Promise<void>) | undefined;
   const state = defaultVillageState();
   state.name = name;
-  state.narrationStyle.writingGuidance = name;
+  state.narrationStyle.person = name === "application-A" ? "first" : "third";
   state.timeZone = "UTC";
   state.clock = { revision: 1, trustedAt: new Date().toISOString(), recovery: null, replayUntilDate: "" };
   const runtime = {
@@ -214,15 +214,11 @@ async function productionHandlers() {
     assert.equal(b.owner.run(requireHost), b.runtime);
     const responseB = await b.engine.inject({ url: "/api/villages/narration" });
     assert.equal(responseB.statusCode, 200);
-    assert.equal(responseB.json().writingGuidance, "application-B");
+    assert.equal(responseB.json().person, "third");
     resume.resolve();
     const responseA = await paused;
     assert.equal(responseA.statusCode, 200);
-    assert.equal(
-      responseA.json().writingGuidance,
-      "application-A",
-      "actual late handler retains its original document store",
-    );
+    assert.equal(responseA.json().person, "first", "actual late handler retains its original document store");
     a.state.setupAt = "already-founded";
     const savedA = structuredClone(a.state),
       beforeSetup = a.reads.length;
@@ -292,7 +288,7 @@ async function productionHandlers() {
     await b.application.selfCheck();
     const stillB = await b.engine.inject({ url: "/api/villages/narration" });
     assert.equal(stillB.statusCode, 200);
-    assert.equal(stillB.json().writingGuidance, "application-B");
+    assert.equal(stillB.json().person, "third");
   } finally {
     await a.application.stop();
     await b?.application.stop();

@@ -104,13 +104,19 @@ for (const rating of ["sfw", "nsfw"] as const)
       const saved = host.scene().submissions.at(-1)!;
       assert.equal(saved.acceptance.status, "applied");
       assert.equal(saved.message, retryInput);
-      if (failTwice)
+      if (failTwice) {
+        const transcript = await ok(api("GET", `/rooms/browser/history?scope=${session.playback.scope}`));
+        assert(
+          session.lines.every((line: { role: string }) => line.role === "assistant"),
+          "live Scene contains only its latest reply",
+        );
         assert.deepEqual(
-          session.lines
+          transcript.lines
             .filter((line: { kind: string; content: string }) => line.kind === "input" && line.content === input)
             .map((line: { inputOf: string }) => line.inputOf),
           [retry.submissionId],
         );
+      }
     }
 
     try {

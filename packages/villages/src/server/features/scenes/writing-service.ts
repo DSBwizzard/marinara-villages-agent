@@ -6,7 +6,14 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import { agendaSpeechOptions } from "../../domain/rules/agenda-overview.js";
 import type { NarrationReadset } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
-import { badGateway, conflict, VillagesRequestError } from "../../domain/rules/errors.js";
+import {
+  badGateway,
+  badRequest,
+  conflict,
+  safeFailureMessage,
+  VillagesRequestError,
+} from "../../domain/rules/errors.js";
+import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import {
@@ -27,8 +34,9 @@ import {
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
 import { fittedNarrationReadset, narrationContinuityContext } from "../../domain/rules/narration-context.js";
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
-import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
+import { venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
+import { findCardCharacter, introductoryVisitorStay, visitorLodging } from "../../domain/rules/visitors.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
@@ -45,6 +53,7 @@ import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residentMovementOptions, residentMovementPrompt } from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { sceneContinuityView, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
+import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { assertCurrentSceneGeneration, completeSceneObject } from "../../domain/rules/scene-writing-contract.js";
 import { describeSpriteExpressions } from "../../domain/rules/sprite-expressions.js";
 import { sceneVisitOptions } from "../../domain/rules/scene-visit-speech.js";
@@ -58,6 +67,7 @@ import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
 import { addressedSceneResidents, zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
+import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
 import type { ContinuityEvidence } from "../../domain/models/continuity-model.js";
 
 export interface SceneWritingPorts {
@@ -101,6 +111,17 @@ export function createSceneWriting({
   villagesConnectionIdFor,
   readVillageState,
 }: SceneWritingPorts) {
+  async function resolveModel(connectionId: string | null) {
+    try {
+      return await villagesLanguageModels().resolveForRequest({ connectionId });
+    } catch (cause) {
+      if (connectionFailureKind(cause) !== "configuration") throw cause;
+      throw badRequest(
+        `GM connection is not configured: ${connectionId ? JSON.stringify(connectionId) : "Engine default"}.\n${safeFailureMessage(cause)}`,
+        "AI_CONNECTION_NOT_CONFIGURED",
+      );
+    }
+  }
   const requestKey = (scene: VenueScene, input: string, mode: string) =>
     memoryHash([scene.id, venueOperationId(), mode, input]);
   async function prepareVenueTurnMessages(
@@ -138,17 +159,45 @@ export function createSceneWriting({
       .filter((row) => selectedIds.includes(row.characterId))
       .toSorted((a, b) => a.characterId.localeCompare(b.characterId, "en"));
     const cards = cast.flatMap((person) => {
-      const resident = village.villagers.find((row) => row.characterId === person.characterId);
+      const resident = findCardCharacter(village, person.characterId);
       return resident ? [readEffectiveVillagerCard(resident)] : [];
     });
     const profiles = cast.map((person) => {
       const card = cards.find((row) => row.id === person.characterId);
-      if (card) return venueCardProfile(card, player.name, false, false);
+      if (card) {
+        const visitor = village.visitors?.find((row) => row.characterId === person.characterId);
+        const lodging = visitorLodging(
+          village,
+          visitor,
+          new Date(capturedSceneCalendar(scene, village.timeZone).instant),
+        )
+          ? visitor?.trip?.lodging
+          : undefined;
+        const stay =
+          lodging?.hostId === "player"
+            ? "They are staying in the guest room at the player's home."
+            : lodging?.hostId
+              ? "They are staying with a local host. Keep the identity and room private."
+              : lodging
+                ? `They have a guest room at ${village.venues.find((venue) => venue.id === lodging.venueId)?.name ?? "a local inn"}.`
+                : "They are staying somewhere off-map nearby. This grants no access to a Village room.";
+        return (
+          venueCardProfile(card, player.name, false, false) +
+          (scene.visitorIntroduction
+            ? "\nVillage role: Professor Mari is making the Village's first Visitor introduction. She will stay for 24 hours after this introduction finishes, exploring public Venues and staying off-map nearby overnight. She has no local job, Agenda, Wish or Project role."
+            : visitor
+              ? "\nVillage role: On a temporary visit" +
+                (visitor.trip ? ", departing at " + visitor.trip.leavesAt : "") +
+                ". They can speak, react, and form relationships. Their attendance is supplied by the Village. They have no local job, Agenda, Wish or Project role. " +
+                (introductoryVisitorStay(village, visitor) ? "They are staying off-map nearby overnight." : stay)
+              : "")
+        );
+      }
       const npc = findNpc(village, person.characterId);
       if (!npc) throw conflict("A captured character's authored identity is unavailable.");
       return npcProfile(npc);
     });
-    const nativeCommands = mode !== "chat" || !!scene.contactGeneration?.instruction;
+    const nativeCommands = !scene.visitorIntroduction && (mode !== "chat" || !!scene.contactGeneration?.instruction);
     const addressed = nativeCommands
       ? []
       : addressedSceneResidents(input, cast, scene.sceneAttendance?.occupants ?? cast);
@@ -191,7 +240,7 @@ export function createSceneWriting({
           },
         },
       ),
-      villagesLanguageModels().resolveForRequest({ connectionId }),
+      resolveModel(connectionId),
     ]);
     signal?.throwIfAborted();
     const calendar = context.calendar;
@@ -224,8 +273,12 @@ export function createSceneWriting({
             ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
           );
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
-    const remoteInvitations = mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds) : [];
-    const canInviteForVisit = remoteInvitations.length > 0;
+    const localVisitZones = (sceneLayoutVenue(venue, scene).zones ?? [])
+      .filter((zone) => showAccess || zone.seen || zone.id === scene.zoneId)
+      .map((zone) => zone.id);
+    const visitOptions =
+      mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds, localVisitZones) : [];
+    const canInviteForVisit = visitOptions.length > 0;
     const residentMovesInReply = mode === "chat";
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
@@ -239,7 +292,7 @@ export function createSceneWriting({
       /\b(?:when (?:are|can|could|do|does|is|shall|should|will|would)|what (?:time|day|hours)|any plans|plans for|rest of your day|what(?: is|['’]s) on today|(?:doing|you do|up to|working|busy|hours|have time|plans?)\b[^.!?\r\n]{0,40}\btoday)\b/iu.test(
         input,
       );
-    const agendaOptions = agendaSpeechOptions(authority, selectedIds, new Date(calendar.instant), !agendaDiscussed);
+    const agendaOptions = agendaSpeechOptions(village, selectedIds, new Date(calendar.instant), !agendaDiscussed);
     const agendaVenues = agendaDiscussed
       ? [venue.id, ...places.filter(({ id }) => id !== venue.id).map(({ id }) => id)].slice(0, 10).flatMap((id) => {
           const destination = findLocation(village, id);
@@ -285,7 +338,6 @@ export function createSceneWriting({
             ]
           : [ORDINARY_SCENE_DIRECTION]),
         venueWritingDirection(village.narrationStyle, player.name, !nativeCommands),
-        venueAdditionalWritingGuidance(village.narrationStyle),
       ]),
       format: blocksFor([
         nativeCommands ? SCENE_NARRATION_FORMAT : ORDINARY_SCENE_FORMAT,
@@ -294,15 +346,28 @@ export function createSceneWriting({
         nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP,
       ]),
       metadata: blocksFor([
+        scene.visitorIntroduction ? "Public Village name: " + JSON.stringify(village.name) : "",
         scene.contactGeneration?.instruction ?? "",
+        scene.trespass?.zoneId === scene.zoneId && scene.trespass
+          ? "The player is here without permission. Reactions depend on what each person can observe or already knows. The crossing established no consent."
+          : "",
+        scene.actorTrespasses?.some((row) => row.zoneId === scene.zoneId && selectedIds.includes(row.actorId))
+          ? "Private unauthorized positions: " +
+            JSON.stringify(
+              scene.actorTrespasses.filter((row) => row.zoneId === scene.zoneId && selectedIds.includes(row.actorId)),
+            ) +
+            ". This does not establish detection or anyone else's knowledge. Villagers and NPCs retain their own motives, including concealing, reporting or challenging a witnessed intrusion. Consequences require normal witnessed evidence and authority. Conclude has no special meaning or consequence."
+          : "",
         mode === "greet"
-          ? scene.visitEvent
-            ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
-                scene.visitEvent === "place"
-                  ? "Let a plausible local development give the player something to notice or react to. The place can initiate this even when nobody is present."
-                  : "Let a present resident initiate from their own activity, desire or commitment, or let an observable local development draw the player's attention."
-              } Show one brief beat. Respect current attendance and hearing. The player chooses whether to engage. Keep any lasting result subject to ordinary evidence and native authority.`
-            : "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
+          ? scene.visitorIntroduction
+            ? "Professor Mari's first visit has three parts. You write only parts 1 and 3. Part 1: her personalized opening greeting, two to four short spoken sentences about this Village or Venue, with at most one brief observable arrival beat. Greet the player, make a local observation or joke, and stop naturally. Do not introduce the Visitor topic, announce an explanation, hand over to another speaker, or ask the player a question or to explain anything. Part 2: the game inserts prepared dialogue spoken entirely by MARI TO THE PLAYER, beginning with Mari's own 'Wondering why I'm here?' and 'Me too!' This scripted part introduces and explains Visitors; the player only listens. Do not generate, repeat, paraphrase or set up this middle section. Part 3: ONE final ordinary main dialogue segment, never an aside or whisper, containing her personalized farewell, one to three sentences. Let her go look around, make a small callback to the Village or Venue, and say she will be around for another day and can be found for ordinary conversation. She is not leaving the Village yet. Neither generated part introduces or explains Visitors or asks anyone to explain them. Use her existing card's voice: playful, warmly sarcastic, with a small fourth-wall joke. Ground both generated sections in this Village's public name/setting and/or the current Venue's observable entrance. She remembers helping the player found the Village. Use the supplied founding record and current Scene calendar for the actual time since founding; her first visit may be days, months, or years later. A time reference is optional and must match that record. Elapsed time does not establish that the player was absent or what happened in the interval. Do not reveal GM-only player context, private rooms, unseen people or secrets, invent established Village history, repeat a stock joke, end the Scene, move anyone, or propose keeps, commands, offers or lasting changes. Do not supply the player's actions, thoughts or speech."
+            : scene.visitEvent
+              ? `Begin a new moment rooted in the current time, Zone and observable circumstances. ${
+                  scene.visitEvent === "place"
+                    ? "Let a plausible local development give the player something to notice or react to. The place can initiate this even when nobody is present."
+                    : "Let a present resident initiate from their own activity, desire or commitment, or let an observable local development draw the player's attention."
+                } Show one brief beat. Respect current attendance and hearing. The player chooses whether to engage. Keep any lasting result subject to ordinary evidence and native authority.`
+              : "Open the Scene from established presence and give the player a natural opening. The player supplies any voluntary action or speech. Agenda entries and existing offers are context. Do not echo them as keeps. An invitation can stay in dialogue until someone responds."
           : mode === "leave"
             ? "Respond to the submitted departure from the current Zone and close when it is complete. End before the player arrives anywhere else. Any goodbye from the player comes from their submission."
             : "",
@@ -312,12 +377,15 @@ export function createSceneWriting({
         nativeCommands ? NARRATION_RESPONSE : ordinarySceneCitationIds(positions),
         nativeCommands ? "" : ordinarySceneKeepSources(positions),
         canInviteForVisit
-          ? 'Write "visit" first whenever a resident grants the player a visit to a listed remote room. Use "visit":{"option":1,"segment":2,"escort":true} with the actual option number and one-based index of the invitation dialogue. Use the option belonging to that speaker. A group invitation gets the same entry when it includes the player. Set escort true only when the speaker agrees to lead. Omit visit for tentative plans, refusals, and conditions that have yet to be met. End before the player or their escort starts that trip.'
+          ? 'Write "visit" first whenever a resident grants entry to a listed Zone, including this Venue. Use "visit":{"option":1,"segment":2,"escort":false} with the actual option number and one-based index of their invitation dialogue. Same-Venue entry lasts for this Scene; remote entry is for the next visit. Use that speaker\'s option. A group invitation gets the same entry when it includes the player. Set escort true only when they agree to lead. Omit visit for tentative plans, refusals, or unmet conditions. End before the player starts moving.'
           : "",
         residentMovesInReply
-          ? 'A visible resident move uses {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter the Zone."}. A full exit uses {"kind":"departure","who":"resident-id","text":"They wave and head out."}. Use supplied actors and routes. Write arrivals before local dialogue. Stay with the player’s view.'
+          ? 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
           : "",
         nativeCommands ? NARRATION_NATIVE : "",
+        !nativeCommands && !scene.visitorIntroduction
+          ? "Agreement to accompany: dialogue follow:{agrees:true}, also on spoken asides. Memory alone does not enable following. trespass:true needs explicit outing-wide sneaking consent. Omit to for ongoing following; to limits one adjacent crossing. agrees:false stops. Questions/conditions grant no consent. Use one form per decision. Observed following uses native move.decide with player-seen evidence."
+          : "",
         mode === "leave" && input.trim()
           ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."
           : "",
@@ -368,9 +436,7 @@ export function createSceneWriting({
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           showAccess ? narrationAccessPrompt(context.access) : "",
           nativeCommands && showAccess ? NARRATION_ACCESS_COMMANDS : "",
-          canInviteForVisit
-            ? "Remote visit invitations available in this Scene: " + JSON.stringify(remoteInvitations)
-            : "",
+          canInviteForVisit ? "Visit invitations available in this Scene: " + JSON.stringify(visitOptions) : "",
           housing,
           nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
@@ -387,13 +453,21 @@ export function createSceneWriting({
             : "",
           nativeCommands && (context.circumstance || context.repairs.length) ? NARRATION_CIRCUMSTANCE_COMMANDS : "",
           sprites.length
-            ? 'Optional staging:[{characterId,expression?,look?:{target:"player"|"villager"|"direction",characterId?,direction?}}] uses supplied sprite choices and visible actors. Code owns placement.'
+            ? 'Optional staging inside each segment: "staging":[{"characterId":"speaker-id","expression":"supplied-expression","look":{"target":"player"}}]. Use supplied sprite choices and visible actors; look may also target "villager" with characterId or "direction" with direction "left"|"right". Code owns placement.'
             : "",
           JSON.stringify({
             calendar,
+            ...(scene.visitorIntroduction
+              ? {
+                  founding: {
+                    ...capturedSceneCalendar({ startedAt: village.setupAt }, calendar.timeZone),
+                    elapsedDays: Math.floor((Date.parse(calendar.instant) - Date.parse(village.setupAt)) / 86_400_000),
+                  },
+                }
+              : {}),
             leadSpeakerId,
             movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
-            doorwayContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
+            zoneContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
             protections: context.protections,
             roomReferences: context.roomReferences,
             circumstance: narrationCircumstancePrompt(context.circumstance, nativeCommands),
@@ -441,7 +515,7 @@ export function createSceneWriting({
       "Narration",
       "## Scene reply reminder\n" +
         (canInviteForVisit
-          ? 'Start with "visit" when the reply grants the player a remote visit, followed by "segments". Otherwise start with "segments".\n'
+          ? 'Start with "visit" when the reply grants entry to any listed Zone, followed by "segments". Otherwise start with "segments".\n'
           : plainJson
             ? 'Begin with {"segments":[. Use text for narration and dialogue. Close the JSON object once.\n'
             : "") +
@@ -467,22 +541,36 @@ export function createSceneWriting({
       });
     }
     const readset = fittedNarrationReadset(authority, context, fitted.evidenceIds);
+    const visitorIds = village.visitors
+      ?.filter((visitor) =>
+        readset.source.actors.some(
+          (actor) => actor.id === visitor.characterId && actor.incarnation === visitor.incarnation,
+        ),
+      )
+      .map((visitor) => visitor.characterId);
     const request: Request = {
       fitted,
       readset: {
         ...readset,
+        ...(scene.visitorIntroduction
+          ? { visitorIntroductionFarewell: true as const }
+          : { sceneFollowing: 2 as const }),
+        ...(!scene.visitorIntroduction && scene.trespassReaction?.id === venueOperationId()
+          ? { automaticTrespass: true as const }
+          : {}),
         ...(!nativeCommands ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
         ...(canInviteForVisit
           ? {
-              sceneVisitOptions: remoteInvitations.map(({ actorId, venueId, zoneId }) => ({
+              sceneVisitOptions: visitOptions.map(({ actorId, venueId, zoneId }) => ({
                 actorId,
                 venueId,
                 zoneId,
               })),
             }
           : {}),
+        ...(visitorIds?.length ? { visitorIds } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaOptions.length ? { agendaOptions } : {}),
         ...(fitted.evidenceIds.includes(agendaContext) && agendaVenues.length
           ? { agendaVenues: agendaVenues.map(({ id, zones }) => ({ id, zones: zones.map((zone) => zone.id) })) }
@@ -638,7 +726,7 @@ export function createSceneWriting({
     const model =
       resolved?.model === request.model.model && resolved.connectionId === request.model.connectionId
         ? resolved
-        : await villagesLanguageModels().resolveForRequest({ connectionId: request.model.connectionId });
+        : await resolveModel(request.model.connectionId);
     if (model.model !== request.model.model || model.connectionId !== request.model.connectionId)
       throw conflict("The captured Narration model changed. The request is retained.");
     return model;
@@ -656,11 +744,15 @@ export function createSceneWriting({
       reasoningEffort: null,
       verbosity: null,
       debugMode: false,
-      ...(visitEvent
+      ...(visitEvent || request.readset.automaticTrespass
         ? {
             beforeSceneDispatch: async () => {
               const current = await readVillageState();
-              if (!current.spontaneousEvents || current.seed !== request.readset.source.seed)
+              if (
+                !current.spontaneousEvents ||
+                current.seed !== request.readset.source.seed ||
+                current.setupAt !== request.readset.setupAt
+              )
                 throw conflict("Spontaneous events are off. Continue this Scene to move or speak.");
             },
           }

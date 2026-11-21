@@ -1,3 +1,4 @@
+import { findCardCharacter } from "../../domain/rules/visitors.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   SpriteAppearance,
@@ -11,7 +12,7 @@ import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-transport.js";
 import type { SpriteWrites } from "./sprite-writes.js";
-import type { VillageState } from "../../domain/models/world.js";
+import type { VillageCardCharacter, VillageState } from "../../domain/models/world.js";
 import {
   coerceSpriteManager,
   emptySpriteManager,
@@ -27,6 +28,9 @@ import {
 import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, badGateway, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { automaticVisitorSprites } from "../../domain/rules/visitor-sprites.js";
+import { withMariSpriteDefaults } from "../../domain/rules/professor-mari.js";
+import { PROFESSOR_MARI_ID, MARI_SPRITE_FOLDER, mariSpriteFiles } from "../../../shared/helpers/professor-mari.js";
 
 export interface SpriteSetupPorts {
   villagesDocuments: typeof villagesDocuments;
@@ -106,13 +110,13 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
   }
 
   function residentState(world: VillageState, id: string) {
-    const person = world.villagers.find((item) => item.characterId === id);
+    const person = findCardCharacter(world, id);
     if (!person) throw notFound("That resident no longer lives here.");
     const manager = coerceSpriteManager(person.spriteManager) ?? emptySpriteManager();
     return { person, manager, token: hash([villageWorldScope(world), person.incarnation, manager]) };
   }
 
-  async function files(id: string) {
+  async function engineFiles(id: string) {
     const key = encodeURIComponent(id);
     const signal = AbortSignal.timeout(5_000);
     await ports.villageEngineJson("/api/characters/" + key, { signal });
@@ -153,6 +157,12 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       ];
     });
     return { files: items, folders };
+  }
+
+  async function files(id: string) {
+    if (id !== PROFESSOR_MARI_ID) return engineFiles(id);
+    const library = await engineFiles(id).catch(() => ({ files: [], folders: [] }));
+    return { files: [...mariSpriteFiles, ...library.files], folders: [MARI_SPRITE_FOLDER, ...library.folders] };
   }
 
   async function library(id: string): Promise<Library> {
@@ -338,7 +348,32 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     });
   }
 
+  async function automaticCharacterManager(id: string) {
+    if (id === PROFESSOR_MARI_ID) return withMariSpriteDefaults(id, null);
+    const library = await files(id).catch(() => null);
+    return library ? automaticVisitorSprites(library.files, library.folders) : null;
+  }
+
+  async function initializeCharacter(scope: string, character: VillageCardCharacter) {
+    const id = character.characterId;
+    const matches = (state: VillageState) => {
+      const person = villageWorldScope(state) === scope ? findCardCharacter(state, id) : undefined;
+      return person?.incarnation === character.incarnation ? person : undefined;
+    };
+    return ports.writes.serialize(writeKey(id, true), async () => {
+      const current = matches(await ports.readVillageState());
+      if (!current || current.spriteManager || current.sprite) return current?.spriteManager;
+      const manager = await automaticCharacterManager(id);
+      if (!manager) return null;
+      const saved = await ports.mutateVillageState((state) => {
+        const person = matches(state);
+        if (person && !person.spriteManager && !person.sprite) person.spriteManager = manager;
+      });
+      return matches(saved)?.spriteManager;
+    });
+  }
+
   const settled = (id: string, resident = false, automatic = false) =>
     ports.writes.serialize(writeKey(id, resident), () => read(id, resident, automatic));
-  return { settled, save, preparedManager };
+  return { settled, save, preparedManager, automaticManager: automaticCharacterManager, initializeCharacter };
 }

@@ -7,7 +7,7 @@ export const VILLAGES_SCENE_STYLES = `
 [data-component="HomeBrowserHub"]:has(${tag}[data-scene-play]) [data-component="HomeBrowserHub.Content"] { overflow: hidden; }
 ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !important; }
 .${tag}-root.${tag}-room-screen { position: relative; }
-.${tag}-room-time { display: block; overflow: hidden; text-overflow: ellipsis; font-size: .6875rem; opacity: .8; }
+.${tag}-room-time, .${tag}-room-zone { display: block; overflow: hidden; text-overflow: ellipsis; font-size: .6875rem; opacity: .8; }
 .${tag}-room-screen > .${tag}-room-error { position: absolute; z-index: 20; top: 3rem; left: .75rem; right: .75rem; max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 9rem)); overflow-y: auto; }
 .${tag}-room-screen > .${tag}-chat { position: relative; flex: 1 0 100%; height: 100%; min-height: 0; }
 .${tag}-room-screen > .${tag}-chat { overflow:clip; }
@@ -43,6 +43,8 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-history-entry .${tag}-chat-vn-portrait { width:28px; height:28px; border-radius:.4rem; flex:none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
+.${tag}-scene-opening-actions { display: flex; flex-wrap: wrap; gap: .375rem; padding: .375rem .75rem; }
+.${tag}-scene-opening-actions button { min-height: 44px; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
 .${tag}-room-screen .${tag}-chat-input > .${tag}-textarea {
   height: auto; min-height: 0; max-height: 12.5rem; padding: 0; font-size: .875rem; line-height: 1.5;
@@ -55,11 +57,55 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 }
 .${tag}-room-screen .${tag}-chat-send svg { width: .9375rem; height: .9375rem; }
 .${tag}-room-screen .${tag}-chat-send:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
-.villages-founding-dialog.villages-scene-move { width:min(24rem,calc(100vw - 2rem)); height:fit-content; padding:.5rem; }
-.villages-scene-move > header { margin:0; padding:.3rem .5rem; }
-.villages-scene-move .villages-founding-editor-body { display:grid; gap:.45rem; padding:.75rem; }
-.villages-scene-move .villages-founding-editor-body p { margin:0 0 .2rem; }
-.villages-scene-move .villages-founding-editor-body button { width:100%; text-align:left; min-height:44px; }
+.${tag}-room-screen .${tag}-room-actions-menu { max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 4rem)); overflow-y: auto; }
+.villages-founding-dialog.villages-scene-move {
+  ${STORYBOOK_NIGHT_PALETTE}; color-scheme:dark; --move-card:#514157; --move-line:#a5ac8b; --move-caution:#d9b37c;
+  width:min(58rem,calc(100vw - 2rem)); height:fit-content; padding:1.25rem;
+  max-height:calc(100dvh - 2rem); border:1px solid var(--border); border-radius:1rem;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--secondary) 42%,transparent),transparent 65%),var(--background); color:var(--foreground); font:16px/1.4 var(--menu-font); box-shadow:0 1.5rem 5rem #0005;
+}
+.villages-founding-dialog.villages-scene-move-day { ${STORYBOOK_DAY_PALETTE}; --move-card:#dae7d2; --move-line:#789483; --move-caution:#8b6035; }
+.villages-scene-move::backdrop { background:#11131c70; backdrop-filter:blur(4px); }
+.villages-founding-dialog.villages-scene-move > header { display:flex; align-items:center; gap:.75rem; margin:0; padding:0 0 1rem; background:transparent; }
+.villages-scene-move-heading { flex:1; min-width:0; }
+.villages-scene-move-heading h3 { margin:0!important; font:500 2rem/1.1 var(--menu-font)!important; }
+.villages-scene-move-heading small { display:block; color:var(--muted-foreground); margin-top:.35rem; }
+.villages-founding-dialog.villages-scene-move button { min-height:44px; border:1px solid var(--border); border-radius:.6rem; background:var(--secondary); color:inherit; font:inherit; padding:.45rem .8rem; }
+.villages-founding-dialog.villages-scene-move > header button { flex:none; width:auto; margin:0; background:transparent; }
+.villages-founding-dialog.villages-scene-move > header > button:last-child { width:44px; padding:0; font-size:1.5rem; }
+.villages-founding-dialog.villages-scene-move button:focus-visible { outline:2px solid var(--menu-tab-line); outline-offset:3px; }
+.villages-scene-move .villages-founding-editor-body { display:grid; gap:1rem; padding:0; }
+.villages-scene-move .villages-founding-editor-body p { margin:0; }
+.villages-scene-move-location { font-size:.875rem; color:var(--muted-foreground); }
+.villages-scene-move .villages-zone-map { margin:0; }
+.villages-scene-move .villages-zone-map-canvas { height:clamp(420px,52dvh,540px); min-height:420px; border:0; border-radius:0; background:transparent; }
+.villages-scene-move .villages-zone-map-canvas polyline { stroke:var(--move-line); stroke-width:1.5; }
+.villages-scene-move .villages-zone-map-canvas button.villages-zone-map-tile {
+  --tile-surface:var(--move-card); width:32%; min-height:44px; text-align:left; align-items:flex-start;
+  padding:.5rem .75rem; isolation:isolate; border-color:var(--move-line); background:var(--tile-surface);
+}
+.villages-scene-move .villages-zone-map-tile:has([data-zone-access="trespass"]) { border-color:var(--move-caution); }
+.villages-scene-move .villages-zone-map-tile:has([data-zone-access="blocked"]) { border-style:dashed; }
+.villages-scene-move .villages-zone-map-canvas button[aria-pressed="true"] { --tile-surface:var(--menu-selected); border-color:var(--menu-tab-line); box-shadow:inset 0 0 0 1px var(--menu-tab-line); }
+.villages-scene-move .villages-zone-map-tile[aria-current="location"] small::before { content:""; display:inline-block; width:.4rem; height:.4rem; margin-right:.35rem; border-radius:50%; background:currentColor; vertical-align:middle; }
+.villages-scene-move .villages-zone-map-tile strong { position:relative; white-space:normal; overflow-wrap:anywhere; font-size:clamp(12px,1rem,18px); line-height:1.15; }
+.villages-scene-move .villages-zone-map-label { position:relative; max-width:100%; }
+.villages-scene-move .villages-zone-map-tile small { font-size:clamp(10px,.8rem,14px); color:var(--foreground); }
+.villages-scene-move .villages-zone-map-art { position:absolute; z-index:-2; inset:0; width:100%; height:100%; object-fit:cover; opacity:.65; pointer-events:none; }
+.villages-scene-move .villages-zone-map-tile:has(.villages-zone-map-art)::before { content:""; position:absolute; z-index:-1; inset:0; background:linear-gradient(90deg,var(--tile-surface) 12%,color-mix(in srgb,var(--tile-surface) 94%,transparent) 48%,color-mix(in srgb,var(--tile-surface) 25%,transparent)); pointer-events:none; }
+.villages-scene-move-zone { padding-top:1rem; border-top:1px solid var(--border); }
+.villages-scene-move .villages-scene-move-companions p { margin:0 0 .5rem; font-size:.85rem; color:var(--muted-foreground); }
+.villages-scene-move-confirm { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; }
+.villages-scene-move-confirm p { flex:1; min-width:8rem; }
+.villages-scene-move-confirm small { display:block; font-size:.8rem; color:var(--muted-foreground); }
+.villages-scene-move-confirm button { flex:none; min-width:5rem; }
+.villages-founding-dialog.villages-scene-move .villages-scene-move-primary { background:var(--primary); border-color:var(--move-line); color:var(--primary-foreground); }
+@media(max-width:540px) {
+ .villages-founding-dialog.villages-scene-move { padding:.85rem; width:calc(100vw - 1rem); }
+ .villages-scene-move .villages-zone-map-canvas button.villages-zone-map-tile { padding:.3rem; }
+ .villages-scene-move-confirm p { flex-basis:100%; }
+ .villages-scene-move-confirm button { flex:1; }
+}
 .${tag}-room-screen .${tag}-chat-head { flex-wrap: nowrap; }
 .${tag}-room-screen .${tag}-chat-head:has(:is(.${tag}-room-actions-menu, .${tag}-scene-error-panel, .${tag}-room-stars, .villages-lore-popout)) { z-index: 25; }
 .${tag}-room-screen .${tag}-chat-actions { flex: 0 0 auto; }
@@ -80,6 +126,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-scene-travel-card button { min-width: 44px; min-height: 44px; }
 .${tag}-scene-error-trigger { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; min-width: 3.5rem; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 1.5rem; background: var(--popover); color: var(--foreground); font: inherit; font-size: .75rem; cursor: pointer; }
 .${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #ed6689; }
+.${tag}-scene-notice-chips .${tag}-scene-permission-trigger { min-width: 44px; width: 44px; padding: .35rem; color: #ed6689; border-color: color-mix(in srgb, #ed6689 65%, var(--border)); background: var(--marinara-chat-chrome-panel-bg, var(--popover)); }
 .${tag}-scene-error-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #ed6689; color: #2c101a; font-weight: 750; font-size: .875rem; line-height: 1; }
 .${tag}-scene-error-panel { position: absolute; top: calc(100% + .5rem); left: 0; width: min(26rem, 100%); max-height: max(5rem, calc(var(--villages-scene-visible-height, 100cqh) - 12rem)); overflow-y: auto; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); color: var(--foreground); box-shadow: 0 .75rem 2rem #0006; font-size: .8125rem; }
 .${tag}-scene-error-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .25rem .75rem; border-bottom: 1px solid var(--border); }
@@ -87,6 +134,8 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-error-head button { min-width: 44px; min-height: 44px; background: transparent; color: inherit; border: 0; font: inherit; cursor: pointer; }
 .${tag}-scene-error-item + .${tag}-scene-error-item { border-top: 1px solid var(--border); }
 .${tag}-scene-error-message { display: flex; align-items: flex-start; gap: .5rem; padding: .75rem; min-height: 44px; box-sizing: border-box; overflow-wrap: anywhere; }
+.${tag}-scene-error-item button.${tag}-scene-error-message { width: 100%; flex-direction: column; text-align: left; background: transparent; color: inherit; border: 0; font: inherit; cursor: pointer; }
+.${tag}-scene-error-item button.${tag}-scene-error-message span:last-child { text-decoration: underline; }
 .${tag}-scene-error-detail { padding: 0 .75rem .75rem; overflow-wrap: anywhere; }
 .${tag}-scene-error-detail p { margin: 0 0 .75rem; white-space: pre-wrap; }
 .${tag}-scene-error-detail button { min-height: 44px; max-width: 100%; padding: .35rem .5rem; margin-top: .35rem; background: var(--secondary); border: 1px solid var(--border); border-radius: .5rem; color: inherit; font: inherit; cursor: pointer; white-space: normal; overflow-wrap: anywhere; }

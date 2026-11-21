@@ -5,6 +5,7 @@ import { ELEMENT_TAG as tag } from "../../shared/constants.js";
 
 export type SceneErrorItem = SceneErrorReportItem & {
   actions?: ReactNode;
+  onClick?: () => void;
 };
 
 /** Presentation only. Opening details never starts recovery, replay or generation. */
@@ -92,13 +93,20 @@ export function SceneErrorChip({ items, open, onOpen, context }: SceneChipProps)
           </div>
           {items.map((item) => (
             <div key={item.id} className={`${tag}-scene-error-item`} role="group" aria-label={item.title}>
-              <div className={`${tag}-scene-error-message`}>
-                <span>
-                  {item.held && item.diagnostic
-                    ? heldSceneErrorMessage(item.diagnostic)
-                    : sceneErrorMessage(item.message)}
-                </span>
-              </div>
+              {item.onClick ? (
+                <button type="button" className={`${tag}-scene-error-message`} onClick={item.onClick}>
+                  <span>{sceneErrorMessage(item.message)}</span>
+                  <span>Manage AI connections</span>
+                </button>
+              ) : (
+                <div className={`${tag}-scene-error-message`}>
+                  <span>
+                    {item.held && item.diagnostic
+                      ? heldSceneErrorMessage(item.diagnostic)
+                      : sceneErrorMessage(item.message)}
+                  </span>
+                </div>
+              )}
               {item.actions ? (
                 <div className={`${tag}-scene-error-detail ${tag}-scene-error-actions`}>{item.actions}</div>
               ) : null}

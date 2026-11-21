@@ -3,13 +3,14 @@ import type { ContinuityEvidence, ContinuityHolder } from "../models/continuity-
 import { findNpc } from "./places.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { capturedSceneCalendar } from "./scene-calendar.js";
+import { cardCharacters, findCardCharacter } from "./visitors.js";
 
 export function continuityActor(
   state: VillageState,
   id: string,
 ): Extract<ContinuityHolder, { kind: "actor" }> | undefined {
   if (id === "player") return { kind: "actor", id, incarnation: memoryHash([state.seed, state.setupAt, "player"]) };
-  const resident = state.villagers.find((row) => row.characterId === id);
+  const resident = findCardCharacter(state, id);
   if (resident) {
     memoryRequire(resident.incarnation, "missing resident incarnation");
     return { kind: "actor", id, incarnation: resident.incarnation };
@@ -21,7 +22,7 @@ export function continuityActor(
 export function relationshipActors(state: VillageState) {
   return [
     continuityActor(state, "player")!,
-    ...state.villagers.map(({ characterId: id, incarnation }) => ({ id, incarnation })),
+    ...cardCharacters(state).map(({ characterId: id, incarnation }) => ({ id, incarnation })),
   ];
 }
 

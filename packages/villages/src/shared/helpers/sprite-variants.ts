@@ -1,3 +1,5 @@
+import { bundledMariSpriteUrl } from "./professor-mari.js";
+
 export function spriteLabel(value: string) {
   return value
     .trim()
@@ -12,6 +14,7 @@ export const engineSpriteName = (label: string, filename: string) =>
     .trim() || "Sprite";
 
 export const engineSpriteUrl = (owner: string, filename: string, version?: string) =>
+  bundledMariSpriteUrl(owner, filename) ??
   `/api/sprites/${encodeURIComponent(owner)}/file/${encodeURIComponent(filename)}${version ? `?v=${version}` : ""}`;
 
 /** Read old paired assignments as one expression without changing saved artwork. */

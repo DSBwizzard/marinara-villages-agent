@@ -129,6 +129,8 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/repair"))
+        return fulfill(route, { json: { identity: "test-village", people: [], sceneOpen: false } });
       if (holdWorldSave && path.endsWith("/settings") && route.request().method() === "PATCH") {
         heldWorldSave = route;
         return;
@@ -168,8 +170,6 @@ await withBrowser(browser, async () => {
               tense: "present",
               person: "second",
               rating: "sfw",
-              writingGuidance: "",
-              writingGuidanceMaxLength: 4000,
             }
           : path.endsWith("/catalog")
             ? { characters: [] }
@@ -442,6 +442,23 @@ await withBrowser(browser, async () => {
       assert.ok(area > 1000, `${key} occupies a visible area`);
     }
     await selectSection("general");
+    if (mobile) await expect(picker).toHaveValue("general");
+    else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    if (mobile) await picker.selectOption("repair");
+    else await nav.getByRole("button", { name: "REPAIR", exact: true }).click();
+    const repair = page.locator(".villages-repair:visible");
+    const heading = repair.getByRole("heading", { name: "Find a record", exact: true });
+    await expect(heading).toHaveCSS("color", "rgb(236, 234, 227)");
+    await expect(page.getByRole("navigation", { name: "Village navigation" })).toBeHidden();
+    assert.deepEqual(
+      await repair.boundingBox(),
+      await page.locator(tag).boundingBox(),
+      "REPAIR fills the Villages tab",
+    );
+    if (process.env.VILLAGES_MENU_SCREENSHOTS) {
+      await page.screenshot({ path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `repair-${width}-${height}.png`) });
+    }
+    await repair.getByRole("button", { name: "Main menu", exact: true }).click();
     if (mobile) await expect(picker).toHaveValue("general");
     else await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     await page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();

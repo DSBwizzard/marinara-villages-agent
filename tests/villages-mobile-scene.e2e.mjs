@@ -192,7 +192,7 @@ await withBrowser(browser, async () => {
     const person = (id) => page.locator(`.${tag}-chat-cast-person[data-character-id="${id}"]`);
     const input = page.locator(`.${tag}-chat-input`);
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
-    const reading = page.getByRole("region", { name: "Current paragraph" });
+    const reading = page.getByRole("region", { name: "Latest reply" });
     const next = page.getByRole("button", { name: "Next paragraph" });
     const counter = page.locator(`.${tag}-chat-vn-counter`);
     const screenshot = async (state = "active") => {

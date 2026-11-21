@@ -246,8 +246,15 @@ assert.equal(local.calls.filter((operation) => operation === "mutate").length, m
 
 const manual = fixture("Manual repair");
 Object.assign(manual.state, coerceVillageState(manual.state));
+const manualNow = new Date();
+const tomorrow = new Date(manualNow);
+tomorrow.setDate(tomorrow.getDate() + 1);
+manual.state.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+manual.state.villagers[0]!.agenda!.personalizationPending = false;
 const admittedDay = JSON.parse(JSON.stringify(manual.state.villagers[0]!.agenda!.activeDay));
-const manualRecord = worldRepairRecords(manual.state).find((row) => row.id === JSON.stringify(["routine", "same"]))!;
+const manualRecord = worldRepairRecords(manual.state, false, "same", manualNow.toISOString()).find(
+  (row) => row.id === JSON.stringify(["agenda", "same", agendaDateKey(tomorrow)]),
+)!;
 applyWorldRepair(
   manual.state,
   manualRecord,
@@ -258,7 +265,7 @@ applyWorldRepair(
       "activity:0": "Quiet crafting",
     },
   } as any,
-  new Date().toISOString(),
+  manualNow.toISOString(),
 );
 Object.assign(manual.state, coerceVillageState(JSON.parse(JSON.stringify(manual.state))));
 assert.equal(manual.state.villagers[0]!.agenda!.personalizationPending, false);
@@ -267,10 +274,17 @@ await manual.service.buildVillageAgendas();
 assert.equal(manual.jobs.length, 0, "Reload and refresh cannot admit generation over a manual repair");
 assert.equal(manual.generated, 0);
 assert.deepEqual(JSON.parse(JSON.stringify(manual.state.villagers[0]!.agenda!.activeDay)), admittedDay);
-const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
 assert.ok(
-  agendaBlocksFor(manual.state.villagers[0]!.agenda!, tomorrow).every((row) => row.activity === "Quiet crafting"),
+  agendaBlocksFor(manual.state.villagers[0]!.agenda!, tomorrow).some((row) => row.activity === "Quiet crafting"),
+);
+manual.service.agendaBackgroundHandler.apply(
+  manual.state,
+  { characterId: "same", context: {} } as any,
+  { agenda: unwrittenVillageAgenda(manualNow) },
+  { retrying: false },
+);
+assert.ok(
+  agendaBlocksFor(manual.state.villagers[0]!.agenda!, tomorrow).some((row) => row.activity === "Quiet crafting"),
 );
 
 const absent = fixture("No routine");

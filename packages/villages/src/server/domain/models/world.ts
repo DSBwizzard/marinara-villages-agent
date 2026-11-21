@@ -6,6 +6,8 @@ import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 /** Owned routines and dated commitments. */
 export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
+  /** Keep dated administrative corrections through routine and preference refreshes. */
+  repairedDays?: string[];
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
   /** Derived from feature authority on hydration; never an independently editable booking. */
@@ -50,7 +52,7 @@ export type VillageDayView = {
 };
 
 /** One library card the village has adopted. */
-export type VillageVillager = {
+export type VillageCardCharacter = {
   incarnation: string;
   relationshipScene?: { id: string; endedAt: string; answerSceneId?: string };
   letterFontId: string;
@@ -58,8 +60,6 @@ export type VillageVillager = {
     initialGenerationComplete: boolean;
   };
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
-  admission: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
-  agendaGeneration?: string;
   characterId: string;
   /** Card prose captured at move-in; deliberately excludes the Engine-only first message. */
   cardSnapshot: VillageVillagerCardSnapshot;
@@ -67,6 +67,33 @@ export type VillageVillager = {
   sprite?: VillageResidentSprite | null;
   spriteManager?: SpriteManagerState | null;
   addedAt: string;
+};
+
+export type VillageVisitor = VillageCardCharacter & {
+  visitsEnabled: boolean;
+  visitsRevision: string;
+  firstMetAt?: string;
+  trip?: VisitorTrip;
+  visitPreference?: {
+    kind: "invite" | "space";
+    sentAt: string;
+    latestSourceId: string;
+    sourceId: string;
+    from: string;
+    until: string;
+  };
+};
+
+export type VisitorTrip = {
+  arrivedAt: string;
+  leavesAt: string;
+  venueId?: string;
+  lodging?: { venueId: string; zoneId: string; hostId?: string };
+};
+
+export type VillageVillager = VillageCardCharacter & {
+  admission: import("../../../shared/helpers/resident-admission.js").ResidentAdmission;
+  agendaGeneration?: string;
   /**
    * What they wish for, or null for a villager who has not been written for yet.
    *
@@ -562,6 +589,9 @@ export type ReturnCatchupCapture = {
 };
 
 export type VillageState = {
+  visitors?: VillageVisitor[];
+  /** Absent in existing worlds; new founding schedules Mari's first visit. */
+  visitorIntroduction?: { sceneId: string; completedAt: string };
   worldPlaces: import("./places.js").PlaceRegistry;
   narrative?: import("./narrative-model.js").NarrativeState;
   narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;
@@ -979,6 +1009,8 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   residences: VillageResidence[];
   /** Newest first, so the window on the map opens on what just happened. */
   villagers: VillageVillagerView[];
+  visitors?: import("../../../shared/contracts/village.js").VillageVisitorView[];
+  visitorNotice?: import("../../../shared/contracts/village.js").VillageSnapshot["visitorNotice"];
   /**
    * True once the village has been founded, which is what tells the tab to draw
    * the village rather than the setup wizard. Derived, never stored directly: a

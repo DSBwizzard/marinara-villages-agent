@@ -14,6 +14,10 @@ import {
 import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
 import { retainedSpriteFiles } from "../packages/villages/src/server/adapters/storage/sprite-files.js";
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
+import { automaticVisitorSprites } from "../packages/villages/src/server/domain/rules/visitor-sprites.js";
+import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
+import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 
 const id = "mara";
 const documents = new Map<string, unknown>();
@@ -312,6 +316,92 @@ assert.deepEqual(await service.preparedManager("new-character", appearance.revis
 assert.equal((await service.preparedManager("new-character", appearance.revision))?.useSprites, false);
 catalog.sprites = [];
 assert.equal((await service.preparedManager("empty-character"))?.useSprites, false, "Empty library uses Portrait");
+
+const spriteFile = (filename: string, label: string, folderId?: string) => ({
+  filename,
+  label,
+  folderId,
+  url: "",
+  version,
+});
+const visitorCatalog = [
+  spriteFile("1_1.png", "1_1", "faces"),
+  spriteFile("untitled.png", "Neutral", "faces"),
+  spriteFile("red.png", "happy_02", "faces"),
+  spriteFile("blue.png", "happy_01", "faces"),
+  spriteFile("blink.png", "neutral_blink", "faces"),
+  spriteFile("full_neutral.png", "neutral", "bodies"),
+];
+const folders = [
+  { id: "faces", name: "Faces", category: "expressions" as const },
+  { id: "bodies", name: "Bodies", category: "full-body" as const },
+];
+const auto = automaticVisitorSprites(visitorCatalog, folders)!;
+assert.deepEqual(auto, automaticVisitorSprites([...visitorCatalog].reverse(), [...folders].reverse()));
+assert.deepEqual(
+  auto.assignments.map((row) => row.engineFilename),
+  ["untitled.png", "blue.png", "red.png"],
+);
+assert.equal(auto.defaultExpressionId, auto.expressions[0].id);
+assert(auto.assignments.every((row) => row.view === "front"));
+const opaque = automaticVisitorSprites([spriteFile("z.png", "jdflghdfhgdf"), spriteFile("a.png", "1_1")], []);
+assert.deepEqual(
+  opaque?.assignments.map((row) => row.engineFilename),
+  ["a.png"],
+);
+assert.equal(automaticVisitorSprites([], []), null);
+assert.equal(automaticVisitorSprites([spriteFile("blink.png", "neutral_eyes_shut")], []), null);
+
+const person = world.villagers[0];
+libraryAvailable = false;
+const untouched = { ...person, sprite: null, spriteManager: null, visitsEnabled: true, visitsRevision: "visit" };
+world.visitors = [untouched];
+world.villagers = [];
+const scope = villageWorldScope(world);
+assert.equal(
+  await service.initializeCharacter(scope, untouched),
+  null,
+  "A library failure leaves the Visitor eligible.",
+);
+assert.equal(world.visitors[0].spriteManager, null);
+libraryAvailable = true;
+catalog.sprites = [{ filename: "neutral.png", label: "Neutral" }];
+assert.equal(await service.initializeCharacter("stale-world", untouched), undefined);
+assert.equal(await service.initializeCharacter(scope, { ...untouched, incarnation: "other" }), undefined);
+const initialized = await service.initializeCharacter(scope, untouched);
+assert.deepEqual(world.visitors[0].spriteManager, initialized);
+assert(initialized?.assignments.length);
+world.visitors[0].spriteManager = portrait.manager;
+const readsBefore = catalogReads;
+assert.deepEqual(await service.initializeCharacter(scope, untouched), portrait.manager);
+assert.equal(catalogReads, readsBefore, "An explicit Portrait choice keeps its settings.");
+
+world.visitors = [];
+world.villagers = [{ ...person, spriteManager: null, sprite: null }];
+assert((await service.initializeCharacter(scope, world.villagers[0]))?.assignments.length);
+world.villagers[0].spriteManager = portrait.manager;
+assert.deepEqual(await service.initializeCharacter(scope, world.villagers[0]), portrait.manager);
+
+const newCard = readVillagerCard({ id: "new-visitor", comment: "", data: { name: "New Visitor" } });
+world.foundedAt ||= new Date().toISOString();
+const roster = createResidentRoster({
+  readVillageState: async () => structuredClone(world),
+  mutateVillageState: async (change) => {
+    change(world);
+    return world;
+  },
+  findVillagerCard: async () => newCard,
+  automaticSprites: service.automaticManager,
+  queueVillagerAgenda: async () => {
+    throw new Error("Visitor setup cannot queue Villager work.");
+  },
+  retireBackgroundResident: () => {},
+});
+await roster.setVisitor(newCard.id, villageWorldScope(world), true);
+assert(
+  world.visitors[0].spriteManager?.assignments.length,
+  "Adding a Visitor settles their sprites before attendance.",
+);
 console.log(
   "Appearance saves independent Engine references, preserves owned art and retries, and resolves 2 Front and 17 Side sprites.",
 );

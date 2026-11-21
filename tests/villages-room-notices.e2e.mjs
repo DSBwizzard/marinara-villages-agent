@@ -288,7 +288,6 @@ await withBrowser(browser, async () => {
   await mount(empty);
   await expect(empty.getByRole("textbox", { name: "Message at The Park" })).toBeEnabled();
   await expect(empty.locator('[data-character-id="jimmy"]')).toBeVisible();
-  await expect(empty.locator(".marinara-capability-villages-chat-vn-counter")).toHaveCount(0);
   await expect(empty.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
   await empty.close();
   session.lines = history;

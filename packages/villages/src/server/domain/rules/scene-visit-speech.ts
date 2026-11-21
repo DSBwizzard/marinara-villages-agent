@@ -3,19 +3,32 @@ import type { NarrationReadset } from "../models/narration-model.js";
 import type { readNarrationReply } from "./narration-contract.js";
 import { asRecord } from "./coerce.js";
 
-export function sceneVisitOptions(access: NarrationReadset["access"], placeId: string, localIds: string[]) {
+export function sceneVisitOptions(
+  access: NarrationReadset["access"],
+  placeId: string,
+  localIds: string[],
+  localZoneIds: string[],
+) {
   return access
     .flatMap(({ venueId, name, authorities }) =>
-      venueId === placeId
-        ? []
-        : authorities.flatMap(({ actorId, zones }) =>
-            actorId !== "player" && localIds.includes(actorId)
-              ? zones
-                  .filter((zone) => zone.invites)
-                  .map(({ id, name: room }) => ({ venueId, name, actorId, zoneId: id, room }))
-              : [],
-          ),
+      authorities.flatMap(({ actorId, zones, venuePolicy }) =>
+        actorId !== "player" && localIds.includes(actorId)
+          ? zones
+              .filter(
+                (zone) =>
+                  zone.invites &&
+                  (venueId !== placeId || localZoneIds.includes(zone.id)) &&
+                  (venueId !== placeId ||
+                    zone.policy?.mode !== "public" ||
+                    zone.policy.accompanied ||
+                    Array.isArray(zone.policy.visitorHours) ||
+                    (zone.policy.visitorHours === "inherit" && !!venuePolicy?.visitorHours)),
+              )
+              .map(({ id, name: room }) => ({ venueId, name, actorId, zoneId: id, room }))
+          : [],
+      ),
     )
+    .sort((a, b) => Number(b.venueId === placeId) - Number(a.venueId === placeId))
     .slice(0, 12)
     .map((entry, index) => ({ option: index + 1, ...entry }));
 }
@@ -64,6 +77,10 @@ export function sceneVisitCommand(
     by: choice.actorId,
     venue: choice.venueId,
     zone: choice.zoneId,
-    decision: { outcome: "invite-later", visitor: "player", accompanies: parsed.data.escort },
+    decision: {
+      outcome: choice.venueId === readset.source.scene.placeId ? "invite-now" : "invite-later",
+      visitor: "player",
+      accompanies: parsed.data.escort,
+    },
   };
 }

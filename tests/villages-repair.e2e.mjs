@@ -57,6 +57,7 @@ await withBrowser(browser, async () => {
         people: [
           { id: "player", name: "Your Persona", text },
           { id: "nora", name: "Nora", text },
+          { id: "ada", name: "Ada", text, forgotten: true },
         ],
         actions: [
           { id: "correct", label: "Modify" },
@@ -98,6 +99,7 @@ await withBrowser(browser, async () => {
         seed: "repair-world",
         sceneOpen: true,
         records: [],
+        people: record.people.map(({ id, name }) => ({ id, name })),
         history: applied
           ? [
               {
@@ -126,7 +128,16 @@ await withBrowser(browser, async () => {
           cancelled++;
           return json({ cancelled: true });
         }
-        if (path === "/repair/records") return json({ records: [record, addition], total: 2, next: null });
+        if (path === "/repair/records") {
+          if (url.searchParams.get("topic") === "all") {
+            assert.equal(url.searchParams.get("query"), "workshop key");
+            return json({ records: [record], total: 1, next: null });
+          }
+          assert.equal(url.searchParams.get("topic"), "people");
+          assert.equal(url.searchParams.get("personId"), "player");
+          assert.equal(url.searchParams.get("section"), "memories");
+          return json({ records: [record], total: 1, next: null, creation: addition });
+        }
         if (path === "/repair/record") return json(url.searchParams.get("id") === addition.id ? addition : record);
         if (path === "/repair/review") {
           const body = route.request().postDataJSON();
@@ -215,16 +226,25 @@ await withBrowser(browser, async () => {
       await page.getByRole("textbox", { name: "Scene draft", exact: true }).fill("My unfinished Scene draft.");
       await page.getByRole("button", { name: "Open main menu", exact: true }).click();
       await openRepair();
-      await expect(page.getByRole("heading", { name: "REPAIR", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Find a record", exact: true })).toBeVisible();
       const repair = page.locator(".villages-repair");
       await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-hub.png` });
-      const colors = await repair.evaluate((el) => ({
-        background: getComputedStyle(el).backgroundColor,
-        color: getComputedStyle(el).color,
-      }));
-      assert.equal(colors.background, "rgb(246, 245, 239)");
-      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
-      await page.getByRole("button", { name: /Nora gave you a workshop key. Shared recollection/ }).click();
+      await expect(repair).toHaveCSS("color-scheme", "dark");
+      await expect(repair.getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
+      const openPersonaMemories = async () => {
+        await repair.getByRole("button", { name: "People", exact: true }).click();
+        await repair.getByRole("button", { name: "Your Persona", exact: true }).click();
+        await expect(repair.getByRole("button", { name: "Memories", pressed: true })).toBeVisible();
+      };
+      const search = repair.getByRole("searchbox", { name: "Search records", exact: true });
+      await search.fill("workshop key");
+      await search.press("Enter");
+      await expect(repair.getByRole("heading", { name: "Search results" })).toBeVisible();
+      await repair
+        .getByRole("button", {
+          name: /Nora gave you a workshop key.*Remembered by Your Persona, Nora · Forgotten by Ada/,
+        })
+        .click();
       await expect(repair.getByRole("heading", { name: "Modify memory", exact: true })).toBeVisible();
       await expect(repair.locator(".repair-current")).toHaveCount(0);
       await expect(repair.locator("blockquote")).toHaveCount(1);
@@ -282,22 +302,26 @@ await withBrowser(browser, async () => {
       );
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Applies to", exact: true })).toBeVisible();
+      await expect(repair.getByRole("heading", { name: "Review memory correction" })).toBeVisible();
+      await expect(repair.locator("blockquote")).toBeHidden();
+      await repair.getByText("Source", { exact: true }).click();
+      await expect(repair.locator("blockquote")).toBeVisible();
+      await repair.getByText("Source", { exact: true }).click();
       await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-review.png` });
       assert.equal(await repair.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
-      await page.getByRole("button", { name: "Save changes", exact: true }).click();
+      await page.getByRole("button", { name: "Save correction", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Changes saved", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
-      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
+      await openPersonaMemories();
       await page.getByRole("button", { name: /Nora gave you a workshop key. Shared recollection/ }).click();
       await page.getByRole("textbox", { name: "Memory", exact: true }).fill("An unfinished repair draft stays here.");
-      await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-      await page.getByRole("button", { name: "Repair history", exact: true }).click();
+      await repair.getByRole("button", { name: "History & backups", exact: true }).click();
       await expect(page.getByRole("button", { name: "Review undo", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Review undo", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Review changes", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Undo changes", exact: true }).click();
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
-      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
+      await openPersonaMemories();
       await page.getByRole("button", { name: /Nora gave you a workshop key. Shared recollection/ }).click();
       await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(
         "An unfinished repair draft stays here.",
@@ -309,8 +333,8 @@ await withBrowser(browser, async () => {
       );
       await page.getByRole("button", { name: "Open main menu", exact: true }).click();
       await openRepair();
-      await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-      await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
+      await repair.getByRole("button", { name: "Find a record", exact: true }).click();
+      await openPersonaMemories();
       await page.getByRole("button", { name: "Add memory", exact: true }).click();
       await expect(repair.locator(".repair-current")).toHaveCount(0);
       await expect(repair.getByRole("heading", { name: "Source", exact: true })).toHaveCount(0);
@@ -385,9 +409,7 @@ await withBrowser(browser, async () => {
       });
       await page.goto("http://repair-retry.test/");
       await page.addScriptTag({ content: code.outputFiles[0].text });
-      await page
-        .getByRole("button", { name: "World & history Setting, founding details, and Scene corrections." })
-        .click();
+      await page.getByRole("button", { name: "World & history" }).click();
       await page.getByRole("button", { name: "Village setting Setting", exact: true }).click();
       await expect(page.getByText("Current", { exact: true })).toHaveCount(0);
       await expect(page.getByRole("textbox", { name: "Place description", exact: true })).toHaveValue("Old setting");
@@ -463,9 +485,8 @@ await withBrowser(browser, async () => {
       });
       await page.goto("http://repair-checkpoints.test/");
       await page.addScriptTag({ content: code.outputFiles[0].text });
-      await page
-        .getByRole("button", { name: "Backups & repairs Review repairs, undo, or restore a checkpoint." })
-        .click();
+      await page.getByRole("button", { name: "History & backups", exact: true }).click();
+      await page.getByRole("button", { name: "Checkpoints", exact: true }).click();
       await expect(page.getByRole("button", { name: "Delete checkpoint", exact: true })).toHaveCount(49);
       await page.getByRole("button", { name: "Next", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Checkpoint 50", exact: true })).toBeVisible();

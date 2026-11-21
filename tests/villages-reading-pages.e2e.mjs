@@ -77,7 +77,7 @@ await withBrowser(browser, async () => {
           at: now,
         },
       ],
-      submissions: [],
+      submissions: [{ id: "hello", replyLineIds: ["long"] }],
     };
     let events = [{ id: "heart", kind: "relationship-up", text: "Mara's warmth toward you increased (0 → 2)." }];
     const closedCursors = [];

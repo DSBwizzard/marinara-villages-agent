@@ -91,7 +91,17 @@ await withBrowser(browser, async () => {
           zoneId: destination.id,
           area: "public",
           activeIds: ["mara"],
+          zoneArrivalId: "arrival-new-zone",
           sceneRevision: session.sceneRevision + 1,
+        });
+        session.lines.push({
+          id: "arrival-new-zone",
+          role: "assistant",
+          kind: "narration",
+          speakerId: "__venue_scene__",
+          name: "Narration",
+          content: "You arrive at " + destination.name + ".",
+          at: now,
         });
         return fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
       }
@@ -187,6 +197,7 @@ await withBrowser(browser, async () => {
       .getByRole("dialog", { name: "Move to Zone" })
       .getByRole("button", { name: destination.name, exact: true })
       .click();
+    await page.getByRole("dialog", { name: "Move to Zone" }).getByRole("button", { name: "Move", exact: true }).click();
     await expect.poll(() => moves).toBe(1);
     const mara = page.locator('[class$="-chat-cast-person"][data-character-id="mara"]');
     await expect(mara).toBeVisible({ timeout: 3000 });

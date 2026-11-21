@@ -127,7 +127,8 @@ export function spriteManagerFiles(raw: unknown): string[] {
 function residents(raw: unknown): string[] {
   memoryObject(raw);
   memoryRequire(Array.isArray(raw.villagers), "invalid retained sprite resident directory");
-  return raw.villagers.flatMap((person: unknown) => {
+  memoryRequire(raw.visitors === undefined || Array.isArray(raw.visitors), "invalid retained sprite Visitor directory");
+  return [...raw.villagers, ...(raw.visitors ?? [])].flatMap((person: unknown) => {
     memoryObject(person);
     return spriteManagerFiles(person.spriteManager);
   });

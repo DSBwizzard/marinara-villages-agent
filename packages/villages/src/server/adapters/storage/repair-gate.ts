@@ -574,9 +574,10 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       throw error;
     }
   }
-  async function commit(id: string, transaction: RepairTransaction) {
+  async function commit(id: string, transaction: RepairTransaction, validate?: () => Promise<void>) {
     return alone(async () => {
       await guards(transaction);
+      await validate?.();
       await publish(id, transaction);
     });
   }

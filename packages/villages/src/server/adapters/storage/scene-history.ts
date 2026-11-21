@@ -32,7 +32,7 @@ import {
   type SceneSubmissionHead,
 } from "./scene-submission-pages.js";
 export const SCENE_STORAGE_FORMAT = 15;
-export const SCENE_PUBLIC_HISTORY_POLICY = 1;
+export const SCENE_PUBLIC_HISTORY_POLICY = 2;
 function publicHistoryHead(raw: Record<string, any>) {
   return readScenePublicHistoryHead(
     raw.publicHistory,

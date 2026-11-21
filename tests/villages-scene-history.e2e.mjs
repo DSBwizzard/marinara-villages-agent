@@ -38,9 +38,9 @@ await withBrowser(browser, async () => {
     await page.setContent('<div id="root"></div>');
     await page.evaluate((value) => (window.strict = value), strict);
     await page.addScriptTag({ content: built.outputFiles[0].text });
-    const rows = page.locator("p.marinara-capability-villages-chat-vn-text");
-    const older = page.getByRole("button", { name: "Older", exact: true });
-    const newer = page.getByRole("button", { name: "Newer", exact: true });
+    const rows = page.locator("div.marinara-capability-villages-chat-vn-text");
+    const older = page.getByRole("button", { name: "Older", exact: true, includeHidden: true });
+    const newer = page.getByRole("button", { name: "Newer", exact: true, includeHidden: true });
     const version = "1".repeat(64);
     const payload = (start, extra = {}) => ({
       scope: "a".repeat(64),

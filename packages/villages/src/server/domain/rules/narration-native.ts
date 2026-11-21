@@ -20,7 +20,12 @@ import { applyNarrationScene } from "./narration-scene.js";
 import { narrationAppointment } from "./narration-appointment.js";
 import { applyNarrationResidence } from "./narration-residence.js";
 import { applyNarrationPlace } from "./narration-place.js";
-import { applyNarrationMove, applyNarrationMoveRequest, applyNarrationDeparture } from "./narration-movement.js";
+import {
+  applyNarrationMove,
+  applyNarrationMoveRequest,
+  applyNarrationDeparture,
+  applyNarrationMovementDecision,
+} from "./narration-movement.js";
 import { assertSceneMovementCapacity } from "./resident-movement.js";
 import { selectSceneEffects, resolveNarrationEffects } from "./scene-acceptance.js";
 import {
@@ -240,6 +245,14 @@ export function prepareNarrationNative(
       "native decision must match its actual current utterance",
     );
     assertNarrationSourceOrder(sources);
+    if (
+      command.type === "residence.request" ||
+      command.type === "residence.decide" ||
+      command.type === "venue.request" ||
+      command.type === "appointment" ||
+      command.type === "project.decide"
+    )
+      memoryRequire(!readset.visitorIds?.includes(command.by), "the deciding character was a Visitor in this exchange");
     const receiptId = "native-" + memoryHash([readset.source.episodeId, effect.id]).slice(0, 40);
     if (command.type === "circumstance") {
       if (!command.situation) {
@@ -333,6 +346,12 @@ export function prepareNarrationNative(
         sceneEffect: { contactEndedIds: [] },
       };
     }
+    if (command.type === "move.decide")
+      return {
+        receipt: applyNarrationMovementDecision(candidate, command, readset, context, sources, receiptId, row.segment),
+        sources,
+        sceneEffect: { contactEndedIds: [] },
+      };
     if (command.type === "move.request")
       return {
         receipt: applyNarrationMoveRequest(candidate, command, readset, context, sources, receiptId),
@@ -381,7 +400,8 @@ export function prepareNarrationNative(
         sources,
       };
     }
-    assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
+    if (!(command.type === "access.decide" && command.decision.outcome === "host-visitor"))
+      assertNarrationDecision(candidate, command.by, narrationCommunication(context), sources);
     if (command.type === "residence.request" || command.type === "residence.decide" || command.type === "venue.request")
       return {
         receipt: applyNarrationResidence(
@@ -509,6 +529,33 @@ export function acceptNarration(
       at,
     );
   memoryRequire(!narrationIsAbandoned(state, publication, submissionId), "this narration was explicitly abandoned");
+  if (publication.readset.source.scene.visitorIntroduction) {
+    const raw = publication.raw;
+    memoryRequire(
+      Object.keys(raw).every((key) => ["segments", "keep", "commands"].includes(key)) &&
+        Array.isArray(raw.segments) &&
+        raw.segments.every(
+          (row) =>
+            ["dialogue", "narration"].includes(asRecord(row).kind as string) && !Object.hasOwn(asRecord(row), "follow"),
+        ) &&
+        (raw.commands === undefined || (Array.isArray(raw.commands) && raw.commands.length === 0)) &&
+        (raw.keep === undefined || (Array.isArray(raw.keep) && raw.keep.length === 0)),
+      "Mari's introduction can only contain her opening greeting; no commands or lasting changes.",
+    );
+    if (publication.readset.visitorIntroductionFarewell) {
+      const segments = raw.segments as unknown[],
+        last = asRecord(segments.at(-1));
+      memoryRequire(
+        segments.length >= 2 &&
+          last.kind === "dialogue" &&
+          last.speakerId === "__professor_mari__" &&
+          last.presentation !== "aside" &&
+          (last.delivery === undefined || last.delivery === "ordinary") &&
+          segments.slice(0, -1).some((row) => asRecord(row).kind === "dialogue"),
+        "Mari's introduction needs a greeting and a final spoken farewell.",
+      );
+    }
+  }
   const evaluate = (prepared: ReturnType<typeof prepareNarrationNative>) =>
     prepared.routingFailure
       ? {

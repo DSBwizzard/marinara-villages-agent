@@ -285,8 +285,6 @@ async function checkPackage(width) {
     tense: "present",
     person: "second",
     rating: "sfw",
-    writingGuidance: "Saved writing guidance",
-    writingGuidanceMaxLength: 2000,
   };
   let narrationReads = 0;
   let holdWriting = false;
@@ -666,7 +664,6 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "Erase Village permanently", exact: true }).click();
   await expect.poll(() => heldReset !== null).toBe(true);
   await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toBeDisabled();
-  assert.equal(narration.writingGuidance, "Saved writing guidance", "Writing preferences preserve saved guidance");
   if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
     await page.screenshot({
       path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-settings-${width}.png`),

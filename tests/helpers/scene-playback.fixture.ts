@@ -116,13 +116,29 @@ export function fixturePlaybackPage(
   };
 }
 export function authorSceneView(scene: any, scope: string) {
-  const { lines, participants, ...playback } = fixturePlaybackPage(scene, scope);
+  const { lines: _lines, participants, ...playback } = fixturePlaybackPage(scene, scope);
   const current = new Set([...(scene.activeIds ?? []), ...participants.map((person) => person.characterId)]);
   const { submissions, initialActiveIds: _initial, ...authority } = scene;
   const last = submissions?.at(-1);
+  const source = scene.lines ?? [];
+  const arrival = source.findLastIndex((line: any) => line.id?.startsWith("arrival-"));
+  const tail = source.findLast(
+    (line: any, index: number) => index >= arrival && line.role === "assistant" && !line.presenceChange,
+  );
+  const owner = submissions?.findLast((turn: any) => turn.replyLineIds?.includes(tail?.id));
+  const main = tail?.asideFor ? source.find((line: any) => line.id === tail.asideFor) : tail;
+  const start = Math.max(arrival, source.findLastIndex((line: any) => line.role === "user") + 1);
+  const selected = new Set(
+    owner?.replyLineIds ??
+      source
+        .slice(start)
+        .filter((line: any) => line.role === "assistant")
+        .map((line: any) => line.id),
+  );
   return {
     ...authority,
-    lines,
+    liveReplyId: owner?.episodeId ?? main?.id ?? "",
+    lines: source.filter((line: any, index: number) => index >= arrival && selected.has(line.id)),
     playback,
     participants: (scene.participants ?? []).filter((person: any) => current.has(person.characterId)),
     ...(last ? { latestTurn: { id: last.id, at: last.at ?? "", published: true } } : {}),

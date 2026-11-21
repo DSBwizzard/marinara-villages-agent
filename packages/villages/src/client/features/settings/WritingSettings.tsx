@@ -39,7 +39,6 @@ export function useVillageWriting(enabled: boolean) {
       tense?: VillageWritingView["tense"];
       person?: VillageWritingView["person"];
       rating?: VillageWritingView["rating"];
-      writingGuidance?: string;
     }): Promise<VillageWritingView | null> => {
       const current = generation.current;
       setBusy(true);

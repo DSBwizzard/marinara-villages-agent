@@ -288,7 +288,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
     }
   });
   app.put<{
-    Body: { tense?: unknown; person?: unknown; rating?: unknown; writingGuidance?: unknown };
+    Body: { tense?: unknown; person?: unknown; rating?: unknown };
   }>("/narration", async (request, reply) => {
     try {
       await saveVillageWriting(request.body ?? {});

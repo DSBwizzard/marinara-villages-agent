@@ -1,17 +1,16 @@
-import { placeRegistry, readNpc, findLocation } from "./places.js";
+import { placeRegistry, readNpc, findLocation, sceneActorIds } from "./places.js";
+import { cardCharacters, findCardCharacter, setVisitorVisits } from "./visitors.js";
 import { projectAgreementCurrent } from "./project-terms.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
-import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
+import type { RepairBrowseItem, RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { ContinuityRecord, ContinuityHolder, ContinuityEvidence } from "../models/continuity-model.js";
-import type { VillageState } from "../models/world.js";
-import { badRequest, conflict } from "./errors.js";
+import type { VillageState, VillageVenue } from "../models/world.js";
+import { badRequest, conflict, repairFieldError } from "./errors.js";
 import { memoryHash, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
 import { continuityRepairEntries, changeContinuityMemory } from "./continuity-library.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityHolderKey, protectContinuity } from "./continuity.js";
-import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
-import { routineProfileFromWeek } from "./owned-routine.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { agendaRepairRecords, applyAgendaRepair } from "./repair-agenda.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { hasVenueClass, venueCapacity, venueResidentIds } from "./venue-model.js";
@@ -111,20 +110,23 @@ const choices = (
   options: { value: string; label: string }[],
 ): RepairField => ({ key, label, value, type: "choice", options });
 const actions = [{ id: "correct", label: "Modify" }];
+type ScopedRepairRecord = RepairRecord & { location?: { kind: "place" | "venue"; id: string; zoneId?: string } };
+
 export function worldRepairRecords(
   state: VillageState,
   includeMemories = true,
   personId?: string,
   at = state.simulatedThrough || state.foundedAt || state.setupAt,
-): RepairRecord[] {
-  const records: RepairRecord[] = [];
+  includePlaceScopes = false,
+): ScopedRepairRecord[] {
+  const records: ScopedRepairRecord[] = [];
   const add = (
     parts: string[],
     topic: RepairRecord["topic"],
     title: string,
     summary: string,
     fields: RepairField[],
-    extra: Partial<RepairRecord> = {},
+    { location, ...extra }: Partial<ScopedRepairRecord> = {},
   ) =>
     records.push({
       id: repairId(...parts),
@@ -136,6 +138,7 @@ export function worldRepairRecords(
       actions,
       related: [],
       ...extra,
+      ...(includePlaceScopes && location ? { location } : {}),
     });
   add(["world"], "world", "Village setting", state.name, [
     text("name", "Village name", state.name),
@@ -160,6 +163,9 @@ export function worldRepairRecords(
       { revision: situation.revision },
     );
   for (const condition of state.narrative?.conditions ?? []) {
+    const situation = state.narrative!.situations.find((entry) => entry.id === condition.situationId);
+    const place = findLocation(state, condition.venueId);
+    const zone = place && venueZones(place).find((entry) => entry.id === condition.zoneId);
     add(
       ["narrative-condition", condition.id],
       "world",
@@ -176,7 +182,9 @@ export function worldRepairRecords(
       ],
       {
         revision: condition.revision,
-        source: ["Situation: " + condition.situationId, "Zone: " + condition.zoneId],
+        source: [situation?.title, [place?.name, zone?.name].filter(Boolean).join(" · ")].filter(
+          (value): value is string => Boolean(value),
+        ),
       },
     );
   }
@@ -235,12 +243,14 @@ export function worldRepairRecords(
         { key: "disabled", label: "Disabled", type: "boolean", value: place.disabled },
         { key: "report", label: "Reported, unverified", type: "boolean", value: place.report },
       ],
-      { revision: place.revision, source: [place.source] },
+      { revision: place.revision, source: [place.source], location: { kind: "place", id: place.id } },
     );
   const people = [
     { id: "player", name: "Your Persona" },
-    ...state.villagers.map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
-    ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
+    ...cardCharacters(state).map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
+    ...Object.values(placeRegistry(state)?.npcs ?? {})
+      .filter((npc) => !npc.disabled)
+      .map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
   ];
   if (includeMemories) {
     const grouped = new Map<string, ReturnType<typeof continuityRepairEntries>>();
@@ -274,7 +284,7 @@ export function worldRepairRecords(
       );
     }
   }
-  for (const person of state.villagers) {
+  for (const person of cardCharacters(state)) {
     const id = person.characterId,
       name = person.cardSnapshot.name;
     const homeOptions = state.venues
@@ -286,18 +296,13 @@ export function worldRepairRecords(
       );
     const home = state.venues.find((v) => venueResidentIds(v).includes(id)),
       sleep = home?.destinations?.[id]?.sleep ?? (home && venueZones(home).find((z) => z.ownerId === id)?.id);
-    if (homeOptions.length)
+    if ("admission" in person && homeOptions.length)
       add(
         ["home", id],
         "places",
         `${name} · home assignment`,
         "Residence and sleep destination",
-        [
-          choices("destination", "Home", home && sleep ? repairId(home.id, sleep) : "", [
-            { value: "", label: "Unassigned" },
-            ...homeOptions,
-          ]),
-        ],
+        [choices("destination", "Home", home && sleep ? repairId(home.id, sleep) : "", homeOptions)],
         {
           source: ["Repairs ownership and the sleep destination. Objects stay in their recorded Zones."],
         },
@@ -308,8 +313,12 @@ export function worldRepairRecords(
       `${name} · character context`,
       "Village-owned character copy",
       [
-        text("homeworld", "Homeworld", person.admission.homeworld),
-        text("startingSituation", "Starting situation", person.admission.startingSituation),
+        ...("admission" in person
+          ? [
+              text("homeworld", "Homeworld", person.admission.homeworld),
+              text("startingSituation", "Starting situation", person.admission.startingSituation),
+            ]
+          : []),
         ...(["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const).map((key) =>
           text(
             key,
@@ -344,29 +353,41 @@ export function worldRepairRecords(
       ],
       { source: [] },
     );
-    if (person.agenda) {
-      add(["routine", id], "people", `${name} · routine`, "Future routine plans", [
-        text("routineSummary", "Routine", person.agenda.routineSummary),
-        ...person.agenda.day.flatMap((block, i) => [
-          {
-            key: `start:${i}`,
-            label: `Block ${i + 1} start minute`,
-            value: block.startMinute,
-            type: "number" as const,
-            min: 0,
-            max: 1439,
-          },
-          {
-            key: `end:${i}`,
-            label: `Block ${i + 1} end minute`,
-            value: block.endMinute,
-            type: "number" as const,
-            min: 1,
-            max: 1440,
-          },
-          text(`activity:${i}`, `Block ${i + 1} activity`, block.activity),
-        ]),
-      ]);
+    if ("agenda" in person && (!personId || personId === id)) records.push(...agendaRepairRecords(state, person, at));
+    if ("visitsEnabled" in person) {
+      const stamp = (instant: string) =>
+        new Intl.DateTimeFormat("en", {
+          timeZone: state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(instant));
+      const trip = person.trip;
+      const visitPlace = trip?.venueId && findLocation(state, trip.venueId);
+      const lodging = trip?.lodging;
+      const lodgingPlace = lodging && findLocation(state, lodging.venueId);
+      const source = [
+        person.firstMetAt ? `First met ${stamp(person.firstMetAt)}` : "You have not met yet.",
+        ...(trip ? [`Visit ${stamp(trip.arrivedAt)} to ${stamp(trip.leavesAt)}`] : []),
+        ...(visitPlace ? [visitPlace.name] : []),
+        ...(lodgingPlace && lodging
+          ? [
+              `Lodging at ${lodgingPlace.name} · ${venueZones(lodgingPlace).find((zone) => zone.id === lodging.zoneId)?.name ?? "Unavailable Zone"}`,
+            ]
+          : []),
+        ...(person.visitPreference
+          ? [
+              `${person.visitPreference.kind === "invite" ? "Visit invitation" : "Time apart"} through ${stamp(person.visitPreference.until)}`,
+            ]
+          : []),
+      ];
+      add(
+        ["visitor", id],
+        "people",
+        `${name} · visits`,
+        person.visitsEnabled ? "Visits on" : "Visits off",
+        [{ key: "visitsEnabled", label: "Visits enabled", type: "boolean", value: person.visitsEnabled }],
+        { source },
+      );
     }
   }
   for (const root of state.continuity.records)
@@ -378,34 +399,55 @@ export function worldRepairRecords(
       if (!zone) continue;
       const version = state.continuity.versions.find((row) => row.id === head.versionId)!,
         key = continuityHolderKey(holder);
+      const expires = version.room?.expiresAt;
+      if (expires && expires <= at) continue;
       add(
         ["room", root.id],
         "places",
         venue!.name + " · " + zone.name,
-        "Room description",
+        expires ? "Timed room detail" : "Room detail",
         [text("text", "Text", version.text)],
         {
           revision: root.revision,
           target: { id: root.id, recordRevision: root.revision, heads: { [key]: head.revision } },
-          source: version.sources.map((source) => source.excerpt),
+          source: [
+            ...(expires
+              ? [
+                  `Expires ${new Date(expires).toLocaleString("en-US", { timeZone: state.timeZone || undefined, dateStyle: "medium", timeStyle: "short" })}`,
+                ]
+              : []),
+            ...version.sources.map((source) => source.excerpt),
+          ],
+          location: {
+            kind: state.venues.some((entry) => entry.id === holder.placeId) ? "venue" : "place",
+            id: holder.placeId,
+            zoneId: holder.zoneId,
+          },
         },
       );
     }
   for (const venue of state.venues) {
-    add(["venue", venue.id], "places", venue.name, "Venue identity and map placement", [
-      text("name", "Name", venue.name),
-      text("form", "Physical form", venue.form ?? ""),
-      ...(["x", "y"] as const)
-        .filter((key) => venue.presentation[key] !== null)
-        .map((key) => ({
-          key,
-          label: `Map ${key}`,
-          type: "number" as const,
-          value: venue.presentation[key]!,
-          min: 0.03,
-          max: 0.97,
-        })),
-    ]);
+    add(
+      ["venue", venue.id],
+      "places",
+      venue.name,
+      "Venue identity and map placement",
+      [
+        text("name", "Name", venue.name),
+        text("form", "Physical form", venue.form ?? ""),
+        ...(["x", "y"] as const)
+          .filter((key) => venue.presentation[key] !== null)
+          .map((key) => ({
+            key,
+            label: `Map ${key}`,
+            type: "number" as const,
+            value: venue.presentation[key]!,
+            min: 0.03,
+            max: 0.97,
+          })),
+      ],
+      { location: { kind: "venue", id: venue.id } },
+    );
     for (const zone of venueZones(venue)) {
       if (zone.access) {
         add(
@@ -437,6 +479,7 @@ export function worldRepairRecords(
               },
             ]),
           ],
+          { location: { kind: "venue", id: venue.id, zoneId: zone.id } },
         );
         for (const person of people)
           if (venue.access)
@@ -463,6 +506,7 @@ export function worldRepairRecords(
               ],
               {
                 source: ["Administrative access repair. Existing Venue-wide bans and opening hours remain separate."],
+                location: { kind: "venue", id: venue.id, zoneId: zone.id },
               },
             );
       }
@@ -497,6 +541,71 @@ export function worldRepairRecords(
   return records.map((record) => ({ ...record, related: record.related.filter((link) => visibleIds.has(link.id)) }));
 }
 
+export function repairPlaceDirectory(state: VillageState, at?: string): RepairBrowseItem[] {
+  const records = worldRepairRecords(state, false, undefined, at, true).filter((record) => record.topic === "places");
+  const scoped = new Map<string, RepairRecord[]>();
+  for (const record of records) {
+    const scope = record.location;
+    if (!scope) continue;
+    const key = repairId(scope.kind, scope.id, scope.zoneId ?? "");
+    const group = scoped.get(key) ?? [];
+    group.push(record);
+    scoped.set(key, group);
+  }
+  const folder = (
+    id: string,
+    title: string,
+    icon: RepairBrowseItem["icon"],
+    children: RepairBrowseItem[],
+  ): RepairBrowseItem => ({ id, title, icon, children });
+  const location = (kind: "place" | "venue", value: VillageVenue): RepairBrowseItem => {
+    const node = repairId("location", kind, value.id);
+    const zones = venueZones(value).map((zone) => {
+      const id = repairId("zone", kind, value.id, zone.id);
+      const zoneRecords = scoped.get(repairId(kind, value.id, zone.id)) ?? [];
+      const items: RepairBrowseItem[] = [];
+      const access: RepairBrowseItem[] = [];
+      for (const record of zoneRecords) {
+        const recordKind = repairParts(record.id)[0];
+        if (recordKind === "permission") {
+          access.push({
+            id: record.id,
+            title: record.title.slice((value.name + " · " + zone.name + " · ").length),
+            icon: "people",
+          });
+        } else if (recordKind === "access") {
+          items.push({ id: record.id, title: "Entry policy", icon: "access" });
+        } else {
+          items.push({
+            id: record.id,
+            title: record.summary,
+            icon: "details",
+            summary: String(record.fields[0]?.value ?? "").slice(0, 120),
+          });
+        }
+      }
+      if (access.length) items.push(folder(id + "/access", "Standing access", "access", access));
+      return folder(id, zone.name, "zone", items);
+    });
+    const details: RepairBrowseItem[] = (scoped.get(repairId(kind, value.id, "")) ?? []).map((record) => ({
+      id: record.id,
+      title: kind === "place" ? "Place details" : "Venue details",
+      icon: "details",
+    }));
+    return folder(node, value.name, kind === "place" ? "places" : "venue", [...details, ...zones]);
+  };
+  const places = Object.values(placeRegistry(state)?.places ?? {}).map((place) => location("place", place.location));
+  const venues = state.venues.map((venue) => location("venue", venue));
+  const homes: RepairBrowseItem[] = records
+    .filter((record) => repairParts(record.id)[0] === "home")
+    .map(({ id, title }) => ({ id, title, icon: "people" }));
+  return [
+    folder("places", "Places", "places", places),
+    folder("venues", "Venues", "venue", venues),
+    ...(homes.length ? [folder("homes", "Home assignments", "people", homes)] : []),
+  ];
+}
+
 function inputValues(record: RepairRecord, request: RepairRequest) {
   const result: Record<string, string | number | boolean> = {};
   for (const field of record.fields) {
@@ -508,12 +617,12 @@ function inputValues(record: RepairRecord, request: RepairRequest) {
         (field.min !== undefined && value < field.min) ||
         (field.max !== undefined && value > field.max)
       )
-        throw badRequest(`Check ${field.label}.`);
-    } else if (typeof value !== typeof field.value) throw badRequest(`Check ${field.label}.`);
+        throw repairFieldError(field.key, `Check ${field.label}.`);
+    } else if (typeof value !== typeof field.value) throw repairFieldError(field.key, `Check ${field.label}.`);
     if (typeof value === "string" && value.length > 16000 && value !== field.value)
-      throw badRequest(`Shorten ${field.label}.`);
+      throw repairFieldError(field.key, `Shorten ${field.label}.`);
     if (field.options && !field.options.some((option) => option.value === value))
-      throw badRequest(`Choose ${field.label}.`);
+      throw repairFieldError(field.key, `Choose ${field.label}.`);
     result[field.key] = value;
   }
   if (Object.keys(request.values).some((key) => !record.fields.some((f) => f.key === key)))
@@ -525,6 +634,10 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   const values = inputValues(record, request),
     [kind, id, sub, actor] = repairParts(record.id);
   const str = (key: string) => String(values[key] ?? "");
+  if (kind === "agenda") {
+    applyAgendaRepair(state, id, sub!, values, at, request.action === "add-activity");
+    return;
+  }
   if (kind === "npc" || kind === "place") {
     if (kind === "npc") {
       const npc = state.worldPlaces.npcs[id];
@@ -715,37 +828,24 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
           state.residences.push({ characterId: id, venueId, status: "current", proposedVenueId: "", requestedAt: at });
         keepAgendaPlaces(state);
       } else if (kind === "person") {
-        const p = state.villagers.find((v) => v.characterId === id)!;
-        if (str("homeworld").length > 120 || str("startingSituation").length > 1200)
-          throw badRequest("Shorten the admission context.");
-        p.admission = { homeworld: str("homeworld"), startingSituation: str("startingSituation") };
+        const p = findCardCharacter(state, id);
+        if (!p) throw conflict("That person is unavailable.");
+        if ("admission" in p) {
+          if (str("homeworld").length > 120 || str("startingSituation").length > 1200)
+            throw badRequest("Shorten the admission context.");
+          p.admission = { homeworld: str("homeworld"), startingSituation: str("startingSituation") };
+        }
         for (const key of ["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const)
           p.cardSnapshot[key] = str(key);
         p.cardSnapshot.revision++;
       } else if (kind === "letter-font") {
-        const person = state.villagers.find((v) => v.characterId === id);
-        if (!person) throw conflict("That villager is unavailable.");
+        const person = findCardCharacter(state, id);
+        if (!person) throw conflict("That person is unavailable.");
         person.letterFontId = str("letterFontId");
-      } else if (kind === "routine") {
-        const agenda = state.villagers.find((v) => v.characterId === id)!.agenda!;
-        agenda.routineSummary = str("routineSummary");
-        agenda.day.forEach((b, i) => {
-          b.startMinute = Number(values[`start:${i}`]);
-          b.endMinute = Number(values[`end:${i}`]);
-          b.activity = str(`activity:${i}`);
-          if (!Number.isInteger(b.startMinute) || !Number.isInteger(b.endMinute) || b.endMinute <= b.startMinute)
-            throw badRequest("Routine blocks need a valid start and end.");
-        });
-        const sorted = [...agenda.day].sort((a, b) => a.startMinute - b.startMinute);
-        if (sorted.some((b, i) => i > 0 && b.startMinute < sorted[i - 1].endMinute))
-          throw badRequest("Routine blocks cannot overlap.");
-        agenda.week = completeAgendaWeek(
-          Object.fromEntries(VILLAGE_WEEKDAYS.map((weekday) => [weekday, sorted])),
-          workingAgendaWeek(),
-        );
-        agenda.routineProfile = routineProfileFromWeek(agenda.week);
-        agenda.plannedDays = {};
-        agenda.personalizationPending = false;
+      } else if (kind === "visitor") {
+        const person = state.visitors?.find((visitor) => visitor.characterId === id);
+        if (!person) throw conflict("That Visitor is unavailable.");
+        setVisitorVisits(state, person, values.visitsEnabled === true, request.operationId, at);
       } else if (kind === "venue") {
         const v = state.venues.find((v) => v.id === id)!;
         if (!str("name") || str("name").length > 100 || str("form").length > 240)
@@ -760,9 +860,11 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         v.layoutVersion = 1;
         const z = v.zones.find((z) => z.id === sub)!;
         if (kind === "access") {
-          const ids = ["player", ...state.villagers.map((p) => p.characterId)],
+          const ids = ["player", ...sceneActorIds(state)],
             managers = ids.filter((p) => values[`manager:${p}`] === true),
             members = ids.filter((p) => values[`member:${p}`] === true);
+          if (str("inheritManagers") === "custom" && !managers.length)
+            throw badRequest("Choose at least one manager or inherit Venue managers.");
           z.access!.mode = str("mode") as "public" | "permission-required";
           z.access!.managerIds = str("inheritManagers") === "inherit" ? null : managers;
           z.access!.memberIds = members;

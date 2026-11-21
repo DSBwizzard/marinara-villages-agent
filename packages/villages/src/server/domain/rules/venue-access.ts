@@ -35,8 +35,13 @@ export const permissionSchema = z.object({
   zoneId: id,
   visitorId: id,
   issuerId: id,
-  duration: z.enum(["visit", "standing"]),
+  duration: z.enum(["visit", "standing", "lodging"]),
+  expiresAt: z
+    .string()
+    .refine((at) => Number.isFinite(Date.parse(at)))
+    .optional(),
   sceneId: id.nullable(),
+  excludedSceneId: id.optional(),
   accompaniedBy: id.nullable(),
   outsideHours: z.boolean(),
   revoked: z.boolean(),
@@ -110,6 +115,7 @@ const commandSchema = z.discriminatedUnion("action", [
       duration: z.enum(["visit", "standing"]),
       accompanied: z.boolean(),
       outsideHours: z.boolean(),
+      visitTiming: z.enum(["this", "next"]).optional(),
       sceneId: id.optional(),
     })
     .strict(),
@@ -138,9 +144,10 @@ export function readVenueAccess(value: unknown): VenueAccessState | undefined {
 export function defaultZonePolicy(venue: VillageVenue, zone: VillageVenueZone): ZoneAccessPolicy {
   const personal = zone.ownerId ? [zone.ownerId] : null;
   const managerIds = personal ?? (zone.controllerIds?.length ? zone.controllerIds : null);
+  const mode =
+    zone.venueClass === "residence" || ["staff", "restricted"].includes(zone.kind) ? "permission-required" : "public";
   return {
-    mode:
-      zone.venueClass === "residence" || ["staff", "restricted"].includes(zone.kind) ? "permission-required" : "public",
+    mode,
     managerIds,
     memberIds: personal ?? [],
     memberRoles:
@@ -152,7 +159,7 @@ export function defaultZonePolicy(venue: VillageVenue, zone: VillageVenueZone): 
             ? ["workers"]
             : [],
     inviterIds: [],
-    visitorHours: "inherit",
+    visitorHours: mode === "public" ? "inherit" : "always",
     accompanied: false,
   };
 }
@@ -214,6 +221,31 @@ export function mayInvite(venue: VillageVenue, zone: VillageVenueZone, actor: st
     zone.kind !== "exterior" && (zoneManagers(venue, zone).includes(actor) || !!zone.access?.inviterIds.includes(actor))
   );
 }
+function validGrantIssuer(venue: VillageVenue, zone: VillageVenueZone, grant: VenueAccessState["permissions"][number]) {
+  return (
+    mayInvite(venue, zone, grant.issuerId) ||
+    (grant.issuerId === "system" &&
+      grant.id.startsWith("repair:") &&
+      grant.duration === "standing" &&
+      grant.sceneId === null &&
+      grant.accompaniedBy === null &&
+      !grant.outsideHours &&
+      !grant.sourceLineIds.length)
+  );
+}
+export function mayHostLodging(venue: VillageVenue, zone: VillageVenueZone, actor: string): boolean {
+  const household = [...new Set([...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])])];
+  return (
+    household.length === 1 &&
+    household[0] === actor &&
+    zone.venueClass === "residence" &&
+    (!zone.ownerId || zone.ownerId === actor) &&
+    venue.destinations?.[actor]?.sleep !== zone.id &&
+    !zone.access?.accompanied &&
+    mayInvite(venue, zone, actor) &&
+    zoneManagers(venue, zone).every((manager) => manager === actor)
+  );
+}
 function members(venue: VillageVenue, zone: VillageVenueZone): string[] {
   const policy = zone.access;
   return [
@@ -240,6 +272,27 @@ export function withinVisitorHours(hours: VenueAccessState["visitorHours"], at: 
       ? row.days.includes(today) && now >= start && now < end
       : (row.days.includes(today) && now >= start) || (row.days.includes(yesterday) && now < end);
   });
+}
+function effectiveHours(venue: VillageVenue, zone: VillageVenueZone) {
+  const hours = zone.access?.visitorHours;
+  return hours === "inherit" ? (venue.access?.visitorHours ?? null) : Array.isArray(hours) ? hours : null;
+}
+function controlsHours(venue: VillageVenue, zone: VillageVenueZone, actor: string) {
+  return managesAccess(venue, zone.access?.visitorHours === "inherit" ? null : zone.id, actor);
+}
+function nextOpening(hours: NonNullable<VenueAccessState["visitorHours"]>, at: Date): string | undefined {
+  const today = at.getDay();
+  const now = at.getHours() * 60 + at.getMinutes();
+  const openings = hours.flatMap(({ days: scheduled, start, end }) =>
+    scheduled.map((day) => {
+      const opens = start === end ? "00:00" : start;
+      let offset = (days.indexOf(day as (typeof days)[number]) - today + 7) % 7;
+      if (offset === 0 && minutes(opens) <= now) offset = 7;
+      return { offset, start: opens, day };
+    }),
+  );
+  const first = openings.sort((a, b) => a.offset - b.offset || a.start.localeCompare(b.start))[0];
+  return first ? (first.offset ? `${first.day} ${first.start}` : first.start) : undefined;
 }
 export type AccessContext = {
   environment?: import("../models/narrative-model.js").NarrativeState;
@@ -294,9 +347,16 @@ export function evaluateZoneAccess(
       (!context.permissionId || grant.id === context.permissionId) &&
       grant.zoneId === zone.id &&
       grant.visitorId === actor &&
-      mayInvite(venue, zone, grant.issuerId) &&
+      validGrantIssuer(venue, zone, grant) &&
       (grant.duration === "standing" ||
-        (context.sceneId && (grant.sceneId === context.sceneId || (context.accepting && grant.sceneId === null)))),
+        (grant.duration === "lodging" &&
+          Date.parse(grant.issuedAt) <= (context.at ?? new Date()).getTime() &&
+          Date.parse(grant.expiresAt ?? "") > (context.at ?? new Date()).getTime() &&
+          mayHostLodging(venue, zone, grant.issuerId)) ||
+        (grant.duration === "visit" &&
+          context.sceneId &&
+          grant.excludedSceneId !== context.sceneId &&
+          (grant.sceneId === context.sceneId || (context.accepting && grant.sceneId === null)))),
   );
   const bans = ledger.bans.filter(
     (ban) => ban.active && ban.visitorId === actor && (ban.zoneId === null || ban.zoneId === zone.id),
@@ -309,12 +369,7 @@ export function evaluateZoneAccess(
   if (bans.length && !permitted.length)
     return result(false, "banned", "Entry is prohibited. A manager of the ban's scope must approve an exception.");
   const member = members(venue, zone).includes(actor);
-  const hours =
-    policy.visitorHours === "always"
-      ? null
-      : policy.visitorHours === "inherit"
-        ? ledger.visitorHours
-        : policy.visitorHours;
+  const hours = effectiveHours(venue, zone);
   const open = withinVisitorHours(hours, context.at ?? new Date());
   // A ban exception supplies only its exact invitation; it does not restore general membership.
   const restricted = ordinaryUseRestricted(
@@ -338,12 +393,17 @@ export function evaluateZoneAccess(
     );
   const escortPresent = (escort: string | null) => !!escort && context.positions?.[escort] === zone.id;
   for (const grant of eligible) {
+    if (grant.duration === "lodging" && restricted) continue;
     const escort = grant.accompaniedBy ?? (policy.accompanied ? grant.issuerId : null);
     if (escort && !escortPresent(escort)) continue;
     return result(
       true,
       "invitation",
-      grant.duration === "standing" ? "You have standing permission." : "You are invited for this visit.",
+      grant.duration === "standing"
+        ? "You have standing permission."
+        : grant.duration === "lodging"
+          ? "You are invited for an overnight stay."
+          : "You are invited for this visit.",
       { permissionId: grant.id, ...(escort ? { accompaniedBy: escort } : {}) },
     );
   }
@@ -382,7 +442,12 @@ export function reconcileVenueAccess(venue: VillageVenue, knownActors?: string[]
   }
   for (const grant of venue.access.permissions) {
     const zone = venue.zones?.find((row) => row.id === grant.zoneId);
-    if (!zone || (known && !known.has(grant.visitorId)) || !mayInvite(venue, zone, grant.issuerId))
+    if (
+      !zone ||
+      (known && !known.has(grant.visitorId)) ||
+      !validGrantIssuer(venue, zone, grant) ||
+      (grant.duration === "lodging" && !mayHostLodging(venue, zone, grant.issuerId))
+    )
       grant.revoked = true;
   }
 }
@@ -487,7 +552,9 @@ export function applyAccessCommand(
     case "invite":
       if (!zone || !mayInvite(venue, zone, actor)) forbidden();
       assertIds([command.visitorId]);
-      if (command.sceneId)
+      if (command.outsideHours && !controlsHours(venue, zone, actor)) forbidden();
+      if (command.visitTiming === "this" && !command.sceneId) throw conflict("Open a Scene at this Venue first.");
+      if (command.sceneId && command.visitTiming !== "next")
         ledger.visitDenials = ledger.visitDenials.filter(
           (denial) =>
             denial.zoneId !== zone!.id || denial.visitorId !== command.visitorId || denial.sceneId !== command.sceneId,
@@ -498,7 +565,8 @@ export function applyAccessCommand(
         visitorId: command.visitorId,
         issuerId: actor,
         duration: command.duration,
-        sceneId: command.sceneId ?? null,
+        sceneId: command.visitTiming === "next" ? null : (command.sceneId ?? null),
+        ...(command.visitTiming === "next" && command.sceneId ? { excludedSceneId: command.sceneId } : {}),
         accompaniedBy: command.accompanied ? actor : null,
         outsideHours: command.outsideHours,
         revoked: false,
@@ -577,7 +645,7 @@ export function applyAccessCommand(
 export function claimVisitPermission(venue: VillageVenue, permissionId: string | undefined, sceneId: string): void {
   const grant = venue.access?.permissions.find((row) => row.id === permissionId);
   if (!grant || grant.duration !== "visit") return;
-  if (grant.revoked || (grant.sceneId && grant.sceneId !== sceneId))
+  if (grant.revoked || grant.excludedSceneId === sceneId || (grant.sceneId && grant.sceneId !== sceneId))
     throw conflict("This invitation belongs to another visit.");
   grant.sceneId = sceneId;
 }
@@ -612,8 +680,38 @@ export function projectZoneAccess(venue: VillageVenue, zone: VillageVenueZone, a
   const { permissionId: _permission, accompaniedBy: _escort, ...safeDecision } = decision;
   safeDecision.canRecover =
     !zoneManagers(venue, zone).length && managesAccess(venue, null, actor) && zone.kind !== "exterior";
+  const hours = effectiveHours(venue, zone);
+  const grant =
+    venue.access?.permissions.find((row) => row.id === decision.permissionId) ??
+    venue.access?.permissions.find(
+      (row) =>
+        !row.revoked &&
+        row.zoneId === zone.id &&
+        row.visitorId === actor &&
+        (row.duration === "standing" || row.sceneId === null || row.sceneId === context.sceneId) &&
+        mayInvite(venue, zone, row.issuerId),
+    );
   return {
     decision: safeDecision,
+    nextOpening:
+      decision.reason === "outside-hours" && hours && context.at ? nextOpening(hours, context.at) : undefined,
+    canAllowAfterHours: decision.canInvite && hours !== null && controlsHours(venue, zone, actor),
+    ...(grant
+      ? {
+          invitation: {
+            issuerId: grant.issuerId,
+            duration: grant.duration,
+            future:
+              grant.duration === "visit" &&
+              grant.sceneId === null &&
+              (!context.sceneId ||
+                context.sceneId === "next-visit-preview" ||
+                grant.excludedSceneId === context.sceneId),
+            accompanied: !!grant.accompaniedBy || !!zone.access?.accompanied,
+            outsideHours: grant.outsideHours,
+          },
+        }
+      : {}),
     ...(decision.canManage
       ? {
           policy: zone.access,

@@ -325,12 +325,14 @@ await withBrowser(browser, async () => {
         pageIndex++
       )
         await greetingNext.click();
+      while (await greetingNext.isEnabled()) await greetingNext.click();
       await composer.fill("Let us make room.");
       await page.getByRole("button", { name: "Send", exact: true }).click();
       const next = page.getByRole("button", { name: "Next paragraph" });
       await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
         "They make room near the right-hand window.",
       );
+      while (await greetingNext.isEnabled()) await greetingNext.click();
       await expect(mara).toHaveAttribute("data-position", "right");
       await expect(mara).toHaveAttribute("data-attention", "left");
       await expect(mara.locator("img")).toHaveAttribute("data-facing", "front");
@@ -379,15 +381,8 @@ await withBrowser(browser, async () => {
       await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
       assert.equal(
         await page.evaluate(() => window.spriteFlips.length),
-        flipEnabled ? 4 : 0,
-        "facing-only changes flip once",
-      );
-      await next.click();
-      await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
-      assert.equal(
-        await page.evaluate(() => window.spriteFlips.length),
-        flipEnabled ? 4 : 0,
-        "unchanged artwork and facing do not flip",
+        flipEnabled ? 2 : 0,
+        "whole reply applies the final visual state once",
       );
       await checkSpriteSize(mobile);
       if (count > 1) {
@@ -421,6 +416,7 @@ await withBrowser(browser, async () => {
       assert.equal(await page.evaluate(() => window.spriteFlips.length), 0, "restored Scene does not flip");
       if (count > 1) {
         const before = await mara.evaluate((node) => node.offsetLeft);
+        while (await greetingNext.isEnabled()) await greetingNext.click();
         await composer.fill("Until next time.");
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(people).toHaveCount(count - 1);

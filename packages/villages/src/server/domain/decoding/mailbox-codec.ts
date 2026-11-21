@@ -72,6 +72,7 @@ const personalInput = z
       (value) => value.actors.length === 2,
       "Captured personal mail source needs exactly two correspondents.",
     ),
+    visitor: z.string().min(1).max(160).optional(),
   })
   .strict();
 export function readPersonalMailInput(raw: unknown): PersonalMailInput {

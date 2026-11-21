@@ -178,11 +178,11 @@ async function main() {
   loreOnly.state.venues = [];
   loreOnly.state.setting = "A saved world";
   loreOnly.state.playerPersonaId = "saved-persona";
-  loreOnly.state.narrationStyle.writingGuidance = "Saved writing guidance";
+  loreOnly.state.narrationStyle.tense = "past";
   await loreOnly.service.setVillageLoreSettings(["book"], 800);
   assert.equal(loreOnly.state.setting, "A saved world");
   assert.equal(loreOnly.state.playerPersonaId, "saved-persona");
-  assert.equal(loreOnly.state.narrationStyle.writingGuidance, "Saved writing guidance");
+  assert.equal(loreOnly.state.narrationStyle.tense, "past");
   assert.equal(loreOnly.bootstrapCalls, 0, "saving Lorebooks does not bootstrap an empty world");
   assert.equal(loreOnly.personaReads, 0, "saving Lorebooks does not resolve or replace the Persona");
 

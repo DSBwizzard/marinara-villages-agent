@@ -201,7 +201,14 @@ await test("refusal", async (f) => {
   const next = await f.retry(old);
   assert.equal(next.latestTurn.id, old.latestTurn.id);
   assert.notEqual(next.playback.version, old.playback.version);
-  assert.equal(next.lines.filter((row: { content: string }) => row.content === line).length, 1);
+  assert.equal(
+    next.lines.filter((row: { content: string }) => row.content === line).length,
+    0,
+    "original input belongs in Transcript",
+  );
+  const history = await f.get(`/browser/history?scope=${next.playback.scope}`);
+  assert.equal(history.statusCode, 200, history.body);
+  assert.equal(history.json().lines.filter((row: { content: string }) => row.content === line).length, 1);
   assert(!next.lines.some((row: { content: string }) => row.content.includes("can’t continue")));
   assert(next.lines.some((row: { content: string }) => row.content.includes("window")));
   assert(!f.state().episodes.records.some((row) => row.id === oldEpisode));

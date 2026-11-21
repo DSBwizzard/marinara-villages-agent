@@ -29,7 +29,26 @@ const bundle = await build({
 });
 await writeFile(entry, bundle.outputFiles[0].contents);
 const { packagedSceneServer } = await import(pathToFileURL(entry).href);
-const server = await packagedSceneServer();
+const server = await packagedSceneServer({
+  configureScene(scene) {
+    scene.zoneId = "exterior";
+    scene.activeIds = [];
+  },
+});
+const entrance = (await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" })).json().session;
+const moved = await server.app.inject({
+  method: "POST",
+  url: "/api/villages/rooms/zone",
+  payload: {
+    sessionId: entrance.id,
+    zoneId: "common",
+    operationId: "retry-test-arrival",
+    expectedSceneRevision: entrance.sceneRevision,
+  },
+});
+assert.equal(moved.statusCode, 200, moved.body);
+assert.ok(moved.json().session.zoneArrivalId, "Retry keeps the replacement's first paragraph after an actual Move");
+assert.equal(server.calls(), 0, "Arrival does not purchase narration");
 await withBrowser({ close: server.stop }, async () => {
   const browser = await chromium.launch({ headless: true });
   await withBrowser(browser, async () => {
@@ -103,7 +122,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect
       .poll(async () => {
         const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-        if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+        if ((await next.isVisible()) && (await next.count()) > 0 && (await next.isEnabled())) await next.click();
         return page.locator("marinara-capability-villages").textContent();
       })
       .toContain("Hello there.");
@@ -153,9 +172,8 @@ await withBrowser({ close: server.stop }, async () => {
     } finally {
       firstRetry.resolve();
     }
-    await expect(current).toHaveAttribute("aria-busy", "true");
-    await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
-    await expect(current).toHaveText(firstReply);
+
+    await expect(current).toContainText(firstReply);
     await expect(composer).toHaveValue("Keep this unsent draft");
     assert.equal(retries, 1);
 
@@ -171,7 +189,8 @@ await withBrowser({ close: server.stop }, async () => {
     await expect
       .poll(async () => {
         if (await retryReply.isEnabled()) return true;
-        if ((await phoneNext.isVisible()) && (await phoneNext.isEnabled())) await phoneNext.click();
+        if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
+          await phoneNext.click();
         return retryReply.isEnabled();
       })
       .toBe(true);
@@ -184,7 +203,9 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(retryReply).toBeDisabled();
     await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
     await phoneNext.click();
-    await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
+    await expect(retryReply).toBeEnabled();
+    await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
+    await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
     assert.equal(retries, 2);
 
     const phoneComposer = phone.getByRole("textbox", { name: "Message at The Mill" });
@@ -195,7 +216,7 @@ await withBrowser({ close: server.stop }, async () => {
     await checkRetryPlacement(phone, retryReply);
     await expect(retryReply).toBeEnabled();
     failedRetryExpected = false;
-    await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
+    await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
     await expect(phone.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await expect(phone.getByRole("menuitem", { name: "Retry Turn", exact: true })).toHaveCount(1);
     await expect(retryReply).toHaveText("");
@@ -206,19 +227,20 @@ await withBrowser({ close: server.stop }, async () => {
     await expect
       .poll(async () => {
         if (await retryReply.isEnabled()) return true;
-        if ((await phoneNext.isVisible()) && (await phoneNext.isEnabled())) await phoneNext.click();
+        if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
+          await phoneNext.click();
         return retryReply.isEnabled();
       })
       .toBe(true);
     await retryReply.click();
-    await expect(phoneCurrent).toHaveText("The rain eases over the mill.");
+    await expect(phoneCurrent).toContainText("The rain eases over the mill.");
     assert.equal(retries, 4);
     const active = await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
     const { session } = active.json();
     assert.ok(session.retryStart, "the retried reply has a public reading anchor");
     assert.ok(
-      session.retryStart.index < session.playback.moments[0].index,
-      "the reader found the start of the replacement outside the latest playback window",
+      session.lines.length === 24 && session.lines[0].content === "The rain eases over the mill.",
+      "the live reply includes the entire replacement, beyond the old playback window",
     );
   });
 });

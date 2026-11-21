@@ -39,6 +39,7 @@ type RequestTrace = {
 export type SceneFailure = { message: string; trace: RequestTrace };
 
 const codes = new Set([
+  "AI_CONNECTION_NOT_CONFIGURED",
   "SCENE_MESSAGE_TOO_LONG",
   "SCENE_BUSY",
   "SCENE_STALE",

@@ -1,12 +1,12 @@
 import { findLocation, findNpc } from "./places.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
-import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
+import type { VillageAgendaBlock, VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
 import { agendaAt } from "./agenda-plan.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
-import { contactPath, sceneAccessContext } from "./venue-contact.js";
+import { contactPath, physicalVenuePath, physicallyUsableZone, sceneAccessContext } from "./venue-contact.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
@@ -14,20 +14,39 @@ import { venueResidentIds } from "./venue-model.js";
 import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagePresence } from "./village-projections.js";
+import { sameVisitorPhase, visitorPosition } from "./visitors.js";
 
 export function sameSceneRoutine(village: VillageState, scene: VenueScene, actorId: string, now: Date): boolean {
   const resident = village.villagers.find((row) => row.characterId === actorId);
-  if (!resident) return false;
+  if (!resident)
+    return sameVisitorPhase(village, actorId, new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt), now);
   const previous = scene.continuity?.facts.villagers.find((row) => row.characterId === actorId) ?? resident;
   const timeZone = village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const before = new ZonedDate(scene.sceneAttendance?.capturedAt ?? scene.startedAt, timeZone);
   const after = new ZonedDate(now, timeZone);
   const block = (person: typeof resident, at: Date) =>
     agendaAt(person.agenda, at.getHours() * 60 + at.getMinutes(), at);
-  return (
-    agendaDateKey(before) === agendaDateKey(after) &&
-    JSON.stringify(block(previous, before)) === JSON.stringify(block(resident, after))
-  );
+  const date = agendaDateKey(after);
+  if (agendaDateKey(before) !== date) return false;
+  const captured = block(previous, before),
+    current = block(resident, after);
+  if (JSON.stringify(captured) === JSON.stringify(current)) return true;
+  const beforeMinute = before.getHours() * 60 + before.getMinutes();
+  const afterMinute = after.getHours() * 60 + after.getMinutes();
+  if (
+    !captured ||
+    !current ||
+    (!resident.agenda?.repairedDays?.includes(date) && !previous.agenda?.repairedDays?.includes(date)) ||
+    afterMinute < captured.startMinute ||
+    afterMinute >= captured.endMinute ||
+    beforeMinute < current.startMinute ||
+    beforeMinute >= current.endMinute
+  )
+    return false;
+  // A repair can split an activity without changing what the resident is doing now.
+  const meaning = ({ startMinute: _start, endMinute: _end, ...activity }: VillageAgendaBlock) =>
+    JSON.stringify(activity);
+  return meaning(captured) === meaning(current);
 }
 
 /** Do not invent an NPC encounter in a resident's scheduled Zone while evidenced movement puts them elsewhere. */
@@ -68,30 +87,43 @@ export function captureSceneAttendance(
     now,
   });
   const presence = villagePresence(village, moment.minuteOfDay, now, positions);
+  const visitor = visitorPosition(village, now, presence, positions);
   return {
     layout: captureSceneLayout(venue),
     capturedAt: now.toISOString(),
-    occupants: village.villagers.flatMap((villager) => {
-      const position = presence.get(villager.characterId);
-      if (position?.id !== placeId) return [];
-      const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
-      const zone =
-        resolveVenueZone(venue, position.zoneId ?? "") ??
-        chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
-          at: now,
-        });
-      return [
-        {
-          characterId: villager.characterId,
-          name: villager.cardSnapshot.name,
-          doing:
-            (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
-              ? "Taking care of their own affairs"
-              : (block?.activity ?? ""),
-          zoneId: zone.id,
-        },
-      ];
-    }),
+    occupants: [
+      ...village.villagers.flatMap((villager) => {
+        const position = presence.get(villager.characterId);
+        if (position?.id !== placeId) return [];
+        const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
+        const zone =
+          resolveVenueZone(venue, position.zoneId ?? "") ??
+          chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
+            at: now,
+          });
+        return [
+          {
+            characterId: villager.characterId,
+            name: villager.cardSnapshot.name,
+            doing:
+              (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
+                ? "Taking care of their own affairs"
+                : (block?.activity ?? ""),
+            zoneId: zone.id,
+          },
+        ];
+      }),
+      ...(visitor?.venueId === placeId
+        ? [
+            {
+              characterId: visitor.person.characterId,
+              name: visitor.person.cardSnapshot.name,
+              doing: visitor.sleeping ? "Turning in for the night" : "Visiting",
+              zoneId: visitor.zoneId,
+            },
+          ]
+        : []),
+    ],
   };
 }
 export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zoneId: string) {
@@ -154,10 +186,21 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
     for (const [actor, from] of Object.entries(positions)) {
       if (!from || from === "exterior") continue;
       const zone = resolveVenueZone(venue, from);
-      if (
+      const decision =
         zone &&
-        evaluateZoneAccess(venue, zone, actor, { ...context, positions, unavailable: zoneClosed(village, venue, zone) })
-          .allowed
+        evaluateZoneAccess(venue, zone, actor, {
+          ...context,
+          positions,
+          unavailable: zone.closed || zoneClosed(village, venue, zone),
+        });
+      const trespass =
+        actor === "player" ? session.trespass : session.actorTrespasses?.find((row) => row.actorId === actor);
+      if (
+        decision?.allowed ||
+        (trespass?.zoneId === from &&
+          zone &&
+          trespass.reason === decision?.reason &&
+          physicallyUsableZone(village, venue, zone, context.at ?? new Date(session.startedAt)))
       )
         continue;
       const previous = actor === "player" ? session.enteredFromZoneId : session.accessPreviousZones?.[actor];
@@ -179,7 +222,18 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
               unavailable: zoneClosed(village, venue, target),
               environment: village.narrative,
             }).allowed &&
-            !!contactPath(village, venue, from, target.id, actor, session, context.at),
+            // Forced access removal keeps physical egress; voluntary Move still checks every entered Zone.
+            !!(
+              contactPath(village, venue, from, target.id, actor, session, context.at) ||
+              (target.id === "exterior" &&
+                physicalVenuePath(
+                  { ...village, narrative: undefined },
+                  venue,
+                  { ...session, zoneId: from },
+                  target.id,
+                  context.at ?? new Date(session.startedAt),
+                ))
+            ),
         )?.id ?? "";
       if (!to && actor === "player") continue;
       let destinationVenueId: string | undefined;

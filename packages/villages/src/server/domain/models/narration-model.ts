@@ -4,6 +4,8 @@ import type { AcceptedEpisode } from "./episode-model.js";
 
 /** Exact final fitted evidence and native circumstances, retained by the existing operation checkpoint. */
 export type NarrationReadset = {
+  visitorIntroductionFarewell?: true;
+  visitorIds?: string[];
   agendaOptions?: {
     actorId: string;
     activity: string;
@@ -24,6 +26,8 @@ export type NarrationReadset = {
   ordinaryDialogue?: true;
   playerNavigation?: "explicit" | "conclude";
   sceneResidentMovement?: true;
+  sceneFollowing?: true | 2;
+  automaticTrespass?: true;
   sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string }[];
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;

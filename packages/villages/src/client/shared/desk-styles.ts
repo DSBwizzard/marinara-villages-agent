@@ -1,30 +1,16 @@
+import { STORYBOOK_DAY, STORYBOOK_NIGHT } from "./storybook-colors.js";
 const P = "marinara-capability-villages";
 
-export const STORYBOOK_NIGHT_PALETTE = `--background:#302d47;--foreground:#f0dfbc;--popover:#393047;--muted:#4f3c53;--muted-foreground:#d0c1b3;--border:#a39b8460;--primary:#969b7e;--primary-foreground:#292938;--secondary:#514157;--destructive:#f3b6b7;--menu-rose:#b97980;--menu-sage:#969b7e;--menu-selected:#b979809e;--menu-tab-line:#d29399;--menu-field:#74536755;--menu-field-border:#b47f92aa;`;
-
-export const STORYBOOK_DAY_PALETTE = `
- --background:#b7d5e2;--foreground:#213e36;--popover:#d4e5de;--muted:#d4e4da;--muted-foreground:#3d5b53;
- --border:#668d8170;--primary:#416b57;--primary-foreground:#e8f2ec;--secondary:#d4e5de;--destructive:#862f37;
- --menu-rose:#466547;--menu-sage:#52754b;--menu-selected:#a8c6aa;--menu-tab-line:#41674f;
- --menu-field:#eff5efd9;--menu-field-border:#658a80;--menu-option:var(--popover);--menu-placeholder:#42635f;
- --menu-rail:#ccdcc2e8;--menu-mobile-rail:#d2e0c8;--menu-selected-ink:var(--foreground);
- --menu-focus:#295e51;--menu-hover:#bfd6c7;--menu-control-border:#6b8a6c;--menu-selected-border:#74947a;
- --menu-selection-fill:var(--menu-selected);
- --menu-card:#dae7d2;--menu-card-line:#789483;--menu-card-selected:#a8c6aa;
- --menu-avatar:#7197aa;--menu-avatar-ink:#152d34;--menu-scrollbar:#53776a80;
- --menu-warning-surface:#f4dddd;--menu-warning-ink:#7e2934;--menu-warning-line:#a4636a;
- --menu-dossier-ink:var(--foreground);--menu-dossier-muted:var(--muted-foreground);--menu-dossier-line:var(--border);
- --menu-field-day:var(--menu-field);--menu-dossier-tabs:#bdd8e5f5;
- --menu-project-primary:var(--primary);--menu-project-panel:#e1ecdeca;--menu-project-control:var(--secondary);
- --menu-map-surface:#d8e8dd;--menu-map-line:#638476;color-scheme:light;
-`;
-
+export {
+  STORYBOOK_DAY as STORYBOOK_DAY_PALETTE,
+  STORYBOOK_NIGHT as STORYBOOK_NIGHT_PALETTE,
+} from "./storybook-colors.js";
 export const DESK_STYLES = `
 .${P}-desk-container{height:100%;min-height:0;min-width:0;container:village-desk/inline-size}
 .${P}-desk-workspace{height:100%;min-height:0;display:flex;flex-direction:column;position:relative;isolation:isolate}
-.${P}-desk-workspace[data-desk]:not([data-desk="none"]){${STORYBOOK_NIGHT_PALETTE}--menu-font:"village-letter-lora",Georgia,serif;--menu-heading-size:clamp(40px,3.6cqw,76px);--menu-rail-width:clamp(210px,20cqw,260px);--menu-art-placement:center bottom/cover no-repeat;display:grid;grid-template-columns:var(--menu-rail-width) minmax(0,1fr);color:var(--foreground);background:var(--background) var(--menu-art) var(--menu-art-placement);overflow:hidden;box-sizing:border-box;font:18px/1.45 var(--menu-font)}
+.${P}-desk-workspace[data-desk]:not([data-desk="none"]){${STORYBOOK_NIGHT}--menu-font:"village-letter-lora",Georgia,serif;--menu-heading-size:clamp(40px,3.6cqw,76px);--menu-rail-width:clamp(210px,20cqw,260px);--menu-art-placement:center bottom/cover no-repeat;display:grid;grid-template-columns:var(--menu-rail-width) minmax(0,1fr);color:var(--foreground);background:var(--background) var(--menu-art) var(--menu-art-placement);overflow:hidden;box-sizing:border-box;font:18px/1.45 var(--menu-font)}
 .${P}-desk-workspace[data-theme="day"][data-desk]{
- ${STORYBOOK_DAY_PALETTE}
+ ${STORYBOOK_DAY}
 }
 .${P}-desk-workspace[data-desk]:not([data-desk="none"])::before{content:"";position:absolute;inset:0 auto 0 0;width:var(--menu-rail-width);z-index:-2;background:var(--menu-rail,#542d43b0);pointer-events:none}
 .${P}-desk-workspace[data-desk]:not([data-desk="none"])::after{content:"";position:absolute;inset:0;z-index:-1;background:var(--menu-art) var(--menu-art-placement);mask:var(--menu-scenery-matte) var(--menu-art-placement);pointer-events:none}
@@ -170,11 +156,15 @@ export const DESK_STYLES = `
 .${P}-venue-people .${P}-venue-assignments li{justify-content:flex-start;align-items:baseline;gap:4px 12px;padding:5px 0;border:0}
 .${P}-venue-manage-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
 .${P}-venue-manage-heading h2{margin:0}
-.${P}-venue-connections .villages-zone-map-canvas{height:var(--venue-diagram-height);min-height:0;border:0;background:transparent}
-.${P}-venue-connections .villages-zone-map-canvas>svg{top:calc(22px - var(--venue-diagram-height)*.07)}
+.villages-access-panel fieldset{display:grid;gap:8px;min-width:0;margin:0;padding:8px;border:1px solid var(--border);border-radius:6px}
+.villages-access-panel :is(label,.villages-access-grant,.villages-access-days){display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.villages-access-panel :is(select,input[type=time],button){max-width:100%;min-height:40px;font:inherit}
+.villages-access-panel :is(select,input[type=time]){color:var(--foreground);background:var(--background);border:1px solid var(--border);border-radius:5px;padding:4px}
+.villages-access-hours{display:grid;gap:8px}
+.${P}-venue-connections .villages-zone-map-canvas{height:clamp(360px,52dvh,560px);min-height:360px;border:0;background:transparent}
 .${P}-venue-connections .villages-zone-map-canvas button.villages-zone-map-tile{min-height:44px;border:1px solid #a39b84;background:#514157;color:#f0dfbc;font-size:clamp(12px,1.6cqw,17px);overflow-wrap:anywhere}
 .${P}-venue-connections .villages-zone-map-canvas button[aria-pressed="true"]{border-color:#d29399;background:#654f65}
-.${P}-venue-connections .villages-zone-map-canvas line{stroke:#a5ac8b}
+.${P}-venue-connections .villages-zone-map-canvas :is(line,polyline){stroke:#a5ac8b}
 .${P}-venue-connection-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 12px;margin:12px 0 0;padding:0;border:0}
 .${P}-venue-connection-choices legend{padding:0}
 .${P}-venue-connection-choices label{display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere}
@@ -246,9 +236,6 @@ export const DESK_STYLES = `
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-error{color:#f3c2b8}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-pages{container-type:size}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-signature .${P}-signature-image{max-height:min(6rem,25cqh)}
-.${P}-desk-workspace[data-desk="settings"] .villages-repair{--repair-bg:transparent;--repair-paper:var(--secondary);--repair-ink:var(--foreground);--repair-muted:var(--muted-foreground);--repair-line:var(--border);--repair-soft:var(--menu-field);--repair-primary:var(--menu-sage);--repair-onprimary:var(--primary-foreground);--repair-mark:var(--menu-selected);--repair-warn:var(--destructive);--repair-focus:var(--menu-focus,#dca5ab);height:100%;font:inherit}
-.${P}-desk-workspace[data-desk="settings"] .repair-chrome{justify-content:end;padding:0 5px 12px;background:transparent}
-.${P}-desk-workspace[data-desk="settings"] .repair-chrome>span{display:none}
 @container village-desk (max-width:1050px){
  .${P}-workspace-content .${P}-maps-saved-row{grid-template-columns:72px minmax(0,1fr);gap:8px 12px}
  .${P}-workspace-content .${P}-maps-saved-row img{width:72px;height:52px}

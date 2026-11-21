@@ -1,11 +1,29 @@
+import type { AgendaWeek } from "./agenda.js";
+
+export const REPAIR_NO_CHANGES = "repair-no-changes";
+
+export type RepairAgendaDay = Omit<AgendaWeek["days"][number], "blocks"> & {
+  residentId: string;
+  today?: boolean;
+  venues?: { value: string; label: string; zones: { value: string; label: string }[] }[];
+  blocks: (AgendaWeek["days"][number]["blocks"][number] & { repairIndex?: number; note?: string })[];
+};
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";
 export type RepairValue = string | number | boolean;
-export type RepairPerson = { id: string; name: string };
+export type RepairPerson = { id: string; name: string; hasAgenda?: boolean; visitor?: true };
+export type RepairBrowseIcon = "places" | "venue" | "zone" | "details" | "access" | "people";
+export type RepairBrowseItem = {
+  id: string;
+  title: string;
+  icon: RepairBrowseIcon;
+  summary?: string;
+  children?: RepairBrowseItem[];
+};
 export type RepairField = {
   key: string;
   label: string;
   value: RepairValue;
-  type: "text" | "number" | "choice" | "boolean";
+  type: "text" | "number" | "choice" | "boolean" | "clock";
   options?: { value: string; label: string }[];
   min?: number;
   max?: number;
@@ -23,6 +41,8 @@ export type RepairRecord = {
   revision?: number;
   token?: string;
   creating?: boolean;
+  agendaDay?: string;
+  agenda?: RepairAgendaDay;
   subjects?: string[];
   target?: import("./village.js").MemoryInspection["target"];
 };
@@ -78,4 +98,10 @@ export type RepairIndex = {
   sceneOpen: boolean;
   people: RepairPerson[];
 };
-export type RepairRecordPage = { records: RepairRecord[]; total: number; next: number | null; creation?: RepairRecord };
+export type RepairRecordPage = {
+  records: RepairRecord[];
+  total: number;
+  next: number | null;
+  creation?: RepairRecord;
+  directory?: RepairBrowseItem[];
+};

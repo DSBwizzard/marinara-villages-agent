@@ -1,9 +1,11 @@
 import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import { randomUUID } from "node:crypto";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
+import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
@@ -13,9 +15,12 @@ import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
+import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { clearVisitorLodging, setVisitorVisits } from "../../domain/rules/visitors.js";
 
 export interface ResidentRosterPorts {
+  automaticSprites?(id: string): Promise<SpriteManagerState | null>;
   preparedSpriteManager?(
     id: string,
     revision?: number,
@@ -31,6 +36,7 @@ export interface ResidentRosterPorts {
 /** Roster commands own their saved-world, library and background connections. Construction is inert. */
 export function createResidentRoster({
   preparedSpriteManager,
+  automaticSprites,
   readVillageState,
   mutateVillageState,
   findVillagerCard,
@@ -52,28 +58,40 @@ export function createResidentRoster({
     characterId: string,
     spriteSetupRevision?: number,
     admissionValue?: unknown,
+    scope?: string,
   ): Promise<void> {
     const admission =
       admissionValue === undefined ? { ...EMPTY_RESIDENT_ADMISSION } : readResidentAdmission(admissionValue);
     if (!admission)
       throw badRequest("Use a homeworld within 120 characters and starting situation within 1,200 characters.");
-    const card = await findVillagerCard(characterId);
-    if (!card) throw notFound("That character is not in your library.");
-
+    const card = scope ? null : await findVillagerCard(characterId);
+    if (!scope && !card) throw notFound("That character is not in your library.");
     const village = await readVillageState();
+    if (characterId === PROFESSOR_MARI_ID && village.visitorIntroduction && !village.visitorIntroduction.completedAt)
+      throw badRequest("Meet Professor Mari on her first visit before moving her in.");
+    const worldScope = villageWorldScope(village);
+    if (scope && worldScope !== scope) throw conflict("The Village changed.");
+    const expectedVisitor = village.visitors?.find((person) => person.characterId === characterId);
     const alreadyResident = village.villagers.some((villager) => villager.characterId === characterId);
+    if (scope && !expectedVisitor && !alreadyResident) throw notFound("That Visitor is no longer here.");
     if (!alreadyResident && village.villagers.length >= MAX_VILLAGERS) {
       throw badRequest(`A village holds at most ${MAX_VILLAGERS} villagers.`);
     }
 
+    let movedIn = false;
+    let promoted = false;
     if (!alreadyResident) {
-      const spriteManager = await preparedSpriteManager?.(characterId, spriteSetupRevision);
+      const spriteManager = expectedVisitor
+        ? null
+        : ((await preparedSpriteManager?.(characterId, spriteSetupRevision)) ??
+          (await automaticSprites?.(characterId)));
       const addedAt = villageNow().toISOString();
       const incarnation = randomUUID();
       const letterFontId = chooseLetterFont(randomVillageSeed());
       await mutateVillageState((state) => {
-        if (villageWorldScope(state) !== villageWorldScope(village))
-          throw conflict("The Village changed. Open the resident list again.");
+        movedIn = false;
+        promoted = false;
+        if (villageWorldScope(state) !== worldScope) throw conflict("The Village changed.");
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
           throw badRequest(`A village holds at most ${MAX_VILLAGERS} villagers.`);
@@ -83,41 +101,40 @@ export function createResidentRoster({
         // "somebody moves in" and then "and here is what they are after". A move
         // that failed because the model was down would be a villager who exists
         // everywhere except on the map.
+        const visitor = state.visitors?.find((person) => person.characterId === characterId);
+        if (visitor?.incarnation !== expectedVisitor?.incarnation)
+          throw conflict("This Visitor changed. Reopen People.");
+        if (visitor && scope && !visitor.firstMetAt) throw badRequest("Meet this Visitor before moving them in.");
         state.villagers.push({
-          incarnation,
+          incarnation: visitor?.incarnation ?? incarnation,
           characterId,
           letterFontId:
+            visitor?.letterFontId ??
             (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, characterId)
               ? state.formerLetterFonts[characterId]
-              : undefined) ?? letterFontId,
+              : undefined) ??
+            letterFontId,
           admission,
-          spriteManager,
-          identityDescription: initialIdentityDescription(),
+          spriteManager: visitor?.spriteManager ?? spriteManager,
+          ...(visitor?.sprite ? { sprite: visitor.sprite } : {}),
+          ...(visitor?.signature ? { signature: visitor.signature } : {}),
+          ...(visitor?.relationshipScene ? { relationshipScene: visitor.relationshipScene } : {}),
+          identityDescription: visitor?.identityDescription ?? initialIdentityDescription(),
           agendaGeneration: "arrival-" + addedAt,
-          cardSnapshot: {
-            id: card.id,
-            revision: 1,
-            sourceStatus: "available",
-            name: card.name,
-            comment: card.comment,
-            summary: card.summary,
-            tags: [...card.tags],
-            systemPrompt: card.systemPrompt,
-            description: card.description,
-            personality: card.personality,
-            scenario: card.scenario,
-            backstory: card.backstory,
-            appearance: card.appearance,
-            exampleDialogue: card.exampleDialogue,
-            postHistoryInstructions: card.postHistoryInstructions ?? "",
-            nameColor: card.nameColor,
-            dialogueColor: card.dialogueColor,
-            capturedAt: addedAt,
-          },
-          addedAt,
+          cardSnapshot: visitor?.cardSnapshot ?? { ...snapshotFromCard(card!, 1), capturedAt: addedAt },
+          addedAt: visitor?.addedAt ?? addedAt,
           agenda: unwrittenVillageAgenda(villageNow()),
           scheduleInfluence: influenceSettings(null),
         });
+        if (visitor) {
+          clearVisitorLodging(state, visitor);
+          state.visitors = state.visitors!.filter((person) => person.characterId !== characterId);
+        }
+        if (visitor?.firstMetAt) {
+          state.startingHistory.reviewed[characterId] = visitor.incarnation;
+          promoted = true;
+        }
+        movedIn = true;
       });
     }
 
@@ -125,10 +142,49 @@ export function createResidentRoster({
     // failure here leaves the null that the tick's backfill is looking for, so the
     // only cost is that this villager has nothing to say for themselves until the
     // next part of the day.
-    if (!alreadyResident) {
+    if (movedIn) {
       await queueVillagerAgenda(characterId);
-      await queueStartingTies?.();
+      if (!promoted) await queueStartingTies?.();
     }
+  }
+
+  async function setVisitor(characterId: string, scope: string, visitsEnabled: boolean) {
+    const village = await readVillageState();
+    if (characterId === PROFESSOR_MARI_ID && village.visitorIntroduction && !village.visitorIntroduction.completedAt)
+      throw badRequest("Professor Mari will introduce Visitors on her first visit.");
+    if (!village.foundedAt || villageWorldScope(village) !== scope) throw conflict("The Village changed.");
+    const existing = village.visitors?.some((person) => person.characterId === characterId);
+    const card = existing ? null : await findVillagerCard(characterId);
+    const spriteManager = card && visitsEnabled ? await automaticSprites?.(characterId) : undefined;
+    const addedAt = villageNow().toISOString();
+    const incarnation = randomUUID();
+    const letterFontId = chooseLetterFont(randomVillageSeed());
+    await mutateVillageState((state) => {
+      if (villageWorldScope(state) !== scope) throw conflict("The Village changed.");
+      if (
+        state.villagers.some((person) => person.characterId === characterId) ||
+        characterId === state.playerPersonaId ||
+        characterId === "player" ||
+        characterId.startsWith("npc:")
+      )
+        throw badRequest("Choose an unused Character Card.");
+      const visitor = state.visitors?.find((person) => person.characterId === characterId);
+      if (visitor) {
+        setVisitorVisits(state, visitor, visitsEnabled, incarnation, addedAt);
+        return;
+      }
+      if (!visitsEnabled || !card) throw notFound("That character is not in your library.");
+      (state.visitors ??= []).push({
+        characterId,
+        incarnation,
+        letterFontId,
+        addedAt,
+        cardSnapshot: { ...snapshotFromCard(card, 1), capturedAt: addedAt },
+        ...(spriteManager ? { spriteManager } : {}),
+        visitsEnabled,
+        visitsRevision: incarnation,
+      });
+    });
   }
 
   /** Remove a villager from the village roster. */
@@ -215,6 +271,6 @@ export function createResidentRoster({
       resident.identityDescription = { text, revision: randomVillageSeed(), initialGenerationComplete: true };
     });
   }
-  return { addVillager, removeVillager, editIdentityDescription };
+  return { addVillager, setVisitor, removeVillager, editIdentityDescription };
 }
 export type ResidentRoster = ReturnType<typeof createResidentRoster>;

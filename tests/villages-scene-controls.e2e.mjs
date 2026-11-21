@@ -159,6 +159,8 @@ await withBrowser(browser, async () => {
       const dock = page.locator(`.${tag}-chat-vn`);
       const compactDock = await dock.boundingBox();
       const images = page.locator(`.${tag}-chat-cast-person > img`);
+      while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+        await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
       await expect(composer).toBeVisible();
       await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
       await expect(page.locator(`.${tag}-chat-vn-portrait`)).toBeVisible();
@@ -190,7 +192,7 @@ await withBrowser(browser, async () => {
       const history = page.getByRole("log", { name: "Scene history" });
       await expect(history).toHaveCSS("position", "static");
       await expect(history).toHaveCSS("box-shadow", "none");
-      await expect(history.locator(`.${tag}-scene-history-entry .${tag}-chat-vn-portrait`)).toHaveCount(1);
+      await expect(history.locator(`.${tag}-scene-message .${tag}-chat-vn-portrait`)).toHaveCount(1);
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
       await expect(composer).toBeDisabled();
       await expect(send).toBeDisabled();
@@ -412,8 +414,9 @@ await withBrowser(browser, async () => {
       await send.click();
       await expect.poll(() => turns).toBe(1);
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
-      while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
-        await page.getByRole("button", { name: "Next paragraph" }).click();
+
+      while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+        await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
       await expect(composer).toHaveValue("");
       assert.equal(turns, 1);
       if (count === 4) {

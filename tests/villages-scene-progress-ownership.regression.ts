@@ -1126,7 +1126,11 @@ await runCase("scene-narration/input-playback", async () => {
     const projected = await query.projectSceneResponse(reloaded as unknown as Record<string, unknown>);
     const scope = projected.playback.scope;
     const playback = await query.readPlaybackPage("scene", { scope, first: "1" });
-    for (const lines of [projected.lines, (await query.readHistoryPage("scene", { scope })).lines, playback.lines]) {
+    assert(
+      projected.lines.every((line) => line.role === "assistant"),
+      "live Scene shows only its latest reply",
+    );
+    for (const lines of [(await query.readHistoryPage("scene", { scope })).lines, playback.lines]) {
       const own = lines.filter((line) => line.kind === "input");
       assert.equal(own.length, 1);
       assert.equal(own[0].content, message);
@@ -1299,7 +1303,21 @@ await runCase("scene-narration/write-failure", async () => {
 });
 await runCase("scene-narration/startup-hold", async () => {
   const f = fixture();
+  const raw = {
+    segments: [
+      {
+        kind: "dialogue",
+        speakerId: f.actorId,
+        text: "The saved hello.",
+        expression: "happy",
+        look: { target: "player" },
+      },
+    ],
+  };
+  f.turn().narration!.raw = raw;
+  f.turn().narration!.responseDigest = memoryHash(raw);
   f.turn().acceptance.status = "held";
+  f.turn().acceptance.rejected = [{ id: "narration", reason: "Unrecognized keys: expression, look" }];
   f.add("pending");
   f.queue.push({ sessionId: "scene", submissionId: "turn" }, { sessionId: "pending", submissionId: "turn" });
   const stop = f.service.startProgressRecovery();
@@ -1309,6 +1327,8 @@ await runCase("scene-narration/startup-hold", async () => {
   assert.equal(f.scenes.get("pending")!.submissions[0].acceptance.status, "applied");
   await f.service.processSavedExchange("scene", "turn");
   assert.equal(f.turn().acceptance.status, "applied", "explicit saved-result replay may retry a held request");
+  assert.equal(f.scenes.get("scene")!.lines.at(-1)!.content, "The saved hello.");
+  assert.equal(f.world.episodes.records.filter((episode) => episode.sceneId === "scene").length, 1);
 });
 await runCase("scene-narration/activation-owner", async () => {
   const a = createActivationScope(),

@@ -80,6 +80,5 @@ export function socialWorldFixture() {
     }),
     ...sharedVenuesFixture(),
   ];
-  state.venues.push(...sharedVenuesFixture());
   return state;
 }

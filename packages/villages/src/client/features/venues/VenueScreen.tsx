@@ -1,5 +1,7 @@
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import { VenueAccessPanel } from "./VenueAccessPanel.js";
+import { invitationLabel } from "../../shared/zone-access.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -312,6 +314,8 @@ export function VenueScreen({
 }) {
   const confirmVillages = useConfirmation();
   const [editingConnections, setEditingConnections] = useState(false);
+  const [editingAccess, setEditingAccess] = useState(false);
+  const [venueHoursScope, setVenueHoursScope] = useState(false);
   const [zoneDetails, setZoneDetails] = useState<"open" | "closed" | null>(null);
   const zoneDetailsOpen = zoneDetails === "open";
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
@@ -519,6 +523,7 @@ export function VenueScreen({
             }
             if (!(await canLeave())) return;
             setEditingConnections(false);
+            setEditingAccess(false);
             setZoneDetails(null);
             zoneReturn.current = null;
             setZoneNameDirty(false);
@@ -570,7 +575,7 @@ export function VenueScreen({
                     key={zone.id}
                     name={zone.name}
                     image={image?.url}
-                    accessLabel={zone.accessLabel !== "Open to you" ? zone.accessLabel : undefined}
+                    accessLabel={zone.accessLabel}
                     current={zone.id === selected?.id}
                     disabled={navigationBusy}
                     onOpen={(event) => openZoneDetails(zone.id, event.currentTarget)}
@@ -608,6 +613,18 @@ export function VenueScreen({
                       <h2>{selected.name}</h2>
                     )}
                   </div>
+                  {selected.accessView?.invitation && (
+                    <small>
+                      {[
+                        invitationLabel(selected.accessView.invitation),
+                        controller.nameOfCharacter(selected.accessView.invitation.issuerId),
+                        selected.accessView.invitation.accompanied && "Escort required",
+                        selected.accessView.invitation.outsideHours && "After hours allowed",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  )}
                   <ZoneArtwork
                     key={selected.id}
                     place={place}
@@ -656,9 +673,40 @@ export function VenueScreen({
             </div>
           </section>
         ) : null}
-        {venueSection === "manage" && !editingConnections ? (
+        {venueSection === "manage" && editingAccess ? (
+          <VenueAccessPanel
+            key={venueHoursScope ? "venue" : selected?.id}
+            place={place}
+            zone={venueHoursScope ? undefined : selected}
+            controller={controller}
+            onClose={() => setEditingAccess(false)}
+            onSelect={(id) => {
+              setVenueHoursScope(!id);
+              if (id) void selectRoom(id);
+            }}
+          />
+        ) : null}
+        {venueSection === "manage" && !editingConnections && !editingAccess ? (
           <section className={ELEMENT_TAG + "-venue-manage"} aria-label="Manage this venue">
             <VenueName place={place} controller={controller} />
+            {(place.accessView?.canManage || zones.some((zone) => zone.accessView?.decision.canInvite)) && (
+              <button
+                type="button"
+                className={ELEMENT_TAG + "-button"}
+                disabled={navigationBusy}
+                onClick={async () => {
+                  if (!(await canLeave())) return;
+                  const accessZone =
+                    zones.find((zone) => zone.id === selected?.id && zone.accessView?.decision.canInvite) ??
+                    zones.find((zone) => zone.accessView?.decision.canInvite);
+                  setVenueHoursScope(!accessZone);
+                  if (accessZone) await selectRoom(accessZone.id);
+                  setEditingAccess(true);
+                }}
+              >
+                Access <span aria-hidden="true">›</span>
+              </button>
+            )}
             <button
               type="button"
               className={ELEMENT_TAG + "-button"}

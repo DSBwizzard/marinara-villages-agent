@@ -373,6 +373,9 @@ await withBrowser(browser, async () => {
     await places.getByRole("button", { name: /^The Mill/ }).click();
     await places.getByRole("button", { name: "View venue", exact: true }).click();
     await page.getByRole("button", { name: "Visit venue", exact: true }).click();
+    const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+    await expect(next).toBeEnabled();
+    while (await next.isEnabled()) await next.click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
     const notices = page.getByRole("button", { name: "1 World change" });
     await expect(notices).toBeVisible();
@@ -402,8 +405,7 @@ await withBrowser(browser, async () => {
     await expect(reader).toHaveText(readingText);
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true);
     assert.equal(await reader.evaluate((node) => node.scrollTop), readingScroll);
-    while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
-      await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsaved Scene draft");
     assert.equal(writes, 2, "The only writes are explicit following and Scene entry");
     assert.deepEqual(errors, []);

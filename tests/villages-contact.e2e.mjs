@@ -170,7 +170,7 @@ await withBrowser(browser, async () => {
     const readUntil = async (text) => {
       await expect
         .poll(async () => {
-          if (text.test(await page.getByRole("region", { name: "Current paragraph" }).innerText())) return true;
+          if (text.test(await page.getByRole("region", { name: "Latest reply" }).innerText())) return true;
           await page.getByRole("button", { name: "Next paragraph", exact: true }).evaluate((button) => {
             if (!button.disabled) button.click();
           });
@@ -186,7 +186,7 @@ await withBrowser(browser, async () => {
     await expect.poll(() => submissions.length).toBe(1);
     await expect(composer).toHaveValue("");
     await readUntil(/quiet exterior/);
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet exterior");
+    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("quiet exterior");
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Contact", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
@@ -202,7 +202,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toHaveCount(0);
     await readUntil(/Come into our Common Space/);
     await expect(page.getByText("Nearby", { exact: true })).toBeVisible();
-    await expect(page.locator('[class$="-chat-vn-name"]')).not.toContainText(
+    await expect(page.locator('[class$="-chat-vn-name"]').last()).not.toContainText(
       /📣|through the doorway|calling from inside/i,
     );
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
@@ -217,8 +217,12 @@ await withBrowser(browser, async () => {
     await readUntil(/still listening through the doorway/);
     await page.getByRole("button", { name: "Move", exact: true }).click();
     const picker = page.getByRole("dialog", { name: "Move to Zone" });
-    await expect(picker.getByRole("button", { name: "Secret bedroom" })).toHaveCount(0);
-    await picker.getByRole("button", { name: "Common Space (invited)", exact: true }).click();
+    await picker.getByRole("button", { name: "Secret bedroom", exact: true }).click();
+    await expect(picker.getByRole("button", { name: "Trespass…", exact: true })).toHaveCount(0);
+    assert.equal(entered, undefined, "Inspecting a restricted Zone never admits entry");
+    await expect(picker.getByText("Invited for this visit", { exact: true })).toBeVisible();
+    await picker.getByRole("button", { name: "Common Space", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
     await expect.poll(() => entered?.zoneId).toBe("common");
     assert.equal(entered.expectedSceneRevision, 3);
     await expect(page.getByRole("button", { name: "Venue actions", exact: true })).toBeVisible();

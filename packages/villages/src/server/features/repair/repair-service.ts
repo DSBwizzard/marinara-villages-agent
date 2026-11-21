@@ -1,4 +1,5 @@
-import { findNpc, placeRegistry } from "../../domain/rules/places.js";
+import { placeRegistry } from "../../domain/rules/places.js";
+import { cardCharacters, findCardCharacter } from "../../domain/rules/visitors.js";
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
@@ -11,6 +12,7 @@ import type {
   RepairRequest,
   RepairReview,
 } from "../../../shared/contracts/repair.js";
+import { REPAIR_NO_CHANGES } from "../../../shared/contracts/repair.js";
 import {
   repairDigest,
   repairDocumentDigest,
@@ -36,7 +38,7 @@ import { createRepairTransactionCodec } from "../../adapters/storage/repair-tran
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageRepository } from "../../domain/models/world-repository.js";
 import type { VillageState } from "../../domain/models/world.js";
-import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import { continuityHolderKey } from "../../domain/rules/continuity.js";
 import { backgroundRecoveryState } from "../../domain/rules/work-recovery.js";
@@ -47,10 +49,12 @@ import {
   restoreContinuityProtection,
   retainAdministrativeCircumstance,
   repairId,
+  repairPlaceDirectory,
   repairParts,
   worldRepairRecords,
 } from "../../domain/rules/repair-records.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
+import { requireAgendaDay } from "../../domain/rules/repair-agenda.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
 import {
   createRepairStorage,
@@ -117,9 +121,10 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
     project.lifecycle.revision =
       Math.max(project.lifecycle.revision, current.projects.find((p) => p.id === project.id)?.lifecycle.revision ?? 0) +
       1;
-  for (const person of prior.villagers) {
-    const live = current.villagers.find((p) => p.characterId === person.characterId);
+  for (const person of cardCharacters(prior)) {
+    const live = findCardCharacter(current, person.characterId);
     person.cardSnapshot.revision = Math.max(person.cardSnapshot.revision, live?.cardSnapshot.revision ?? 0) + 1;
+    if ("visitsRevision" in person) person.visitsRevision = randomUUID();
   }
   for (const venue of prior.venues) {
     const currentVenue = current.venues.find((v) => v.id === venue.id);
@@ -150,6 +155,13 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
     prior.delete(row.id);
     if (old?.token === row.token) continue;
     affected.push(row.title);
+    if (row.agendaDay && old) {
+      const before = old.source.filter((entry) => !row.source.includes(entry));
+      const after = row.source.filter((entry) => !old.source.includes(entry));
+      if (before.length || after.length)
+        changes.push({ label: "Schedule", before: before.join("\n"), after: after.join("\n") });
+      continue;
+    }
     for (const field of row.fields) {
       // Per-person wording below is the authoritative memory comparison.
       if (row.topic === "memories" && field.key === "text" && row.people?.some((p) => p.text !== undefined)) continue;
@@ -312,8 +324,8 @@ export function createRepairService(ports: RepairPorts) {
     if (
       personId &&
       personId !== "player" &&
-      !state.villagers.some((p) => p.characterId === personId) &&
-      !findNpc(state, personId)
+      !findCardCharacter(state, personId) &&
+      !placeRegistry(state)?.npcs[personId]
     )
       throw notFound("Choose a person from People.");
     if (includeArchives) {
@@ -327,7 +339,10 @@ export function createRepairService(ports: RepairPorts) {
             id: repairId("saved-scene", scene.id),
             topic: "progress",
             title: scene.placeName + " · saved work",
-            summary: unfinished.length + " exchanges need acceptance",
+            summary:
+              unfinished.length === 1
+                ? "1 exchange has saved effects to apply"
+                : `${unfinished.length} exchanges have saved effects to apply`,
             fields: [],
             source: ["Retained response; no replacement request."],
             actions: [{ id: "replay", label: "Replay saved work" }],
@@ -408,7 +423,12 @@ export function createRepairService(ports: RepairPorts) {
       identity: repairDigest([state.seed, state.setupAt]),
       people: [
         { id: "player", name: "Your Persona" },
-        ...state.villagers.map((p) => ({ id: p.characterId, name: p.cardSnapshot.name })),
+        ...cardCharacters(state).map((p) => ({
+          id: p.characterId,
+          name: p.cardSnapshot.name,
+          ...("agenda" in p && p.agenda ? { hasAgenda: true } : {}),
+          ...("visitsEnabled" in p ? { visitor: true as const } : {}),
+        })),
         ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
       ],
       records: [],
@@ -431,27 +451,52 @@ export function createRepairService(ports: RepairPorts) {
       checkpoints: checkpoints.slice(checkpointOffset, checkpointOffset + 50).map(storage.summary),
     };
   }
-  async function list(topic: string, query = "", offset = 0, personId?: string, section = "memories") {
+  async function list(
+    topic: string,
+    query = "",
+    offset = 0,
+    personId?: string,
+    section = "memories",
+    browsePlaces = false,
+  ) {
+    if (topic === "places" && browsePlaces) {
+      const state = await read();
+      return {
+        records: [],
+        total: 0,
+        next: null,
+        directory: repairPlaceDirectory(state, villageNow(state.clock?.advanceMs ?? 0).toISOString()),
+      };
+    }
     if (topic === "people" && !personId) return { records: [], total: 0, next: null };
-    const memoryList = topic === "memories" || (topic === "people" && section !== "details");
-    const { state, records } = await allRecords(memoryList, topic === "world" || topic === "progress", personId),
-      words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+    const words = query.toLocaleLowerCase().split(/\s+/u).filter(Boolean);
+    const searchAll = topic === "all";
+    if (searchAll && !words.length) return { records: [], total: 0, next: null };
+    const memoryList = topic === "memories" || (topic === "people" && section === "memories");
+    const { state, records } = await allRecords(
+      memoryList || searchAll,
+      searchAll || topic === "world" || topic === "progress",
+      personId,
+    );
+    const npc = personId && placeRegistry(state)?.npcs[personId];
     const personName =
       personId === "player"
         ? "Your Persona"
-        : (state.villagers.find((p) => p.characterId === personId)?.cardSnapshot.name ??
-          findNpc(state, personId ?? "")?.name);
+        : (findCardCharacter(state, personId ?? "")?.cardSnapshot.name ?? (npc ? npc.label || npc.name : undefined));
     const creation = memoryList
       ? records.find((r) => r.creating && (!personId || r.people?.some((p) => p.id === personId)))
       : undefined;
     const selected = records.filter(
       (r) =>
         !r.creating &&
-        (topic === "people"
-          ? memoryList
-            ? r.topic === "memories"
-            : r.topic === "people" && repairParts(r.id).slice(1).includes(personId!)
-          : r.topic === topic) &&
+        (searchAll ||
+          (topic === "people"
+            ? memoryList
+              ? r.topic === "memories"
+              : r.topic === "people" &&
+                repairParts(r.id)[1] === personId &&
+                Boolean(r.agendaDay) === (section === "agenda")
+            : r.topic === topic)) &&
         words.every((w) =>
           `${r.title} ${r.summary} ${r.source.join(" ")} ${r.people?.map((p) => p.name).join(" ") ?? ""}`
             .toLocaleLowerCase()
@@ -463,7 +508,7 @@ export function createRepairService(ports: RepairPorts) {
         personName && memoryList
           ? {
               ...r,
-              summary: `${r.people?.some((p) => p.id === personId) ? "Remembered by" : "About"} ${personName} · ${r.summary}`,
+              summary: `${r.people?.some((p) => p.id === personId && p.forgotten) ? "Forgotten by" : r.people?.some((p) => p.id === personId) ? "Remembered by" : "About"} ${personName} · ${r.summary}`,
             }
           : r,
       ),
@@ -596,7 +641,8 @@ export function createRepairService(ports: RepairPorts) {
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at));
     } else
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at), {
-        memories: ["memory", "room", "npc", "place"].includes(kind) || kind.startsWith("narrative-"),
+        memories:
+          ["memory", "room", "npc", "place", "access", "permission"].includes(kind) || kind.startsWith("narrative-"),
       });
   }
   function validateRequest(input: RepairRequest) {
@@ -687,13 +733,14 @@ export function createRepairService(ports: RepairPorts) {
     const diff = recordChanges(simulation.value.beforeRecords, simulation.value.afterRecords, record.id),
       changedFields = diff.changes,
       affectedRecords = diff.affected;
-    if (request.action !== "correct" && kind !== "memory")
+    if (request.action !== "correct" && kind !== "memory" && kind !== "agenda")
       changedFields.push({
         label: "Action",
         before: record.summary,
         after: record.actions.find((a) => a.id === request.action)?.label ?? request.action,
       });
-    if (!changedFields.length) throw badRequest("Change a value before reviewing.");
+    if (!changedFields.length)
+      throw new VillagesRequestError(400, "There are no changes to review.", REPAIR_NO_CHANGES);
     const memory =
       kind === "memory"
         ? {
@@ -707,6 +754,9 @@ export function createRepairService(ports: RepairPorts) {
       affected.push("Remembered knowledge only; physical state and completion records stay separate.");
     if (kind === "room") affected.push("Future Scene room context.");
     if (kind === "access") affected.push("Future entry and management checks.");
+    if (kind === "agenda" && record.agenda?.today) affected.push("Today's availability follows the revised schedule.");
+    if (kind === "visitor" && request.values.visitsEnabled === false)
+      affected.push("The current visit ends. Visit preferences and lodging are cleared.");
     if (kind === "scene") affected.push("Historical annotation; mechanical outcomes are retained.");
     if (kind === "saved-scene")
       affected.push("Retained Scene effects change. A previously requested conclusion may finish after recovery.");
@@ -782,6 +832,9 @@ export function createRepairService(ports: RepairPorts) {
     const plan = await readPlan(row);
     if (plan.review?.token !== token)
       throw conflict("This review changed. Review the repair again; your draft is kept.");
+    const [kind, , date] = repairParts(plan.request.recordId);
+    if (kind === "routine" && plan.review.kind === "repair")
+      throw conflict("Routine repairs moved to Agenda. Choose a date and review a new repair.");
     const world = await repository.readAuthority();
     if (world.seed !== plan.seed || world.setupAt !== plan.setupAt) throw conflict("The Village changed.");
     const publication = await gate.simulate(async () => {
@@ -796,7 +849,18 @@ export function createRepairService(ports: RepairPorts) {
       await storage.saveHistory(plan.history, automaticIds);
       if (!(await documents.remove(PKG, fresh.id, fresh.revision))) throw conflict("Repair review changed.");
     }, plan.transaction);
-    await gate.commit(id, publication.transaction);
+    await gate.commit(id, publication.transaction, async () => {
+      if (kind === "agenda") {
+        const current = await repository.readAuthority();
+        requireAgendaDay(
+          current,
+          date!,
+          villageNow(current.clock?.advanceMs ?? 0).toISOString(),
+          plan.history.record?.agenda?.today ?? false,
+        );
+      }
+      if (kind === "room" && plan.review.kind === "repair") await inspect(plan.request.recordId, plan.request.personId);
+    });
     return { applied: true };
   }
   async function cancelReview(id: string, token: string) {
@@ -824,6 +888,14 @@ export function createRepairService(ports: RepairPorts) {
     const saved = await storage.readHistory(row);
     const state = await read();
     if (state.seed !== saved.seed || state.setupAt !== saved.setupAt) throw conflict("The Village changed.");
+    const [kind, , date] = repairParts(saved.request.recordId);
+    if (kind === "agenda")
+      requireAgendaDay(
+        state,
+        date!,
+        villageNow(state.clock?.advanceMs ?? 0).toISOString(),
+        saved.record?.agenda?.today ?? false,
+      );
     const record =
       saved.memoryBefore || saved.undoWrites
         ? saved.record!
@@ -945,7 +1017,9 @@ export function createRepairService(ports: RepairPorts) {
       token: randomUUID(),
       title: `Undo ${saved.title}`,
       changes: result.value.changes,
-      affected: result.value.affected,
+      affected: saved.record?.agenda?.today
+        ? [...result.value.affected, "Today's availability follows the revised schedule."]
+        : result.value.affected,
       ...(saved.memoryBefore && repairParts(saved.request.recordId)[0] === "memory"
         ? {
             memory: {

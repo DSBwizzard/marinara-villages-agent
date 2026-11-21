@@ -173,7 +173,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect
       .poll(async () => {
         const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-        if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+        if ((await next.isVisible()) && (await next.count()) > 0 && (await next.isEnabled())) await next.click();
         return page.locator("marinara-capability-villages").textContent();
       })
       .toContain("Hello there.");
@@ -224,7 +224,7 @@ await withBrowser({ close: server.stop }, async () => {
       await expect
         .poll(async () => {
           const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-          if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+          if ((await next.isVisible()) && (await next.count()) > 0 && (await next.isEnabled())) await next.click();
           return composer.isVisible();
         })
         .toBe(true);

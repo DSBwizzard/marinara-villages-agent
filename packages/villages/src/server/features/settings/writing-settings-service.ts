@@ -1,13 +1,10 @@
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { type VillageNarrationStyle, WRITING_GUIDANCE_MAX_LENGTH } from "../../domain/rules/narration-style.js";
+import type { VillageNarrationStyle } from "../../domain/rules/narration-style.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 
 /** The active venue's per-village writing controls. Old preset documents are not read here. */
-export type VillageWritingView = Pick<VillageNarrationStyle, "tense" | "person" | "rating"> & {
-  writingGuidance: string;
-  writingGuidanceMaxLength: number;
-};
+export type VillageWritingView = VillageNarrationStyle;
 
 export interface VillageWritingPorts {
   readVillageState: typeof readVillageState;
@@ -22,8 +19,6 @@ export function createVillageWriting({ readVillageState, mutateVillageState }: V
       tense: style.tense,
       person: style.person,
       rating: style.rating,
-      writingGuidance: style.writingGuidance,
-      writingGuidanceMaxLength: WRITING_GUIDANCE_MAX_LENGTH,
     };
   }
 
@@ -42,12 +37,6 @@ export function createVillageWriting({ readVillageState, mutateVillageState }: V
     if (patch.rating !== undefined) {
       if (patch.rating !== "sfw" && patch.rating !== "nsfw") throw badRequest("Choose SFW or NSFW.");
       accepted.rating = patch.rating;
-    }
-    if (patch.writingGuidance !== undefined) {
-      if (typeof patch.writingGuidance !== "string") throw badRequest("Additional writing guidance must be text.");
-      const value = patch.writingGuidance.trim();
-      if (value.length > WRITING_GUIDANCE_MAX_LENGTH) throw badRequest("Additional writing guidance is too long.");
-      accepted.writingGuidance = value;
     }
     if (Object.keys(accepted).length === 0) throw badRequest("No writing setting was supplied.");
     await mutateVillageState((state) => {
