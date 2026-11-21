@@ -88,6 +88,7 @@ const publicFields = [
   "automaticZonePictures",
   "characterSpeechColors",
   "menuAppearance",
+  "lorebookChipsEnabled",
   "defaultHomeBuilding",
   "homeBuildingNames",
   "homeBuildings",
@@ -161,6 +162,10 @@ try {
   assert.equal(initial.sceneryStyleProfileId, null);
   assert.equal(initial.narrativeConsequence, "gentle");
   assert.equal(initial.spontaneousEvents, false);
+  assert.equal(initial.lorebookChipsEnabled, true);
+  assert.equal((await scope.run(() => request("PATCH", { lorebookChipsEnabled: false }))).lorebookChipsEnabled, false);
+  assert.equal((await scope.run(() => request("GET"))).lorebookChipsEnabled, false);
+  assert.equal((await scope.run(() => request("PATCH", { lorebookChipsEnabled: true }))).lorebookChipsEnabled, true);
   assert.equal(initial.playerPersonaName, "Robin Hale");
   assert.equal(initial.townMapExpectedWidth, 2560);
   assert.equal(initial.townMapExpectedHeight, 1440);
