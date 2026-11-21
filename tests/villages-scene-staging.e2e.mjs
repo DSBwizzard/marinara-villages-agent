@@ -323,14 +323,13 @@ await withBrowser(browser, async () => {
       const greetingNext = page.getByRole("button", { name: "Next paragraph" });
       for (
         let pageIndex = 0;
-        pageIndex < 30 && !(await composer.count()) && (await greetingNext.isEnabled());
+        pageIndex < 30 && !(await composer.isEnabled()) && (await greetingNext.isEnabled());
         pageIndex++
       )
         await greetingNext.click();
       await composer.fill("Let us make room.");
       await page.getByRole("button", { name: "Send", exact: true }).click();
       const next = page.getByRole("button", { name: "Next paragraph" });
-      const previous = page.getByRole("button", { name: "Previous paragraph" });
       await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
         "They make room near the right-hand window.",
       );
@@ -408,20 +407,8 @@ await withBrowser(browser, async () => {
         );
         if (mobile && count > 2) assert.ok(layers[0].right > layers[1].x, "crowded mobile sprites can overlap");
       }
-      await previous.click();
-      await previous.click();
-      await expect(mara).toHaveAttribute("data-attention", "left");
-      await expect(cast).toHaveAttribute("data-animate", "false");
-      const flipsBeforeReducedMotion = await page.evaluate(() => window.spriteFlips.length);
       await page.emulateMedia({ reducedMotion: "reduce" });
-      await next.click();
-      assert.equal(
-        await page.evaluate(() => window.spriteFlips.length),
-        flipsBeforeReducedMotion,
-        "backward reading and reduced motion do not flip",
-      );
-      assert.equal(await mara.evaluate((node) => getComputedStyle(node).transitionDuration), "0s");
-      await next.click();
+      await expect.poll(() => mara.evaluate((node) => getComputedStyle(node).transitionDuration)).toBe("0s");
       if (process.env.VILLAGES_VISUAL_OUTPUT)
         await page.screenshot({
           path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `staging-${count}-${width}x${height}.png`),
@@ -440,9 +427,6 @@ await withBrowser(browser, async () => {
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(people).toHaveCount(count - 1);
         assert.equal(await mara.evaluate((node) => node.offsetLeft), before, "departures preserve survivor positions");
-        await previous.click();
-        await expect(people).toHaveCount(count, "backward reading restores departed residents");
-        await next.click();
       }
       session = { ...session, id: "sprite-" + count, activeIds: castIds, lines: [session.lines[0]], submissions: [] };
       fixture.villagers[0].sprite.framing.mode = "half";
@@ -455,6 +439,7 @@ await withBrowser(browser, async () => {
         const img = mara.locator("img");
         const initialArtwork = await img.getAttribute("src");
         const sendExpression = async (expression) => {
+          while (await next.isEnabled()) await next.click();
           await composer.fill("sprite:" + expression);
           await page.getByRole("button", { name: "Send", exact: true }).click();
         };
@@ -462,59 +447,6 @@ await withBrowser(browser, async () => {
         await expect(img).toHaveAttribute("src", thoughts);
         await expect(img).toHaveAttribute("data-flipping", "false");
         assert.equal(await page.evaluate(() => window.spriteFlips.length), 2, "artwork-only changes flip once");
-        await previous.click();
-        await expect(img).toHaveAttribute("src", initialArtwork);
-        await page.evaluate(() => {
-          window.holdSpriteFlips = true;
-        });
-        await next.click();
-        await expect.poll(() => page.evaluate(() => window.spriteFlips.length)).toBeGreaterThan(2);
-        await expect(img).toHaveAttribute("data-flipping", "out");
-        await previous.click();
-        await expect(img).toHaveAttribute("data-flipping", "false");
-        assert.equal(
-          await img.evaluate((node) => node.getAnimations().length),
-          0,
-          "rapid navigation cancels pending rotation",
-        );
-        await next.click();
-        await expect(img).toHaveAttribute("data-flipping", "out");
-        await page.emulateMedia({ reducedMotion: "reduce" });
-        await expect(img).toHaveAttribute("data-flipping", "false");
-        assert.equal(
-          await img.evaluate((node) => node.getAnimations().length),
-          0,
-          "reduced motion cancels an active flip",
-        );
-        await page.evaluate(() => {
-          window.holdSpriteFlips = false;
-        });
-        await page.emulateMedia({ reducedMotion: "no-preference" });
-        await expect(img).toHaveAttribute("src", thoughts);
-        await expect(img).toHaveAttribute("data-flipping", "false");
-        await previous.click();
-        await page.evaluate(() => {
-          window.holdSpriteFlips = true;
-        });
-        await next.click();
-        await expect(img).toHaveAttribute("data-flipping", "out");
-        await page.getByRole("button", { name: "Venue actions" }).click();
-        await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-        fixture.settings.spriteCardFlipEnabled = false;
-        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-        await expect(img).toHaveAttribute("data-flipping", "false");
-        await expect(img).toHaveAttribute("src", thoughts);
-        assert.equal(
-          await img.evaluate((node) => node.getAnimations().length),
-          0,
-          "disabling the shared toggle cancels an active flip",
-        );
-        fixture.settings.spriteCardFlipEnabled = true;
-        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-        await page.getByRole("button", { name: "Close Scene settings" }).click();
-        await page.evaluate(() => {
-          window.holdSpriteFlips = false;
-        });
         let releaseArtwork;
         const artworkReady = new Promise((resolve) => {
           releaseArtwork = resolve;
@@ -638,18 +570,9 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ content: sceneBundle });
     const people = page.locator(".marinara-capability-villages-chat-cast-person");
-    const previous = page.getByRole("button", { name: "Previous paragraph" });
     await expect(people).toHaveCount(2);
     await expect(people.first().locator("img")).toHaveAttribute("src", side);
     await expect(people.last().locator("img")).toHaveAttribute("src", side);
-    await previous.click();
-    await expect(people.first()).toHaveAttribute("data-attention", "right");
-    await expect(people.last()).toHaveAttribute("data-attention", "left");
-    await expect(people.first().locator("img")).toHaveAttribute("src", side);
-    await expect(people.last().locator("img")).toHaveAttribute("src", side);
-    await expect(people.first().locator("img")).toHaveCSS("transform", "none");
-    await expect(people.last().locator("img")).toHaveCSS("transform", "none");
-    await page.getByRole("button", { name: "Next paragraph" }).click();
     for (const person of await people.all()) {
       await expect(person).toHaveAttribute("data-attention", "front");
       await expect(person.locator("img")).toHaveAttribute("src", side);

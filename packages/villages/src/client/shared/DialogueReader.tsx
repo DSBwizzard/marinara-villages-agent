@@ -29,11 +29,13 @@ export function DialogueReader({
   return (
     <div {...props} className={`villages-dialogue-reader ${className}`}>
       <div className={`villages-reader-content ${contentClassName}`}>
-        <header className="villages-reader-heading">
-          {icon ? <span className="villages-reader-icon">{icon}</span> : null}
-          <div className="villages-reader-speaker">{speaker}</div>
-          {actions ? <div className="villages-reader-actions">{actions}</div> : null}
-        </header>
+        {speaker || icon || actions ? (
+          <header className="villages-reader-heading">
+            {icon ? <span className="villages-reader-icon">{icon}</span> : null}
+            <div className="villages-reader-speaker">{speaker}</div>
+            {actions ? <div className="villages-reader-actions">{actions}</div> : null}
+          </header>
+        ) : null}
         {children}
       </div>
       {footer ? <div className="villages-reader-footer">{footer}</div> : null}

@@ -104,191 +104,77 @@ window.mount();
     await page.addScriptTag({ content: built.outputFiles[0].text });
     const region = page.getByRole("region", { name: "Current paragraph" });
     const text = region.locator("p").first();
-    const state = () =>
-      page.evaluate(() => ({
-        step: window.r.reading.checkpoint.current.readStep,
-        bookmark: window.r.reading.checkpoint.current.bookmark,
-        cursor: window.r.reading.checkpoint.current.cursor,
-        anchor: window.r.reading.anchor.current,
-        end: window.r.reading.enterAtEnd.current,
-      }));
-
+    const next = page.getByRole("button", { name: "Next paragraph" });
     await expect(text).toHaveText("A one.");
-    await page.getByRole("button", { name: "Previous paragraph" }).click();
-    await expect(text).toHaveText("A zero.");
+    await page.evaluate(() => window.r.setRoom(window.r.make("A", ["A zero.", "A one.", "A two.", "A three."])));
+    await expect(text).toHaveText("A two.");
     await page.evaluate(() => window.r.setShown(false));
-    await expect(region).toHaveCount(0);
     await page.evaluate(() => window.r.setShown(true));
-    await expect(text).toHaveText("A zero.");
-
-    await page.evaluate(() => {
-      window.r.setShown(false);
-      window.r.setRoom(window.r.make("A", ["A zero.", "A one.", "A two.", "A three."]));
-    });
-    await expect(region).toHaveCount(0);
-    await page.evaluate(() => window.r.setShown(true));
-    await expect(text).toHaveText("A zero.");
-    for (let index = 1; index <= 3; index++) await page.getByRole("button", { name: "Next paragraph" }).click();
+    await expect(text).toHaveText("A two.");
+    await next.click();
     await expect(text).toHaveText("A three.");
-    await page.evaluate(() =>
-      window.r.setRoom(window.r.make("A", ["A zero.", "A one.", "A two.", "A three.", "A four."])),
-    );
-    await expect(text).toHaveText("A four.");
     await page.evaluate(() => window.r.setRoom(window.r.make("A", ["A zero.", "A one.", "A two."])));
     await expect(text).toHaveText("Passage unavailable.");
     await page.getByRole("button", { name: "1 Scene error", exact: true }).click();
     await page.getByRole("button", { name: "Latest", exact: true }).click();
     await expect(text).toHaveText("A two.");
-
-    await page.evaluate(() => window.r.setRoom(window.r.make("B", ["B zero.", "B one.", "B two.", "B three."])));
-    await expect(text).toHaveText("B three.");
-
-    await page.evaluate(() => window.r.setFounded(false));
-    await expect(text).toHaveText("B zero.");
-    await expect.poll(async () => (await state()).bookmark).toBe(undefined);
-    const activeReset = await state();
-    assert.equal(activeReset.step, 0);
-    assert.deepEqual(activeReset.cursor, { key: "", offset: 0 });
-    assert.deepEqual(activeReset.anchor, { key: "", offset: 0 });
-    assert.equal(activeReset.end, false);
-    await page.evaluate(() => {
-      window.r.setFounded(true);
-      window.r.setRoom(window.r.make("B", ["Fresh B zero.", "Fresh B one.", "Fresh B two.", "Fresh B three."]));
-    });
-    await expect(text).toHaveText("Fresh B three.");
-
     await page.evaluate(() => {
       window.r.setShown(false);
       window.r.setFounded(false);
     });
-    await expect.poll(async () => (await state()).step).toBe(0);
-    const reset = await state();
-    assert.equal(reset.bookmark, undefined);
-    assert.deepEqual(reset.cursor, { key: "", offset: 0 });
-    assert.deepEqual(reset.anchor, { key: "", offset: 0 });
-    assert.equal(reset.end, false);
+    await expect.poll(() => page.evaluate(() => window.r.reading.checkpoint.current.bookmark)).toBe(undefined);
     await page.evaluate(() => {
       window.r.setFounded(true);
-      window.r.setRoom(window.r.make("A", ["Fresh A zero.", "Fresh A one."]));
+      window.r.setRoom(window.r.make("B", ["Fresh B zero.", "Fresh B one."]));
       window.r.setShown(true);
     });
-    await expect(text).toHaveText("Fresh A one.");
-    await page.getByRole("button", { name: "Previous paragraph" }).click();
-    await expect(text).toHaveText("Fresh A zero.");
-
+    await expect(text).toHaveText("Fresh B one.");
     await page.evaluate(() => window.unmount());
-    await expect(page.locator("#session")).toHaveCount(0);
     await page.evaluate(() => window.mount());
     await expect(text).toHaveText("A one.");
-    // Requests return bounded windows; the actual panel owns positions and publication fences.
     const publish = (count, id = "paged") =>
       page.evaluate(
         ({ count, id }) =>
           window.r.publish(
             window.r.make(
               id,
-              Array.from({ length: count }, (_, i) => `Page ${i}.`),
+              Array.from({ length: count }, (_, i) => "Page " + i + "."),
               true,
             ),
           ),
         { count, id },
       );
-    const next = page.getByRole("button", { name: "Next paragraph" }),
-      previous = page.getByRole("button", { name: "Previous paragraph" });
     await publish(100);
     await expect(text).toHaveText("Page 99.");
-    for (let i = 0; i < 39; i++) await previous.click();
-    await expect(text).toHaveText("Page 60.");
-    rejectOlder = true;
-    await previous.click();
-    const trigger = page.getByRole("button", { name: "1 Scene error", exact: true });
-    await expect(trigger).toBeVisible();
-    if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
-    await page.getByRole("button", { name: "Latest", exact: true }).click();
-    await expect(text).toHaveText("Page 99.");
-    for (let i = 0; i < 40; i++) await previous.click();
-    await expect(text).toHaveText("Page 59.");
-    for (let i = 0; i < 3; i++) await previous.click();
-    await expect(text).toHaveText("Page 56.");
-    await publish(100);
-    await expect(text).toHaveText("Page 56.");
-    for (let i = 0; i < 3; i++) await next.click();
     await publish(180);
-    await expect(text).toHaveText("Page 59.");
+    await expect(text).toHaveText("Page 100.");
     await page.evaluate(() => window.r.setShown(false));
     await page.evaluate(() => window.r.setShown(true));
-    await expect(text).toHaveText("Page 59.");
-    for (let i = 0; i < 41; i++) await next.click();
     await expect(text).toHaveText("Page 100.");
-    for (let i = 0; i < 79; i++) await next.click();
+    for (let index = 0; index < 79; index++) await next.click();
     await expect(text).toHaveText("Page 179.");
-    // An append larger than one page must recover the first unread moment, never jump to the tail.
-    await publish(280);
+    assert(requests.length > 0, "Continuation reads use server-owned windows");
+    await publish(260);
     await expect(text).toHaveText("Page 180.");
-    await next.click();
-    await expect(text).toHaveText("Page 181.");
-    await page.evaluate(() => window.r.setRoom({ ...window.r.room, activeIds: [...window.r.room.activeIds] }));
-    await expect(text).toHaveText("Page 181.");
-    await publish(0, "greeting");
-    await expect.poll(() => page.evaluate(() => window.r.room.lines.length)).toBe(0);
-    await publish(100, "greeting");
-    await expect(text).toHaveText("Page 0.");
-    assert(
-      requests.some((url) => url.searchParams.get("first") === "1"),
-      "An empty Scene backfills its first greeting page",
-    );
-    await publish(2, "owned");
-    await expect(text).toHaveText("Page 1.");
-    await page.evaluate(() => {
-      const room = window.r.room;
-      window.r.setRoom({
-        ...room,
-        lines: [
-          ...room.lines,
-          {
-            id: "optimistic:owned-request",
-            role: "user",
-            speakerId: "",
-            name: "Player",
-            content: "Your first.\n\nYour second.",
-            at: "2026-10-31T00:00:00Z",
-          },
-        ],
-      });
+    rejectOlder = true;
+    for (let index = 0; index < 40; index++) await next.click();
+    await page.getByRole("button", { name: "1 Scene error", exact: true }).click();
+    await page.getByRole("button", { name: "Latest", exact: true }).click();
+    await expect(text).toHaveText("Page 259.");
+    await publish(360);
+    await expect(text).toHaveText("Page 260.");
+    while ((await text.textContent()) !== "Page 299.") await next.click();
+    let release;
+    delayed = new Promise((done) => {
+      release = done;
     });
-    await expect(text).toHaveText("Your first.");
-    await page.evaluate(() => {
-      const scene = window.r.make(
-        "owned",
-        ["Page 0.", "Page 1.", "Your first.\n\nYour second.", "Reply first.", "Reply second."],
-        true,
-      );
-      Object.assign(scene.lines[2], { role: "user", speakerId: "", name: "Player" });
-      scene.submissions = [{ mode: "chat", id: "owned-request", replyLineIds: ["owned-3", "owned-4"] }];
-      window.r.publish(scene);
-    });
-    await expect(text).toHaveText("Reply first.");
+    const before = requests.length;
     await next.click();
-    await expect(text).toHaveText("Reply second.");
-    if (!strict) {
-      // A late historical response cannot overwrite a different Scene's current authority.
-      await publish(100, "late");
-      await expect(text).toHaveText("Page 99.");
-      for (let i = 0; i < 39; i++) await previous.click();
-      await expect(text).toHaveText("Page 60.");
-      let release;
-      delayed = new Promise((resolve) => {
-        release = resolve;
-      });
-      const before = requests.length;
-      await previous.click();
-      await expect.poll(() => requests.length).toBe(before + 1);
-      await publish(3, "replacement");
-      await expect(text).toHaveText("Page 2.");
-      release();
-      await expect(text).toHaveText("Page 2.");
-      assert.equal(await page.evaluate(() => window.r.room.id), "replacement");
-    }
+    await expect.poll(() => requests.length).toBe(before + 1);
+    await publish(3, "replacement");
+    await expect(text).toHaveText("Page 2.");
+    release();
+    await expect(text).toHaveText("Page 2.");
     if (!strict) {
       for (const count of [1000, 10_000, 25_000]) {
         await page.evaluate((count) => {

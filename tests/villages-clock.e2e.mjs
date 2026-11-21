@@ -134,9 +134,16 @@ await withBrowser(browser, async () => {
       if (width === 390) await expect(scene).toHaveCSS("background-position", /, 50% 100%$/);
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
       const next = mari.getByRole("button", { name: "Next", exact: true });
-      for (let line = 0; line < 3; line++) await next.click();
-      await next.click();
-      for (let line = 0; line < 2; line++) await next.click();
+      const advanceLine = async () => {
+        for (let pageIndex = 0; pageIndex < 20; pageIndex++) {
+          const anotherPage = await scene.locator(".villages-setting-dialogue[data-reader-next-page]:visible").count();
+          await next.click();
+          await page.clock.fastForward(17);
+          if (!anotherPage) return;
+        }
+        throw Error("Founding line did not finish");
+      };
+      for (let line = 0; line < 6; line++) await advanceLine();
       const world = scene.getByLabel("World description");
       await world.fill("A string of settlements along the coast");
       await page.clock.fastForward(3000);

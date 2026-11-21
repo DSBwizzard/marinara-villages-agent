@@ -62,24 +62,18 @@ await withBrowser({ close: server.stop }, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
-    const desktopRetry = page.getByRole("button", { name: "Retry reply", exact: true });
+    const desktopRetry = page.getByRole("menuitem", { name: "Retry Turn", exact: true });
+    await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(desktopRetry).toBeVisible();
     await expect(desktopRetry).toBeDisabled();
     const checkRetryPlacement = async (page, button) => {
-      const card = page.locator(".marinara-capability-villages-chat-vn-card");
-      const speakerRow = card.locator(".marinara-capability-villages-scene-speaker-row");
-      const [control, dialogue, row] = await Promise.all([
-        button.boundingBox(),
-        card.boundingBox(),
-        speakerRow.boundingBox(),
-      ]);
-      assert.ok(control && dialogue && row);
-      assert.ok(control.y >= dialogue.y && control.y + control.height <= dialogue.y + dialogue.height);
-      assert.ok(Math.abs(control.x + control.width - row.x - row.width) <= 2, "Retry trails the speaker row");
-      assert.ok(Math.abs(control.y + control.height / 2 - row.y - row.height / 2) <= 2);
-      assert.ok(control.width <= 64, "Retry has a compact label");
-      await expect(button).toHaveText("Retry");
-      await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      if (!(await button.isVisible())) await page.getByRole("button", { name: "Venue actions" }).click();
+      await expect(page.getByRole("menu", { name: "Venue actions" }).getByRole("menuitem")).toHaveCount(9);
+      await expect(
+        page.locator(".marinara-capability-villages-chat-vn").getByRole("button", { name: "Retry Turn" }),
+      ).toHaveCount(0);
+      assert.equal((await button.boundingBox()).width, 44);
+      await expect(button).toHaveText("");
       await expect(button.locator("svg path")).toHaveCount((await button.isDisabled()) ? 2 : 1);
     };
     await checkRetryPlacement(page, desktopRetry);
@@ -146,14 +140,15 @@ await withBrowser({ close: server.stop }, async () => {
     };
     await composer.fill("Keep this unsent draft");
     const current = page.getByRole("region", { name: "Current paragraph" });
-    await expect(desktopRetry).toBeEnabled();
     await checkRetryPlacement(page, desktopRetry);
+    await expect(desktopRetry).toBeEnabled();
     try {
       await desktopRetry.click();
       await expect(current).toHaveText("Retrying reply…");
+      await checkRetryPlacement(page, desktopRetry);
       await expect(desktopRetry).toBeDisabled();
-      await expect(page.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(1);
-      await expect(desktopRetry).toHaveText("Retry");
+      await expect(page.getByRole("menuitem", { name: "Retry Turn", exact: true })).toHaveCount(1);
+      await expect(desktopRetry).toHaveText("");
       await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
     } finally {
       firstRetry.resolve();
@@ -169,9 +164,10 @@ await withBrowser({ close: server.stop }, async () => {
     await phone.emulateMedia({ reducedMotion: "reduce" });
     await phone.goto("http://villages.test/");
     await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const retryReply = phone.getByRole("button", { name: "Retry reply", exact: true });
+    const retryReply = phone.getByRole("menuitem", { name: "Retry Turn", exact: true });
     const phoneCurrent = phone.getByRole("region", { name: "Current paragraph" });
     const phoneNext = phone.getByRole("button", { name: "Next paragraph", exact: true });
+    await checkRetryPlacement(phone, retryReply);
     await expect
       .poll(async () => {
         if (await retryReply.isEnabled()) return true;
@@ -184,9 +180,8 @@ await withBrowser({ close: server.stop }, async () => {
     assert.equal((await retryReply.boundingBox()).height, 44);
     await retryReply.click();
     await expect(phoneCurrent).toHaveText("Rain patters on the mill roof.");
-    await expect(retryReply).toBeVisible();
-    await expect(retryReply).toBeDisabled();
     await checkRetryPlacement(phone, retryReply);
+    await expect(retryReply).toBeDisabled();
     await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
     await phoneNext.click();
     await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
@@ -195,16 +190,19 @@ await withBrowser({ close: server.stop }, async () => {
     const phoneComposer = phone.getByRole("textbox", { name: "Message at The Mill" });
     await phoneComposer.fill("Keep talking after a failed retry");
     failedRetryExpected = true;
+    await checkRetryPlacement(phone, retryReply);
     await retryReply.click();
+    await checkRetryPlacement(phone, retryReply);
     await expect(retryReply).toBeEnabled();
     failedRetryExpected = false;
     await expect(phoneCurrent).toHaveText("Let's wait for the shower to pass.");
     await expect(phone.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await expect(phone.locator(".marinara-capability-villages-scene-reply-actions button")).toHaveCount(1);
-    await expect(retryReply).toHaveText("Retry");
+    await expect(phone.getByRole("menuitem", { name: "Retry Turn", exact: true })).toHaveCount(1);
+    await expect(retryReply).toHaveText("");
     assert.equal(retries, 3);
     await phone.reload();
     await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await checkRetryPlacement(phone, retryReply);
     await expect
       .poll(async () => {
         if (await retryReply.isEnabled()) return true;

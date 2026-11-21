@@ -215,8 +215,7 @@ await withBrowser(browser, async () => {
     assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     await readUntil(/still listening through the doorway/);
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Move", exact: true }).click();
     const picker = page.getByRole("dialog", { name: "Move to Zone" });
     await expect(picker.getByRole("button", { name: "Secret bedroom" })).toHaveCount(0);
     await picker.getByRole("button", { name: "Common Space (invited)", exact: true }).click();

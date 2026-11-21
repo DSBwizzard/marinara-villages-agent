@@ -31,14 +31,14 @@ import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { scenePlaybackSteps } from "./scene-playback.js";
 import { useScenePlayback } from "./useScenePlayback.js";
-import { mobileReadingCounter } from "./villages-mobile-scene.js";
 import { useReadingPages } from "../../shared/useReadingPages.js";
-import { DialogueReader, ReaderBook } from "../../shared/DialogueReader.js";
+import { DialogueReader } from "../../shared/DialogueReader.js";
 import { hasCompletedRoomSubmission } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
+import { SceneActionIcon } from "./SceneActionIcon.js";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 
@@ -173,7 +173,7 @@ export function openingFailureMessage(cause: unknown): string {
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */
-function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" | "retry" | "retry-unavailable" }) {
+function SceneControlIcon({ name }: { name: "send" | "sending" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -190,18 +190,8 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "narrator" | "r
           <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" />
           <path d="m21.854 2.147-10.94 10.939" />
         </>
-      ) : name === "sending" ? (
-        <path d="M12 3a9 9 0 1 1-9 9" />
-      ) : name === "retry" || name === "retry-unavailable" ? (
-        <>
-          <path d="M20 4v6h-6 M20 10a8 8 0 1 0 0 5" />
-          {name === "retry-unavailable" ? <path d="M4 20 20 4" /> : null}
-        </>
       ) : (
-        <>
-          <rect x="4" y="8" width="16" height="13" rx="3" />
-          <path d="M12 8V3h3 M8 13h.01 M16 13h.01 M2 12v5 M22 12v5" />
-        </>
+        <path d="M12 3a9 9 0 1 1-9 9" />
       )}
     </svg>
   );
@@ -331,6 +321,8 @@ export function RoomPanel({
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const actionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
+  const transcriptTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const moveTriggerRef = useRef<HTMLButtonElement | null>(null);
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
   const [dialogueHidden, setDialogueHidden] = useState(false);
@@ -341,7 +333,7 @@ export function RoomPanel({
   const newest = playback.newest;
 
   useEffect(() => {
-    if (settingsOpen) settingsRef.current?.focus();
+    if (settingsOpen) settingsRef.current?.focus({ preventScroll: true });
   }, [settingsOpen]);
 
   useEffect(() => {
@@ -359,23 +351,26 @@ export function RoomPanel({
 
   useEffect(() => {
     if (!historyOpen) return;
-    window.requestAnimationFrame(() => historyRef.current?.focus());
+    window.requestAnimationFrame(() => historyRef.current?.focus({ preventScroll: true }));
   }, [historyOpen]);
 
   const closeTranscript = () => {
     setHistoryOpen(false);
-    actionsTriggerRef.current?.focus();
+    transcriptTriggerRef.current?.focus({ preventScroll: true });
   };
 
   useEffect(() => {
     if (actionsView !== "menu") return;
+    actionsRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
     const closeOnOutside = (event: Event) => {
       if (!actionsRef.current?.contains(event.target as Node)) setActionsView(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setActionsView(null);
-        actionsRef.current?.querySelector("button")?.focus();
+        actionsRef.current?.querySelector("button")?.focus({ preventScroll: true });
       }
     };
     document.addEventListener("pointerdown", closeOnOutside);
@@ -394,16 +389,16 @@ export function RoomPanel({
 
   const closeMemory = useCallback(() => {
     setOpenMemory(null);
-    window.requestAnimationFrame(() => memoryTriggerRef.current?.focus());
+    window.requestAnimationFrame(() => memoryTriggerRef.current?.focus({ preventScroll: true }));
   }, []);
 
   useEffect(() => {
     if (!openMemory) return;
-    window.requestAnimationFrame(() => memoryCloseRef.current?.focus());
+    window.requestAnimationFrame(() => memoryCloseRef.current?.focus({ preventScroll: true }));
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Tab") {
         event.preventDefault();
-        memoryCloseRef.current?.focus();
+        memoryCloseRef.current?.focus({ preventScroll: true });
         return;
       }
       if (event.key !== "Escape") return;
@@ -607,7 +602,6 @@ export function RoomPanel({
       restoring: initialRead && readingOrdinal !== readingTotal - 1,
     };
   }, [stageRoomId, readingOrdinal, readingTotal, step?.key]);
-  const canReadPrevious = at > 0 || readingPages.index > 0 || !!playback.window.olderCursor;
   const canReadNext =
     at < steps.length - 1 ||
     readingPages.index < readingPages.count - 1 ||
@@ -654,7 +648,15 @@ export function RoomPanel({
     !playback.restoring &&
     !!room.retryReply &&
     !!onRetryReply;
-  const canSend = canCompose && !busy && !playback.busy && !contactRecovery;
+  const canSend =
+    canCompose &&
+    !busy &&
+    !playback.busy &&
+    !playback.restoring &&
+    !playback.error &&
+    !readingPages.revealing &&
+    !canReadNext &&
+    !contactRecovery;
   const resend = !draft.trim() && !!turnRecovery;
   const sendLabel = busy ? "Sending" : resend ? "Resend" : "Send";
   const travel = room.travel;
@@ -882,149 +884,144 @@ export function RoomPanel({
             ···
           </button>
           {actionsView === "menu" ? (
-            <span className={`${ELEMENT_TAG}-room-actions-menu`} role="menu" aria-label="Venue actions">
+            <span
+              className={`${ELEMENT_TAG}-room-actions-menu`}
+              role="menu"
+              aria-label="Venue actions"
+              onKeyDown={(event) => {
+                if (!["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+                const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                const next =
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? buttons.length - 1
+                      : (index + (event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 1) + buttons.length) %
+                        buttons.length;
+                event.preventDefault();
+                buttons[next]?.focus({ preventScroll: true });
+              }}
+            >
               <button
                 type="button"
                 role="menuitem"
+                aria-label={dialogueHidden ? "Show dialogue" : "Hide dialogue"}
+                title={dialogueHidden ? "Show dialogue" : "Hide dialogue"}
                 onClick={() => {
                   composerRef.current?.blur();
                   setActionsView(null);
                   setDialogueHidden(!dialogueHidden);
-                  closeTranscript();
-                  if (dialogueHidden) window.requestAnimationFrame(() => readingRef.current?.focus());
+                  setHistoryOpen(false);
+                  actionsTriggerRef.current?.focus({ preventScroll: true });
                 }}
               >
-                {dialogueHidden ? "Show dialogue" : "Hide dialogue"}
+                <SceneActionIcon name={dialogueHidden ? "show-dialogue" : "dialogue"} />
               </button>
               <button
                 type="button"
                 role="menuitem"
-                disabled={!worldScope || !room.lines.length}
+                aria-label="Retry Turn"
+                title="Retry Turn"
+                disabled={!canRetryReply}
                 onClick={() => {
                   setActionsView(null);
-                  setDialogueHidden(false);
-                  if (historyOpen) closeTranscript();
-                  else setHistoryOpen(true);
+                  onRetryReply?.();
                 }}
               >
-                {historyOpen ? "Close transcript" : "Read transcript"}
+                <SceneActionIcon name={canRetryReply ? "retry" : "retry-unavailable"} />
               </button>
-              {canDraft ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={busy || !!contactRecovery || !movementZones.length}
-                  onClick={() => {
-                    actionsRef.current?.querySelector("button")?.focus();
-                    setActionsView("move");
-                  }}
-                >
-                  Move
-                </button>
-              ) : null}
-              <LoreActivityButton
-                query={`Scene · ${room.placeName}`}
-                role="menuitem"
-                onOpen={() => {
-                  setActionsView(null);
-                  actionsRef.current?.querySelector("button")?.focus();
-                }}
-              />
               <button
                 type="button"
                 role="menuitem"
+                aria-label="View Venue"
+                title="View Venue"
+                disabled={busy}
                 onClick={() => {
                   setActionsView(null);
                   onViewVenue();
                 }}
-                disabled={busy}
               >
-                View Venue
+                <SceneActionIcon name="venue" />
               </button>
-              {onUseMailbox ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsView(null);
-                    onUseMailbox();
-                  }}
-                >
-                  View Mailbox
-                </button>
-              ) : null}
-              {onMap ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsView(null);
-                    onMap();
-                  }}
-                >
-                  Map
-                </button>
-              ) : null}
-              {onProjects ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsView(null);
-                    onProjects();
-                  }}
-                >
-                  Projects
-                </button>
-              ) : null}
-              {onProposals ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsView(null);
-                    onProposals();
-                  }}
-                >
-                  Proposals
-                </button>
-              ) : null}
               <button
                 type="button"
                 role="menuitem"
+                aria-label="View Mailbox"
+                title="View Mailbox"
+                disabled={!onUseMailbox}
+                onClick={() => {
+                  setActionsView(null);
+                  onUseMailbox?.();
+                }}
+              >
+                <SceneActionIcon name="mailbox" />
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label="Map"
+                title="Map"
+                disabled={!onMap}
+                onClick={() => {
+                  setActionsView(null);
+                  onMap?.();
+                }}
+              >
+                <SceneActionIcon name="map" />
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label="Projects"
+                title="Projects"
+                disabled={!onProjects}
+                onClick={() => {
+                  setActionsView(null);
+                  onProjects?.();
+                }}
+              >
+                <SceneActionIcon name="projects" />
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label="Proposals"
+                title="Proposals"
+                disabled={!onProposals}
+                onClick={() => {
+                  setActionsView(null);
+                  onProposals?.();
+                }}
+              >
+                <SceneActionIcon name="proposals" />
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label="Scene settings"
+                title="Scene settings"
                 onClick={() => {
                   setActionsView(null);
                   setSettingsOpen(true);
                 }}
               >
-                Scene settings
+                <SceneActionIcon name="settings" />
               </button>
               <button
                 type="button"
                 role="menuitem"
+                aria-label={ended ? "Return to map" : "Conclude"}
+                title={ended ? "Return to map" : "Conclude"}
+                disabled={busy}
                 onClick={() => {
                   setActionsView(null);
-                  actionsRef.current?.querySelector("button")?.focus();
+                  actionsTriggerRef.current?.focus({ preventScroll: true });
                   onEnd();
                 }}
-                disabled={busy}
               >
-                {ended ? "Return to map" : "Conclude"}
+                <SceneActionIcon name="conclude" />
               </button>
-
-              {debugDiscardEnabled && room.status !== "closed" ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsView(null);
-                    onDebugDiscard();
-                  }}
-                  disabled={busy}
-                >
-                  DEBUG: Discard Scene
-                </button>
-              ) : null}
             </span>
           ) : null}
         </span>
@@ -1032,7 +1029,10 @@ export function RoomPanel({
       {actionsView === "move" && !contactRecovery ? (
         <ModalDialog
           title="Move to Zone"
-          onClose={() => setActionsView(null)}
+          onClose={() => {
+            setActionsView(null);
+            moveTriggerRef.current?.focus({ preventScroll: true });
+          }}
           className="villages-scene-move"
           compact
           scrollBody
@@ -1043,8 +1043,9 @@ export function RoomPanel({
               <button
                 key={zone.id}
                 type="button"
-                disabled={busy || !canDraft}
+                disabled={!canSend}
                 onClick={() => {
+                  if (!canSend) return;
                   setActionsView(null);
                   onMovementTarget(zone.id);
                 }}
@@ -1062,7 +1063,7 @@ export function RoomPanel({
             if (event.target === event.currentTarget) {
               setSettingsOpen(false);
               setErrorsOpen(false);
-              actionsRef.current?.querySelector("button")?.focus();
+              actionsRef.current?.querySelector("button")?.focus({ preventScroll: true });
             }
           }}
         >
@@ -1078,7 +1079,7 @@ export function RoomPanel({
                 event.stopPropagation();
                 setSettingsOpen(false);
                 setErrorsOpen(false);
-                actionsRef.current?.querySelector("button")?.focus();
+                actionsRef.current?.querySelector("button")?.focus({ preventScroll: true });
               }
               if (event.key === "Tab") {
                 const controls = event.currentTarget.querySelectorAll<HTMLElement>(
@@ -1091,10 +1092,10 @@ export function RoomPanel({
                   (document.activeElement === first || document.activeElement === event.currentTarget)
                 ) {
                   event.preventDefault();
-                  last?.focus();
+                  last?.focus({ preventScroll: true });
                 } else if (!event.shiftKey && document.activeElement === last) {
                   event.preventDefault();
-                  first?.focus();
+                  first?.focus({ preventScroll: true });
                 }
               }
             }}
@@ -1107,7 +1108,7 @@ export function RoomPanel({
                 onClick={() => {
                   setSettingsOpen(false);
                   setErrorsOpen(false);
-                  actionsRef.current?.querySelector("button")?.focus();
+                  actionsRef.current?.querySelector("button")?.focus({ preventScroll: true });
                 }}
               >
                 ×
@@ -1121,6 +1122,12 @@ export function RoomPanel({
                 context={{ sceneStatus: room.status, revision: room.sceneRevision, mobile, draftRetained: !!draft }}
               />
             </div>
+            <LoreActivityButton query={`Scene · ${room.placeName}`} />
+            {debugDiscardEnabled && room.status !== "closed" ? (
+              <button type="button" disabled={busy} onClick={onDebugDiscard}>
+                DEBUG: Discard Scene
+              </button>
+            ) : null}
             {sceneSettings}
           </div>
         </div>
@@ -1348,8 +1355,13 @@ export function RoomPanel({
           >
             <header className="villages-reader-heading">
               <strong className="villages-reader-speaker">Transcript</strong>
-              <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={closeTranscript}>
-                Back
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-chat-vn-button`}
+                aria-label="Close Transcript"
+                onClick={closeTranscript}
+              >
+                ×
               </button>
             </header>
             <SceneHistory
@@ -1367,11 +1379,10 @@ export function RoomPanel({
           contentClassName={`${ELEMENT_TAG}-chat-vn-row`}
           data-register={register}
           data-delivery={step?.delivery}
-          hidden={historyOpen}
+          aria-hidden={historyOpen || undefined}
+          inert={historyOpen || undefined}
           icon={
-            retrying ? undefined : register === "narration" ? (
-              <ReaderBook />
-            ) : (
+            retrying || register === "narration" ? null : (
               <SceneFace
                 actorId={step?.speakerId}
                 portrait={speakerPortrait}
@@ -1382,9 +1393,7 @@ export function RoomPanel({
             )
           }
           speaker={
-            retrying ? null : register === "narration" ? (
-              <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
-            ) : (
+            retrying || register === "narration" ? null : (
               <p
                 className={`${ELEMENT_TAG}-chat-vn-name`}
                 style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
@@ -1397,68 +1406,6 @@ export function RoomPanel({
                 ) : null}
               </p>
             )
-          }
-          actions={
-            <>
-              <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
-                Retry
-              </button>
-              <button type="button" disabled={!worldScope || !room.lines.length} onClick={() => setHistoryOpen(true)}>
-                Transcript
-              </button>
-            </>
-          }
-          footer={
-            <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-              {step && !retrying ? (
-                <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
-                  {mobile
-                    ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
-                    : `${readingOrdinal + 1} / ${readingTotal}`}
-                </span>
-              ) : null}
-              <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-chat-vn-button`}
-                  onClick={() => {
-                    if (!readingPages.move(-1)) {
-                      if (at > 0) setReadStep(at - 1);
-                      else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
-                    }
-                  }}
-                  disabled={!canReadPrevious || playback.busy || retrying}
-                  aria-label="Previous paragraph"
-                >
-                  Back
-                </button>
-                {!ended || canReadNext ? (
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-chat-vn-button`}
-                    onClick={() => {
-                      if (readingPages.revealing) {
-                        readingPages.finishReveal();
-                        return;
-                      }
-                      if (!readingPages.move(1)) {
-                        if (at < steps.length - 1) setReadStep(at + 1);
-                        else if (!playback.atLatest && playback.window.newerCursor)
-                          void playback.load(playback.window.newerCursor, "first");
-                      }
-                    }}
-                    disabled={(!canReadNext && !readingPages.revealing) || playback.busy || retrying}
-                    aria-label="Next paragraph"
-                  >
-                    Next
-                  </button>
-                ) : ended ? (
-                  <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
-                    Return to map
-                  </button>
-                ) : null}
-              </span>
-            </div>
           }
         >
           <div
@@ -1503,9 +1450,60 @@ export function RoomPanel({
             {!ended && busy && !retrying ? waiting : null}
           </div>
         </DialogueReader>
+        <div className={`${ELEMENT_TAG}-scene-dock-tools`}>
+          <button
+            ref={transcriptTriggerRef}
+            type="button"
+            aria-label="Transcript"
+            title="Transcript"
+            disabled={!worldScope || !room.lines.length}
+            onClick={() => {
+              setHistoryOpen((value) => !value);
+              setActionsView(null);
+            }}
+          >
+            <SceneActionIcon name="transcript" />
+          </button>
+          <button
+            ref={moveTriggerRef}
+            type="button"
+            className={`${ELEMENT_TAG}-scene-move-trigger`}
+            disabled={!canSend || !movementZones.length}
+            onClick={() => setActionsView("move")}
+          >
+            <SceneActionIcon name="move" />
+            Move
+          </button>
+          {!ended || canReadNext ? (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-chat-vn-button`}
+              onClick={() => {
+                if (readingPages.revealing) {
+                  readingPages.finishReveal();
+                  return;
+                }
+                if (!readingPages.move(1)) {
+                  if (at < steps.length - 1) setReadStep(at + 1);
+                  else if (!playback.atLatest && playback.window.newerCursor)
+                    void playback.load(playback.window.newerCursor, "first");
+                }
+              }}
+              disabled={(!canReadNext && !readingPages.revealing) || playback.busy || retrying}
+              aria-label="Next paragraph"
+            >
+              Next
+            </button>
+          ) : ended ? (
+            <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
+              Return to map
+            </button>
+          ) : null}
+        </div>
+
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
-        {canCompose ? (
+        {!ended ? (
           <div className={`${ELEMENT_TAG}-composer`}>
             {contactRecovery && !busy ? (
               <div role="status">
@@ -1531,6 +1529,7 @@ export function RoomPanel({
                   className={`${ELEMENT_TAG}-textarea`}
                   rows={1}
                   value={draft}
+                  disabled={!canCompose}
                   onChange={(event) => onDraft(event.target.value)}
                   onKeyDown={(event) => {
                     if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing, sendOnEnter)) {

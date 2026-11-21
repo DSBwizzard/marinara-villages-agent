@@ -187,8 +187,8 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
     while (await next.isEnabled()) {
       await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
-      await expect(composer).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+      await expect(composer).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
       await next.click();
     }
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
@@ -199,24 +199,17 @@ await withBrowser(browser, async () => {
       const box = await page.locator(selector).boundingBox();
       assert.ok(box && Math.abs(box.y + box.height - 844) <= 1, "bottommost control has no padding below it");
     };
-    await dockAtBottom('[class$="-chat-input"]');
+    await dockAtBottom('[class$="-chat-vn"]');
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-ready-" + width + ".png") });
-    await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
-    await expect(composer).toHaveCount(0);
-    await dockAtBottom('[class$="-chat-vn-card"]');
-    if (process.env.VILLAGES_VISUAL_OUTPUT)
-      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-reading-" + width + ".png") });
-    while (await next.isEnabled()) await next.click();
     await expect(composer).toHaveValue(preservedDraft);
     const picker = page.getByRole("dialog", { name: "Move to Zone" });
     const selectMove = async () => {
-      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+      await page.getByRole("button", { name: "Move", exact: true }).click();
       await expect(picker.getByRole("button", { name: "Close Move to Zone" })).toBeFocused();
       assert.ok((await picker.boundingBox()).height < 260, "A short list opens as a compact dialog");
       await expect(composer).toHaveValue(preservedDraft);
-      await dockAtBottom('[class$="-chat-input"]');
+      await dockAtBottom('[class$="-chat-vn"]');
     };
     scene.sceneRevision++;
     const lineCount = scene.lines.length;
@@ -256,7 +249,7 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue(preservedDraft);
     assert.ok(await composer.evaluate((field) => field.scrollHeight > field.clientHeight));
     await expect(composer).toHaveCSS("overflow-y", "auto");
-    const frame = await page.locator('[class$="-chat-input"]').boundingBox();
+    const frame = await page.locator('[class$="-chat-vn"]').boundingBox();
     const row = await page.locator('[class$="-composer-row"]').boundingBox();
     assert.ok(frame && row && frame.width >= row.width - 2, "composer uses full row width");
     assert.equal(await page.locator("[data-scene-scope]").count(), 0);

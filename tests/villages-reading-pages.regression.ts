@@ -55,4 +55,30 @@ assert.deepEqual(
   paginateReading(nodes, () => false, true),
   [{ start: 0, end: text.length }],
 );
+for (const source of [
+  "`" + "👨‍👩‍👧‍👦".repeat(12) + "`",
+  "[" + "LongLabel".repeat(20) + "](https://example.com)",
+  "```\none\ntwo\nthree\nfour\nfive\nsix\n```",
+  "Unbroken".repeat(30),
+]) {
+  const nodes = parseVillagesInlineMarkdown(source);
+  const pages = paginateReading(
+    nodes,
+    (start, end) => [...new Intl.Segmenter().segment(readingText(nodes).slice(start, end))].length <= 10,
+    false,
+    true,
+  );
+  assert(pages.length > 1);
+  assert(
+    pages.every(
+      ({ start, end }) => [...new Intl.Segmenter().segment(readingText(nodes).slice(start, end))].length <= 10,
+    ),
+  );
+  assert.equal(
+    pages.map(({ start, end }) => readingText(sliceReadingNodes(nodes, start, end))).join(""),
+    readingText(nodes),
+  );
+  for (const node of pages.flatMap(({ start, end }) => sliceReadingNodes(nodes, start, end)))
+    if (node.kind === "link") assert.equal(node.href, "https://example.com");
+}
 console.log("villages-reading-pages: exact text, formatting, sentence/word boundaries and atomic content passed");

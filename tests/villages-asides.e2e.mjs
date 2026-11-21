@@ -267,16 +267,9 @@ await withBrowser(browser, async () => {
       await expect(band).toBeVisible();
       await expect(composer).toHaveValue("A draft to keep.");
     }
-    for (let count = 0; count < 10 && (await band.count()); count++)
-      await page.getByRole("button", { name: "Previous paragraph" }).click();
-    await expect(band).toHaveCount(0);
-    await page.getByRole("button", { name: "Next paragraph" }).click();
-    await expect(band).toHaveCount(1);
-    await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
+    await page.getByRole("button", { name: "Transcript", exact: true }).click();
     await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Save me the good chair.");
-    await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
+    await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
     // Long speech remains complete and scrollable, while the dock stays unchanged.
     asides[0].content = "**A long aside with every word preserved.** ".repeat(35);
     session.lines[2] = asides[0];

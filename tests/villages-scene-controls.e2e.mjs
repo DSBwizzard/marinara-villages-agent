@@ -144,9 +144,9 @@ await withBrowser(browser, async () => {
       const dock = page.locator(`.${tag}-chat-vn`);
       const images = page.locator(`.${tag}-chat-cast-person > img`);
       await expect(composer).toBeVisible();
-      await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
+      await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
       await expect(page.locator(`.${tag}-chat-vn-portrait`)).toBeVisible();
-      await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+      await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
       const buttonBox = await send.boundingBox();
       assert.equal(buttonBox.width, mobile ? 44 : 32);
       assert.equal((await send.locator("svg").boundingBox()).width, 15);
@@ -158,12 +158,8 @@ await withBrowser(browser, async () => {
       const inputAfter = await composer.locator("..").boundingBox();
       assert.equal(inputAfter.width, inputBefore.width, "scrollbars cannot resize the composer");
       await composer.fill("Tea sounds perfect.");
-      await page.getByRole("button", { name: "Previous paragraph" }).click();
-      await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Rain taps");
-      await expect(composer).toHaveCount(0);
-      await expect(send).toHaveCount(0);
-      await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Previous paragraph" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Transcript", exact: true }).click();
       await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
       await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Rain taps against the window.");
       const historyPages = page.getByRole("navigation", { name: "Scene history pages" });
@@ -172,11 +168,9 @@ await withBrowser(browser, async () => {
         mobile ? 44 : 32,
       );
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
-      await expect(composer).toHaveCount(0);
-      await expect(send).toHaveCount(0);
-      await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Close transcript", exact: true }).click();
-      await page.getByRole("button", { name: "Next paragraph" }).click();
+      await expect(composer).toBeDisabled();
+      await expect(send).toBeDisabled();
+      await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
@@ -186,7 +180,7 @@ await withBrowser(browser, async () => {
       await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
-      for (const action of ["Move", "Conclude"])
+      for (const action of ["Retry Turn", "Conclude"])
         await expect(page.getByRole("menuitem", { name: action, exact: true })).toBeVisible();
       await expect(page.getByRole("menuitemradio")).toHaveCount(0);
       await expect(page.getByRole("menuitem", { name: /^(Contact|Fulfill|Knock \/ Call)$/u })).toHaveCount(0);
@@ -302,7 +296,7 @@ await withBrowser(browser, async () => {
           }, height);
           if (resizesLayout) await page.setViewportSize({ width, height });
           await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-          await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+          await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
           await expect(composer).toHaveValue("Keyboard draft");
         }
         // Panning that preserves the visible bottom also preserves the keyboard layout.
@@ -324,7 +318,7 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         }, height);
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
         // iOS-style panning may offset the entire lost height, keeping the bottom unchanged.
         await page.evaluate(
           ({ visible, keyboardHeight }) => {
@@ -338,7 +332,7 @@ await withBrowser(browser, async () => {
           { visible, keyboardHeight },
         );
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
         await expect
           .poll(async () => Math.round((await images.first().boundingBox()).y))
           .toBe(Math.round(baseline[0].y));
@@ -351,7 +345,7 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         }, height);
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
       }
       if (process.env.VILLAGES_VISUAL_OUTPUT && count === 1)
         await page.screenshot({
@@ -385,7 +379,8 @@ await withBrowser(browser, async () => {
         await expect(host).not.toHaveAttribute("data-scene-play", "");
         assert.equal(await host.evaluate((el) => el.style.getPropertyValue("--villages-scene-canvas-height")), "");
       }
-      await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
+      if (count === 4) await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
+      else await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
       assert.deepEqual(errors, []);
       await page.close();
     }

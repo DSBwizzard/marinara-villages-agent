@@ -267,7 +267,7 @@ await withBrowser(browser, async () => {
     .screenshot({ path: "artifacts/attendance-notice-detail.png" });
   await expect(stack).toContainText("★");
   await expect(page.locator(".marinara-capability-villages-chat-vn-reading")).not.toContainText(arrival.content);
-  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText(/1\s*\/\s*1$/u);
+  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveCount(0);
   await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
   await expect(page.locator('[data-character-id="bob"]')).toHaveCount(0);
   await expect(composer).toBeEnabled();

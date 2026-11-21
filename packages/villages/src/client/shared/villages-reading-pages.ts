@@ -54,6 +54,7 @@ export function paginateReading(
   nodes: readonly VillagesMarkdownNode[],
   fits: (start: number, end: number) => boolean,
   atomic = false,
+  splitOversized = false,
 ): ReadingPage[] {
   const text = readingText(nodes);
   if (!text.length || atomic) return [{ start: 0, end: text.length }];
@@ -62,6 +63,7 @@ export function paginateReading(
   let start = 0,
     first = 0;
   while (start < text.length) {
+    while (boundaries[first]! <= start) first++;
     let low = first,
       high = boundaries.length - 1,
       best = first - 1;
@@ -72,7 +74,26 @@ export function paginateReading(
         low = middle + 1;
       } else high = middle - 1;
     }
-    // One oversized word or atomic node remains accessible by scrolling.
+    if (best < first && splitOversized) {
+      const ends = [
+        ...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text.slice(start, boundaries[first])),
+      ].map(({ index, segment }) => start + index + segment.length);
+      let low = 0,
+        high = ends.length - 1,
+        fit = 0;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        if (fits(start, ends[middle]!)) {
+          fit = middle;
+          low = middle + 1;
+        } else high = middle - 1;
+      }
+      const end = ends[fit]!;
+      pages.push({ start, end });
+      start = end;
+      continue;
+    }
+    // Other readers retain their scrollable fallback for atomic content.
     best = Math.max(first, best);
     let chosen = best;
     if (boundaries[best] !== text.length) {

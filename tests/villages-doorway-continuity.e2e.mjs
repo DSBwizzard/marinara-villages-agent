@@ -124,12 +124,19 @@ await withBrowser(browser, async () => {
     const initialSceneRead = page
       .waitForResponse((response) => new URL(response.url()).pathname.endsWith("/rooms/active"), { timeout: 10_000 })
       .then(async (response) => assert.equal(await response.finished(), null));
+    const lines = session.lines,
+      submissions = session.submissions;
+    session.lines = [];
+    session.submissions = [];
     await Promise.all([page.addScriptTag({ path: resolve("packages/villages/client.js") }), initialSceneRead]);
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
+    session.lines = lines;
+    session.submissions = submissions;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     const chip = page.getByRole("button", { name: "1 Scene error", exact: true });
     await expect(chip).toHaveCount(0);
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-    const previous = page.getByRole("button", { name: "Previous paragraph", exact: true });
-    while (await previous.isEnabled()) await previous.click();
+
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("I am inside");
     await expect(page.getByText("Nearby", { exact: true })).toBeVisible();
     await page.screenshot({ path: `.build-tmp/doorway-continuity/nearby-${width}.png` });
@@ -173,9 +180,9 @@ await withBrowser(browser, async () => {
     summary = { pending: 0, failed: 0, rejected: 1 };
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(chip).toHaveCount(0);
+    while (await next.isEnabled()) await next.click();
     // The new Zone has Mara, but the saved end of the old conversation has an empty cast.
-    await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Move", exact: true }).click();
     await page
       .getByRole("dialog", { name: "Move to Zone" })
       .getByRole("button", { name: destination.name, exact: true })
@@ -184,11 +191,6 @@ await withBrowser(browser, async () => {
     const mara = page.locator('[class$="-chat-cast-person"][data-character-id="mara"]');
     await expect(mara).toBeVisible({ timeout: 3000 });
     await expect(mara).toHaveAttribute("data-position", /left|center|right/);
-    await previous.click();
-    await expect(current).toContainText("Mara steps back inside");
-    await expect(mara).toHaveCount(0);
-    await next.click();
-    await expect(mara).toBeVisible();
     assert.equal(mutatingRequests, 0, "Reading feedback never replays saved work or generates a response");
     assert.deepEqual(errors, []);
     await page.close();

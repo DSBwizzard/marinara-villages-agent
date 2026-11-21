@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { mobileReadingCounter } from "../packages/villages/src/client/features/scenes/villages-mobile-scene.js";
 import {
   initialStaging,
   mobileSceneLayout,
@@ -60,8 +59,4 @@ assert.deepEqual(
   Object.values(mobileSceneLayout(["a", "b"], initialStaging(ids), arrivalEvents)).map((slot) => slot.x),
   [0.26, 0.74],
 );
-assert.equal(mobileReadingCounter(0, 8, 1, 3), "Page 2/3 · paragraph 1/8");
-assert.equal(mobileReadingCounter(0, 8, 0, 1), "Paragraph 1/8");
-console.log(
-  "Mobile groups: defaults, explicit movement, attention, departures, depth, counters and immutable state passed",
-);
+console.log("Mobile groups: defaults, explicit movement, attention, departures, depth and immutable state passed");

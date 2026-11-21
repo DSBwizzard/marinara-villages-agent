@@ -129,14 +129,17 @@ await withBrowser(browser, async () => {
         at: now,
       },
     ];
+    const lines = session.lines;
+    session.lines = [];
     await page.goto("http://speech.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
+    session.lines = lines;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     const reading = page.getByRole("region", { name: "Current paragraph" });
-    // Reopening an existing scene starts at its most recent line.
-    await expect(reading).toContainText("A good place to stop for a drink.");
-    await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
+
     await expect(reading).toContainText(prose);
-    await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `narrated-sound-${width}.png`) });
     await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
     await expect(reading).toContainText("A good place to stop for a drink.");

@@ -109,6 +109,8 @@ export function useReadingPages(
       const keyboard = host.hasAttribute("data-scene-keyboard");
       if (keyboard && hasMeasured) return;
       const mobile = screen.dataset.mobile === "true" || screen.matches(".villages-forging-v2[data-mobile=true]");
+      const scene = screen.classList.contains(tag + "-room-screen");
+      const paged = mobile || scene;
       const sample = reading.querySelector("p");
       if (!sample) return;
       const style = getComputedStyle(sample);
@@ -118,11 +120,15 @@ export function useReadingPages(
       const lines = Math.max(
         1,
         // Leave room for the fixed controls and visible faces in short Scene canvases.
-        Math.min(3, Math.floor((canvasHeight * 0.2) / lineHeight), Math.floor((canvasHeight - 300) / lineHeight)),
+        Math.min(
+          mobile ? 3 : 5,
+          Math.floor((canvasHeight * 0.2) / lineHeight),
+          Math.floor((canvasHeight - 300) / lineHeight),
+        ),
       );
-      if (mobile) host.style.setProperty("--villages-reading-page-height", `${lines * lineHeight}px`);
+      if (paged) host.style.setProperty("--villages-reading-page-height", `${lines * lineHeight}px`);
       else host.style.removeProperty("--villages-reading-page-height");
-      const nextSignature = [mobile, reading.clientWidth, style.font, style.letterSpacing, lines].join(":");
+      const nextSignature = [paged, reading.clientWidth, style.font, style.letterSpacing, lines].join(":");
       if (nextSignature === signature) return;
       signature = nextSignature;
       const measure = sample.cloneNode(false) as HTMLParagraphElement;
@@ -132,7 +138,7 @@ export function useReadingPages(
       reading.append(measure);
       let measured: ReadingPage[];
       try {
-        measured = mobile
+        measured = paged
           ? paginateReading(
               nodes,
               (start, end) => {
@@ -141,7 +147,8 @@ export function useReadingPages(
                 measure.replaceChildren(measurementNodes(sliceReadingNodes(nodes, start, end)));
                 return measure.getBoundingClientRect().height <= lines * lineHeight + 1;
               },
-              /^ {0,3}(?:`{3,}|~{3,})/mu.test(text),
+              !scene && /^ {0,3}(?:`{3,}|~{3,})/mu.test(text),
+              scene,
             )
           : [{ start: 0, end: length }];
       } finally {

@@ -107,7 +107,7 @@ Scenes use one GM response for dialogue and gameplay updates. This build require
 
 A Scene is an ongoing interaction within one Venue. It can continue as you move between that Venue's Zones.
 
-Write dialogue, actions, thoughts, or a mixture in the message box and choose **Send**. Open **Venue actions** for **Move** or **Conclude**. Move goes to a permitted Zone without a generated arrival reply. Conclude archives the Scene without generating a reply. Send any farewell or departure as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
+Read messages in small chunks with **Next**, and use **Transcript** to read earlier exchanges. The dock keeps the message input in place while you read. Write dialogue, actions, thoughts, or a mixture and choose **Send**. **Move** is on the dock and becomes available when you can send a message. It goes to a permitted Zone without a generated arrival reply. Open **Venue actions** for **Retry Turn**, Village menus, Scene settings or **Conclude**. Conclude archives the Scene without generating a reply. Send any farewell or departure as an ordinary turn before concluding. You can knock, call, or speak toward an adjacent Zone in your own words.
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 

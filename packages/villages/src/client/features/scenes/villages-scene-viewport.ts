@@ -22,33 +22,23 @@ export function useSceneViewport(host: HTMLElement, active: boolean): void {
     const restingDock = () => {
       const tag = "marinara-capability-villages";
       if (host.querySelector('[data-mobile="true"]') === null) return;
-      const row = host.querySelector<HTMLElement>(`.${tag}-chat-vn-row`);
-      const prose = row?.querySelector<HTMLElement>(`.${tag}-chat-vn-reading p`);
       const dock = host.querySelector<HTMLElement>(`.${tag}-chat-vn`);
-      if (!row || !prose || !dock) return;
-      const rowStyle = getComputedStyle(row);
-      const proseStyle = getComputedStyle(prose);
-      const number = (value: string) => Number.parseFloat(value) || 0;
-      const line = number(proseStyle.lineHeight) || 21;
-      const pageHeight = number(host.style.getPropertyValue("--villages-reading-page-height")) || 3 * line;
-      const card = row.parentElement;
-      // Keep the character floor stable when the action input mounts or hides.
-      const composer = 46 + 0.75 * number(getComputedStyle(document.documentElement).fontSize);
-      const cardStyle = card ? getComputedStyle(card) : null;
-      const dockStyle = getComputedStyle(dock);
-      set(
-        "resting-dock-height",
-        32 +
-          number(rowStyle.paddingTop) +
-          number(rowStyle.paddingBottom) +
-          number(rowStyle.rowGap) +
-          pageHeight +
-          44 +
-          (cardStyle ? number(cardStyle.borderTopWidth) + number(cardStyle.borderBottomWidth) : 2) +
-          composer +
-          number(dockStyle.rowGap) +
-          number(dockStyle.paddingBottom),
-      );
+      if (!dock?.offsetHeight) return;
+      const field = dock.querySelector<HTMLTextAreaElement>("textarea");
+      const input = field?.parentElement;
+      let growth = 0;
+      if (field && input) {
+        const style = getComputedStyle(input);
+        const pixels = (value: string) => Number.parseFloat(value) || 0;
+        const single =
+          Math.max(pixels(getComputedStyle(field).lineHeight), input.querySelector("button")?.offsetHeight ?? 0) +
+          pixels(style.paddingTop) +
+          pixels(style.paddingBottom) +
+          pixels(style.borderTopWidth) +
+          pixels(style.borderBottomWidth);
+        growth = Math.max(0, input.offsetHeight - single);
+      }
+      set("resting-dock-height", dock.offsetHeight - growth);
     };
     const focused = () => {
       const target = document.activeElement;
