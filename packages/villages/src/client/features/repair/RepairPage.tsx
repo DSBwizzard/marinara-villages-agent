@@ -1,16 +1,70 @@
+import { useEffect, useRef, useState } from "react";
+import { AgendaPlanner } from "../../shared/AgendaPlanner.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
-import type { RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
+import { VillageIcon, type VillageIconName } from "../../shared/VillageIcon.js";
+import type { RepairRecord, RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import type { RepairController } from "./useRepairController.js";
 import { REPAIR_STYLES } from "./repair-styles.js";
-const topics: { id: RepairTopic; name: string; description: string }[] = [
-  { id: "memories", name: "Memories", description: "Edit, add, or forget a memory." },
-  { id: "people", name: "People", description: "Villagers, their memories, and character details." },
-  { id: "places", name: "Places", description: "Venues, Zones, homes, and access." },
-  { id: "world", name: "World & history", description: "Setting, founding details, and Scene corrections." },
-  { id: "progress", name: "Progress", description: "Wishes, Projects, Pursuits, and saved work." },
-  { id: "restore", name: "Backups & repairs", description: "Review repairs, undo, or restore a checkpoint." },
-];
+const topics = {
+  memories: "Memories",
+  people: "People",
+  places: "Places & venues",
+  world: "World & history",
+  progress: "Recover work",
+  restore: "Checkpoints",
+  all: "Search results",
+} satisfies Record<RepairTopic | "all", string>;
+const browseTopics = ["people", "places", "world"] as const;
+const topicIcons = {
+  memories: "memory",
+  people: "people",
+  places: "places",
+  world: "world",
+  progress: "projects",
+  restore: "details",
+} satisfies Record<RepairTopic, VillageIconName>;
+
+function searchSummary(record: RepairRecord) {
+  if (record.topic !== "memories") return [topics[record.topic], record.summary].filter(Boolean).join(" · ");
+  const remembered = record.people?.filter((person) => !person.forgotten).map((person) => person.name);
+  const forgotten = record.people?.filter((person) => person.forgotten).map((person) => person.name);
+  return [
+    remembered?.length && `Remembered by ${remembered.join(", ")}`,
+    forgotten?.length && `Forgotten by ${forgotten.join(", ")}`,
+    record.summary,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function RepairTile({
+  title,
+  icon,
+  summary,
+  disabled,
+  onClick,
+}: {
+  title: string;
+  icon: VillageIconName;
+  summary?: string;
+  disabled: boolean;
+  onClick(): void;
+}) {
+  return (
+    <button type="button" className="repair-tile" disabled={disabled} onClick={onClick}>
+      <VillageIcon name={icon} />
+      <span>
+        <strong>{title}</strong>
+        {summary ? <small>{summary}</small> : null}
+      </span>
+      <span aria-hidden="true" className="repair-chevron">
+        ›
+      </span>
+    </button>
+  );
+}
+
 export function RepairPage({
   controller: c,
   onBack,
@@ -26,13 +80,22 @@ export function RepairPage({
   preparationProblem?: string;
   onRetryPreparation?: () => Promise<void>;
 }) {
-  const currentTopic = topics.find((t) => t.id === c.topic)!;
+  const currentTopic = topics[c.topic];
+  const consoleSection =
+    c.view === "hub"
+      ? "records"
+      : c.collection !== "list"
+        ? "backups"
+        : c.topic === "progress"
+          ? "recovery"
+          : "records";
   const isRestore = c.review?.kind === "restore";
   const addingMemory = c.review?.memory?.creating === true;
   const memoryRecord = c.selected?.topic === "memories";
   const forgettingMemory = memoryRecord && c.draft?.action === "forget";
   const restoringMemory = memoryRecord && c.draft?.action === "remember";
   const memoryReadOnly = forgettingMemory || restoringMemory;
+  const correctingMemory = memoryRecord && c.review?.kind === "repair" && !addingMemory && !memoryReadOnly;
   const reviewTitle = forgettingMemory
     ? "Review forgetting"
     : restoringMemory
@@ -41,7 +104,7 @@ export function RepairPage({
   const source = [...new Set(c.selected?.source ?? [])].filter(
     (excerpt) => !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
   );
-  const hasSource = !!source.length || !!c.selected?.related.length;
+  const hasSource = !c.selected?.agendaDay && (!!source.length || !!c.selected?.related.length);
   const editorTitle = memoryRecord
     ? c.selected?.creating
       ? "Add memory"
@@ -52,6 +115,63 @@ export function RepairPage({
           : "Modify memory"
     : c.selected?.title;
   const directory = c.view === "list" && c.topic === "people" && !c.person;
+  const browsingAgenda = c.topic === "people" && c.section === "agenda";
+  const [agendaDate, setAgendaDate] = useState<string>();
+  const agendaEditorHeading = useRef<HTMLHeadingElement>(null);
+  const editor = useRef<HTMLElement>(null);
+  const editingAgenda = browsingAgenda && c.view === "list" && Boolean(c.selected?.agendaDay);
+  useEffect(() => {
+    if (!editingAgenda || !c.selected) return;
+    agendaEditorHeading.current?.focus({ preventScroll: true });
+    agendaEditorHeading.current?.scrollIntoView({ block: "nearest" });
+  }, [editingAgenda, c.selected]);
+  const openAgendaActivity = (date: string, index: number | "new") => {
+    const record = c.records.find((row) => row.agenda?.date === date);
+    if (record) void c.open(record.id, { index, token: record.token });
+  };
+  const agendaDraftStale = c.selected?.agendaDay && c.draft?.agendaToken !== c.selected.token;
+  const venueField = c.editorFields.find((field) => field.key.startsWith("venue:"));
+  const venues = c.selected?.agenda?.venues ?? [];
+  const venueId = venueField && c.draft?.values[venueField.key];
+  const venue = venues.find((option) => option.value === venueId);
+  const fields = c.editorFields.flatMap((field) => {
+    if (!c.selected?.agendaDay) return [field];
+    if (field === venueField) {
+      const options = [{ value: "", label: "No location" }, ...venues];
+      if (field.value && !options.some((option) => option.value === field.value))
+        options.push({ value: String(field.value), label: "Current location (unavailable)" });
+      return [{ ...field, options }];
+    }
+    if (!field.key.startsWith("zone:")) return [field];
+    if (!venueId) return [];
+    const options = [{ value: "", label: "Choose automatically" }, ...(venue?.zones ?? [])];
+    if (venueId === venueField?.value && field.value && !options.some((option) => option.value === field.value))
+      options.push({ value: String(field.value), label: "Current Zone (unavailable)" });
+    return [{ ...field, options }];
+  });
+  const inlineError =
+    (c.view === "edit" || editingAgenda) &&
+    !agendaDraftStale &&
+    !memoryReadOnly &&
+    fields.some((field) => field.key === c.errorField)
+      ? c.errorField
+      : undefined;
+  useEffect(() => {
+    if (inlineError && !c.busy) editor.current?.querySelector<HTMLElement>("[aria-invalid=true]")?.focus();
+  }, [inlineError, c.error, c.busy]);
+  const browsingPlaces = c.view !== "hub" && c.topic === "places" && c.collection === "list";
+  let placeItems = c.placeDirectory;
+  const placeTrail = [];
+  for (const id of c.placePath) {
+    const item = placeItems.find((node) => node.id === id);
+    if (!item?.children) break;
+    placeTrail.push(item);
+    placeItems = item.children;
+  }
+  const showPlacePath = (path: string[]) => {
+    c.setPlacePath(path);
+    if (c.view !== "list") void c.load();
+  };
   const people = (c.index?.people ?? []).filter((p) =>
     c.query
       .toLocaleLowerCase()
@@ -66,12 +186,27 @@ export function RepairPage({
       ? display(c.draft?.values.letterFontId)
       : undefined;
   useLetterFont(previewFontId);
-  const value = (key: string, next: RepairValue) => c.update({ values: { ...c.draft?.values, [key]: next } });
+  const value = (key: string, next: RepairValue) =>
+    c.update({
+      values: {
+        ...c.draft?.values,
+        [key]: next,
+        ...(key === venueField?.key
+          ? {
+              [`zone:${key.split(":")[1]}`]:
+                next === venueField.value
+                  ? (c.editorFields.find((field) => field.key.startsWith("zone:"))?.value ?? "")
+                  : "",
+            }
+          : {}),
+      },
+    });
   return (
     <div className="villages-repair" aria-label="REPAIR">
       <style>{REPAIR_STYLES}</style>
       <header className="repair-chrome">
         <span>Villages</span>
+        <strong>REPAIR</strong>
         <button
           type="button"
           disabled={c.busy}
@@ -83,50 +218,94 @@ export function RepairPage({
           Main menu
         </button>
       </header>
+      <nav className="repair-console-nav" aria-label="REPAIR sections">
+        <button
+          type="button"
+          disabled={c.saving}
+          aria-current={consoleSection === "records" ? "page" : undefined}
+          onClick={c.showHub}
+        >
+          Find a record
+        </button>
+        <button
+          type="button"
+          disabled={c.saving}
+          aria-current={consoleSection === "recovery" ? "page" : undefined}
+          onClick={() => void c.chooseTopic("progress")}
+        >
+          Recover work
+        </button>
+        <button
+          type="button"
+          disabled={c.saving}
+          aria-current={consoleSection === "backups" ? "page" : undefined}
+          onClick={() => void c.showHistory()}
+        >
+          History &amp; backups
+        </button>
+      </nav>
       <main>
-        {c.view !== "hub" ? (
-          <nav aria-label="Repair navigation">
-            <button type="button" disabled={c.saving} onClick={c.showHub}>
-              REPAIR
+        {browsingPlaces && (placeTrail.length > 0 || c.view !== "list") ? (
+          <nav className="repair-links" aria-label="Repair location navigation">
+            <button type="button" disabled={c.busy} onClick={() => showPlacePath([])}>
+              {topics.places}
             </button>
-            <span>›</span>
-            <button
-              type="button"
-              disabled={c.saving}
-              onClick={() =>
-                void (c.collection === "history"
-                  ? c.showHistory()
-                  : c.chooseTopic(c.collection === "checkpoints" ? "restore" : c.topic))
-              }
-            >
-              {c.collection === "history"
-                ? "Repair history"
-                : c.collection === "checkpoints"
-                  ? "Backups & repairs"
-                  : currentTopic.name}
-            </button>
-            {c.person ? (
-              <>
-                <span>›</span>
-                <button type="button" disabled={c.busy} onClick={() => void c.load()}>
-                  {c.person.name}
+            {(c.view === "list" ? placeTrail.slice(0, -1) : placeTrail).map((item, i) => (
+              <span className="repair-crumb" key={item.id}>
+                <span aria-hidden="true">›</span>
+                <button type="button" disabled={c.busy} onClick={() => showPlacePath(c.placePath.slice(0, i + 1))}>
+                  {item.title}
                 </button>
-              </>
+              </span>
+            ))}
+          </nav>
+        ) : null}
+        {!browsingPlaces && (c.person || c.view === "edit" || c.view === "review" || c.view === "done") ? (
+          <nav className="repair-links" aria-label="Repair record navigation">
+            {c.person ? (
+              <button type="button" disabled={c.saving} onClick={() => void c.chooseTopic("people")}>
+                People
+              </button>
+            ) : null}
+            {c.view !== "list" ? (
+              <button
+                type="button"
+                disabled={c.saving}
+                onClick={() =>
+                  void (c.collection === "history"
+                    ? c.showHistory()
+                    : c.collection === "checkpoints"
+                      ? c.chooseTopic("restore")
+                      : c.person || c.topic === "all"
+                        ? c.load()
+                        : c.chooseTopic(c.topic))
+                }
+              >
+                {c.collection === "history"
+                  ? "Repair history"
+                  : c.collection === "checkpoints"
+                    ? "Checkpoints"
+                    : (c.person?.name ?? currentTopic)}
+              </button>
             ) : null}
           </nav>
         ) : null}
         <div className="repair-heading">
           <h1>
             {c.view === "hub"
-              ? "REPAIR"
+              ? "Find a record"
               : c.view === "list"
-                ? (c.person?.name ?? currentTopic.name)
+                ? c.person && browsingAgenda
+                  ? c.person.name + " · Agenda"
+                  : (c.person?.name ?? (browsingPlaces ? placeTrail.at(-1)?.title : null) ?? currentTopic)
                 : c.view === "edit"
                   ? editorTitle
                   : c.view === "review"
                     ? addingMemory
                       ? "Add memory"
-                      : reviewTitle
+                      : correctingMemory
+                        ? "Review memory correction"
+                        : reviewTitle
                     : c.view === "done"
                       ? c.review?.kind === "undo"
                         ? "Changes undone"
@@ -137,28 +316,24 @@ export function RepairPage({
                             : "Changes saved"
                       : c.view === "history"
                         ? "Repair history"
-                        : "Backups & repairs"}
+                        : "Checkpoints"}
           </h1>
         </div>
-        {c.view === "hub" ? <p className="repair-muted">Choose what needs correcting.</p> : null}
-        {c.index?.sceneOpen ? (
-          <div className="repair-notice">
-            Scene in progress · Repairs preserve its captured context and draft.{" "}
-            {onScene ? (
-              <button
-                type="button"
-                onClick={() => {
-                  c.leave();
-                  onScene();
-                }}
-                disabled={c.busy}
-              >
-                Back to Scene
-              </button>
-            ) : null}
+        {c.index?.sceneOpen && onScene ? (
+          <div className="repair-links">
+            <button
+              type="button"
+              onClick={() => {
+                c.leave();
+                onScene();
+              }}
+              disabled={c.busy}
+            >
+              Back to Scene
+            </button>
           </div>
         ) : null}
-        {c.error ? (
+        {c.error && !inlineError ? (
           <p role="alert" className="repair-error">
             {c.error}
           </p>
@@ -166,30 +341,89 @@ export function RepairPage({
         {!c.index ? <p role="status">Opening REPAIR…</p> : null}
         {c.view === "hub" ? (
           <>
-            <div className="repair-grid">
-              {topics.map((t) => (
-                <button
-                  type="button"
-                  key={t.id}
-                  className="repair-tile"
+            <div className="repair-tiles repair-hub-tiles">
+              {browseTopics.map((topic) => (
+                <RepairTile
+                  key={topic}
+                  title={topics[topic]}
+                  icon={topicIcons[topic]}
                   disabled={c.busy}
-                  onClick={() => {
-                    void c.chooseTopic(t.id);
-                  }}
-                >
-                  <strong>{t.name}</strong>
-                  <span>{t.description}</span>
-                </button>
+                  onClick={() => void c.chooseTopic(topic)}
+                />
               ))}
             </div>
-            <footer>
-              <button type="button" disabled={c.busy} onClick={() => void c.showHistory()}>
-                Repair history
+            <form
+              autoComplete="off"
+              className="repair-search"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (c.query.trim()) void c.chooseTopic("all", c.query.trim());
+              }}
+            >
+              <input
+                autoComplete="off"
+                type="search"
+                aria-label="Search records"
+                placeholder="Search records"
+                value={c.query}
+                onChange={(e) => c.setQuery(e.target.value)}
+              />
+              <button type="submit" disabled={c.busy || !c.query.trim()}>
+                Search
               </button>
-            </footer>
+            </form>
+            {preparation?.status === "failed" ? (
+              <footer>
+                <span>Initial preparation needs attention</span>
+                <button type="button" disabled={c.busy} onClick={() => void c.chooseTopic("progress")}>
+                  Review
+                </button>
+              </footer>
+            ) : null}
           </>
         ) : null}
-        {c.view === "list" ? (
+        {c.view === "history" || c.view === "checkpoints" ? (
+          <nav className="repair-links" aria-label="History and backups">
+            <button
+              type="button"
+              disabled={c.busy}
+              aria-current={c.view === "history" ? "page" : undefined}
+              onClick={() => void c.showHistory()}
+            >
+              Repair history
+            </button>
+            <button
+              type="button"
+              disabled={c.busy}
+              aria-current={c.view === "checkpoints" ? "page" : undefined}
+              onClick={() => void c.chooseTopic("restore")}
+            >
+              Checkpoints
+            </button>
+          </nav>
+        ) : null}
+        {c.view === "list" && browsingPlaces ? (
+          <>
+            <div className="repair-tiles">
+              {placeItems.map((item) => (
+                <RepairTile
+                  key={item.id}
+                  title={item.title}
+                  icon={item.icon}
+                  summary={item.summary}
+                  disabled={c.busy}
+                  onClick={() =>
+                    item.children
+                      ? showPlacePath([...placeTrail.map((node) => node.id), item.id])
+                      : void c.open(item.id)
+                  }
+                />
+              ))}
+            </div>
+            {!c.busy && !c.error && !placeItems.length ? <p>No editable records here.</p> : null}
+          </>
+        ) : null}
+        {c.view === "list" && !browsingPlaces ? (
           <>
             {c.topic === "progress" && preparation?.status === "failed" && onRetryPreparation ? (
               <section className="repair-notice" aria-label="Initial preparation">
@@ -202,109 +436,160 @@ export function RepairPage({
               </section>
             ) : null}
             {c.person ? (
-              <div className="repair-actions" role="group" aria-label="Villager records">
+              <div className="repair-tiles repair-sections" role="group" aria-label="Person records">
                 <button
                   type="button"
                   disabled={c.busy}
                   aria-pressed={c.section === "memories"}
                   onClick={() => void c.chooseSection("memories")}
                 >
+                  <VillageIcon name="memory" />
                   Memories
                 </button>
+                {c.person.hasAgenda ? (
+                  <button
+                    type="button"
+                    disabled={c.busy}
+                    aria-pressed={browsingAgenda}
+                    onClick={() => void c.chooseSection("agenda")}
+                  >
+                    <VillageIcon name="calendar" />
+                    Agenda
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={c.busy}
                   aria-pressed={c.section === "details"}
                   onClick={() => void c.chooseSection("details")}
                 >
+                  <VillageIcon name="details" />
                   Details
                 </button>
               </div>
             ) : null}
-            <form
-              autoComplete="off"
-              className="repair-search"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void c.load(c.topic);
-              }}
-            >
-              <input
+            {!browsingAgenda ? (
+              <form
                 autoComplete="off"
-                type="search"
-                aria-label={directory ? "Search villagers" : "Search repair records"}
-                value={c.query}
-                onChange={(e) => c.setQuery(e.target.value)}
-                placeholder={directory ? "Find a villager…" : "Find a record…"}
-              />
-              <button type="submit" disabled={c.busy}>
-                Search
-              </button>
-            </form>
+                className="repair-search"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void c.load(c.topic);
+                }}
+              >
+                <input
+                  autoComplete="off"
+                  type="search"
+                  aria-label={directory ? "Search people" : "Search repair records"}
+                  value={c.query}
+                  onChange={(e) => c.setQuery(e.target.value)}
+                  placeholder={directory ? "Find a person…" : "Find a record…"}
+                />
+                <button type="submit" disabled={c.busy}>
+                  Search
+                </button>
+              </form>
+            ) : null}
             {directory ? (
-              <div className="repair-people">
+              <div className="repair-tiles">
                 {people.map((person) => (
-                  <button
-                    type="button"
-                    className="repair-person"
+                  <RepairTile
+                    title={person.name}
+                    summary={person.visitor ? "Visitor" : undefined}
+                    icon="people"
                     disabled={c.busy}
                     key={person.id}
                     onClick={() => void c.choosePerson(person)}
-                  >
-                    {person.name}
-                  </button>
+                  />
                 ))}
-                {!c.busy && c.index && !people.length ? <p>No villagers match.</p> : null}
+                {!c.busy && c.index && !people.length ? <p>No people match.</p> : null}
               </div>
             ) : (
               <>
                 {c.creation ? (
-                  <button type="button" disabled={c.busy} onClick={() => void c.open(c.creation!.id)}>
-                    {c.creation.title}
-                  </button>
+                  <RepairTile
+                    title={c.creation.title}
+                    icon="memory"
+                    disabled={c.busy}
+                    onClick={() => void c.open(c.creation!.id)}
+                  />
                 ) : null}
-                <div className="repair-records">
-                  {c.records.map((r) => (
+                {browsingAgenda && c.records.length ? (
+                  <AgendaPlanner
+                    days={c.records.flatMap((record) => (record.agenda ? [record.agenda] : []))}
+                    date={agendaDate}
+                    disabled={c.busy}
+                    onDate={(date) => {
+                      setAgendaDate(date);
+                      c.closeAgendaEditor();
+                    }}
+                    onActivity={(day, block) => {
+                      if (block.repairIndex === undefined) c.closeAgendaEditor();
+                      else openAgendaActivity(day.date, block.repairIndex);
+                    }}
+                    renderDayAction={(day) => (
+                      <button type="button" disabled={c.busy} onClick={() => openAgendaActivity(day.date, "new")}>
+                        Add activity
+                      </button>
+                    )}
+                  />
+                ) : (
+                  <div className="repair-records">
+                    {c.records.map((r) => (
+                      <RepairTile
+                        key={r.id}
+                        title={r.title}
+                        icon={r.agendaDay ? "calendar" : topicIcons[r.topic]}
+                        summary={c.topic === "all" ? searchSummary(r) : r.summary}
+                        disabled={c.busy}
+                        onClick={() => {
+                          if (r.agenda) {
+                            const resident = c.index?.people.find((person) => person.id === r.agenda!.residentId);
+                            if (resident) {
+                              setAgendaDate(r.agenda.date);
+                              void c.choosePerson(resident, "agenda");
+                            }
+                          } else void c.open(r.id);
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+                {!c.busy && !c.records.length ? <p>No records match.</p> : null}
+                {c.total > 50 ? (
+                  <footer>
                     <button
                       type="button"
-                      key={r.id}
-                      className="repair-record"
-                      disabled={c.busy}
-                      onClick={() => void c.open(r.id)}
+                      disabled={c.busy || !c.offset}
+                      onClick={() => void c.load(c.topic, Math.max(0, c.offset - 50))}
                     >
-                      <strong>{r.title}</strong>
-                      {r.summary ? <small>{r.summary}</small> : null}
+                      Previous
                     </button>
-                  ))}
-                </div>
-                {!c.busy && !c.records.length ? <p>No records match.</p> : null}
-                <footer>
-                  <button
-                    type="button"
-                    disabled={c.busy || !c.offset}
-                    onClick={() => void c.load(c.topic, Math.max(0, c.offset - 50))}
-                  >
-                    Previous
-                  </button>
-                  <span>
-                    {c.total ? `${c.offset + 1}–${Math.min(c.offset + 50, c.total)} of ${c.total}` : "0 records"}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={c.busy || c.offset + 50 >= c.total}
-                    onClick={() => void c.load(c.topic, c.offset + 50)}
-                  >
-                    Next
-                  </button>
-                </footer>
+                    <span>
+                      {c.total ? `${c.offset + 1}–${Math.min(c.offset + 50, c.total)} of ${c.total}` : "0 records"}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={c.busy || c.offset + 50 >= c.total}
+                      onClick={() => void c.load(c.topic, c.offset + 50)}
+                    >
+                      Next
+                    </button>
+                  </footer>
+                ) : null}
               </>
             )}
           </>
         ) : null}
-        {c.view === "edit" && c.selected && c.draft ? (
+        {(c.view === "edit" || editingAgenda) && c.selected && c.draft ? (
           <div className="repair-layout" data-single={!hasSource}>
-            <section className="repair-panel repair-editor">
-              {c.selected.actions.length > 1 ? (
+            <section ref={editor} className="repair-panel repair-editor" data-agenda={!!c.selected.agendaDay}>
+              {editingAgenda ? (
+                <h2 tabIndex={-1} ref={agendaEditorHeading}>
+                  {c.draft.action === "add-activity" ? "Add activity" : "Edit activity"}
+                </h2>
+              ) : null}
+              {!editingAgenda && c.selected.actions.length > 1 ? (
                 <div className="repair-actions" role="group" aria-label="Repair action">
                   {c.selected.actions.map((a) => (
                     <button
@@ -319,69 +604,124 @@ export function RepairPage({
                   ))}
                 </div>
               ) : null}
-              {c.selected.fields.map((f) => (
-                <div className="repair-field" key={f.key}>
-                  {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
-                  {f.key === "letterFontId" ? (
-                    <div>
-                      <p
-                        style={{
-                          fontFamily: letterFontFamily(display(c.draft?.values[f.key])),
-                          fontSize: "1.25rem",
-                          lineHeight: 1.6,
-                        }}
-                      >
-                        Dear friend, I hope this letter finds you well. 123
-                      </p>
-                    </div>
-                  ) : null}
-                  {memoryReadOnly ? (
-                    <p>{display(f.value)}</p>
-                  ) : f.type === "choice" ? (
-                    <select
-                      id={`repair-${f.key}`}
-                      disabled={c.busy}
-                      value={display(c.draft?.values[f.key])}
-                      onChange={(e) => value(f.key, e.target.value)}
-                    >
-                      {f.options?.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : f.type === "number" ? (
-                    <input
-                      autoComplete="off"
-                      id={`repair-${f.key}`}
-                      type="number"
-                      min={f.min}
-                      max={f.max}
-                      step="any"
-                      disabled={c.busy}
-                      value={display(c.draft?.values[f.key])}
-                      onChange={(e) => value(f.key, e.target.value === "" ? "" : Number(e.target.value))}
-                    />
-                  ) : f.type === "boolean" ? (
-                    <input
-                      autoComplete="off"
-                      id={`repair-${f.key}`}
-                      type="checkbox"
-                      disabled={c.busy}
-                      checked={c.draft?.values[f.key] === true}
-                      onChange={(e) => value(f.key, e.target.checked)}
-                    />
-                  ) : (
-                    <textarea
-                      autoComplete="off"
-                      id={`repair-${f.key}`}
-                      disabled={c.busy}
-                      value={display(c.draft?.values[f.key])}
-                      onChange={(e) => value(f.key, e.target.value)}
-                    />
-                  )}
+              {agendaDraftStale && c.selected.actions.length ? (
+                <div className="repair-notice" role="status">
+                  <p>This date changed since you started editing.</p>
+                  <button
+                    type="button"
+                    disabled={c.busy}
+                    onClick={() =>
+                      c.update({
+                        agendaToken: c.selected!.token,
+                        values: Object.fromEntries(c.editorFields.map((field) => [field.key, field.value])),
+                      })
+                    }
+                  >
+                    Discard draft and load this date
+                  </button>
                 </div>
-              ))}
+              ) : null}
+              {!agendaDraftStale &&
+                fields.map((f) => {
+                  const id = `repair-${f.key}`;
+                  const invalid = inlineError === f.key;
+                  const control = {
+                    id,
+                    disabled: c.busy,
+                    "aria-invalid": invalid || undefined,
+                    "aria-describedby": invalid ? `${id}-error` : undefined,
+                  };
+                  return (
+                    <div className="repair-field" key={f.key}>
+                      {memoryReadOnly ? (
+                        <h2>{f.label}</h2>
+                      ) : (
+                        <label htmlFor={id}>
+                          {c.selected!.agendaDay
+                            ? f.label
+                                .replace(/ \d+/, "")
+                                .replace("Activity start", "Start")
+                                .replace("Activity end", "End")
+                            : f.label}
+                        </label>
+                      )}
+                      {invalid ? (
+                        <p role="alert" id={`${id}-error`} className="repair-error">
+                          {c.error}
+                        </p>
+                      ) : null}
+                      {f.key === "letterFontId" ? (
+                        <div>
+                          <p
+                            style={{
+                              fontFamily: letterFontFamily(display(c.draft?.values[f.key])),
+                              fontSize: "1.25rem",
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            Dear friend, I hope this letter finds you well. 123
+                          </p>
+                        </div>
+                      ) : null}
+                      {memoryReadOnly ? (
+                        <p>{display(f.value)}</p>
+                      ) : f.type === "choice" ? (
+                        <select
+                          {...control}
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value)}
+                        >
+                          {f.options?.some((option) => option.value === display(c.draft?.values[f.key])) ? null : (
+                            <option value={display(c.draft?.values[f.key])} disabled>
+                              Choose an option
+                            </option>
+                          )}
+                          {f.options?.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : f.type === "number" ? (
+                        <input
+                          {...control}
+                          autoComplete="off"
+                          type="number"
+                          min={f.min}
+                          max={f.max}
+                          step="any"
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value === "" ? "" : Number(e.target.value))}
+                        />
+                      ) : f.type === "boolean" ? (
+                        <input
+                          {...control}
+                          autoComplete="off"
+                          type="checkbox"
+                          checked={c.draft?.values[f.key] === true}
+                          onChange={(e) => value(f.key, e.target.checked)}
+                        />
+                      ) : f.type === "clock" ? (
+                        <input
+                          {...control}
+                          autoComplete="off"
+                          type="text"
+                          placeholder="HH:MM"
+                          maxLength={5}
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value)}
+                        />
+                      ) : (
+                        <textarea
+                          {...control}
+                          autoComplete="off"
+                          value={display(c.draft?.values[f.key])}
+                          onChange={(e) => value(f.key, e.target.value)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               {c.selected.people ? (
                 <fieldset>
                   <legend>
@@ -419,12 +759,23 @@ export function RepairPage({
                 </fieldset>
               ) : null}
               <div className="repair-buttons">
-                <button type="button" disabled={c.busy} onClick={() => void c.load(c.topic)}>
-                  Back to records
+                <button
+                  type="button"
+                  disabled={c.busy}
+                  onClick={() => (editingAgenda ? c.closeAgendaEditor() : void c.load(c.topic))}
+                >
+                  {editingAgenda ? "Close" : "Back to records"}
                 </button>
-                <button type="button" className="repair-primary" disabled={c.busy} onClick={() => void c.prepare()}>
-                  {reviewTitle}
-                </button>
+                {c.selected.actions.length && !agendaDraftStale ? (
+                  <button
+                    type="button"
+                    className="repair-primary"
+                    disabled={c.busy || !c.canReview}
+                    onClick={() => void c.prepare()}
+                  >
+                    {reviewTitle}
+                  </button>
+                ) : null}
               </div>
             </section>
             {hasSource ? (
@@ -447,7 +798,6 @@ export function RepairPage({
                         </button>
                       </p>
                     ))}
-                    <small>Requires its own review.</small>
                   </section>
                 ) : null}
               </aside>
@@ -472,34 +822,45 @@ export function RepairPage({
                   </div>
                   <div>
                     <small>After</small>
-                    <p>{change.after || "None"}</p>
+                    <p>
+                      <strong>{change.after || "None"}</strong>
+                    </p>
                   </div>
                 </section>
               ))
             )}
-            <div className="repair-layout">
-              <section className="repair-panel">
-                <h2>{c.review.memory ? (addingMemory ? "Who remembers this?" : "Applies to") : "Affected records"}</h2>
-                <ul>
+            <div className="repair-review-meta">
+              <section aria-labelledby="repair-affected">
+                <h2 id="repair-affected">
+                  {c.review.memory ? (addingMemory ? "Who remembers this?" : "Applies to") : "Affected records"}
+                </h2>
+                <ul className={c.review.memory ? "repair-review-people" : undefined}>
                   {(c.review.memory?.people ?? c.review.affected).map((effect, i) => (
                     <li key={i}>{effect}</li>
                   ))}
                 </ul>
               </section>
-              <aside className="repair-panel">
-                <h2>{c.review.checkpoint ? "Checkpoint" : "Undo"}</h2>
+              <aside className="repair-muted">
                 <p>
                   {c.review.checkpoint
-                    ? "Created before saving."
+                    ? "A checkpoint will be saved."
                     : c.review.undoAvailable
-                      ? "Available in Repair history."
-                      : "Unavailable for this action."}
+                      ? "Undo available in Repair history."
+                      : "Undo unavailable."}
                 </p>
                 {c.review.related.map((r) => (
                   <p key={r.id}>{r.title} · Separate repair</p>
                 ))}
               </aside>
             </div>
+            {source.length ? (
+              <details className="repair-review-source">
+                <summary>Source</summary>
+                {source.map((excerpt, i) => (
+                  <blockquote key={i}>{excerpt}</blockquote>
+                ))}
+              </details>
+            ) : null}
             {isRestore ? (
               <label className="repair-confirm">
                 <input
@@ -534,7 +895,9 @@ export function RepairPage({
                           ? "Forget memory"
                           : restoringMemory
                             ? "Restore memory"
-                            : "Save changes"}
+                            : correctingMemory
+                              ? "Save correction"
+                              : "Save changes"}
               </button>
             </div>
           </>
@@ -552,8 +915,18 @@ export function RepairPage({
               <button type="button" disabled={c.busy} onClick={() => void c.showHistory()}>
                 View repair history
               </button>
-              <button type="button" className="repair-primary" disabled={c.busy} onClick={c.showHub}>
-                Back to REPAIR
+              <button
+                type="button"
+                className="repair-primary"
+                disabled={c.busy}
+                onClick={() => {
+                  if (browsingAgenda) {
+                    c.closeAgendaEditor();
+                    void c.load();
+                  } else c.showHub();
+                }}
+              >
+                {browsingAgenda ? "Back to Agenda" : "Back to REPAIR"}
               </button>
             </div>
           </section>
@@ -588,7 +961,6 @@ export function RepairPage({
             ) : (
               <p>No repairs yet.</p>
             )}
-            <small>Undo checks for later changes before restoring previous values.</small>
             {(c.index?.historyTotal ?? 0) > 50 ? (
               <div className="repair-buttons">
                 <button
@@ -636,9 +1008,6 @@ export function RepairPage({
                 Save checkpoint
               </button>
             </form>
-            <button type="button" onClick={() => void c.showHistory()} disabled={c.busy}>
-              Repair history
-            </button>
             <div className="repair-records">
               {c.index?.checkpoints.map((p) => (
                 <section key={p.id} className="repair-panel">

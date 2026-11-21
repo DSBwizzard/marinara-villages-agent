@@ -491,7 +491,7 @@ async function roomFixture(f: Awaited<ReturnType<typeof fixture>>) {
 await runCase("native-repair/room", async () => {
   const f = await fixture(),
     room = await roomFixture(f),
-    record = (await f.api.list("places")).records.find((row) => row.summary === "Room description")!;
+    record = (await f.api.list("places")).records.find((row) => row.summary === "Room detail")!;
   const before = await room.context();
   assert(JSON.stringify(before.parts).includes("Wooden tables."));
   const review = await f.prepare(record.id, "change-room", "Painted green tables.", []);

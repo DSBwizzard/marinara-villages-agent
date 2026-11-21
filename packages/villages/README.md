@@ -55,7 +55,7 @@ Community is an ordinary Venue Class. Community Venues can have managers, worker
 
 Map uploads need at least **768 pixels on the shorter side** and **1024 on the longer side**, with proportions between **2:3 and 2:1**. Generation requests an overhead map at 2560 × 1440; providers may return other dimensions.
 
-Setup drafts save on your device, so finish them in the same browser. If your connection drops or you leave Founding, returning retrieves the same saved suggestion attempt automatically. Cancelled browser waits do not indicate generation failure. A confirmed failed or interrupted attempt offers **Retry** for a new, explicitly requested generation. Background jobs such as Routines and initial Wishes retry one eligible empty or malformed answer automatically, preserving completed work. This can charge one additional model response. Further failures and interrupted requests can be retried under **REPAIR → Progress**.
+Setup drafts save on your device, so finish them in the same browser. If your connection drops or you leave Founding, returning retrieves the same saved suggestion attempt automatically. Cancelled browser waits do not indicate generation failure. A confirmed failed or interrupted attempt offers **Retry** for a new, explicitly requested generation. Background jobs such as Routines and initial Wishes retry one eligible empty or malformed answer automatically, preserving completed work. This can charge one additional model response. Further failures and interrupted requests can be retried under **REPAIR → Recover work**.
 
 Characters keep their authored histories, relationships, secrets, and limits on what they know. Sharing a homeworld does not automatically make them acquainted. Optional lorebooks provide reference context without being rewritten.
 
@@ -198,11 +198,15 @@ The Memories page starts with your Persona and loads entries in batches. **Inspe
 
 ## Repair your world
 
-Open **REPAIR** from the main menu. Choose **Memories**, **People**, **Places**, **World & history**, **Progress**, or **Backups & repairs**. **People** lists the villagers; choose someone to see their **Memories** or **Details**. Under **Details**, **letter style** previews and changes their font for existing and future letters. The style stays with that character if they leave and return. REPAIR is an administrative view: saved records, private memories, sources, history, and repair tools are available by default. Browsing does not teach your Persona or any villager anything.
+Open **REPAIR** from the main menu. Browse **People**, **Places & venues**, or **World & history**. Under **People**, choose a villager or **Your Persona** to see their **Memories**. You can also search saved records from **Find a record**. Memory results show who remembers the event. Under a villager’s **Details**, **letter style** previews and changes their font for existing and future letters. The style stays with that character if they leave and return. In **Places & venues**, choose a location and then a Zone to edit its available records. Use **Recover work** for unfinished work and **History & backups** for repairs and checkpoints. REPAIR gives you administrative access to saved records, private memories, sources, and history. Browsing does not teach your Persona or any villager anything.
 
 Edit a record, then use **Review changes** to check **Before / After** and **Affected records** before saving. **Modify** edits a memory's text. **Forget** shows the saved memory as read-only text and lets you select who forgets it; **Review forgetting** shows the effect before saving. Switching back to Modify keeps your unfinished edit. Memory changes apply only to selected people who already know the detail; the review shows each person's current wording. A memory about someone does not give that person knowledge of it. **Add memory** shows the new text and who will remember it, with the source recorded as **Added by you**. Physical facts, access, character context, relationships and authoritative progress have separate editors. Historical Scene corrections are annotations. Saved-effect recovery replays retained work without requesting new model responses.
 
-**Places → Zone** edits **Long-term details** and **Short-term details**, and can clear or deliberately renew the short-term details. Undo restores the earlier expiry rather than starting another day. Corrections do not invent actions, consent, or character knowledge.
+Under **People → [resident] → Agenda**, select an activity to edit it in the planner or use **Add activity**. Both editors use the Venue and Zone pickers. Review is available when the draft has a change. The review shows which ordinary activities the new item replaces or shortens. Appointments and Project reservations retain their existing times.
+
+Visitors appear under **People**, with their memories, character context, letter style, and visits under **Details**. Turning visits off ends the current trip and clears its preferences and lodging through the same rules as People. Visitor access is available under each Zone. These repairs support review and undo.
+
+Under **Places & venues**, choose a Zone and open the room detail you want to correct. Active timed details show when they expire. Corrections keep that expiry. A Venue’s **Entry policy** and **Standing access** are separate controls.
 
 **Repair history** keeps the changes and offers **Review undo** where a safe inverse is available. Undo refuses to overwrite later changes to affected records. Consequential repairs save a checkpoint automatically; you can also name a manual checkpoint. Checkpoints retain independent copies of saved world data. Restoration has its own review and saves the current world first. Current time, spending and replay protection remain current, so elapsed Projects may complete when play resumes.
 
@@ -272,14 +276,14 @@ Background work shows progress, failures, and provider-reported usage where avai
 
 ## If something goes wrong
 
-| Problem                       | What to do                                                                                                    |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Founding asks for connections | Select available language connections for both **System** and **GM**.                                         |
-| A setup suggestion seems lost | Return to Founding; the saved attempt recovers automatically. Use **Retry** only after a confirmed failure.   |
-| Preparation stops             | Fix any connection problem, then retry unfinished work under **REPAIR → Progress**. Completed tasks are kept. |
-| A Scene send fails            | Keep or edit the retained draft. An unchanged submission can reuse saved work.                                |
-| Saved output needs applying   | Use **Replay saved work** when offered. This applies saved output without buying another interpretation.      |
-| A turn is held with HALT      | Read the notice and rewrite the preserved input. That turn has not become story history.                      |
+| Problem                       | What to do                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Founding asks for connections | Select available language connections for both **System** and **GM**.                                             |
+| A setup suggestion seems lost | Return to Founding; the saved attempt recovers automatically. Use **Retry** only after a confirmed failure.       |
+| Preparation stops             | Fix any connection problem, then retry unfinished work under **REPAIR → Recover work**. Completed tasks are kept. |
+| A Scene send fails            | Keep or edit the retained draft. An unchanged submission can reuse saved work.                                    |
+| Saved output needs applying   | Use **Replay saved work** when offered. This applies saved output without buying another interpretation.          |
+| A turn is held with HALT      | Read the notice and rewrite the preserved input. That turn has not become story history.                          |
 
 Failures do not automatically purchase replacement responses. Explicit interpretation, replacement, or generation retries may make another model request. A timed-out or interrupted provider request may already have been billed. Saved results reduce repeated work but cannot guarantee that every response survives a hard server crash.
 

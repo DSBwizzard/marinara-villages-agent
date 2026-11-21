@@ -37,6 +37,10 @@ export function planRoutineDays(state: VillageState, now: Date): void {
     }
     const today = agendaDateKey(now);
     for (const key of Object.keys(agenda.plannedDays)) if (key < today) delete agenda.plannedDays[key];
+    if (agenda.repairedDays) {
+      agenda.repairedDays = agenda.repairedDays.filter((key) => Object.hasOwn(agenda.plannedDays!, key));
+      if (!agenda.repairedDays.length) delete agenda.repairedDays;
+    }
   }
 }
 export function activateVillagerDay(villager: VillageVillager, now: Date, state: VillageState): void {

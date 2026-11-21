@@ -9,7 +9,11 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { worldRepairRecords, applyWorldRepair } from "../packages/villages/src/server/domain/rules/repair-records.js";
+import {
+  worldRepairRecords,
+  applyWorldRepair,
+  repairPlaceDirectory,
+} from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 
 const bundle = await build({
@@ -55,13 +59,22 @@ await withBrowser(browser, async () => {
                 description,
                 image: null,
               },
+              {
+                id: "tool-room",
+                name: "Tool room",
+                kind: "restricted",
+                venueClass: "community",
+                description: "Tools on shelves.",
+                image: null,
+                connectedTo: ["exterior"],
+              },
             ],
           }),
         ],
       });
       initializeRoomContinuity(state, "hall", "exterior", description, "founding", at);
       const roomRecords = (world = state) =>
-        worldRepairRecords(world, false).filter((row) => row.summary === "Room description");
+        worldRepairRecords(world, false).filter((row) => row.summary === "Room detail");
       const original = roomRecords();
       const wall = original.find((row) => row.fields[0].value === "White walls. Two windows.");
       const table = original.find((row) => row.fields[0].value === "A table.");
@@ -89,7 +102,10 @@ await withBrowser(browser, async () => {
       );
       await page.route("**/api/villages**", (route) => {
         const path = new URL(route.request().url()).pathname;
-        if (path.endsWith("/records")) return fulfill(route, { json: { records: [getRecord()], total: 1 } });
+        if (path.endsWith("/records")) {
+          assert.equal(new URL(route.request().url()).searchParams.get("browse"), "places");
+          return fulfill(route, { json: { records: [], total: 0, directory: repairPlaceDirectory(state) } });
+        }
         if (path.endsWith("/record")) return fulfill(route, { json: getRecord() });
         if (path.endsWith("/review")) {
           pending = route.request().postDataJSON();
@@ -124,8 +140,21 @@ await withBrowser(browser, async () => {
       await page.goto("http://place-repair.test/");
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       const open = async () => {
-        await page.getByRole("button", { name: "Places Venues, Zones, homes, and access.", exact: true }).click();
-        await page.getByRole("button", { name: /Hall · Entrance Room description/ }).click();
+        await page.getByRole("button", { name: "Places & venues", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "Venues", exact: true }).click();
+        await page.getByRole("button", { name: "Hall", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Venue details", exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "Tool room", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Entry policy", exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "Standing access", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Your Persona", exact: true })).toBeVisible();
+        const trail = page.getByRole("navigation", { name: "Repair location navigation" });
+        await trail.getByRole("button", { name: "Hall", exact: true }).click();
+        await page.getByRole("button", { name: "Entrance", exact: true }).click();
+        await expect(page.getByRole("heading", { name: "Entrance", exact: true })).toBeVisible();
+        await page.locator(".villages-repair").screenshot({ path: `.build-tmp/place-repair/${name}-zone.png` });
+        await page.getByRole("button", { name: /Room detail White walls/ }).click();
       };
       await open();
       await expect(page.getByText("Current", { exact: true })).toHaveCount(0);

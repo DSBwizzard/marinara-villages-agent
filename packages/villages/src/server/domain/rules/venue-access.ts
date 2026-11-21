@@ -221,6 +221,18 @@ export function mayInvite(venue: VillageVenue, zone: VillageVenueZone, actor: st
     zone.kind !== "exterior" && (zoneManagers(venue, zone).includes(actor) || !!zone.access?.inviterIds.includes(actor))
   );
 }
+function validGrantIssuer(venue: VillageVenue, zone: VillageVenueZone, grant: VenueAccessState["permissions"][number]) {
+  return (
+    mayInvite(venue, zone, grant.issuerId) ||
+    (grant.issuerId === "system" &&
+      grant.id.startsWith("repair:") &&
+      grant.duration === "standing" &&
+      grant.sceneId === null &&
+      grant.accompaniedBy === null &&
+      !grant.outsideHours &&
+      !grant.sourceLineIds.length)
+  );
+}
 export function mayHostLodging(venue: VillageVenue, zone: VillageVenueZone, actor: string): boolean {
   const household = [...new Set([...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])])];
   return (
@@ -335,7 +347,7 @@ export function evaluateZoneAccess(
       (!context.permissionId || grant.id === context.permissionId) &&
       grant.zoneId === zone.id &&
       grant.visitorId === actor &&
-      mayInvite(venue, zone, grant.issuerId) &&
+      validGrantIssuer(venue, zone, grant) &&
       (grant.duration === "standing" ||
         (grant.duration === "lodging" &&
           Date.parse(grant.issuedAt) <= (context.at ?? new Date()).getTime() &&
@@ -433,7 +445,7 @@ export function reconcileVenueAccess(venue: VillageVenue, knownActors?: string[]
     if (
       !zone ||
       (known && !known.has(grant.visitorId)) ||
-      !mayInvite(venue, zone, grant.issuerId) ||
+      !validGrantIssuer(venue, zone, grant) ||
       (grant.duration === "lodging" && !mayHostLodging(venue, zone, grant.issuerId))
     )
       grant.revoked = true;

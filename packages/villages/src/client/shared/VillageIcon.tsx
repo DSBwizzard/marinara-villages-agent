@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 export const VILLAGE_DESTINATIONS = ["people", "projects", "places", "mailbox", "settings"] as const;
 export type VillageDestination = (typeof VILLAGE_DESTINATIONS)[number];
+export type VillageIconName =
+  VillageDestination | "memory" | "world" | "venue" | "zone" | "details" | "access" | "calendar";
 // Curved silhouettes follow the reference without tracing its raster pixel edges.
-const glyphs: Record<VillageDestination, ReactNode> = {
+const glyphs: Record<VillageIconName, ReactNode> = {
   people: (
     <>
       <circle cx="16" cy="8" r="4.2" />
@@ -32,8 +34,34 @@ const glyphs: Record<VillageDestination, ReactNode> = {
       ))}
     </>
   ),
+  memory: (
+    <path
+      fillRule="evenodd"
+      d="M5 4h22a2 2 0 0 1 2 2v17a2 2 0 0 1-2 2h-9l-7 5v-5H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm3 7v2h16v-2Zm0 6v2h11v-2Z"
+    />
+  ),
+  world: (
+    <path
+      fillRule="evenodd"
+      d="M16 2a14 14 0 1 1 0 28 14 14 0 0 1 0-28Zm-5 15H4a12 12 0 0 0 3 7h5a27 27 0 0 1-1-7Zm0-2H4a12 12 0 0 1 3-7h5a27 27 0 0 0-1 7Zm2 0h6a25 25 0 0 0-1-7h-4a25 25 0 0 0-1 7Zm0 2a25 25 0 0 0 1 7h4a25 25 0 0 0 1-7Zm8 0h7a12 12 0 0 1-3 7h-5a27 27 0 0 0 1-7Zm0-2h7a12 12 0 0 0-3-7h-5a27 27 0 0 1 1 7Z"
+    />
+  ),
+  venue: (
+    <path fillRule="evenodd" d="M2 28h28v2H2Zm3-2V5h22v21h-8v-6h-6v6ZM9 9v3h5V9Zm9 0v3h5V9Zm-9 6v3h5v-3Zm9 0v3h5v-3Z" />
+  ),
+  zone: <path fillRule="evenodd" d="M4 4h24v24H4Zm3 3v18h18V7H7Zm3 3h5v5h-5Zm7 0h5v5h-5Zm-7 7h5v5h-5Zm7 0h5v5h-5Z" />,
+  details: <path fillRule="evenodd" d="M6 3h14l6 6v20H6Zm13 2v6h5ZM10 14v2h12v-2Zm0 5v2h12v-2Zm0 5v2h8v-2Z" />,
+  calendar: (
+    <path fillRule="evenodd" d="M4 5h5V2h3v3h8V2h3v3h5v24H4Zm3 8v13h18V13Zm3 4h4v3h-4Zm8 0h4v3h-4Zm-8 5h4v2h-4Z" />
+  ),
+  access: (
+    <path
+      fillRule="evenodd"
+      d="M13 2a8 8 0 0 1 7.4 11l8.6 8.6V28h-6v-4h-4v-4l-3-3A8 8 0 1 1 13 2Zm-2 5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"
+    />
+  ),
 };
-export function VillageIcon({ name }: { name: VillageDestination }) {
+export function VillageIcon({ name }: { name: VillageIconName }) {
   return (
     <svg
       className="mari-rgb-static-icon"

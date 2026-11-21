@@ -2,6 +2,10 @@ import type { VillageAgenda, VillageAgendaBlock } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { routineProfileFromWeek } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { flexibleAgendaBlock } from "./agenda-flexibility.js";
+
+export const scheduledAgendaActivity = (block: VillageAgendaBlock) =>
+  !(!block.venueId && flexibleAgendaBlock(block) && block.activity === "Taking care of their own affairs");
 
 export function restingAgendaBlock(block: Pick<VillageAgendaBlock, "activity"> | null): boolean {
   return /\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(block?.activity ?? "");

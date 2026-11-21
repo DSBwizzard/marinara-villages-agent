@@ -6,6 +6,8 @@ import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 /** Owned routines and dated commitments. */
 export type VillageAgenda = {
   plannedDays?: Record<string, VillageAgendaBlock[]>;
+  /** Keep dated administrative corrections through routine and preference refreshes. */
+  repairedDays?: string[];
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
   /** Derived from feature authority on hydration; never an independently editable booking. */

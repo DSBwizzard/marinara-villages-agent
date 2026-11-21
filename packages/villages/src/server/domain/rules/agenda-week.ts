@@ -98,13 +98,12 @@ function fillFromFallback(fallback: VillageAgendaBlock[], start: number, end: nu
   });
 }
 
-export function agendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {
+export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
-  const ordinary =
-    agenda.activeDay?.dateKey === key
-      ? agenda.activeDay.blocks
-      : (agenda.plannedDays?.[key] ??
+  return agenda.activeDay?.dateKey === key
+    ? agenda.activeDay.blocks
+    : (agenda.plannedDays?.[key] ??
         (agenda.routineProfile
           ? routineDay(
               agenda.routineProfile,
@@ -129,8 +128,11 @@ export function agendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaB
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
+}
+
+export function agendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {
   return composeAgenda(
-    ordinary,
-    (agenda.reservations ?? []).filter((reservation) => reservation.dateKey === key),
+    ordinaryAgendaBlocksFor(agenda, at),
+    (agenda.reservations ?? []).filter((reservation) => reservation.dateKey === agendaDateKey(at)),
   );
 }

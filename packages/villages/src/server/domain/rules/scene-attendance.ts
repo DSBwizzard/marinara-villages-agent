@@ -1,7 +1,7 @@
 import { findLocation, findNpc } from "./places.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
-import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
+import type { VillageAgendaBlock, VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
 import { agendaAt } from "./agenda-plan.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -26,10 +26,27 @@ export function sameSceneRoutine(village: VillageState, scene: VenueScene, actor
   const after = new ZonedDate(now, timeZone);
   const block = (person: typeof resident, at: Date) =>
     agendaAt(person.agenda, at.getHours() * 60 + at.getMinutes(), at);
-  return (
-    agendaDateKey(before) === agendaDateKey(after) &&
-    JSON.stringify(block(previous, before)) === JSON.stringify(block(resident, after))
-  );
+  const date = agendaDateKey(after);
+  if (agendaDateKey(before) !== date) return false;
+  const captured = block(previous, before),
+    current = block(resident, after);
+  if (JSON.stringify(captured) === JSON.stringify(current)) return true;
+  const beforeMinute = before.getHours() * 60 + before.getMinutes();
+  const afterMinute = after.getHours() * 60 + after.getMinutes();
+  if (
+    !captured ||
+    !current ||
+    (!resident.agenda?.repairedDays?.includes(date) && !previous.agenda?.repairedDays?.includes(date)) ||
+    afterMinute < captured.startMinute ||
+    afterMinute >= captured.endMinute ||
+    beforeMinute < current.startMinute ||
+    beforeMinute >= current.endMinute
+  )
+    return false;
+  // A repair can split an activity without changing what the resident is doing now.
+  const meaning = ({ startMinute: _start, endMinute: _end, ...activity }: VillageAgendaBlock) =>
+    JSON.stringify(activity);
+  return meaning(captured) === meaning(current);
 }
 
 /** Do not invent an NPC encounter in a resident's scheduled Zone while evidenced movement puts them elsewhere. */

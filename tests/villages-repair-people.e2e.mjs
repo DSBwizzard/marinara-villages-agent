@@ -1,4 +1,4 @@
-// Test cases: repair-people/navigation, repair-people/letter-font, repair-people/late-responses, repair-people/restore-draft
+// Test cases: repair-people/navigation, repair-people/agenda, repair-people/letter-font, repair-people/visitor, repair-people/late-responses, repair-people/restore-draft
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -20,8 +20,9 @@ const code = await build({
 const browser = await chromium.launch({ headless: true });
 const people = [
   { id: "player", name: "Your Persona" },
-  { id: "a", name: "Nora" },
+  { id: "a", name: "Nora", hasAgenda: true },
   { id: "b", name: "Ellis" },
+  { id: "guest", name: "The Visitor", visitor: true },
 ];
 const sharedId = '["memory","shared"]',
   secretId = '["memory","secret"]',
@@ -29,6 +30,65 @@ const sharedId = '["memory","shared"]',
 const known = "Your recollection of the telescope.",
   privateText = "Nora's private recollection.",
   secretText = "Nora's private compass.";
+const agendaDay = {
+  id: '["agenda","a","2026-11-17"]',
+  topic: "people",
+  token: "agenda-day",
+  title: "Nora · Agenda · Tuesday, Nov 17",
+  agendaDay: "Tuesday, Nov 17",
+  agenda: {
+    residentId: "a",
+    date: "2026-11-17",
+    weekday: "Tuesday",
+    venues: [
+      { value: "workshop", label: "Workshop", zones: [{ value: "bench", label: "Workbench" }] },
+      { value: "garden", label: "Garden", zones: [{ value: "plot", label: "Herb plot" }] },
+    ],
+    blocks: [
+      { startMinute: 540, endMinute: 600, activity: "Tending herbs", place: "Garden", repairIndex: 0 },
+      { startMinute: 600, endMinute: 660, activity: "Meet at the gate", source: "agreed" },
+      { startMinute: 720, endMinute: 780, activity: "Binding notebooks", repairIndex: 1 },
+    ],
+  },
+  summary: "Edit this date",
+  fields: [
+    { key: "activity:0", label: "Activity 1", type: "text", value: "Tending herbs" },
+    { key: "start:0", label: "Activity 1 start", type: "clock", value: "09:00" },
+    { key: "end:0", label: "Activity 1 end", type: "clock", value: "10:00" },
+    { key: "venue:0", label: "Venue", type: "choice", value: "garden" },
+    { key: "zone:0", label: "Zone", type: "choice", value: "plot" },
+    { key: "activity:1", label: "Activity 2", type: "text", value: "Binding notebooks" },
+    { key: "start:1", label: "Activity 2 start", type: "clock", value: "12:00" },
+    { key: "end:1", label: "Activity 2 end", type: "clock", value: "13:00" },
+    { key: "activity:new", label: "Activity", type: "text", value: "" },
+    { key: "start:new", label: "Start", type: "clock", value: "" },
+    { key: "end:new", label: "End", type: "clock", value: "" },
+    { key: "venue:new", label: "Venue", type: "choice", value: "" },
+    { key: "zone:new", label: "Zone", type: "choice", value: "" },
+  ],
+  source: ["09:00–24:00 · Tending herbs · Garden", "10:00–11:00 · Meet at the gate · Agreed plan"],
+  actions: [
+    { id: "correct", label: "Modify" },
+    { id: "add-activity", label: "Add activity" },
+  ],
+  related: [],
+};
+const today = {
+  ...agendaDay,
+  id: '["agenda","a","2026-11-16"]',
+  title: "Nora · Agenda · Monday, Nov 16",
+  agendaDay: "Monday, Nov 16",
+  agenda: {
+    ...agendaDay.agenda,
+    residentId: "a",
+    date: "2026-11-16",
+    weekday: "Monday",
+    today: true,
+    blocks: [{ startMinute: 480, endMinute: 540, activity: "Sorting tools", repairIndex: 0 }],
+  },
+  summary: "Today · Agenda",
+  fields: agendaDay.fields.map((field) => (field.key === "activity:0" ? { ...field, value: "Sorting tools" } : field)),
+};
 const deferred = () => {
   return Promise.withResolvers();
 };
@@ -57,13 +117,15 @@ async function fixture(width) {
   };
   const record = (id, person) => {
     const value =
-      id === secretId
-        ? secretText
-        : person === "b"
-          ? "Ellis paints the harbor."
-          : person === "player"
-            ? known
-            : privateText;
+      person === "guest"
+        ? "The Visitor remembers the old clock."
+        : id === secretId
+          ? secretText
+          : person === "b"
+            ? "Ellis paints the harbor."
+            : person === "player"
+              ? known
+              : privateText;
     return {
       id,
       token: `${person}-${id}`,
@@ -73,12 +135,14 @@ async function fixture(width) {
       fields: [{ key: "text", label: "Memory", type: "text", value }],
       source: ["Saved source"],
       people:
-        id === secretId
-          ? [{ ...people[1], text: secretText }]
-          : [
-              { ...people[0], text: known },
-              { ...people[1], text: privateText },
-            ],
+        person === "guest"
+          ? [{ ...people[3], text: value }]
+          : id === secretId
+            ? [{ ...people[1], text: secretText }]
+            : [
+                { ...people[0], text: known },
+                { ...people[1], text: privateText },
+              ],
       actions: [{ id: "correct", label: "Modify" }],
       related: [],
     };
@@ -105,6 +169,31 @@ async function fixture(width) {
     actions: [{ id: "correct", label: "Modify" }],
     related: [],
   };
+  const visitorDetails = [
+    {
+      id: '["visitor","guest"]',
+      token: "guest-visits",
+      topic: "people",
+      title: "The Visitor · visits",
+      summary: "Visits on",
+      fields: [{ key: "visitsEnabled", label: "Visits enabled", type: "boolean", value: true }],
+      source: ["Visit Nov 20 to Nov 22"],
+      actions: [{ id: "correct", label: "Modify" }],
+      related: [],
+    },
+    { ...fontRecord, id: '["letter-font","guest"]', title: "The Visitor · letter style" },
+    {
+      id: '["person","guest"]',
+      token: "guest-context",
+      topic: "people",
+      title: "The Visitor · character context",
+      summary: "Character",
+      fields: [{ key: "personality", label: "Personality", type: "text", value: "Careful" }],
+      source: [],
+      actions: [{ id: "correct", label: "Modify" }],
+      related: [],
+    },
+  ];
   await page.route("**/api/capability-packages/villages/assets/letter-fonts/*.json", (route) => {
     const name = new URL(route.request().url()).pathname.split("/").at(-1);
     return fulfill(route, {
@@ -159,6 +248,17 @@ async function fixture(width) {
         ],
       });
     if (path === "/repair/records") {
+      if (person === "guest")
+        return reply(route, "list", {
+          records:
+            url.searchParams.get("section") === "details" ? visitorDetails : [record('["memory","guest"]', person)],
+          total: 3,
+          next: null,
+        });
+      if (url.searchParams.get("section") === "agenda") {
+        assert.equal(person, "a");
+        return reply(route, "list", { records: [today, agendaDay], total: 2, next: null });
+      }
       const details = url.searchParams.get("section") === "details";
       const rows = details
         ? [
@@ -187,10 +287,24 @@ async function fixture(width) {
     }
     if (path === "/repair/record") {
       const id = url.searchParams.get("id");
+      if (person === "guest" && visitorDetails.some((row) => row.id === id))
+        return reply(
+          route,
+          `record:${id}`,
+          visitorDetails.find((row) => row.id === id),
+        );
       return reply(
         route,
         `record:${id}`,
-        id === additionId ? addition : id === fontRecord.id ? fontRecord : record(id, person),
+        id === additionId
+          ? addition
+          : id === fontRecord.id
+            ? fontRecord
+            : id === today.id
+              ? today
+              : id === agendaDay.id
+                ? agendaDay
+                : record(id, person),
       );
     }
     if (path === "/repair/apply") return reply(route, "apply", { applied: true });
@@ -199,6 +313,25 @@ async function fixture(width) {
       const body = route.request().postDataJSON();
       assert.equal("inspection" in body, false);
       calls.push({ path, body });
+      if (body.values?.["end:new"] === "noon")
+        return fulfill(route, {
+          status: 400,
+          json: { error: "Use a 24-hour time such as 09:30 or 24:00.", code: "repair-field:end:new" },
+        });
+      if (body.recordId === agendaDay.id || body.recordId === today.id)
+        return reply(route, "repair", {
+          kind: "repair",
+          id: "agenda-review",
+          token: "agenda-review-token",
+          title: agendaDay.title,
+          changes: [
+            { label: "Schedule", before: "09:00", after: body.values["start:0"] ?? body.values["activity:new"] },
+          ],
+          affected: [body.recordId === today.id ? today.title : agendaDay.title],
+          related: [],
+          checkpoint: false,
+          undoAvailable: true,
+        });
       const kind = path.endsWith("/undo") ? "undo" : path.endsWith("/restore") ? "restore" : "repair",
         creating = body.recordId === additionId;
       return reply(route, kind, {
@@ -229,13 +362,11 @@ async function fixture(width) {
   });
   await page.goto("http://repair-people.test/");
   await page.addScriptTag({ content: code.outputFiles[0].text });
-  await expect(page.getByRole("heading", { name: "REPAIR", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Find a record", exact: true })).toBeVisible();
   return { page, root: page.locator(".villages-repair"), hold, calls, close: () => page.close() };
 }
 const openPeople = async (page) => {
-  await page
-    .getByRole("button", { name: "People Villagers, their memories, and character details.", exact: true })
-    .click();
+  await page.getByRole("button", { name: "People", exact: true }).click();
   await expect(page.getByRole("button", { name: "Nora", exact: true })).toBeVisible();
 };
 const goNora = async (page) => {
@@ -243,23 +374,118 @@ const goNora = async (page) => {
   await page.getByRole("button", { name: "Nora", exact: true }).click();
 };
 const chooseEllis = async (page) => {
-  await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+  await page.getByRole("button", { name: "Find a record", exact: true }).click();
   await openPeople(page);
   await page.getByRole("button", { name: "Ellis", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
 };
 await withBrowser(browser, async () => {
   await mkdir(".build-tmp/repair-people", { recursive: true });
+  await runCase("repair-people/agenda", async () => {
+    for (const width of [1440, 390]) {
+      const f = await fixture(width),
+        { page, root } = f;
+      await goNora(page);
+      await page.getByRole("button", { name: "Agenda", exact: true }).click();
+      await expect(root.getByRole("heading", { name: "Nora · Agenda", exact: true })).toBeVisible();
+      await root.getByRole("button", { name: /Sorting tools/ }).click();
+      await expect(root.getByRole("textbox", { name: "Activity" })).toHaveValue("Sorting tools");
+      await expect(root.getByRole("button", { name: "Repair activity" })).toHaveCount(0);
+      await expect(root.getByRole("group", { name: "Day planner" })).toBeVisible();
+      const review = root.getByRole("button", { name: "Review changes", exact: true });
+      await expect(review).toBeDisabled();
+      await root.getByRole("button", { name: "Add activity", exact: true }).click();
+      await expect(review).toBeDisabled();
+      await root.getByRole("textbox", { name: "Activity" }).fill("Label drawers");
+      await root.getByRole("textbox", { name: "Start" }).fill("14:00");
+      const end = root.getByRole("textbox", { name: "End" });
+      await end.fill("noon");
+      await root.getByRole("button", { name: "Review changes" }).click();
+      await expect(end).toBeFocused();
+      await expect(end).toHaveAccessibleDescription("Use a 24-hour time such as 09:30 or 24:00.");
+      await expect(root.getByRole("alert")).toHaveCSS("color", "rgb(255, 154, 154)");
+      await expect(root.getByRole("textbox", { name: "Start" })).not.toHaveAttribute("aria-invalid", "true");
+      await end.fill("14:30");
+      await expect(root.getByRole("alert")).toHaveCount(0);
+      const venue = root.getByRole("combobox", { name: "Venue" });
+      const zone = root.getByRole("combobox", { name: "Zone" });
+      await expect(zone).toHaveCount(0);
+      await venue.selectOption("workshop");
+      await zone.selectOption("bench");
+      await venue.selectOption("garden");
+      await expect(zone).toHaveValue("");
+      await expect(zone.getByRole("option", { name: "Workbench" })).toHaveCount(0);
+      await zone.selectOption("plot");
+      await root.getByRole("button", { name: "Review changes" }).click();
+      const addition = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
+      assert.equal(addition.recordId, today.id);
+      assert.equal(addition.action, "add-activity");
+      assert.equal(addition.values["activity:new"], "Label drawers");
+      assert.equal(addition.values["venue:new"], "garden");
+      assert.equal(addition.values["zone:new"], "plot");
+      await root.getByRole("button", { name: "Back", exact: true }).click();
+      await root.getByRole("button", { name: /Tuesday, Nov 17/ }).click();
+      await root.getByRole("button", { name: /Meet at the gate/ }).click();
+      await expect(root.getByRole("status")).toContainText("Agreed with you");
+      await expect(root.getByRole("textbox")).toHaveCount(0);
+      const openHerbs = () => root.getByRole("button", { name: /Tending herbs/ }).click();
+      await openHerbs();
+      await expect(root.getByRole("textbox")).toHaveCount(3);
+      await expect(root.getByRole("textbox", { name: "End" })).toHaveValue("10:00");
+      const start = root.getByRole("textbox", { name: "Start" });
+      await expect(review).toBeDisabled();
+      await start.fill("9:00");
+      await expect(review).toBeDisabled();
+      await start.fill("09:00");
+      await expect(venue).toHaveValue("garden");
+      await expect(zone).toHaveValue("plot");
+      await venue.selectOption("workshop");
+      await expect(review).toBeEnabled();
+      await venue.selectOption("garden");
+      await expect(zone).toHaveValue("plot");
+      await expect(review).toBeDisabled();
+      await venue.selectOption("workshop");
+      await zone.selectOption("bench");
+      await review.click();
+      const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
+      assert.equal(sent.recordId, agendaDay.id);
+      assert.equal(sent.values["start:0"], "09:00");
+      assert.equal(sent.values["venue:0"], "workshop");
+      assert.equal(sent.values["zone:0"], "bench");
+      assert.deepEqual(Object.keys(sent.values).sort(), ["activity:0", "end:0", "start:0", "venue:0", "zone:0"]);
+      await expect(root.getByLabel("Affected records").getByText(agendaDay.title, { exact: true })).toBeVisible();
+      assert.equal(await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true);
+      await root.getByRole("button", { name: "Back", exact: true }).click();
+      await root.getByRole("button", { name: "Details", exact: true }).click();
+      await expect(root.getByRole("button", { name: /Nora's character context/ })).toBeVisible();
+      const refreshedList = f.hold("list", { records: [today, { ...agendaDay, token: "new-plan" }] });
+      await root.getByRole("button", { name: "Agenda", exact: true }).click();
+      await refreshedList.started;
+      refreshedList.release();
+      const refreshed = f.hold(`record:${agendaDay.id}`, { token: "new-plan" });
+      await openHerbs();
+      await refreshed.started;
+      refreshed.release();
+      await expect(root.getByText("This date changed since you started editing.")).toBeVisible();
+      await expect(root.getByRole("button", { name: "Review changes" })).toHaveCount(0);
+      await root.getByRole("button", { name: "Discard draft and load this date" }).click();
+      await expect(root.getByRole("textbox", { name: "Start" })).toHaveValue("09:00");
+      await f.close();
+    }
+  });
   await runCase("repair-people/navigation", async () => {
     for (const width of [1440, 390]) {
       const f = await fixture(width),
         { page, root } = f;
       await expect(page.getByRole("switch")).toHaveCount(0);
       await openPeople(page);
-      for (const p of people) await expect(page.getByRole("button", { name: p.name, exact: true })).toBeVisible();
+      for (const p of people)
+        await expect(
+          page.getByRole("button", { name: p.visitor ? `${p.name} Visitor` : p.name, exact: true }),
+        ).toBeVisible();
       await expect(root.getByText(privateText, { exact: true })).toHaveCount(0);
       await root.screenshot({ path: `.build-tmp/repair-people/roster-${width}.png` });
-      const input = page.getByRole("searchbox", { name: "Search villagers", exact: true }),
+      const input = page.getByRole("searchbox", { name: "Search people", exact: true }),
         search = page.getByRole("button", { name: "Search", exact: true });
       if (width === 390) await root.evaluate((el) => (el.style.fontSize = "20px"));
       const fieldBox = await input.boundingBox(),
@@ -292,9 +518,7 @@ await withBrowser(browser, async () => {
       const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
       assert.deepEqual([...sent.knowers].sort(), ["a", "player"]);
       assert.equal(sent.personId, "a");
-      const scope = root
-        .locator(".repair-panel")
-        .filter({ has: page.getByRole("heading", { name: "Applies to", exact: true }) });
+      const scope = root.getByRole("region", { name: "Applies to", exact: true });
       await expect(scope).toContainText("Your Persona");
       await expect(scope).toContainText("Nora");
       await expect(root.getByText(known, { exact: true })).toBeVisible();
@@ -356,6 +580,29 @@ await withBrowser(browser, async () => {
       await f.close();
     }
   });
+  await runCase("repair-people/visitor", async () => {
+    for (const width of [1440, 390]) {
+      const f = await fixture(width),
+        { root } = f;
+      await openPeople(f.page);
+      await root.getByRole("button", { name: "The Visitor Visitor", exact: true }).click();
+      await expect(root.getByRole("button", { name: "Agenda", exact: true })).toHaveCount(0);
+      await expect(root.getByRole("button", { name: /The Visitor remembers the old clock/ })).toBeVisible();
+      await root.getByRole("button", { name: "Details", exact: true }).click();
+      await expect(root.getByRole("button", { name: /The Visitor · character context/ })).toBeVisible();
+      await expect(root.getByRole("button", { name: /The Visitor · letter style/ })).toBeVisible();
+      await root.getByRole("button", { name: /The Visitor · visits/ }).click();
+      await expect(root.getByRole("button", { name: "Review changes", exact: true })).toBeDisabled();
+      await root.getByRole("checkbox", { name: "Visits enabled", exact: true }).uncheck();
+      await root.screenshot({ path: `.build-tmp/repair-people/visitor-${width}.png` });
+      await root.getByRole("button", { name: "Review changes", exact: true }).click();
+      const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
+      assert.equal(sent.personId, "guest");
+      assert.equal(sent.recordId, '["visitor","guest"]');
+      assert.equal(sent.values.visitsEnabled, false);
+      await f.close();
+    }
+  });
   await runCase("repair-people/late-responses", async () => {
     const f = await fixture(390),
       { page, root } = f;
@@ -381,13 +628,8 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
     await expect(root).not.toContainText("Pending Nora draft.");
     for (const kind of ["undo", "restore"]) {
-      await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-      await page
-        .getByRole("button", {
-          name: kind === "undo" ? "Repair history" : "Backups & repairs Review repairs, undo, or restore a checkpoint.",
-          exact: true,
-        })
-        .click();
+      await page.getByRole("button", { name: "History & backups", exact: true }).click();
+      if (kind === "restore") await page.getByRole("button", { name: "Checkpoints", exact: true }).click();
       await expect(root).toContainText(kind === "undo" ? "Private correction" : "Private checkpoint");
       const pending = f.hold(kind);
       await page
@@ -399,10 +641,10 @@ await withBrowser(browser, async () => {
       await pending.done;
       await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
     }
-    await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Repair history", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Find a record", exact: true }).click();
+    await expect(page.getByRole("button", { name: "History & backups", exact: true })).toBeEnabled();
     const staleIndex = f.hold("index", { identity: "retired-world" });
-    await page.getByRole("button", { name: "Repair history", exact: true }).click();
+    await page.getByRole("button", { name: "History & backups", exact: true }).click();
     await staleIndex.started;
     await chooseEllis(page);
     staleIndex.release();
@@ -417,9 +659,8 @@ await withBrowser(browser, async () => {
   await runCase("repair-people/restore-draft", async () => {
     const f = await fixture(390),
       { page, root } = f;
-    await page
-      .getByRole("button", { name: "Backups & repairs Review repairs, undo, or restore a checkpoint.", exact: true })
-      .click();
+    await page.getByRole("button", { name: "History & backups", exact: true }).click();
+    await page.getByRole("button", { name: "Checkpoints", exact: true }).click();
     await expect(root).toContainText("Private checkpoint");
     await page.getByRole("button", { name: "Review restoration", exact: true }).click();
     await page.getByRole("checkbox", { name: "Replace Village progress with this checkpoint", exact: true }).check();
