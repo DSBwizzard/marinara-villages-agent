@@ -1,7 +1,15 @@
-import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "../../shared/villages-inline-markdown.js";
+import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown.js";
 import { paginateReading, type ReadingPage, readingText, sliceReadingNodes } from "./villages-reading-pages.js";
-import { type RefObject, useLayoutEffect, useMemo, useState } from "react";
-import type { SceneReadingSession } from "./reading-session.js";
+import { type RefObject, useLayoutEffect, useMemo, useRef, useState } from "react";
+
+type ReadingCursor = { key: string; offset: number };
+type ReadingPosition = {
+  checkpoint: RefObject<{ cursor: ReadingCursor }>;
+  anchor: RefObject<ReadingCursor>;
+  enterAtEnd: RefObject<boolean>;
+  reset?: number;
+  isFounded?: boolean;
+};
 
 const tag = "marinara-capability-villages";
 
@@ -52,13 +60,22 @@ export function useReadingPages(
   text: string,
   readingKey: string,
   readingRef: RefObject<HTMLDivElement | null>,
-  position: Pick<SceneReadingSession, "checkpoint" | "reset" | "isFounded" | "anchor" | "enterAtEnd">,
+  position?: ReadingPosition,
   reveal = false,
 ) {
   const nodes = useMemo(() => parseVillagesInlineMarkdown(text), [text]);
   const length = readingText(nodes).length;
   const [layout, setLayout] = useState<{ key: string; pages: ReadingPage[] }>({ key: "", pages: [] });
-  const { checkpoint, reset, isFounded, anchor, enterAtEnd } = position;
+  const localCheckpoint = useRef({ cursor: { key: "", offset: 0 } });
+  const localAnchor = useRef({ key: "", offset: 0 });
+  const localEnd = useRef(false);
+  const {
+    checkpoint = localCheckpoint,
+    reset,
+    isFounded,
+    anchor = localAnchor,
+    enterAtEnd = localEnd,
+  } = position ?? {};
   const [cursor, setCursor] = useState(() => checkpoint.current.cursor);
   const pages = layout.key === readingKey && layout.pages.length ? layout.pages : [{ start: 0, end: length }];
   const offset = cursor.key === readingKey ? cursor.offset : 0;
@@ -79,8 +96,8 @@ export function useReadingPages(
   useLayoutEffect(() => {
     if (isFounded === false) return;
     const reading = readingRef.current;
-    const screen = reading?.closest<HTMLElement>("[data-mobile]");
-    const host = reading?.closest<HTMLElement>(tag);
+    const screen = reading?.closest<HTMLElement>("[data-mobile],.villages-forging-v2");
+    const host = reading?.closest<HTMLElement>(tag) ?? screen;
     if (!reading || !screen || !host) return;
     let signature = "";
     let hasMeasured = false;
@@ -91,7 +108,7 @@ export function useReadingPages(
       // Keyboard movement may constrain scrolling, but never changes page boundaries.
       const keyboard = host.hasAttribute("data-scene-keyboard");
       if (keyboard && hasMeasured) return;
-      const mobile = screen.dataset.mobile === "true";
+      const mobile = screen.dataset.mobile === "true" || screen.matches(".villages-forging-v2[data-mobile=true]");
       const sample = reading.querySelector("p");
       if (!sample) return;
       const style = getComputedStyle(sample);
@@ -109,7 +126,7 @@ export function useReadingPages(
       if (nextSignature === signature) return;
       signature = nextSignature;
       const measure = sample.cloneNode(false) as HTMLParagraphElement;
-      measure.classList.add(tag + "-reading-measure");
+      measure.classList.add("villages-reading-measure");
       measure.setAttribute("aria-hidden", "true");
       measure.style.width = `${reading.clientWidth - parseFloat(getComputedStyle(reading).paddingRight || "0")}px`;
       reading.append(measure);

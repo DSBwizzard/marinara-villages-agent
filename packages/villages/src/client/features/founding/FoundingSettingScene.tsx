@@ -2,7 +2,8 @@ import { FOUNDING_SETTING_BRIEF_LIMIT } from "../../../shared/contracts/founding
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import { FoundingField } from "./FoundingField.js";
-import { FoundingSpeaker, type foundingMariSprite } from "./FoundingGuide.js";
+import { type foundingMariSprite } from "./FoundingGuide.js";
+import { FoundingReader } from "./FoundingReader.js";
 import { VillageLorebookPicker } from "./FoundingPanels.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 
@@ -287,7 +288,7 @@ export function FoundingSettingScene({
     ) : null;
   const backReply =
     previous[beat] || lineIndex ? (
-      <button type="button" onClick={back}>
+      <button type="button" data-reader-direction="back" onClick={back}>
         Back
       </button>
     ) : null;
@@ -317,23 +318,35 @@ export function FoundingSettingScene({
       inert={inactive || undefined}
     >
       {title}
-      <div className="villages-setting-dialogue" hidden={!!title}>
-        <FoundingSpeaker />
-        <p aria-live="polite" tabIndex={-1} ref={lineRef}>
-          {lines[lineIndex]}
-        </p>
+      <FoundingReader
+        text={lines[lineIndex]!}
+        lineRef={lineRef}
+        hidden={!!title}
+        active={!inactive}
+        counter={`${lineIndex + 1} / ${lines.length}`}
+      >
         {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}
         {!lastLine ? (
           <div className="villages-founding-replies">
             {backReply}
-            <button type="button" className="villages-forging-primary" onClick={() => showLine(lineIndex + 1)}>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              data-reader-direction="next"
+              onClick={() => showLine(lineIndex + 1)}
+            >
               Next
             </button>
           </div>
         ) : beat === "welcome" ? (
           <div className="villages-founding-replies">
             {backReply}
-            <button type="button" className="villages-forging-primary" onClick={() => moveTo("world-overview")}>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              data-reader-direction="next"
+              onClick={() => moveTo("world-overview")}
+            >
               Next
             </button>
           </div>
@@ -345,6 +358,7 @@ export function FoundingSettingScene({
               <button
                 type="button"
                 className="villages-forging-primary"
+                data-reader-direction="next"
                 onClick={() => {
                   if (phone) setPopup("world");
                   else moveTo("lorebooks");
@@ -378,6 +392,7 @@ export function FoundingSettingScene({
               <button
                 type="button"
                 className="villages-forging-primary"
+                data-reader-direction="next"
                 onClick={() => {
                   if (beat === "world-overview") moveTo("world");
                   else if (phone) setPopup("village");
@@ -403,6 +418,7 @@ export function FoundingSettingScene({
             <button
               type="button"
               className="villages-forging-primary"
+              data-reader-direction="next"
               disabled={!canDraft}
               onClick={() => {
                 setConfirmReplace(false);
@@ -418,7 +434,12 @@ export function FoundingSettingScene({
             <div className="villages-founding-replies">
               {!waitingForMari ? backReply : null}
               {phone ? (
-                <button type="button" className="villages-forging-primary" onClick={onEditSetting}>
+                <button
+                  type="button"
+                  className="villages-forging-primary"
+                  data-reader-direction="next"
+                  onClick={onEditSetting}
+                >
                   Next
                 </button>
               ) : null}
@@ -428,7 +449,7 @@ export function FoundingSettingScene({
             </div>
           </>
         )}
-      </div>
+      </FoundingReader>
       {phone && editorOpen ? (
         <FoundingDialog title="Your first Map" headerContent={mapEditorHeader} onClose={closeEditor}>
           {mapFields}
@@ -453,7 +474,12 @@ export function FoundingSettingScene({
             <button type="button" onClick={closePopup}>
               Back
             </button>
-            <button type="button" className="villages-forging-primary" onClick={() => moveTo("lorebooks")}>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              data-reader-direction="next"
+              onClick={() => moveTo("lorebooks")}
+            >
               Next
             </button>
           </footer>
@@ -466,7 +492,12 @@ export function FoundingSettingScene({
             <button type="button" onClick={closePopup}>
               Back
             </button>
-            <button type="button" className="villages-forging-primary" onClick={finishVillage}>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              data-reader-direction="next"
+              onClick={finishVillage}
+            >
               Next
             </button>
           </footer>

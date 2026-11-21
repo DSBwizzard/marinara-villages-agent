@@ -198,6 +198,7 @@ export function villageSettings(
     narrativeConsequence: village.narrativeConsequence ?? "gentle",
     backgroundPaces: ["off", "quiet", "balanced", "lively"],
     characterSpeechColors: village.characterSpeechColors,
+    menuAppearance: village.menuAppearance ?? "auto",
     sendOnEnter: village.sendOnEnter,
     spontaneousEvents: village.spontaneousEvents === true,
     spriteCardFlipEnabled: village.spriteCardFlipEnabled,

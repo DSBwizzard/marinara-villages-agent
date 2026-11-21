@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import { villageLighting, type VillageLighting } from "../../shared/helpers/village-lighting.js";
 import type { VillageSnapshot } from "../../shared/contracts/village.js";
 
+export function useMenuDaylight(snapshot?: Pick<VillageSnapshot, "village" | "settings"> | null): boolean {
+  const natural = useVillageLighting(snapshot?.village, "storybook") !== "night";
+  const appearance = snapshot?.settings.menuAppearance ?? "auto";
+  return appearance === "day" || (appearance === "auto" && natural);
+}
+
 export function useVillageLighting(
   village?: VillageSnapshot["village"],
   mode: "world" | "storybook" = "world",

@@ -152,6 +152,19 @@ await withBrowser(browser, async () => {
     };
 
     await expect(reading).toBeVisible();
+    const sceneTheme = page.locator(`.${tag}-room-screen`);
+    const reader = page.locator(".villages-dialogue-reader");
+    const retainedPassage = await text.textContent();
+    for (const [theme, color] of [
+      ["day", "rgb(250, 248, 238)"],
+      ["night", "rgb(57, 48, 71)"],
+    ]) {
+      await sceneTheme.evaluate((node, theme) => {
+        node.dataset.readerTheme = theme;
+      }, theme);
+      await expect(reader).toHaveCSS("background-color", color);
+      await expect(text).toHaveText(retainedPassage);
+    }
     await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
     if (mobile) {
       const scene = await page.locator(`.${tag}-room-screen`).boundingBox();
@@ -212,7 +225,7 @@ await withBrowser(browser, async () => {
       await expect(counter).toHaveText("Paragraph 1/2");
       await next.click();
       await expect(counter).toContainText("Page 1/");
-      assert.equal((await page.locator(`.${tag}-chat-vn-portrait`).boundingBox()).width, 32);
+      assert.equal((await page.locator(`.${tag}-chat-vn-portrait`).boundingBox()).width, 24);
       assert.ok((await reading.boundingBox()).width > width - 48, "text spans the card width");
       while (await next.isEnabled()) await next.click();
       await draft.fill("Preserve this draft");

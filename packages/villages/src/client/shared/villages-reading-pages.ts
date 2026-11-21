@@ -1,4 +1,4 @@
-import type { VillagesMarkdownNode } from "../../shared/villages-inline-markdown.js";
+import type { VillagesMarkdownNode } from "./villages-inline-markdown.js";
 
 export type ReadingPage = { start: number; end: number };
 

@@ -6,7 +6,7 @@ import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
 /** Actual Settings hooks and independently held synthetic HTTP responses. */
 export async function verifySettingsRequestLifetimes(browser) {
-  const kinds = ["save", "scenery", "flip", "variants", "pace", "enter", "colors"];
+  const kinds = ["save", "scenery", "flip", "variants", "pace", "enter", "colors", "appearance"];
   const bundle = await build({
     stdin: {
       loader: "tsx",
@@ -23,7 +23,7 @@ function Harness(){
  const ports={...settings,snapshot,busy,setSnapshot,setBusy,setArchiveVersion,
   sceneryStyle,sceneryStyleProfileId,personalizeHomes,acceptSavedSettings:()=>{window.acks++}};
  const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),visual=useSpriteVisualSettings(ports),pace=useSaveBackgroundPace(ports),enter=useSaveVillageSwitch('sendOnEnter',ports);
- const commands={save,scenery:()=>scenery.save({sceneryArtStyle:sceneryStyle,sceneryStyleProfileId}),flip:()=>visual.save('spriteCardFlipEnabled',window.flipValue??true),variants:()=>visual.save('spriteVariantsEnabled',false),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>visual.save('characterSpeechColors',false)};
+ const commands={save,scenery:()=>scenery.save({sceneryArtStyle:sceneryStyle,sceneryStyleProfileId}),flip:()=>visual.save('spriteCardFlipEnabled',window.flipValue??true),variants:()=>visual.save('spriteVariantsEnabled',false),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>visual.save('characterSpeechColors',false),appearance:()=>visual.save('menuAppearance','night')};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},
   editScenery:()=>{setSceneryStyle('Newer scenery');setPersonalizeHomes(true)},
@@ -31,9 +31,10 @@ function Harness(){
   queuePreset:()=>launch(()=>scenery.save({sceneryArtStyle:'',sceneryStyleProfileId:''})),retryScenery:()=>launch(scenery.retry),
   retain:kind=>{window.old=commands[kind]},old:()=>launch(window.old),
   reset:()=>{setSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});setBusy(true)},
+  switchWorld:()=>{setSnapshot(current=>({...current,worldScope:'other-world'}));setBusy(true)},
   resetDone:()=>setBusy(false),refound:()=>{setSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B',sendOnEnter:true,characterSpeechColors:false}})},
   hydrate:()=>setSnapshot(current=>({...current,isFounded:true})),
-  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError||scenery.error,scenerySaving:scenery.saving,sceneryDraft:scenery.draft,flipDraft:visual.draft.spriteCardFlipEnabled??null,flipError:visual.error,flipSaving:visual.saving,colorsDraft:visual.draft.characterSpeechColors,archive,sceneryStyle,personalizeHomes,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
+  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError||scenery.error,scenerySaving:scenery.saving,sceneryDraft:scenery.draft,flipDraft:visual.draft.spriteCardFlipEnabled??null,flipError:visual.error,flipSaving:visual.saving,colorsDraft:visual.draft.characterSpeechColors,archive,sceneryStyle,personalizeHomes,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors,menuAppearance:snapshot.settings.menuAppearance,worldScope:snapshot.worldScope})};
  return <pre id='state'>{JSON.stringify(window.h.read())}</pre>;
 }window.pending=[];window.acks=0;
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
@@ -114,6 +115,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     pace: { backgroundPace: "quiet" },
     enter: { sendOnEnter: true },
     colors: { characterSpeechColors: false },
+    appearance: { menuAppearance: "night" },
   };
   // State/ownership harness: responsive presentation is covered by the visual suites.
   for (const width of [1280])
@@ -139,11 +141,12 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             assert.equal(after.enter, false);
             assert.equal(after.colors, true);
             assert.match(
-              ["flip", "variants", "colors"].includes(kind) ? after.flipError : after.error,
+              ["flip", "variants", "colors", "appearance"].includes(kind) ? after.flipError : after.error,
               /synthetic settings failure/,
             );
           } else {
             assert.equal(after.setting, "saved 0");
+            if (kind === "appearance") assert.equal(after.menuAppearance, "night");
           }
           assert.equal(await f.page.evaluate(() => window.acks), !fail && kind === "save" ? 1 : 0);
           await f.finish();
@@ -312,6 +315,24 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal((await f.state()).founded, founded);
         await f.finish();
       }
+      const appearance = await mount(strict, width, { founded: false });
+      await appearance.run("appearance");
+      await expect.poll(() => appearance.requests.length).toBe(1);
+      await appearance.respond(0);
+      await appearance.settle(0);
+      assert.equal((await appearance.state()).menuAppearance, "night");
+      assert.equal((await appearance.state()).founded, false);
+      await appearance.finish();
+      const switched = await mount(strict, width, { founded: false });
+      await switched.run("appearance");
+      await expect.poll(() => switched.requests.length).toBe(1);
+      await switched.page.evaluate(() => window.h.switchWorld());
+      await expect.poll(async () => (await switched.state()).worldScope).toBe("other-world");
+      const switchedBefore = await switched.state();
+      await switched.respond(0);
+      await switched.settle(0);
+      assert.deepEqual(await switched.state(), switchedBefore);
+      await switched.finish();
       const prefounded = await mount(strict, width, { founded: false });
       await prefounded.run("enter");
       await expect.poll(() => prefounded.requests.length).toBe(1);

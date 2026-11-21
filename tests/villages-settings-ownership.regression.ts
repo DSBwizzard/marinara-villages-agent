@@ -1,7 +1,10 @@
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  defaultVillageState,
+  coerceVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
@@ -118,6 +121,12 @@ async function main() {
   await a.service.setVillageSendOnEnter(true);
   await a.service.setVillageSpriteCardFlipEnabled(true);
   await a.service.setVillageCharacterSpeechColors(false);
+  for (const appearance of ["auto", "day", "night"] as const) {
+    await a.service.setMenuAppearance(appearance);
+    assert.equal(a.state.menuAppearance, appearance);
+    assert.equal(coerceVillageState(JSON.parse(JSON.stringify(a.state))).menuAppearance, appearance);
+  }
+  assert.equal(coerceVillageState({ ...a.state, menuAppearance: undefined }).menuAppearance, "auto");
   await a.service.setVillagePlayer({ personaId: "same-persona" });
   await a.service.setScenerySettings({
     sceneryArtStyle: "watercolor",
@@ -139,6 +148,7 @@ async function main() {
     () => a.service.setVillageSendOnEnter("true"),
     () => a.service.setVillageSpriteCardFlipEnabled(1),
     () => a.service.setVillageCharacterSpeechColors(null),
+    () => a.service.setMenuAppearance("dusk"),
     () => a.service.setVillageLoreSettings([""], 800),
     () => a.service.setVillageLoreSettings(undefined, -1),
   ]) {

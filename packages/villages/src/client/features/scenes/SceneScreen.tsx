@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useMenuDaylight } from "../../shared/useVillageLighting.js";
 import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
@@ -18,6 +19,7 @@ import type { PlaceDetail } from "../../../shared/contracts/places.js";
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
 
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
+  const daylight = useMenuDaylight(controller.snapshot);
   const [showPlace, setShowPlace] = useState(false);
   const displayedSubmissionId = controller.room?.latestTurn?.published ? controller.room.latestTurn.id : undefined;
   useEffect(() => {
@@ -179,7 +181,11 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   }
 
   return (
-    <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
+    <div
+      className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`}
+      data-mobile={mobile ? "true" : "false"}
+      data-reader-theme={daylight ? "day" : "night"}
+    >
       {room ? (
         <RoomPanel
           room={room}

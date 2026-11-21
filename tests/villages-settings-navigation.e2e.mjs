@@ -331,7 +331,11 @@ async function checkPackage(width) {
     }
     if (path.endsWith("/settings") && route.request().method() === "PATCH") {
       const visual = route.request().postDataJSON();
-      if (["spriteVariantsEnabled", "spriteCardFlipEnabled", "characterSpeechColors"].some((key) => key in visual)) {
+      if (
+        ["spriteVariantsEnabled", "spriteCardFlipEnabled", "characterSpeechColors", "menuAppearance"].some(
+          (key) => key in visual,
+        )
+      ) {
         if (failVisualSave) return fulfill(route, { status: 503, json: { error: "Visual save unavailable" } });
         Object.assign(snapshot.settings, visual);
         return fulfill(route, { json: snapshot });
@@ -475,6 +479,18 @@ async function checkPackage(width) {
   const variants = page.getByRole("checkbox", { name: "Random sprite variants", exact: true });
   const flips = page.getByRole("checkbox", { name: "Card-flip sprite changes", exact: true });
   const colors = page.getByRole("checkbox", { name: "Character chat colors", exact: true });
+  const menuAppearance = page.getByRole("combobox", { name: "Menu appearance", exact: true });
+  await expect(menuAppearance).toHaveValue("auto");
+  const naturalTheme = await page.locator(".marinara-capability-villages-desk-workspace").getAttribute("data-theme");
+  for (const value of ["day", "night", "auto"]) {
+    await menuAppearance.selectOption(value);
+    await expect.poll(() => snapshot.settings.menuAppearance).toBe(value);
+    await expect(menuAppearance).toHaveValue(value);
+    await expect(page.locator(".marinara-capability-villages-desk-workspace")).toHaveAttribute(
+      "data-theme",
+      value === "auto" ? naturalTheme : value,
+    );
+  }
   await expect(variants).toBeChecked();
   await variants.uncheck();
   await expect.poll(() => snapshot.settings.spriteVariantsEnabled).toBe(false);

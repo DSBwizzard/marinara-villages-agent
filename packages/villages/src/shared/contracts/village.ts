@@ -487,6 +487,7 @@ export type TownMapView = {
 export type VillageSettings = {
   foundingLore?: { label: string; entries: import("./lore.js").LoreUse[] }[];
   characterSpeechColors: boolean;
+  menuAppearance?: "auto" | "day" | "night";
   sendOnEnter: boolean;
   spontaneousEvents?: boolean;
   spriteCardFlipEnabled: boolean;

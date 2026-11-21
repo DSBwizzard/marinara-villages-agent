@@ -19,7 +19,8 @@ import type { useVillageController as ControllerFactory } from "./useVillageCont
 import { useVillageController } from "./useVillageController.js";
 import { VillagesFrame } from "./VillagesFrame.js";
 import { prepareDeskArtwork } from "../shared/desk-art.js";
-import { useVillageLighting } from "../shared/useVillageLighting.js";
+import { useMenuDaylight } from "../shared/useVillageLighting.js";
+import { MenuAppearanceField } from "../features/settings/SpriteVisualSettings.js";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
   return (
@@ -59,7 +60,7 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     return null;
   };
   const active = controller.mailboxOpen ? "mailbox" : destination(controller.screen);
-  const daylight = useVillageLighting(controller.snapshot?.village, "storybook") !== "night";
+  const daylight = useMenuDaylight(controller.snapshot);
   const currentDestination = useRef(active);
   currentDestination.current = active;
   const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -548,7 +549,20 @@ function VillageDestinations({ controller, daylight, people, openMapVenue, arriv
       ))}
       {people}
       {screen === "preparing" ? <PreparationScreen controller={controller} storybookDaylight={daylight} /> : null}
-      {screen === "setup" ? <FoundingScreen controller={controller} storybookDaylight={daylight} /> : null}
+      {screen === "setup" ? (
+        <FoundingScreen
+          controller={controller}
+          storybookDaylight={daylight}
+          appearanceControl={
+            <>
+              <MenuAppearanceField settings={controller.spriteVisualSettings} disabled={controller.busy} />
+              {controller.spriteVisualSettings.error ? (
+                <p role="alert">{controller.spriteVisualSettings.error}</p>
+              ) : null}
+            </>
+          }
+        />
+      ) : null}
     </>
   );
 }

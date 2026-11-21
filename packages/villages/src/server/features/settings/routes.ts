@@ -210,6 +210,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       backgroundPace?: unknown;
       narrativeConsequence?: unknown;
       characterSpeechColors?: unknown;
+      menuAppearance?: unknown;
       sendOnEnter?: unknown;
       spontaneousEvents?: unknown;
       spriteCardFlipEnabled?: unknown;
@@ -259,6 +260,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
         snapshot = await setVillageSpriteCardFlipEnabled(body.spriteCardFlipEnabled);
       if (body.characterSpeechColors !== undefined)
         snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
+      if (body.menuAppearance !== undefined) snapshot = await villageSettings().setMenuAppearance(body.menuAppearance);
       if (body.homeBuildingNames !== undefined) snapshot = await setVillageHomeBuildingNames(body.homeBuildingNames);
       return snapshot;
     } catch (error) {

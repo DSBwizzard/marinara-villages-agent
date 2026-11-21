@@ -1,3 +1,4 @@
+import { STORYBOOK_DAY_PALETTE, STORYBOOK_NIGHT_PALETTE } from "../../shared/desk-styles.js";
 const tag = "marinara-capability-villages";
 
 /** Package-owned presentation; Engine source and ordinary Home tabs stay intact. */
@@ -190,4 +191,25 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="false"] > .${tag}-avatar { width: 80px; height: 80px; box-sizing: border-box; flex: none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="false"] > span:not(.${tag}-avatar) { position: static; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: .75rem; }
+
+/* The same reader frame is used during Founding and ordinary Scene playback. */
+.${tag}-room-screen[data-reader-theme=night] { ${STORYBOOK_NIGHT_PALETTE} }
+.${tag}-room-screen[data-reader-theme=day] { ${STORYBOOK_DAY_PALETTE} --popover:#faf8ee; --foreground:#17392f; --primary:#45694d; --primary-foreground:#fffbed; }
+.${tag}-room-screen .villages-dialogue-reader { background:var(--popover); color:var(--foreground); border-color:var(--border); }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-row { display:block; padding:.75rem; }
+.${tag}-room-screen .villages-dialogue-reader .villages-reader-icon { width:1.5rem; height:1.5rem; }
+.${tag}-room-screen .villages-reader-icon .${tag}-chat-vn-portrait { width:1.5rem; height:1.5rem; border-radius:.25rem; }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-reading { font-size:1rem; min-height:min(4.5rem,var(--villages-reading-page-height,4.5rem)); }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-reading>p { font-size:inherit; line-height:1.5; }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-room-panel-tools { position:relative; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; border:0; padding:0; min-height:44px; gap:.5rem; }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-button { min-height:44px; font:inherit; font-size:1rem; padding:.4rem .75rem; border:1px solid var(--border); border-radius:.5rem; background:transparent; color:var(--foreground); }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-button:first-child { justify-self:start; }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-button:last-child:not(:first-child) { justify-self:end; background:var(--primary); color:var(--primary-foreground); }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-counter { font-size:.8125rem; }
+.${tag}-room-screen .villages-dialogue-reader .villages-reader-heading .${tag}-chat-vn-name,
+.${tag}-room-screen .villages-dialogue-reader .villages-reader-heading .${tag}-chat-vn-label { font-size:1rem; }
+@media(max-width:727px) {
+ .${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-row { padding:.5rem .625rem; }
+ .${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-counter { max-width:7rem; white-space:normal; }
+}
 `;

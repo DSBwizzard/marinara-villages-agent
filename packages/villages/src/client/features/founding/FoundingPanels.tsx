@@ -505,7 +505,7 @@ export function VillageLorebookPicker({
         <FoundingPagination compact page={pageIndex} count={pages} onPage={setPage} label="Lorebooks" />
         <div className="villages-lorebook-actions">
           {founding ? (
-            <button type="button" onClick={founding.onBack}>
+            <button type="button" data-reader-direction="back" onClick={founding.onBack}>
               Back
             </button>
           ) : null}
@@ -549,6 +549,7 @@ export function VillageLorebookPicker({
           type="button"
           ref={trigger}
           className={founding ? "villages-forging-primary" : "villages-lorebook-action"}
+          data-reader-direction={founding ? "next" : undefined}
           aria-label={founding ? undefined : "Choose Village Lorebooks"}
           disabled={disabled}
           onClick={() => {

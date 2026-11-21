@@ -87,6 +87,7 @@ const app = scope.run(() => Fastify());
 const publicFields = [
   "automaticZonePictures",
   "characterSpeechColors",
+  "menuAppearance",
   "defaultHomeBuilding",
   "homeBuildingNames",
   "homeBuildings",
@@ -194,6 +195,7 @@ try {
     request("PATCH", {
       worldName: "Harbor",
       sendOnEnter: false,
+      menuAppearance: "night",
       spontaneousEvents: true,
       backgroundPace: "quiet",
       sceneryArtStyle: "Watercolor",
@@ -204,6 +206,13 @@ try {
     }),
   );
   assert.equal(updated.worldName, "Harbor");
+  assert.equal(updated.menuAppearance, "night");
+  const beforeInvalidAppearance = structuredClone(state);
+  const invalidAppearance = await scope.run(
+    async () => await app.inject({ method: "PATCH", url: "/settings", payload: { menuAppearance: "dusk" } }),
+  );
+  assert.equal(invalidAppearance.statusCode, 400);
+  assert.deepEqual(state, beforeInvalidAppearance);
   assert.equal(updated.sendOnEnter, false);
   assert.equal(updated.spontaneousEvents, true);
   assert.equal(updated.backgroundPace, "quiet");

@@ -1009,4 +1009,23 @@ export const VILLAGES_FORGING_STYLES = `
   grid-column:2; grid-row:2; align-self:start; height:auto; max-height:100%; padding:.65rem;
   background:var(--founding-panel,#352c44); border-color:var(--founding-line,#a6809160);
 }
+
+.villages-forging-v2 .villages-setting-dialogue.villages-dialogue-reader { padding:0; }
+.villages-forging-v2 .villages-reader-speaker { color:var(--founding-foreground); }
+.villages-forging-v2 .villages-setting-dialogue .marinara-capability-villages-chat-vn-reading { min-height:min(4.5rem,var(--villages-reading-page-height,4.5rem)); max-height:var(--villages-reading-page-height,none); overflow:auto; }
+.villages-forging-v2 .villages-setting-dialogue .marinara-capability-villages-chat-vn-reading>p { font-size:1rem; color:var(--founding-foreground); margin:0; line-height:1.5; }
+.villages-setting-dialogue .villages-reader-footer { border-color:var(--founding-line); }
+.villages-setting-dialogue .villages-reader-counter { position:absolute; bottom:1.25rem; left:50%; transform:translateX(-50%); pointer-events:none; }
+.villages-setting-dialogue .villages-founding-replies { margin:0; min-height:44px; justify-content:space-between; }
+.villages-setting-dialogue .villages-founding-replies>button[data-reader-direction=next]:last-child { margin-inline-start:auto; }
+.villages-setting-dialogue[data-reader-page] [data-reader-direction=back] { visibility:hidden; }
+.villages-setting-dialogue .villages-reader-page-back { position:absolute; bottom:.5rem; left:0; z-index:1; visibility:visible!important; }
+.villages-setting-dialogue[data-reader-next-page] [data-reader-direction=next] { visibility:hidden; }
+.villages-setting-dialogue .villages-reader-page-next { position:absolute; bottom:.5rem; right:0; z-index:1; visibility:visible!important; }
+.villages-setting-dialogue:has(input,textarea,.villages-lorebook-inline) .villages-reader-counter { display:none; }
+.villages-forging-v2 .villages-setting-dialogue:has(input,textarea,.villages-lorebook-inline) .marinara-capability-villages-chat-vn-reading { min-height:0; max-height:none; }
+.villages-setting-dialogue:has(input,textarea,.villages-lorebook-inline) .villages-founding-replies { justify-content:flex-start; }
+.villages-setting-dialogue .villages-reader-footer:has(.villages-lorebook-inline) { padding-block:0; border-top:0; }
+.villages-setting-dialogue:has(.villages-lorebook-inline) .villages-reader-content { padding-block:.5rem; }
+.villages-founding-transcript>p { color:var(--founding-foreground); padding-block:.5rem; border-bottom:1px solid var(--founding-line); }
 `;

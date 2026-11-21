@@ -254,7 +254,7 @@ Failures do not automatically purchase replacement responses. Explicit interpret
 
 ## Sprite variants and visual settings
 
-**Visual Settings** contains **Random sprite variants**, **Card-flip sprite changes**, **Character chat colors**, **Dynamic Images** and scenery style, each with a short explanation. Toggles and style presets save immediately; custom style text saves after a short typing pause. Pending edits survive settings navigation, and failed saves retain the latest draft with Retry. The personalization default remains compatible with saved worlds but is no longer exposed here. Random variants and card flips default On; reduced-motion preferences still disable flip animation.
+**Visual Settings** contains **Menu appearance**, **Random sprite variants**, **Card-flip sprite changes**, **Character chat colors**, **Dynamic Images** and scenery style. Menu appearance defaults to **Day & night**, following Village time, or can stay on **Day** or **Night**. It colors menus and the shared Founding/Scene reader without changing Village time or artwork. Toggles and style presets save immediately; custom style text saves after a short typing pause. Pending edits survive settings navigation, and failed saves retain the latest draft with Retry. The personalization default remains compatible with saved worlds but is no longer exposed here. Random variants and card flips default On; reduced-motion preferences still disable flip animation.
 
 Folder sprites use Engine labels. For `happy_pajamas_wounded`, Villages looks for the full look, then `happy_pajamas`, then `happy` artwork from the assigned sprites. **Random sprite variants** chooses among matches. With it off, Villages uses the first match.
 

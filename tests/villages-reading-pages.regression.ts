@@ -4,7 +4,7 @@ import {
   paginateReading,
   readingText,
   sliceReadingNodes,
-} from "../packages/villages/src/client/features/scenes/villages-reading-pages.js";
+} from "../packages/villages/src/client/shared/villages-reading-pages.js";
 
 const source =
   "First sentence. **A longer bold sentence with *nested emphasis* inside it continues for several words.** Last sentence.";

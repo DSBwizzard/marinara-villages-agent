@@ -32,7 +32,8 @@ import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragra
 import { scenePlaybackSteps } from "./scene-playback.js";
 import { useScenePlayback } from "./useScenePlayback.js";
 import { mobileReadingCounter } from "./villages-mobile-scene.js";
-import { useReadingPages } from "./villages-reading-viewport.js";
+import { useReadingPages } from "../../shared/useReadingPages.js";
+import { DialogueReader, ReaderBook } from "../../shared/DialogueReader.js";
 import { hasCompletedRoomSubmission } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { SceneHistory } from "./SceneHistory.js";
@@ -1345,6 +1346,12 @@ export function RoomPanel({
               if (event.key === "Escape") closeTranscript();
             }}
           >
+            <header className="villages-reader-heading">
+              <strong className="villages-reader-speaker">Transcript</strong>
+              <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={closeTranscript}>
+                Back
+              </button>
+            </header>
             <SceneHistory
               key={worldScope + ":" + room.id}
               sceneId={room.id}
@@ -1355,18 +1362,15 @@ export function RoomPanel({
             />
           </div>
         ) : null}
-        {/* One readable paragraph shares the same dock with navigation and the composer at the latest paragraph. */}
-        <div
+        <DialogueReader
           className={`${ELEMENT_TAG}-chat-vn-card`}
+          contentClassName={`${ELEMENT_TAG}-chat-vn-row`}
           data-register={register}
           data-delivery={step?.delivery}
           hidden={historyOpen}
-        >
-          <div className={`${ELEMENT_TAG}-chat-vn-row`}>
-            {retrying ? null : register === "narration" ? (
-              <div className={ELEMENT_TAG + "-chat-vn-portrait"} aria-hidden="true">
-                <SceneControlIcon name="narrator" />
-              </div>
+          icon={
+            retrying ? undefined : register === "narration" ? (
+              <ReaderBook />
             ) : (
               <SceneFace
                 actorId={step?.speakerId}
@@ -1375,125 +1379,130 @@ export function RoomPanel({
                 glyph={step?.player ? "person" : "initial"}
                 className={ELEMENT_TAG + "-chat-vn-portrait"}
               />
-            )}
-            <div className={`${ELEMENT_TAG}-chat-vn-column`}>
-              <div className={ELEMENT_TAG + "-scene-speaker-row"}>
-                {retrying ? null : register === "narration" ? (
-                  <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
-                ) : (
-                  <p
-                    className={`${ELEMENT_TAG}-chat-vn-name`}
-                    style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
-                  >
-                    {step?.name ?? ""}
-                    {step?.viaDoorway ? (
-                      <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
-                        Nearby
-                      </span>
-                    ) : null}
-                  </p>
-                )}
-                <div className={ELEMENT_TAG + "-scene-reply-actions"}>
-                  <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
-                    <SceneControlIcon name={canRetryReply ? "retry" : "retry-unavailable"} />
-                    Retry
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={readingRef}
-                className={`${ELEMENT_TAG}-chat-vn-reading`}
-                role="region"
-                aria-label="Current paragraph"
-                aria-live="polite"
-                aria-busy={readingPages.revealing}
-                tabIndex={0}
+            )
+          }
+          speaker={
+            retrying ? null : register === "narration" ? (
+              <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
+            ) : (
+              <p
+                className={`${ELEMENT_TAG}-chat-vn-name`}
+                style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
               >
-                {retrying ? (
-                  waiting
-                ) : playback.restoring ? (
-                  <p role="status">{playback.error ? "Passage unavailable." : "Loading…"}</p>
-                ) : step ? (
-                  register === "narration" ? (
-                    <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
-                      {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
-                    </p>
-                  ) : (
-                    <p
-                      className={`${ELEMENT_TAG}-chat-vn-text`}
-                      style={step.player ? undefined : speechStyle(step.speakerId)}
-                    >
-                      {drawVillagesNodes(readingPages.nodes, "vn-")}
-                    </p>
-                  )
-                ) : (
-                  /*
-                    A room with nothing in it, which is a room the player has just
-                    walked into and nobody has been asked anything yet.
-                  */
-                  <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
-                    {room.status === "opening"
-                      ? `Opening the Scene in ${room.placeName}…`
-                      : activeParticipants.length === 0
-                        ? `You are alone in this Zone of ${room.placeName}.`
-                        : "…"}
-                  </p>
-                )}
-                {!ended && busy && !retrying ? waiting : null}
-              </div>
-            </div>
-          </div>
-          <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            {step && !retrying ? (
-              <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
-                {mobile
-                  ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
-                  : `${readingOrdinal + 1} / ${readingTotal}`}
-              </span>
-            ) : null}
-            <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-chat-vn-button`}
-                onClick={() => {
-                  if (!readingPages.move(-1)) {
-                    if (at > 0) setReadStep(at - 1);
-                    else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
-                  }
-                }}
-                disabled={!canReadPrevious || playback.busy || retrying}
-                aria-label="Previous paragraph"
-              >
-                ‹ <span>Previous</span>
+                {step?.name ?? ""}
+                {step?.viaDoorway ? (
+                  <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                    Nearby
+                  </span>
+                ) : null}
+              </p>
+            )
+          }
+          actions={
+            <>
+              <button type="button" aria-label="Retry reply" disabled={!canRetryReply} onClick={onRetryReply}>
+                Retry
               </button>
-              {!ended || canReadNext ? (
+              <button type="button" disabled={!worldScope || !room.lines.length} onClick={() => setHistoryOpen(true)}>
+                Transcript
+              </button>
+            </>
+          }
+          footer={
+            <div className={`${ELEMENT_TAG}-room-panel-tools`}>
+              {step && !retrying ? (
+                <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
+                  {mobile
+                    ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
+                    : `${readingOrdinal + 1} / ${readingTotal}`}
+                </span>
+              ) : null}
+              <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}
                   onClick={() => {
-                    if (readingPages.revealing) {
-                      readingPages.finishReveal();
-                      return;
-                    }
-                    if (!readingPages.move(1)) {
-                      if (at < steps.length - 1) setReadStep(at + 1);
-                      else if (!playback.atLatest && playback.window.newerCursor)
-                        void playback.load(playback.window.newerCursor, "first");
+                    if (!readingPages.move(-1)) {
+                      if (at > 0) setReadStep(at - 1);
+                      else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
                     }
                   }}
-                  disabled={(!canReadNext && !readingPages.revealing) || playback.busy || retrying}
-                  aria-label="Next paragraph"
+                  disabled={!canReadPrevious || playback.busy || retrying}
+                  aria-label="Previous paragraph"
                 >
-                  <span>Next</span> ›
+                  Back
                 </button>
-              ) : ended ? (
-                <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
-                  Return to map
-                </button>
-              ) : null}
-            </span>
+                {!ended || canReadNext ? (
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-chat-vn-button`}
+                    onClick={() => {
+                      if (readingPages.revealing) {
+                        readingPages.finishReveal();
+                        return;
+                      }
+                      if (!readingPages.move(1)) {
+                        if (at < steps.length - 1) setReadStep(at + 1);
+                        else if (!playback.atLatest && playback.window.newerCursor)
+                          void playback.load(playback.window.newerCursor, "first");
+                      }
+                    }}
+                    disabled={(!canReadNext && !readingPages.revealing) || playback.busy || retrying}
+                    aria-label="Next paragraph"
+                  >
+                    Next
+                  </button>
+                ) : ended ? (
+                  <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
+                    Return to map
+                  </button>
+                ) : null}
+              </span>
+            </div>
+          }
+        >
+          <div
+            ref={readingRef}
+            className={`${ELEMENT_TAG}-chat-vn-reading`}
+            role="region"
+            aria-label="Current paragraph"
+            aria-live="polite"
+            aria-busy={readingPages.revealing}
+            tabIndex={0}
+          >
+            {retrying ? (
+              waiting
+            ) : playback.restoring ? (
+              <p role="status">{playback.error ? "Passage unavailable." : "Loading…"}</p>
+            ) : step ? (
+              register === "narration" ? (
+                <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
+                  {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
+                </p>
+              ) : (
+                <p
+                  className={`${ELEMENT_TAG}-chat-vn-text`}
+                  style={step.player ? undefined : speechStyle(step.speakerId)}
+                >
+                  {drawVillagesNodes(readingPages.nodes, "vn-")}
+                </p>
+              )
+            ) : (
+              /*
+                    A room with nothing in it, which is a room the player has just
+                    walked into and nobody has been asked anything yet.
+                  */
+              <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
+                {room.status === "opening"
+                  ? `Opening the Scene in ${room.placeName}…`
+                  : activeParticipants.length === 0
+                    ? `You are alone in this Zone of ${room.placeName}.`
+                    : "…"}
+              </p>
+            )}
+            {!ended && busy && !retrying ? waiting : null}
           </div>
-        </div>
+        </DialogueReader>
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
         {canCompose ? (

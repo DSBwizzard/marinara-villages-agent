@@ -1,3 +1,4 @@
+import { FoundingTranscript } from "./FoundingReader.js";
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { simpleFoundingMap } from "./simple-map.js";
 import { foundingHomeMembers, selectFoundingHomes } from "./founding-homes.js";
@@ -98,13 +99,20 @@ function FoundingChapter({
   );
 }
 
-export function FoundingScreen({
-  controller,
-  storybookDaylight,
-}: {
+type FoundingScreenProps = {
   controller: FoundingScreenController;
   storybookDaylight: boolean;
-}) {
+  appearanceControl?: ReactNode;
+};
+export function FoundingScreen(props: FoundingScreenProps) {
+  return (
+    <FoundingTranscript>
+      <FoundingContent {...props} />
+    </FoundingTranscript>
+  );
+}
+
+function FoundingContent({ controller, storybookDaylight, appearanceControl }: FoundingScreenProps) {
   const {
     busy,
     catalog,
@@ -429,6 +437,7 @@ export function FoundingScreen({
     const connectionPrompt = (
       <>
         <AgentConnectionsControls connections={connections} kind="founding" compact />
+        {appearanceControl}
         <button
           type="button"
           className="villages-forging-primary"
@@ -741,6 +750,7 @@ export function FoundingScreen({
       <button
         type="button"
         className="villages-forging-primary villages-founding-next-reply"
+        data-reader-direction="next"
         disabled={advanceDisabled}
         onClick={advanceSetup}
       >
@@ -813,6 +823,7 @@ export function FoundingScreen({
             <>
               <button
                 type="button"
+                data-reader-direction="back"
                 disabled={busy || setupEditorOpen}
                 onClick={() => {
                   changeStep(setupStep - 1, explainingStarters);
@@ -824,6 +835,7 @@ export function FoundingScreen({
                 <button
                   type="button"
                   className="villages-forging-primary"
+                  data-reader-direction="next"
                   disabled={chapterDisabled}
                   onClick={() => {
                     rememberMariPosition();
@@ -854,6 +866,7 @@ export function FoundingScreen({
       ) : null;
     return (
       <div
+        data-mobile={phone ? "true" : "false"}
         className={FOUNDING_ROOT}
         data-step={setupStep}
         data-desktop-map={desktopMap || undefined}
@@ -905,6 +918,7 @@ export function FoundingScreen({
           <FoundingDialog title="Model Connections" onClose={() => setConnectionPickerOpen(false)}>
             <div className="villages-founding-editor-body">
               <AgentConnectionsControls connections={connections} kind="founding" compact />
+              {appearanceControl}
             </div>
             <footer>
               <button type="button" disabled={connections.saving} onClick={() => setConnectionPickerOpen(false)}>
@@ -917,6 +931,7 @@ export function FoundingScreen({
           <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
               <AgentConnectionsControls connections={connections} kind="images" compact />
+              {appearanceControl}
               <SceneryStyleFields
                 value={controller.sceneryStyle}
                 profileId={controller.sceneryStyleProfileId}
@@ -1277,7 +1292,8 @@ export function FoundingScreen({
                     {setupVenues.slice(reviewIndex * 3, reviewIndex * 3 + 3).map((venue, index) => (
                       <details key={venue.id}>
                         <summary>
-                          {index + 1}. {venue.name} · {venue.form} · Exterior{venueHasCommon(venue) ? " / Common" : ""}
+                          {index + 1}. {venue.name} · {venue.form} · Exterior
+                          {venueHasCommon(venue) ? " / Common" : ""}
                           {venueHasPrivate(venue) ? " / Private" : ""}
                         </summary>
                         <p>{venue.description}</p>
