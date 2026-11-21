@@ -164,6 +164,10 @@ await withBrowser(browser, async () => {
         node.dataset.readerTheme = theme;
       }, theme);
       await expect(reader).toHaveCSS("background-color", color);
+      await expect(sceneTheme.locator(`.${tag}-chat-scene`)).toHaveCSS(
+        "background-color",
+        theme === "day" ? "rgb(183, 213, 226)" : "rgb(79, 60, 83)",
+      );
       await expect(text).toHaveText(retainedPassage);
     }
     await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
@@ -187,6 +191,16 @@ await withBrowser(browser, async () => {
     // Opening a dossier keeps the same mounted scene and its earlier reading position.
     while (await next.isEnabled()) await next.click();
     await draft.fill("Draft retained across dossier navigation");
+    for (const [theme, color] of [
+      ["day", "rgb(212, 229, 222)"],
+      ["night", "rgb(48, 45, 71)"],
+    ]) {
+      await sceneTheme.evaluate((node, theme) => {
+        node.dataset.readerTheme = theme;
+      }, theme);
+      await expect(sceneTheme.locator(`.${tag}-chat-input`)).toHaveCSS("background-color", color);
+      await expect(draft).toHaveValue("Draft retained across dossier navigation");
+    }
     while (await previous.isEnabled()) await previous.click();
     await expect(text).toHaveText("A quiet afternoon.");
     for (let repeat = 0; repeat < 2; repeat++) {
