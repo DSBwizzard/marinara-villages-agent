@@ -38,7 +38,22 @@ export function useSceneViewport(host: HTMLElement, active: boolean): void {
           pixels(style.borderBottomWidth);
         growth = Math.max(0, input.offsetHeight - single);
       }
-      set("resting-dock-height", dock.offsetHeight - growth);
+      let height = dock.getBoundingClientRect().height - growth;
+      const reading = dock.querySelector<HTMLElement>(`.${tag}-chat-vn-reading`);
+      const row = reading?.parentElement;
+      if (reading && row) {
+        // Keep the cast clear of a full page and speaker heading even when the visible message is short.
+        const style = getComputedStyle(row);
+        const page = Number.parseFloat(getComputedStyle(reading).maxHeight) || reading.offsetHeight;
+        const heading = 32 + 0.4 * Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+        height +=
+          page +
+          heading +
+          parseFloat(style.paddingTop) +
+          parseFloat(style.paddingBottom) -
+          row.getBoundingClientRect().height;
+      }
+      set("resting-dock-height", height);
     };
     const focused = () => {
       const target = document.activeElement;
