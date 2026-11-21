@@ -674,6 +674,9 @@ export function createSceneCommands({
         const offer = sceneTravelOffer(current);
         if (!offer?.travel || offer.id !== offerId) throw conflict("That invitation is no longer offered here.");
         const { venueId, zoneId, grantId } = offer.travel;
+        const destination = (await readVillageState()).worldPlaces.places[venueId];
+        if (destination && !destination.prepared)
+          throw conflict("Conclude this Scene, then Visit the Place from Places.");
         if (venueId !== current.placeId) await prepareVisit(venueId);
         const session = await withVillageSceneAcceptance(
           (village) =>
