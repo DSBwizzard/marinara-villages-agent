@@ -28,10 +28,14 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-vn[hidden] { display: none; }
 .${tag}-room-screen img[data-npc-sprite] { object-fit:contain; opacity:.78; filter:none; background:transparent; border:0; border-radius:0; box-shadow:none; }
 .${tag}-room-screen .${tag}-chat-log {
-  position: absolute; z-index:2; inset: 0 0 3.5rem; background:var(--popover); border:1px solid var(--border); border-radius:1rem; padding:.75rem; max-height: min(55cqh, max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 10rem)));
+  position: absolute; z-index:2; inset: 0 0 3.5rem; overflow:hidden; background:var(--popover); border:1px solid var(--border); border-radius:1rem; padding:.375rem .5rem; max-height: min(55cqh, max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 10rem)));
 }
-.${tag}-scene-history-pages { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-bottom: .5rem; background: var(--popover); }
-.${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 32px; }
+.${tag}-scene-history { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; }
+.${tag}-scene-history-pages { display:flex; flex:none; align-items:center; gap:.25rem; padding-bottom:.25rem; border-bottom:1px solid var(--border); }
+.${tag}-scene-history-pages .${tag}-chat-vn-button { justify-content:center; min-height:32px; min-width:32px; padding:0; color:var(--foreground); }
+.${tag}-scene-history-pages .${tag}-scene-history-close { margin-left:auto; }
+.${tag}-scene-history-pages svg { width:18px; height:18px; }
+.${tag}-scene-history-body { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; padding-top:.375rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }

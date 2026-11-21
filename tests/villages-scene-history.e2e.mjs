@@ -16,7 +16,7 @@ window.fetch=(url,options)=>new Promise(resolve=>window.pending.push({url,signal
 function Harness(){
   const [sceneId,setScene]=useState('A'),[scope,setScope]=useState('a'.repeat(64)),[shown,setShown]=useState(true);
   window.historyHarness={setScene,setScope,setShown};
-  return shown?<SceneHistory sceneId={sceneId} scope={scope} playerName='Player' nameStyle={noop} speechStyle={noop}/>:null;
+  return shown?<SceneHistory sceneId={sceneId} scope={scope} playerName='Player' nameStyle={noop} speechStyle={noop} onClose={()=>setShown(false)}/>:null;
 }
 const root=createRoot(document.getElementById('root'));
 root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
@@ -68,6 +68,7 @@ await withBrowser(browser, async () => {
         status,
       });
     const first = await pending();
+    await expect(page.getByRole("button", { name: "Close Transcript", exact: true })).toBeEnabled();
     await finish(first, payload(80, { olderCursor: "older-80" }));
     await expect(rows).toHaveCount(40);
     await expect(rows.first()).toContainText("Exact paragraph 80");
@@ -125,7 +126,7 @@ await withBrowser(browser, async () => {
 
     await older.click();
     const unmounted = await pending();
-    await page.evaluate(() => window.historyHarness.setShown(false));
+    await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
     await expect(rows).toHaveCount(0);
     assert(await page.evaluate((i) => window.pending[i].signal.aborted, unmounted));
     await finish(unmounted, payload(0, { sceneId: "B", scope: "c".repeat(64) }));

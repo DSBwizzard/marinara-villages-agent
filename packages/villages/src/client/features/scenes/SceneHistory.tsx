@@ -6,6 +6,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { renderVillagesMarkdown } from "../../shared/presentation.js";
 import { SceneErrorChip } from "./scene-errors.js";
 import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
+import { SceneActionIcon } from "./SceneActionIcon.js";
 
 export function SceneHistory({
   sceneId,
@@ -13,12 +14,14 @@ export function SceneHistory({
   playerName,
   nameStyle,
   speechStyle,
+  onClose,
 }: {
   sceneId: string;
   scope: string;
   playerName: string;
   nameStyle: (speakerId: string) => CSSProperties | undefined;
   speechStyle: (speakerId: string) => CSSProperties | undefined;
+  onClose: () => void;
 }) {
   const [page, setPage] = useState<SceneHistoryPage | null>(null),
     [busy, setBusy] = useState(true),
@@ -70,80 +73,102 @@ export function SceneHistory({
   }, [load]);
   const current = page?.scope === scope && page.sceneId === sceneId ? page : null;
   return (
-    <div aria-busy={busy}>
+    <div className={ELEMENT_TAG + "-scene-history"} aria-busy={busy}>
       <nav className={ELEMENT_TAG + "-scene-history-pages"} aria-label="Scene history pages">
         <button
           type="button"
           className={ELEMENT_TAG + "-chat-vn-button"}
+          aria-label="Older"
+          title="Older"
           disabled={busy || !current?.olderCursor}
           onClick={() => void load(current?.olderCursor, current?.version)}
         >
-          Older
+          <SceneActionIcon name="older" />
         </button>
         <button
           type="button"
           className={ELEMENT_TAG + "-chat-vn-button"}
+          aria-label="Newer"
+          title="Newer"
           disabled={busy || !current?.newerCursor}
           onClick={() => void load(current?.newerCursor, current?.version)}
         >
-          Newer
+          <SceneActionIcon name="newer" />
         </button>
-        <button type="button" className={ELEMENT_TAG + "-chat-vn-button"} disabled={busy} onClick={() => void load()}>
-          Refresh
+        <button
+          type="button"
+          className={ELEMENT_TAG + "-chat-vn-button"}
+          aria-label="Refresh"
+          title="Refresh"
+          disabled={busy}
+          onClick={() => void load()}
+        >
+          <SceneActionIcon name="retry" />
         </button>
-        {busy ? <span role="status">Loading…</span> : null}
+        <button
+          type="button"
+          className={ELEMENT_TAG + "-chat-vn-button " + ELEMENT_TAG + "-scene-history-close"}
+          aria-label="Close Transcript"
+          title="Close Transcript"
+          onClick={onClose}
+        >
+          <SceneActionIcon name="close" />
+        </button>
       </nav>
-      {error ? (
-        <SceneErrorChip
-          items={[
-            {
-              id: "history",
-              title: "Scene history",
-              ...error,
-            },
-          ]}
-          open={errorsOpen}
-          onOpen={setErrorsOpen}
-        />
-      ) : null}
-      {current?.lines.map((line, index) =>
-        line.presenceChange ? (
-          <p key={line.id ?? index} className={ELEMENT_TAG + "-room-star"}>
-            {line.content}
-          </p>
-        ) : (
-          <p key={line.id ?? index} className={ELEMENT_TAG + "-chat-vn-text"}>
-            <strong
-              style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
-            >
-              {line.role === "user"
-                ? playerName
-                : line.kind === "narration" || line.speakerId === "__venue_scene__"
-                  ? "Narration"
-                  : line.name || "Resident"}
-              {isSceneAside(line) ? " · aside" : ""}
-              {line.viaDoorway ? (
-                <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
-                  Nearby
-                </span>
-              ) : speechDelivery(line) === "whisper" ? (
-                " · whisper"
-              ) : speechDelivery(line) === "shout" ? (
-                " · shout"
-              ) : (
-                ""
-              )}
-              :{" "}
-            </strong>
-            <span
-              style={line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined}
-            >
-              {renderVillagesMarkdown(line.content, `history-${line.id ?? index}-`)}
-            </span>
-          </p>
-        ),
-      )}
-      {!busy && !error && current?.lines.length === 0 ? <p>No history.</p> : null}
+      <div className={ELEMENT_TAG + "-scene-history-body"} role="region" aria-label="Transcript messages" tabIndex={0}>
+        {busy ? <p role="status">Loading…</p> : null}
+        {error ? (
+          <SceneErrorChip
+            items={[
+              {
+                id: "history",
+                title: "Scene history",
+                ...error,
+              },
+            ]}
+            open={errorsOpen}
+            onOpen={setErrorsOpen}
+          />
+        ) : null}
+        {current?.lines.map((line, index) =>
+          line.presenceChange ? (
+            <p key={line.id ?? index} className={ELEMENT_TAG + "-room-star"}>
+              {line.content}
+            </p>
+          ) : (
+            <p key={line.id ?? index} className={ELEMENT_TAG + "-chat-vn-text"}>
+              <strong
+                style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
+              >
+                {line.role === "user"
+                  ? playerName
+                  : line.kind === "narration" || line.speakerId === "__venue_scene__"
+                    ? "Narration"
+                    : line.name || "Resident"}
+                {isSceneAside(line) ? " · aside" : ""}
+                {line.viaDoorway ? (
+                  <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                    Nearby
+                  </span>
+                ) : speechDelivery(line) === "whisper" ? (
+                  " · whisper"
+                ) : speechDelivery(line) === "shout" ? (
+                  " · shout"
+                ) : (
+                  ""
+                )}
+                :{" "}
+              </strong>
+              <span
+                style={line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined}
+              >
+                {renderVillagesMarkdown(line.content, `history-${line.id ?? index}-`)}
+              </span>
+            </p>
+          ),
+        )}
+        {!busy && !error && current?.lines.length === 0 ? <p>No history.</p> : null}
+      </div>
     </div>
   );
 }

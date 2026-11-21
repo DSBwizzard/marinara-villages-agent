@@ -351,7 +351,11 @@ export function RoomPanel({
 
   useEffect(() => {
     if (!historyOpen) return;
-    window.requestAnimationFrame(() => historyRef.current?.focus({ preventScroll: true }));
+    window.requestAnimationFrame(() =>
+      historyRef.current
+        ?.querySelector<HTMLElement>('[aria-label="Transcript messages"]')
+        ?.focus({ preventScroll: true }),
+    );
   }, [historyOpen]);
 
   const closeTranscript = () => {
@@ -1353,17 +1357,6 @@ export function RoomPanel({
               if (event.key === "Escape") closeTranscript();
             }}
           >
-            <header className="villages-reader-heading">
-              <strong className="villages-reader-speaker">Transcript</strong>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-chat-vn-button`}
-                aria-label="Close Transcript"
-                onClick={closeTranscript}
-              >
-                ×
-              </button>
-            </header>
             <SceneHistory
               key={worldScope + ":" + room.id}
               sceneId={room.id}
@@ -1371,6 +1364,7 @@ export function RoomPanel({
               playerName={playerName}
               nameStyle={nameStyle}
               speechStyle={speechStyle}
+              onClose={closeTranscript}
             />
           </div>
         ) : null}

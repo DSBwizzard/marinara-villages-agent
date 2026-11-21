@@ -97,7 +97,22 @@ await withBrowser(browser, async () => {
         else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
         else if (path.endsWith("/rooms/" + session.id + "/history")) {
           assert.equal(new URL(route.request().url()).searchParams.get("scope"), fixture.worldScope);
-          value = { scope: fixture.worldScope, sceneId: session.id, version: "a".repeat(64), lines: session.lines };
+          value = {
+            scope: fixture.worldScope,
+            sceneId: session.id,
+            version: "a".repeat(64),
+            lines: [
+              ...session.lines,
+              ...Array.from({ length: 30 }, (_, index) => ({
+                id: "history-" + index,
+                role: "assistant",
+                speakerId: "__venue_scene__",
+                kind: "narration",
+                content: `Transcript paragraph ${index + 1}. The room is quiet and the afternoon light fills the window.`,
+                at: now,
+              })),
+            ],
+          };
         } else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (path.endsWith("/rooms/end")) {
           const endBody = route.request().postDataJSON();
@@ -170,6 +185,32 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
       await expect(composer).toBeDisabled();
       await expect(send).toBeDisabled();
+      const messages = page.getByRole("region", { name: "Transcript messages" });
+      const closeHistory = page.getByRole("button", { name: "Close Transcript", exact: true });
+      const toolbarBefore = await historyPages.boundingBox();
+      assert.equal(await historyPages.innerText(), "", "transcript controls use icons instead of a large text header");
+      const messagesBox = await messages.boundingBox();
+      assert(toolbarBefore.y + toolbarBefore.height <= messagesBox.y + 1, "toolbar stays above the text");
+      for (const fraction of [0, 0.5, 1]) {
+        await messages.evaluate((node, value) => {
+          node.scrollTop = (node.scrollHeight - node.clientHeight) * value;
+        }, fraction);
+        assert.deepEqual(await historyPages.boundingBox(), toolbarBefore, "scrolling cannot move the toolbar");
+        assert(
+          await closeHistory.evaluate((button) => {
+            const box = button.getBoundingClientRect();
+            return (
+              document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest("button") === button
+            );
+          }),
+          "close control remains reachable at every scroll position",
+        );
+      }
+      assert(
+        await messages.evaluate((node) => node.scrollTop > 0),
+        "long transcripts scroll inside their own text area",
+      );
+      if (count === 1) await page.screenshot({ path: `artifacts/transcript-controls-${width}x${height}.png` });
       await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
@@ -278,7 +319,8 @@ await withBrowser(browser, async () => {
               );
           assert.ok(
             after.every((box, index) => box.y <= baseline[index].y + 1),
-            "the keyboard may lift the art",
+            "the keyboard may lift the art: " +
+              JSON.stringify({ width, height, count, resizesLayout, baseline, after }),
           );
           keyboardFirstY = Math.round(after[0].y);
           assert.ok((await dock.boundingBox()).y >= 0, "dock stays inside the visible screen");

@@ -13,6 +13,9 @@ export type SceneAction =
   | "settings"
   | "conclude"
   | "transcript"
+  | "older"
+  | "newer"
+  | "close"
   | "move";
 
 export function SceneActionIcon({ name }: { name: SceneAction }) {
@@ -40,6 +43,10 @@ export function SceneActionIcon({ name }: { name: SceneAction }) {
           <path d="M20 4v6h-6M20 10a8 8 0 1 0 0 5" />
           {name === "retry-unavailable" ? <path d="m4 20 16-16" /> : null}
         </>
+      ) : name === "older" || name === "newer" ? (
+        <path d={name === "older" ? "m15 5-7 7 7 7" : "m9 5 7 7-7 7"} />
+      ) : name === "close" ? (
+        <path d="m6 6 12 12M6 18 18 6" />
       ) : name === "map" ? (
         <path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Zm6-2v16m6-14v16" />
       ) : name === "proposals" ? (
