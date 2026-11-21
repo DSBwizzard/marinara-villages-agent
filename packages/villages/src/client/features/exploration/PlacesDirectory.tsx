@@ -23,7 +23,6 @@ export function PlacesDirectory({
   onVisit,
   onVenue,
   onAdmit,
-  selectedId,
   venueActions,
 }: {
   snapshot: VillageSnapshot;
@@ -37,12 +36,12 @@ export function PlacesDirectory({
   onVisit(place: VillageVenue): void;
   onVenue(place: VillageVenue): void;
   onAdmit(place: PlaceSummary, classes: VenueClass[]): void;
-  selectedId?: string;
   venueActions?(place: VillageVenue): { label: string; onSelect: () => void }[];
 }) {
   const [page, setPage] = useState<PlaceDirectory>({ items: [], nextCursor: null });
   const [cursor, setCursor] = useState("");
   const [detail, setDetail] = useState<PlaceDetail | null>(null);
+  const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
   const [intent, setIntent] = useState("");
   const [exploring, setExploring] = useState(false);
@@ -75,11 +74,13 @@ export function PlacesDirectory({
   }, [search, cursor, refresh]);
   const select = async (place: PlaceSummary) => {
     const ticket = ++read.current;
+    setSelectedId(place.id);
     setError("");
     setAdmitting(false);
     if (place.venue) {
       const venue = snapshot.settings.venues.find((row) => row.id === place.id);
       if (venue) onVenue(venue);
+      else setError("Refresh the Village to open this Venue.");
       return;
     }
     try {
@@ -118,9 +119,15 @@ export function PlacesDirectory({
         if (ticket !== read.current) return;
         if ("promoted" in row) {
           const venue = snapshot.settings.venues.find((item) => item.id === row.id);
-          if (venue) onVenue(venue);
+          if (venue) {
+            setSelectedId(row.id);
+            onSearch(venue.name);
+            onVenue(venue);
+          }
         } else {
           setDetail(row);
+          setSelectedId(row.id);
+          onSearch(row.name);
           setAdmitting(false);
         }
       }
@@ -170,15 +177,18 @@ export function PlacesDirectory({
       disabled={busy}
       onClose={onClose}
       onDiscover={() => setExploring((value) => !value)}
-      rows={page.items.map((place) => ({
-        id: place.id,
-        name: place.name,
-        detail: place.venue ? "Venue" : place.visited ? "Visited" : place.report ? "Reported" : "Place",
-        selected: place.venue ? place.id === selectedId : place.id === detail?.id,
-        content: place.id === detail?.id ? <div className="villages-place-tools">{selectedContent}</div> : null,
-        actions: place.venue ? venueActions?.(snapshot.settings.venues.find((row) => row.id === place.id)!) : undefined,
-        onSelect: () => void select(place),
-      }))}
+      rows={page.items.map((place) => {
+        const venue = place.venue && snapshot.settings.venues.find((row) => row.id === place.id);
+        return {
+          id: place.id,
+          name: place.name,
+          detail: place.venue ? "Venue" : place.visited ? "Visited" : place.report ? "Reported" : "Place",
+          selected: place.id === selectedId,
+          content: place.id === detail?.id ? <div className="villages-place-tools">{selectedContent}</div> : null,
+          actions: venue ? venueActions?.(venue) : undefined,
+          onSelect: () => void select(place),
+        };
+      })}
     >
       <style>{`.villages-place-tools{display:grid;gap:.6rem;padding:.75rem;min-width:0;overflow-wrap:anywhere}.villages-place-tools form,.villages-place-tools label{display:grid;gap:.4rem}.villages-place-tools input{box-sizing:border-box;width:100%;min-width:0;font:inherit}.villages-place-tools p{margin:.2rem 0}.villages-place-tools button{min-height:2.5rem}.villages-place-buttons{display:flex;gap:.5rem;flex-wrap:wrap}`}</style>
       <div className="villages-place-tools">

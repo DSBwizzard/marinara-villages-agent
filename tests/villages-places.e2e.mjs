@@ -59,7 +59,7 @@ await withBrowser(browser, async () => {
         let value;
         if (path === "/places")
           value = {
-            items: [venue, place].filter((row) =>
+            items: [venue, place, { ...venue, id: "late", name: "New Venue" }].filter((row) =>
               row.name.toLowerCase().includes((url.searchParams.get("query") ?? "").trim().toLowerCase()),
             ),
             nextCursor: null,
@@ -110,6 +110,9 @@ await withBrowser(browser, async () => {
         0,
       );
       await page.screenshot({ path: ".build-tmp/places/" + name + ".png", fullPage: true });
+      await page.getByLabel("Search places", { exact: true }).fill("New Venue");
+      await page.getByRole("button", { name: "New Venue · Venue", exact: true }).click();
+      await expect(page.getByRole("alert")).toHaveText("Refresh the Village to open this Venue.");
       assert(
         await page
           .getByRole("complementary")

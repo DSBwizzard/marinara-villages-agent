@@ -189,10 +189,14 @@ export function ExplorationScreen({
     setFocusSearch(false);
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     explorationReturnTab.current = "map";
+    if (place.presentation.mapId !== selectedMap?.id) {
+      setSelectedMapId(place.presentation.mapId);
+      setExplorationSearch(explorationSearch);
+    } else {
+      const point = placeSpot(place);
+      if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
+    }
     setOpenPlaceId(place.id);
-    setSelectedMapId(place.presentation.mapId);
-    const point = placeSpot(place);
-    if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
     setExploreSheet({ tab: "places" });
   };
   const pins = markerDraft
@@ -393,7 +397,6 @@ export function ExplorationScreen({
                   setFocusSearch(false);
                 }}
                 onVenue={selectPlace}
-                selectedId={openPlaceId ?? undefined}
                 venueActions={(place) =>
                   venueExplorationActions(place).filter(
                     (action) => action.label !== "Visit" || !room || room.status === "closed",
