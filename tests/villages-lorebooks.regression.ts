@@ -632,7 +632,18 @@ async function main() {
     placeId: "harbor",
     participants: [],
     activeIds: [],
-    lines: [],
+    lines: [
+      {
+        id: "lore-reply",
+        role: "assistant",
+        kind: "narration",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        content: "The harbor is quiet.",
+        at,
+        heardBy: ["player"],
+      },
+    ],
     submissions: [
       {
         id: "turn",
@@ -642,6 +653,7 @@ async function main() {
         targetId: "",
         requestFingerprint: memoryHash(["chat", "", null, "Hello"]),
         episodeId: "accepted-lore",
+        replyLineIds: ["lore-reply"],
         progressProcessedAt: at,
         acceptance: { status: "applied", rejected: [] },
         lore: combined,

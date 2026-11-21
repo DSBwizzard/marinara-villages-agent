@@ -324,7 +324,7 @@ export function createSceneWriting({
     const playerZone = location.player.zone;
     const speakers = selectedIds.filter((id) => id !== "player");
     const attendanceDirection =
-      "Current location records govern who is here; only current dialogueSpeakers may speak. Historical speech does not establish current attendance. Do not continue absent actors' speech or local actions. " +
+      "Only current dialogueSpeakers may speak; past speech does not prove presence. " +
       (nativeCommands
         ? "New supporting characters require a supplied native introduction command before speaking. "
         : "") +
@@ -432,7 +432,6 @@ export function createSceneWriting({
           location,
           dialogueSpeakers: speakers,
         }),
-        attendanceDirection,
         zoneEventHearingContext({ ...scene, participants: cast }, venue),
       ]),
       conversation: [
@@ -537,9 +536,9 @@ export function createSceneWriting({
             : "") +
         (mode === "leave"
           ? "Finish the departure and end before arrival. "
-          : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. Use that Zone even if earlier prose puts them elsewhere. If they try to cross, play the local part and end before the player enters the next Zone. `) +
+          : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. End crossing attempts before entry despite prior prose. `) +
         attendanceDirection +
-        'Treat the submission as intent. Show local outcomes and leave the next choice open. Put "segments" and any "keep" entries in one JSON object.',
+        'Treat input as intent; show local outcomes and leave the next choice open. Return "segments" and any "keep" in one JSON object.',
     );
     if (loreInspection) {
       const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));

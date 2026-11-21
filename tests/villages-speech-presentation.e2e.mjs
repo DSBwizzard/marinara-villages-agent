@@ -140,6 +140,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
     await page.screenshot({ path: resolve(output, `narrated-sound-${width}.png`) });
     session.lines = lines;
+    session.submissions = [{ id: "spoken-reply", replyLineIds: ["reply"] }];
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(reading).toContainText("A good place to stop for a drink.");
     await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();

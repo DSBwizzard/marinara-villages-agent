@@ -28,7 +28,7 @@ export function SceneMessage({
   nameStyle,
   speechStyle,
 }: MessageStyle & { line: RoomLine }) {
-  const narration = line.kind === "narration" || line.speakerId === "__venue_scene__";
+  const narration = line.role !== "user" && (line.kind === "narration" || line.speakerId === "__venue_scene__");
   const name = line.role === "user" ? playerName : narration ? "Narration" : line.name || "Resident";
   return (
     <article

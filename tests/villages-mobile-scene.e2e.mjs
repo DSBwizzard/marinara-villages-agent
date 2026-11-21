@@ -210,6 +210,8 @@ await withBrowser(browser, async () => {
     await expect(people).toHaveCount(count);
     await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
     if (mobile) {
+      await expect(reading).toContainText("The group gathers by the window.");
+      await next.click();
       const positions =
         count === 1 ? [0.5] : count === 2 ? [0.26, 0.74] : count === 3 ? [0.11, 0.26, 0.74] : [0.11, 0.26, 0.74, 0.89];
       for (let i = 0; i < count; i++) {

@@ -383,10 +383,8 @@ await runCase("narration-writing/departed-speaker", async () => {
   const publication = await f.writing.generate(f.scene, '"Definitely seventeen."', "chat");
   const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
   assert.match(frame.content, /"dialogueSpeakers":\[\]/u);
-  for (const message of [frame, f.messages().at(-1)]) {
-    assert.match(message.content, /Historical speech does not establish current attendance/u);
-    assert.match(message.content, /Return narration only/u);
-  }
+  assert.match(f.messages().at(-1).content, /Only current dialogueSpeakers may speak/u);
+  assert.match(f.messages().at(-1).content, /Return narration only/u);
   assert.throws(
     () => readSceneNarrationReply(publication.raw, [], publication.readset, f.state.continuity),
     /cannot invent/u,

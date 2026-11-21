@@ -191,6 +191,7 @@ await withBrowser({ close: server.stop }, async () => {
         if (await retryReply.isEnabled()) return true;
         if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
           await phoneNext.click();
+        await checkRetryPlacement(phone, retryReply);
         return retryReply.isEnabled();
       })
       .toBe(true);
@@ -203,6 +204,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(retryReply).toBeDisabled();
     await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
     await phoneNext.click();
+    await checkRetryPlacement(phone, retryReply);
     await expect(retryReply).toBeEnabled();
     await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
     await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
@@ -229,6 +231,7 @@ await withBrowser({ close: server.stop }, async () => {
         if (await retryReply.isEnabled()) return true;
         if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
           await phoneNext.click();
+        await checkRetryPlacement(phone, retryReply);
         return retryReply.isEnabled();
       })
       .toBe(true);
