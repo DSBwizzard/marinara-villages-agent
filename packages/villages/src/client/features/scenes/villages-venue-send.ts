@@ -6,6 +6,9 @@ export function shouldSubmitVenueKey(key: string, shiftKey: boolean, composing: 
 
 type SceneSendInput = {
   zoneId?: string;
+  trespass?: true;
+  companions?: string[];
+  follow?: true;
   message?: string;
   mode?: string;
   targetId?: string;
@@ -37,6 +40,9 @@ export function sceneResend(
   const prior = saved.input;
   const same =
     prior.zoneId === input.zoneId &&
+    prior.trespass === input.trespass &&
+    prior.follow === input.follow &&
+    JSON.stringify([...(prior.companions ?? [])].sort()) === JSON.stringify([...(input.companions ?? [])].sort()) &&
     prior.message === input.message &&
     prior.mode === input.mode &&
     (prior.targetId || "") === (input.targetId || "") &&

@@ -84,7 +84,7 @@ function graph(label: "A" | "B") {
   const village = defaultVillageState();
   village.seed = "same-seed";
   village.name = label;
-  village.narrationStyle.writingGuidance = `${label} writing`;
+  village.narrationStyle.person = label === "A" ? "second" : "first";
   const { continuity: _continuity, episodes: _episodes, worldPlaces: _places, mailbox: _mailbox, ...native } = village;
   seed("villages-village", "village", { ...native, memoryHead: null });
   seed("villages-ai-usage", "settings", { since: `${label}-ledger`, requests: [] });

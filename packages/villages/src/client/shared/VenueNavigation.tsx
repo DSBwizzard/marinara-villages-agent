@@ -62,7 +62,12 @@ export function VenueZoneRow({
       </span>
       <span className={`${P}-venue-zone-caption`}>
         <span>{name}</span>
-        {accessLabel ? <small>{accessLabel}</small> : null}
+        {accessLabel ? (
+          <>
+            {" "}
+            <small>{accessLabel}</small>
+          </>
+        ) : null}
       </span>
       <span className={`${P}-venue-zone-chevron`} aria-hidden="true">
         ›

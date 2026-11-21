@@ -11,6 +11,7 @@ import {
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 
 import { badRequest } from "../../domain/rules/errors.js";
+import { readMovementCompanions } from "../../domain/rules/scene-trespass.js";
 import { publicSceneChanges } from "../../domain/rules/scene-public.js";
 import { readVenueOperation } from "../../jobs/venue-coordinator.js";
 import { assertFoundedVillageReady } from "../founding/preparation.js";
@@ -22,6 +23,7 @@ import {
   greetVenue,
   leaveVenueSession,
   moveVenueZone,
+  reactToTrespass,
   retryReply,
   sendVenueTurn,
   travelVenue,
@@ -66,6 +68,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       zoneId?: unknown;
       expectedSceneRevision?: unknown;
       travel?: { sourceId?: unknown; offerId?: unknown };
+      follow?: unknown;
     };
   }>("/rooms", async (request, reply) => {
     try {
@@ -85,6 +88,7 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
           request.body?.expectedSceneRevision === undefined
             ? undefined
             : readSceneRevision(request.body.expectedSceneRevision),
+          request.body?.follow === true,
         ),
       };
     } catch (error) {
@@ -98,6 +102,9 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
       expectedSceneRevision?: unknown;
       retryOfAttemptId?: string;
       operationId?: unknown;
+      trespass?: unknown;
+      companions?: unknown;
+      follow?: unknown;
     };
   }>("/rooms/zone", async (request, reply) => {
     try {
@@ -108,6 +115,9 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
           readSceneRevision(request.body?.expectedSceneRevision),
           request.body?.retryOfAttemptId,
           request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
+          request.body?.trespass === true,
+          readMovementCompanions(request.body?.companions),
+          request.body?.follow === true,
         ),
       };
     } catch (error) {
@@ -117,6 +127,20 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
 }
 export function registerSceneOperationRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.post<{
+    Body: { sessionId?: unknown; reactionId?: unknown; expectedSceneRevision?: unknown; retryOfAttemptId?: string };
+  }>("/rooms/react", async (request, reply) => {
+    try {
+      return await reactToTrespass(
+        readChatId(request.body?.sessionId),
+        readSubmissionId(request.body?.reactionId),
+        readSceneRevision(request.body?.expectedSceneRevision),
+        request.body?.retryOfAttemptId,
+      );
+    } catch (error) {
+      return fail(reply, error, "reacting to trespassing");
+    }
+  });
   app.get<{ Params: { id: string } }>("/rooms/:id/error-details", async (request, reply) => {
     try {
       return await readSceneErrorDetails(readChatId(request.params.id));
@@ -253,6 +277,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         ...(mode === "contact"
           ? {
               contact: {
+                // Preserve saved Contact request fingerprints, including requests that omitted kind.
                 kind: request.body?.contact?.kind === "call" ? ("call" as const) : ("knock" as const),
                 boundaryZoneId:
                   typeof request.body?.contact?.boundaryZoneId === "string" ? request.body.contact.boundaryZoneId : "",

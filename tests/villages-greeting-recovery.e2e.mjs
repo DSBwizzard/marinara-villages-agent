@@ -272,6 +272,7 @@ await withBrowser(browser, async () => {
     connectionError: 'GM connection is not configured: "missing-gm".\nLanguage model connection not found',
   });
   const introDock = intro.page.getByRole("group", { name: "Scene opening", exact: true });
+  await expect(intro.page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
   await introDock.getByRole("button", { name: "Back to map", exact: true }).click();
   await expect(intro.page.locator('[data-pin-id="mill"]')).toBeVisible();
   assert.equal(intro.ends, 0, "Leaving a failed Mari opening keeps mandatory onboarding pending");

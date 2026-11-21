@@ -30,6 +30,7 @@ export type AcceptedEpisode = {
       | "standing"
       | "movement"
       | "movement-request"
+      | "movement-agreement"
       | "departure"
       | "structure"
       | "room"
@@ -52,6 +53,7 @@ export type AcceptedEpisode = {
     witnesses: string[];
     observedBy?: string[];
     endedContacts?: string[];
+    movementAgreement?: import("../rules/scene-trespass.js").MovementAgreement & { agrees: boolean; segment: number };
     movement?: {
       actorId: string;
       from: string;
@@ -61,6 +63,7 @@ export type AcceptedEpisode = {
       spaceClass: import("./world.js").VillageVenueClass;
       area: "outside" | "public" | "shared" | "private";
       privateOwnerId: string;
+      trespass?: import("../../../shared/helpers/venue-access.js").TrespassReason;
     };
     departure?: { actorId: string; from: string; segment: number; path: string[] };
     admission?: { npc: import("./places.js").NpcIdentity; zoneId: string; segment: number };

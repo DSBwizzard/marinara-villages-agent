@@ -693,6 +693,13 @@ await runCase("resident-planning/delayed-meeting", async () => {
   const f = fixture(source);
   // This case tests delayed meeting recovery, without unrelated avoidance destinations in the candidate pool.
   f.state.venues = f.state.venues.filter((venue) => venue.id === "square");
+  for (const resident of f.state.villagers)
+    resident.agenda!.activeDay = {
+      dateKey: source.toISOString().slice(0, 10),
+      weekday: new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(source),
+      scheduleInformed: false,
+      blocks: resident.agenda!.day,
+    };
   const local = new ZonedDate(source, "UTC"),
     plan = socialPlanCandidates(f.state, local).find((row) => row.kind === "meeting")!;
   assert(plan);

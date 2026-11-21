@@ -104,6 +104,7 @@ import {
   useDiscardRoomDebug,
   useDismissRoomNotice,
   useGreetRoom,
+  useReactToTrespass,
   useMoveRoom,
   useOpenRoom,
   useReceiveRoomRecordEvents,
@@ -772,6 +773,29 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const greetRoom = useGreetRoom({ ...scenes, isFounded: snapshot?.isFounded, room, loadSnapshot, setRoom });
+  const reactToTrespass = useReactToTrespass({
+    ...scenes,
+    isFounded: snapshot?.isFounded,
+    room,
+    loadSnapshot,
+    setRoom,
+    receiveRoomRecordEvents,
+  });
+  const trespassReactionRequested = useRef("");
+  useEffect(() => {
+    const key = room?.trespassReactionId && snapshot?.worldScope + ":" + room.id + ":" + room.trespassReactionId;
+    if (
+      !key ||
+      !visible ||
+      scenes.roomBusy ||
+      screen !== "room" ||
+      exploreSheet ||
+      trespassReactionRequested.current === key
+    )
+      return;
+    trespassReactionRequested.current = key;
+    void reactToTrespass();
+  }, [room, snapshot?.worldScope, visible, scenes.roomBusy, screen, exploreSheet, reactToTrespass]);
   const visitEventRequested = useRef("");
   useEffect(() => {
     if (
@@ -1465,7 +1489,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoom,
     setRoomBusy: scenes.setRoomBusy,
     setRoomContactBoundary: scenes.setRoomContactBoundary,
-    setRoomContactKind: scenes.setRoomContactKind,
     setRoomDraft: scenes.setRoomDraft,
     setRoomError: scenes.setRoomError,
     setRoomTargetId: scenes.setRoomTargetId,

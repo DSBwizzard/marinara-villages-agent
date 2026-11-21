@@ -1,3 +1,4 @@
+import { contactPosition } from "./venue-contact.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
@@ -181,14 +182,41 @@ const sceneFields = [
 ] as const;
 function authority(scene: VenueScene) {
   if (scene.pendingAccessClaim) throw conflict("That Scene is still settling its entry invitation.");
+  const arrival =
+    scene.status !== "closed" &&
+    scene.lines.findLast((line) => line.id.startsWith("arrival-") && line.heardBy.includes("player"));
   const facts = scene.continuity?.facts;
   const visible = new Set(scene.activeIds);
   const travel = sceneTravelOffer(scene);
   const destination = travel?.travel;
   return {
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
+    ...(arrival && arrival.zoneId === scene.zoneId ? { zoneArrivalId: arrival.id } : {}),
     version: 1 as const,
     ...(scene.visitorIntroduction ? { visitorIntroduction: true as const } : {}),
+    ...(scene.trespass?.zoneId === scene.zoneId && scene.trespass ? { trespassing: true as const } : {}),
+    ...(scene.trespassReaction &&
+    scene.status === "active" &&
+    (!scene.operation ||
+      (scene.operation.status === "complete" &&
+        !scene.operation.error &&
+        scene.operation.id !== scene.trespassReaction.id)) &&
+    !scene.submissions.some((row) => row.acceptance.status === "pending" || row.acceptance.status === "held")
+      ? { trespassReactionId: scene.trespassReaction.id }
+      : {}),
+    movementCompanions: (scene.movementAgreements ?? []).flatMap((row) => {
+      const person = scene.sceneAttendance?.occupants.find((actor) => actor.characterId === row.actorId);
+      return person && row.from === scene.zoneId && contactPosition(scene, row.actorId) === row.from
+        ? [
+            {
+              id: row.actorId,
+              name: person.name,
+              zoneId: row.zoneId,
+              ...(row.trespass ? { trespass: true as const } : {}),
+            },
+          ]
+        : [];
+    }),
     ...(scene.status === "opening" && scene.visitEvent ? { visitEventOpening: true as const } : {}),
     ...(travel && destination
       ? {
@@ -242,6 +270,49 @@ function authority(scene: VenueScene) {
 }
 export function publicSceneAuthority(scene: VenueScene) {
   return authority(scene);
+}
+
+/** Arrival supersedes earlier replies; held and private lines never enter the live card. */
+export function publicSceneLiveReply(scene: VenueScene) {
+  const visible = sceneLineVisibility(scene.submissions);
+  const lines = scene.lines.filter(visible);
+  if (scene.visitorIntroduction) {
+    const projected = publicSceneResponse(lines, new Set(scene.participants.map((person) => person.characterId)));
+    return { id: projected.length ? scene.id + ":visitor-introduction" : "", lines: projected };
+  }
+  const arrival = lines.findLastIndex((line) => line.id.startsWith("arrival-") && !!publicLine(line));
+  const tail = lines.findLast(
+    (line, index) => index >= arrival && line.role === "assistant" && !line.presenceChange && !!publicLine(line),
+  );
+  if (!tail) return { id: "", lines: [] };
+  const publicIds = new Set(
+    lines
+      .slice(Math.max(0, arrival))
+      .filter((line) => !!publicLine(line))
+      .map((line) => line.id),
+  );
+  const turn = scene.submissions.findLast(
+    (turn) => sceneTurnPublished(turn) && turn.replyLineIds?.some((id) => publicIds.has(id)),
+  );
+  if (
+    arrival < 0 &&
+    turn &&
+    ((turn.zoneIdAtTurn && scene.zoneId && turn.zoneIdAtTurn !== scene.zoneId) ||
+      scene.navigationReceipts?.some(
+        (receipt) =>
+          receipt.originZoneId !== receipt.destinationZoneId && Date.parse(receipt.at) >= Date.parse(turn.at),
+      ))
+  )
+    return { id: "", lines: [] };
+  const ids = new Set(turn?.replyLineIds ?? [arrival >= 0 ? lines[arrival].id : tail.id]);
+  const projected = publicSceneResponse(
+    lines.filter((line, index) => index >= arrival && ids.has(line.id)),
+    new Set(scene.participants.map((person) => person.characterId)),
+  );
+  return {
+    id: turn?.episodeId ?? projected[0]?.id ?? "",
+    lines: projected,
+  };
 }
 
 /** Explicit public fields: the private fit, sources, native authority and purchased proposals never cross this boundary. */

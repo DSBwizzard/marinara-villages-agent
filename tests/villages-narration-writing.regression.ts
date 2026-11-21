@@ -14,7 +14,10 @@ import {
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
-import { readNarrationReply } from "../packages/villages/src/server/domain/rules/narration-contract.js";
+import {
+  CHARACTER_DIALOGUE_DIRECTION,
+  readNarrationReply,
+} from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
@@ -405,7 +408,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(messages[cut].content, /Local speech by default/u);
   assert.match(messages[cut].content, /delivery:"whisper" with targetId or delivery:"shout" to connected Zones/u);
   assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
-  assert.match(system, /Answer addressed hearers; one line can suffice/u);
+  assert(system.includes(CHARACTER_DIALOGUE_DIRECTION));
   assert.match(system, /Treat only quoted player text as spoken aloud/u);
   assert.match(system, /Unquoted text is action, narration, or internal thoughts/u);
   assert.match(system, /cannot be accessed by residents unless made observable/u);
@@ -420,7 +423,8 @@ await runCase("narration-writing/single-request", async () => {
     worldRules: f.state.worldRules,
     world: f.state.worldName,
   });
-  assert(Buffer.byteLength(JSON.stringify(messages)) < 9_000, "the ordinary fixture stays below 9 KB");
+  const promptBytes = Buffer.byteLength(JSON.stringify(messages));
+  assert(promptBytes < 10_000, `the ordinary fixture including dialogue guidance stays below 10 KB (${promptBytes})`);
   assert(!f.messages().some((row) => row.content.includes("input:[")));
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);

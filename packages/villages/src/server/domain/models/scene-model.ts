@@ -89,7 +89,16 @@ export type VenueScene = {
   /** Opaque stored operation heads retain purchases from explicitly abandoned requests. */
   abandonedOperations?: VenueOperation[];
   /** Idempotent free navigation, separate from conversational turns. */
-  navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
+  navigationReceipts?: {
+    id: string;
+    originZoneId: string;
+    destinationZoneId: string;
+    at: string;
+    trespass?: true;
+    companions?: string[];
+    follow?: true;
+    path?: string[];
+  }[];
   generationReceipts?: {
     operationId: string;
     attemptId: string;
@@ -103,6 +112,11 @@ export type VenueScene = {
   spaceClass?: VillageVenueClass;
   zoneId?: string;
   enteredFromZoneId?: string;
+  trespass?: { zoneId: string; reason: import("../../../shared/helpers/venue-access.js").TrespassReason };
+  actorTrespasses?: import("../rules/scene-trespass.js").ActorTrespass[];
+  movementAgreements?: import("../rules/scene-trespass.js").MovementAgreement[];
+  trespassEncounterKeys?: string[];
+  trespassReaction?: import("../rules/scene-trespass.js").TrespassReaction;
   accessPreviousZones?: Record<string, string>;
   pendingAccessClaim?: string;
   pendingRoomQuestions?: string[];

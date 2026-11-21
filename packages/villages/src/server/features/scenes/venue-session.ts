@@ -22,6 +22,9 @@ export function configureSceneCommands(service: SceneCommands): () => void {
 export async function moveVenueZone(...args: Parameters<SceneCommands["moveVenueZone"]>) {
   return binding.get().moveVenueZone(...args);
 }
+export async function reactToTrespass(...args: Parameters<SceneCommands["reactToTrespass"]>) {
+  return binding.get().reactToTrespass(...args);
+}
 export function enterVenue(...args: Parameters<SceneCommands["enterVenue"]>) {
   return binding.get().enterVenue(...args);
 }

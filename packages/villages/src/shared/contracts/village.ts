@@ -712,6 +712,10 @@ export type RoomOperation = {
   error?: string;
   input?: {
     zoneId?: string;
+    trespass?: true;
+    companions?: string[];
+    follow?: true;
+    trespassReaction?: string;
     message?: string;
     mode?: string;
     targetId?: string;
@@ -748,6 +752,11 @@ export type SceneView = {
   placeName: string;
   spaceClass?: VenueClass;
   zoneId?: string;
+  trespassing?: true;
+  /** Latest player-visible arrival; earlier dialogue remains in History. */
+  zoneArrivalId?: string;
+  trespassReactionId?: string;
+  movementCompanions?: { id: string; name: string; zoneId: string; trespass?: true }[];
   doorwayContacts?: { characterId: string; playerZoneId: string }[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;
@@ -761,6 +770,8 @@ export type SceneView = {
   /** Residents encountered during this Scene; activeIds identifies the current Zone audience. */
   participants: RoomParticipant[];
   lines: RoomLine[];
+  /** Active lines contain one complete published reply, or the latest arrival. */
+  liveReplyId?: string;
   playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
   latestTurn?: { id: string; at: string; published: boolean };
   retryReply?: { token: string };
@@ -927,8 +938,6 @@ export type VillageWritingView = {
   tense: "present" | "past";
   person: "first" | "second" | "third";
   rating: "sfw" | "nsfw";
-  writingGuidance: string;
-  writingGuidanceMaxLength: number;
 };
 
 export type VillageConnectionSettings = {

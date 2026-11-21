@@ -348,7 +348,6 @@ export function useSceneInterruptedSubmission(ports: {
   setContactRecovery: React.Dispatch<React.SetStateAction<import("./useScenesState.js").ContactRecovery | null>>;
   roomMoveOperationIdRef: React.RefObject<string>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
-  setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
   setRoomMoveZoneId: React.Dispatch<React.SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<React.SetStateAction<string>>;
@@ -362,7 +361,6 @@ export function useSceneInterruptedSubmission(ports: {
     setContactRecovery,
     roomMoveOperationIdRef,
     setRoomContactBoundary,
-    setRoomContactKind,
     setRoomDraft,
     setRoomMoveZoneId,
     setRoomTargetId,
@@ -418,7 +416,6 @@ export function useSceneInterruptedSubmission(ports: {
     setRoomMoveZoneId,
     roomMoveOperationIdRef,
     setRoomTargetId,
-    setRoomContactKind,
     setRoomContactBoundary,
     setContactRecovery,
   ]);

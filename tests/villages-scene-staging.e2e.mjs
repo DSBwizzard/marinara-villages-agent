@@ -327,16 +327,16 @@ await withBrowser(browser, async () => {
         pageIndex++
       )
         await greetingNext.click();
+      while (await greetingNext.isEnabled()) await greetingNext.click();
       await composer.fill("Let us make room.");
       await page.getByRole("button", { name: "Send", exact: true }).click();
-      const next = page.getByRole("button", { name: "Next paragraph" });
-      const previous = page.getByRole("button", { name: "Previous paragraph" });
-      await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
+      await expect(page.getByRole("region", { name: "Latest reply" })).toContainText(
         "They make room near the right-hand window.",
       );
+      while (await greetingNext.isEnabled()) await greetingNext.click();
       await expect(mara).toHaveAttribute("data-position", "right");
-      await expect(mara).toHaveAttribute("data-attention", "left");
-      await expect(mara.locator("img")).toHaveAttribute("data-facing", "left");
+      await expect(mara).toHaveAttribute("data-attention", "right");
+      await expect(mara.locator("img")).toHaveAttribute("data-facing", "right");
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
       await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
       const firstFlips = await page.evaluate(() => window.spriteFlips);
@@ -376,21 +376,12 @@ await withBrowser(browser, async () => {
         if (!mobile)
           assert.ok(Math.abs(sorted[i].bottom - sorted[0].bottom) < 1, "desktop sprites retain a shared foot baseline");
       }
-      await next.click();
-      await expect(mara).toHaveAttribute("data-attention", "right", "side cue appears with the final paragraph");
+      await expect(mara).toHaveAttribute("data-attention", "right");
       await expect(mara.locator("img")).toHaveAttribute("data-facing", "right");
-      await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
       assert.equal(
         await page.evaluate(() => window.spriteFlips.length),
-        flipEnabled ? 4 : 0,
-        "facing-only changes flip once",
-      );
-      await next.click();
-      await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
-      assert.equal(
-        await page.evaluate(() => window.spriteFlips.length),
-        flipEnabled ? 4 : 0,
-        "unchanged artwork and facing do not flip",
+        flipEnabled ? 2 : 0,
+        "whole reply applies the final visual state once",
       );
       await checkSpriteSize(mobile);
       if (count > 1) {
@@ -408,20 +399,10 @@ await withBrowser(browser, async () => {
         );
         if (mobile && count > 2) assert.ok(layers[0].right > layers[1].x, "crowded mobile sprites can overlap");
       }
-      await previous.click();
-      await previous.click();
-      await expect(mara).toHaveAttribute("data-attention", "left");
-      await expect(cast).toHaveAttribute("data-animate", "false");
       const flipsBeforeReducedMotion = await page.evaluate(() => window.spriteFlips.length);
       await page.emulateMedia({ reducedMotion: "reduce" });
-      await next.click();
-      assert.equal(
-        await page.evaluate(() => window.spriteFlips.length),
-        flipsBeforeReducedMotion,
-        "backward reading and reduced motion do not flip",
-      );
+      assert.equal(await page.evaluate(() => window.spriteFlips.length), flipsBeforeReducedMotion);
       assert.equal(await mara.evaluate((node) => getComputedStyle(node).transitionDuration), "0s");
-      await next.click();
       if (process.env.VILLAGES_VISUAL_OUTPUT)
         await page.screenshot({
           path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `staging-${count}-${width}x${height}.png`),
@@ -436,13 +417,12 @@ await withBrowser(browser, async () => {
       assert.equal(await page.evaluate(() => window.spriteFlips.length), 0, "restored Scene does not flip");
       if (count > 1) {
         const before = await mara.evaluate((node) => node.offsetLeft);
+        while (await greetingNext.isEnabled()) await greetingNext.click();
         await composer.fill("Until next time.");
         await page.getByRole("button", { name: "Send", exact: true }).click();
         await expect(people).toHaveCount(count - 1);
         assert.equal(await mara.evaluate((node) => node.offsetLeft), before, "departures preserve survivor positions");
-        await previous.click();
-        await expect(people).toHaveCount(count, "backward reading restores departed residents");
-        await next.click();
+        await expect(people).toHaveCount(count - 1, "latest Scene keeps departed characters offstage");
       }
       session = { ...session, id: "sprite-" + count, activeIds: castIds, lines: [session.lines[0]], submissions: [] };
       fixture.villagers[0].sprite.framing.mode = "half";
@@ -462,22 +442,22 @@ await withBrowser(browser, async () => {
         await expect(img).toHaveAttribute("src", thoughts);
         await expect(img).toHaveAttribute("data-flipping", "false");
         assert.equal(await page.evaluate(() => window.spriteFlips.length), 2, "artwork-only changes flip once");
-        await previous.click();
+        await sendExpression("neutral");
         await expect(img).toHaveAttribute("src", initialArtwork);
         await page.evaluate(() => {
           window.holdSpriteFlips = true;
         });
-        await next.click();
+        await sendExpression("e-thinking");
         await expect.poll(() => page.evaluate(() => window.spriteFlips.length)).toBeGreaterThan(2);
         await expect(img).toHaveAttribute("data-flipping", "out");
-        await previous.click();
+        await sendExpression("neutral");
         await expect(img).toHaveAttribute("data-flipping", "false");
         assert.equal(
           await img.evaluate((node) => node.getAnimations().length),
           0,
           "rapid navigation cancels pending rotation",
         );
-        await next.click();
+        await sendExpression("e-thinking");
         await expect(img).toHaveAttribute("data-flipping", "out");
         await page.emulateMedia({ reducedMotion: "reduce" });
         await expect(img).toHaveAttribute("data-flipping", "false");
@@ -492,11 +472,11 @@ await withBrowser(browser, async () => {
         await page.emulateMedia({ reducedMotion: "no-preference" });
         await expect(img).toHaveAttribute("src", thoughts);
         await expect(img).toHaveAttribute("data-flipping", "false");
-        await previous.click();
+        await sendExpression("neutral");
         await page.evaluate(() => {
           window.holdSpriteFlips = true;
         });
-        await next.click();
+        await sendExpression("e-thinking");
         await expect(img).toHaveAttribute("data-flipping", "out");
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
@@ -515,6 +495,10 @@ await withBrowser(browser, async () => {
         await page.evaluate(() => {
           window.holdSpriteFlips = false;
         });
+        // Reload the saved enabled setting before testing a new artwork request.
+        await page.reload();
+        await page.addScriptTag({ content: sceneBundle });
+        await expect(img).toHaveAttribute("src", thoughts);
         let releaseArtwork;
         const artworkReady = new Promise((resolve) => {
           releaseArtwork = resolve;
@@ -638,18 +622,9 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ content: sceneBundle });
     const people = page.locator(".marinara-capability-villages-chat-cast-person");
-    const previous = page.getByRole("button", { name: "Previous paragraph" });
     await expect(people).toHaveCount(2);
     await expect(people.first().locator("img")).toHaveAttribute("src", front);
     await expect(people.last().locator("img")).toHaveAttribute("src", front);
-    await previous.click();
-    await expect(people.first()).toHaveAttribute("data-attention", "right");
-    await expect(people.last()).toHaveAttribute("data-attention", "left");
-    await expect(people.first().locator("img")).toHaveAttribute("src", side);
-    await expect(people.last().locator("img")).toHaveAttribute("src", side);
-    await expect(people.first().locator("img")).toHaveCSS("transform", "none");
-    await expect(people.last().locator("img")).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
-    await page.getByRole("button", { name: "Next paragraph" }).click();
     for (const person of await people.all()) {
       await expect(person).toHaveAttribute("data-attention", "front");
       await expect(person.locator("img")).toHaveAttribute("src", front);

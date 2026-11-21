@@ -81,6 +81,7 @@ try {
     );
     assert.match(prompt, /ONE final(?: ordinary main)? dialogue segment/);
     assert.match(prompt, /24 hours after this introduction finishes/);
+    assert(!prompt.includes("Agreement to accompany:"), "Introduction requests cannot solicit movement agreements");
     const timing = scenePromptPacket(messages.map((message: any) => message.content).join("\n"), "calendar");
     assert.equal(timing.founding.instant, world.setupAt);
     assert.equal(timing.founding.elapsedDays, 1);
@@ -120,10 +121,10 @@ try {
   assert.equal(scene.lines[1].id, `${scene.id}-visitors-0`);
   assert(scene.lines.at(-2).content.includes("unsupervised dialogue options"));
   assert(scene.lines.at(-1).content.includes("look around the village"));
-  const playbackOrder = scene.playback.moments.flatMap((moment: any) => moment.lineIds);
+  const playbackOrder = scene.lines.map((line: any) => line.id);
   assert(
     playbackOrder.indexOf(scene.lines.at(-2).id) > playbackOrder.indexOf(`${scene.id}-visitors-6`),
-    "The actual playback places the farewell after the fixed explanation",
+    "The live reply places the farewell after the complete fixed explanation",
   );
   assert.equal(server.calls(), 1, "One saved generated opening precedes the fixed tutorial");
   const snapshot = await request("");
@@ -157,6 +158,12 @@ try {
   await request("/rooms/greet", { sessionId: scene.id });
   assert.equal(server.calls(), 0, "Reload reuses the saved opening without buying another greeting");
   const active = await request("/rooms/active");
+  assert.deepEqual(
+    active.session.lines.map((line: any) => line.id),
+    ids,
+    "The active live reply retains the entire introduction",
+  );
+  assert(active.session.liveReplyId, "The introduction has a stable live reply identity");
   assert.equal(active.session.id, scene.id, "Reload restores the introduction until the player concludes it");
   assert.deepEqual(active.session.activeIds, ["__professor_mari__"], "Attendance cannot replace the scripted cast");
   const message = await server.app.inject({

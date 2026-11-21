@@ -6,7 +6,7 @@ import { agendaAt } from "./agenda-plan.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
-import { contactPath, sceneAccessContext } from "./venue-contact.js";
+import { contactPath, physicalVenuePath, physicallyUsableZone, sceneAccessContext } from "./venue-contact.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
@@ -169,10 +169,21 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
     for (const [actor, from] of Object.entries(positions)) {
       if (!from || from === "exterior") continue;
       const zone = resolveVenueZone(venue, from);
-      if (
+      const decision =
         zone &&
-        evaluateZoneAccess(venue, zone, actor, { ...context, positions, unavailable: zoneClosed(village, venue, zone) })
-          .allowed
+        evaluateZoneAccess(venue, zone, actor, {
+          ...context,
+          positions,
+          unavailable: zone.closed || zoneClosed(village, venue, zone),
+        });
+      const trespass =
+        actor === "player" ? session.trespass : session.actorTrespasses?.find((row) => row.actorId === actor);
+      if (
+        decision?.allowed ||
+        (trespass?.zoneId === from &&
+          zone &&
+          trespass.reason === decision?.reason &&
+          physicallyUsableZone(village, venue, zone, context.at ?? new Date(session.startedAt)))
       )
         continue;
       const previous = actor === "player" ? session.enteredFromZoneId : session.accessPreviousZones?.[actor];
@@ -194,7 +205,18 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
               unavailable: zoneClosed(village, venue, target),
               environment: village.narrative,
             }).allowed &&
-            !!contactPath(village, venue, from, target.id, actor, session, context.at),
+            // Forced access removal keeps physical egress; voluntary Move still checks every entered Zone.
+            !!(
+              contactPath(village, venue, from, target.id, actor, session, context.at) ||
+              (target.id === "exterior" &&
+                physicalVenuePath(
+                  { ...village, narrative: undefined },
+                  venue,
+                  { ...session, zoneId: from },
+                  target.id,
+                  context.at ?? new Date(session.startedAt),
+                ))
+            ),
         )?.id ?? "";
       if (!to && actor === "player") continue;
       let destinationVenueId: string | undefined;

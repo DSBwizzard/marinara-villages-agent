@@ -17,7 +17,11 @@ await withBrowser(browser, async () => {
     mari.sprite = {
       assetId: mari.characterId,
       expressions: [],
-      images: [{ view: "front", label: "Neutral", url: spriteUrl }],
+      images: ["Neutral", "Thinking", "Surprised"].map((label) => ({
+        view: "front",
+        label,
+        url: `/api/capability-packages/villages/assets/mari-visitor-sprites/${label}.png`,
+      })),
       framing: { mode: "full", cropPercent: 0 },
     };
     fixture.visitors = [mari];
@@ -44,7 +48,8 @@ await withBrowser(browser, async () => {
     };
     const savedLines = [
       "A story can bump into you here.",
-      "Visitors come and go. Write them a letter when they are away.",
+      "Wondering why I'm here?",
+      "Me too!",
       "Do keep in touch.",
     ].map((content, i) => ({
       id: "mari-" + i,
@@ -54,11 +59,14 @@ await withBrowser(browser, async () => {
       kind: "dialogue",
       content,
       at: now,
+      staging: [{ characterId: mari.characterId, expression: ["Neutral", "Thinking", "Surprised", "Neutral"][i] }],
     }));
-    await page.route("**/api/capability-packages/villages/assets/mari-visitor-sprites/Neutral.png", (route) =>
+    await page.route("**/api/capability-packages/villages/assets/mari-visitor-sprites/*.png", (route) =>
       fulfill(route, {
         contentType: "image/png",
-        body: readFileSync("packages/villages/mari-visitor-sprites/Neutral.png"),
+        body: readFileSync(
+          `packages/villages/mari-visitor-sprites/${new URL(route.request().url()).pathname.split("/").at(-1)}`,
+        ),
       }),
     );
     await page.route("http://visitors.test/", (route) =>
@@ -99,7 +107,7 @@ await withBrowser(browser, async () => {
     });
     await page.goto("http://visitors.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const paragraph = page.getByRole("region", { name: "Current paragraph" });
+    const paragraph = page.getByRole("region", { name: "Latest reply" });
     await expect(paragraph).toContainText("A story can bump into you here.");
     const sprite = page.locator(`img[src="${spriteUrl}"]`).first();
     await expect(sprite).toBeVisible();
@@ -109,7 +117,11 @@ await withBrowser(browser, async () => {
     });
     await expect(page.getByRole("textbox", { name: /Message at/ })).toHaveCount(0);
     await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
-    await expect(paragraph).toContainText("Visitors come and go.");
+    await expect(paragraph).toContainText("Wondering why I'm here?");
+    await expect(page.locator('img[src$="/Thinking.png"]').first()).toBeVisible();
+    await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    await expect(paragraph).toContainText("Me too!");
+    await expect(page.locator('img[src$="/Surprised.png"]').first()).toBeVisible();
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await expect(paragraph).toContainText("A story can bump into you here.");

@@ -29,6 +29,7 @@ import { acceptNarration } from "../packages/villages/src/server/domain/rules/na
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { withMariSpriteDefaults } from "../packages/villages/src/server/domain/rules/professor-mari.js";
 import { managerResidentSprite } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
+import { publicSceneLiveReply } from "../packages/villages/src/server/domain/rules/scene-public.js";
 
 const state = socialWorldFixture();
 state.setupAt = "2026-11-01T08:30:00.000Z";
@@ -168,6 +169,21 @@ const bookendRaw = {
   ],
 };
 const legacyRaw = { segments: [bookendRaw.segments[0]] };
+const followRaw = {
+  segments: [{ ...bookendRaw.segments[0], follow: { agrees: true } }, bookendRaw.segments[1]],
+};
+const beforeFollow = memoryHash(state);
+assert.throws(
+  () =>
+    acceptNarration(
+      state,
+      { readset: { ...bookendReadset, sceneFollowing: 2 }, raw: followRaw, responseDigest: memoryHash(followRaw) },
+      "greeting",
+      due.toISOString(),
+    ),
+  /opening greeting/,
+);
+assert.equal(memoryHash(state), beforeFollow, "A retained follow annotation cannot change intro movement or state");
 const legacy = acceptNarration(
   structuredClone(state),
   { readset, raw: legacyRaw, responseDigest: memoryHash(legacyRaw) },
@@ -193,6 +209,29 @@ assert.equal(bookends.lines[0].content, bookendRaw.segments[0].text);
 assert.equal(bookends.lines[1].content, "Wondering why I'm here?");
 assert.equal(bookends.lines.at(-2)!.content, bookendRaw.segments[1].text);
 assert.equal(bookends.lines.length, 10, "One generated pair surrounds the seven fixed paragraphs and closing beat");
+assert.deepEqual(
+  publicSceneLiveReply(bookends).lines.map((line) => line.id),
+  bookends.lines.map((line) => line.id),
+  "The live reply includes the generated greeting, complete fixed explanation and generated farewell",
+);
+const hiddenIntro = structuredClone(bookends);
+hiddenIntro.lines.push({ ...bookends.lines[0], id: "private-intro", heardBy: [PROFESSOR_MARI_ID] });
+hiddenIntro.lines.push({ ...bookends.lines[0], id: "held-intro" });
+hiddenIntro.submissions.push({
+  id: "held-intro-turn",
+  at: due.toISOString(),
+  message: "",
+  mode: "chat",
+  targetId: "",
+  requestFingerprint: "",
+  acceptance: { status: "held", rejected: [] },
+  replyLineIds: ["held-intro"],
+});
+assert.deepEqual(
+  publicSceneLiveReply(hiddenIntro).lines.map((line) => line.id),
+  bookends.lines.map((line) => line.id),
+  "The intro projection still excludes held and unwitnessed output",
+);
 const ordered = memoryHash(bookends.lines);
 appendVisitorIntroductionTutorial(bookends, accepted.episode!.segments.at(-1)!.id);
 assert.equal(memoryHash(bookends.lines), ordered, "Recovery preserves generated bookend order and concrete cues");

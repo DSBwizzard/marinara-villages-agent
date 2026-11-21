@@ -51,7 +51,6 @@ const state = coerceVillageState({
     cardSnapshot: snapshotFromCard(card, 1),
   })),
 });
-state.narrationStyle.writingGuidance = "Make all residents agreeable and reluctant to act.";
 const perspective = (id: string, text: string) =>
   retainAuthoredNote(state, "perspective-" + id, text, [id], at, {
     class: "perspective",
@@ -153,7 +152,6 @@ const prefix = (messages: typeof prepared.fitted.messages) =>
   messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
 assert.equal(prefix(prepared.fitted.messages).length, 2);
 assert.deepEqual(prefix(ordered.fitted.messages), prefix(prepared.fitted.messages));
-assert.match(prompt, /where compatible with character identity/);
 assert.match(prompt, /Residents can initiate within evidence and permissions/);
 assert.match(prompt, /The player supplies their speech, actions, thoughts, feelings and consent/);
 assert.doesNotMatch(prompt, /permission\.grant or permission\.revoke/);
