@@ -8,22 +8,16 @@ export const LORE_ACTIVITY_STYLES = `
 .villages-lore-global{position:absolute;z-index:25;right:1rem;bottom:1rem}
 .villages-lore-chip-slot{display:contents}
 .villages-founding-lore{position:absolute;z-index:25;top:4.5rem;left:1rem}.villages-founding-lore:empty{display:none}
-.villages-lore-chip{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:40px;padding:.35rem .65rem;border:1px solid var(--border);border-radius:.75rem;background:var(--popover);color:var(--foreground);font:inherit;cursor:pointer;box-shadow:0 .15rem .4rem #0002}
+.villages-lore-notice{position:relative;font-size:.8125rem}
+.villages-lore-chip{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:40px;padding:.35rem .65rem;border:1px solid var(--border);border-radius:.65rem;background:var(--popover);color:var(--foreground);font:inherit;cursor:pointer;box-shadow:0 .25rem .75rem #0004}
 .villages-lore-chip svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
-.villages-lore-chip:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
-.villages-founding-overlay>dialog.villages-lore-dialog{width:min(42rem,calc(100% - 2rem));max-height:calc(100% - 2rem);padding:0;overflow:hidden;background:var(--popover);color:var(--foreground);border:1px solid var(--border);font-family:"village-letter-lora",Georgia,serif}
-.villages-lore-host .villages-lore-dialog>header{flex:none;display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--border);margin:0;background:var(--popover);color:var(--foreground)}
-.villages-lore-dialog>header h3{font-size:1.15rem;margin:0}
-.villages-lore-host .villages-lore-dialog :is(button,select){background:var(--secondary);color:var(--foreground);border:1px solid var(--border);border-radius:.5rem;min-height:40px;font:inherit;padding:.4rem .65rem;cursor:pointer}
-.villages-lore-host .villages-lore-dialog>header button{background:transparent}
-.villages-lore-body{overflow:auto;min-height:0;padding:1rem;display:grid;gap:1rem;overscroll-behavior:contain}
-.villages-lore-request{display:grid;gap:.35rem;font-size:.85rem}.villages-lore-request select{max-width:100%;width:100%}
-.villages-lore-entries{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
-.villages-lore-entries>button{text-align:left;display:grid;gap:.2rem;overflow-wrap:anywhere}
-.villages-lore-host .villages-lore-dialog .villages-lore-entries>button[aria-pressed=true]{background:var(--primary);color:var(--primary-foreground)}
-.villages-lore-body>button{justify-self:start}
-.villages-lore-entries small{font-size:.75rem;opacity:.85}
-.villages-lore-entry{min-width:0;overflow-wrap:anywhere}.villages-lore-entry h3{font-size:1rem;margin:0 0 .5rem}
-.villages-lore-text{white-space:pre-wrap;font-size:.95rem;line-height:1.55}
-@container(max-width:620px){.villages-lore-chip{min-height:44px}.villages-lore-host .villages-lore-dialog :is(button,select){min-height:44px}.villages-lore-entries{grid-template-columns:minmax(0,1fr)}}
+.villages-lore-chip:focus-visible,.villages-lore-popout button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.villages-lore-popout{position:absolute;z-index:25;top:calc(100% + .5rem);left:0;width:min(20rem,calc(100vw - 2rem));max-height:max(5rem,calc(var(--villages-scene-visible-height,100cqh) - 12rem));overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;border:1px solid var(--border);border-radius:.75rem;background:var(--popover);color:var(--foreground);box-shadow:0 .75rem 2rem #0006;line-height:1.4}
+.villages-lore-head{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.25rem .75rem;border-bottom:1px solid var(--border);background:var(--popover)}
+.villages-lore-head h2{margin:0;font-size:.875rem}
+.villages-lore-head button{min-width:44px;min-height:44px;background:transparent;color:inherit;border:0;font:inherit;cursor:pointer}
+.villages-lore-popout ul{list-style:none;margin:0;padding:.5rem .75rem;display:grid;gap:.35rem;overflow-wrap:anywhere}
+.villages-lore-popout p{margin:.75rem;overflow-wrap:anywhere}
+.villages-lore-global .villages-lore-popout{top:auto;bottom:calc(100% + .5rem);left:auto;right:0}
+@container(max-width:620px){.villages-lore-chip{min-height:44px}}
 `;

@@ -42,6 +42,8 @@ import { SceneActionIcon } from "./SceneActionIcon.js";
 import { LoreActivitySlot } from "../../shared/LoreActivity.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 
+const emptyLore: NonNullable<SceneView["lore"]> = [];
+
 export function sceneZoneLabel(zone?: { name: string }): string {
   return zone?.name || "Zone";
 }
@@ -774,7 +776,7 @@ export function RoomPanel({
               }
             }}
           />
-          <LoreActivitySlot />
+          <LoreActivitySlot entries={room.lore ?? emptyLore} />
           {notices.length > 0 ? (
             <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
               <button

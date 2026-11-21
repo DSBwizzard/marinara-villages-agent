@@ -63,7 +63,7 @@ export function SceneAsides<T extends { speakerId?: string }>({
           head.getBoundingClientRect().bottom,
           notices.getBoundingClientRect().bottom,
           ...Array.from(
-            notices.querySelectorAll(`.${tag}-room-stars, .${tag}-scene-error-panel`),
+            notices.querySelectorAll(`.${tag}-room-stars, .${tag}-scene-error-panel, .villages-lore-popout`),
             (panel) => panel.getBoundingClientRect().bottom,
           ),
         );

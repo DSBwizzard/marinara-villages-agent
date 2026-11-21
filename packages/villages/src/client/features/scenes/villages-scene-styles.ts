@@ -61,7 +61,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .villages-scene-move .villages-founding-editor-body p { margin:0 0 .2rem; }
 .villages-scene-move .villages-founding-editor-body button { width:100%; text-align:left; min-height:44px; }
 .${tag}-room-screen .${tag}-chat-head { flex-wrap: nowrap; }
-.${tag}-room-screen .${tag}-chat-head:has(:is(.${tag}-room-actions-menu, .${tag}-scene-error-panel, .${tag}-room-stars)) { z-index: 25; }
+.${tag}-room-screen .${tag}-chat-head:has(:is(.${tag}-room-actions-menu, .${tag}-scene-error-panel, .${tag}-room-stars, .villages-lore-popout)) { z-index: 25; }
 .${tag}-room-screen .${tag}-chat-actions { flex: 0 0 auto; }
 
 .${tag}-scene-notice-chips { display: flex; align-items: center; flex: 0 0 auto; gap: .375rem; }
