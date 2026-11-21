@@ -338,19 +338,23 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     });
   };
   const directory = async () => {
-    if (!(await canLeave())) return;
+    if (!(await canLeave())) return false;
     const actor = controller.personProfile?.actorId;
     controller.setSpriteManagerId(null);
     controller.setProfileInspection(null);
     controller.setPersonProfile(null);
     controller.openMenu("villagers");
     requestAnimationFrame(() => {
-      const name = controller.snapshot?.villagers.find((person) => person.characterId === actor)?.name;
+      const name = (
+        controller.snapshot?.villagers.find((person) => person.characterId === actor) ??
+        controller.snapshot?.visitors?.find((person) => person.characterId === actor)
+      )?.name;
       if (name)
         documentRef.current
           ?.querySelector<HTMLElement>(`[aria-label="${CSS.escape(`Open ${name} profile`)}"]`)
           ?.focus({ preventScroll: true });
     });
+    return true;
   };
   return (
     <VillagesFrame controller={navigation}>
@@ -429,7 +433,11 @@ function VillagesContent({ element }: { element: HTMLElement }) {
               arriving={arriving}
               people={
                 <div hidden={!bookVisible} inert={!bookVisible} className={`${ELEMENT_TAG}-people-session`}>
-                  <PeoplePages controller={navigation} active={bookVisible && !controller.mailboxOpen} />
+                  <PeoplePages
+                    controller={navigation}
+                    active={bookVisible && !controller.mailboxOpen}
+                    onDirectory={directory}
+                  />
                 </div>
               }
             />
@@ -488,7 +496,15 @@ function VillageScreen(props: VillageScreenProps) {
   return <VillageDestinations {...props} />;
 }
 
-function PeoplePages({ controller, active }: { controller: Controller; active: boolean }) {
+function PeoplePages({
+  controller,
+  active,
+  onDirectory,
+}: {
+  controller: Controller;
+  active: boolean;
+  onDirectory: () => Promise<boolean>;
+}) {
   const [person, setPerson] = useState<DossierNavigation | null>(null);
   if (active && controller.personProfile && controller.personProfile !== person) setPerson(controller.personProfile);
   return (
@@ -499,12 +515,16 @@ function PeoplePages({ controller, active }: { controller: Controller; active: b
             key={controller.snapshot?.worldScope}
             controller={{ ...controller, screen: "menu", menuPage: "villagers" }}
             selectedId={controller.screen === "person" ? person?.actorId : undefined}
+            onDirectory={onDirectory}
           />
         </RetainedView>
       </div>
       {person ? (
         <RetainedView key={person.actorId} active={active && controller.screen === "person"}>
-          <ResidentsScreen controller={{ ...controller, screen: "person", personProfile: person }} />
+          <ResidentsScreen
+            controller={{ ...controller, screen: "person", personProfile: person }}
+            onDirectory={onDirectory}
+          />
         </RetainedView>
       ) : null}
     </div>

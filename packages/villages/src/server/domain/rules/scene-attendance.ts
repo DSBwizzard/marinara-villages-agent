@@ -14,10 +14,12 @@ import { venueResidentIds } from "./venue-model.js";
 import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagePresence } from "./village-projections.js";
+import { sameVisitorPhase, visitorPosition } from "./visitors.js";
 
 export function sameSceneRoutine(village: VillageState, scene: VenueScene, actorId: string, now: Date): boolean {
   const resident = village.villagers.find((row) => row.characterId === actorId);
-  if (!resident) return false;
+  if (!resident)
+    return sameVisitorPhase(village, actorId, new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt), now);
   const previous = scene.continuity?.facts.villagers.find((row) => row.characterId === actorId) ?? resident;
   const timeZone = village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const before = new ZonedDate(scene.sceneAttendance?.capturedAt ?? scene.startedAt, timeZone);
@@ -68,30 +70,43 @@ export function captureSceneAttendance(
     now,
   });
   const presence = villagePresence(village, moment.minuteOfDay, now, positions);
+  const visitor = visitorPosition(village, now, presence, positions);
   return {
     layout: captureSceneLayout(venue),
     capturedAt: now.toISOString(),
-    occupants: village.villagers.flatMap((villager) => {
-      const position = presence.get(villager.characterId);
-      if (position?.id !== placeId) return [];
-      const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
-      const zone =
-        resolveVenueZone(venue, position.zoneId ?? "") ??
-        chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
-          at: now,
-        });
-      return [
-        {
-          characterId: villager.characterId,
-          name: villager.cardSnapshot.name,
-          doing:
-            (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
-              ? "Taking care of their own affairs"
-              : (block?.activity ?? ""),
-          zoneId: zone.id,
-        },
-      ];
-    }),
+    occupants: [
+      ...village.villagers.flatMap((villager) => {
+        const position = presence.get(villager.characterId);
+        if (position?.id !== placeId) return [];
+        const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
+        const zone =
+          resolveVenueZone(venue, position.zoneId ?? "") ??
+          chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
+            at: now,
+          });
+        return [
+          {
+            characterId: villager.characterId,
+            name: villager.cardSnapshot.name,
+            doing:
+              (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
+                ? "Taking care of their own affairs"
+                : (block?.activity ?? ""),
+            zoneId: zone.id,
+          },
+        ];
+      }),
+      ...(visitor?.venueId === placeId
+        ? [
+            {
+              characterId: visitor.person.characterId,
+              name: visitor.person.cardSnapshot.name,
+              doing: visitor.sleeping ? "Turning in for the night" : "Visiting",
+              zoneId: visitor.zoneId,
+            },
+          ]
+        : []),
+    ],
   };
 }
 export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zoneId: string) {

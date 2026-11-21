@@ -152,6 +152,18 @@
       "path": "/artwork/:size/:id/:extension"
     },
     {
+      "method": "put",
+      "path": "/visitors/:characterId"
+    },
+    {
+      "method": "post",
+      "path": "/visitors/:characterId/move-in"
+    },
+    {
+      "method": "post",
+      "path": "/visitors/:characterId/host"
+    },
+    {
       "method": "patch",
       "path": "/villagers/:characterId/description"
     },

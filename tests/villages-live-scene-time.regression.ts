@@ -25,6 +25,8 @@ import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules
 import { sceneAccessContext } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import { capturedSceneCalendar } from "../packages/villages/src/server/domain/rules/scene-calendar.js";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
+import { settleVisitorTrip, visitingCharacter } from "../packages/villages/src/server/domain/rules/visitors.js";
+import { automaticVisitorSprites } from "../packages/villages/src/server/domain/rules/visitor-sprites.js";
 
 let now = new Date("2026-11-02T09:50:00Z");
 const releaseClock = configureVillageClock({
@@ -34,7 +36,7 @@ const releaseClock = configureVillageClock({
     throw Error("No clock administration in this test");
   },
 });
-function fixture() {
+function fixture(initializeCharacterSprites?: Parameters<typeof createLiveScenes>[0]["initializeCharacterSprites"]) {
   const world = coerceVillageState({
     ...defaultVillageState(),
     seed: "live-time",
@@ -122,6 +124,11 @@ function fixture() {
   const service = createLiveScenes({
     withSceneWork: (_id, work) => work(),
     withIdleSceneWork: (_id, observe) => observe(),
+    initializeCharacterSprites,
+    settleVisitorAttendance: (_state, at) => {
+      settleVisitorTrip(world, at);
+      return structuredClone(world);
+    },
     readActive: async () => ({ sessionId: scene.id, placeId: scene.placeId }),
     readSession: async () => structuredClone(scene),
     changeSession: async (_id, change) => {
@@ -359,6 +366,30 @@ try {
   );
   captured.facts.timeZone = "Asia/Tokyo";
   assert.equal(publicSceneAuthority(lighting.scene).lighting, "day");
+
+  const initialized: string[] = [];
+  const visitorScene = fixture(async (_scope, character) => {
+    initialized.push(character.characterId);
+    return automaticVisitorSprites([{ filename: "untitled.png", url: "", label: "neutral" }], []);
+  });
+  const source = visitorScene.world.villagers.pop()!;
+  visitorScene.world.visitors = [{ ...source, spriteManager: null, visitsEnabled: true, visitsRevision: "visits" }];
+  visitorScene.world.communityVenueId = "garden";
+  const nextVisit = Array.from({ length: 24 }, (_, day) => new Date(Date.UTC(2026, 10, 3 + day, 9))).find((at) => {
+    const probe = structuredClone(visitorScene.world);
+    settleVisitorTrip(probe, at);
+    return visitingCharacter(probe, at);
+  });
+  assert(nextVisit);
+  now = nextVisit;
+  visitorScene.setBusy(true);
+  await visitorScene.service.activeVenueSession();
+  assert.deepEqual(initialized, [], "Admitted Scene work keeps its original appearance.");
+  visitorScene.setBusy(false);
+  await visitorScene.service.activeVenueSession();
+  assert.deepEqual(initialized.sort(), ["jimmy", "maya"]);
+  assert.equal(visitorScene.scene.continuity?.facts.visitors?.[0]?.sprite?.expressions[0]?.filename, "untitled.png");
+  assert.equal(visitorScene.scene.continuity?.facts.villagers[0]?.sprite?.expressions[0]?.filename, "untitled.png");
 } finally {
   releaseClock();
 }

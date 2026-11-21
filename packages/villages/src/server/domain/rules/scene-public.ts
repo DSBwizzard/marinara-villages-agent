@@ -193,6 +193,7 @@ function authority(scene: VenueScene) {
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
     ...(arrival && arrival.zoneId === scene.zoneId ? { zoneArrivalId: arrival.id } : {}),
     version: 1 as const,
+    ...(scene.visitorIntroduction ? { visitorIntroduction: true as const } : {}),
     ...(scene.trespass?.zoneId === scene.zoneId && scene.trespass ? { trespassing: true as const } : {}),
     ...(scene.trespassReaction &&
     scene.status === "active" &&
@@ -275,6 +276,10 @@ export function publicSceneAuthority(scene: VenueScene) {
 export function publicSceneLiveReply(scene: VenueScene) {
   const visible = sceneLineVisibility(scene.submissions);
   const lines = scene.lines.filter(visible);
+  if (scene.visitorIntroduction) {
+    const projected = publicSceneResponse(lines, new Set(scene.participants.map((person) => person.characterId)));
+    return { id: projected.length ? scene.id + ":visitor-introduction" : "", lines: projected };
+  }
   const arrival = lines.findLastIndex((line) => line.id.startsWith("arrival-") && !!publicLine(line));
   const tail = lines.findLast(
     (line, index) => index >= arrival && line.role === "assistant" && !line.presenceChange && !!publicLine(line),

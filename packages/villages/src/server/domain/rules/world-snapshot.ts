@@ -25,11 +25,11 @@ import {
 } from "../../../shared/helpers/sprite-variants.js";
 import type {
   VillageMomentView,
+  VillageCardCharacter,
   VillagePlaceView,
   VillagePlayerIdentity,
   VillageSettingsView,
   VillageState,
-  VillageVillager,
   VillageVillagerView,
 } from "../models/world.js";
 import { agendaBlocksFor } from "./agenda-week.js";
@@ -62,9 +62,10 @@ import { villageVenueLimit } from "./venue-capacity.js";
 import { resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
+import { nextVisitorTransition } from "./visitors.js";
 
 export function projectVillager(
-  villager: VillageVillager,
+  villager: VillageCardCharacter,
   cardName: string | null,
   _cardSummary: string,
   cardTags: string[],
@@ -157,7 +158,7 @@ export function exactSnapshotTransition(village: VillageState, now: Date): strin
     timeZone: village.timeZone || undefined,
     now,
   });
-  const candidates = [Date.parse(moment.nextTransitionAt)];
+  const candidates = [Date.parse(moment.nextTransitionAt), nextVisitorTransition(village, now)];
   const currentMinute = moment.minuteOfDay;
   const addMinute = (minute: number) => {
     if (minute <= currentMinute || minute >= 1440) return;

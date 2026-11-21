@@ -2,6 +2,7 @@ import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { continuityRelationships, inspectContinuityRelationships } from "../../domain/rules/continuity-library.js";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
 import type { readVillageState } from "../world/village-store.js";
+import { findCardCharacter, knownCardCharacters } from "../../domain/rules/visitors.js";
 export type RelationshipPorts = {
   backgroundWorkSummaries?: typeof import("../../jobs/background-work.js").backgroundWorkSummaries;
   clarifyStartingTies?: (value: unknown) => Promise<void>;
@@ -23,7 +24,7 @@ export function createRelationships(ports: RelationshipPorts) {
     const name = (id: string) =>
       id === "player"
         ? village.playerPersonaName || village.playerName || "Player"
-        : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "Former resident");
+        : (findCardCharacter(village, id)?.cardSnapshot.name ?? "Former resident");
     return {
       processing: ((await ports.backgroundWorkSummaries?.()) ?? [])
         .filter((row) => ["starting-ties", "resident-planning", "personal-mail"].includes(row.kind))
@@ -38,10 +39,11 @@ export function createRelationships(ports: RelationshipPorts) {
           requests: row.requests,
           tokens: row.tokens,
         })),
-      residents: village.villagers.map((person) => ({
+      residents: knownCardCharacters(village).map((person) => ({
         characterId: person.characterId,
         name: name(person.characterId),
-        initialized: village.startingHistory.reviewed[person.characterId] === person.incarnation,
+        initialized:
+          "visitsEnabled" in person || village.startingHistory.reviewed[person.characterId] === person.incarnation,
         entries: inspectContinuityRelationships(village, person.characterId, at),
       })),
       conflicts: village.startingHistory.conflicts.map((row) => ({

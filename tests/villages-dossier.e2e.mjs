@@ -49,6 +49,25 @@ await withBrowser(browser, async () => {
     };
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
+    if (exerciseActions) {
+      village.visitors = [
+        {
+          ...village.villagers[0],
+          characterId: "river-visitor",
+          name: "River Visitor",
+          met: true,
+          firstMetAt: "2026-11-09T12:00:00.000Z",
+          visitsEnabled: true,
+          visit: {
+            arrivedAt: "2026-11-09T12:00:00.000Z",
+            leavesAt: "2026-11-11T17:00:00.000Z",
+            offerHome: false,
+            stayingWithPlayer: false,
+          },
+        },
+      ];
+      village.visitorNotice = { venueId: village.settings.venues[0].id, venueName: village.settings.venues[0].name };
+    }
     village.villagers[0].letterFontId = "caveat";
     village.villagers[1].letterFontId = "caveat";
     await page.route("**/api/capability-packages/villages/assets/letter-fonts/caveat.json", (route) =>
@@ -624,6 +643,72 @@ await withBrowser(browser, async () => {
     const selector = page.getByRole("main", { name: "Villagers directory" });
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     const bookBox = await page.locator(`.${P}-people-layout`).boundingBox();
+    if (exerciseActions) {
+      const villagerTile = await selector.getByRole("button", { name: "Open Mara profile" }).boundingBox();
+      await selector.getByRole("button", { name: "Visitors", exact: true }).click();
+      const visitors = page.getByRole("main", { name: "Visitors directory" });
+      const visitorTile = visitors.getByRole("button", { name: "Open River Visitor profile" });
+      await expect(visitorTile).toBeVisible();
+      const visitorBox = await visitorTile.boundingBox();
+      for (const dimension of ["x", "y", "width", "height"])
+        assert(
+          Math.abs(visitorBox[dimension] - villagerTile[dimension]) < 1,
+          "Visitor and Villager tile geometry matches within pixel rounding.",
+        );
+      await visitors.getByRole("searchbox", { name: "Find a person" }).fill("missing");
+      await expect(visitorTile).toHaveCount(0);
+      await visitors.getByRole("searchbox", { name: "Find a person" }).fill("");
+      await visitors.getByRole("button", { name: "Add Visitor", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Add Visitor", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await visitorTile.click();
+      await expect(page.getByRole("heading", { name: "River Visitor", exact: true })).toBeVisible();
+      const visitorProfile = page.locator(`.${P}-dossier-root`);
+      const visitorBack = visitorProfile.getByRole("button", { name: "Back to Visitors", exact: true });
+      if (width <= 700) {
+        await expect(visitorBack).toBeVisible();
+        await visitorBack.click();
+      } else {
+        await expect(visitorBack).toBeHidden();
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "People", exact: true })
+          .click();
+      }
+      await expect(visitors).toBeVisible();
+      await expect(visitors.getByRole("button", { name: "Visitors", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(visitorTile).toBeFocused();
+      await visitorTile.click();
+      await expect(visitorProfile.getByText(/^First met /)).toBeVisible();
+      await expect(visitorProfile.getByRole("button", { name: "Find River Visitor", exact: true })).toBeVisible();
+      await expect(visitorProfile.getByRole("button", { name: "Write a letter", exact: true })).toBeVisible();
+      await page.screenshot({ path: resolve(output, `visitor-profile-${width}-${height}.png`) });
+      await visitorProfile.getByRole("button", { name: "Write a letter", exact: true }).click();
+      const visitorMail = page.getByRole("dialog", { name: "Mailbox", exact: true });
+      await expect(visitorMail.getByRole("combobox", { name: "Recipient", exact: true })).toHaveValue("river-visitor");
+      const backToLetters = visitorMail.getByRole("button", { name: /Back to letters/ });
+      if (await backToLetters.isVisible()) await backToLetters.click();
+      else await visitorMail.getByRole("button", { name: "Inbox", exact: true }).click();
+      await visitorMail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
+      await openCharacterTools(page);
+      await expect(visitorProfile.getByText(/^Visiting until /)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Offer to host", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Turn visits off", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Agenda records", exact: true })).toHaveCount(0);
+      if (width <= 700) await visitorBack.click();
+      else
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "People", exact: true })
+          .click();
+      await expect(visitorTile).toBeFocused();
+      await visitors.getByRole("button", { name: "Villagers", exact: true }).click();
+      await expect(selector).toBeVisible();
+    }
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     const search = selector.getByRole("searchbox", { name: "Find a person" });
     await search.fill("Mara");
@@ -840,7 +925,27 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toHaveCount(1);
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
     const overview = profile.getByRole("region", { name: "Overview content" });
-    await expect(profile.getByRole("button", { name: "← Back to Villagers", exact: true })).toHaveCount(0);
+    const villagerBack = profile.getByRole("button", { name: "Back to Villagers", exact: true });
+    if (width <= 700) {
+      await expect(villagerBack).toBeVisible();
+      const backBounds = await villagerBack.boundingBox();
+      const nameTop = await profile.getByRole("heading", { name: "Mara", exact: true }).evaluate((node) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return range.getBoundingClientRect().top;
+      });
+      assert(
+        backBounds.y + backBounds.height <= nameTop + 1,
+        "Back button is above the person's name: " + JSON.stringify({ width, height, backBounds, nameTop }),
+      );
+      await villagerBack.click();
+      await expect(selector).toBeVisible();
+      await expect(selector.getByRole("button", { name: "Villagers", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await selector.getByRole("button", { name: "Open Mara profile" }).click();
+    } else await expect(villagerBack).toBeHidden();
     await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toHaveCount(0);
     await expect(selector.getByText(/^[0-9]+ villagers$/)).toHaveCount(0);
     await expect(overview.getByRole("heading", { name: "Relationships", exact: true })).toHaveCount(0);
@@ -940,7 +1045,10 @@ await withBrowser(browser, async () => {
     await expect(page.locator('[data-villager-request="request:mara-request"]')).toBeFocused();
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
-    assert.equal(writes.length, 0, JSON.stringify(writes));
+    assert.deepEqual(
+      writes.map((row) => row.path),
+      [],
+    );
     await chooseSection("Overview");
     const signature = profile.getByRole("img", { name: "Mara's signature", exact: true, includeHidden: true });
     await expect(signature).toBeVisible();

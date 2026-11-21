@@ -9,6 +9,7 @@ import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { snapshotContent, snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
+import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 
 export interface ResidentCardPorts {
   readVillageState(): Promise<VillageState>;
@@ -32,7 +33,13 @@ export function createResidentCards({
   async function buildVillageCatalog(): Promise<VillageCatalogEntry[]> {
     const [village, cards] = await Promise.all([readVillageState(), listVillagerCards()]);
     const resident = new Set(village.villagers.map((villager) => villager.characterId));
-    return cards.map((card) => toCatalogEntry(card, resident.has(card.id)));
+    return cards
+      .filter(
+        (card) =>
+          card.id !== PROFESSOR_MARI_ID ||
+          (village.setupAt && (!village.visitorIntroduction || village.visitorIntroduction.completedAt)),
+      )
+      .map((card) => toCatalogEntry(card, resident.has(card.id)));
   }
 
   async function previewVillagerRefresh(characterId: string): Promise<VillageVillagerRefreshPreview> {

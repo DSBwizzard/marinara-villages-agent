@@ -26,7 +26,17 @@ import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { completeOpeningGathering, matchesOpeningGathering } from "../../domain/rules/opening-project.js";
 import { captureSceneAttendance, sameSceneRoutine, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { movedAttentionContacts } from "../../domain/rules/scene-attention.js";
-import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView, cloneSceneFacts, captureSceneContinuity } from "../../domain/rules/scene-continuity.js";
+import {
+  appendVisitorIntroductionTutorial,
+  completeVisitorIntroduction,
+  PROFESSOR_MARI_ID,
+  visitorIntroductionDue,
+  visitorIntroductionId,
+  visitorIntroductionVenue,
+  writeVisitorIntroduction,
+} from "../../domain/rules/visitor-introduction.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
 import { requireSceneZoneId, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { assertCurrentSceneGeneration } from "../../domain/rules/scene-writing-contract.js";
@@ -118,6 +128,8 @@ export interface SceneCommandPorts {
   rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
   withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
+  settleVisitorAttendance?(state: VillageState, at: Date): VillageState | Promise<VillageState>;
+  prepareIntroductionVisitor?(state: VillageState, at: Date): Promise<VillageState>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
@@ -161,6 +173,8 @@ export function createSceneCommands({
   recoverVenueOperations,
   rollActiveAgendas,
   withVillageSceneAcceptance,
+  settleVisitorAttendance,
+  prepareIntroductionVisitor,
   mutateVillageState: mutateVillageStateWithoutPlaces,
   readVillageState: readVillageStateWithoutPlaces,
 }: SceneCommandPorts) {
@@ -331,6 +345,7 @@ export function createSceneCommands({
   ): Promise<VenueScene> {
     assertVenueOwnership();
     let session = await requireLiveVenueSession(sessionId);
+    if (session.visitorIntroduction) throw conflict("Finish Mari's introduction before moving to another Zone.");
     if (!session.sceneAttendance) session = await refreshZoneParticipants(session, true);
     const operationId = venueOperationId();
     const recorded = session.navigationReceipts?.some((entry) => entry.id === operationId);
@@ -689,8 +704,10 @@ export function createSceneCommands({
     if (!existing && !travel) {
       await rollActiveAgendas();
     }
-    const live = travel?.village ?? (await readVillageState());
-    const village = existing ? sceneContinuityView(live, existing) : live;
+    const source = travel?.village ?? (await readVillageState());
+    const now = villageNow();
+    const live = existing || travel ? source : ((await settleVisitorAttendance?.(source, now)) ?? source);
+    let village = existing ? sceneContinuityView(live, existing) : live;
     const place = findLocation(village, placeId);
     if (!place) throw notFound("That place is not in this village.");
     if (travel && (travel.source.placeId === placeId || travel.source.villageSeed !== live.seed))
@@ -748,7 +765,20 @@ export function createSceneCommands({
         () => moveVenueZoneOnce(existing.id, zone.id, false, [], follow),
       );
     }
-    const id = travel
+    if (!travel && visitorIntroductionDue(village, now)) {
+      const saved = await readSession(visitorIntroductionId(village)).catch((error) => {
+        if (error instanceof VillagesRequestError && error.statusCode === 404) return null;
+        throw error;
+      });
+      if (saved?.visitorIntroduction) {
+        if (saved.villageSeed !== village.seed || saved.continuity?.setupAt !== village.setupAt)
+          throw conflict("That introduction belongs to another Village.");
+        await selectActiveScene(saved.id, saved.placeId);
+        await mutateVillageState((state) => completeVisitorIntroduction(state, saved));
+        return saved.status === "closed" ? finishClosedScene(saved) : saved;
+      }
+    }
+    let id = travel
       ? "travel-" + memoryHash([travel.source.id, travel.offerId]).slice(0, 32)
       : (gathering && village.opening!.gatheringSceneId) || randomUUID();
     if (gathering) {
@@ -781,7 +811,6 @@ export function createSceneCommands({
           ? existingGathering
           : refreshZoneParticipants(existingGathering);
     }
-    const now = villageNow();
     const entryAt = new ZonedDate(now, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     const invitation =
       travel &&
@@ -834,6 +863,21 @@ export function createSceneCommands({
           ])
         : undefined,
     );
+    let introduction = false;
+    if (
+      !travel &&
+      zone.kind === "exterior" &&
+      visitorIntroductionDue(village, now) &&
+      visitorIntroductionVenue(village, place, sceneAttendance, now) &&
+      prepareIntroductionVisitor
+    ) {
+      village = await prepareIntroductionVisitor(village, now);
+      introduction =
+        !!village.visitors?.some((person) => person.characterId === PROFESSOR_MARI_ID) &&
+        visitorIntroductionDue(village, now) &&
+        visitorIntroductionVenue(village, place, sceneAttendance, now);
+      if (introduction) id = visitorIntroductionId(village);
+    }
     if (gathering)
       sceneAttendance.occupants = village.villagers
         .filter((resident) => village.opening!.residentIds.includes(resident.characterId))
@@ -924,7 +968,7 @@ export function createSceneCommands({
         .length > 4
     )
       throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
-    const authoredOpening = gathering || !!discovery || hasAssociatedNpc(village, placeId);
+    const authoredOpening = introduction || gathering || !!discovery || hasAssociatedNpc(village, placeId);
     let visitEvent: VenueScene["visitEvent"];
     if (!travel && !authoredOpening && village.spontaneousEvents) {
       const at = Date.parse(sceneAttendance.capturedAt);
@@ -980,6 +1024,7 @@ export function createSceneCommands({
     };
     const create = async () => {
       await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, async (value) => {
+        if (introduction && value.id) throw conflict("Mari's introduction is already starting. Refresh the Scene.");
         if (gathering) {
           if (value.id || (await readTerminal(id)) || !matchesOpeningGathering(await readVillageState(), session))
             throw conflict("The opening changed. Refresh the Village.");
@@ -988,6 +1033,35 @@ export function createSceneCommands({
       });
       await selectActiveScene(id, placeId, travel?.source.id);
     };
+    if (introduction) {
+      return withSceneWork(id, () =>
+        withVillageSceneAcceptance(
+          async (current) => {
+            const at = villageNow();
+            const currentPlace = findLocation(current, placeId);
+            if (
+              villageWorldScope(current) !== villageWorldScope(village) ||
+              !visitorIntroductionDue(current, at) ||
+              !currentPlace ||
+              !currentPlace.zones?.some((row) => row.id === session.zoneId && row.kind === "exterior")
+            )
+              throw conflict("The Village changed. Refresh before entering.");
+            const currentAttendance = captureSceneAttendance(current, placeId, at);
+            if (!visitorIntroductionVenue(current, currentPlace, currentAttendance, at))
+              throw conflict("The entrance is no longer quiet or available. Mari will visit another time.");
+            session.placeName = currentPlace.name;
+            session.startedAt = session.lastActivityAt = currentAttendance.capturedAt;
+            session.sceneAttendance = currentAttendance;
+            writeVisitorIntroduction(session, current);
+            session.continuity = captureSceneContinuity(current, session, at.getTime());
+            await create();
+            await mutateVillageState((state) => completeVisitorIntroduction(state, session));
+            return session;
+          },
+          { memories: true },
+        ),
+      );
+    }
     if (gathering) await withSceneWork(id, create);
     else await create();
     if (travel) return session;
@@ -1021,6 +1095,7 @@ export function createSceneCommands({
       aborted,
       Promise.resolve().then(async () => {
         let admission = await readSession(id);
+        if (admission.visitorIntroduction && admission.status !== "opening") return admission;
         const freshVisit =
           admission.status === "opening" && admission.visitEvent && admission.operation?.kind !== "greet";
         if (freshVisit) admission = await requireLiveVenueSession(id);
@@ -1129,8 +1204,10 @@ export function createSceneCommands({
     const session = await changeSession(id, (state) => {
       if (state.operation?.token !== expected?.token || state.operation?.attemptId !== expected?.attemptId)
         throw conflict("The Scene request changed before the greeting could be skipped.");
-      if (state.status === "opening") state.status = "active";
-      else if (state.status !== "active") throw conflict("That Scene has already ended.");
+      if (state.status === "opening") {
+        appendVisitorIntroductionTutorial(state);
+        state.status = "active";
+      } else if (state.status !== "active") throw conflict("That Scene has already ended.");
       delete state.visitEvent;
       if (state.operation?.kind === "greet" && state.operation.status === "complete") {
         state.operation.error = "";
@@ -1332,6 +1409,7 @@ export function createSceneCommands({
   async function sendVenueTurnOnce(input: VenueTurnInput) {
     if (sceneWork().isMoving(input.sessionId)) throw conflict("Wait for Zone navigation to finish.");
     let scene = await readSession(input.sessionId);
+    if (scene.visitorIntroduction) throw conflict("Continue Mari's introduction before starting another conversation.");
     assertCurrentSceneGeneration(scene);
     const prior = scene.submissions.find((turn) => turn.id === input.submissionId);
     if (!prior) {
@@ -1432,6 +1510,8 @@ export function createSceneCommands({
     const scene = await readSession(id);
     if (scene.status === "closed" && (scene.operation?.id !== "close" || scene.operation.status === "complete"))
       return finishClosedScene(scene);
+    if (scene.visitorIntroduction && scene.status === "opening")
+      throw conflict("Finish Mari's greeting or continue with the Visitor explanation before ending this Scene.");
     const resumingAbandon =
       scene.operation?.id === "close" && typeof scene.operation.input.abandonOperationId === "string";
     if (abandonOperationId && !resumingAbandon)
@@ -1479,9 +1559,11 @@ export function createSceneCommands({
   async function closeLiveScene(session: VenueScene): Promise<VenueScene> {
     if (session.pendingAccessClaim) session = await requireLiveVenueSession(session.id);
     const closed = await changeSession(session.id, (state) => {
+      if (state.visitorIntroduction && state.status === "opening")
+        throw conflict("Finish Mari's greeting or continue with the Visitor explanation before ending this Scene.");
       state.status = "closed";
       state.endedAt ||= villageNow().toISOString();
-      state.endReason ||= "player";
+      state.endReason ||= state.visitorIntroduction ? "scene" : "player";
     });
     return finishClosedScene(closed);
   }
@@ -1490,6 +1572,10 @@ export function createSceneCommands({
     if (closed.openingGatheringId || countsAsMeeting)
       await mutateVillageState(
         (state) => {
+          if (closed.visitorIntroduction) {
+            completeVisitorIntroduction(state, closed);
+            return;
+          }
           if (closed.openingGatheringId) completeOpeningGathering(state, closed);
           if (countsAsMeeting && state.seed === closed.villageSeed && closed.endedAt) {
             recordClosedRelationshipScene(state, closed);

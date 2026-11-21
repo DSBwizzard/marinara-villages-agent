@@ -78,9 +78,21 @@ const segment = z.discriminatedUnion("kind", [
         .transform((value) => (value === "main" ? undefined : value))
         .optional(),
       staging: z.unknown().optional(),
+      expression: z.unknown().optional(),
+      look: z.unknown().optional(),
       requires: z.array(label).max(48).optional(),
     })
-    .strict(),
+    .strict()
+    .transform(({ expression, look, ...row }) => {
+      memoryRequire(
+        row.staging === undefined || (expression === undefined && look === undefined),
+        "ambiguous dialogue staging",
+      );
+      return {
+        ...row,
+        staging: row.staging ?? [{ characterId: row.speakerId, expression, look }],
+      };
+    }),
   z
     .object({
       kind: z.literal("narration"),

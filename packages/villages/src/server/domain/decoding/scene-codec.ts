@@ -40,15 +40,18 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     ["villagers", "venues", "residences", "projects"].some((key) => !Array.isArray(facts[key]))
   )
     throw conflict("This saved Scene has an unsupported or invalid captured context. Its history is preserved.");
-  const decoded = coerceVillageState({
-    ...facts,
-    version: 19,
-    setupAt: raw.setupAt,
-    continuity: emptyContinuity(),
-    episodes: emptyEpisodes(),
-    mailbox: emptyMailbox(),
-    startingHistory: emptyStartingHistory(),
-  });
+  const decoded = coerceVillageState(
+    {
+      ...facts,
+      version: 19,
+      setupAt: raw.setupAt,
+      continuity: emptyContinuity(),
+      episodes: emptyEpisodes(),
+      mailbox: emptyMailbox(),
+      startingHistory: emptyStartingHistory(),
+    },
+    { applySpriteDefaults: false },
+  );
   const keepCapturedLighting = (venue: import("../models/world.js").VillageVenue, value: unknown) => {
     const zones = asRecord(value).zones;
     if (!Array.isArray(zones)) return;
@@ -156,6 +159,7 @@ export function coerceSession(value: unknown): VenueScene {
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
     openingGatheringId: asTrimmedString(raw.openingGatheringId) || undefined,
+    ...(raw.visitorIntroduction === true ? { visitorIntroduction: true as const } : {}),
     ...(raw.visitEvent === "waiting" || raw.visitEvent === "opening" || raw.visitEvent === "place"
       ? { visitEvent: raw.visitEvent }
       : {}),

@@ -453,9 +453,13 @@ export function Mailbox({
       if (epoch === uiEpoch.current) setBusy(false);
     }
   };
+  const correspondents = [
+    ...(snapshot?.villagers ?? []),
+    ...(snapshot?.visitors ?? []).filter((visitor) => visitor.met),
+  ];
   const sender =
     selected && !selected.thread.former
-      ? snapshot.villagers.find((person) => person.characterId === selected.message.fromId)
+      ? correspondents.find((person) => person.characterId === selected.message.fromId)
       : undefined;
   const fontId =
     open && !simpleText && selected?.message.fromId !== "player"
@@ -463,7 +467,7 @@ export function Mailbox({
       : undefined;
   const fontRevision = useLetterFont(fontId);
   if (!open || !snapshot) return null;
-  const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
+  const people = correspondents.map((person) => ({ id: person.characterId, name: person.name }));
   const shown = letters;
   const draftKey = scope + ":" + recipient;
   const draft = drafts[draftKey] ?? "";
@@ -792,7 +796,7 @@ export function Mailbox({
                         setRecipient(event.target.value);
                       }}
                     >
-                      <option value="">Choose a resident</option>
+                      <option value="">Choose a correspondent</option>
                       {people.map((person) => (
                         <option key={person.id} value={person.id}>
                           {person.name}

@@ -86,6 +86,8 @@ export function createWorldCoordination({
     await mutateVillageState(
       (state) => {
         Object.assign(state, defaultVillageState());
+        delete state.visitors;
+        delete state.visitorIntroduction;
       },
       { memories: true },
     );

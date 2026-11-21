@@ -7,11 +7,13 @@ import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type {
   VillageCatalogEntry,
   VillagePersona,
-  VillageVillager,
+  VillageCardCharacter,
   VillageVillagerCardSnapshot,
 } from "../../domain/models/world.js";
 import { asRecord, asString, asStringArray, asTrimmedString, condense } from "../../domain/rules/coerce.js";
 import { villagesResources } from "./runtime-host.js";
+import { PROFESSOR_MARI_ID } from "../../../shared/helpers/professor-mari.js";
+import { MARI_VILLAGES_CONTEXT } from "../../domain/rules/professor-mari.js";
 
 export type { VillagerCard } from "../../domain/models/catalog-model.js";
 
@@ -45,8 +47,17 @@ export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot):
 }
 
 /** Runtime reads use the adopted snapshot. Live cards are only read by refresh/capture flows. */
-export function readEffectiveVillagerCard(villager: VillageVillager): VillagerCard {
-  return { ...villagerCardFromSnapshot(villager.cardSnapshot), admission: villager.admission };
+export function readEffectiveVillagerCard(
+  villager: VillageCardCharacter & { admission?: VillagerCard["admission"] },
+): VillagerCard {
+  const card = villagerCardFromSnapshot(villager.cardSnapshot);
+  return {
+    ...card,
+    admission: villager.admission,
+    ...(villager.characterId === PROFESSOR_MARI_ID
+      ? { scenario: [card.scenario, MARI_VILLAGES_CONTEXT].filter(Boolean).join("\n\n") }
+      : {}),
+  };
 }
 
 /**

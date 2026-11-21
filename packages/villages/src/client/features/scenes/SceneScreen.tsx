@@ -179,6 +179,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       }
     }
   }
+  const cardCharacters = [...(snapshot?.villagers ?? []), ...(snapshot?.visitors ?? [])];
 
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
@@ -258,12 +259,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           mobile={mobile}
           nameColors={
             snapshot?.settings.characterSpeechColors
-              ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.nameColor]))
+              ? Object.fromEntries(cardCharacters.map((villager) => [villager.characterId, villager.nameColor]))
               : {}
           }
           speechColors={
             snapshot?.settings.characterSpeechColors
-              ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.dialogueColor]))
+              ? Object.fromEntries(cardCharacters.map((villager) => [villager.characterId, villager.dialogueColor]))
               : {}
           }
           picture={venuePictureOf(room.status === "closed" ? sceneVenues : (snapshot?.settings.venues ?? []), room)}
@@ -421,9 +422,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           playerName={room.playerName ?? playerDisplayName(snapshot)}
           playerPortrait={personaPortrait ?? undefined}
           portraits={portraits}
-          sprites={Object.fromEntries(
-            (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
-          )}
+          sprites={Object.fromEntries(cardCharacters.map((villager) => [villager.characterId, villager.sprite]))}
           onDraft={(value) => {
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;

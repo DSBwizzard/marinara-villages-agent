@@ -1,5 +1,5 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
-// Test cases: social-mail/one-request, social-mail/romantic-interest, social-mail/saved-recovery, social-mail/authority, social-mail/admission, social-mail/fail-before-spend, social-mail/background-recovery
+// Test cases: social-mail/one-request, social-mail/romantic-interest, social-mail/saved-recovery, social-mail/authority, social-mail/admission, social-mail/fail-before-spend, social-mail/background-recovery, social-mail/visitor
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -22,6 +22,7 @@ import { copyBackgroundWork } from "../packages/villages/src/server/domain/rules
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { readCapturedInput } from "../packages/villages/src/server/adapters/storage/captured-admissions.js";
+import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
 
 const at = "2026-11-09T12:00:00.000Z";
 async function fixture() {
@@ -231,6 +232,67 @@ await runCase("social-mail/romantic-interest", async () => {
   assert.equal(profiles[0].scores[0].romanticInterest, 1);
   assert.equal(profiles[0].scores[0].score, 0);
   assert(!JSON.stringify(profiles).includes("PRIVATE"));
+  assert.equal(f.requests, 1);
+});
+
+await runCase("social-mail/visitor", async () => {
+  const f = await fixture();
+  await f.mutate((state: Awaited<ReturnType<typeof f.read>>) => {
+    state.visitors = [{ ...state.villagers[0], visitsEnabled: true, visitsRevision: "initial-visits" }];
+    state.villagers = [];
+  });
+  await assert.rejects(f.send("unmet"), /someone you've met/);
+  assert.equal(f.queued.length, 0);
+  await f.mutate((state: Awaited<ReturnType<typeof f.read>>) => {
+    state.visitors![0].firstMetAt = at;
+  });
+  const requestQuote = "Would you come visit?";
+  const replyQuote = "I'd love to come by if I can.";
+  await f.send("visit", requestQuote);
+  f.answer({
+    content: JSON.stringify({
+      incoming: {
+        keep: [
+          {
+            id: "interest",
+            for: ["ada"],
+            owner: "ada",
+            about: ["player"],
+            class: "perspective",
+            current: true,
+            text: "Ada feels the start of a crush.",
+            relationship: { romance: "grows" },
+            source: ["letter", "self"],
+            independent: true,
+          },
+        ],
+      },
+      reply: { text: replyQuote, visitPreference: { kind: "invite", requestQuote, replyQuote } },
+    }),
+    finishReason: "stop",
+  });
+  const input = f.input();
+  assert.equal(input.visitor, "initial-visits");
+  const result = await f.service.handler.generate(input);
+  const saved = await f.apply(input, result);
+  assert.equal(saved.visitors?.[0].visitPreference?.kind, "invite");
+  assert.equal(continuityRelationships(saved, at)[0].scores[0].romanticInterest, 1);
+  assert.deepEqual(await f.apply(input, result), saved, "recovery cannot extend the invitation");
+  const roster = createResidentRoster({
+    readVillageState: f.read,
+    mutateVillageState: f.mutate,
+    findVillagerCard: async () => null,
+    queueVillagerAgenda: async () => {},
+    retireBackgroundResident: () => {},
+  });
+  await roster.addVillager("ada", undefined, undefined, f.scope);
+  const promoted = await f.read();
+  assert.equal(promoted.visitors?.length, 0);
+  assert.equal(promoted.villagers[0].incarnation, input.incarnation);
+  assert.equal(promoted.startingHistory.reviewed.ada, input.incarnation);
+  assert.equal(continuityRelationships(promoted, at)[0].scores[0].romanticInterest, 1);
+  assert.deepEqual(promoted.mailbox, saved.mailbox);
+  assert.equal((await f.service.readMailbox({ scope: f.scope })).letters[0].thread.residentName, "Ada");
   assert.equal(f.requests, 1);
 });
 

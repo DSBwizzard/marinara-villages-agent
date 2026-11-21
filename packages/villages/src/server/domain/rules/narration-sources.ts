@@ -47,6 +47,7 @@ export type NarrationSourceContext = {
   input: string;
   actors: Actor[];
   subjects?: { id: string; incarnation: string }[];
+  visitorTrips?: { characterId: string; arrivedAt: string; leavesAt: string }[];
   scene: VenueScene;
   venue: VillageVenue;
   lines: VenueLine[];

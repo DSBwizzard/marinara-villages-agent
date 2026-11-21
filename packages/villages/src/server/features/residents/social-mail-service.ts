@@ -29,6 +29,7 @@ import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 import { RELATIONSHIP_DIRECTION, RELATIONSHIP_KEEP } from "../../domain/rules/narration-contract.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { findCardCharacter, knownCardCharacters } from "../../domain/rules/visitors.js";
 
 export interface SocialMailPorts {
   withWork: typeof import("../../adapters/storage/repair-gate.js").withRepairWork;
@@ -49,8 +50,18 @@ const scopeId = z.string().regex(/^[a-f0-9]{64}$/),
       requires: z.array(z.string().min(1).max(48)).max(48).optional(),
     })
     .strict(),
+  visitPreference = z
+    .object({
+      kind: z.enum(["invite", "space"]),
+      requestQuote: z.string().trim().min(3).max(400),
+      replyQuote: z.string().trim().min(3).max(400),
+    })
+    .strict(),
   replySchema = z
-    .object({ incoming: meaning.optional(), reply: meaning.extend({ text: z.string().max(2000) }).strict() })
+    .object({
+      incoming: meaning.optional(),
+      reply: meaning.extend({ text: z.string().max(2000), visitPreference: z.unknown().optional() }).strict(),
+    })
     .strict(),
   resultSchema = z
     .object({
@@ -58,6 +69,7 @@ const scopeId = z.string().regex(/^[a-f0-9]{64}$/),
       incomingMeaning: meaning.required(),
       replyMeaning: meaning.required(),
       responseDigest: scopeId,
+      visitPreference: visitPreference.optional(),
     })
     .strict();
 const MAIL_DIRECTION =
@@ -78,11 +90,20 @@ function parseReply(
     throw new Error("Personal reply reached its output limit. The saved response is retained.");
   const raw = replySchema.parse(extractModelJsonObject(answer));
   assertPersonalLetter(raw.reply.text, input.residentName);
+  const proposed = visitPreference.safeParse(raw.reply.visitPreference);
+  const preference =
+    input.visitor &&
+    proposed.success &&
+    input.incoming.text.includes(proposed.data.requestQuote) &&
+    raw.reply.text.includes(proposed.data.replyQuote)
+      ? proposed.data
+      : undefined;
   return {
     replyText: raw.reply.text,
     incomingMeaning: { keep: raw.incoming?.keep ?? [], requires: raw.incoming?.requires ?? [] },
     replyMeaning: { keep: raw.reply.keep ?? [], requires: raw.reply.requires ?? [] },
     responseDigest: memoryHash(raw),
+    ...(preference ? { visitPreference: preference } : {}),
   };
 }
 
@@ -124,10 +145,13 @@ export function createSocialMail(ports: SocialMailPorts) {
     messageId: string,
   ): PersonalMailInput {
     const message = state.mailbox.messages[messageId],
-      resident = state.villagers.find(
-        (resident) => resident.characterId === message.to.id && resident.incarnation === message.to.incarnation,
-      );
-    if (!resident) throw conflict("The original correspondent changed. The saved letter is retained.");
+      resident = findCardCharacter(state, message.to.id);
+    if (
+      !resident ||
+      resident.incarnation !== message.to.incarnation ||
+      ("visitsEnabled" in resident && !resident.firstMetAt)
+    )
+      throw conflict("The original correspondent changed. The saved letter is retained.");
     const player = readPlayerIdentity(state);
     return readPersonalMailInput({
       seed: state.seed,
@@ -135,6 +159,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       residentId: resident.characterId,
       incarnation: resident.incarnation,
       residentName: resident.cardSnapshot.name,
+      ...("visitsEnabled" in resident ? { visitor: resident.visitsRevision } : {}),
       incoming: {
         id: message.id,
         at: message.at,
@@ -212,8 +237,8 @@ export function createSocialMail(ports: SocialMailPorts) {
         if (!startingHistoryReady(state)) throw conflict("Starting history needs preparation before correspondence.");
         const from = continuityActor(state, "player"),
           to = continuityActor(state, input.residentId);
-        if (!from || !to || !state.villagers.some((resident) => resident.characterId === input.residentId))
-          throw badRequest("Choose a current resident.");
+        if (!from || !to || !knownCardCharacters(state).some((person) => person.characterId === input.residentId))
+          throw badRequest("Choose someone you've met.");
         if (threadId && threadId !== mailboxThreadId(to.id))
           throw badRequest("The recipient does not match this thread.");
         state.mailbox = queueMailboxLetter(
@@ -277,7 +302,16 @@ export function createSocialMail(ports: SocialMailPorts) {
           .villagesLanguageModels()
           .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor("narration") }),
         messages: CapabilityLanguageModelMessage[] = [
-          { role: "system", content: MAIL_DIRECTION + "\n\n" + input.identity },
+          {
+            role: "system",
+            content:
+              MAIL_DIRECTION +
+              "\n\n" +
+              input.identity +
+              (input.visitor
+                ? '\nThe addressee visits town occasionally and uses the same relationship rules as a Villager. If the player explicitly asks them to visit or asks for distance, decide freely in character. If they agree, reply.visitPreference may be {kind:"invite"|"space",requestQuote:"exact words from this incoming letter",replyQuote:"exact agreeing words from this reply"}. A visit agreement only improves the chance of a visit during the coming three days. A request for distance they accept keeps them away for seven days. Give no fixed arrival or assurance. Omit the field for a refusal, ambiguity, or casual mention.'
+                : ""),
+          },
           {
             role: "user",
             content: JSON.stringify({ incoming: input.incoming, at: input.capture.at, context: input.capture.prompt }),
@@ -349,6 +383,9 @@ export function createSocialMail(ports: SocialMailPorts) {
           replyMeaning: result.replyMeaning,
           replyText: result.replyText,
           responseDigest: result.responseDigest,
+          ...(result.visitPreference && input.visitor
+            ? { visitPreference: { ...result.visitPreference, visitsRevision: input.visitor } }
+            : {}),
         },
         now(state),
       );

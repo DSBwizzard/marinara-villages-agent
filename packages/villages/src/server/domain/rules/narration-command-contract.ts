@@ -154,6 +154,7 @@ export const nativeCommand = z.discriminatedUnion("type", [
               "invite-now",
               "invite-later",
               "invite-outside-hours",
+              "host-visitor",
               "refuse",
               "dismiss",
               "ban-zone",
@@ -178,7 +179,6 @@ export const NARRATION_NATIVE =
 
 export const NARRATION_ACCESS_COMMANDS =
   'Access commands use supplied venue and zone IDs: permission.grant or permission.revoke {by,visitor,venue,zone}; access.decide {by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?} or {outcome:"access-management",management:exact native action fields without operationId, expectedRevision, zoneId or sceneId}}. Cite deciding words. Only accompaniment is an allowed access condition.';
-
 export const NARRATION_HOUSING_COMMANDS =
   "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the request or current decision about its exact terms.";
 

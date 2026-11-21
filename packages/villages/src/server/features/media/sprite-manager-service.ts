@@ -9,6 +9,7 @@ import type { VillageState, VillageSnapshot } from "../../domain/models/world.js
 import { decodeVillageImageDataUrl } from "../../adapters/engine/image-files.js";
 import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { findCardCharacter } from "../../domain/rules/visitors.js";
 import { emptySpriteManager, isEngineSpriteFilename } from "../../domain/rules/sprite-manager-model.js";
 import { createHash, randomUUID } from "node:crypto";
 import { spritePng } from "./sprite-image-codec.js";
@@ -39,7 +40,7 @@ export function createSpriteManager({
   const serialize = <T>(id: string, action: () => Promise<T>) => writes.serialize("resident:" + id, action);
   const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
   async function owner(id: string) {
-    const resident = (await readVillageState()).villagers.find((item) => item.characterId === id);
+    const resident = findCardCharacter(await readVillageState(), id);
     if (!resident) throw notFound("That resident no longer lives here.");
     return resident;
   }
@@ -48,8 +49,8 @@ export function createSpriteManager({
   }
   async function commit(id: string, addedAt: string, change: (manager: SpriteManagerState) => void) {
     await mutateVillageState((village) => {
-      const resident = village.villagers.find((item) => item.characterId === id && item.addedAt === addedAt);
-      if (!resident) throw conflict("The resident changed. Reopen Sprite Manager.");
+      const resident = findCardCharacter(village, id);
+      if (!resident || resident.addedAt !== addedAt) throw conflict("The character changed. Reopen Sprite Manager.");
       resident.spriteManager ??= emptySpriteManager();
       change(resident.spriteManager);
       delete resident.spriteManager.lastSave;

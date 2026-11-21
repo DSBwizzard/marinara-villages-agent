@@ -1,3 +1,4 @@
+import { findCardCharacter } from "./visitors.js";
 import { compactSceneExchange, projectEpisodeRecall } from "./episode-recall.js";
 import { readOnlyRoomContext } from "./continuity-context.js";
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
@@ -170,6 +171,7 @@ function sourceScene(scene: VenueScene) {
     privateAccessOwnerId: scene.privateAccessOwnerId,
     startedAt: scene.startedAt,
     openingGatheringId: scene.openingGatheringId,
+    visitorIntroduction: scene.visitorIntroduction,
     lastActivityAt: scene.lastActivityAt,
     status: scene.status,
     participants: scene.participants,
@@ -213,7 +215,7 @@ export function narrationContinuityContext(
     .map((id) => {
       const holder = continuityActor(state, id);
       memoryRequire(holder, "captured Scene actor no longer has an identity");
-      const captured = scene.continuity?.facts.villagers.find((row) => row.characterId === id);
+      const captured = scene.continuity && findCardCharacter(scene.continuity.facts, id);
       memoryRequire(!captured || captured.incarnation === holder.incarnation, "captured resident incarnation changed");
       return holder;
     });
@@ -829,6 +831,11 @@ export function narrationContinuityContext(
       operationId,
       input,
       actors,
+      visitorTrips: captured.visitors?.flatMap((person) =>
+        person.trip && actors.some((actor) => actor.id === person.characterId)
+          ? [{ characterId: person.characterId, arrivedAt: person.trip.arrivedAt, leavesAt: person.trip.leavesAt }]
+          : [],
+      ),
       scene: sourceScene(scene),
       venue: structuredClone(venue),
       historical: {},

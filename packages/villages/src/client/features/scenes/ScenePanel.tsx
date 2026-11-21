@@ -17,7 +17,12 @@ import type {
   SceneChangeIssue,
   SceneView,
 } from "../../../shared/contracts/village.js";
-import { createStagingCursor, stagingPresentation } from "../../../shared/helpers/scene-staging.js";
+import {
+  advanceStaging,
+  createStagingCursor,
+  lineStagingCues,
+  stagingPresentation,
+} from "../../../shared/helpers/scene-staging.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -456,7 +461,12 @@ export function RoomPanel({
     room.status === "opening" &&
     (error || sceneErrors.some((item) => ["room", "greeting", "operation"].includes(item.id))) ? (
       <>
-        <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onEnd} disabled={busy}>
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-button`}
+          onClick={room.visitorIntroduction ? onMap : onEnd}
+          disabled={busy}
+        >
           Back to map
         </button>
         <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onRetryGreeting} disabled={busy}>
@@ -584,6 +594,7 @@ export function RoomPanel({
   const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, reveal);
   const canReadPrevious = at > 0 || readingPages.index > 0;
   const canReadNext = readingPages.revealing || at < steps.length - 1 || readingPages.index < readingPages.count - 1;
+  const introductionActive = !!room.visitorIntroduction && !ended && room.status === "active" && steps.length > 0;
   useLayoutEffect(() => {
     if (!step) return;
     checkpoint.current.bookmark = {
@@ -622,12 +633,23 @@ export function RoomPanel({
     [room.activeIds],
   );
   const tailFrame = room.playback.moments.at(-1)?.end;
+  const introductionFrames = useMemo(() => {
+    if (!room.visitorIntroduction) return undefined;
+    const cursor = createStagingCursor(room.activeIds, room.activeIds);
+    return new Map(
+      replyLines.map((line) => {
+        advanceStaging(cursor, { cues: lineStagingCues(line) });
+        return [line.id, stagingPresentation(cursor)];
+      }),
+    );
+  }, [room.visitorIntroduction, room.activeIds, replyLines]);
   const stagingFrame =
-    tailFrame &&
+    introductionFrames?.get(step?.id ?? "") ??
+    (tailFrame &&
     tailFrame.activeIds.length === room.activeIds.length &&
     room.activeIds.every((id) => tailFrame.activeIds.includes(id))
       ? tailFrame
-      : liveFrame;
+      : liveFrame);
   const stagingState = stagingFrame.state;
   const previousReply = useRef({ sceneId: room.id, id: replyId });
   const animateStaging = useMemo(
@@ -643,7 +665,7 @@ export function RoomPanel({
     if (previous.scope !== worldScope || previous.sceneId !== room.id || previous.zoneId !== room.zoneId)
       setHistoryOpen(false);
   }, [worldScope, room.id, room.zoneId]);
-  const canDraft = !ended && room.status === "active";
+  const canDraft = !ended && room.status === "active" && !room.visitorIntroduction;
   const canCompose = canDraft && (!canReadNext || busy || !!error || !!turnRecovery);
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
@@ -942,7 +964,12 @@ export function RoomPanel({
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={busy || !!contactRecovery || !movementZones.some((zone) => zone.id !== room.zoneId)}
+                  disabled={
+                    busy ||
+                    !!contactRecovery ||
+                    room.visitorIntroduction ||
+                    !movementZones.some((zone) => zone.id !== room.zoneId)
+                  }
                   onClick={() => {
                     actionsRef.current?.querySelector("button")?.focus();
                     setActionsView("move");
@@ -1516,9 +1543,13 @@ export function RoomPanel({
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}
-                  aria-label="Next paragraph"
-                  disabled={!canReadNext || retrying}
+                  aria-label={introductionActive && !canReadNext ? "Continue" : "Next paragraph"}
+                  disabled={(!canReadNext && !introductionActive) || retrying || (room.visitorIntroduction && busy)}
                   onClick={() => {
+                    if (introductionActive && !canReadNext) {
+                      onEnd();
+                      return;
+                    }
                     if (readingPages.revealing) {
                       readingPages.finishReveal();
                       return;
@@ -1526,7 +1557,7 @@ export function RoomPanel({
                     if (!readingPages.move(1) && at < steps.length - 1) setSelection({ key: replyKey, index: at + 1 });
                   }}
                 >
-                  Next ›
+                  {introductionActive && !canReadNext ? "Continue" : "Next ›"}
                 </button>
               ) : (
                 <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>

@@ -172,7 +172,8 @@ export async function packagedSceneServer(
   if (!options.records) await seedVillageFixtureDocuments(documents as any);
   assert(Object.hasOwn(records.get("villages-village").data, "memoryHead"));
   assert(!Object.hasOwn(records.get("villages-village").data, "memories"));
-  assert(!Object.hasOwn(records.get("villages-venue-visit-browser").data, "lines"));
+  if (records.has("villages-venue-visit-browser"))
+    assert(!Object.hasOwn(records.get("villages-venue-visit-browser").data, "lines"));
   let calls = 0;
   const model = {
     connectionId: "synthetic",
@@ -237,6 +238,7 @@ export async function packagedSceneServer(
     app,
     stop,
     model,
+    resources: runtime.resources,
     calls: () => calls,
     records,
     documents,
