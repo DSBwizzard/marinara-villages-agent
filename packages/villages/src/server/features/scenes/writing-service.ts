@@ -319,7 +319,7 @@ export function createSceneWriting({
     const otherPeople = worldCharacterReferences(village, {
       placeId: scene.placeId,
       mapId: venue.presentation.mapId,
-      query: input,
+      query: `${venue.name}\n${input}`,
     }).filter((person) => !selectedIds.includes(person.id));
     const playerZone = location.player.zone;
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>

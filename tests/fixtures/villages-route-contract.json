@@ -487,6 +487,10 @@
     },
     {
       "method": "post",
+      "path": "/npcs/prepare"
+    },
+    {
+      "method": "post",
       "path": "/places/:id/position"
     },
     {

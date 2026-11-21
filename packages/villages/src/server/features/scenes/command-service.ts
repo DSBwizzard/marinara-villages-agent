@@ -967,15 +967,16 @@ export function createSceneCommands({
       await prepareMapNpcs(place.presentation.mapId);
       const current = await readVillageState();
       if (current.seed !== village.seed || current.setupAt !== village.setupAt) throw conflict("The Village changed.");
-      // Population can wait on a provider; restart admission against fresh attendance and access.
-      return enterVenueOnce(
-        placeId,
-        requestedZoneId,
-        expectedSceneRevision,
-        travel ? { ...travel, village: current } : undefined,
-        follow,
-        true,
-      );
+      // Mari's planned introduction retains its final quietness check instead of becoming an ordinary Scene.
+      if (!introduction)
+        return enterVenueOnce(
+          placeId,
+          requestedZoneId,
+          expectedSceneRevision,
+          travel ? { ...travel, village: current } : undefined,
+          follow,
+          true,
+        );
     }
     const participants = sceneAttendance.occupants
       .filter((person) => person.zoneId === zone.id)

@@ -53,7 +53,7 @@ export function worldCharacterReferences(
     ...cardCharacters(state)
       .filter(
         (person) =>
-          state.villagers.some((resident) => resident.characterId === person.characterId) ||
+          (!scope.placeId && state.villagers.some((resident) => resident.characterId === person.characterId)) ||
           linked.has(person.characterId) ||
           npcNameKeys(person.cardSnapshot.name).some((name) => name && query.includes(" " + name + " ")),
       )

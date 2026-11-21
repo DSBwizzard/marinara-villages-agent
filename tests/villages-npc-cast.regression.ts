@@ -191,6 +191,19 @@ await runCase("npc-cast/identity", () => {
   for (const name of ["Feddy", "feddy fastbayer", "Ｆｅｄｄｙ", "Daylite"])
     assert.throws(() => assertDistinctNpcName(f.state, name), /already identifies/);
   assert(worldCharacterReferences(f.state).some((person) => person.name === "Feddy Fastbayer"));
+  const scoped = worldCharacterReferences(f.state, {
+    placeId: f.state.venues[0].id,
+    mapId: f.mapId,
+    query: "Daylite's house",
+  });
+  assert(
+    scoped.some((person) => person.name === "Daylite"),
+    "a possessive Place name resolves its established person",
+  );
+  assert(
+    !scoped.some((person) => person.id === f.state.villagers[2].characterId),
+    "unrelated identities stay outside the Scene packet",
+  );
   const place = establishPlace(
     f.state,
     {

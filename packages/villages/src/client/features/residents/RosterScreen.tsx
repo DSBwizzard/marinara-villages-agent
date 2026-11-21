@@ -10,6 +10,7 @@ import { visitorVisitLabel } from "./calculations.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 
 export function RosterScreen({
   controller,
@@ -143,7 +144,7 @@ export function RosterScreen({
                             body: JSON.stringify({
                               worldScope: snapshot.worldScope,
                               mapId: row.mapId,
-                              requestId: crypto.randomUUID(),
+                              requestId: createVillagesClientId(),
                             }),
                           });
                           if (lifetime.owns(claim)) controller.setSnapshot(next);
