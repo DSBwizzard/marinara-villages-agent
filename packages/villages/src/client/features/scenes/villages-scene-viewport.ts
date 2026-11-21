@@ -23,7 +23,7 @@ export function useSceneViewport(host: HTMLElement, active: boolean): void {
       const tag = "marinara-capability-villages";
       if (host.querySelector('[data-mobile="true"]') === null) return;
       const dock = host.querySelector<HTMLElement>(`.${tag}-chat-vn`);
-      if (!dock?.offsetHeight) return;
+      if (!dock?.offsetHeight || dock.dataset.historyOpen === "true") return;
       const field = dock.querySelector<HTMLTextAreaElement>("textarea");
       const input = field?.parentElement;
       let growth = 0;

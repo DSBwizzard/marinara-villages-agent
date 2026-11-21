@@ -7,11 +7,16 @@ import { renderVillagesMarkdown } from "../../shared/presentation.js";
 import { SceneErrorChip } from "./scene-errors.js";
 import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
 import { SceneActionIcon } from "./SceneActionIcon.js";
+import { SceneFace } from "./SceneFace.js";
+import { ReaderBook } from "../../shared/DialogueReader.js";
+import type { Portrait, PortraitMap } from "../../shared/types.js";
 
 export function SceneHistory({
   sceneId,
   scope,
   playerName,
+  playerPortrait,
+  portraits,
   nameStyle,
   speechStyle,
   onClose,
@@ -19,6 +24,8 @@ export function SceneHistory({
   sceneId: string;
   scope: string;
   playerName: string;
+  playerPortrait: Portrait | undefined;
+  portraits: PortraitMap;
   nameStyle: (speakerId: string) => CSSProperties | undefined;
   speechStyle: (speakerId: string) => CSSProperties | undefined;
   onClose: () => void;
@@ -46,7 +53,7 @@ export function SceneHistory({
           result.sceneId !== sceneId ||
           (expectedVersion && result.version !== expectedVersion)
         )
-          throw Error("Scene history changed. Refresh it to continue.");
+          throw Error("Scene history changed. Close and reopen Transcript to continue.");
         setPage(result);
       } catch (cause) {
         if (!controller.signal.aborted && currentLane.generation === claim) {
@@ -97,16 +104,6 @@ export function SceneHistory({
         </button>
         <button
           type="button"
-          className={ELEMENT_TAG + "-chat-vn-button"}
-          aria-label="Refresh"
-          title="Refresh"
-          disabled={busy}
-          onClick={() => void load()}
-        >
-          <SceneActionIcon name="retry" />
-        </button>
-        <button
-          type="button"
           className={ELEMENT_TAG + "-chat-vn-button " + ELEMENT_TAG + "-scene-history-close"}
           aria-label="Close Transcript"
           title="Close Transcript"
@@ -136,35 +133,51 @@ export function SceneHistory({
               {line.content}
             </p>
           ) : (
-            <p key={line.id ?? index} className={ELEMENT_TAG + "-chat-vn-text"}>
-              <strong
-                style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
-              >
-                {line.role === "user"
-                  ? playerName
-                  : line.kind === "narration" || line.speakerId === "__venue_scene__"
-                    ? "Narration"
-                    : line.name || "Resident"}
-                {isSceneAside(line) ? " · aside" : ""}
-                {line.viaDoorway ? (
-                  <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
-                    Nearby
+            <article key={line.id ?? index} className={ELEMENT_TAG + "-scene-history-entry"}>
+              <header className="villages-reader-heading">
+                {line.role !== "user" && (line.kind === "narration" || line.speakerId === "__venue_scene__") ? (
+                  <span className="villages-reader-icon">
+                    <ReaderBook />
                   </span>
-                ) : speechDelivery(line) === "whisper" ? (
-                  " · whisper"
-                ) : speechDelivery(line) === "shout" ? (
-                  " · shout"
                 ) : (
-                  ""
+                  <SceneFace
+                    actorId={line.role === "user" ? undefined : line.speakerId}
+                    portrait={line.role === "user" ? playerPortrait : portraits[line.speakerId]}
+                    name={line.role === "user" ? playerName : line.name || "Resident"}
+                    glyph={line.role === "user" ? "person" : "initial"}
+                    className={ELEMENT_TAG + "-chat-vn-portrait"}
+                  />
                 )}
-                :{" "}
-              </strong>
-              <span
+                <strong
+                  className="villages-reader-speaker"
+                  style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
+                >
+                  {line.role === "user"
+                    ? playerName
+                    : line.kind === "narration" || line.speakerId === "__venue_scene__"
+                      ? "Narration"
+                      : line.name || "Resident"}
+                  {isSceneAside(line) ? " · aside" : ""}
+                  {line.viaDoorway ? (
+                    <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                      Nearby
+                    </span>
+                  ) : speechDelivery(line) === "whisper" ? (
+                    " · whisper"
+                  ) : speechDelivery(line) === "shout" ? (
+                    " · shout"
+                  ) : (
+                    ""
+                  )}
+                </strong>
+              </header>
+              <p
+                className={ELEMENT_TAG + "-chat-vn-text"}
                 style={line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined}
               >
                 {renderVillagesMarkdown(line.content, `history-${line.id ?? index}-`)}
-              </span>
-            </p>
+              </p>
+            </article>
           ),
         )}
         {!busy && !error && current?.lines.length === 0 ? <p>No history.</p> : null}

@@ -26,9 +26,12 @@ ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !imp
 }
 ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-vn[hidden] { display: none; }
+.${tag}-room-screen .${tag}-chat-vn[data-history-open=true] { height:min(60cqh, max(0px, calc(var(--villages-scene-visible-height,100cqh) - 5rem))); background:var(--popover); box-shadow:none; }
+.${tag}-room-screen .${tag}-chat-vn[data-history-open=true] > :is(.${tag}-chat-vn-card,.${tag}-scene-dock-tools) { display:none; }
+.${tag}-room-screen .${tag}-chat-vn[data-history-open=true] > .${tag}-composer { padding-top:.5rem; border-top:1px solid var(--border); }
 .${tag}-room-screen img[data-npc-sprite] { object-fit:contain; opacity:.78; filter:none; background:transparent; border:0; border-radius:0; box-shadow:none; }
 .${tag}-room-screen .${tag}-chat-log {
-  position: absolute; z-index:2; inset: 0 0 3.5rem; overflow:hidden; background:var(--popover); border:1px solid var(--border); border-radius:1rem; padding:.375rem .5rem; max-height: min(55cqh, max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 10rem)));
+  position:static; inset:auto; width:auto; flex:1; min-height:0; max-height:none; overflow:hidden; background:transparent; border:0; border-radius:0; padding:0; box-shadow:none;
 }
 .${tag}-scene-history { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; }
 .${tag}-scene-history-pages { display:flex; flex:none; align-items:center; gap:.25rem; padding-bottom:.25rem; border-bottom:1px solid var(--border); }
@@ -36,6 +39,8 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-history-pages .${tag}-scene-history-close { margin-left:auto; }
 .${tag}-scene-history-pages svg { width:18px; height:18px; }
 .${tag}-scene-history-body { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; padding-top:.375rem; }
+.${tag}-scene-history-entry { margin-bottom:1rem; }
+.${tag}-scene-history-entry .${tag}-chat-vn-portrait { width:28px; height:28px; border-radius:.4rem; flex:none; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }

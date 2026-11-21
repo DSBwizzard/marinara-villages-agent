@@ -157,6 +157,7 @@ await withBrowser(browser, async () => {
       const composer = page.getByRole("textbox", { name: "Message at The Mill" });
       const send = page.getByRole("button", { name: "Send", exact: true });
       const dock = page.locator(`.${tag}-chat-vn`);
+      const compactDock = await dock.boundingBox();
       const images = page.locator(`.${tag}-chat-cast-person > img`);
       await expect(composer).toBeVisible();
       await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
@@ -179,9 +180,17 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Rain taps against the window.");
       const historyPages = page.getByRole("navigation", { name: "Scene history pages" });
       assert.equal(
-        (await historyPages.getByRole("button", { name: "Refresh", exact: true }).boundingBox()).height,
+        (await historyPages.getByRole("button", { name: "Close Transcript", exact: true }).boundingBox()).height,
         mobile ? 44 : 32,
       );
+      await expect(historyPages.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(0);
+      const expandedDock = await dock.boundingBox();
+      assert(expandedDock.height > compactDock.height, "Transcript extends the existing dock upwards");
+      await expect(dock).toHaveCSS("box-shadow", "none");
+      const history = page.getByRole("log", { name: "Scene history" });
+      await expect(history).toHaveCSS("position", "static");
+      await expect(history).toHaveCSS("box-shadow", "none");
+      await expect(history.locator(`.${tag}-scene-history-entry .${tag}-chat-vn-portrait`)).toHaveCount(1);
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
       await expect(composer).toBeDisabled();
       await expect(send).toBeDisabled();
@@ -281,10 +290,11 @@ await withBrowser(browser, async () => {
       }
 
       if (mobile) {
-        // The retained Scene remeasures after returning from a menu.
-        await page.evaluate(
-          () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-        );
+        // Fonts, reading pagination and the retained canvas settle through chained frame callbacks.
+        await page.evaluate(async () => {
+          await document.fonts.ready;
+          for (let frame = 0; frame < 3; frame++) await new Promise((resolve) => requestAnimationFrame(resolve));
+        });
         const baseline = await images.evaluateAll((nodes) =>
           nodes.map((node) => {
             const { x, y, width, height } = node.getBoundingClientRect();

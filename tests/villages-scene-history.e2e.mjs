@@ -9,6 +9,7 @@ import {createRoot} from 'react-dom/client';
 import {StrictMode,useState} from 'react';
 import {SceneHistory} from './packages/villages/src/client/features/scenes/SceneHistory.js';
 const noop=()=>undefined;
+const avatar='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 window.pending=[];
 // Deliberately ignore abort: the response guard must also reject late transports.
 window.fetch=(url,options)=>new Promise(resolve=>window.pending.push({url,signal:options.signal,
@@ -16,7 +17,7 @@ window.fetch=(url,options)=>new Promise(resolve=>window.pending.push({url,signal
 function Harness(){
   const [sceneId,setScene]=useState('A'),[scope,setScope]=useState('a'.repeat(64)),[shown,setShown]=useState(true);
   window.historyHarness={setScene,setScope,setShown};
-  return shown?<SceneHistory sceneId={sceneId} scope={scope} playerName='Player' nameStyle={noop} speechStyle={noop} onClose={()=>setShown(false)}/>:null;
+  return shown?<SceneHistory sceneId={sceneId} scope={scope} playerName='Player' playerPortrait={{url:avatar+'#player',crop:null}} portraits={{resident:{url:avatar+'#resident',crop:null}}} nameStyle={noop} speechStyle={noop} onClose={()=>setShown(false)}/>:null;
 }
 const root=createRoot(document.getElementById('root'));
 root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
@@ -47,9 +48,10 @@ await withBrowser(browser, async () => {
       version,
       lines: Array.from({ length: 40 }, (_, index) => ({
         id: "line-" + (start + index),
-        role: "assistant",
-        speakerId: "__venue_scene__",
-        kind: "narration",
+        role: index === 0 ? "user" : "assistant",
+        speakerId: index === 1 ? "resident" : "__venue_scene__",
+        kind: index === 1 ? "dialogue" : "narration",
+        name: index === 1 ? "Resident" : "",
         content: "Exact paragraph " + (start + index),
       })),
       ...extra,
@@ -60,6 +62,10 @@ await withBrowser(browser, async () => {
       const index = await page.evaluate(() => window.pending.length - 1);
       delivered = index + 1;
       return index;
+    };
+    const reopen = async () => {
+      await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
+      await page.evaluate(() => window.historyHarness.setShown(true));
     };
     const finish = (index, value, status = 200) =>
       page.evaluate(({ index, value, status }) => window.pending[index].finish(value, status), {
@@ -72,6 +78,16 @@ await withBrowser(browser, async () => {
     await finish(first, payload(80, { olderCursor: "older-80" }));
     await expect(rows).toHaveCount(40);
     await expect(rows.first()).toContainText("Exact paragraph 80");
+    await expect(page.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(0);
+    await expect(page.locator(".marinara-capability-villages-chat-vn-portrait img")).toHaveCount(2);
+    await expect(page.locator(".marinara-capability-villages-chat-vn-portrait img").first()).toHaveAttribute(
+      "src",
+      /#player$/u,
+    );
+    await expect(page.locator(".marinara-capability-villages-chat-vn-portrait img").last()).toHaveAttribute(
+      "src",
+      /#resident$/u,
+    );
     await expect(newer).toBeDisabled();
     await older.click();
     const second = await pending();
@@ -83,7 +99,7 @@ await withBrowser(browser, async () => {
     await newer.click();
     await finish(await pending(), payload(80, { olderCursor: "older-80" }));
     await expect(rows.first()).toContainText("Exact paragraph 80");
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await reopen();
     await finish(await pending(), payload(81, { version: "2".repeat(64), olderCursor: "older-81" }));
     await expect(rows.last()).toContainText("Exact paragraph 120");
 
@@ -93,12 +109,12 @@ await withBrowser(browser, async () => {
       "Scene history changed",
     );
     await expect(rows.first()).toContainText("Exact paragraph 81");
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await reopen();
     await finish(await pending(), { error: "History temporarily unavailable" }, 503);
     await expect(page.getByRole("region", { name: "Scene errors", exact: true })).toContainText(
       "The game couldn’t load the Scene history.",
     );
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await reopen();
     await finish(await pending(), payload(120, { version: "2".repeat(64), olderCursor: "older-120" }));
     await expect(rows.first()).toContainText("Exact paragraph 120");
     await expect(page.getByRole("region", { name: "Scene errors", exact: true })).toHaveCount(0);

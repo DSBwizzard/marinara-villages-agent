@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -24,6 +23,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
+import { NpcSprite, SceneFace } from "./SceneFace.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import type { SceneFailure } from "./scene-error-report.js";
@@ -44,21 +44,6 @@ import { ModalDialog } from "../../shared/ModalDialog.js";
 
 export function sceneZoneLabel(zone?: { name: string }): string {
   return zone?.name || "Zone";
-}
-
-function NpcSprite({ className }: { className?: string }) {
-  return (
-    <img
-      src="/api/capability-packages/villages/assets/npc-silhouette.webp"
-      alt=""
-      className={className}
-      data-npc-sprite=""
-    />
-  );
-}
-
-function SceneFace({ actorId, ...face }: ComponentProps<typeof AvatarFace> & { actorId?: string }) {
-  return actorId?.startsWith("npc:") ? <NpcSprite className={face.className} /> : <AvatarFace {...face} />;
 }
 
 function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
@@ -1345,7 +1330,7 @@ export function RoomPanel({
           </button>
         </div>
       ) : null}
-      <div className={`${ELEMENT_TAG}-chat-vn`} hidden={dialogueHidden}>
+      <div className={`${ELEMENT_TAG}-chat-vn`} data-history-open={historyOpen || undefined} hidden={dialogueHidden}>
         {historyOpen ? (
           <div
             ref={historyRef}
@@ -1362,6 +1347,8 @@ export function RoomPanel({
               sceneId={room.id}
               scope={worldScope}
               playerName={playerName}
+              playerPortrait={playerPortrait}
+              portraits={portraits}
               nameStyle={nameStyle}
               speechStyle={speechStyle}
               onClose={closeTranscript}
