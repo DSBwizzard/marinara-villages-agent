@@ -187,7 +187,7 @@ export function PlacesDirectory({
               value={intent}
               maxLength={1000}
               onChange={(event) => setIntent(event.target.value)}
-              placeholder="Somewhere new (optional)"
+              placeholder="New place (optional)"
             />
           </label>
           <button disabled={busy}>Explore</button>
