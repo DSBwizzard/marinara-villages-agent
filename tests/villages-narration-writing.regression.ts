@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
+// Test cases: narration-writing/departed-speaker, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -331,6 +331,45 @@ await runCase("narration-writing/learned-wish-initiative", () => {
     opening.parts.some((part) => part.block.text.includes(ownWish)),
     "opening can still use a resident goal",
   );
+});
+await runCase("narration-writing/departed-speaker", async () => {
+  const f = fixture();
+  f.scene.lines.push({
+    id: "earlier",
+    speakerId: f.id,
+    name: "Mara",
+    role: "assistant",
+    content: "Seventeen.",
+    at,
+    heardBy: ["player", f.id],
+    zoneId: "parlor",
+  });
+  f.scene.activeIds = [];
+  f.scene.participants = [];
+  f.scene.sceneAttendance!.occupants = [];
+  const publication = await f.writing.generate(f.scene, '"Definitely seventeen."', "chat");
+  const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
+  assert.match(frame.content, /"dialogueSpeakers":\[\]/u);
+  for (const message of [frame, f.messages().at(-1)]) {
+    assert.match(message.content, /Historical speech does not establish current attendance/u);
+    assert.match(message.content, /Return narration only/u);
+  }
+  assert.throws(
+    () => readSceneNarrationReply(publication.raw, [], publication.readset, f.state.continuity),
+    /cannot invent/u,
+  );
+  assert.equal(
+    readNarrationReply({ segments: [{ kind: "narration", text: "Your words meet the quiet room." }] }, []).segments
+      .length,
+    1,
+  );
+  const purchases = f.calls.purchases;
+  f.disable();
+  assert.deepEqual(await f.writing.generate(f.scene, '"Definitely seventeen."', "chat"), publication);
+  assert.equal(f.calls.purchases, purchases, "a captured invalid reply is retained without a second purchase");
+  const present = fixture();
+  const request = await present.writing.prepareVenueTurnMessages(present.scene, "Hello?", "chat");
+  assert(!request.fitted.messages.at(-1)!.content.includes("Return narration only"));
 });
 await runCase("narration-writing/single-request", async () => {
   const f = fixture(),

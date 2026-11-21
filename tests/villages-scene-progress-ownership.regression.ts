@@ -1,6 +1,6 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
-// Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/accepted-notices, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
+// Test cases: scene-narration/dismiss-failed, scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/accepted-notices, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -871,6 +871,89 @@ await runCase("scene-narration/startup-no-write", async () => {
   } finally {
     storage.release();
   }
+});
+await runCase("scene-narration/dismiss-failed", async () => {
+  async function attempt(mutate?: (scene: VenueScene) => void, concurrent = false, committed = false) {
+    const f = fixture(),
+      scene = f.scenes.get("scene")!;
+    f.turn().id = scene.operation!.id;
+    scene.operation!.input = { message: f.turn().message, mode: "chat", targetId: "" };
+    f.turn().acceptance = { status: "held", rejected: [{ id: "reply", reason: "Invalid actor" }] };
+    const expected = structuredClone(scene.operation!);
+    let cancelled = 0;
+    if (committed) {
+      f.failScene();
+      await assert.rejects(f.service.processSavedExchange("scene", f.turn().id));
+    }
+    const publication = structuredClone(f.turn().narration);
+    mutate?.(scene);
+    const commands = createSceneCommands({
+      readSession: f.ports.readSession,
+      requireLiveVenueSession: f.ports.readSession,
+      abandonSavedExchange: f.service.abandonSavedExchange,
+      changeSession: f.ports.changeSession,
+      venueRefusal: (_code: string, message: string) => Error(message),
+      cancelVenueOperation: async (_id: string, operation: typeof expected) => {
+        cancelled++;
+        const current = f.scenes.get("scene")!;
+        assert.equal(current.operation!.token, operation.token);
+        assert.equal(current.submissions[0].acceptance.status, "abandoned");
+        current.abandonedOperations = [structuredClone(current.operation!)];
+        Object.assign(current.operation!, {
+          token: "cancelled",
+          status: "complete",
+          snapshot: null,
+          checkpoints: {},
+          attempts: {},
+        });
+        if (concurrent) Object.assign(current.operation!, { id: "new-request", token: "new-owner", status: "running" });
+      },
+      generate: async () => {
+        throw Error("Clearing cannot purchase");
+      },
+      coordinateVenue: async () => {
+        throw Error("Clearing cannot admit a reply");
+      },
+    } as never);
+    const clear = () => commands.dismissFailedTurn("scene", expected.id, expected.attemptId, expected.sceneRevision);
+    if (mutate || concurrent || committed) {
+      await assert.rejects(clear);
+      assert.equal(cancelled, concurrent ? 1 : 0);
+      if (concurrent) assert.equal(f.scenes.get("scene")!.operation!.token, "new-owner");
+    } else {
+      await clear();
+      const saved = f.scenes.get("scene")!;
+      assert.equal(saved.status, "active");
+      assert.equal(saved.operation!.error, "");
+      assert.equal(saved.operation!.status, "complete");
+      assert.equal(f.turn().acceptance.status, "abandoned");
+      assert.deepEqual(f.turn().narration, publication);
+      assert.equal(saved.abandonedOperations!.length, 1);
+      assert.equal(f.world.episodes.records.length, 0);
+      assert.equal(saved.lines.length, 0);
+    }
+  }
+  await attempt();
+  for (const mutate of [
+    (scene: VenueScene) => {
+      scene.operation!.status = "running";
+    },
+    (scene: VenueScene) => {
+      scene.sceneRevision++;
+    },
+    (scene: VenueScene) => {
+      scene.operation!.attemptId = "stale";
+    },
+    (scene: VenueScene) => {
+      scene.submissions[0].acceptance.status = "applied";
+    },
+    (scene: VenueScene) => {
+      scene.submissions[0].narration!.readset.source.operationId = "other";
+    },
+  ])
+    await attempt(mutate);
+  await attempt(undefined, true);
+  await attempt(undefined, false, true);
 });
 await runCase("scene-narration/replace-committed", async () => {
   const f = fixture();
