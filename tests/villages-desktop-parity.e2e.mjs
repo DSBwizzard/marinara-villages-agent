@@ -504,7 +504,7 @@ await withBrowser(browser, async () => {
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^(Send|Sending)$/u })).toBeDisabled();
     await expect(reading).toContainText("First reply.");
     assert.equal(lastTurn.mode, "chat");
     assert.equal(lastTurn.message, "My response.");

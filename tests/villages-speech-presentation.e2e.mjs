@@ -130,18 +130,17 @@ await withBrowser(browser, async () => {
       },
     ];
     const lines = session.lines;
-    session.lines = [];
+    session.lines = [lines[0]];
     await page.goto("http://speech.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
-    session.lines = lines;
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     const reading = page.getByRole("region", { name: "Current paragraph" });
 
     await expect(reading).toContainText(prose);
     await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
     await page.screenshot({ path: resolve(output, `narrated-sound-${width}.png`) });
-    await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    session.lines = lines;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(reading).toContainText("A good place to stop for a drink.");
     await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
     assert.deepEqual(errors, []);
