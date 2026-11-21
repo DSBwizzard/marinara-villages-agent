@@ -128,6 +128,8 @@ assert.equal(
   65,
   "a reply is complete across the ordinary history window limit",
 );
+scene.lines.push(line("arrival-new", "You arrive in a new Zone.", "airstrip"));
+assert.deepEqual(publicSceneAuthority(scene).lore, [], "an arrival never inherits the prior reply's Lorebook entries");
 console.log(
   "Latest complete published reply, return arrivals, held/private output and player-only Zone visits passed.",
 );

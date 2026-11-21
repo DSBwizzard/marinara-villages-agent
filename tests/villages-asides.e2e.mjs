@@ -129,7 +129,7 @@ await withBrowser(browser, async () => {
     }
     await load();
     const dock = page.locator(`.${tag}-chat-vn`);
-    const reading = page.getByRole("region", { name: "Latest reply" });
+    const reading = page.getByRole("region", { name: "Current paragraph" });
     const npc = page.locator('[data-character-id="npc:eli"][data-sprite="true"] > img[data-npc-sprite]');
     const spriteHeight = () => npc.evaluate((image) => image.getBoundingClientRect().height);
     const before = {
@@ -243,7 +243,7 @@ await withBrowser(browser, async () => {
       }, visible);
       await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
       await expect(band).toBeHidden();
-      await expect(page.getByRole("region", { name: "Latest reply" })).toBeHidden();
+      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
       await expect(page.getByRole("button", { name: "Retry reply", exact: true })).toBeHidden();
       const composerBox = await composer.boundingBox();
       assert.ok(composerBox.y >= 0 && composerBox.y + composerBox.height <= visible);

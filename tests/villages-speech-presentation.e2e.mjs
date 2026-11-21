@@ -95,7 +95,7 @@ await withBrowser(browser, async () => {
       ];
       await page.goto("http://speech.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      const reading = page.getByRole("region", { name: "Latest reply" });
+      const reading = page.getByRole("region", { name: "Current paragraph" });
       await expect(reading).toContainText(`Main ${delivery} conversation.`);
       await expect(page.locator(`.${tag}-chat-vn-card`)).toHaveAttribute("data-delivery", delivery);
       await expect(page.getByLabel(/^(Whisper|Shout)$/u)).toHaveCount(0);

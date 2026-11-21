@@ -936,6 +936,9 @@ await runCase("scene-narration/dismiss-failed", async () => {
   await attempt();
   for (const mutate of [
     (scene: VenueScene) => {
+      scene.operation!.input.trespassReaction = "automatic-reaction";
+    },
+    (scene: VenueScene) => {
       scene.operation!.status = "running";
     },
     (scene: VenueScene) => {

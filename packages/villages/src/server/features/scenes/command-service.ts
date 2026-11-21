@@ -1275,6 +1275,7 @@ export function createSceneCommands({
       scene.status !== "active" ||
       operation?.status !== "interrupted" ||
       operation.input.mode !== "chat" ||
+      !!operation.input.trespassReaction ||
       turn?.acceptance.status !== "held" ||
       !turn.narration ||
       turn.narration.readset.source.operationId !== operationId ||

@@ -202,7 +202,7 @@ await withBrowser(browser, async () => {
     assert.equal(lastContact.mode, "chat");
     assert.equal(lastContact.contact, undefined);
     finishContact();
-    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("No answer.");
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("No answer.");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     await next.click();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
@@ -228,7 +228,7 @@ await withBrowser(browser, async () => {
     const selectMove = async () => {
       await page.getByRole("button", { name: "Move", exact: true }).click();
       await expect(picker.getByRole("button", { name: "Close Move to Zone" })).toBeFocused();
-      assert.ok((await picker.boundingBox()).height < 260, "A short list opens as a compact dialog");
+      assert.ok((await picker.boundingBox()).height < 800, "The route diagram fits the Scene viewport");
       await expect(composer).toHaveValue(preservedDraft);
       await dockAtBottom('[class$="-chat-vn"]');
     };
@@ -279,7 +279,7 @@ await withBrowser(browser, async () => {
     assert.equal(await page.locator("[data-scene-scope]").count(), 0);
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
 
     await expect(composer).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);

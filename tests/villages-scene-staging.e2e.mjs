@@ -334,7 +334,7 @@ await withBrowser(browser, async () => {
       );
       while (await greetingNext.isEnabled()) await greetingNext.click();
       await expect(mara).toHaveAttribute("data-position", "right");
-      await expect(mara).toHaveAttribute("data-attention", "left");
+      await expect(mara).toHaveAttribute("data-attention", "right");
       await expect(mara.locator("img")).toHaveAttribute("data-facing", "front");
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
       await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
@@ -375,8 +375,7 @@ await withBrowser(browser, async () => {
         if (!mobile)
           assert.ok(Math.abs(sorted[i].bottom - sorted[0].bottom) < 1, "desktop sprites retain a shared foot baseline");
       }
-      await next.click();
-      await expect(mara).toHaveAttribute("data-attention", "right", "side cue appears with the final paragraph");
+      await expect(mara).toHaveAttribute("data-attention", "right", "current cast retains the published final state");
       await expect(mara.locator("img")).toHaveAttribute("data-facing", "front");
       await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
       assert.equal(
