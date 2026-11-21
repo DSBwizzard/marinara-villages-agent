@@ -76,6 +76,16 @@ export function actorEpisodeView(
     blockedUnits(continuity, holder, episodeSourceGraph(history.records, holder)),
   );
 }
+
+/** Directory/history reads share one protection graph for the entire actor view. */
+export function actorEpisodeViews(
+  history: EpisodeCollection,
+  continuity: ContinuityCollection,
+  holder: Extract<ContinuityHolder, { kind: "actor" }>,
+) {
+  const blocked = blockedUnits(continuity, holder, episodeSourceGraph(history.records, holder));
+  return history.records.map((episode) => ({ episode, view: projectActorEpisode(episode, holder, blocked) }));
+}
 function projectActorEpisode(
   episode: AcceptedEpisode,
   holder: Extract<ContinuityHolder, { kind: "actor" }>,

@@ -321,7 +321,36 @@ async function interactiveOpeningNeedsNoIdeas() {
   assert.equal(f.state().foundingPreparation!.status, "ready");
   assert.equal(f.state().projects.length, 0);
 }
+async function foundingDoesNotPopulateNpcs() {
+  const f = fixture("no-npc-population");
+  f.state().maps = [
+    {
+      id: "map",
+      name: "Town",
+      width: 1440,
+      height: 900,
+      revision: 1,
+      view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+      artwork: { id: "map", ref: "global-gallery:map", url: "/map.png" },
+    },
+  ];
+  f.state().venues[0].presentation.mapId = "map";
+  f.gate.resolve();
+  await f.service.prepareFoundedVillage();
+  assert.equal(f.state().foundingPreparation!.status, "ready");
+  assert.equal(
+    Object.keys(f.state().worldPlaces.npcs).length,
+    0,
+    "founding a populated Map does not create an NPC cast",
+  );
+  assert.equal(
+    Object.values(f.state().worldPlaces.operations).length,
+    0,
+    "there is no population purchase or recovery slot",
+  );
+}
 async function main() {
+  await foundingDoesNotPopulateNpcs();
   await interactiveOpeningNeedsNoIdeas();
   await partialOpeningCount();
   await independentFounding();

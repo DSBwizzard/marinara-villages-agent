@@ -13,7 +13,7 @@ import {
   readAcceptedEpisode,
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import {
   CHARACTER_DIALOGUE_DIRECTION,
   readNarrationReply,

@@ -149,7 +149,7 @@ const person = (state: VillageState, id: string) => ({
   name:
     id === "player"
       ? state.playerName || "You"
-      : (findCardCharacter(state, id)?.cardSnapshot.name ?? findNpc(state, id)?.name ?? "Former resident"),
+      : (findCardCharacter(state, id)?.cardSnapshot.name ?? findNpc(state, id)?.label ?? "Former resident"),
 });
 function projections(
   state: VillageState,
@@ -509,7 +509,15 @@ export function continuityMemoryLibrary(state: VillageState, input: MemoryQuery,
     characterId,
     revision,
     query,
-    residents: [person(state, "player"), ...knownCardCharacters(state).map((row) => person(state, row.characterId))],
+    residents: [
+      person(state, "player"),
+      ...knownCardCharacters(state).map((row) => person(state, row.characterId)),
+      ...(input.inspection
+        ? Object.values(state.worldPlaces.npcs)
+            .filter((row) => !row.disabled)
+            .map((row) => person(state, row.id))
+        : []),
+    ],
     entries,
     total: rows.length,
     next: after + 1 + limit < rows.length ? { revision, afterId: entries.at(-1)!.id } : null,

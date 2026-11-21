@@ -8,7 +8,7 @@ import {
   initializeRoomContinuity,
   retainNativeFact,
 } from "../packages/villages/src/server/domain/rules/native-continuity.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { findLocation } from "../packages/villages/src/server/domain/rules/places.js";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
 import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";

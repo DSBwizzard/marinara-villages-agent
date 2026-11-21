@@ -72,6 +72,7 @@ export function ResidentsScreen({
   // RENDERED. It is the same promise the places list already makes about pictures:
   // nothing in this village happens because the player looked at it.
   if (screen === "person" && personProfile) {
+    if (personProfile.actorId.startsWith("npc:")) return null;
     const visitor = snapshot?.visitors?.find((entry) => entry.characterId === personProfile.actorId);
     const person = visitor ?? snapshot?.villagers.find((entry) => entry.characterId === personProfile.actorId);
     const selectedAgendas = (agendas ?? []).filter((entry) => entry.characterId === personProfile.actorId);

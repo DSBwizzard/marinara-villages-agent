@@ -8,7 +8,7 @@ import {
   activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import {
@@ -63,7 +63,7 @@ import {
 } from "../packages/villages/src/server/features/scenes/progress.js";
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 const at = "2026-11-09T12:00:00.000Z";
-function fixture(seed = "world") {
+function fixture(seed = "world", traveler = false) {
   const world = { ...defaultVillageState(), seed, setupAt: at, foundedAt: at };
   const place = establishPlace(
     world,
@@ -169,6 +169,14 @@ function fixture(seed = "world") {
     scenes.set(id, scene);
     return scene;
   }
+  if (traveler)
+    world.worldPlaces.npcs["npc:traveler"] = {
+      ...structuredClone(world.worldPlaces.npcs[actorId]),
+      id: "npc:traveler",
+      name: "Traveler",
+      label: "Traveler",
+      characterization: "PRIVATE_TRAVELER_PROFILE",
+    };
   add();
   const queue: { sessionId: string; submissionId: string }[] = [];
   async function note(call: string) {
@@ -331,7 +339,7 @@ await runCase("scene-narration/native-movement", async () => {
 });
 await runCase("scene-narration/native-npc", async () => {
   for (const lost of [false, true]) {
-    const f = fixture(),
+    const f = fixture("world", true),
       turn = f.turn(),
       raw = {
         segments: [
@@ -344,8 +352,7 @@ await runCase("scene-narration/native-npc", async () => {
             id: "admit",
             type: "npc.admit",
             localKey: "new:traveler",
-            name: "Traveler",
-            characterization: "PRIVATE_TRAVELER_PROFILE",
+            existingId: "npc:traveler",
             at: "arrival",
             source: [{ segment: "arrival", perceive: { kind: "seen", by: ["player"] } }],
           },

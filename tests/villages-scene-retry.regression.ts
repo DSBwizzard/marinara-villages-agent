@@ -16,7 +16,7 @@ import { createRepairGate } from "../packages/villages/src/server/adapters/stora
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import { queueMailboxLetter } from "../packages/villages/src/server/domain/rules/social-mail.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
-import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { establishPlace } from "./helpers/places.fixture.js";
 
 const refusal = { segments: [{ kind: "narration", text: "I can’t continue that scene." }] };
 const alternate = { segments: [{ id: "said", kind: "dialogue", speakerId: "mara", text: "Let’s sit by the window." }] };

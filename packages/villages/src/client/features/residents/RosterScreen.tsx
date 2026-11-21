@@ -7,6 +7,7 @@ import { AvatarFace } from "./ResidentPanels.js";
 import type { RosterScreenController } from "./screen-contracts.js";
 import { AddVisitorDialog } from "./VisitorControls.js";
 import { visitorVisitLabel } from "./calculations.js";
+import { NpcEncounters } from "./NpcEncounters.js";
 
 export function RosterScreen({
   controller,
@@ -19,21 +20,27 @@ export function RosterScreen({
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [visitorTab, setVisitorTab] = useState(false);
+  const [tab, setTab] = useState<"Villagers" | "Visitors" | "NPCs">("Villagers");
   const [addingVisitor, setAddingVisitor] = useState<HTMLElement | null>(null);
   const { error, menuPage, openPerson, portraits, screen, snapshot } = controller;
   if (screen !== "menu" || menuPage !== "villagers") return null;
-  const showVisitors = selectedId
-    ? !!snapshot?.visitors?.some((visitor) => visitor.characterId === selectedId)
-    : visitorTab;
-  if (selectedId && visitorTab !== showVisitors) {
-    setVisitorTab(showVisitors);
+  const selectedTab = selectedId
+    ? selectedId.startsWith("npc:")
+      ? "NPCs"
+      : snapshot?.visitors?.some((visitor) => visitor.characterId === selectedId)
+        ? "Visitors"
+        : "Villagers"
+    : tab;
+  const showVisitors = selectedTab === "Visitors";
+  const showNpcs = selectedTab === "NPCs";
+  if (selectedId && tab !== selectedTab) {
+    setTab(selectedTab);
     setSearch("");
     setPage(0);
   }
-  const chooseTab = async (visitors: boolean) => {
-    if (visitors === showVisitors || (selectedId && onDirectory && !(await onDirectory()))) return;
-    setVisitorTab(visitors);
+  const chooseTab = async (next: typeof tab) => {
+    if (next === selectedTab || (selectedId && onDirectory && !(await onDirectory()))) return;
+    setTab(next);
     setSearch("");
     setPage(0);
   };
@@ -48,10 +55,7 @@ export function RosterScreen({
   return (
     <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
       <PeopleBook label="People notebook">
-        <main
-          className={`${ELEMENT_TAG}-directory-paper`}
-          aria-label={showVisitors ? "Visitors directory" : "Villagers directory"}
-        >
+        <main className={`${ELEMENT_TAG}-directory-paper`} aria-label={`${selectedTab} directory`}>
           <header className={`${ELEMENT_TAG}-directory-head`}>
             <StorybookHeading>People</StorybookHeading>
             {showVisitors && snapshot ? (
@@ -68,41 +72,56 @@ export function RosterScreen({
             ) : null}
           </header>
           <nav className={`${ELEMENT_TAG}-people-sections`} aria-label="People sections">
-            <button type="button" aria-pressed={!showVisitors} onClick={() => void chooseTab(false)}>
-              Villagers
-            </button>
-            <button type="button" aria-pressed={showVisitors} onClick={() => void chooseTab(true)}>
-              Visitors
-            </button>
-          </nav>
-          <div className={`${ELEMENT_TAG}-directory-filters`}>
-            <label className={`${ELEMENT_TAG}-directory-search`}>
-              <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
-              <StorybookSearchIcon />
-              <input
-                type="search"
-                autoComplete="off"
-                placeholder="Find a person"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(0);
-                }}
-              />
-            </label>
-            {!showVisitors && visitVenue && notice ? (
-              <button type="button" title={notice.venueName} onClick={() => controller.openVenue(visitVenue)}>
-                Find visitor
+            {(["Villagers", "Visitors", "NPCs"] as const).map((entry) => (
+              <button
+                key={entry}
+                type="button"
+                aria-pressed={selectedTab === entry}
+                onClick={() => void chooseTab(entry)}
+              >
+                {entry}
               </button>
-            ) : null}
-          </div>
+            ))}
+          </nav>
+          {!showNpcs ? (
+            <div className={`${ELEMENT_TAG}-directory-filters`}>
+              <label className={`${ELEMENT_TAG}-directory-search`}>
+                <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
+                <StorybookSearchIcon />
+                <input
+                  type="search"
+                  autoComplete="off"
+                  placeholder="Find a person"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(0);
+                  }}
+                />
+              </label>
+              {selectedTab === "Villagers" && visitVenue && notice ? (
+                <button type="button" title={notice.venueName} onClick={() => controller.openVenue(visitVenue)}>
+                  Find visitor
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
               {error}
             </p>
           ) : null}
           <div className={`${ELEMENT_TAG}-directory-reading`}>
-            {people.length ? (
+            {showNpcs ? (
+              <NpcEncounters
+                key={snapshot?.worldScope}
+                scope={snapshot?.worldScope ?? ""}
+                search={search}
+                onSearch={setSearch}
+                selectedId={selectedId}
+                timeZone={snapshot?.clock?.timeZone}
+              />
+            ) : people.length ? (
               <div className={`${ELEMENT_TAG}-directory-grid`}>
                 {people.slice(currentPage * 4, currentPage * 4 + 4).map((person) => {
                   const visitor = showVisitors
@@ -125,7 +144,7 @@ export function RosterScreen({
                       <span className={`${ELEMENT_TAG}-directory-text`}>
                         <strong>{person.name}</strong>
                         {visitor ? <small>{visitorVisitLabel(visitor, snapshot?.clock?.timeZone)}</small> : null}
-                        {person.missing ? <small>Card missing</small> : null}
+                        {"missing" in person && person.missing ? <small>Card missing</small> : null}
                       </span>
                     </button>
                   );
@@ -145,7 +164,7 @@ export function RosterScreen({
               </p>
             )}
           </div>
-          {pageCount > 1 ? (
+          {!showNpcs && pageCount > 1 ? (
             <nav className={`${ELEMENT_TAG}-directory-pagination`} aria-label="People pages">
               <button
                 type="button"

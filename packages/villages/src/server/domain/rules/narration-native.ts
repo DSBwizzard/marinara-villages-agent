@@ -53,14 +53,21 @@ export function prepareNarrationNative(
   at: string,
   excluded = new Map<string, string>(),
 ) {
+  for (const row of readset.npcCandidates)
+    memoryRequire(
+      memoryHash(findNpc(state, row.npc.id)) === memoryHash(row.npc),
+      "fitted NPC identity changed while narration was being prepared",
+    );
   const scene = structuredClone(readset.source.scene),
     actors = [...readset.source.actors],
     admissions: NpcAdmission[] = [];
   const rawSegments = Array.isArray(raw.segments) ? raw.segments : [];
+  let newNpcCount = 0;
   for (const value of Array.isArray(raw.commands) ? raw.commands : []) {
     if (!value || typeof value !== "object" || (value as Record<string, unknown>).type !== "npc.admit") continue;
     const command = readNarrationNativeCommand(value);
     memoryRequire(command.type === "npc.admit", "invalid NPC command");
+    if (!command.existingId) memoryRequire(++newNpcCount <= 1, "a reply may introduce at most one new NPC");
     const segment = rawSegments.findIndex(
         (value, index) =>
           value &&
@@ -95,7 +102,16 @@ export function prepareNarrationNative(
       })
       .sort((a, b) => a.segment - b.segment);
     const arrival = prepareNpcAdmission(
-      state,
+      {
+        ...state,
+        worldPlaces: {
+          ...state.worldPlaces,
+          npcs: {
+            ...state.worldPlaces.npcs,
+            ...Object.fromEntries(admissions.map((row) => [row.npc.id, row.npc])),
+          },
+        },
+      },
       scene,
       command,
       readset.source.operationId,
@@ -105,6 +121,13 @@ export function prepareNarrationNative(
       readset.npcCandidates.find((row) => row.npc.id === command.existingId)?.npc,
     );
     memoryRequire(!actors.some((actor) => actor.id === arrival.npc.id), "NPC identity is already in this reply");
+    memoryRequire(
+      !rawSegments.slice(0, segment).some((value) => {
+        const row = asRecord(value);
+        return Array.isArray(row.actors) && row.actors.some((id) => id === command.localKey || id === arrival.npc.id);
+      }),
+      "a person cannot act before their admitted arrival",
+    );
     admissions.push(arrival);
     actors.push({
       kind: "actor",
@@ -324,6 +347,7 @@ export function prepareNarrationNative(
       const npc = findNpc(candidate, command.who);
       memoryRequire(
         npc &&
+          command.name === npc.name &&
           context.actors.some((actor) => actor.id === npc.id) &&
           sources.length === 1 &&
           sources[0].unitId === context.lines[row.segment]?.id &&
@@ -502,6 +526,9 @@ export function prepareNarrationNative(
     for (const move of planned)
       native.effects.find((effect) => effect.id === move.effectId)!.failure = String(error).slice(0, 2000);
   }
+  native.npcCandidateHashes = Object.fromEntries(
+    readset.npcCandidates.map((row) => [row.npc.id, memoryHash(findNpc(candidate, row.npc.id))]),
+  );
   return {
     native,
     candidate,

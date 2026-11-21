@@ -1,5 +1,5 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
-// Test cases: repair/visitors
+// Test cases: repair/visitors, repair/npcs
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 // Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/people, repair/agenda, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/checkpoint-pages, repair/journal-integrity, repair/places
@@ -1582,7 +1582,7 @@ await runCase("repair/letter-fonts", async () => {
 });
 
 await runCase("repair/places", async () => {
-  const { establishPlace } = await import("../packages/villages/src/server/domain/rules/place-discovery.js");
+  const { establishPlace } = await import("./helpers/places.fixture.js");
   const f = await fixture();
   await f.repo.mutateAuthority(
     (state) => {
@@ -1668,4 +1668,87 @@ await runCase("repair/places", async () => {
   await f.api.apply(manager.id, manager.token);
   const managed = (await f.read()).venues.find((entry) => entry.id === "workshop")!;
   assert.ok(managed.zones!.find((entry) => entry.id === "common")!.access?.managerIds?.includes(jo));
+});
+
+await runCase("repair/npcs", async () => {
+  const { readNpc } = await import("../packages/villages/src/server/domain/rules/places.js");
+  const { npcEncounterIndex } = await import("../packages/villages/src/server/domain/rules/npc-encounters.js");
+  const { namedNpcIds } = await import("../packages/villages/src/server/domain/rules/npc-index.js");
+  const f = await fixture();
+  const id = "npc:incidental";
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.maps = [
+        {
+          id: "map",
+          name: "Village",
+          revision: 1,
+          width: 100,
+          height: 100,
+          view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+          artwork: { id: "map-art", ref: "global-gallery:map-art", url: "/map.png" },
+        },
+      ];
+      state.venues.push(venue("garage"));
+      state.worldPlaces.npcs[id] = readNpc({
+        id,
+        name: "Tomas Reed",
+        label: "Man in a red suit",
+        appearance: "Red suit and round glasses.",
+        mapId: "map",
+        listed: false,
+        characterization: "A quiet mechanic.",
+        revision: 1,
+        facts: [],
+        associations: [],
+        availability: "",
+        disabled: false,
+        source: "scene:encounter",
+        updatedAt: state.setupAt,
+      });
+      state.worldPlaces.revision++;
+      retainAuthoredNote(state, "npc-memory", "The player asked Tomas about their bicycle.", [id], state.setupAt);
+    },
+    { memories: true },
+  );
+  const original = await f.read();
+  assert.equal(npcEncounterIndex(original).size, 0);
+  assert(namedNpcIds(original.worldPlaces, "Tomas Reed").has(id));
+  assert((await f.api.index()).people.some((person) => person.id === id));
+  const npcRecord = await f.api.inspect(repairId("npc", id));
+  assert(!npcRecord.fields.some((field) => field.key === "listed"), "meeting history is automatic");
+  const review = await f.prepare(
+    edit(
+      npcRecord.id,
+      {
+        name: "Vesper Cedar",
+        label: "Vesper",
+        appearance: "Green silk coat and round glasses.",
+        mapId: "map",
+        newPlace: "garage",
+        newRole: "Mechanic",
+      },
+      "correct-npc",
+    ),
+  );
+  await f.api.apply(review.id, review.token);
+  const changed = await f.read();
+  assert.equal(changed.worldPlaces.npcs[id].appearance, "Green silk coat and round glasses.");
+  assert.deepEqual(changed.worldPlaces.npcs[id].associations, [{ placeId: "garage", role: "Mechanic" }]);
+  assert.equal(npcEncounterIndex(changed).size, 0, "identity repairs do not fabricate meetings");
+  assert(!namedNpcIds(changed.worldPlaces, "Tomas Reed").has(id));
+  assert(namedNpcIds(changed.worldPlaces, "Vesper Cedar").has(id));
+  assert.deepEqual(changed.continuity, original.continuity, "identity correction does not rewrite witnessed memories");
+  const memoryRows = await f.api.list("memories", "bicycle", 0, id);
+  assert(memoryRows.records.length > 0, "unlisted NPC memories are available in REPAIR");
+  const undo = await f.api.undo(review.id, "undo-npc");
+  await f.api.apply(undo.id, undo.token);
+  const restored = await f.read();
+  assert.equal(restored.worldPlaces.npcs[id].name, "Tomas Reed");
+  assert.equal(restored.worldPlaces.npcs[id].listed, false);
+  assert.deepEqual(restored.continuity, original.continuity);
+  await assert.rejects(
+    () => f.prepare(edit(npcRecord.id, { mapId: "missing-map" }, "bad-map")),
+    (error: { code?: string }) => error.code === "repair-field:mapId",
+  );
 });

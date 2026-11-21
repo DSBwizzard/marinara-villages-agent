@@ -58,6 +58,17 @@ export type VillageVisitorView = VillageVillagerView & {
   visit?: { arrivedAt: string; leavesAt: string; offerHome: boolean; stayingWithPlayer: boolean; introductory?: true };
 };
 
+export type VillageNpcView = {
+  characterId: string;
+  name: string;
+  role: string;
+  appearance: string;
+  personality: string;
+  at: string;
+  placeName: string;
+};
+export type NpcPage = { scope: string; revision: string; items: VillageNpcView[]; nextCursor: string | null };
+
 export type ResidentSprite = {
   assetId: string;
   named?: true;

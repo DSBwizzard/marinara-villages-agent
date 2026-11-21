@@ -97,6 +97,7 @@ const segment = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("narration"),
       text: segmentText,
+      actors: ids.optional(),
       id: label.optional(),
       sound: z
         .object({ sourceId: id, text: z.string().min(1).max(300), loud: z.literal(true).optional() })
@@ -151,6 +152,11 @@ export function readNarrationReply(raw: unknown, actors: string[]) {
         "whisper needs its actual target",
       );
     }
+    if (row.kind === "narration")
+      memoryRequire(
+        (row.actors ?? []).every((id) => id === "player" || actors.includes(id)),
+        "Narration cannot portray an absent or invented person",
+      );
     return { ...row, id: localId, staging: readStagingCues(row.staging, actors) };
   });
   return {
@@ -334,6 +340,7 @@ export const CHARACTER_DIALOGUE_DIRECTION =
   "No characters sound interchangeable; their authored voices are distinct in cadence, vocabulary, formality, and manner of expression. They speak naturally rather than in orderly turns: they may react selectively, interrupt, hesitate, self-correct, misunderstand, dodge, change subjects, or leave things unsaid when it fits their identity and the moment. They assume shared context only where their actual knowledge supports it and follow what catches their attention. Let what they notice, feel, and physically do affect what they say as they speak. Leave room for ordinary chatter, affection, small complaints, and imperfect jokes; every line needn't convey information, advance the scene, or sound clever. Emotion, personality, intelligence (or the lack of it), relationships, and circumstances shape speech itself, including its syntax, clarity, volume, and composure. Smart shows in what they notice, never in sounding like a robot. ";
 
 const sceneTurnDirection =
+  "Reuse established people. Place names never create owners or establish attendance. Never copy an existing identity, including shortened names; admit improvised individuals explicitly. Narrated individual actions use actors:[admitted IDs]. Keep speech in dialogue. Anonymous crowds are scenery, not individual characters. " +
   "Treat only quoted player text as spoken aloud. Unquoted text is action, narration, or internal thoughts that cannot be accessed by residents unless made observable. Never quote or speak for the player. " +
   sceneOutcomeDirection +
   "Travel can cross open ground. Describe doors, gates, fences or other barriers only when established. " +
