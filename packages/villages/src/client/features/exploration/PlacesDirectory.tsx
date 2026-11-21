@@ -146,6 +146,7 @@ export function PlacesDirectory({
       </div>
       {admitting ? (
         <form
+          autoComplete="off"
           onSubmit={(event) => {
             event.preventDefault();
             onAdmit(detail, classes);
@@ -183,6 +184,7 @@ export function PlacesDirectory({
       <div className="villages-place-tools">
         {exploring ? (
           <form
+            autoComplete="off"
             onSubmit={(event) => {
               event.preventDefault();
               void explore();
