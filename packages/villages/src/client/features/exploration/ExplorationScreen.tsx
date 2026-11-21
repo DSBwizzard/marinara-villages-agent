@@ -342,45 +342,51 @@ export function ExplorationScreen({
       ) : null}
       <div className={ELEMENT_TAG + "-room"}>
         <RetainedView active={navigatorOpen && !showAllMaps && !markerDraft && !arrival}>
-          <PlacesDirectory
-            key={snapshot!.worldScope}
-            snapshot={snapshot!}
-            mapId={selectedMap?.id ?? ""}
-            focusSearch={focusSearch}
-            search={explorationSearch.places}
-            onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
-            onMap={async (mapId) => {
-              if (mapId && mapId !== selectedMap?.id) {
-                setSelectedMapId(mapId);
-                setExplorationSearch(explorationSearch);
-              }
-              await closeExploration();
-              setOpenPlaceId(
-                snapshot.settings.venues.find(
-                  (venue) =>
-                    venue.id === directoryVenue.current && venue.presentation.mapId === (mapId || selectedMap?.id),
-                )?.id ?? null,
-              );
-              setFocusSearch(false);
-            }}
-            onLocation={(place) => {
-              setFocusSearch(false);
-              directoryVenue.current = snapshot.settings.venues.some((venue) => venue.id === place.id)
-                ? place.id
-                : null;
-              if (snapshot.settings.venues.some((venue) => venue.id === place.id)) {
-                if (place.presentation.mapId !== selectedMap?.id) {
-                  setSelectedMapId(place.presentation.mapId);
+          {snapshot ? (
+            <PlacesDirectory
+              key={snapshot.worldScope}
+              snapshot={snapshot}
+              mapId={selectedMap?.id ?? ""}
+              focusSearch={focusSearch}
+              search={explorationSearch.places}
+              onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
+              onMap={async (mapId) => {
+                if (mapId && mapId !== selectedMap?.id) {
+                  setSelectedMapId(mapId);
                   setExplorationSearch(explorationSearch);
-                } else {
-                  const point = placeSpot(place);
-                  if (point)
-                    setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
                 }
-              }
-              openPlace(place);
-            }}
-          />
+                await closeExploration();
+                setOpenPlaceId(
+                  snapshot.settings.venues.find(
+                    (venue) =>
+                      venue.id === directoryVenue.current && venue.presentation.mapId === (mapId || selectedMap?.id),
+                  )?.id ?? null,
+                );
+                setFocusSearch(false);
+              }}
+              onLocation={(place) => {
+                setFocusSearch(false);
+                directoryVenue.current = snapshot.settings.venues.some((venue) => venue.id === place.id)
+                  ? place.id
+                  : null;
+                if (snapshot.settings.venues.some((venue) => venue.id === place.id)) {
+                  if (place.presentation.mapId !== selectedMap?.id) {
+                    setSelectedMapId(place.presentation.mapId);
+                    setExplorationSearch(explorationSearch);
+                  } else {
+                    const point = placeSpot(place);
+                    if (point)
+                      setNavigationView((current) => ({
+                        zoom: current?.zoom ?? 1,
+                        centerX: point.x,
+                        centerY: point.y,
+                      }));
+                  }
+                }
+                openPlace(place);
+              }}
+            />
+          ) : null}
         </RetainedView>
         {showAllMaps ? (
           <div className={ELEMENT_TAG + "-maps-overview"}>

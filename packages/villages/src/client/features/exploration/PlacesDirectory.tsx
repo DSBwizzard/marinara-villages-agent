@@ -68,7 +68,9 @@ export function PlacesDirectory({
     owner.navigation++;
   }, [active, key, owner]);
   useEffect(() => {
-    if (active && focusSearch) searchRef.current?.focus({ preventScroll: true });
+    if (!active || !focusSearch) return;
+    const frame = requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
   }, [active, focusSearch]);
   useEffect(() => {
     if (!active) return;
