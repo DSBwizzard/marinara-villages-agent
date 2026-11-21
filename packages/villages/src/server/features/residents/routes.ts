@@ -191,15 +191,6 @@ export function registerResidentRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading people met");
     }
   });
-  app.get<{ Params: { characterId: string } }>("/npcs/:characterId/encounters", async (request, reply) => {
-    try {
-      const query = npcQuery.parse(request.query);
-      const characterId = z.string().min(1).max(160).parse(request.params.characterId);
-      return readNpcPeople(await readVillageState({ memories: true }), { ...query, characterId });
-    } catch (error) {
-      return fail(reply, error, "reading encounters");
-    }
-  });
   app.put<{ Params: CharacterParams }>("/visitors/:characterId", async (request, reply) => {
     try {
       const { scope, enabled } = z.object({ scope: scopeId, enabled: z.boolean() }).strict().parse(request.body);

@@ -1,4 +1,4 @@
-// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory
+// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory, npc-admission/overview-eligibility
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -656,7 +656,7 @@ await runCase("npc-admission/name", () => {
   assert.equal(episode.segments[1].name, "Mara");
   assert.equal(f.state.worldPlaces.npcs[id].label, "Rasha Dunmore");
   assert.equal(
-    npcEncounterIndex(f.state).get(id)?.person.name,
+    npcEncounterIndex(f.state).get(id)?.name,
     "Rasha Dunmore",
     "same-response introduction teaches the heard name",
   );
@@ -679,8 +679,8 @@ await runCase("npc-admission/name", () => {
     { forget: true },
   );
   assert(
-    !JSON.stringify(readNpcPeople(f.state, { scope: villageWorldScope(f.state) })).includes("Rasha Dunmore"),
-    "protected introduction evidence cannot leak through historical labels or receipts",
+    readNpcPeople(f.state, { scope: villageWorldScope(f.state) }).items[0]?.name === "Rasha Dunmore",
+    "the authored overview remains available while its seen encounter survives",
   );
 
   const returning = prepareName(fixture()),
@@ -721,8 +721,10 @@ await runCase("npc-admission/name", () => {
   assert(privateResult.rejected.some((row) => row.reason.includes("heard by the Player")));
   assert.equal(other.state.worldPlaces.npcs[other.existing.id].label, "Mara");
   assert(
-    !JSON.stringify(readNpcPeople(other.state, { scope: villageWorldScope(other.state) })).includes("Rasha Dunmore"),
-    "an unheard self-introduction cannot name the directory entry",
+    !JSON.stringify(readNpcPeople(other.state, { scope: villageWorldScope(other.state) })).includes(
+      "My name is Rasha Dunmore.",
+    ),
+    "authored overviews never include unheard dialogue",
   );
 });
 
@@ -761,30 +763,29 @@ await runCase("npc-admission/improvised", () => {
   assert.equal(f.state.worldPlaces.npcs[id].appearance, raw.commands[0].appearance);
   const directory = readNpcPeople(f.state, { scope: villageWorldScope(f.state) });
   assert.equal(directory.items.length, 1);
-  assert.equal((directory.items[0] as { name: string }).name, "Man in a red suit");
-  assert(!JSON.stringify(directory).includes("Tomas Reed"), "private canonical name remains unknown");
-  assert(!JSON.stringify(directory).includes("greying hair"), "unseen appearance details stay private");
-  assert(!JSON.stringify(directory).includes("Reserved"));
-  const encounterHistory = readNpcPeople(f.state, { scope: villageWorldScope(f.state), characterId: id });
-  assert(JSON.stringify(encounterHistory).includes("I can take a look at your bicycle."));
-  assert.deepEqual(
-    (encounterHistory.items[0] as { lines: { text: string }[] }).lines.map((line) => line.text),
-    ["A man in a red suit steps over to talk.", "My bicycle is broken.", "I can take a look at your bicycle."],
-    "eligible player speech keeps its accepted after-arrival anchor",
+  assert.deepEqual(directory.items[0], {
+    characterId: id,
+    name: "Tomas Reed",
+    role: "Man in a red suit",
+    appearance: raw.commands[0].appearance,
+    personality: raw.commands[0].characterization,
+    at,
+    placeName: "Cafe",
+  });
+  assert(!JSON.stringify(directory).includes("My bicycle is broken."), "Player speech is not an overview field");
+  assert(
+    !JSON.stringify(directory).includes("I can take a look at your bicycle."),
+    "NPC dialogue is not an overview field",
   );
-  assert.equal((encounterHistory.items[0] as { placeName: string }).placeName, "Cafe");
   assert.throws(() => readNpcPeople(f.state, { scope: "a".repeat(64) }), /Village changed/);
-  for (const unseen of ["npc:missing", f.existing.id])
-    assert.throws(
-      () => readNpcPeople(f.state, { scope: villageWorldScope(f.state), characterId: unseen }),
-      /No encounters/,
-    );
+  assert(!directory.items.some((row) => row.characterId === f.existing.id), "unmet authored people stay absent");
   f.state.worldPlaces.npcs[id].disabled = true;
-  f.state.worldPlaces.npcs[id].label = "PRIVATE_REPAIR_LABEL";
+  f.state.worldPlaces.npcs[id].facts = ["PRIVATE_NPC_FACT"];
+  f.state.worldPlaces.npcs[id].availability = "PRIVATE_NPC_AVAILABILITY";
   assert.deepEqual(
     readNpcPeople(f.state, { scope: villageWorldScope(f.state) }),
     directory,
-    "private identity edits and retirement do not erase history or invalidate visible pages",
+    "retirement and hidden NPC facts do not change the approved overview or cursor",
   );
   f.state.worldPlaces.npcs[id].disabled = false;
   assert(
@@ -808,9 +809,9 @@ await runCase("npc-admission/improvised", () => {
   ).value;
   assert.deepEqual(cold.worldPlaces.npcs[id], f.state.worldPlaces.npcs[id]);
   assert.equal(
-    npcEncounterIndex({ ...f.state, ...cold }).get(id)?.encounters.length,
-    1,
-    "history survives native storage reload",
+    npcEncounterIndex({ ...f.state, ...cold }).get(id)?.name,
+    "Tomas Reed",
+    "the authored overview survives native storage reload",
   );
   assert(acceptNarration(f.state, publication, "new-person", at).replayed);
   const returnContext = narrationContinuityContext(
@@ -833,8 +834,8 @@ await runCase("npc-admission/improvised", () => {
       false,
     );
     const directory = readNpcPeople(silent.state, { scope: villageWorldScope(silent.state) });
-    assert.equal((directory.items[0] as { name: string }).name, label.startsWith("PRIVATE") ? "Stranger" : label);
-    assert(!JSON.stringify(directory).includes("PRIVATE_SILENT_IDENTITY"), "metadata labels need observed support");
+    assert.equal(directory.items[0]?.name, "Tomas Reed");
+    assert.equal(directory.items[0]?.role, label, "a seen silent arrival unlocks the authored overview");
   }
 });
 await runCase("npc-admission/improvised-limit", () => {
@@ -893,37 +894,76 @@ await runCase("npc-admission/directory", () => {
   }
   const page = readNpcPeople(f.state, { scope });
   assert.equal(page.items.length, 4);
-  assert.equal((page.items[0] as { name: string }).name, "Blackcoat");
+  assert.equal((page.items[0] as { name: string }).name, "Blackcoat Smith");
   assert(page.nextCursor);
   const older = readNpcPeople(f.state, { scope, cursor: page.nextCursor! });
   assert.deepEqual(
     older.items.map((row) => (row as { name: string }).name),
-    ["Bluecoat", "Redcoat"],
+    ["Bluecoat Smith", "Redcoat Smith"],
   );
   assert.equal(readNpcPeople(f.state, { scope, query: "Redcoat" }).items.length, 1);
   assert.equal(
     readNpcPeople(f.state, { scope, query: "Smith" }).items.length,
-    0,
-    "search cannot discover private names",
+    4,
+    "search includes approved authored names",
   );
-  assert.throws(
-    () => readNpcPeople(f.state, { scope, query: "Redcoat", cursor: page.nextCursor! }),
-    /Encounters changed/,
-  );
+  assert.throws(() => readNpcPeople(f.state, { scope, query: "Redcoat", cursor: page.nextCursor! }), /People changed/);
   const time = "2026-11-11T08:00:00.000Z",
     raw = rawArrival(ids[0]);
   const repeat = acceptNarration(f.state, f.publication(raw, "Hello again.", "repeat", time), "repeat", time);
   assert.equal(repeat.held, false, JSON.stringify(repeat.rejected));
   const index = npcEncounterIndex(f.state);
   assert.equal(index.size, 6, "repeat meeting updates one person");
-  assert.equal(index.get(ids[0])?.encounters.length, 2);
+  assert.equal(index.get(ids[0])?.at, time);
   assert.equal((readNpcPeople(f.state, { scope }).items[0] as { characterId: string }).characterId, ids[0]);
-  assert.throws(() => readNpcPeople(f.state, { scope, cursor: page.nextCursor! }), /Encounters changed/);
-  assert.throws(
-    () => readNpcPeople(f.state, { scope, characterId: ids[0], cursor: page.nextCursor! }),
-    /Encounters changed/,
-  );
+  assert.throws(() => readNpcPeople(f.state, { scope, cursor: page.nextCursor! }), /People changed/);
   f.venue.name = "PRIVATE_RENAMED_LOCATION";
-  f.state.worldPlaces.npcs[ids[0]].appearance = "PRIVATE_NEW_APPEARANCE";
-  assert(!JSON.stringify(readNpcPeople(f.state, { scope, characterId: ids[0] })).includes("PRIVATE_"));
+  f.state.worldPlaces.npcs[ids[0]].appearance = "Updated authored appearance";
+  const updated = readNpcPeople(f.state, { scope });
+  assert.equal(updated.items[0].appearance, "Updated authored appearance");
+  assert.equal(updated.items[0].placeName, "Cafe", "last met uses the captured Place label");
+  assert.throws(() => readNpcPeople(f.state, { scope, cursor: page.nextCursor! }), /People changed/);
+  const npc = f.state.worldPlaces.npcs[ids[0]],
+    lastPlace = f.state.episodes.records.at(-1)!.room!.placeId;
+  npc.label = npc.name;
+  npc.associations = [
+    { placeId: "unrelated-place", role: "PRIVATE_UNRELATED_AFFILIATION" },
+    { placeId: lastPlace, role: "Parts trader" },
+  ];
+  assert.equal(
+    readNpcPeople(f.state, { scope }).items[0].role,
+    "Parts trader",
+    "role survives a self-introduction label",
+  );
+  assert(!JSON.stringify(readNpcPeople(f.state, { scope })).includes("PRIVATE_UNRELATED_AFFILIATION"));
+  npc.associations[1].role = "Encountered here";
+  assert.equal(readNpcPeople(f.state, { scope }).items[0].role, "", "do not invent a role from encounter bookkeeping");
+});
+
+await runCase("npc-admission/overview-eligibility", () => {
+  const f = fixture(),
+    raw = improvisedArrival();
+  raw.segments.pop();
+  raw.keep.push({
+    for: ["player"],
+    class: "experience",
+    text: "I saw the traveler arrive.",
+    source: [{ segment: "arrive", perceive: { kind: "seen", by: ["player"] } }],
+  });
+  const result = acceptNarration(f.state, f.publication(raw, "My bicycle is broken."), "seen", at);
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert.equal(npcEncounterIndex(f.state).size, 1);
+  const player = continuityActor(f.state, "player")!,
+    key = continuityHolderKey(player);
+  const root = f.state.continuity.records.find((record) => record.heads[key])!;
+  f.state.continuity = protectContinuity(
+    f.state.continuity,
+    { id: root.id, recordRevision: root.revision, heads: { [key]: root.heads[key].revision } },
+    [player],
+    "forget-encounter",
+    at,
+    { forget: true },
+  );
+  assert.equal(npcEncounterIndex(f.state).size, 0, "protected encounters cannot unlock authored profiles");
+  assert.equal(readNpcPeople(f.state, { scope: villageWorldScope(f.state), query: "Tomas" }).items.length, 0);
 });

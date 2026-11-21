@@ -156,10 +156,6 @@
       "path": "/npcs"
     },
     {
-      "method": "get",
-      "path": "/npcs/:characterId/encounters"
-    },
-    {
       "method": "put",
       "path": "/visitors/:characterId"
     },

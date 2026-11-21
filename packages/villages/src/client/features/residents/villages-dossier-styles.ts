@@ -7,17 +7,33 @@ export const DOSSIER_STYLES = `
 .${P}-people-session{height:100%;min-height:0}.${P}-people-session[hidden]{display:none}
 .${P}-people-layout{height:100%;min-height:0;min-width:0;width:100%;margin:0;display:grid;grid-template-columns:clamp(280px,27%,420px) minmax(0,1fr);gap:36px}
 .${P}-people-index{height:100%;min-height:0;min-width:0}
-.${P}-people-layout:has(.${P}-npc-encounters){grid-template-columns:minmax(0,760px)}
-.${P}-npc-encounters{min-width:0}
-.${P}-directory-reading:has(>.${P}-npc-encounters){overflow-y:auto;scrollbar-width:thin}
+.${P}-people-layout:has(.${P}-npc-encounters){grid-template-columns:minmax(0,1fr)}
+.${P}-npc-encounters{min-width:0;min-height:0;height:100%;display:grid;grid-template-columns:clamp(230px,30%,320px) minmax(0,1fr);gap:30px}
+.${P}-npc-index{min-width:0;min-height:0;display:flex;flex-direction:column}
+.${P}-npc-list{min-height:0;overflow-y:auto;scrollbar-width:thin;flex:1}
+.${P}-npc-recent{font-size:20px;font-style:italic;font-weight:400;margin:0 0 8px}
 .${P}-npc-row{border-bottom:1px solid var(--dossier-line);padding:8px 0}
 .${P}-directory-root .${P}-npc-row>button{display:flex;flex-direction:column;gap:4px;width:100%;text-align:left;background:transparent;border:0;padding:12px 4px}
+.${P}-directory-root .${P}-npc-row>button[aria-pressed=true]{background:var(--menu-card,#969b7eb0);border-radius:8px;padding:12px}
 .${P}-npc-row small{font-size:16px;opacity:.8}
 .${P}-npc-row>button>span{font-size:18px;line-height:1.4}
-.${P}-npc-history{border-left:2px solid var(--dossier-line);padding:0 12px;margin:0 4px 16px;font-size:18px}
-.${P}-npc-history article+article{border-top:1px solid var(--dossier-line)}
-.${P}-npc-history h3{font-size:18px;margin:12px 0}
-.${P}-npc-history p{white-space:pre-wrap;margin:8px 0}
+.${P}-npc-detail{min-width:0;min-height:0;overflow-y:auto;scrollbar-width:thin;border-left:1px solid var(--dossier-line);padding:0 10px 20px 30px}
+.${P}-npc-detail h1{font-size:44px;line-height:1.15;margin:0 0 6px}
+.${P}-npc-detail header>p{font-size:24px;margin:0 0 12px}
+.${P}-npc-overview-title{font-size:24px;border-bottom:1px solid var(--dossier-line);margin:0;padding-bottom:8px}
+.${P}-npc-detail section>section{border-bottom:1px solid var(--dossier-line);padding:18px 0}
+.${P}-npc-detail section>section:last-child{border:0}
+.${P}-npc-detail h3{font-size:24px;margin:0 0 6px}
+.${P}-npc-detail section>p{white-space:pre-wrap;margin:0}
+.${P}-directory-root .${P}-npc-back{display:none}
+@container (max-width:740px){
+ .${P}-npc-encounters{display:block}
+ .${P}-npc-index{height:100%}
+ .${P}-npc-detail{display:none;border:0;padding:0 8px 20px 0;height:100%}
+ .${P}-npc-encounters[data-detail=true] .${P}-npc-index{display:none}
+ .${P}-npc-encounters[data-detail=true] .${P}-npc-detail{display:block}
+ .${P}-directory-root .${P}-npc-back{display:block;margin-bottom:18px;background:transparent;border:0;padding-left:0}
+}
 .${P}-dossier-root,.${P}-directory-root{--dossier-ink:var(--menu-dossier-ink,#f0dfbc);--dossier-line:var(--menu-dossier-line,#a39b8460);--notebook-hand:var(--menu-font,Georgia,serif);color:var(--dossier-ink);background:transparent;box-sizing:border-box;height:100%;min-height:0;min-width:0;overflow:visible;position:relative;font:400 20px/1.6 var(--notebook-hand);padding:0;container-type:size}
 .${P}-dossier-root{display:grid;grid-template-columns:minmax(0,1fr) clamp(200px,38%,520px);gap:24px}
 .${P}-dossier-root>.${P}-dossier-desk{height:100%;grid-column:1;grid-row:1;position:static}

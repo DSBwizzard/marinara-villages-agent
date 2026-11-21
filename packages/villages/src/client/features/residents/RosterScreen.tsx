@@ -83,27 +83,29 @@ export function RosterScreen({
               </button>
             ))}
           </nav>
-          <div className={`${ELEMENT_TAG}-directory-filters`}>
-            <label className={`${ELEMENT_TAG}-directory-search`}>
-              <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
-              <StorybookSearchIcon />
-              <input
-                type="search"
-                autoComplete="off"
-                placeholder="Find a person"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(0);
-                }}
-              />
-            </label>
-            {selectedTab === "Villagers" && visitVenue && notice ? (
-              <button type="button" title={notice.venueName} onClick={() => controller.openVenue(visitVenue)}>
-                Find visitor
-              </button>
-            ) : null}
-          </div>
+          {!showNpcs ? (
+            <div className={`${ELEMENT_TAG}-directory-filters`}>
+              <label className={`${ELEMENT_TAG}-directory-search`}>
+                <span className={`${ELEMENT_TAG}-sr-only`}>Find a person</span>
+                <StorybookSearchIcon />
+                <input
+                  type="search"
+                  autoComplete="off"
+                  placeholder="Find a person"
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(0);
+                  }}
+                />
+              </label>
+              {selectedTab === "Villagers" && visitVenue && notice ? (
+                <button type="button" title={notice.venueName} onClick={() => controller.openVenue(visitVenue)}>
+                  Find visitor
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
               {error}
@@ -112,9 +114,10 @@ export function RosterScreen({
           <div className={`${ELEMENT_TAG}-directory-reading`}>
             {showNpcs ? (
               <NpcEncounters
-                key={`${snapshot?.worldScope}:${search}`}
+                key={snapshot?.worldScope}
                 scope={snapshot?.worldScope ?? ""}
                 search={search}
+                onSearch={setSearch}
                 selectedId={selectedId}
                 timeZone={snapshot?.clock?.timeZone}
               />
