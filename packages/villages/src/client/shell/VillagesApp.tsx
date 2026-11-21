@@ -509,7 +509,10 @@ function PeoplePages({
   const [person, setPerson] = useState<DossierNavigation | null>(null);
   if (active && controller.personProfile && controller.personProfile !== person) setPerson(controller.personProfile);
   return (
-    <div className={`${ELEMENT_TAG}-people-layout`} data-profile={controller.screen === "person"}>
+    <div
+      className={`${ELEMENT_TAG}-people-layout`}
+      data-profile={controller.screen === "person" && !person?.actorId.startsWith("npc:")}
+    >
       <div className={`${ELEMENT_TAG}-people-index`}>
         <RetainedView active={active}>
           <RosterScreen
@@ -520,7 +523,7 @@ function PeoplePages({
           />
         </RetainedView>
       </div>
-      {person ? (
+      {person && !person.actorId.startsWith("npc:") ? (
         <RetainedView key={person.actorId} active={active && controller.screen === "person"}>
           <ResidentsScreen
             controller={{ ...controller, screen: "person", personProfile: person }}
