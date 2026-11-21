@@ -492,7 +492,8 @@ export function createLiveScenes({
       zone,
       observableRoomDescription(village, venue.id, zone.id, instant),
     );
-    if (zone.seen && JSON.stringify(zone.observed) === JSON.stringify(observed)) return;
+    const place = village.worldPlaces.places[session.placeId];
+    if (zone.seen && JSON.stringify(zone.observed) === JSON.stringify(observed) && (!place || place.visited)) return;
     await mutateVillageState((state) => {
       const current = findLocation(state, session.placeId),
         target = current && resolveVenueZone(current, source.id);
@@ -506,6 +507,13 @@ export function createLiveScenes({
       ) {
         target.seen = true;
         target.observed = captureZoneObservation(current, target, observed.description);
+        const place = state.worldPlaces.places[session.placeId];
+        if (place && !place.visited) {
+          place.visited = true;
+          place.report = false;
+          place.revision++;
+          state.worldPlaces.revision++;
+        }
       }
     });
   }

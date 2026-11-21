@@ -1,3 +1,4 @@
+import { placesPage } from "./fixtures/villages-places.fixture.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
@@ -45,6 +46,10 @@ await withBrowser(browser, async () => {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = state;
+      if (path.endsWith("/places"))
+        return fulfill(route, {
+          json: placesPage(state, new URL(route.request().url()).searchParams.get("query") ?? ""),
+        });
       if (path.endsWith("/mailbox")) {
         await fulfill(route, {
           status: 200,
@@ -147,7 +152,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Map options", exact: true }).click();
     const options = page.locator("." + P + "-map-options");
     await expect(options).toBeInViewport({ ratio: 1 });
-    await expect(options.getByRole("checkbox", { name: "Places layer" })).toBeInViewport({ ratio: 1 });
+    await expect(options.getByRole("checkbox", { name: "Places layer" })).toHaveCount(0);
     await page.getByRole("button", { name: "Move markers", exact: true }).click();
     await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
     const navigationMap = page.locator("." + P + "-home-map-viewport ." + P + "-canvas");

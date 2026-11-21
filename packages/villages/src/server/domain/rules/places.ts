@@ -56,6 +56,7 @@ const savedPlace = z
     knownBy: z.array(z.string().max(200)),
     report: z.boolean(),
     prepared: z.boolean(),
+    visited: z.boolean(),
     disabled: z.boolean(),
     location: z
       .object({
@@ -194,17 +195,24 @@ export function sceneActorIds(state: VillageState): string[] {
   ];
 }
 
+export function locationSummary(location: VillageVenue) {
+  return {
+    id: location.id,
+    name: location.name,
+    description: location.zones?.find((zone) => zone.id === "exterior")?.observed?.description ?? "",
+    mapId: location.presentation.mapId,
+    x: location.presentation.x,
+    y: location.presentation.y,
+  };
+}
+
 export function placeSummary(place: WorldPlace): PlaceSummary {
   return {
-    id: place.id,
+    ...locationSummary(place.location),
     revision: place.revision,
-    name: place.location.name,
-    description: place.location.zones?.find((zone) => zone.id === "exterior")?.observed?.description ?? "",
-    mapId: place.location.presentation.mapId,
-    x: place.location.presentation.x,
-    y: place.location.presentation.y,
     report: place.report,
-    prepared: place.prepared,
+    visited: place.visited,
+    venue: false,
   };
 }
 

@@ -1,6 +1,6 @@
 # GM ownership contracts
 
-Current Villages use format 19 and Scenes use logical format 5. Common continuity and accepted Episodes own retained meaning and interaction evidence. Unsupported saved formats fail before normalization, recovery or provider dispatch, preserving their stored bytes.
+Current Villages use format 20 and Scenes use logical format 5. Common continuity and accepted Episodes own retained meaning and interaction evidence. Unsupported saved formats fail before normalization, recovery or provider dispatch, preserving their stored bytes.
 
 ## Calls and authority
 

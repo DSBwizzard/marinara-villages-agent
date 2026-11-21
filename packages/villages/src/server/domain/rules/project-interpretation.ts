@@ -1,7 +1,6 @@
 import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
 import type { VillageState, VillageProject } from "../models/world.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
-import { establishmentControllers, establishmentScope } from "./establishment.js";
 import { findLocation } from "./places.js";
 import { memoryHash } from "./memory-integrity.js";
 import { continuityActor } from "./continuity-actors.js";
@@ -17,28 +16,13 @@ export type ProjectSpeechContext = {
 export function projectSpeechTerms(state: VillageState, project: VillageProject) {
   const venue = findLocation(state, project.venueId),
     flow = project.lifecycle!;
-  const requiredApprovers =
-    project.kind === "establishment"
-      ? establishmentControllers(state, project)
-      : venue
-        ? renovationAffectedIds(venue, flow.change, flow.changedZoneIds)
-        : [];
+  const requiredApprovers = venue ? renovationAffectedIds(venue, flow.change, flow.changedZoneIds) : [];
   return {
     kind: project.kind,
     venueId: project.venueId,
     proposal: structuredClone(
       project.kind === "new-venue" ? { draft: project.venueDraft ?? null, plan: project.plan ?? null } : flow.change,
     ),
-    ...(project.establishment
-      ? {
-          establishment: {
-            goal: project.establishment.goal,
-            physical: project.establishment.physical,
-            zoneIds: [...project.establishment.zoneIds],
-            objectives: project.establishment.objectives.map(({ id, text }) => ({ id, text })),
-          },
-        }
-      : {}),
     requiredApprovers: requiredApprovers.toSorted(),
   };
 }
@@ -62,11 +46,7 @@ export function projectSpeechContext(
         id,
         memoryHash({
           approvalScope:
-            project.kind === "establishment"
-              ? establishmentScope(project)
-              : venue && flow.change
-                ? approvalScope(venue, flow.change, id, flow.changedZoneIds, flow.roomBasis)
-                : "",
+            venue && flow.change ? approvalScope(venue, flow.change, id, flow.changedZoneIds, flow.roomBasis) : "",
           design: projectDesignKey(project),
           approvals: flow.approvals.filter((row) => row.residentId === id),
           candidates: flow.candidates.filter((row) => row.residentId === id),
@@ -121,9 +101,6 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
           title: project.title,
           terms: context.terms,
           ...(project.lifecycle?.builderId ? { leadId: project.lifecycle.builderId } : {}),
-          ...(project.establishment
-            ? { completedObjectives: project.establishment.objectives.filter((row) => row.met).map((row) => row.id) }
-            : {}),
         };
       }),
     )
@@ -131,4 +108,4 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
 }
 
 export const PROJECT_SPEECH_DIRECTION =
-  "Use only the fitted Project terms as native reference. Residents know the terms through actual communication. Controllers can approve their own Place or Renovation. Villagers may volunteer to lead physical work. Approval needs unqualified current words about the exact terms, witnessed by the player. Conditions, politeness and later promises stay ordinary roleplay or common offers. Approval and volunteering may share an utterance. Refusal or withdrawal is unilateral. Only explicit Player Start or Resume begins physical work, which takes 24 elapsed hours. Social establishment needs witnessed objectives. Gifts and objects provide no Project benefit.";
+  "Use only the fitted Project terms as native reference. Residents know the terms through actual communication. Controllers can approve their own Renovation. Villagers may volunteer to lead physical work. Approval needs unqualified current words about the exact terms, witnessed by the player. Conditions, politeness and later promises stay ordinary roleplay or common offers. Approval and volunteering may share an utterance. Refusal or withdrawal is unilateral. Only explicit Player Start or Resume begins physical work, which takes 24 elapsed hours. Gifts and objects provide no Project benefit.";

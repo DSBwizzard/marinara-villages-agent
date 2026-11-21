@@ -157,6 +157,7 @@ export function establishPlace(
     knownBy: prior?.knownBy ?? ["player"],
     report: prepared ? draft.report : (prior?.report ?? draft.report),
     prepared,
+    visited: prior?.visited ?? false,
     disabled: false,
   };
   state.worldPlaces.places[id] = place;

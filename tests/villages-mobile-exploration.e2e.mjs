@@ -1,3 +1,4 @@
+import { placesPage } from "./fixtures/villages-places.fixture.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
@@ -219,6 +220,10 @@ await withBrowser(browser, async () => {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = fixture;
+      if (path.endsWith("/places"))
+        return fulfill(route, {
+          json: placesPage(fixture, new URL(route.request().url()).searchParams.get("query") ?? ""),
+        });
       if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
       else if (path.endsWith("/town-map")) value = { image: servedImage };

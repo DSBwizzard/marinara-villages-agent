@@ -1,3 +1,4 @@
+import { placesPage } from "./fixtures/villages-places.fixture.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
@@ -187,6 +188,10 @@ await withBrowser(browser, async () => {
         return;
       }
       let value = fixtureSnapshot;
+      if (path.endsWith("/places"))
+        return fulfill(route, {
+          json: placesPage(fixtureSnapshot, new URL(route.request().url()).searchParams.get("query") ?? ""),
+        });
       if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
       else if (path.endsWith("/sprites/setup/settled"))
         value = {

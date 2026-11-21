@@ -1,3 +1,4 @@
+import { placesPage } from "./fixtures/villages-places.fixture.mjs";
 import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
@@ -125,6 +126,10 @@ await withBrowser(browser, async () => {
       if (path.endsWith("/background/presence"))
         return fulfill(route, { json: { status: "ready", snapshot: snapshot } });
       let value = snapshot;
+      if (path.endsWith("/places"))
+        return fulfill(route, {
+          json: placesPage(snapshot, new URL(route.request().url()).searchParams.get("query") ?? ""),
+        });
       if (path.endsWith("/rooms/active")) value = { session };
       else if (path.endsWith("/rooms") && request.method() === "POST") {
         session = {

@@ -209,14 +209,15 @@ await runCase("roster-access/pending-place", async () => {
     };
   };
   try {
+    host.records.get("villages-active-venue").data = { sessionId: "", placeId: "" };
     const before = fixtureVillageState(host.records.get("villages-village").data, host.records),
       place = before.worldPlaces.places["quiet-place"];
     pending = host.app.inject({
       method: "POST",
-      url: "/api/villages/places/quiet-place/prepare",
+      url: "/api/villages/rooms",
       payload: {
         worldScope: villageWorldScope(before),
-        requestId: "old-preparation",
+        venueId: "quiet-place",
         mapId: place.location.presentation.mapId,
         expectedRevision: place.revision,
       },
@@ -228,19 +229,17 @@ await runCase("roster-access/pending-place", async () => {
     assert.notEqual(current.villagers[0].incarnation, before.villagers[0].incarnation);
     release.resolve();
     const result = await pending;
-    assert.equal(result.statusCode, 200, result.body);
-    assert.equal(
-      result.json().status,
-      "failed",
-      "pre-removal preparation cannot reinstall old authority on a new identity",
-    );
+    assert.equal(result.statusCode, 409, result.body);
     const after = fixtureVillageState(host.records.get("villages-village").data, host.records),
       saved = after.worldPlaces.places[place.id];
     assert.equal(saved.prepared, false);
     assert(!saved.location.access!.managerIds.includes("mara"));
     assert(saved.revision > place.revision);
     assert(after.worldPlaces.revision > before.worldPlaces.revision);
-    assert.match(after.worldPlaces.operations["old-preparation"].error!, /Place changed during preparation/);
+    assert.match(
+      Object.values(after.worldPlaces.operations).find((row) => row.kind === "prepare")!.error!,
+      /Place changed during preparation/,
+    );
     assert.equal(calls, 1, "stale acceptance does not purchase a replacement response");
   } finally {
     release.resolve();

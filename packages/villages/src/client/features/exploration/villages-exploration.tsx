@@ -16,6 +16,7 @@ export type ExplorationRow = {
   onSelect?: () => void;
   selected?: boolean;
   actions?: { label: string; onSelect: () => void }[];
+  content?: ReactNode;
 };
 
 export type ExplorationPin = {
@@ -220,6 +221,7 @@ export function LocationNavigator({
   mobile,
   focusSearch,
   onDiscover,
+  children,
 }: {
   rows: ExplorationRow[];
   search: string;
@@ -229,6 +231,7 @@ export function LocationNavigator({
   mobile: boolean;
   focusSearch: boolean;
   onDiscover: () => void;
+  children?: ReactNode;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -274,8 +277,9 @@ export function LocationNavigator({
       </label>
       <div ref={listRef} className={P + "-explore-list"}>
         <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
-          Discover Places
+          Explore
         </button>
+        {children}
         {filtered.map((row) => (
           <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
             <button
@@ -305,6 +309,7 @@ export function LocationNavigator({
                 ))}
               </div>
             ) : null}
+            {row.selected ? row.content : null}
           </div>
         ))}
         {filtered.length === 0 ? (

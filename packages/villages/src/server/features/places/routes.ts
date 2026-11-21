@@ -1,13 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { fail, readPlaceId } from "../../adapters/http/route-support.js";
-import { listPlaces, readPlace, generatePlace, placePosition } from "./services.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
+import { listPlaces, readPlace, generatePlace, admitPlace } from "./services.js";
 
 export function registerPlaceRoutes(app: FastifyInstance) {
-  app.post<{ Params: { id: string }; Body: unknown }>("/places/:id/position", async (request, reply) => {
+  app.post<{ Params: { id: string }; Body: unknown }>("/places/:id/admit", async (request, reply) => {
     try {
-      return await placePosition(readPlaceId(request.params.id), request.body);
+      await admitPlace(readPlaceId(request.params.id), request.body);
+      return await buildVillageSnapshot();
     } catch (error) {
-      return fail(reply, error, "placing a Place");
+      return fail(reply, error, "adding a Venue");
     }
   });
   app.get<{ Querystring: Record<string, unknown> }>("/places", async (request, reply) => {
@@ -29,13 +31,6 @@ export function registerPlaceRoutes(app: FastifyInstance) {
       return await readPlace(readPlaceId(request.params.id));
     } catch (error) {
       return fail(reply, error, "reading a Place");
-    }
-  });
-  app.post<{ Params: { id: string }; Body: unknown }>("/places/:id/prepare", async (request, reply) => {
-    try {
-      return await generatePlace(request.body, readPlaceId(request.params.id));
-    } catch (error) {
-      return fail(reply, error, "preparing a Place");
     }
   });
 }

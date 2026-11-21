@@ -7,7 +7,8 @@ export type PlaceSummary = {
   x: number | null;
   y: number | null;
   report: boolean;
-  prepared: boolean;
+  visited: boolean;
+  venue: boolean;
 };
 
 export type PlaceDirectory = { items: PlaceSummary[]; nextCursor: string | null };
@@ -25,11 +26,4 @@ export type PlaceOperationView = {
   kind: "explore" | "prepare";
   status: "started" | "ready" | "failed";
   placeId: string;
-};
-
-export type Establishment = {
-  goal: string;
-  physical: boolean;
-  zoneIds: string[];
-  objectives: { id: string; text: string; met: boolean; evidence: { source: string; quote: string }[] }[];
 };

@@ -32,7 +32,7 @@ import {
   encodeContinuityPages,
   decodeContinuityPagesSync,
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
-import { draftEstablishmentProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
+import { draftRenovationProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
 import {
   applyNarrationAccess,
   narrationAccessScopes,
@@ -478,19 +478,8 @@ await runCase("narration-native/decision-order", () => {
 
 await runCase("narration-native/closed-project", () => {
   const f = fixture();
-  const project = draftEstablishmentProject(
-    f.state,
-    f.home.id,
-    {
-      establishment: {
-        goal: "A reading club",
-        physical: false,
-        zoneIds: ["library"],
-        objectives: ["Agree on the club's ongoing use."],
-      },
-    },
-    "club",
-  );
+  f.state.venues.push(f.home.location);
+  const project = draftRenovationProject(f.state, f.home.id, { detail: "A reading room" }, "club");
   project.status = project.lifecycle!.phase = "complete";
   f.home.location.zones = f.home.location.zones!.filter((zone) => zone.id !== "library");
   const publication = f.publication([]);

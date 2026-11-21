@@ -1,8 +1,7 @@
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { useVillageActivity } from "../../shared/activity.js";
-import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue, VenueClass } from "../../../shared/contracts/village.js";
 import { MapStage } from "./MapStage.js";
-import { ExplorationNavigation, LocationNavigator, MapIcon } from "./villages-exploration.js";
+import { ExplorationNavigation, MapIcon } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ArtworkImage } from "../../shared/ArtworkImage.js";
@@ -12,7 +11,7 @@ import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { PlacesDirectory } from "./PlacesDirectory.js";
-import type { PlaceDetail, PlaceDirectory, PlaceSummary } from "../../../shared/contracts/places.js";
+import type { PlaceSummary } from "../../../shared/contracts/places.js";
 
 type MarkerDraft = {
   mapId: string;
@@ -32,7 +31,6 @@ export function ExplorationScreen({
   arrival?: ReactNode;
 }) {
   const lighting = useVillageLighting(controller.snapshot?.village);
-  const { visible } = useVillageActivity();
   const {
     selectedMap,
     setSelectedMapId,
@@ -80,38 +78,7 @@ export function ExplorationScreen({
     else if (choosingMap.current) mapChoice.current?.focus({ preventScroll: true });
     choosingMap.current = showAllMaps;
   }, [showAllMaps]);
-  const [discoveryOpen, setDiscoveryOpen] = useState(false),
-    [discoveryId, setDiscoveryId] = useState("");
-  const [showPlaces, setShowPlaces] = useState(false),
-    [placeMarkers, setPlaceMarkers] = useState<PlaceSummary[]>([]);
-  const [bounds, setBounds] = useState("0,0,1,1"),
-    [placingPlace, setPlacingPlace] = useState<PlaceSummary | null>(null);
-  const mapId = selectedMap?.id;
-  useEffect(() => {
-    if (!visible) return;
-    if (!showPlaces || !mapId) {
-      setPlaceMarkers([]);
-      return;
-    }
-    let current = true;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      void request<PlaceDirectory>("/places?" + new URLSearchParams({ mapId, bounds, limit: "100" }), {
-        signal: controller.signal,
-      })
-        .then((page) => {
-          if (current) setPlaceMarkers(page.items);
-        })
-        .catch((cause) => {
-          if (current) setError(messageFrom(cause, "Could not read Place markers."));
-        });
-    }, 150);
-    return () => {
-      current = false;
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, [showPlaces, mapId, bounds, setError, visible]);
+  const [placingPlace, setPlacingPlace] = useState<(PlaceSummary & { classes: VenueClass[] }) | null>(null);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraft | null>(null);
   const [markerError, setMarkerError] = useState("");
   const [hasSavedMarkers, setHasSavedMarkers] = useState(false);
@@ -223,27 +190,11 @@ export function ExplorationScreen({
     explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     explorationReturnTab.current = "map";
     setOpenPlaceId(place.id);
+    setSelectedMapId(place.presentation.mapId);
     const point = placeSpot(place);
     if (point) setNavigationView((current) => ({ zoom: current?.zoom ?? 1, centerX: point.x, centerY: point.y }));
     setExploreSheet({ tab: "places" });
   };
-  const rows = places.map((place) => ({
-    id: place.id,
-    name: place.name,
-    detail: [
-      place.classes
-        .map((value) => (value === "other" ? "Venue" : value[0].toUpperCase() + value.slice(1)))
-        .join(" · ") || "Venue",
-      !placeSpot(place) ? "Not on map" : "",
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    selected: openPlaceId === place.id,
-    onSelect: () => selectPlace(place),
-    actions: venueExplorationActions(place).filter(
-      (action) => action.label !== "Visit" || !room || room.status === "closed",
-    ),
-  }));
   const pins = markerDraft
     ? places.flatMap((place) => {
         const point = markerDraft.placements[place.id];
@@ -428,21 +379,38 @@ export function ExplorationScreen({
         ) : (
           <>
             {!markerDraft && navigatorOpen ? (
-              <LocationNavigator
+              <PlacesDirectory
+                key={snapshot!.worldScope}
+                snapshot={snapshot!}
+                mapId={selectedMap?.id ?? ""}
                 mobile={mobile}
                 focusSearch={focusSearch}
                 search={explorationSearch.places}
                 onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
-                disabled={busy}
-                onDiscover={() => {
-                  setDiscoveryId("");
-                  setDiscoveryOpen(true);
-                }}
+                sceneActive={!!room && room.status !== "closed"}
                 onClose={() => {
                   closeExploration();
                   setFocusSearch(false);
                 }}
-                rows={rows}
+                onVenue={selectPlace}
+                selectedId={openPlaceId ?? undefined}
+                venueActions={(place) =>
+                  venueExplorationActions(place).filter(
+                    (action) => action.label !== "Visit" || !room || room.status === "closed",
+                  )
+                }
+                onVisit={(place) => {
+                  closeExploration();
+                  venueExplorationActions(place)
+                    .find((action) => action.label === "Visit")
+                    ?.onSelect();
+                }}
+                onAdmit={(place, classes) => {
+                  closeExploration();
+                  setPlacingPlace({ ...place, classes });
+                  setSelectedMapId(place.mapId);
+                  setShowAllMaps(false);
+                }}
               />
             ) : null}
             <div className={`${ELEMENT_TAG}-home-map-paper`}>
@@ -479,15 +447,6 @@ export function ExplorationScreen({
                       <MapIcon name="more" />
                     </summary>
                     <div className={`${ELEMENT_TAG}-map-options`}>
-                      <label>
-                        <input
-                          autoComplete="off"
-                          type="checkbox"
-                          checked={showPlaces}
-                          onChange={(event) => setShowPlaces(event.target.checked)}
-                        />
-                        Places layer
-                      </label>
                       {selectedMap ? (
                         <button type="button" disabled={busy} onClick={startMarkers}>
                           {hasSavedMarkers ? "Resume marker edits" : "Move markers"}
@@ -505,24 +464,7 @@ export function ExplorationScreen({
                   lighting={lighting}
                   src={townMapImage || null}
                   alt={`A map of ${selectedMap?.name ?? snapshot?.village.name ?? "the village"}.`}
-                  pins={[
-                    ...pins,
-                    ...(!markerDraft && showPlaces
-                      ? placeMarkers
-                          .filter((place) => place.x !== null && place.y !== null)
-                          .map((place) => ({
-                            id: place.id,
-                            x: place.x!,
-                            y: place.y!,
-                            text: place.name,
-                            tone: "venue" as const,
-                            onSelect: () => {
-                              setDiscoveryId(place.id);
-                              setDiscoveryOpen(true);
-                            },
-                          }))
-                      : []),
-                  ]}
+                  pins={pins}
                   placing={(!!placingProjectId || !!placingPlace || !!markerDraft?.selected) && !busy}
                   view={savedTownMapView}
                   shape={savedTownMapShape}
@@ -531,9 +473,11 @@ export function ExplorationScreen({
                       const place = placingPlace;
                       setBusy(true);
                       setError("");
-                      void request<PlaceDetail>("/places/" + encodeURIComponent(place.id) + "/position", {
+                      void request<VillageSnapshot>("/places/" + encodeURIComponent(place.id) + "/admit", {
                         method: "POST",
                         body: JSON.stringify({
+                          worldScope: snapshot!.worldScope,
+                          classes: place.classes,
                           requestId: createVillagesClientId(),
                           expectedRevision: place.revision,
                           expectedMapRevision: selectedMap?.revision,
@@ -542,7 +486,6 @@ export function ExplorationScreen({
                           y,
                         }),
                       })
-                        .then(() => request<VillageSnapshot>("/"))
                         .then((next) => {
                           setSnapshot(next);
                           setPlacingPlace(null);
@@ -589,7 +532,6 @@ export function ExplorationScreen({
                   exploration
                   navigationView={navigationView}
                   onNavigationView={setNavigationView}
-                  onViewportBounds={setBounds}
                   keyboardPlacementId={markerDraft?.selected}
                   onNudgePin={
                     markerDraft && !busy
@@ -640,33 +582,6 @@ export function ExplorationScreen({
         </div>
       ) : null}
       {mobile && !placingProjectId && !markerDraft ? navigation : null}
-      {discoveryOpen && selectedMap ? (
-        <PlacesDirectory
-          key={snapshot.worldScope + ":" + selectedMap.id}
-          snapshot={snapshot}
-          mapId={selectedMap.id}
-          selectedId={discoveryId}
-          sceneActive={!!room && room.status !== "closed"}
-          onClose={() => setDiscoveryOpen(false)}
-          onVisit={(place) => {
-            setDiscoveryOpen(false);
-            venueExplorationActions(place)
-              .find((action) => action.label === "Visit")
-              ?.onSelect();
-          }}
-          onPlace={(place) => {
-            setDiscoveryOpen(false);
-            setPlacingPlace(place);
-            setShowAllMaps(false);
-          }}
-          onProject={(next, id) => {
-            setSnapshot(next);
-            setDiscoveryOpen(false);
-            setFocusedProjectId(id);
-            openMenu("projects");
-          }}
-        />
-      ) : null}
     </div>
   );
 }

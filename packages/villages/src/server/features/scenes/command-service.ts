@@ -73,6 +73,7 @@ function visitEventHere(state: VillageState, placeId: string, zoneId: string, oc
 }
 
 export interface SceneCommandPorts {
+  preparePlace: typeof import("../places/services.js").generatePlace;
   rollVisitEvent?: () => "local" | "place" | "quiet";
   retry?: ReturnType<typeof import("./retry-service.js").createSceneRetry>;
   generate: typeof import("./writing.js").generate;
@@ -134,6 +135,7 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  preparePlace,
   rollVisitEvent = () => {
     const roll = randomInt(9);
     return roll === 0 ? "place" : roll < 3 ? "local" : "quiet";
@@ -703,6 +705,23 @@ export function createSceneCommands({
     const existing = travel ? null : await activeVenueSession();
     if (!existing && !travel) {
       await rollActiveAgendas();
+    }
+    if (!existing && !travel) {
+      const world = await readVillageState({ memories: true });
+      const discovery = world.worldPlaces.places[placeId];
+      if (discovery && !discovery.prepared) {
+        const result = await preparePlace(
+          {
+            worldScope: villageWorldScope(world),
+            requestId: "visit:" + randomUUID(),
+            mapId: discovery.location.presentation.mapId,
+            expectedRevision: discovery.revision,
+            intent: "Visit this Place",
+          },
+          placeId,
+        );
+        if (result.status !== "ready") throw conflict("Could not enter this Place. Its discovery is retained.");
+      }
     }
     const source = travel?.village ?? (await readVillageState());
     const now = villageNow();

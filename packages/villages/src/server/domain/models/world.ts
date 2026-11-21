@@ -475,7 +475,6 @@ export type VillageProjectLifecycle = {
 };
 
 export type VillageProject = {
-  establishment?: import("../../../shared/contracts/places.js").Establishment;
   place?: VillageVenue;
   plan?: {
     capacity: number;
@@ -503,7 +502,7 @@ export type VillageProject = {
   progress: number;
   status: VillageProjectPhase;
   updatedAt: string;
-  kind: "new-venue" | "renovation" | "establishment";
+  kind: "new-venue" | "renovation";
   venueDraft?: {
     name: string;
     classes: VillageVenueClass[];
@@ -611,7 +610,7 @@ export type VillageState = {
   opening?: import("../rules/opening-project.js").OpeningRecord;
   dismissedNoticeIds: string[];
   backgroundReceipts: Record<string, string>;
-  version: 19;
+  version: 20;
   name: string;
   /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;

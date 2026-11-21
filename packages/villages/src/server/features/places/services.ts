@@ -1,3 +1,4 @@
+import { admitLocation } from "../../domain/rules/place-admission.js";
 import { randomUUID } from "node:crypto";
 import { initializeRoomContinuity } from "../../domain/rules/native-continuity.js";
 import type { CapabilityLanguageModelCompletion } from "@marinara-engine/shared";
@@ -20,15 +21,18 @@ import {
   placeDraftSchema,
   projectPlace,
 } from "../../domain/rules/place-discovery.js";
-import { placeSummary } from "../../domain/rules/places.js";
+import { locationSummary, placeSummary } from "../../domain/rules/places.js";
 import type { PlaceDirectory } from "../../../shared/contracts/places.js";
 import type { PlaceOperation } from "../../domain/models/places.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
+import { validVenueClasses } from "../../domain/rules/venue-model.js";
+import { sceneQueries } from "../scenes/services.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 
 export async function listPlaces(query: Record<string, unknown>): Promise<PlaceDirectory> {
   const state = await readVillageState({ memories: true });
   const search = String(query.query ?? "")
+    .trim()
     .toLocaleLowerCase()
     .slice(0, 200);
   const start = Number(query.cursor ?? 0),
@@ -36,25 +40,24 @@ export async function listPlaces(query: Record<string, unknown>): Promise<PlaceD
   if (!Number.isSafeInteger(start) || start < 0 || !Number.isSafeInteger(limit) || limit < 1)
     throw badRequest("Invalid Places page.");
   // shortcut: directory search scans private records; add a storage index if measured library size needs it.
-  const rows = Object.values(state.worldPlaces.places).filter(
+  const rows = [
+    ...state.venues.map((venue) => ({
+      ...locationSummary(venue),
+      revision: 0,
+      report: false,
+      visited: true,
+      venue: true,
+    })),
+    ...Object.values(state.worldPlaces.places)
+      .filter((place) => !place.disabled && place.knownBy.includes("player"))
+      .map(placeSummary),
+  ].filter(
     (place) =>
-      !place.disabled &&
-      place.knownBy.includes("player") &&
-      (!query.mapId || place.location.presentation.mapId === query.mapId) &&
-      (!search || `${place.location.name} ${placeSummary(place).description}`.toLocaleLowerCase().includes(search)),
+      (!query.mapId || place.mapId === query.mapId) && (!search || place.name.toLocaleLowerCase().includes(search)),
   );
-  const bounds = query.bounds === undefined ? undefined : String(query.bounds).split(",").map(Number);
-  if (bounds && (bounds.length !== 4 || bounds.some((n) => !Number.isFinite(n) || n < 0 || n > 1)))
-    throw badRequest("Invalid map bounds.");
-  const selected = bounds
-    ? rows.filter(
-        ({ location: { presentation: p } }) =>
-          p.x !== null && p.y !== null && p.x >= bounds[0] && p.y >= bounds[1] && p.x <= bounds[2] && p.y <= bounds[3],
-      )
-    : rows;
   return {
-    items: selected.slice(start, start + limit).map(placeSummary),
-    nextCursor: start + limit < selected.length ? String(start + limit) : null,
+    items: rows.slice(start, start + limit),
+    nextCursor: start + limit < rows.length ? String(start + limit) : null,
   };
 }
 
@@ -67,54 +70,63 @@ export async function readPlace(id: string) {
   return { ...placeSummary(place), location: projectPlace(state, place) };
 }
 
-export async function placePosition(id: string, value: unknown) {
-  const input = z
-    .object({
-      requestId: z.string().min(1).max(100),
-      expectedRevision: z.number().int().positive(),
-      expectedMapRevision: z.number().int().nonnegative(),
-      mapId: z.string().min(1).max(200),
-      x: z.number().min(0.03).max(0.97),
-      y: z.number().min(0.03).max(0.97),
-    })
-    .strict()
-    .safeParse(value);
-  if (!input.success) throw badRequest("Choose a map position.");
-  const row = input.data;
-  await mutateVillageState(
-    (state) => {
-      const place = state.worldPlaces.places[id],
-        key = `place-position:${row.requestId}`,
-        fingerprint = JSON.stringify([id, row]);
-      if (state.worldPlaces.receipts[key]) {
-        if (state.worldPlaces.receipts[key] !== fingerprint) throw conflict("This request ID was already used.");
-        return;
-      }
-      if (!place || place.disabled || !place.knownBy.includes("player")) throw notFound("That Place is not known.");
-      if (place.revision !== row.expectedRevision) throw conflict("The Place changed. Refresh it.");
-      const map = villageMap(state, row.mapId);
-      assertMapRevision(map, row.expectedMapRevision);
-      if (place.location.presentation.mapId !== map.id) throw conflict("Use this Place's known map.");
-      if (
-        state.venues.some(
-          (venue) =>
-            venue.presentation.mapId === map.id &&
-            venue.presentation.x !== null &&
-            venue.presentation.y !== null &&
-            Math.abs(venue.presentation.x - row.x) < 0.055 &&
-            Math.abs(venue.presentation.y - row.y) < 0.055,
+export async function admitPlace(id: string, value: unknown) {
+  return sceneQueries().withSceneNavigation(async () => {
+    const input = z
+      .object({
+        worldScope: z.string().min(1).max(100),
+        classes: z.unknown(),
+        requestId: z.string().min(1).max(100),
+        expectedRevision: z.number().int().positive(),
+        expectedMapRevision: z.number().int().nonnegative(),
+        mapId: z.string().min(1).max(200),
+        x: z.number().min(0.03).max(0.97),
+        y: z.number().min(0.03).max(0.97),
+      })
+      .strict()
+      .safeParse(value);
+    if (!input.success || !validVenueClasses(input.data.classes))
+      throw badRequest("Choose Venue classes and a map position.");
+    const row = input.data;
+    const active = await sceneQueries().activeVenueSession();
+    if (active && active.status !== "closed") throw conflict("Conclude the Scene before adding a Venue.");
+    await mutateVillageState(
+      (state) => {
+        const place = state.worldPlaces.places[id],
+          key = `place-admission:${row.requestId}`,
+          fingerprint = JSON.stringify([id, row]);
+        if (row.worldScope !== villageWorldScope(state)) throw conflict("The Village changed. Refresh Places.");
+        if (state.worldPlaces.receipts[key]) {
+          if (state.worldPlaces.receipts[key] !== fingerprint) throw conflict("This request ID was already used.");
+          return;
+        }
+        if (!place || place.disabled || !place.knownBy.includes("player")) throw notFound("That Place is not known.");
+        if (place.revision !== row.expectedRevision) throw conflict("The Place changed. Refresh it.");
+        if (!place.visited || !place.prepared || place.report)
+          throw conflict("Visit and verify this Place before adding it as a Venue.");
+        const map = villageMap(state, row.mapId);
+        assertMapRevision(map, row.expectedMapRevision);
+        if (place.location.presentation.mapId !== map.id) throw conflict("Use this Place's known map.");
+        if (
+          state.venues.some(
+            (venue) =>
+              venue.presentation.mapId === map.id &&
+              venue.presentation.x !== null &&
+              venue.presentation.y !== null &&
+              Math.abs(venue.presentation.x - row.x) < 0.055 &&
+              Math.abs(venue.presentation.y - row.y) < 0.055,
+          )
         )
-      )
-        throw conflict("That spot overlaps a Venue.");
-      Object.assign(place.location.presentation, { x: row.x, y: row.y });
-      place.revision++;
-      map.revision++;
-      state.worldPlaces.revision++;
-      state.worldPlaces.receipts[key] = fingerprint;
-    },
-    { memories: true },
-  );
-  return readPlace(id);
+          throw conflict("That spot overlaps a Venue.");
+        admitLocation(state, id, row.classes);
+        Object.assign(place.location.presentation, { x: row.x, y: row.y });
+        map.revision++;
+        state.worldPlaces.revision++;
+        state.worldPlaces.receipts[key] = fingerprint;
+      },
+      { memories: true },
+    );
+  });
 }
 
 const requestSchema = z

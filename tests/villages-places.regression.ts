@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { establishPlace, projectPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { findLocation, findNpc, readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
-import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
   encodeContinuityPages,
   decodeContinuityPagesSync,
@@ -100,133 +99,43 @@ assert.throws(() =>
     true,
   ),
 );
-const { draftEstablishmentProject } =
-  await import("../packages/villages/src/server/features/projects/project-drafts.js");
-const { completeProject } = await import("../packages/villages/src/server/domain/rules/project-completion.js");
-const { establishmentScope } = await import("../packages/villages/src/server/domain/rules/establishment.js");
+const { admitLocation } = await import("../packages/villages/src/server/domain/rules/place-admission.js");
 const { villageVenueUsage } = await import("../packages/villages/src/server/domain/rules/venue-capacity.js");
-const { coerceVillageState } = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
 state.setupAt = "2026-11-03T12:00:00.000Z";
-state.maps = [
-  {
-    id: "map",
-    name: "Village",
-    revision: 1,
-    width: 1440,
-    height: 900,
-    view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-    artwork: { id: "art", ref: "global-gallery:art", url: "/map.png" },
-  },
-] as any;
-place.location.presentation.x = 0.3;
-place.location.presentation.y = 0.3;
-const project = draftEstablishmentProject(
-  state,
-  place.id,
-  {
-    classes: ["workplace"],
-    establishment: {
-      goal: "Host a weekly village meal",
-      physical: false,
-      zoneIds: ["dining"],
-      objectives: ["Agree a recurring trial meal"],
-    },
-  },
-  "project:establish",
-);
-assert.equal(villageVenueUsage(state).total, 0, "Drafts reserve no Venue slot");
-project.status = project.lifecycle!.phase = "working";
-assert.equal(villageVenueUsage(state).total, 1, "Active establishment reserves one slot");
-assert.throws(() => completeProject(state, project, state.setupAt), /objectives|agreements/);
-project.lifecycle!.approvals.push({
-  residentId: "npc:place:lantern:jo",
-  incarnation: continuityActor(state, "npc:place:lantern:jo")!.incarnation,
-  source: "conversation",
-  evidenceId: "speech:jo",
-  scope: establishmentScope(project),
-  at: state.setupAt,
-});
-project.establishment!.objectives[0].met = true;
+assert.throws(() => admitLocation(state, place.id, ["workplace"]), /Visit/);
+assert.equal(villageVenueUsage(state).total, 0);
+place.visited = true;
+assert.throws(() => admitLocation(state, place.id, ["community"]), /supported by its Venue Class/);
 const sameZone = place.location.zones![1],
   sameNpc = state.worldPlaces.npcs["npc:place:lantern:jo"];
-completeProject(state, project, state.setupAt);
-assert.equal(state.venues[0], place.location, "Promotion retains the same location");
-assert.equal(state.venues[0].zones![1], sameZone, "Promotion retains Zone identities and history");
-assert.equal(state.worldPlaces.npcs[sameNpc.id], sameNpc, "Promotion retains supporting identities");
-assert.equal(state.worldPlaces.places[place.id], undefined, "Only one authoritative location remains");
+admitLocation(state, place.id, ["community", "workplace"]);
+assert.equal(place.location.zones!.find((zone) => zone.kind === "staff")!.venueClass, "workplace");
+assert.equal(state.venues[0], place.location);
+assert.equal(state.venues[0].zones![1], sameZone);
+assert.equal(state.worldPlaces.npcs[sameNpc.id], sameNpc);
+assert.equal(state.worldPlaces.places[place.id], undefined);
 assert.equal(villageVenueUsage(state).total, 1);
-assert.equal(state.venues[0].access?.managerIds.includes("player"), false, "Promotion does not grant ownership");
+assert.equal(state.projects.length, 0, "Admission creates no Project or work reservation");
+assert.equal(state.venues[0].access?.managerIds.includes("player"), false, "Admission preserves controllers");
 assert.equal(
-  coerceVillageState(JSON.parse(JSON.stringify(state))).projects[0].establishment?.objectives[0].met,
-  true,
-  "Social establishment survives restart without a construction deadline",
-);
-assert.throws(
-  () =>
-    readPlaceRegistry({
-      ...state.worldPlaces,
-      places: { [place.id]: { ...place, location: { ...place.location, access: {} } } },
-    }),
-  /access record/,
-);
-const { fixture } = await import("./fixtures/villages-projects.fixture.js");
-const { projectDesignKey } = await import("../packages/villages/src/server/domain/rules/project-terms.js");
-const { finishConstruction } = await import("../packages/villages/src/server/domain/rules/project-lifecycle-rules.js");
-const physical = fixture();
-await physical.mutate((world) => {
-  const site = establishPlace(
-    world,
-    {
-      name: "Old shed",
-      description: "A standing wooden shed.",
-      zones: [{ id: "room", name: "Room", kind: "public", description: "A dry room." }],
-    },
-    "place:shed",
-    "map-projects",
-    "authored",
-    world.setupAt,
-    true,
-  );
-  site.location.presentation.x = 0.75;
-  site.location.presentation.y = 0.75;
-});
-await physical.service.createEstablishmentProject("place:shed", {
-  requestId: "physical",
-  classes: ["community"],
-  detail: "Add a ramp",
-  form: "A wooden shed with a wheelchair ramp",
-  establishment: { goal: "A shared workshop", physical: true, zoneIds: ["exterior", "room"], objectives: [] },
-});
-const workId = physical.state().projects.find((row) => Object.hasOwn(row.lifecycle!.commandReceipts, "physical"))!.id;
-await physical.mutate((world) => {
-  const p = world.projects.find((p) => p.id === workId)!;
-  p.lifecycle!.builderId = "a";
-  p.lifecycle!.candidates = [
-    {
-      residentId: "a",
-      incarnation: continuityActor(world, "a")!.incarnation,
-      evidenceId: "lead",
-      scope: projectDesignKey(p),
-      at: world.setupAt,
-    },
-  ];
-});
-await physical.service.startProjectConstruction(workId, physical.body(workId), new Date("2026-11-03T12:00:00Z"));
-assert.equal(physical.get(workId).status, "working", "A native work reservation can target a Place");
-assert.equal(physical.get(workId).lifecycle!.workOrder!.focus!.remainingMs, 360 * 60000);
-assert.equal(
-  physical.state().venues.some((venue) => venue.id === "place:shed"),
+  state.venues[0].zones!.find((zone) => zone.id === "kitchen")!.seen,
   false,
-  "Physical Start does not promote early",
+  "Admission reveals no private room",
 );
-await physical.mutate((world) =>
-  finishConstruction(world, world.projects.find((p) => p.id === workId)! as any, "2026-11-04T12:00:00.000Z"),
+const full = defaultVillageState();
+full.venues = Array.from({ length: 16 }, (_, index) => ({ ...structuredClone(place.location), id: "venue:" + index }));
+const waiting = establishPlace(
+  full,
+  { name: "Garden", description: "An existing garden." },
+  "waiting",
+  "map",
+  "test",
+  state.setupAt,
+  true,
 );
-assert.equal(physical.get(workId).status, "complete", physical.get(workId).lifecycle!.blockedReason);
-assert.equal(
-  physical.state().venues.find((venue) => venue.id === "place:shed")?.form,
-  "A wooden shed with a wheelchair ramp",
-);
+waiting.visited = true;
+assert.throws(() => admitLocation(full, waiting.id, ["community"]), /no room/);
+assert.equal(full.worldPlaces.places[waiting.id], waiting, "Rejected admission preserves the location");
 const { applyAccessCommand } = await import("../packages/villages/src/server/domain/rules/venue-access.js");
 const { sceneActorIds } = await import("../packages/villages/src/server/domain/rules/places.js");
 applyAccessCommand(

@@ -12,7 +12,7 @@ export function villageVenueUsage(state: VillageState, venues = state.venues, ex
   const pending = state.projects.filter(
     (project) =>
       project.id !== exceptProjectId &&
-      ["new-venue", "establishment"].includes(project.kind) &&
+      project.kind === "new-venue" &&
       ["working", "paused"].includes(project.status) &&
       !venues.some((venue) => venue.id === project.venueId || venue.buildProjectId === project.id),
   );
