@@ -332,9 +332,13 @@ async function checkPackage(width) {
     if (path.endsWith("/settings") && route.request().method() === "PATCH") {
       const visual = route.request().postDataJSON();
       if (
-        ["spriteVariantsEnabled", "spriteCardFlipEnabled", "characterSpeechColors", "menuAppearance"].some(
-          (key) => key in visual,
-        )
+        [
+          "spriteVariantsEnabled",
+          "spriteCardFlipEnabled",
+          "characterSpeechColors",
+          "menuAppearance",
+          "lorebookChipsEnabled",
+        ].some((key) => key in visual)
       ) {
         if (failVisualSave) return fulfill(route, { status: 503, json: { error: "Visual save unavailable" } });
         Object.assign(snapshot.settings, visual);
@@ -491,6 +495,12 @@ async function checkPackage(width) {
       value === "auto" ? naturalTheme : value,
     );
   }
+  const loreChips = page.getByRole("checkbox", { name: "Show Lorebook chips", exact: true });
+  await expect(loreChips).toBeChecked();
+  await loreChips.uncheck();
+  await expect.poll(() => snapshot.settings.lorebookChipsEnabled).toBe(false);
+  await loreChips.check();
+  await expect.poll(() => snapshot.settings.lorebookChipsEnabled).toBe(true);
   await expect(variants).toBeChecked();
   await variants.uncheck();
   await expect.poll(() => snapshot.settings.spriteVariantsEnabled).toBe(false);

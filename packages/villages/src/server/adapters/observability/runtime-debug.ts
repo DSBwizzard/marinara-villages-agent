@@ -22,9 +22,12 @@ export function saveRuntimeDebug(value: unknown, meter?: unknown) {
 export function readLoreInspections() {
   return diagnostics().readLoreInspections();
 }
-export async function rememberLoreInspection(report: LoreInspection): Promise<string | undefined> {
+export async function rememberLoreInspection(
+  report: LoreInspection,
+  contents?: ReadonlyMap<string, string>,
+): Promise<string | undefined> {
   try {
-    return await diagnostics().rememberLoreInspection(report);
+    return await diagnostics().rememberLoreInspection(report, contents);
   } catch {
     return undefined;
   }
@@ -50,6 +53,15 @@ export async function readLoreScope() {
 }
 export function readLoreTrigger(inspectionId: unknown, bookId: unknown, entryId: unknown, target?: unknown) {
   return diagnostics().readLoreTrigger(inspectionId, bookId, entryId, target);
+}
+export function readLoreEntry(
+  scope: unknown,
+  inspectionId: unknown,
+  bookId: unknown,
+  entryId: unknown,
+  target: unknown,
+) {
+  return diagnostics().readLoreEntry(scope, inspectionId, bookId, entryId, target);
 }
 /** Missing/disposed diagnostics must never replace an operation's result. */
 export function runtimeDebug(event: string, detail: unknown): void {

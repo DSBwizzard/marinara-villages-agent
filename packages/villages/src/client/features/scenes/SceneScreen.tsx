@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMenuDaylight } from "../../shared/useVillageLighting.js";
 import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -6,7 +6,6 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
-import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
 import type { SceneErrorItem } from "./scene-errors.js";
 import { sceneErrorCause } from "./scene-error-message.js";
 import { sceneFailure } from "./scene-error-report.js";
@@ -26,9 +25,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     if (displayedSubmissionId && controller.room?.id)
       recordTurnTiming(controller.room.id, displayedSubmissionId, "displayed");
   }, [controller.room?.id, displayedSubmissionId]);
-  const [reportedErrors, setReportedErrors] = useState<
-    { sceneId: string; id: string; title: string; message: string }[]
-  >([]);
   const sceneId = controller.room?.id;
   const sceneLifetime = useRef<string | undefined>(sceneId);
   const replyRetry = useRef<{ sceneId: string; pending: boolean } | null>(null);
@@ -54,26 +50,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       : controller.room?.capturedContext
         ? []
         : (controller.snapshot?.settings.venues ?? []);
-  const reportSettingsError = useCallback(
-    (id: string, title: string, message: string) => {
-      if (!sceneId) return;
-      setReportedErrors((current) => [
-        ...current.filter((entry) => entry.sceneId !== sceneId || entry.id !== id),
-        ...(message ? [{ sceneId, id, title, message }] : []),
-      ]);
-    },
-    [sceneId],
-  );
-  const reportDiagnosticsError = useCallback(
-    (message: string) => reportSettingsError("diagnostics", "Saved change diagnostics unavailable", message),
-    [reportSettingsError],
-  );
   const {
     closeRoom,
     composerEditVersionRef,
     continueRoomWithoutGreeting,
-    debugDiscardEnabled,
-    discardRoomDebug,
     dismissRoomNotice,
     goHome,
     greetRoom,
@@ -239,9 +219,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 title: "Scene opening failed",
                 message: roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "",
               },
-              ...reportedErrors
-                .filter((entry) => entry.sceneId === room.id)
-                .map(({ sceneId: _sceneId, ...entry }) => entry),
             ]
               .filter(
                 (entry, index, all) =>
@@ -445,8 +422,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });
           }}
           unresolvedChanges={roomUnresolvedChanges}
-          debugDiscardEnabled={debugDiscardEnabled}
-          onDebugDiscard={() => void discardRoomDebug()}
           onRetryGreeting={() => {
             if (
               room.id &&
@@ -473,12 +448,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onMap={goHome}
           onProjects={() => openMenu("projects")}
           onProposals={() => openMenu("venueRequests")}
+          onSettings={() => openMenu("general")}
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
-          sceneSettings={
-            room.id ? (
-              <SavedChangesDiagnostics key={room.id} sceneId={room.id} api={request} onError={reportDiagnosticsError} />
-            ) : undefined
-          }
         />
       ) : (
         <button type="button" className={`${ELEMENT_TAG}-button`} onClick={goHome}>

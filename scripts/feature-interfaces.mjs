@@ -151,6 +151,5 @@ export const clientFeatureInterfaces = Object.freeze({
   "residents/villages-dossier.tsx": ["DossierNavigation"],
   "settings/AgentConnections.tsx": ["AgentConnections", "AgentConnectionsControls", "useAgentConnections"],
   "settings/villages-decisions-control.tsx": ["DecisionsControl"],
-  "settings/villages-saved-changes.tsx": ["SavedChangesDiagnostics"],
   "venues/VenuePanels.tsx": ["MailboxImprovementEditor", "VENUE_CLASS_CHOICES", "VenueDraftFields"],
 });

@@ -68,7 +68,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(desktopRetry).toBeDisabled();
     const checkRetryPlacement = async (page, button) => {
       if (!(await button.isVisible())) await page.getByRole("button", { name: "Venue actions" }).click();
-      await expect(page.getByRole("menu", { name: "Venue actions" }).getByRole("menuitem")).toHaveCount(9);
+      await expect(page.getByRole("menu", { name: "Venue actions" }).getByRole("menuitem")).toHaveCount(8);
       await expect(
         page.locator(".marinara-capability-villages-chat-vn").getByRole("button", { name: "Retry Turn" }),
       ).toHaveCount(0);

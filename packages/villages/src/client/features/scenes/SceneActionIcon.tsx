@@ -1,8 +1,6 @@
 import { VillageIcon } from "../../shared/VillageIcon.js";
 
 export type SceneAction =
-  | "dialogue"
-  | "show-dialogue"
   | "retry"
   | "retry-unavailable"
   | "venue"
@@ -32,13 +30,7 @@ export function SceneActionIcon({ name }: { name: SceneAction }) {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      {name === "dialogue" || name === "show-dialogue" ? (
-        <>
-          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z" />
-          <circle cx="12" cy="12" r="3" />
-          {name === "dialogue" ? <path d="m3 21 18-18" /> : null}
-        </>
-      ) : name === "retry" || name === "retry-unavailable" ? (
+      {name === "retry" || name === "retry-unavailable" ? (
         <>
           <path d="M20 4v6h-6M20 10a8 8 0 1 0 0 5" />
           {name === "retry-unavailable" ? <path d="m4 20 16-16" /> : null}

@@ -260,10 +260,9 @@ await withBrowser(browser, async () => {
       await checkGeometry("after closing the keyboard");
       await composer.blur();
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
-      await expect(band).toBeHidden();
+      await expect(page.getByRole("menuitem", { name: "Hide dialogue", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "Settings", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(band).toBeVisible();
       await expect(composer).toHaveValue("A draft to keep.");
     }

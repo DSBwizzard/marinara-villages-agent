@@ -319,15 +319,13 @@ await withBrowser(browser, async () => {
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-    const before = diagnosticReads;
-    const summary = page.getByText("World change diagnostics · includes private evidence", { exact: true });
-    await expect(summary).toBeVisible();
-    assert.equal(diagnosticReads, before, "Opening Scene settings does not read private diagnostics");
-    await summary.click();
-    await expect.poll(() => diagnosticReads).toBe(before + 1);
-    await expect(page.locator("pre")).toContainText("PRIVATE_OWNER_DIAGNOSTIC");
-    await page.getByRole("button", { name: "Close Scene settings", exact: true }).click();
+    await expect(page.getByRole("menuitem").first()).toHaveAttribute("aria-label", "Settings");
+    await expect(page.getByRole("menuitem", { name: "Scene settings", exact: true })).toHaveCount(0);
+    await expect(page.getByText("World change diagnostics · includes private evidence", { exact: true })).toHaveCount(
+      0,
+    );
+    assert.equal(diagnosticReads, 0, "Opening Scene actions never reads private change diagnostics");
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
   }
 
   assert.deepEqual(errors, []);

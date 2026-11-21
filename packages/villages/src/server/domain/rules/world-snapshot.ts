@@ -199,6 +199,7 @@ export function villageSettings(
     backgroundPaces: ["off", "quiet", "balanced", "lively"],
     characterSpeechColors: village.characterSpeechColors,
     menuAppearance: village.menuAppearance ?? "auto",
+    lorebookChipsEnabled: village.lorebookChipsEnabled !== false,
     sendOnEnter: village.sendOnEnter,
     spontaneousEvents: village.spontaneousEvents === true,
     spriteCardFlipEnabled: village.spriteCardFlipEnabled,

@@ -12,6 +12,7 @@ import { AgentConnectionsControls, useAgentConnections } from "../settings/Agent
 import { VillageIcon } from "../../shared/VillageIcon.js";
 import { Appearance } from "../residents/Appearance.js";
 import { FoundingPagination } from "./FoundingPagination.js";
+import { LoreActivitySlot } from "../../shared/LoreActivity.js";
 import { FoundingDialog } from "./FoundingDialog.js";
 import {
   FOUNDING_CIRCUMSTANCE_MAX_LENGTH,
@@ -870,6 +871,9 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         aria-busy={fading || turning || undefined}
         ref={rootRef}
       >
+        <div className="villages-founding-lore">
+          <LoreActivitySlot />
+        </div>
         <div className="villages-setting-stage" aria-hidden="true">
           <CardFlipSprite
             url={foundingMariSprite(mariPose)}

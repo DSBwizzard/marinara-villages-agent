@@ -163,7 +163,10 @@ async function main() {
           caption: "Private image caption",
         },
       ];
-      const inspectionId = (await rememberLoreInspection(selected))!;
+      const inspectionId = (await rememberLoreInspection(
+        selected,
+        new Map([[JSON.stringify(["private", "text"]), "Private body"]]),
+      ))!;
       assert.doesNotMatch(
         JSON.stringify(records.get("villages-lore-activity")),
         /entry-images|Private image caption/,
@@ -171,11 +174,44 @@ async function main() {
       );
       const reference = { inspectionId, bookId: "private", entryId: "text" };
       assert.equal((await readLoreActivity()).records.length, 0, "Selection alone is not prompt inclusion");
+      const selectedScope = (await readLoreActivity(true)).scope;
+      const entryRequest = { action: "entry", scope: selectedScope, ...reference, target: "Image" };
+      assert.deepEqual(
+        (await server.inject({ method: "POST", url: "/debug/lore", payload: entryRequest })).json(),
+        { text: null },
+        "Unused selections cannot be read through a chip",
+      );
       const use = inspectedLoreUse({ ...selected, inspectionId }, "Image");
       await recordLoreUse(use, "Map artwork");
       const first = await readLoreActivity();
       assert.equal(first.records.length, 1);
-      assert.doesNotMatch(JSON.stringify(first), /entry-images|Private image caption/);
+      assert.doesNotMatch(JSON.stringify(first), /entry-images|Private image caption|Private body/);
+      const content = await server.inject({ method: "POST", url: "/debug/lore", payload: entryRequest });
+      assert.equal(content.statusCode, 200);
+      assert.equal(content.json().text, "Private body");
+      assert.doesNotMatch(content.body, /private key|Unshared|Private omitted body/);
+      const savedEntry = records
+        .get("villages-lore-activity")
+        .data.reports.find((row: { id: string }) => row.id === inspectionId).entries[0];
+      for (const text of [{ invalid: "not text" }, "x".repeat(12_801)]) {
+        savedEntry.text = text;
+        assert.deepEqual((await server.inject({ method: "POST", url: "/debug/lore", payload: entryRequest })).json(), {
+          text: null,
+        });
+      }
+      savedEntry.text = "Private body";
+      for (const patch of [{ scope: "other-world" }, { target: "GM" }, { entryId: "omitted" }, { bookId: "other" }])
+        assert.deepEqual(
+          (await server.inject({ method: "POST", url: "/debug/lore", payload: { ...entryRequest, ...patch } })).json(),
+          { text: null },
+        );
+      for (const patch of [{ target: undefined }, { scope: undefined }, { inspectionId: "bad" }])
+        assert.equal(
+          (await server.inject({ method: "POST", url: "/debug/lore", payload: { ...entryRequest, ...patch } }))
+            .statusCode,
+          400,
+        );
+      assert.doesNotMatch(JSON.stringify(logs), /Private body/, "Captured text stays out of runtime logs");
       await recordLoreUse(use, "Map artwork");
       assert.equal(
         (await readLoreActivity()).revision,
@@ -267,6 +303,24 @@ async function main() {
       await artwork.generateVillageTownMap({ setting: "Harbor" });
       assert.equal((await readLoreActivity(true)).revision, beforeArtwork + 1);
       assert.equal(imageDispatches, 1, "Validated artwork records inclusion at its single dispatch");
+      assert.deepEqual(
+        (
+          await server.inject({
+            method: "POST",
+            url: "/debug/lore",
+            payload: {
+              action: "entry",
+              scope: (await readLoreActivity(true)).scope,
+              inspectionId: artworkInspection,
+              bookId: "private",
+              entryId: "text",
+              target: "Image",
+            },
+          })
+        ).json(),
+        { text: null },
+        "Legacy requests do not substitute live entry text",
+      );
       const previousWorld = records.get("villages-village");
       setVillage("world-one");
       const bound = await readLoreActivity(true);

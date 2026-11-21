@@ -48,6 +48,7 @@ export type LoreActivity = {
   entries: LoreUse[];
 };
 export type LoreActivityList = { scope: string; revision: number; records: LoreActivity[] };
+export type LoreEntryDetail = { text: string | null; at?: string; purpose?: string };
 export type LoreTriggerDetail = {
   trigger: LoreTrigger | null;
   at?: string;

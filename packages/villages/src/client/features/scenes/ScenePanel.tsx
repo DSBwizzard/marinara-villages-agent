@@ -39,7 +39,7 @@ import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { SceneActionIcon } from "./SceneActionIcon.js";
-import { LoreActivityButton } from "../../shared/LoreActivity.js";
+import { LoreActivitySlot } from "../../shared/LoreActivity.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 
 export function sceneZoneLabel(zone?: { name: string }): string {
@@ -223,13 +223,11 @@ export function RoomPanel({
   onDismissNotice,
   onOpenWish,
   unresolvedChanges,
-  debugDiscardEnabled,
-  onDebugDiscard,
   onUseMailbox,
   onMap,
   onProjects,
   onProposals,
-  sceneSettings,
+  onSettings,
   movementZones,
   onMovementTarget,
   onTravel,
@@ -275,13 +273,11 @@ export function RoomPanel({
   onDismissNotice: (id: string) => void;
   onOpenWish?: (actorId: string, wishId: string) => void;
   unresolvedChanges?: SceneChangeIssue[];
-  debugDiscardEnabled: boolean;
-  onDebugDiscard: () => void;
   onUseMailbox?: () => void;
   onMap?: () => void;
   onProjects?: () => void;
   onProposals?: () => void;
-  sceneSettings: ReactNode;
+  onSettings: () => void;
   movementZones: { id: string; label: string }[];
   onMovementTarget: (id: string) => void;
   onTravel?: () => void;
@@ -295,8 +291,6 @@ export function RoomPanel({
   const retrying = !!retryPending || (room.operation?.kind === "retry" && room.operation.status === "running");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsView, setActionsView] = useState<"menu" | "move" | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [dismissedTravelId, setDismissedTravelId] = useState<string>();
   const [errorsOpen, setErrorsOpen] = useState(false);
@@ -310,16 +304,11 @@ export function RoomPanel({
   const moveTriggerRef = useRef<HTMLButtonElement | null>(null);
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
-  const [dialogueHidden, setDialogueHidden] = useState(false);
   const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
   const presenceNotice = notices.find((notice) => notice.id.startsWith("presence:"));
   const previousLocation = useRef({ scope: worldScope, sceneId: room.id, zoneId: room.zoneId });
   const newest = playback.newest;
-
-  useEffect(() => {
-    if (settingsOpen) settingsRef.current?.focus({ preventScroll: true });
-  }, [settingsOpen]);
 
   useEffect(() => {
     setNoticesOpen(false);
@@ -773,20 +762,19 @@ export function RoomPanel({
           {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
         </span>
         <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
-          {!settingsOpen ? (
-            <SceneErrorChip
-              items={errorItems}
-              context={{ sceneStatus: room.status, revision: room.sceneRevision, mobile, draftRetained: !!draft }}
-              open={errorsOpen}
-              onOpen={(value) => {
-                setErrorsOpen(value);
-                if (value) {
-                  setNoticesOpen(false);
-                  setActionsView(null);
-                }
-              }}
-            />
-          ) : null}
+          <SceneErrorChip
+            items={errorItems}
+            context={{ sceneStatus: room.status, revision: room.sceneRevision, mobile, draftRetained: !!draft }}
+            open={errorsOpen}
+            onOpen={(value) => {
+              setErrorsOpen(value);
+              if (value) {
+                setNoticesOpen(false);
+                setActionsView(null);
+              }
+            }}
+          />
+          <LoreActivitySlot />
           {notices.length > 0 ? (
             <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
               <button
@@ -895,17 +883,14 @@ export function RoomPanel({
               <button
                 type="button"
                 role="menuitem"
-                aria-label={dialogueHidden ? "Show dialogue" : "Hide dialogue"}
-                title={dialogueHidden ? "Show dialogue" : "Hide dialogue"}
+                aria-label="Settings"
+                title="Settings"
                 onClick={() => {
-                  composerRef.current?.blur();
                   setActionsView(null);
-                  setDialogueHidden(!dialogueHidden);
-                  setHistoryOpen(false);
-                  actionsTriggerRef.current?.focus({ preventScroll: true });
+                  onSettings();
                 }}
               >
-                <SceneActionIcon name={dialogueHidden ? "show-dialogue" : "dialogue"} />
+                <SceneActionIcon name="settings" />
               </button>
               <button
                 type="button"
@@ -988,18 +973,6 @@ export function RoomPanel({
               <button
                 type="button"
                 role="menuitem"
-                aria-label="Scene settings"
-                title="Scene settings"
-                onClick={() => {
-                  setActionsView(null);
-                  setSettingsOpen(true);
-                }}
-              >
-                <SceneActionIcon name="settings" />
-              </button>
-              <button
-                type="button"
-                role="menuitem"
                 aria-label={ended ? "Return to map" : "Conclude"}
                 title={ended ? "Return to map" : "Conclude"}
                 disabled={busy}
@@ -1044,82 +1017,6 @@ export function RoomPanel({
             ))}
           </div>
         </ModalDialog>
-      ) : null}
-      {settingsOpen ? (
-        <div
-          className={ELEMENT_TAG + "-scene-settings-backdrop"}
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setSettingsOpen(false);
-              setErrorsOpen(false);
-              actionsRef.current?.querySelector("button")?.focus({ preventScroll: true });
-            }
-          }}
-        >
-          <div
-            ref={settingsRef}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Scene settings"
-            tabIndex={-1}
-            className={ELEMENT_TAG + "-scene-settings"}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && !event.defaultPrevented) {
-                event.stopPropagation();
-                setSettingsOpen(false);
-                setErrorsOpen(false);
-                actionsRef.current?.querySelector("button")?.focus({ preventScroll: true });
-              }
-              if (event.key === "Tab") {
-                const controls = event.currentTarget.querySelectorAll<HTMLElement>(
-                  "button:not(:disabled), input:not(:disabled), [tabindex='0']",
-                );
-                const first = controls[0];
-                const last = controls[controls.length - 1];
-                if (
-                  event.shiftKey &&
-                  (document.activeElement === first || document.activeElement === event.currentTarget)
-                ) {
-                  event.preventDefault();
-                  last?.focus({ preventScroll: true });
-                } else if (!event.shiftKey && document.activeElement === last) {
-                  event.preventDefault();
-                  first?.focus({ preventScroll: true });
-                }
-              }
-            }}
-          >
-            <div className={ELEMENT_TAG + "-scene-settings-head"}>
-              <h2>Scene settings</h2>
-              <button
-                type="button"
-                aria-label="Close Scene settings"
-                onClick={() => {
-                  setSettingsOpen(false);
-                  setErrorsOpen(false);
-                  actionsRef.current?.querySelector("button")?.focus({ preventScroll: true });
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div className={`${ELEMENT_TAG}-scene-modal-errors`}>
-              <SceneErrorChip
-                items={errorItems}
-                open={errorsOpen}
-                onOpen={setErrorsOpen}
-                context={{ sceneStatus: room.status, revision: room.sceneRevision, mobile, draftRetained: !!draft }}
-              />
-            </div>
-            <LoreActivityButton query={`Scene · ${room.placeName}`} />
-            {debugDiscardEnabled && room.status !== "closed" ? (
-              <button type="button" disabled={busy} onClick={onDebugDiscard}>
-                DEBUG: Discard Scene
-              </button>
-            ) : null}
-            {sceneSettings}
-          </div>
-        </div>
       ) : null}
       {room.area === "outside" ? (
         <p className={`${ELEMENT_TAG}-hint`} role="status">
@@ -1185,7 +1082,7 @@ export function RoomPanel({
           ))}
         </div>
       ) : null}
-      {!dialogueHidden && !historyOpen && !retrying && !readingPages.revealing && step && step.asides.length > 0 ? (
+      {!historyOpen && !retrying && !readingPages.revealing && step && step.asides.length > 0 ? (
         <SceneAsides
           asides={step.asides}
           mobile={mobile}
@@ -1311,7 +1208,6 @@ export function RoomPanel({
       {canCompose &&
       !canReadNext &&
       !turnRecovery &&
-      !settingsOpen &&
       !openMemory &&
       travel &&
       onTravel &&
@@ -1330,7 +1226,7 @@ export function RoomPanel({
           </button>
         </div>
       ) : null}
-      <div className={`${ELEMENT_TAG}-chat-vn`} data-history-open={historyOpen || undefined} hidden={dialogueHidden}>
+      <div className={`${ELEMENT_TAG}-chat-vn`} data-history-open={historyOpen || undefined}>
         {historyOpen ? (
           <div
             ref={historyRef}

@@ -8,6 +8,7 @@ import {
   readLoreInspections,
   readLoreTrigger,
   readLoreActivity,
+  readLoreEntry,
 } from "../../adapters/observability/runtime-debug.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readVillageAuthority } from "../world/village-store.js";
@@ -118,6 +119,7 @@ export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
   app.post<{
     Body: {
       action?: unknown;
+      scope?: unknown;
       query?: unknown;
       inspectionId?: unknown;
       bookId?: unknown;
@@ -128,6 +130,14 @@ export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
     try {
       if (request.body?.action === "summary" || request.body?.action === "activity")
         return await readLoreActivity(request.body.action === "summary");
+      if (request.body?.action === "entry")
+        return await readLoreEntry(
+          request.body.scope,
+          request.body.inspectionId,
+          request.body.bookId,
+          request.body.entryId,
+          request.body.target,
+        );
       if (request.body?.action !== undefined) throw badRequest("Choose a Lore activity action.");
       if (
         request.body &&
@@ -211,6 +221,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       narrativeConsequence?: unknown;
       characterSpeechColors?: unknown;
       menuAppearance?: unknown;
+      lorebookChipsEnabled?: unknown;
       sendOnEnter?: unknown;
       spontaneousEvents?: unknown;
       spriteCardFlipEnabled?: unknown;
@@ -261,6 +272,8 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       if (body.characterSpeechColors !== undefined)
         snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
       if (body.menuAppearance !== undefined) snapshot = await villageSettings().setMenuAppearance(body.menuAppearance);
+      if (body.lorebookChipsEnabled !== undefined)
+        snapshot = await villageSettings().setLorebookChipsEnabled(body.lorebookChipsEnabled);
       if (body.homeBuildingNames !== undefined) snapshot = await setVillageHomeBuildingNames(body.homeBuildingNames);
       return snapshot;
     } catch (error) {

@@ -224,10 +224,9 @@ await withBrowser(browser, async () => {
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
-      await expect(composer).toBeHidden();
+      await expect(page.getByRole("menuitem", { name: "Hide dialogue", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "Settings", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
       for (const action of ["Retry Turn", "Conclude"])
@@ -238,9 +237,15 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("menuitem", { name: "Proposals", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "View Mailbox" })).toHaveCount(1);
       assert.equal(await dock.getByRole("button", { name: /Mailbox|Projects|Proposals/ }).count(), 0);
-      await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-      await expect(page.getByRole("switch", { name: "Use Decisions" })).toHaveCount(0);
-      await page.getByRole("button", { name: "Close Scene settings" }).click();
+      await expect(page.getByRole("menuitem").first()).toHaveAttribute("aria-label", "Settings");
+      await expect(page.getByRole("menuitem")).toHaveCount(8);
+      await expect(page.getByRole("menuitem", { name: "Scene settings" })).toHaveCount(0);
+      await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+      await expect(page.locator("." + tag + "-room-screen")).toBeHidden();
+      await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+      await expect(page.getByRole("checkbox", { name: "Send on Enter", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+      await expect(composer).toHaveValue("Tea sounds perfect.");
 
       await page.getByRole("button", { name: "Venue actions" }).click();
       const draftBeforeVenue = await composer.inputValue();

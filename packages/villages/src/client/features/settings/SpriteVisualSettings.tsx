@@ -4,9 +4,15 @@ import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 
-type VisualSetting = "spriteVariantsEnabled" | "spriteCardFlipEnabled" | "characterSpeechColors";
+type VisualSetting =
+  "spriteVariantsEnabled" | "spriteCardFlipEnabled" | "characterSpeechColors" | "lorebookChipsEnabled";
 type VisualValues = Record<VisualSetting, boolean> & { menuAppearance: "auto" | "day" | "night" };
 const controls: Array<{ key: VisualSetting; label: string; description: string }> = [
+  {
+    key: "lorebookChipsEnabled",
+    label: "Show Lorebook chips",
+    description: "Read the entries used for each model request.",
+  },
   {
     key: "spriteVariantsEnabled",
     label: "Random sprite variants",

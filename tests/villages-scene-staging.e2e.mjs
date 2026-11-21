@@ -243,13 +243,11 @@ await withBrowser(browser, async () => {
       const composer = page.getByRole("textbox", { name: "Message at The Mill" });
       const mobile = width <= 704;
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       const flipEnabled = count < 4;
-      await expect(page.getByRole("checkbox", { name: "Card-flip sprite changes" })).toHaveCount(0);
-      await expect(page.getByRole("switch", { name: "Use Decisions" })).toHaveCount(0);
-      const settingsBox = await page.getByRole("dialog", { name: "Scene settings" }).boundingBox();
-      assert.ok(settingsBox.x >= 0 && settingsBox.x + settingsBox.width <= width && settingsBox.y >= 0);
-      await page.getByRole("button", { name: "Close Scene settings" }).click();
+      await expect(page.getByRole("menuitem").first()).toHaveAttribute("aria-label", "Settings");
+      await expect(page.getByRole("menuitem", { name: "Scene settings", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "Hide dialogue", exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Venue actions" }).click();
       async function checkSpriteSize(isMobile) {
         // ResizeObserver updates the Scene's container measurements after rotation.
         // Wait for the resulting layout, while still requiring the dock to fit.

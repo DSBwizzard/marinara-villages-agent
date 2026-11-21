@@ -207,14 +207,15 @@ await withBrowser(browser, async () => {
     const last = await text.textContent();
     await page.getByRole("button", { name: "Venue actions" }).click();
     const menu = page.getByRole("menu", { name: "Venue actions" });
-    await expect(menu.getByRole("menuitem")).toHaveCount(9);
+    await expect(menu.getByRole("menuitem")).toHaveCount(8);
+    await expect(menu.getByRole("menuitem").first()).toHaveAttribute("aria-label", "Settings");
     await expect(menu.getByRole("menuitem", { name: "Transcript" })).toHaveCount(0);
     await expect(menu.getByRole("menuitem", { name: "Retry Turn" })).toBeDisabled();
     const items = await menu
       .getByRole("menuitem")
       .evaluateAll((nodes) => nodes.map((n) => ({ x: n.offsetLeft, delay: getComputedStyle(n).animationDelay })));
     assert.equal(new Set(items.map((i) => i.x)).size, mobile ? 3 : 1);
-    assert.equal(items[8].delay, "0.16s");
+    assert.equal(items[7].delay, "0.14s");
     await page.keyboard.press("ArrowDown");
     await expect(menu.getByRole("menuitem", { name: "View Venue", exact: true })).toBeFocused();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -265,11 +266,12 @@ await withBrowser(browser, async () => {
     assert.ok(Math.abs(box.y + box.height - height) <= 1, "ended dialogue dock reaches the bottom");
     await page.screenshot({ path: `artifacts/compact-scene-ended-${width}x${height}.png` });
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "Scene settings" }).click();
+    await expect(page.getByRole("menuitem").first()).toHaveAttribute("aria-label", "Settings");
+    await page.getByRole("button", { name: "Venue actions" }).click();
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
-    "villages-reading-pages: mobile paging, formatting, sprites, keyboard, notices, hide/restore, reflow and ended docking passed",
+    "villages-reading-pages: mobile paging, formatting, sprites, keyboard, notices, menu navigation, reflow and ended docking passed",
   );
 });

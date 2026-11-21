@@ -1,5 +1,4 @@
 import { FoundingHelp } from "./FoundingField.js";
-import { LoreActivityButton } from "../../shared/LoreActivity.js";
 import { FoundingDialog } from "./FoundingDialog.js";
 import { FoundingPagination } from "./FoundingPagination.js";
 import type {
@@ -543,7 +542,6 @@ export function VillageLorebookPicker({
                 generation.
               </FoundingHelp>
             </div>
-            <LoreActivityButton />
           </>
         )}
         <button

@@ -1,209 +1,209 @@
-import {
-  createContext,
-  useContext,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import type {
-  LoreActivity as Activity,
-  LoreActivityList,
-  LoreTriggerDetail,
-  LoreUse,
-} from "../../shared/contracts/lore.js";
+import { createContext, useContext, useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import type { LoreActivityList, LoreEntryDetail, LoreUse } from "../../shared/contracts/lore.js";
 import { request, messageFrom } from "./api.js";
 import { useVillageActivity, useVisibleInterval, useFocusRevision } from "./activity.js";
 import { ModalDialog } from "./ModalDialog.js";
 
-const formatTime = (at: string, compact = false) =>
-  new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    ...(compact ? {} : { year: "numeric" as const }),
-    hour: "numeric",
-    minute: "2-digit",
-    ...(compact ? {} : { second: "2-digit" as const, timeZoneName: "short" as const }),
-  }).format(new Date(at));
+const empty: LoreActivityList = { scope: "", revision: 0, records: [] };
+const LoreActivityContext = createContext<{ present: boolean; anchor(node: HTMLDivElement | null): void } | null>(null);
 const entryKey = (entry: LoreUse) => JSON.stringify([entry.bookId, entry.id]);
-const category = (purpose: string) => purpose.split(" · ")[0]!;
-function seenRevision(scope: string) {
+function dismissedRevision(scope: string) {
   try {
-    return Number(localStorage.getItem(`villages:lore-seen:${scope}`)) || 0;
+    return Number(localStorage.getItem(`villages:lore-dismissed:${scope}`)) || 0;
   } catch {
     return 0;
   }
 }
-const empty: LoreActivityList = { scope: "", revision: 0, records: [] };
-const LoreActivityContext = createContext<{ unread: boolean; show(query: string): void } | null>(null);
 
-export function LoreActivityButton({
-  query = "",
-  role,
-  onOpen,
-}: {
-  query?: string;
-  role?: "menuitem";
-  onOpen?: () => void;
-}) {
+/** Use the Scene notification lane; other screens use the shared corner chip. */
+export function LoreActivitySlot() {
   const activity = useContext(LoreActivityContext);
-  if (!activity) return null;
-  return (
-    <button
-      type="button"
-      role={role}
-      className="villages-lore-launch"
-      aria-label={`Lore activity${activity.unread ? " · New activity" : ""}`}
-      onClick={() => {
-        onOpen?.();
-        activity.show(query);
-      }}
-    >
-      <svg className="mari-rgb-static-icon" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 7v14m0-14C9 4 5 4 2 5v15c3-1 7-1 10 1m0-14c3-3 7-3 10-2v15c-3-1-7-1-10 1" />
-      </svg>
-      Lore activity{activity.unread ? <span className="villages-lore-dot" aria-hidden="true" /> : null}
-    </button>
-  );
+  const { visible } = useVillageActivity();
+  return visible && activity?.present ? <div className="villages-lore-chip-slot" ref={activity.anchor} /> : null;
 }
 
-export function LoreActivity({ children }: { children: ReactNode }) {
+export function LoreActivity({
+  children,
+  enabled = true,
+  daylight = false,
+}: {
+  children: ReactNode;
+  enabled?: boolean;
+  daylight?: boolean;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const { visible } = useVillageActivity();
   const focus = useFocusRevision(visible);
-  const [open, setOpen] = useState(false);
-  const [contextQuery, setContextQuery] = useState("");
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
   const [summary, setSummary] = useState(empty);
-  const [seen, setSeen] = useState(0);
-  const [activity, setActivity] = useState<LoreActivityList | null>(null);
+  const [activity, setActivity] = useState(empty);
+  const [dismissed, setDismissed] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState("");
+  const [selectedEntry, setSelectedEntry] = useState("");
   const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   const sequence = useRef(0);
   const scope = useRef("");
-  const scopeEpoch = useRef(0);
-  const watermarks = useRef(new Map<string, number>());
-  const readSeen = useCallback((id: string) => Math.max(watermarks.current.get(id) ?? 0, seenRevision(id)), []);
-  const applySummary = useCallback(
-    (next: LoreActivityList) => {
-      if (scope.current && scope.current !== next.scope) {
-        scopeEpoch.current++;
-        setOpen(false);
-        setActivity(null);
-      }
-      scope.current = next.scope;
-      setSummary((prior) =>
-        prior.scope === next.scope ? { ...next, revision: Math.max(prior.revision, next.revision) } : next,
-      );
-      setSeen(readSeen(next.scope));
-    },
-    [readSeen],
-  );
-  const readSummary = async (signal: AbortSignal) => {
+  async function readSummary(signal: AbortSignal) {
     const id = ++sequence.current;
     const next = await request<LoreActivityList>("/debug/lore?activity=summary", { signal });
-    if (typeof next.scope !== "string" || !Number.isSafeInteger(next.revision) || next.revision < 0) return;
-    if (!signal.aborted && id === sequence.current) applySummary(next);
-  };
-  useVisibleInterval(readSummary, 5000);
+    if (
+      signal.aborted ||
+      id !== sequence.current ||
+      typeof next.scope !== "string" ||
+      !Number.isSafeInteger(next.revision)
+    )
+      return;
+    if (scope.current !== next.scope) {
+      scope.current = next.scope;
+      setOpen(false);
+      setActivity(empty);
+      setDismissed(dismissedRevision(next.scope));
+    }
+    setSummary((prior) =>
+      prior.scope === next.scope ? { ...next, revision: Math.max(prior.revision, next.revision) } : next,
+    );
+  }
+  useVisibleInterval(readSummary, 5000, enabled);
   const readOnFocus = useEffectEvent(readSummary);
   useEffect(() => {
-    if (!visible) return;
+    if (!enabled || !visible) {
+      setOpen(false);
+      return;
+    }
     const controller = new AbortController();
     void readOnFocus(controller.signal).catch(() => {});
     return () => controller.abort();
-  }, [visible, focus]);
+  }, [enabled, visible, focus]);
   useEffect(() => {
-    if (!open) return;
+    if (!enabled || !visible || !summary.scope || summary.revision <= dismissed) return;
     const controller = new AbortController();
-    const expectedEpoch = scopeEpoch.current;
-    ++sequence.current;
-    setError("");
+    const expectedScope = summary.scope;
     void request<LoreActivityList>("/debug/lore", {
       method: "POST",
       signal: controller.signal,
       body: JSON.stringify({ action: "activity" }),
     })
       .then((next) => {
-        if (controller.signal.aborted || scopeEpoch.current !== expectedEpoch) return;
-        if (scope.current && scope.current !== next.scope) {
-          applySummary(next);
-          return;
-        }
+        if (controller.signal.aborted || scope.current !== expectedScope || next.scope !== expectedScope) return;
         setActivity(next);
-        applySummary(next);
-        try {
-          localStorage.setItem(
-            `villages:lore-seen:${next.scope}`,
-            String(Math.max(readSeen(next.scope), next.revision)),
-          );
-        } catch {
-          /* This device can still track unread activity for this visit. */
-        }
-        const revision = Math.max(readSeen(next.scope), next.revision);
-        watermarks.current.set(next.scope, revision);
-        setSeen(revision);
+        setError("");
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(messageFrom(cause, "Could not load Lore activity."));
+        if (!controller.signal.aborted) setError(messageFrom(cause, "Could not load Lorebook entries."));
       });
     return () => controller.abort();
-  }, [open, refresh, applySummary, readSeen]);
-  const unread = summary.revision > seen;
-  return (
-    <LoreActivityContext
-      value={{
-        unread,
-        show: (query) => {
-          setContextQuery(query);
-          setActivity(null);
-          setOpen(true);
-        },
+  }, [enabled, visible, summary.scope, summary.revision, dismissed, attempt]);
+  const records =
+    activity.scope === summary.scope ? activity.records.filter((record) => record.revision > dismissed) : [];
+  const present = enabled && (records.length > 0 || (!!error && summary.revision > dismissed));
+  const count = Math.max(1, records.length);
+  const record = records.find((row) => row.id === selectedRequest) ?? records[0];
+  const chosen = record?.entries.find((entry) => entryKey(entry) === selectedEntry);
+  const chip = present ? (
+    <button
+      type="button"
+      className="villages-lore-chip"
+      aria-label={`Lorebooks · ${count} ${count === 1 ? "request" : "requests"}`}
+      title={`Lorebooks · ${count} ${count === 1 ? "request" : "requests"}`}
+      onClick={() => {
+        setSelectedRequest(records[0]?.id ?? "");
+        setSelectedEntry("");
+        setOpen(true);
       }}
     >
-      <div className="villages-lore-host" ref={host}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 7v14m0-14C9 4 5 4 2 5v15c3-1 7-1 10 1m0-14c3-3 7-3 10-2v15c-3-1-7-1-10 1" />
+      </svg>
+      {records.length || 1}
+    </button>
+  ) : null;
+  return (
+    <LoreActivityContext value={{ present, anchor: setAnchor }}>
+      <div className="villages-lore-host" ref={host} data-daylight={daylight || undefined}>
         <div className="villages-lore-workarea">{children}</div>
-        {open && host.current ? (
+        {anchor ? createPortal(chip, anchor) : chip ? <div className="villages-lore-global">{chip}</div> : null}
+        {enabled && open && host.current ? (
           <ModalDialog
-            title="Lore activity"
+            title="Lorebooks used"
             onClose={() => setOpen(false)}
             scope={host.current}
             className="villages-lore-dialog"
-            headerContent={
-              <>
-                <h3>Lore activity</h3>
-                {activity && summary.revision > activity.revision ? (
-                  <button
-                    type="button"
-                    className="villages-lore-refresh"
-                    onClick={() => setRefresh((value) => value + 1)}
-                  >
-                    New activity <span className="villages-lore-dot" aria-hidden="true" />
-                  </button>
-                ) : null}
-              </>
-            }
+            scrollBody
+            focusHeaderOnMobile
           >
-            {error ? (
-              <div className="villages-lore-empty">
-                <p role="alert">{error}</p>
-                <button type="button" onClick={() => setRefresh((value) => value + 1)}>
-                  Retry
-                </button>
-              </div>
-            ) : activity ? (
-              <LoreInspector
-                key={JSON.stringify([activity.scope, contextQuery])}
-                records={activity.records}
-                initialSearch={contextQuery}
-              />
-            ) : (
-              <p className="villages-lore-empty" role="status">
-                Loading activity…
-              </p>
-            )}
+            <div className="villages-lore-body">
+              {error ? (
+                <p role="alert">
+                  {error}
+                  <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+                    Retry
+                  </button>
+                </p>
+              ) : null}
+              {record ? (
+                <>
+                  <label className="villages-lore-request">
+                    Request
+                    <select
+                      aria-label="Lorebook request"
+                      value={record.id}
+                      onChange={(event) => {
+                        setSelectedRequest(event.currentTarget.value);
+                        setSelectedEntry("");
+                      }}
+                    >
+                      {records.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.purpose} ·{" "}
+                          {new Date(row.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <nav className="villages-lore-entries" aria-label="Included Lorebook entries">
+                    {record.entries.map((entry) => (
+                      <button
+                        type="button"
+                        key={entryKey(entry)}
+                        aria-pressed={entry === chosen}
+                        onClick={() => setSelectedEntry(entryKey(entry))}
+                      >
+                        <strong>{entry.name}</strong>
+                        <small>{entry.bookName || entry.bookId}</small>
+                      </button>
+                    ))}
+                  </nav>
+                  {chosen ? (
+                    <LoreEntry
+                      key={JSON.stringify([activity.scope, record.id, entryKey(chosen)])}
+                      scope={activity.scope}
+                      entry={chosen}
+                    />
+                  ) : null}
+                </>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  const revision = Math.max(
+                    dismissedRevision(summary.scope),
+                    activity.scope === summary.scope ? activity.revision : summary.revision,
+                  );
+                  try {
+                    localStorage.setItem(`villages:lore-dismissed:${summary.scope}`, String(revision));
+                  } catch {
+                    /* This visit can still dismiss its notices. */
+                  }
+                  setDismissed(revision);
+                  setOpen(false);
+                }}
+              >
+                Dismiss
+              </button>
+            </div>
           </ModalDialog>
         ) : null}
       </div>
@@ -211,257 +211,47 @@ export function LoreActivity({ children }: { children: ReactNode }) {
   );
 }
 
-function LoreInspector({ records, initialSearch }: { records: Activity[]; initialSearch: string }) {
-  const [filter, setFilter] = useState("All");
-  const [search, setSearch] = useState(initialSearch);
-  const [selected, setSelected] = useState("");
-  const [useId, setUseId] = useState("");
-  const [reading, setReading] = useState(false);
-  const panes = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const target = panes.current?.querySelector<HTMLElement>(
-      reading ? ".villages-lore-back" : '.villages-lore-rows>button[aria-pressed="true"]',
-    );
-    if (target?.checkVisibility()) target.focus({ preventScroll: true });
-  }, [reading]);
-  const groups = [...new Set(records.map((record) => category(record.purpose)))];
-  const rows = new Map<string, { entry: LoreUse; uses: Activity[] }>();
-  for (const record of records) {
-    if (filter !== "All" && category(record.purpose) !== filter) continue;
-    for (const entry of record.entries) {
-      const key = entryKey(entry);
-      if (!rows.has(key)) rows.set(key, { entry, uses: [] });
-      rows.get(key)!.uses.push(record);
-    }
-  }
-  const query = search.trim().toLocaleLowerCase();
-  const matches = [...rows.values()].filter((row) =>
-    [row.entry.name, row.entry.bookName, ...row.uses.map((use) => use.purpose)]
-      .join(" ")
-      .toLocaleLowerCase()
-      .includes(query),
-  );
-  const chosen = matches.find((row) => entryKey(row.entry) === selected) ?? matches[0];
-  const activeUse = chosen?.uses.find((use) => use.id === useId) ?? chosen?.uses[0];
-  const activeEntry = activeUse?.entries.find((entry) => chosen && entryKey(entry) === entryKey(chosen.entry));
-  return (
-    <>
-      <nav className="villages-lore-filters" aria-label="Lore generations">
-        {["All", ...groups].map((group) => (
-          <button
-            key={group}
-            type="button"
-            aria-pressed={filter === group}
-            onClick={() => {
-              setFilter(group);
-              setReading(false);
-            }}
-          >
-            {group}
-          </button>
-        ))}
-      </nav>
-      {!records.length ? (
-        <div className="villages-lore-empty">
-          <h4>No Lore activity yet</h4>
-          <p>New requests will record their included Lorebook entries here.</p>
-        </div>
-      ) : (
-        <div className="villages-lore-panes" data-reading={reading} ref={panes}>
-          <section className="villages-lore-list" aria-label="Lore entries">
-            <div className="villages-lore-search">
-              <input
-                type="search"
-                aria-label="Search Lore entries"
-                placeholder="Search entries or books"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.currentTarget.value);
-                  setReading(false);
-                }}
-                autoComplete="off"
-              />
-              <span>
-                {matches.length} {matches.length === 1 ? "entry" : "entries"}
-              </span>
-            </div>
-            <div className="villages-lore-rows">
-              {matches.map((row) => (
-                <button
-                  type="button"
-                  key={entryKey(row.entry)}
-                  aria-pressed={chosen === row}
-                  onClick={() => {
-                    setSelected(entryKey(row.entry));
-                    setUseId("");
-                    setReading(true);
-                  }}
-                >
-                  <strong>{row.entry.name}</strong>
-                  <span>{row.entry.bookName || row.entry.bookId}</span>
-                  <span className="villages-lore-tags">
-                    {[...new Set(row.uses.map((use) => category(use.purpose)))].slice(0, 2).map((label) => (
-                      <span key={label}>{label}</span>
-                    ))}
-                  </span>
-                  <time dateTime={row.uses[0]!.at}>{formatTime(row.uses[0]!.at, true)}</time>
-                </button>
-              ))}
-              {!matches.length ? <p className="villages-lore-empty">No matching entries.</p> : null}
-            </div>
-          </section>
-          <section className="villages-lore-detail" aria-label="Lore explanation">
-            <button type="button" className="villages-lore-back" onClick={() => setReading(false)}>
-              ← Entries
-            </button>
-            {chosen && activeUse && activeEntry ? (
-              <>
-                <h4>{activeEntry.name}</h4>
-                <p className="villages-lore-muted">{activeEntry.bookName || activeEntry.bookId}</p>
-                <div className="villages-lore-uses" aria-label="Receiving requests">
-                  {chosen.uses.map((use) => (
-                    <button
-                      key={use.id}
-                      type="button"
-                      aria-pressed={use === activeUse}
-                      onClick={() => setUseId(use.id)}
-                    >
-                      <strong>{use.purpose}</strong>
-                      <span>
-                        {use.entries.find((entry) => entryKey(entry) === entryKey(chosen.entry))!.targets.join(" · ")} ·{" "}
-                        {formatTime(use.at, true)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <LoreExplanation
-                  key={JSON.stringify([activeUse.id, chosen.entry.bookId, chosen.entry.id])}
-                  entry={activeEntry}
-                />
-              </>
-            ) : (
-              <p className="villages-lore-empty">Choose an entry.</p>
-            )}
-          </section>
-        </div>
-      )}
-    </>
-  );
-}
-
-function LoreExplanation({ entry }: { entry: LoreUse }) {
-  const [detail, setDetail] = useState<LoreTriggerDetail | null>(null);
+function LoreEntry({ scope, entry }: { scope: string; entry: LoreUse }) {
+  const [detail, setDetail] = useState<LoreEntryDetail | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const ref = entry.inspections?.[0];
   const inspectionId = ref?.id,
     target = ref?.target;
   useEffect(() => {
-    if (!inspectionId) return;
+    if (!inspectionId || !target) return;
     const controller = new AbortController();
     setError("");
-    void request<LoreTriggerDetail>("/debug/lore", {
+    void request<LoreEntryDetail>("/debug/lore", {
       method: "POST",
       signal: controller.signal,
-      body: JSON.stringify({ inspectionId, bookId: entry.bookId, entryId: entry.id, target }),
+      body: JSON.stringify({ action: "entry", scope, inspectionId, target, bookId: entry.bookId, entryId: entry.id }),
     })
-      .then((result) => {
-        if (!controller.signal.aborted) setDetail(result);
+      .then((next) => {
+        if (!controller.signal.aborted) setDetail(next);
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(messageFrom(cause, "Could not load this explanation."));
+        if (!controller.signal.aborted) setError(messageFrom(cause, "Could not read this entry."));
       });
     return () => controller.abort();
-  }, [inspectionId, target, entry.bookId, entry.id, attempt]);
-  if (error)
-    return (
-      <>
-        <p role="alert">{error}</p>
-        <button type="button" onClick={() => setAttempt((value) => value + 1)}>
-          Retry explanation
-        </button>
-      </>
-    );
-  if (!inspectionId || detail?.trigger === null) return <p>Trigger details are no longer available.</p>;
-  if (!detail) return <p role="status">Loading explanation…</p>;
-  const trigger = detail.trigger!;
-  const context = trigger.context;
+  }, [scope, inspectionId, target, entry.bookId, entry.id, attempt]);
   return (
-    <>
-      <div className="villages-lore-why">
-        <span>Why included</span>
-        <p>
-          {trigger.constant
-            ? "Always eligible — no keyword required."
-            : `“${trigger.key}” matched ${trigger.match === "recent" ? "recent dialogue" : trigger.match === "current" ? "the current request" : "the generation context"}.`}
+    <section className="villages-lore-entry" aria-label={entry.name}>
+      <h3>{entry.name}</h3>
+      {error ? (
+        <p role="alert">
+          {error}
+          <button type="button" onClick={() => setAttempt((value) => value + 1)}>
+            Retry
+          </button>
         </p>
-      </div>
-      {detail.at ? (
-        <p className="villages-lore-stamp">
-          Prompt prepared <time dateTime={detail.at}>{formatTime(detail.at)}</time>
-        </p>
-      ) : null}
-      <dl className="villages-lore-facts">
-        <div>
-          <dt>Receiving request</dt>
-          <dd>{target}</dd>
-        </div>
-        {trigger.key ? (
-          <div>
-            <dt>Matching</dt>
-            <dd>
-              {trigger.caseSensitive ? "Case-sensitive" : "Case-insensitive"} ·{" "}
-              {trigger.matchWholeWords ? "Whole words" : "Substring"}
-            </dd>
-          </div>
-        ) : null}
-        {trigger.secondary ? (
-          <div>
-            <dt>Secondary keys</dt>
-            <dd>
-              {
-                {
-                  and_any: "Any required",
-                  and_all: "All required",
-                  not_any: "None allowed",
-                  not_all: "At least one absent",
-                }[trigger.secondary.logic]
-              }{" "}
-              · {trigger.secondary.matched} of {trigger.secondary.total} matched
-            </dd>
-          </div>
-        ) : null}
-      </dl>
-      {detail.capturedAt && detail.at && Math.abs(Date.parse(detail.capturedAt) - Date.parse(detail.at)) >= 1000 ? (
-        <p className="villages-lore-stamp">
-          Context captured <time dateTime={detail.capturedAt}>{formatTime(detail.capturedAt)}</time>
-        </p>
-      ) : null}
-      {context ? (
-        <section className="villages-lore-context">
-          <h5>{trigger.constant ? "Also matched" : "Matched context"}</h5>
-          <p>{context.source}</p>
-          <blockquote>
-            {context.text.slice(0, context.start)}
-            <mark>{context.text.slice(context.start, context.end)}</mark>
-            {context.text.slice(context.end)}
-          </blockquote>
-        </section>
-      ) : detail.requestContext ? (
-        <section className="villages-lore-context">
-          <h5>Request context excerpt</h5>
-          <blockquote>{detail.requestContext}</blockquote>
-        </section>
+      ) : !ref || detail?.text === null ? (
+        <p>This older request has no saved entry text.</p>
+      ) : detail ? (
+        <div className="villages-lore-text">{detail.text}</div>
       ) : (
-        <p className="villages-lore-muted">Context was not recorded for this lookup.</p>
+        <p role="status">Loading entry…</p>
       )}
-      {trigger.secondaryMatches?.map((match, index) => (
-        <section className="villages-lore-context villages-lore-secondary" key={index}>
-          <h5>Secondary match · “{match.key}”</h5>
-          <p>{match.source}</p>
-          <blockquote>{match.text}</blockquote>
-        </section>
-      ))}
-    </>
+    </section>
   );
 }

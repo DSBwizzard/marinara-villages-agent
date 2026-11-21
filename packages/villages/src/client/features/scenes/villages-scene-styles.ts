@@ -63,12 +63,6 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-head { flex-wrap: nowrap; }
 .${tag}-room-screen .${tag}-chat-head:has(:is(.${tag}-room-actions-menu, .${tag}-scene-error-panel, .${tag}-room-stars)) { z-index: 25; }
 .${tag}-room-screen .${tag}-chat-actions { flex: 0 0 auto; }
-.${tag}-scene-settings-backdrop { position: absolute; z-index: 30; inset: 0; height: var(--villages-scene-visible-height, 100%); display: grid; place-items: center; padding: .75rem; box-sizing: border-box; background: #0008; }
-.${tag}-scene-settings { width: min(36rem, 100%); max-height: 100%; overflow-y: auto; padding: .75rem; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); }
-.${tag}-scene-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.${tag}-scene-settings-head h2 { margin: 0 0 .75rem; font-size: 1rem; }
-.${tag}-scene-settings button { cursor: pointer; font: inherit; color: inherit; border: 1px solid var(--border); border-radius: .5rem; padding: .25rem .5rem; background: var(--secondary); }
-.${tag}-scene-settings .villages-decisions-control > [role="region"] { width: 100% !important; box-sizing: border-box; }
 
 .${tag}-scene-notice-chips { display: flex; align-items: center; flex: 0 0 auto; gap: .375rem; }
 .${tag}-scene-notice-chips:empty { display: none; }
@@ -179,7 +173,6 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
 .${tag}-room-actions-menu button:nth-child(6) { animation-delay:100ms; }
 .${tag}-room-actions-menu button:nth-child(7) { animation-delay:120ms; }
 .${tag}-room-actions-menu button:nth-child(8) { animation-delay:140ms; }
-.${tag}-room-actions-menu button:nth-child(9) { animation-delay:160ms; }
 @keyframes villages-scene-action-in { from { opacity:0; transform:translateX(-12px); } to { opacity:1; transform:translateX(0); } }
 @media(prefers-reduced-motion:reduce) {
   .${tag}-room-screen .${tag}-room-actions-menu button { animation:none; }

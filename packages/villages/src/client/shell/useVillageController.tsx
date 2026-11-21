@@ -102,7 +102,6 @@ import {
 import {
   useCloseRoom,
   useContinueRoomWithoutGreeting,
-  useDiscardRoomDebug,
   useDismissRoomNotice,
   useGreetRoom,
   useMoveRoom,
@@ -699,8 +698,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoom,
     setScreen,
   });
-
-  const discardRoomDebug = useDiscardRoomDebug({ ...scenes, loadSnapshot, room, setRoom, setScreen });
 
   /**
    * Submit one speech or action turn in the current Scene.
@@ -1320,7 +1317,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     generateRequestDescription,
     completeResidenceMove,
     decideResidenceMove,
-    discardRoomDebug,
     dismissRoomNotice,
     draftPins,
     draftSaveError: founding.draftSaveError,

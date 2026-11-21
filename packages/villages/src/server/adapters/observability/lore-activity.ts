@@ -5,9 +5,11 @@ import type {
   LoreTrigger,
   LoreTriggerDetail,
   LoreUse,
+  LoreEntryDetail,
 } from "../../../shared/contracts/lore.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { badRequest } from "../../domain/rules/errors.js";
+import { MAX_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 import type { RuntimeDebugPorts } from "./runtime-debug-service.js";
 
 const PACKAGE = "villages",
@@ -22,7 +24,15 @@ type Report = {
   purpose: string;
   revision: number;
   uses: { target: string; purpose: string; at: string; revision: number }[];
-  entries: { id: string; bookId: string; name: string; bookName?: string; targets: string[]; trigger: LoreTrigger }[];
+  entries: {
+    id: string;
+    bookId: string;
+    name: string;
+    bookName?: string;
+    targets: string[];
+    trigger: LoreTrigger;
+    text?: string;
+  }[];
 };
 type History = {
   version: 1;
@@ -80,18 +90,26 @@ export function createLoreActivity(ports: Pick<RuntimeDebugPorts, "villagesDocum
     return result;
   }
 
-  async function rememberLoreInspection(report: LoreInspection): Promise<string | undefined> {
+  async function rememberLoreInspection(
+    report: LoreInspection,
+    contents?: ReadonlyMap<string, string>,
+  ): Promise<string | undefined> {
+    let remainingText = MAX_LORE_TOKEN_BUDGET * 4;
     const entries = report.entries
       .filter((entry) => entry.status === "included" && entry.trigger)
       .slice(0, 24)
       .map((entry) => {
         const reason = entry.trigger!;
+        const text = contents?.get(JSON.stringify([entry.bookId, entry.id]));
+        const captured = typeof text === "string" && text.length <= remainingText ? text : undefined;
+        remainingText -= captured?.length ?? 0;
         return {
           id: entry.id.slice(0, 160),
           bookId: entry.bookId.slice(0, 160),
           name: entry.name.slice(0, 160),
           ...(entry.bookName ? { bookName: entry.bookName.slice(0, 160) } : {}),
           targets: [],
+          ...(captured !== undefined ? { text: captured } : {}),
           trigger: {
             constant: reason.constant,
             match: reason.match,
@@ -249,5 +267,42 @@ export function createLoreActivity(ports: Pick<RuntimeDebugPorts, "villagesDocum
         }
       : { trigger: null };
   }
-  return { rememberLoreInspection, recordLoreUse, readLoreActivity, readLoreTrigger };
+  async function readLoreEntry(
+    scope: unknown,
+    inspectionId: unknown,
+    bookId: unknown,
+    entryId: unknown,
+    target: unknown,
+  ): Promise<LoreEntryDetail> {
+    if (
+      typeof scope !== "string" ||
+      !scope ||
+      scope.length > 160 ||
+      typeof inspectionId !== "string" ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(inspectionId) ||
+      typeof bookId !== "string" ||
+      !bookId ||
+      bookId.length > 160 ||
+      typeof entryId !== "string" ||
+      !entryId ||
+      entryId.length > 160 ||
+      typeof target !== "string" ||
+      !target ||
+      target.length > 80
+    )
+      throw badRequest("Choose a recorded Lorebook entry.");
+    const history = await access();
+    if (history.scope !== scope) return { text: null };
+    const report = history.reports.find(
+      (row) => row.id === inspectionId && row.scope === scope && row.worldSeed === history.worldSeed,
+    );
+    const entry = report?.entries.find(
+      (row) => row.bookId === bookId && row.id === entryId && row.targets.includes(target),
+    );
+    const use = report?.uses.find((row) => row.target === target);
+    return typeof entry?.text === "string" && entry.text.length <= MAX_LORE_TOKEN_BUDGET * 4 && use
+      ? { text: entry.text, at: use.at, purpose: use.purpose }
+      : { text: null };
+  }
+  return { rememberLoreInspection, recordLoreUse, readLoreActivity, readLoreTrigger, readLoreEntry };
 }

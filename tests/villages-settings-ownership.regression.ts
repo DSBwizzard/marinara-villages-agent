@@ -121,6 +121,13 @@ async function main() {
   await a.service.setVillageSendOnEnter(true);
   await a.service.setVillageSpriteCardFlipEnabled(true);
   await a.service.setVillageCharacterSpeechColors(false);
+  assert.equal(coerceVillageState(a.state).lorebookChipsEnabled, true);
+  await a.service.setLorebookChipsEnabled(false);
+  assert.equal(coerceVillageState(a.state).lorebookChipsEnabled, false);
+  await a.service.setLorebookChipsEnabled(true);
+  assert.equal(coerceVillageState(a.state).lorebookChipsEnabled, true);
+  await assert.rejects(a.service.setLorebookChipsEnabled("false"), /on or off/);
+  assert.equal(a.state.lorebookChipsEnabled, true);
   for (const appearance of ["auto", "day", "night"] as const) {
     await a.service.setMenuAppearance(appearance);
     assert.equal(a.state.menuAppearance, appearance);

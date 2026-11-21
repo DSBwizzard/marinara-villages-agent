@@ -288,11 +288,9 @@ await withBrowser(browser, async () => {
       await composer.fill("Preserve this draft.");
       const text = await reading.innerText();
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
-      await expect(reading).toBeHidden();
-      assert.deepEqual(await boxes(), baseline, "hiding does not move the cast");
+      await expect(page.getByRole("menuitem", { name: "Hide dialogue", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "Settings", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       // Restore deliberately focuses the reading region on the next frame.
       // Finish that transition before simulating a tap into the composer.
       await expect(page.getByRole("button", { name: "Venue actions" })).toBeFocused();
