@@ -17,7 +17,7 @@ import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
 import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
-import { clearVisitorLodging } from "../../domain/rules/visitors.js";
+import { clearVisitorLodging, setVisitorVisits } from "../../domain/rules/visitors.js";
 
 export interface ResidentRosterPorts {
   automaticSprites?(id: string): Promise<SpriteManagerState | null>;
@@ -170,17 +170,7 @@ export function createResidentRoster({
         throw badRequest("Choose an unused Character Card.");
       const visitor = state.visitors?.find((person) => person.characterId === characterId);
       if (visitor) {
-        if (visitor.visitsEnabled === visitsEnabled) return;
-        visitor.visitsEnabled = visitsEnabled;
-        visitor.visitsRevision = incarnation;
-        if (!visitsEnabled) {
-          delete visitor.visitPreference;
-          clearVisitorLodging(state, visitor);
-          if (visitor.trip && visitor.trip.leavesAt > addedAt) {
-            if (visitor.trip.arrivedAt >= addedAt) delete visitor.trip;
-            else visitor.trip.leavesAt = addedAt;
-          }
-        }
+        setVisitorVisits(state, visitor, visitsEnabled, incarnation, addedAt);
         return;
       }
       if (!visitsEnabled || !card) throw notFound("That character is not in your library.");

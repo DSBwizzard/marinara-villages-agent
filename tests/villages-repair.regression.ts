@@ -1,4 +1,5 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+// Test cases: repair/visitors
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 // Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/people, repair/agenda, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/checkpoint-pages, repair/journal-integrity, repair/places
@@ -520,6 +521,94 @@ await runCase("repair/people", async () => {
   assert.ok(search.records.some((record) => record.topic === "people" && record.title.includes("Nora")));
   assert.equal(search.creation, undefined);
   assert.deepEqual(await f.read(), before);
+});
+await runCase("repair/visitors", async () => {
+  const f = await fixture();
+  const now = Date.now();
+  await f.repo.mutateAuthority(
+    (state) => {
+      const { admission: _admission, agenda: _agenda, ...card } = structuredClone(state.villagers[0]!);
+      state.visitors = [
+        {
+          ...card,
+          characterId: "guest",
+          incarnation: "guest-one",
+          visitsRevision: "guest-visits",
+          visitsEnabled: true,
+          cardSnapshot: { ...card.cardSnapshot, id: "guest", name: "The Visitor", personality: "Careful" },
+          firstMetAt: state.setupAt,
+          trip: {
+            arrivedAt: new Date(now - 3600000).toISOString(),
+            leavesAt: new Date(now + 86400000).toISOString(),
+            lodging: { venueId: state.venues[0]!.id, zoneId: "community" },
+          },
+          visitPreference: {
+            kind: "invite",
+            sourceId: "letter",
+            latestSourceId: "letter",
+            sentAt: state.setupAt,
+            from: state.setupAt,
+            until: new Date(now + 86400000).toISOString(),
+          },
+        },
+      ];
+      retainAuthoredNote(
+        state,
+        "guest-secret",
+        "The Visitor left a note behind the old clock.",
+        ["guest"],
+        memoryTime(),
+      );
+    },
+    { memories: true },
+  );
+  const saved = await f.read();
+  const person = (await f.api.index()).people.find((row) => row.id === "guest")!;
+  assert.equal(person.visitor, true);
+  assert.equal(person.hasAgenda, undefined);
+  assert.equal((await f.api.list("people", "", 0, "guest", "agenda")).total, 0);
+  const memories = await f.api.list("people", "", 0, "guest", "memories");
+  assert.ok(memories.records.some((row) => row.title.includes("old clock")));
+  assert.ok(!JSON.stringify(await f.api.list("people", "", 0, "player")).includes("old clock"));
+  const memory = memories.records.find((row) => row.title.includes("old clock"))!;
+  const corrected = await f.prepare({
+    ...edit(memory.id, { text: "The Visitor left the note in the drawer." }, "visitor-memory"),
+    personId: "guest",
+    knowers: ["guest"],
+  });
+  assert.deepEqual(corrected.memory?.people, ["The Visitor"]);
+  await f.api.apply(corrected.id, corrected.token);
+  assert.ok((await f.api.list("people", "", 0, "guest")).records.some((row) => row.title.includes("drawer")));
+  const details = await f.api.list("people", "", 0, "guest", "details");
+  assert.deepEqual(details.records.map((row) => JSON.parse(row.id)[0]).sort(), ["letter-font", "person", "visitor"]);
+  const context = await f.api.inspect(repairId("person", "guest"), "guest");
+  assert.ok(context.fields.every((field) => !["homeworld", "startingSituation"].includes(field.key)));
+  const identity = await f.prepare(edit(context.id, { personality: "Brave" }, "visitor-context"));
+  await f.api.apply(identity.id, identity.token);
+  assert.equal((await f.read()).visitors![0]!.cardSnapshot.personality, "Brave");
+  const font = saved.visitors![0]!.letterFontId === "caveat" ? "patrick-hand" : "caveat";
+  const style = await f.prepare(edit(repairId("letter-font", "guest"), { letterFontId: font }, "visitor-font"));
+  await f.api.apply(style.id, style.token);
+  assert.equal((await f.read()).visitors![0]!.letterFontId, font);
+  const visits = await f.api.inspect(repairId("visitor", "guest"), "guest");
+  assert.ok(visits.source.some((line) => line.startsWith("Visit ")));
+  const off = await f.prepare(edit(visits.id, { visitsEnabled: false }, "visitor-off"));
+  assert.ok(off.affected.some((line) => line.includes("current visit ends")));
+  await f.api.apply(off.id, off.token);
+  f.reopen();
+  const disabled = (await f.read()).visitors![0]!;
+  assert.equal(disabled.visitsEnabled, false);
+  assert.equal(disabled.visitPreference, undefined);
+  assert.equal(disabled.trip?.lodging, undefined);
+  assert.ok(Date.parse(disabled.trip!.leavesAt) <= Date.now());
+  const undo = await f.api.undo(off.id, "visitor-undo");
+  await f.api.apply(undo.id, undo.token);
+  const restored = (await f.read()).visitors![0]!;
+  assert.equal(restored.visitsEnabled, true);
+  assert.deepEqual(restored.trip, saved.visitors![0]!.trip);
+  assert.deepEqual(restored.visitPreference, saved.visitors![0]!.visitPreference);
+  assert.notEqual(restored.visitsRevision, saved.visitors![0]!.visitsRevision);
+  assert.equal(restored.incarnation, saved.visitors![0]!.incarnation);
 });
 await runCase("repair/checkpoints", async () => {
   const f = await fixture();
@@ -1531,7 +1620,10 @@ await runCase("repair/places", async () => {
   assert.equal(cafe?.title, "Cafe");
   assert.ok(cafe?.children?.some((item) => item.id === repairId("place", "place:cafe")));
   assert.ok(cafe?.children?.some((item) => item.title === "Room" && item.icon === "zone"));
-  assert.deepEqual(browse.directory?.find((item) => item.title === "Venues")?.children, []);
+  assert.deepEqual(
+    browse.directory?.find((item) => item.title === "Venues")?.children?.map((item) => item.id),
+    (await f.read()).venues.map((entry) => repairId("location", "venue", entry.id)),
+  );
   for (const [kind, id, patch] of [
     ["npc", "npc:place:cafe:jo", { disabled: true }],
     ["place", "place:cafe", { name: "Corrected Cafe" }],

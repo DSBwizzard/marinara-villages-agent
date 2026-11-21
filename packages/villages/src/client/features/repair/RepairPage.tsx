@@ -436,7 +436,7 @@ export function RepairPage({
               </section>
             ) : null}
             {c.person ? (
-              <div className="repair-tiles repair-sections" role="group" aria-label="Villager records">
+              <div className="repair-tiles repair-sections" role="group" aria-label="Person records">
                 <button
                   type="button"
                   disabled={c.busy}
@@ -480,10 +480,10 @@ export function RepairPage({
                 <input
                   autoComplete="off"
                   type="search"
-                  aria-label={directory ? "Search villagers" : "Search repair records"}
+                  aria-label={directory ? "Search people" : "Search repair records"}
                   value={c.query}
                   onChange={(e) => c.setQuery(e.target.value)}
-                  placeholder={directory ? "Find a villager…" : "Find a record…"}
+                  placeholder={directory ? "Find a person…" : "Find a record…"}
                 />
                 <button type="submit" disabled={c.busy}>
                   Search
@@ -495,13 +495,14 @@ export function RepairPage({
                 {people.map((person) => (
                   <RepairTile
                     title={person.name}
+                    summary={person.visitor ? "Visitor" : undefined}
                     icon="people"
                     disabled={c.busy}
                     key={person.id}
                     onClick={() => void c.choosePerson(person)}
                   />
                 ))}
-                {!c.busy && c.index && !people.length ? <p>No villagers match.</p> : null}
+                {!c.busy && c.index && !people.length ? <p>No people match.</p> : null}
               </div>
             ) : (
               <>

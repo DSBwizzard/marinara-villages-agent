@@ -1,4 +1,4 @@
-// Test cases: repair-people/navigation, repair-people/agenda, repair-people/letter-font, repair-people/late-responses, repair-people/restore-draft
+// Test cases: repair-people/navigation, repair-people/agenda, repair-people/letter-font, repair-people/visitor, repair-people/late-responses, repair-people/restore-draft
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -22,6 +22,7 @@ const people = [
   { id: "player", name: "Your Persona" },
   { id: "a", name: "Nora", hasAgenda: true },
   { id: "b", name: "Ellis" },
+  { id: "guest", name: "The Visitor", visitor: true },
 ];
 const sharedId = '["memory","shared"]',
   secretId = '["memory","secret"]',
@@ -116,13 +117,15 @@ async function fixture(width) {
   };
   const record = (id, person) => {
     const value =
-      id === secretId
-        ? secretText
-        : person === "b"
-          ? "Ellis paints the harbor."
-          : person === "player"
-            ? known
-            : privateText;
+      person === "guest"
+        ? "The Visitor remembers the old clock."
+        : id === secretId
+          ? secretText
+          : person === "b"
+            ? "Ellis paints the harbor."
+            : person === "player"
+              ? known
+              : privateText;
     return {
       id,
       token: `${person}-${id}`,
@@ -132,12 +135,14 @@ async function fixture(width) {
       fields: [{ key: "text", label: "Memory", type: "text", value }],
       source: ["Saved source"],
       people:
-        id === secretId
-          ? [{ ...people[1], text: secretText }]
-          : [
-              { ...people[0], text: known },
-              { ...people[1], text: privateText },
-            ],
+        person === "guest"
+          ? [{ ...people[3], text: value }]
+          : id === secretId
+            ? [{ ...people[1], text: secretText }]
+            : [
+                { ...people[0], text: known },
+                { ...people[1], text: privateText },
+              ],
       actions: [{ id: "correct", label: "Modify" }],
       related: [],
     };
@@ -164,6 +169,31 @@ async function fixture(width) {
     actions: [{ id: "correct", label: "Modify" }],
     related: [],
   };
+  const visitorDetails = [
+    {
+      id: '["visitor","guest"]',
+      token: "guest-visits",
+      topic: "people",
+      title: "The Visitor · visits",
+      summary: "Visits on",
+      fields: [{ key: "visitsEnabled", label: "Visits enabled", type: "boolean", value: true }],
+      source: ["Visit Nov 20 to Nov 22"],
+      actions: [{ id: "correct", label: "Modify" }],
+      related: [],
+    },
+    { ...fontRecord, id: '["letter-font","guest"]', title: "The Visitor · letter style" },
+    {
+      id: '["person","guest"]',
+      token: "guest-context",
+      topic: "people",
+      title: "The Visitor · character context",
+      summary: "Character",
+      fields: [{ key: "personality", label: "Personality", type: "text", value: "Careful" }],
+      source: [],
+      actions: [{ id: "correct", label: "Modify" }],
+      related: [],
+    },
+  ];
   await page.route("**/api/capability-packages/villages/assets/letter-fonts/*.json", (route) => {
     const name = new URL(route.request().url()).pathname.split("/").at(-1);
     return fulfill(route, {
@@ -218,6 +248,13 @@ async function fixture(width) {
         ],
       });
     if (path === "/repair/records") {
+      if (person === "guest")
+        return reply(route, "list", {
+          records:
+            url.searchParams.get("section") === "details" ? visitorDetails : [record('["memory","guest"]', person)],
+          total: 3,
+          next: null,
+        });
       if (url.searchParams.get("section") === "agenda") {
         assert.equal(person, "a");
         return reply(route, "list", { records: [today, agendaDay], total: 2, next: null });
@@ -250,6 +287,12 @@ async function fixture(width) {
     }
     if (path === "/repair/record") {
       const id = url.searchParams.get("id");
+      if (person === "guest" && visitorDetails.some((row) => row.id === id))
+        return reply(
+          route,
+          `record:${id}`,
+          visitorDetails.find((row) => row.id === id),
+        );
       return reply(
         route,
         `record:${id}`,
@@ -436,10 +479,13 @@ await withBrowser(browser, async () => {
         { page, root } = f;
       await expect(page.getByRole("switch")).toHaveCount(0);
       await openPeople(page);
-      for (const p of people) await expect(page.getByRole("button", { name: p.name, exact: true })).toBeVisible();
+      for (const p of people)
+        await expect(
+          page.getByRole("button", { name: p.visitor ? `${p.name} Visitor` : p.name, exact: true }),
+        ).toBeVisible();
       await expect(root.getByText(privateText, { exact: true })).toHaveCount(0);
       await root.screenshot({ path: `.build-tmp/repair-people/roster-${width}.png` });
-      const input = page.getByRole("searchbox", { name: "Search villagers", exact: true }),
+      const input = page.getByRole("searchbox", { name: "Search people", exact: true }),
         search = page.getByRole("button", { name: "Search", exact: true });
       if (width === 390) await root.evaluate((el) => (el.style.fontSize = "20px"));
       const fieldBox = await input.boundingBox(),
@@ -531,6 +577,29 @@ await withBrowser(browser, async () => {
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
       const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
       assert.equal(sent.values.letterFontId, "caveat");
+      await f.close();
+    }
+  });
+  await runCase("repair-people/visitor", async () => {
+    for (const width of [1440, 390]) {
+      const f = await fixture(width),
+        { root } = f;
+      await openPeople(f.page);
+      await root.getByRole("button", { name: "The Visitor Visitor", exact: true }).click();
+      await expect(root.getByRole("button", { name: "Agenda", exact: true })).toHaveCount(0);
+      await expect(root.getByRole("button", { name: /The Visitor remembers the old clock/ })).toBeVisible();
+      await root.getByRole("button", { name: "Details", exact: true }).click();
+      await expect(root.getByRole("button", { name: /The Visitor · character context/ })).toBeVisible();
+      await expect(root.getByRole("button", { name: /The Visitor · letter style/ })).toBeVisible();
+      await root.getByRole("button", { name: /The Visitor · visits/ }).click();
+      await expect(root.getByRole("button", { name: "Review changes", exact: true })).toBeDisabled();
+      await root.getByRole("checkbox", { name: "Visits enabled", exact: true }).uncheck();
+      await root.screenshot({ path: `.build-tmp/repair-people/visitor-${width}.png` });
+      await root.getByRole("button", { name: "Review changes", exact: true }).click();
+      const sent = f.calls.findLast((call) => call.path === "/repair/review" && call.body).body;
+      assert.equal(sent.personId, "guest");
+      assert.equal(sent.recordId, '["visitor","guest"]');
+      assert.equal(sent.values.visitsEnabled, false);
       await f.close();
     }
   });

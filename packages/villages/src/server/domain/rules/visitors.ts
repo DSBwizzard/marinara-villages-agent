@@ -2,7 +2,7 @@ import type { VillagePlaceView, VillageState, VillageVisitor, VisitorTrip } from
 import { calendarDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { calendarReplay } from "./clock-state.js";
 import { agendaDateKey } from "./agenda-week.js";
-import { conflict } from "./errors.js";
+import { badRequest, conflict } from "./errors.js";
 import { memoryHash } from "./memory-integrity.js";
 import { mayHostLodging } from "./venue-access.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
@@ -202,6 +202,27 @@ export function clearVisitorLodging(state: VillageState, person: VillageVisitor)
     );
   }
   if (person.trip) delete person.trip.lodging;
+}
+
+export function setVisitorVisits(
+  state: VillageState,
+  person: VillageVisitor,
+  enabled: boolean,
+  revision: string,
+  at: string,
+) {
+  if (person.characterId === PROFESSOR_MARI_ID && state.visitorIntroduction && !state.visitorIntroduction.completedAt)
+    throw badRequest("Professor Mari will introduce Visitors on her first visit.");
+  if (person.visitsEnabled === enabled) return;
+  person.visitsEnabled = enabled;
+  person.visitsRevision = revision;
+  if (enabled) return;
+  delete person.visitPreference;
+  clearVisitorLodging(state, person);
+  if (person.trip && person.trip.leavesAt > at) {
+    if (person.trip.arrivedAt >= at) delete person.trip;
+    else person.trip.leavesAt = at;
+  }
 }
 
 /** Old clients may acknowledge an existing grant, but cannot create new lodging. */

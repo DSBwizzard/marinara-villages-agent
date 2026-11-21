@@ -1,5 +1,5 @@
 import { placeRegistry, readNpc, findLocation, sceneActorIds } from "./places.js";
-import { cardCharacters } from "./visitors.js";
+import { cardCharacters, findCardCharacter, setVisitorVisits } from "./visitors.js";
 import { projectAgreementCurrent } from "./project-terms.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
 import type { RepairBrowseItem, RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
@@ -284,7 +284,7 @@ export function worldRepairRecords(
       );
     }
   }
-  for (const person of state.villagers) {
+  for (const person of cardCharacters(state)) {
     const id = person.characterId,
       name = person.cardSnapshot.name;
     const homeOptions = state.venues
@@ -296,7 +296,7 @@ export function worldRepairRecords(
       );
     const home = state.venues.find((v) => venueResidentIds(v).includes(id)),
       sleep = home?.destinations?.[id]?.sleep ?? (home && venueZones(home).find((z) => z.ownerId === id)?.id);
-    if (homeOptions.length)
+    if ("admission" in person && homeOptions.length)
       add(
         ["home", id],
         "places",
@@ -313,8 +313,12 @@ export function worldRepairRecords(
       `${name} · character context`,
       "Village-owned character copy",
       [
-        text("homeworld", "Homeworld", person.admission.homeworld),
-        text("startingSituation", "Starting situation", person.admission.startingSituation),
+        ...("admission" in person
+          ? [
+              text("homeworld", "Homeworld", person.admission.homeworld),
+              text("startingSituation", "Starting situation", person.admission.startingSituation),
+            ]
+          : []),
         ...(["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const).map((key) =>
           text(
             key,
@@ -349,7 +353,42 @@ export function worldRepairRecords(
       ],
       { source: [] },
     );
-    if (!personId || personId === id) records.push(...agendaRepairRecords(state, person, at));
+    if ("agenda" in person && (!personId || personId === id)) records.push(...agendaRepairRecords(state, person, at));
+    if ("visitsEnabled" in person) {
+      const stamp = (instant: string) =>
+        new Intl.DateTimeFormat("en", {
+          timeZone: state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(instant));
+      const trip = person.trip;
+      const visitPlace = trip?.venueId && findLocation(state, trip.venueId);
+      const lodging = trip?.lodging;
+      const lodgingPlace = lodging && findLocation(state, lodging.venueId);
+      const source = [
+        person.firstMetAt ? `First met ${stamp(person.firstMetAt)}` : "You have not met yet.",
+        ...(trip ? [`Visit ${stamp(trip.arrivedAt)} to ${stamp(trip.leavesAt)}`] : []),
+        ...(visitPlace ? [visitPlace.name] : []),
+        ...(lodgingPlace && lodging
+          ? [
+              `Lodging at ${lodgingPlace.name} · ${venueZones(lodgingPlace).find((zone) => zone.id === lodging.zoneId)?.name ?? "Unavailable Zone"}`,
+            ]
+          : []),
+        ...(person.visitPreference
+          ? [
+              `${person.visitPreference.kind === "invite" ? "Visit invitation" : "Time apart"} through ${stamp(person.visitPreference.until)}`,
+            ]
+          : []),
+      ];
+      add(
+        ["visitor", id],
+        "people",
+        `${name} · visits`,
+        person.visitsEnabled ? "Visits on" : "Visits off",
+        [{ key: "visitsEnabled", label: "Visits enabled", type: "boolean", value: person.visitsEnabled }],
+        { source },
+      );
+    }
   }
   for (const root of state.continuity.records)
     for (const head of Object.values(root.heads)) {
@@ -789,17 +828,24 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
           state.residences.push({ characterId: id, venueId, status: "current", proposedVenueId: "", requestedAt: at });
         keepAgendaPlaces(state);
       } else if (kind === "person") {
-        const p = state.villagers.find((v) => v.characterId === id)!;
-        if (str("homeworld").length > 120 || str("startingSituation").length > 1200)
-          throw badRequest("Shorten the admission context.");
-        p.admission = { homeworld: str("homeworld"), startingSituation: str("startingSituation") };
+        const p = findCardCharacter(state, id);
+        if (!p) throw conflict("That person is unavailable.");
+        if ("admission" in p) {
+          if (str("homeworld").length > 120 || str("startingSituation").length > 1200)
+            throw badRequest("Shorten the admission context.");
+          p.admission = { homeworld: str("homeworld"), startingSituation: str("startingSituation") };
+        }
         for (const key of ["personality", "backstory", "scenario", "appearance", "postHistoryInstructions"] as const)
           p.cardSnapshot[key] = str(key);
         p.cardSnapshot.revision++;
       } else if (kind === "letter-font") {
-        const person = state.villagers.find((v) => v.characterId === id);
-        if (!person) throw conflict("That villager is unavailable.");
+        const person = findCardCharacter(state, id);
+        if (!person) throw conflict("That person is unavailable.");
         person.letterFontId = str("letterFontId");
+      } else if (kind === "visitor") {
+        const person = state.visitors?.find((visitor) => visitor.characterId === id);
+        if (!person) throw conflict("That Visitor is unavailable.");
+        setVisitorVisits(state, person, values.visitsEnabled === true, request.operationId, at);
       } else if (kind === "venue") {
         const v = state.venues.find((v) => v.id === id)!;
         if (!str("name") || str("name").length > 100 || str("form").length > 240)

@@ -121,9 +121,10 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
     project.lifecycle.revision =
       Math.max(project.lifecycle.revision, current.projects.find((p) => p.id === project.id)?.lifecycle.revision ?? 0) +
       1;
-  for (const person of prior.villagers) {
-    const live = current.villagers.find((p) => p.characterId === person.characterId);
+  for (const person of cardCharacters(prior)) {
+    const live = findCardCharacter(current, person.characterId);
     person.cardSnapshot.revision = Math.max(person.cardSnapshot.revision, live?.cardSnapshot.revision ?? 0) + 1;
+    if ("visitsRevision" in person) person.visitsRevision = randomUUID();
   }
   for (const venue of prior.venues) {
     const currentVenue = current.venues.find((v) => v.id === venue.id);
@@ -426,6 +427,7 @@ export function createRepairService(ports: RepairPorts) {
           id: p.characterId,
           name: p.cardSnapshot.name,
           ...("agenda" in p && p.agenda ? { hasAgenda: true } : {}),
+          ...("visitsEnabled" in p ? { visitor: true as const } : {}),
         })),
         ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
       ],
@@ -753,6 +755,8 @@ export function createRepairService(ports: RepairPorts) {
     if (kind === "room") affected.push("Future Scene room context.");
     if (kind === "access") affected.push("Future entry and management checks.");
     if (kind === "agenda" && record.agenda?.today) affected.push("Today's availability follows the revised schedule.");
+    if (kind === "visitor" && request.values.visitsEnabled === false)
+      affected.push("The current visit ends. Visit preferences and lodging are cleared.");
     if (kind === "scene") affected.push("Historical annotation; mechanical outcomes are retained.");
     if (kind === "saved-scene")
       affected.push("Retained Scene effects change. A previously requested conclusion may finish after recovery.");

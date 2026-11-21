@@ -204,6 +204,8 @@ Edit a record, then use **Review changes** to check **Before / After** and **Aff
 
 Under **People → [resident] → Agenda**, select an activity to edit it in the planner or use **Add activity**. Both editors use the Venue and Zone pickers. Review is available when the draft has a change. The review shows which ordinary activities the new item replaces or shortens. Appointments and Project reservations retain their existing times.
 
+Visitors appear under **People**, with their memories, character context, letter style, and visits under **Details**. Turning visits off ends the current trip and clears its preferences and lodging through the same rules as People. Visitor access is available under each Zone. These repairs support review and undo.
+
 Under **Places & venues**, choose a Zone and open the room detail you want to correct. Active timed details show when they expire. Corrections keep that expiry. A Venue’s **Entry policy** and **Standing access** are separate controls.
 
 **Repair history** keeps the changes and offers **Review undo** where a safe inverse is available. Undo refuses to overwrite later changes to affected records. Consequential repairs save a checkpoint automatically; you can also name a manual checkpoint. Checkpoints retain independent copies of saved world data. Restoration has its own review and saves the current world first. Current time, spending and replay protection remain current, so elapsed Projects may complete when play resumes.

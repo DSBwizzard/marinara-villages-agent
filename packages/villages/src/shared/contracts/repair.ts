@@ -10,7 +10,7 @@ export type RepairAgendaDay = Omit<AgendaWeek["days"][number], "blocks"> & {
 };
 export type RepairTopic = "memories" | "people" | "places" | "world" | "progress" | "restore";
 export type RepairValue = string | number | boolean;
-export type RepairPerson = { id: string; name: string; hasAgenda?: boolean };
+export type RepairPerson = { id: string; name: string; hasAgenda?: boolean; visitor?: true };
 export type RepairBrowseIcon = "places" | "venue" | "zone" | "details" | "access" | "people";
 export type RepairBrowseItem = {
   id: string;
