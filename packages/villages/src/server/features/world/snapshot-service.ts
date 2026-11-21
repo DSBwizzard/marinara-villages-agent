@@ -18,7 +18,7 @@ import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagePresence } from "../../domain/rules/village-projections.js";
-import { cardCharacters, playerGuestRoom, visitingCharacter, visitorPosition } from "../../domain/rules/visitors.js";
+import { cardCharacters, visitorLodging, visitingCharacter, visitorPosition } from "../../domain/rules/visitors.js";
 import { settleTripsForAttendance } from "./visitor-trips.js";
 import {
   exactSnapshotTransition,
@@ -181,7 +181,8 @@ export function createVillageSnapshot({
     const trip = visiting?.trip;
     const visitors = village.visitors?.map((visitor) => {
       const card = cardsById.get(visitor.characterId);
-      const stayingWithPlayer = visiting === visitor && trip?.lodging?.hostId === "player";
+      const stayingWithPlayer =
+        visiting === visitor && trip?.lodging?.hostId === "player" && !!visitorLodging(village, visitor, now);
       const canSeeTrip =
         trip && visiting === visitor && visitor.firstMetAt && (visit?.person === visitor || stayingWithPlayer);
       return {
@@ -203,7 +204,7 @@ export function createVillageSnapshot({
                 arrivedAt: trip.arrivedAt,
                 leavesAt: trip.leavesAt,
                 stayingWithPlayer,
-                offerHome: !!ordinaryVisitor && !!playerGuestRoom(village, ordinaryVisitor, now),
+                offerHome: false,
                 ...(introductionVisitor === visitor ? { introductory: true as const } : {}),
               },
             }

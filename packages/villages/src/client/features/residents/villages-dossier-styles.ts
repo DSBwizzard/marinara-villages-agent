@@ -27,7 +27,7 @@ export const DOSSIER_STYLES = `
 .${P}-description-editor textarea{resize:vertical;margin:6px 0}
 .${P}-dossier-refresh{width:100%;border-top:1px solid var(--dossier-line);padding-top:10px}
 .${P}-dossier-identity{flex:none;min-width:0;padding:72px 0 24px}
-.${P}-dossier-root .${P}-dossier-back{display:inline-flex;align-items:center;gap:8px;margin:0 0 16px;padding:4px 0;background:transparent;border:0;font-size:18px;text-align:left}
+.${P}-dossier-root .${P}-dossier-back{display:none;align-items:center;gap:8px;margin:0 0 16px;padding:4px 0;background:transparent;border:0;font-size:18px;text-align:left}
 .${P}-dossier-journal{display:flex;align-items:start;gap:20px;min-width:0}
 .${P}-dossier-journal-content{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-content:start}
 .${P}-dossier-portrait{width:100%;max-width:240px;aspect-ratio:1;margin:0;overflow:hidden;background:#969b7e70;border-radius:7px}
@@ -185,7 +185,7 @@ dialog.villages-founding-dialog.${P}-visitor-picker{position:relative;inset:auto
  .${P}-dossier-book{overflow:visible;container-type:normal}
  .${P}-dossier-character{position:absolute;right:0;top:0;width:150px;height:230px;padding:0}
  .${P}-dossier-identity{padding-top:0}
- .${P}-dossier-root .${P}-dossier-back{max-width:calc(100% - 164px);font-size:17px}
+ .${P}-dossier-root .${P}-dossier-back{display:inline-flex;max-width:calc(100% - 164px);font-size:17px}
  .${P}-dossier-identity:has(.${P}-dossier-back) .${P}-dossier-journal h1{min-height:175px;padding-top:12px}
  .${P}-dossier-journal{flex-wrap:wrap;gap:12px}
  .${P}-dossier-journal-content{display:block;flex-basis:100%}

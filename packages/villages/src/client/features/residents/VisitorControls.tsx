@@ -228,30 +228,9 @@ export function VisitorProfileControls({
       setBusy(false);
     }
   };
-  const offerHome = async (trip: string) => {
-    setBusy(true);
-    setError("");
-    const scope = snapshot.worldScope;
-    try {
-      const next = await request<VillageSnapshot>("/visitors/" + encodeURIComponent(person.characterId) + "/host", {
-        method: "POST",
-        body: JSON.stringify({ scope, trip }),
-      });
-      setSnapshot((current) => (current?.worldScope === scope && next.worldScope === scope ? next : current));
-    } catch (cause) {
-      setError(messageFrom(cause, "Could not offer a room for this visit."));
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
     <>
       {visit?.stayingWithPlayer ? <span role="status">Staying with you</span> : null}
-      {visit?.offerHome ? (
-        <button type="button" disabled={busy} onClick={() => void offerHome(visit.arrivedAt)}>
-          Offer to host
-        </button>
-      ) : null}
       <button type="button" disabled={busy} onClick={() => void change(!person.visitsEnabled)}>
         {person.visitsEnabled ? "Turn visits off" : "Turn visits on"}
       </button>

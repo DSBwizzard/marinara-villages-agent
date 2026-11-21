@@ -661,63 +661,9 @@ await runCase("narration-access/overnight-agreement", () => {
       },
     ],
   };
-  const wrongTrip = structuredClone(state);
-  wrongTrip.visitors[0].trip.leavesAt = "2026-11-12T17:00:00.000Z";
-  const stale = acceptNarration(wrongTrip, { readset, raw, responseDigest: memoryHash(raw) }, "overnight", at);
-  assert.equal(stale.held, true);
-  assert.equal(wrongTrip.venues.find((venue) => venue.id === home.id)?.access?.permissions.length, 0);
-  for (const text of [
-    "You can use my Guest Room tonight only.",
-    "You can use my Study for the rest of your visit.",
-    "You can use my East Guest Room for the rest of your visit.",
-  ]) {
-    const wrongOffer = structuredClone(raw);
-    wrongOffer.segments[0].text = text;
-    const result = acceptNarration(
-      structuredClone(state),
-      {
-        readset,
-        raw: wrongOffer,
-        responseDigest: memoryHash(wrongOffer),
-      },
-      "overnight",
-      at,
-    );
-    assert.equal(result.held, true, text);
-  }
-  const withoutAcceptance = structuredClone(raw);
-  withoutAcceptance.commands[0].source[1].act = "refuse";
-  assert.equal(
-    acceptNarration(
-      structuredClone(state),
-      {
-        readset,
-        raw: withoutAcceptance,
-        responseDigest: memoryHash(withoutAcceptance),
-      },
-      "overnight",
-      at,
-    ).held,
-    true,
-  );
-  const onlyTonight = structuredClone(raw);
-  onlyTonight.segments[1].text = "Yes, but tonight only.";
-  assert.equal(
-    acceptNarration(
-      structuredClone(state),
-      { readset, raw: onlyTonight, responseDigest: memoryHash(onlyTonight) },
-      "overnight",
-      at,
-    ).held,
-    true,
-  );
   const result = acceptNarration(state, { readset, raw, responseDigest: memoryHash(raw) }, "overnight", at);
-  assert.equal(result.held, false, JSON.stringify(result.rejected));
-  assert.equal(state.visitors[0].trip.lodging?.venueId, home.id);
+  assert.equal(result.held, true, "Fresh hosting is deferred until sleeping arrangements are defined");
+  assert.equal(state.visitors[0].trip.lodging, undefined);
   const guestHome = state.venues.find((venue) => venue.id === home.id)!;
-  assert.equal(guestHome.access!.permissions[0].expiresAt, leavesAt);
-  assert.deepEqual(
-    result.episode?.commandReceipts[0].witnesses.toSorted(),
-    ["player", actorId, visitor.characterId].toSorted(),
-  );
+  assert.equal(guestHome.access!.permissions.length, 0);
 });

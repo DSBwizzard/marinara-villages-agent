@@ -10,7 +10,7 @@ import { narrationWitnesses, type NarrationCommunication } from "./narration-sou
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
 import { contactNeighbors } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
-import { clearVisitorLodging, findCardCharacter, guestRoomOffer, visitingCharacter } from "./visitors.js";
+import { findCardCharacter } from "./visitors.js";
 import {
   applyAccessCommand,
   defaultZonePolicy,
@@ -323,86 +323,10 @@ export function applyNarrationAccess(
       captured.authorities.some((authority) => authority.actorId === decision.by),
     "the captured access authority changed or was not supplied",
   );
-  if (decision.type === "access.decide" && decision.outcome === "host-visitor") {
-    const visitor = visitingCharacter(state, new Date(at));
-    const capturedTrip = readset.source.visitorTrips?.find((trip) => trip.characterId === decision.visitor);
-    const offers = sources.filter((source) => source.actorId === decision.by);
-    const accepts = sources.filter((source) => source.actorId === decision.visitor);
-    memoryRequire(
-      context.visit &&
-        visitor?.characterId === decision.visitor &&
-        capturedTrip &&
-        capturedTrip.arrivedAt === visitor.trip.arrivedAt &&
-        capturedTrip.leavesAt === visitor.trip.leavesAt &&
-        decision.zone &&
-        !decision.accompanies &&
-        offers.length > 0 &&
-        accepts.length > 0 &&
-        offers.length + accepts.length === sources.length &&
-        decision.by !== decision.visitor &&
-        offers.every(
-          (source) =>
-            source.act === "offer" &&
-            source.perceptions.some((row) => row.actorId === decision.visitor && row.channel === "words"),
-        ) &&
-        accepts.every(
-          (source) =>
-            source.act === "accept" &&
-            source.perceptions.some((row) => row.actorId === decision.by && row.channel === "words"),
-        ) &&
-        Math.max(...offers.map((source) => source.moment?.index ?? Infinity)) <
-          Math.min(...accepts.map((source) => source.moment?.index ?? -Infinity)),
-      "lodging needs a witnessed offer followed by the Visitor's acceptance on this trip",
-    );
-    assertNarrationDecision(state, decision.by, context, offers);
-    assertNarrationDecision(state, decision.visitor, context, accepts);
-    const narrow =
-      /\b(?:(?:only|just) (?:tonight|one night)|(?:tonight|one night) only|for one night|until tomorrow)\b/iu;
-    memoryRequire(
-      sources.every(({ excerpt }) => !narrow.test(excerpt)) &&
-        offers.some(({ excerpt }) => {
-          const named =
-            venue.zones?.filter((zone) => zone.name && excerpt.toLowerCase().includes(zone.name.toLowerCase())) ?? [];
-          const length = Math.max(...named.map((zone) => zone.name.length));
-          const exact = named.filter((zone) => zone.name.length === length);
-          return (
-            exact.length === 1 &&
-            exact[0].id === decision.zone &&
-            /\b(?:for the (?:rest|remainder) of (?:your|this|the) (?:visit|stay)|until (?:you leave|checkout|check-out))\b/iu.test(
-              excerpt,
-            )
-          );
-        }),
-      "the spoken offer must name the guest room and run through checkout",
-    );
-    const room = guestRoomOffer(state, visitor, new Date(at), decision.by, {
-      venueId: decision.venue,
-      zoneId: decision.zone,
-    });
-    memoryRequire(room, "that overnight room is unavailable");
-    const lineIds = sources.map((source) => source.unitId);
-    clearVisitorLodging(state, visitor);
-    visitor.trip.lodging = room.choice;
-    venue.access.permissions.push({ ...room.grant, id: receiptId, sourceLineIds: lineIds });
-    venue.access.revision++;
-    venue.access.changes.push({
-      id: receiptId,
-      revision: venue.access.revision,
-      actorId: decision.by,
-      zoneId: decision.zone,
-      action: "host-visitor",
-      at,
-      sourceLineIds: lineIds,
-    });
-    return {
-      id: receiptId,
-      kind: "access",
-      targetId: venue.id,
-      revision: venue.access.revision,
-      text: `${visitor.cardSnapshot.name} accepted overnight lodging at ${venue.name}.`,
-      witnesses: narrationWitnesses(sources, ["words"]),
-    };
-  }
+  memoryRequire(
+    !(decision.type === "access.decide" && decision.outcome === "host-visitor"),
+    "Visitor hosting is unavailable until sleeping arrangements are defined.",
+  );
   assertNarrationDecision(state, decision.by, context, sources);
   memoryRequire(
     sources.every((source) => source.perceptions.some((row) => row.channel === "words" && row.actorId !== decision.by)),

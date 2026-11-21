@@ -61,7 +61,7 @@ await withBrowser(browser, async () => {
           visit: {
             arrivedAt: "2026-11-09T12:00:00.000Z",
             leavesAt: "2026-11-11T17:00:00.000Z",
-            offerHome: true,
+            offerHome: false,
             stayingWithPlayer: false,
           },
         },
@@ -335,14 +335,7 @@ await withBrowser(browser, async () => {
       if (path.endsWith("/background/presence"))
         return fulfill(route, { json: { status: "ready", snapshot: village } });
       let value = village;
-      if (path.endsWith("/visitors/river-visitor/host")) {
-        const visit = village.visitors[0].visit;
-        assert.equal(request.method(), "POST");
-        assert.deepEqual(request.postDataJSON(), { scope: village.worldScope, trip: visit.arrivedAt });
-        visit.offerHome = false;
-        visit.stayingWithPlayer = true;
-        value = village;
-      } else if (path.endsWith("/background/retry")) {
+      if (path.endsWith("/background/retry")) {
         const body = request.postDataJSON();
         assert.equal(body.id, "history-job");
         assert.equal(body.expectedAttempt, 1);
@@ -672,8 +665,16 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("heading", { name: "River Visitor", exact: true })).toBeVisible();
       const visitorProfile = page.locator(`.${P}-dossier-root`);
       const visitorBack = visitorProfile.getByRole("button", { name: "Back to Visitors", exact: true });
-      await expect(visitorBack).toBeVisible();
-      await visitorBack.click();
+      if (width <= 700) {
+        await expect(visitorBack).toBeVisible();
+        await visitorBack.click();
+      } else {
+        await expect(visitorBack).toBeHidden();
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "People", exact: true })
+          .click();
+      }
       await expect(visitors).toBeVisible();
       await expect(visitors.getByRole("button", { name: "Visitors", exact: true })).toHaveAttribute(
         "aria-pressed",
@@ -694,13 +695,16 @@ await withBrowser(browser, async () => {
       await visitorMail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       await openCharacterTools(page);
       await expect(visitorProfile.getByText(/^Visiting until /)).toBeVisible();
-      await page.getByRole("button", { name: "Offer to host", exact: true }).click();
-      await expect(page.getByText("Staying with you", { exact: true })).toBeVisible();
-      await page.screenshot({ path: resolve(output, `visitor-host-${width}-${height}.png`) });
+      await expect(page.getByRole("button", { name: "Offer to host", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Turn visits off", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Agenda records", exact: true })).toHaveCount(0);
-      await visitorBack.click();
+      if (width <= 700) await visitorBack.click();
+      else
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "People", exact: true })
+          .click();
       await expect(visitorTile).toBeFocused();
       await visitors.getByRole("button", { name: "Villagers", exact: true }).click();
       await expect(selector).toBeVisible();
@@ -922,24 +926,26 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("heading", { name: "Mara", exact: true })).toBeInViewport({ ratio: 1 });
     const overview = profile.getByRole("region", { name: "Overview content" });
     const villagerBack = profile.getByRole("button", { name: "Back to Villagers", exact: true });
-    await expect(villagerBack).toBeVisible();
-    const backBounds = await villagerBack.boundingBox();
-    const nameTop = await profile.getByRole("heading", { name: "Mara", exact: true }).evaluate((node) => {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      return range.getBoundingClientRect().top;
-    });
-    assert(
-      backBounds.y + backBounds.height <= nameTop + 1,
-      "Back button is above the person's name: " + JSON.stringify({ width, height, backBounds, nameTop }),
-    );
-    await villagerBack.click();
-    await expect(selector).toBeVisible();
-    await expect(selector.getByRole("button", { name: "Villagers", exact: true })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    await selector.getByRole("button", { name: "Open Mara profile" }).click();
+    if (width <= 700) {
+      await expect(villagerBack).toBeVisible();
+      const backBounds = await villagerBack.boundingBox();
+      const nameTop = await profile.getByRole("heading", { name: "Mara", exact: true }).evaluate((node) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return range.getBoundingClientRect().top;
+      });
+      assert(
+        backBounds.y + backBounds.height <= nameTop + 1,
+        "Back button is above the person's name: " + JSON.stringify({ width, height, backBounds, nameTop }),
+      );
+      await villagerBack.click();
+      await expect(selector).toBeVisible();
+      await expect(selector.getByRole("button", { name: "Villagers", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await selector.getByRole("button", { name: "Open Mara profile" }).click();
+    } else await expect(villagerBack).toBeHidden();
     await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toHaveCount(0);
     await expect(selector.getByText(/^[0-9]+ villagers$/)).toHaveCount(0);
     await expect(overview.getByRole("heading", { name: "Relationships", exact: true })).toHaveCount(0);
@@ -1041,7 +1047,7 @@ await withBrowser(browser, async () => {
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     assert.deepEqual(
       writes.map((row) => row.path),
-      exerciseActions ? ["/api/villages/visitors/river-visitor/host"] : [],
+      [],
     );
     await chooseSection("Overview");
     const signature = profile.getByRole("img", { name: "Mara's signature", exact: true, includeHidden: true });

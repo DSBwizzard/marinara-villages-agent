@@ -1,7 +1,6 @@
 import type { VillagePlaceView, VillageState, VillageVisitor, VisitorTrip } from "../models/world.js";
 import { calendarDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { calendarReplay } from "./clock-state.js";
-import { latestRelationshipScores, relationshipKey } from "./continuity.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { conflict } from "./errors.js";
 import { memoryHash } from "./memory-integrity.js";
@@ -96,11 +95,6 @@ function potentialArrival(state: VillageState, at: Date) {
   if (chosen && draw([state.seed, day, "visit"]) < VISIT_CHANCE[chosen.kind]) return chosen.person;
 }
 
-// shortcut: the authored room name designates guest lodging until Venues expose a dedicated lodging setting.
-const guestRoom = /\b(?:guest (?:bed ?room|room|suite)|spare (?:bed ?room|room))\b/iu;
-const inn = /\b(?:inn|hotel|hostel|guesthouse|guest house|lodging|lodge)\b/iu;
-const innRoom = /^(?:room\s+[\p{L}\p{N}]+|(?:.+ )?suite|(?:.+ )?bed ?room|dormitory)$/iu;
-
 function lodgingRoom(state: VillageState, actor: string, choice: NonNullable<VisitorTrip["lodging"]>, at: Date) {
   const venue = state.venues.find((row) => row.id === choice.venueId);
   const zone = venue && venueZones(venue).find((row) => row.id === choice.zoneId);
@@ -115,7 +109,6 @@ function lodgingRoom(state: VillageState, actor: string, choice: NonNullable<Vis
     return;
   if (choice.hostId) {
     if (
-      !guestRoom.test(zone.name) ||
       !mayHostLodging(venue, zone, choice.hostId) ||
       !venue.access?.permissions.some(
         (grant) =>
@@ -129,36 +122,21 @@ function lodgingRoom(state: VillageState, actor: string, choice: NonNullable<Vis
       )
     )
       return;
-  } else if (!inn.test(venue.name) || (!guestRoom.test(zone.name) && !innRoom.test(zone.name)) || zone.ownerId) return;
+  } else if (zone.ownerId) return;
   return { venue, zone };
 }
 
-function chooseLodging(state: VillageState, actor: string, nights: Date[], newHostSince?: string) {
-  const options = state.venues.flatMap((venue) =>
-    venueZones(venue).flatMap((zone) => {
-      const hosts = (venue.residentIds ?? []).filter(
-        (id) =>
-          state.villagers.some((person) => person.characterId === id) &&
-          (!newHostSince ||
-            venue.access?.permissions.some(
-              (grant) =>
-                grant.duration === "standing" &&
-                !grant.revoked &&
-                grant.issuerId === id &&
-                grant.visitorId === actor &&
-                grant.zoneId === zone.id &&
-                grant.issuedAt >= newHostSince,
-            )),
-      );
-      return [
-        ...hosts.map((hostId) => ({ venueId: venue.id, zoneId: zone.id, hostId })),
-        ...(!newHostSince ? [{ venueId: venue.id, zoneId: zone.id, hostId: undefined }] : []),
-      ];
-    }),
-  );
-  return options
-    .sort((a, b) => Number(!!b.hostId) - Number(!!a.hostId))
-    .find((choice) => nights.every((night) => lodgingRoom(state, actor, choice, night)));
+/** Retain already saved lodging only while its native permission remains valid. */
+export function visitorLodging(state: VillageState, person: VillageVisitor | undefined, now: Date) {
+  if (
+    !person?.trip?.lodging ||
+    !person.visitsEnabled ||
+    person.trip.arrivedAt > now.toISOString() ||
+    Date.parse(person.trip.leavesAt) <= trusted(state, now) ||
+    introductoryVisitorStay(state, person)
+  )
+    return;
+  return lodgingRoom(state, person.characterId, person.trip.lodging, local(state, now));
 }
 
 function remainingNights(trip: VisitorTrip, at: Date) {
@@ -175,11 +153,7 @@ function lodgingUpdate(state: VillageState, person: VillageVisitor & { trip: Vis
   if (!nights.length) return;
   const current = person.trip.lodging;
   const usable = current && nights.every((night) => lodgingRoom(state, person.characterId, current, night));
-  if (usable && current.hostId) return;
-  return (
-    chooseLodging(state, person.characterId, nights, person.trip.arrivedAt) ??
-    (current && !usable ? (chooseLodging(state, person.characterId, nights) ?? null) : undefined)
-  );
+  return current && !usable ? null : undefined;
 }
 
 function lodgingExpired(grant: { duration: string; expiresAt?: string }, instant: number) {
@@ -208,18 +182,15 @@ export function settleVisitorTrip(state: VillageState, now: Date) {
     const lodging = lodgingUpdate(state, active, at);
     if (lodging !== undefined) {
       clearVisitorLodging(state, active);
-      if (lodging) active.trip.lodging = lodging;
     }
     return;
   }
   const person = potentialArrival(state, at);
   if (!person) return;
   clearVisitorLodging(state, person);
-  const lodging = chooseLodging(state, person.characterId, [onDay(at, BEDTIME), onDay(at, BEDTIME, 1)]);
   person.trip = {
     arrivedAt: at.toISOString(),
     leavesAt: onDay(at, DEPARTURE, 2).toISOString(),
-    ...(lodging ? { lodging } : {}),
   };
 }
 
@@ -233,71 +204,13 @@ export function clearVisitorLodging(state: VillageState, person: VillageVisitor)
   if (person.trip) delete person.trip.lodging;
 }
 
-export function guestRoomOffer(
-  state: VillageState,
-  person: VillageVisitor,
-  now: Date,
-  hostId: string,
-  selection?: { venueId: string; zoneId: string },
-) {
-  if (introductoryVisitorStay(state, person)) return;
-  if (!person.firstMetAt || !person.trip || person.trip.lodging?.hostId || !person.visitsEnabled) return;
-  const at = local(state, now);
-  const nights = remainingNights(person.trip, at);
-  if (!nights.length) return;
-  for (const venue of state.venues) {
-    if (!venue.access || (selection && venue.id !== selection.venueId)) continue;
-    for (const zone of venueZones(venue)) {
-      if (
-        (selection && zone.id !== selection.zoneId) ||
-        !guestRoom.test(zone.name) ||
-        !mayHostLodging(venue, zone, hostId)
-      )
-        continue;
-      const choice = { venueId: venue.id, zoneId: zone.id, hostId };
-      const grant = {
-        id:
-          "lodging-" +
-          memoryHash([state.seed, person.incarnation, person.trip.arrivedAt, venue.id, zone.id]).slice(0, 32),
-        zoneId: zone.id,
-        visitorId: person.characterId,
-        issuerId: hostId,
-        duration: "lodging" as const,
-        expiresAt: person.trip.leavesAt,
-        sceneId: null,
-        accompaniedBy: null,
-        outsideHours: true,
-        revoked: false,
-        issuedAt: at.toISOString(),
-        sourceLineIds: [],
-      };
-      const candidate = { ...venue, access: { ...venue.access, permissions: [...venue.access.permissions, grant] } };
-      const projected = { ...state, venues: state.venues.map((row) => (row === venue ? candidate : row)) };
-      if (nights.every((night) => lodgingRoom(projected, person.characterId, choice, night)))
-        return { venue, choice, grant };
-    }
-  }
-}
-
-export const playerGuestRoom = (state: VillageState, person: VillageVisitor, now: Date) =>
-  guestRoomOffer(state, person, now, "player");
-
+/** Old clients may acknowledge an existing grant, but cannot create new lodging. */
 export function offerVisitorLodging(state: VillageState, id: string, trip: string, now: Date) {
   const person = visitingCharacter(state, now);
   if (!person || person.characterId !== id || person.trip.arrivedAt !== trip)
     throw conflict("That visit has ended. Refresh People.");
-  if (person.trip.lodging?.hostId === "player") return;
-  const subject = { id: "player", incarnation: memoryHash([state.seed, state.setupAt, "player"]) };
-  const actor = { id, incarnation: person.incarnation };
-  const warmth =
-    latestRelationshipScores(state.continuity).get(relationshipKey(actor, subject))?.relationshipScore ?? 0;
-  if (warmth < 0 || (person.visitPreference?.kind === "space" && person.visitPreference.until > now.toISOString()))
-    throw conflict("They'd prefer to keep their lodging this visit.");
-  const room = playerGuestRoom(state, person, now);
-  if (!room) throw conflict("There is no available guest room to offer for this stay.");
-  clearVisitorLodging(state, person);
-  room.venue.access!.permissions.push(room.grant);
-  person.trip.lodging = room.choice;
+  if (person.trip.lodging?.hostId === "player" && visitorLodging(state, person, now)) return;
+  throw conflict("Visitor hosting is unavailable until sleeping arrangements are defined.");
 }
 
 export function visitorPosition(
@@ -332,7 +245,6 @@ export function visitorPosition(
       if (placed && !alreadyHere) continue;
       if (!alreadyHere && zone.kind !== "exterior" && (zone.access?.mode !== "public" || zone.access.accompanied))
         continue;
-      if (!alreadyHere && (guestRoom.test(zone.name) || (inn.test(venue.name) && innRoom.test(zone.name)))) continue;
       if (
         !hasRoom(venue.id, zone.id) ||
         zoneClosed(state, venue, zone) ||

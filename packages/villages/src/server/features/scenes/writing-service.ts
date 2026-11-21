@@ -36,7 +36,7 @@ import { fittedNarrationReadset, narrationContinuityContext } from "../../domain
 import { narrationCircumstancePrompt } from "../../domain/rules/narration-circumstance.js";
 import { venueAdditionalWritingGuidance, venueWritingDirection } from "../../domain/rules/narration-style.js";
 import { findLocation, findNpc, npcProfile } from "../../domain/rules/places.js";
-import { findCardCharacter, introductoryVisitorStay } from "../../domain/rules/visitors.js";
+import { findCardCharacter, introductoryVisitorStay, visitorLodging } from "../../domain/rules/visitors.js";
 import { renderPlayerBackgroundContext } from "../../domain/rules/player-background.js";
 import { PROJECT_SPEECH_DIRECTION } from "../../domain/rules/project-interpretation.js";
 import { narrationAccessPrompt, sceneAccessDiscussed } from "../../domain/rules/narration-access.js";
@@ -46,7 +46,6 @@ import {
   NARRATION_ACCESS_COMMANDS,
   NARRATION_CIRCUMSTANCE_COMMANDS,
   NARRATION_HOUSING_COMMANDS,
-  NARRATION_LODGING_COMMAND,
   NARRATION_NATIVE,
   NARRATION_PROJECT_COMMANDS,
 } from "../../domain/rules/narration-command-contract.js";
@@ -166,7 +165,13 @@ export function createSceneWriting({
       const card = cards.find((row) => row.id === person.characterId);
       if (card) {
         const visitor = village.visitors?.find((row) => row.characterId === person.characterId);
-        const lodging = visitor?.trip?.lodging;
+        const lodging = visitorLodging(
+          village,
+          visitor,
+          new Date(capturedSceneCalendar(scene, village.timeZone).instant),
+        )
+          ? visitor?.trip?.lodging
+          : undefined;
         const stay =
           lodging?.hostId === "player"
             ? "They are staying in the guest room at the player's home."
@@ -191,16 +196,7 @@ export function createSceneWriting({
       if (!npc) throw conflict("A captured character's authored identity is unavailable.");
       return npcProfile(npc);
     });
-    const discussesLodging = /\b(?:overnight|guest room|spare room|stay (?:here|with|the night)|sleep here)\b/iu.test(
-      input,
-    );
-    const lodgingDiscussion =
-      discussesLodging &&
-      cast.some((person) =>
-        village.visitors?.some((visitor) => visitor.characterId === person.characterId && visitor.trip),
-      );
-    const nativeCommands =
-      !scene.visitorIntroduction && (mode !== "chat" || !!scene.contactGeneration?.instruction || lodgingDiscussion);
+    const nativeCommands = !scene.visitorIntroduction && (mode !== "chat" || !!scene.contactGeneration?.instruction);
     const addressed = nativeCommands
       ? []
       : addressedSceneResidents(input, cast, scene.sceneAttendance?.occupants ?? cast);
@@ -275,8 +271,7 @@ export function createSceneWriting({
         : context.places.filter(
             ({ id, name }) => id === scene.placeId || placeQuery.includes(name.toLocaleLowerCase("en-US")),
           );
-    const showAccess =
-      context.access.length > 0 && (mode !== "chat" || discussesLodging || sceneAccessDiscussed(scene, venue, input));
+    const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
     const remoteInvitations = mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds) : [];
     const canInviteForVisit = remoteInvitations.length > 0;
     const residentMovesInReply = mode === "chat";
@@ -413,7 +408,6 @@ export function createSceneWriting({
           nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           showAccess ? narrationAccessPrompt(context.access) : "",
-          lodgingDiscussion && showAccess ? NARRATION_LODGING_COMMAND : "",
           nativeCommands && showAccess ? NARRATION_ACCESS_COMMANDS : "",
           canInviteForVisit
             ? "Remote visit invitations available in this Scene: " + JSON.stringify(remoteInvitations)
