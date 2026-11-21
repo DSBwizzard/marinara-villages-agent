@@ -1,4 +1,5 @@
 import { placeRegistry } from "../../domain/rules/places.js";
+import { cardCharacters, findCardCharacter } from "../../domain/rules/visitors.js";
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
@@ -322,7 +323,7 @@ export function createRepairService(ports: RepairPorts) {
     if (
       personId &&
       personId !== "player" &&
-      !state.villagers.some((p) => p.characterId === personId) &&
+      !findCardCharacter(state, personId) &&
       !placeRegistry(state)?.npcs[personId]
     )
       throw notFound("Choose a person from People.");
@@ -421,10 +422,10 @@ export function createRepairService(ports: RepairPorts) {
       identity: repairDigest([state.seed, state.setupAt]),
       people: [
         { id: "player", name: "Your Persona" },
-        ...state.villagers.map((p) => ({
+        ...cardCharacters(state).map((p) => ({
           id: p.characterId,
           name: p.cardSnapshot.name,
-          ...(p.agenda ? { hasAgenda: true } : {}),
+          ...("agenda" in p && p.agenda ? { hasAgenda: true } : {}),
         })),
         ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
       ],
@@ -479,8 +480,7 @@ export function createRepairService(ports: RepairPorts) {
     const personName =
       personId === "player"
         ? "Your Persona"
-        : (state.villagers.find((p) => p.characterId === personId)?.cardSnapshot.name ??
-          (npc ? npc.label || npc.name : undefined));
+        : (findCardCharacter(state, personId ?? "")?.cardSnapshot.name ?? (npc ? npc.label || npc.name : undefined));
     const creation = memoryList
       ? records.find((r) => r.creating && (!personId || r.people?.some((p) => p.id === personId)))
       : undefined;

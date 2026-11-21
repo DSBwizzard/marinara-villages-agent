@@ -1,4 +1,5 @@
 import { placeRegistry, readNpc, findLocation, sceneActorIds } from "./places.js";
+import { cardCharacters } from "./visitors.js";
 import { projectAgreementCurrent } from "./project-terms.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
 import type { RepairBrowseItem, RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
@@ -246,7 +247,7 @@ export function worldRepairRecords(
     );
   const people = [
     { id: "player", name: "Your Persona" },
-    ...state.villagers.map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
+    ...cardCharacters(state).map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
     ...Object.values(placeRegistry(state)?.npcs ?? {})
       .filter((npc) => !npc.disabled)
       .map((npc) => ({ id: npc.id, name: npc.label || npc.name })),

@@ -186,7 +186,7 @@ await runCase("repair/agenda", async () => {
   await f.api.apply(undo.id, undo.token);
   assert.deepEqual((await f.read()).villagers[0]!.agenda, start);
   const todayRecord = dates[0]!;
-  assert.deepEqual(todayRecord.agenda?.venues?.[0]?.zones, [
+  assert.deepEqual(todayRecord.agenda?.venues?.find((option) => option.value === "hall")?.zones, [
     { value: "exterior", label: "Entrance (1)" },
     { value: "common", label: "Entrance (2)" },
   ]);
@@ -1016,6 +1016,17 @@ await runCase("repair/domain-editors", async () => {
       s.worldRules = "Original standing rules";
       const common = s.venues[0].zones!.find((zone) => zone.id === "common")!;
       common.seen = false;
+      const visitor = {
+        ...structuredClone(s.villagers[0]!),
+        characterId: "visitor",
+        visitsEnabled: true,
+        visitsRevision: "initial",
+      };
+      visitor.cardSnapshot.id = "visitor";
+      visitor.cardSnapshot.name = "Visitor";
+      s.visitors = [visitor];
+      common.access!.managerIds = ["a", "visitor"];
+      common.access!.memberIds = ["visitor"];
       initializeRoomContinuity(s, "cafe", common.id, common.description, "room-seed", s.setupAt);
     },
     { memories: true },
@@ -1054,8 +1065,15 @@ await runCase("repair/domain-editors", async () => {
   assert.ok((await f.api.index()).checkpoints.length >= 2);
   const guest = "a";
   const policy = repairId("access", "cafe", "common");
+  assert.ok((await f.api.index()).people.some((person) => person.id === "visitor" && !person.hasAgenda));
+  const visitorPolicy = await f.api.inspect(policy);
+  assert.equal(visitorPolicy.fields.find((field) => field.key === "manager:visitor")?.value, true);
+  assert.equal(visitorPolicy.fields.find((field) => field.key === "member:visitor")?.value, true);
   const restrict = await f.prepare(edit(policy, { mode: "permission-required" }, "restrict-entry"));
   await f.api.apply(restrict.id, restrict.token);
+  const preservedAccess = (await f.read()).venues[0]!.zones!.find((zone) => zone.id === "common")!.access!;
+  assert.ok(preservedAccess.managerIds?.includes("visitor"));
+  assert.ok(preservedAccess.memberIds.includes("visitor"));
   const grantId = repairId("permission", "cafe", "common", guest);
   const grant = await f.prepare(edit(grantId, { standing: true }, "grant-standing"));
   await f.api.apply(grant.id, grant.token);
