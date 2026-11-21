@@ -60,7 +60,7 @@ Reads, polling, notices, diagnostics and storage retries do not authorize paid d
 
 Engine document writes are buffered, without a package-visible durable flush barrier. A hard crash can lose recently acknowledged claims or responses. Recovery records improve normal-operation replay; they do not provide crash-proof billing deduplication.
 
-Common continuity supplies the ordered current room account. Scene changes replace or retire only the affected fitted entries and preserve unrelated entries. Witnessed nonstructural decoration, rearrangement, repair and plausible damage use common keeps. Structural changes and official Venue functions use native Projects. Native world, artwork, preparation and repair operations retain their scoped authority, revisions and receipts. See [Places](places.md) and [Memories](memories-core.md).
+Common continuity supplies the ordered current room account. Scene changes replace or retire only the affected fitted entries and preserve unrelated entries. Witnessed nonstructural decoration, rearrangement, repair and plausible damage use common keeps. Structural changes use native Projects. A visited existing Place becomes eligible for Venue mechanics through explicit admission. Native world, artwork, preparation and repair operations retain their scoped authority, revisions and receipts. See [Places](places.md) and [Memories](memories-core.md).
 
 Saved-data changes require an explicit format decision and preservation of existing storage.
 
