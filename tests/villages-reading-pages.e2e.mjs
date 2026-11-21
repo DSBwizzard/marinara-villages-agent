@@ -73,7 +73,7 @@ await withBrowser(browser, async () => {
           speakerId: residents[0].characterId,
           kind: "dialogue",
           name: residents[0].name,
-          content: prose,
+          content: "Hello?",
           at: now,
         },
       ],
@@ -142,6 +142,28 @@ await withBrowser(browser, async () => {
     const draft = page.getByRole("textbox", { name: "Message at The Mill" });
     const dock = page.locator(`.${tag}-chat-vn`);
     const tray = page.getByRole("button", { name: /World changes?/ });
+    await expect(text).toHaveText("Hello?");
+    const shortDialogue = await dock.boundingBox();
+    assert(
+      await reading.evaluate((node) => node.clientHeight <= parseFloat(getComputedStyle(node).lineHeight) + 2),
+      "a short message only occupies one reading line",
+    );
+    await page.screenshot({ path: `artifacts/compact-scene-dialogue-${width}x${height}.png` });
+    const line = session.lines.at(-1);
+    Object.assign(line, { kind: "narration", speakerId: "__venue_scene__", name: "", content: "A quiet afternoon." });
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(text).toHaveText("A quiet afternoon.");
+    const shortNarration = await dock.boundingBox();
+    assert(shortNarration.height < shortDialogue.height, "narration reserves no empty speaker heading");
+    Object.assign(line, {
+      kind: "dialogue",
+      speakerId: residents[0].characterId,
+      name: residents[0].name,
+      content: prose,
+    });
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await expect(text).toContainText(atomic ? "Unbroken" : "Sentence 1");
     await expect(draft).toBeDisabled();
     await expect(page.getByRole("button", { name: "Previous paragraph" })).toHaveCount(0);
@@ -158,6 +180,8 @@ await withBrowser(browser, async () => {
       await expect(page.locator(".villages-dialogue-reader")).toHaveCSS("background-color", color);
     }
     const before = await dock.boundingBox();
+    assert(before.height > shortDialogue.height, "long dialogue grows only to the reading page limit");
+    const inputBefore = await draft.boundingBox();
     const location = await page.locator(`.${tag}-room-place`).boundingBox();
     const chips = await page.locator(`.${tag}-scene-notice-chips`).boundingBox();
     assert.ok(
@@ -178,7 +202,7 @@ await withBrowser(browser, async () => {
     assert(pageCount > 1 && pageCount < 100, "long replies advance in small chunks on desktop and phones");
     assert.equal(combined, expected, "every character appears exactly once");
     await expect(draft).toBeEnabled();
-    assert.deepEqual(await dock.boundingBox(), before, "the input occupies the same dock space while reading");
+    assert.deepEqual(await draft.boundingBox(), inputBefore, "readiness and message sizing do not move the input");
     await draft.fill("Draft retained across dossier navigation");
     const last = await text.textContent();
     await page.getByRole("button", { name: "Venue actions" }).click();

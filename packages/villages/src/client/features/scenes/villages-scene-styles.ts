@@ -93,7 +93,7 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-modal-errors .${tag}-scene-error-panel { z-index: 40; }
 @media (min-width: 768px) {
   .${tag}-room-screen .${tag}-chat-vn-row { padding: 1rem; gap: 1rem; }
-  .${tag}-room-screen .${tag}-chat-input { padding: .625rem 1rem; gap: .5rem; }
+  .${tag}-room-screen .${tag}-chat-input { padding: .375rem .75rem; gap: .5rem; }
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-send { width: 44px; height: 44px; }
 .${tag}-room-screen .${tag}-chat-input .${tag}-chat-send[aria-label="Resend"] { width: auto; padding-inline: .5rem; font-size: .75rem; }
@@ -183,9 +183,9 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
   background:var(--popover); color:var(--foreground); border:0; border-radius:.75rem; box-shadow:none;
 }
 .${tag}-room-screen .villages-dialogue-reader[aria-hidden=true] { visibility:hidden; }
-.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-row { display:block; padding:.625rem .75rem; height:calc(var(--villages-reading-page-height,7.5rem) + 2rem); box-sizing:content-box; }
+.${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-row { display:block; padding:.625rem .75rem; height:auto; box-sizing:content-box; }
 .${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-reading {
-  height:var(--villages-reading-page-height,7.5rem); min-height:0; max-height:none;
+  height:auto; min-height:0; max-height:var(--villages-reading-page-height,7.5rem);
   overflow:hidden; padding-right:.25rem; font-size:1rem; line-height:1.5;
 }
 .${tag}-room-screen .${tag}-chat-vn-reading :is(.${tag}-chat-vn-text,.${tag}-chat-vn-beat) { margin:0; font-size:inherit; line-height:inherit; }
