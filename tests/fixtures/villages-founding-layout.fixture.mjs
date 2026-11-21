@@ -290,7 +290,10 @@ export async function verifyFoundingLayout(group) {
             }
             return send(modelSelection);
           }
-          if (path.endsWith("/catalog")) return send({ characters });
+          if (path.endsWith("/catalog"))
+            return send({
+              characters: [...characters, { id: "__professor_mari__", name: "Professor Mari", summary: "Your guide" }],
+            });
           if (path.endsWith("/lorebooks"))
             return send({
               books: [
@@ -332,10 +335,10 @@ export async function verifyFoundingLayout(group) {
         const root = page.locator(".villages-forging-v2"),
           button = (name) => root.getByRole("button", { name, exact: true });
         const palette = (day) => ({
-          ink: day ? "rgb(23, 57, 47)" : "rgb(240, 223, 188)",
-          panel: day ? "rgb(250, 248, 238)" : "rgb(57, 48, 71)",
+          ink: day ? "rgb(33, 62, 54)" : "rgb(240, 223, 188)",
+          panel: day ? "rgb(212, 229, 222)" : "rgb(57, 48, 71)",
           card: day ? "rgb(218, 231, 210)" : "rgb(81, 65, 87)",
-          primary: day ? "rgb(69, 105, 77)" : "rgb(150, 155, 126)",
+          primary: day ? "rgb(65, 107, 87)" : "rgb(150, 155, 126)",
         });
         const checkPalette = async (day = daylight) => {
           await expect(root).toHaveAttribute("data-lighting", day ? "day" : "night");
@@ -896,29 +899,27 @@ export async function verifyFoundingLayout(group) {
             await hierarchy
               .locator("[data-active] .villages-founding-hierarchy-star path")
               .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill)),
-            Array(activeCount).fill(palette(daylight).ink),
+            Array(activeCount).fill(daylight ? "rgb(232, 242, 236)" : palette(daylight).ink),
           );
           const inactiveStars = await hierarchy
             .locator("g:not([data-active]) > .villages-founding-hierarchy-star path")
             .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill));
           assert.deepEqual(
             inactiveStars,
-            Array(9 - activeCount).fill(daylight ? "rgb(61, 91, 83)" : "rgb(208, 193, 179)"),
+            Array(9 - activeCount).fill(daylight ? "rgb(212, 229, 222)" : "rgb(208, 193, 179)"),
           );
           assert.deepEqual(await stage.boundingBox(), stageBounds, "The chart leaves Mari’s standing mark in place");
         };
         await layer("World");
         await expect(hierarchy.locator(".villages-founding-hierarchy-star")).toHaveCount(9);
         await expect(line).toHaveText(/^See these five layers\?/);
-        const retainedLine = await line.textContent();
-        await scene.getByRole("button", { name: "Transcript", exact: true }).click();
-        const tutorialTranscript = root.getByRole("dialog", { name: "Transcript", exact: true });
-        await expect(tutorialTranscript).toContainText("six neighbors with one catastrophically shared laundry room");
-        await expect(tutorialTranscript).not.toContainText("Here are your starting Venues");
-        await tutorialTranscript.press("Escape");
-        await expect(tutorialTranscript).toBeVisible();
-        await tutorialTranscript.getByRole("button", { name: "Back", exact: true }).click();
-        await expect(line).toHaveText(retainedLine);
+        await expect(root.getByRole("button", { name: "Transcript", exact: true })).toHaveCount(0);
+        if (daylight) {
+          await expect(hierarchy.locator("circle").first()).toHaveCSS("fill", "rgb(33, 72, 62)");
+          await expect(currentStar.locator(".villages-founding-star")).toHaveCSS("background-color", "rgb(33, 72, 62)");
+          await expect(currentStar.locator(".villages-founding-star")).toHaveCSS("color", "rgb(232, 242, 236)");
+          await expect(currentStar.locator(".villages-founding-star")).not.toHaveCSS("box-shadow", "none");
+        }
         await expect(line).toHaveCSS("color", palette(daylight).ink);
         await expect(line).toHaveCSS(
           "font-size",
@@ -1526,6 +1527,7 @@ export async function verifyFoundingLayout(group) {
         for (const person of characters.slice(0, view.count)) {
           await button("+ Add villager").click();
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
+          await expect(picker.getByRole("button", { name: "Professor Mari · Add", exact: true })).toHaveCount(0);
           await picker.getByRole("button", { name: person.name + " · Add", exact: true }).click();
           await expect(picker.locator("footer").getByRole("button")).toHaveCount(1);
           await checkPalette();
@@ -1603,7 +1605,7 @@ export async function verifyFoundingLayout(group) {
         const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
         await expect(artSettings.getByRole("button", { name: "Back", exact: true })).toHaveCSS(
           "background-color",
-          daylight ? "rgb(250, 248, 238)" : "rgb(81, 65, 87)",
+          daylight ? "rgb(212, 229, 222)" : "rgb(81, 65, 87)",
         );
         await expect(artSettings.locator("fieldset")).toHaveCSS(
           "border-top-color",

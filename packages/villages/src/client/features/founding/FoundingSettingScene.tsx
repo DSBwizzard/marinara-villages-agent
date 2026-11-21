@@ -322,7 +322,6 @@ export function FoundingSettingScene({
         text={lines[lineIndex]!}
         lineRef={lineRef}
         hidden={!!title}
-        active={!inactive}
         counter={`${lineIndex + 1} / ${lines.length}`}
       >
         {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}

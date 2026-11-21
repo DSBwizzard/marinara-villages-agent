@@ -275,6 +275,7 @@ export function FoundingVillagerPicker({
       },
   );
   const choices = (catalog ?? [])
+    .filter((person) => person.id !== "__professor_mari__")
     .filter((person) =>
       (person.name + " " + person.summary).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
     )

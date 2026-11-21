@@ -13,10 +13,11 @@ const image =
   ).toString("base64");
 const people = [
   { id: "aqua", name: "Aqua", summary: "A coastal resident" },
-  { id: "mari", name: "Professor Mari", summary: "A patient teacher" },
+  { id: "rosa", name: "Rosa", summary: "A patient resident" },
 ];
 const catalog = [
   ...people,
+  { id: "__professor_mari__", name: "Professor Mari", summary: "Your guide" },
   ...Array.from({ length: 24 }, (_, index) => ({
     id: "card-" + index,
     name: "Card " + (index + 1),
@@ -148,24 +149,35 @@ await withBrowser(browser, async () => {
       await page.addScriptTag({ content: bundle });
       const root = page.locator(".villages-forging-v2"),
         next = root.getByRole("button", { name: "Next", exact: true });
+      const advance = async () => {
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const counter = root.locator(".villages-reader-counter:visible");
+          if (!(await counter.count()) || (await counter.evaluate((node) => !!node.closest("[inert]")))) break;
+          const [current, total] = (await counter.getAttribute("aria-label")).match(/\d+/gu).map(Number);
+          if (current === total) break;
+          await next.click();
+        }
+        await next.click();
+      };
       for (const reply of ["START", "Next", "Next", "Next", "Next", "Next", "Next", "Next"])
-        await root.getByRole("button", { name: reply, exact: true }).click();
+        if (reply === "Next") await advance();
+        else await root.getByRole("button", { name: reply, exact: true }).click();
       if (phone)
         await root
           .getByRole("dialog", { name: "The wider world", exact: true })
           .getByRole("button", { name: "Next", exact: true })
           .click();
-      else await next.click();
-      await next.click();
+      else await advance();
+      await advance();
       const lore = root.getByRole(phone ? "dialog" : "region", {
         name: phone ? "Choose Lorebooks" : "Village Lorebooks",
         exact: true,
       });
       await lore.getByRole("button", { name: "Next", exact: true }).click();
-      await next.click();
+      await advance();
       if (phone) {
         await expect(root.getByRole("dialog", { name: "Your Village", exact: true })).toHaveCount(0);
-        await next.click();
+        await advance();
       }
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
       await root.getByLabel("What is the village like?", { exact: true }).fill("A village beside the sea.");
@@ -174,21 +186,22 @@ await withBrowser(browser, async () => {
           .getByRole("dialog", { name: "Your Village", exact: true })
           .getByRole("button", { name: "Next", exact: true })
           .click();
-      else await next.click();
-      await next.click();
-      await next.click();
-      if (phone) await root.getByRole("button", { name: "Edit Map", exact: true }).click();
+      else await advance();
+      await advance();
+      await advance();
+      if (phone) await advance();
       await root.getByLabel("First map name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      await next.click();
+      await advance();
       const phase = root.getByRole("list", { name: "Founding phases" }).locator('[aria-current="step"]');
       await expect(phase).toHaveAttribute("aria-label", "People");
-      if (phone) await next.click();
+      if (phone) await advance();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
         const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
         const add = picker.getByRole("button", { name: person.name + " · Add", exact: true });
-        if (person.id === "mari") {
+        await expect(picker.getByRole("button", { name: "Professor Mari · Add", exact: true })).toHaveCount(0);
+        if (person.id === "rosa") {
           const results = picker.getByRole("group", { name: "Choose founding villagers", exact: true });
           await results.hover();
           await page.mouse.wheel(0, 4000);
@@ -206,7 +219,7 @@ await withBrowser(browser, async () => {
       const row = (name) =>
         root.locator(".villages-selected-villager").filter({ has: page.getByText(name, { exact: true }) });
       await expect(row("Aqua").getByRole("status")).toHaveText("6 sprites");
-      const missing = row("Professor Mari").getByRole("status");
+      const missing = row("Rosa").getByRole("status");
       await expect(missing).toContainText("No Sprites Assigned!");
       await expect(missing).toHaveCSS("color", phone ? "rgb(243, 182, 183)" : "rgb(134, 47, 55)");
       for (const label of ["Portrait", "Sprites", "Assign Side"])
@@ -215,7 +228,7 @@ await withBrowser(browser, async () => {
       await expect(next).toBeInViewport();
       assert.ok((await row("Aqua").boundingBox()).height < 100, "People stays compact");
       assert.ok(
-        (await row("Professor Mari").boundingBox()).height < 100,
+        (await row("Rosa").boundingBox()).height < 100,
         "Missing-sprite status does not squeeze the name into a column",
       );
       const avatar = row("Aqua").locator(".marinara-capability-villages-identity-card-face");
@@ -227,10 +240,10 @@ await withBrowser(browser, async () => {
       } else await expect(avatar.locator("img")).toHaveAttribute("loading", "lazy");
       assert.equal(spriteLoads, 0, "Counting sprites does not download full artwork");
       await page.screenshot({ path: ".build-tmp/founding-sprites/compact-" + viewport.width + ".png" });
-      await next.click();
+      await advance();
       await expect(phase).toHaveAttribute("aria-label", "Maps");
       await expect(root.getByText(/^A new Village starts/)).toBeVisible();
-      assert.deepEqual([...opened].sort(), ["aqua", "mari"]);
+      assert.deepEqual([...opened].sort(), ["aqua", "rosa"]);
       assert.equal(writes.length, 0, "Counts never save or require an appearance editor");
       await root.getByRole("button", { name: "Back", exact: true }).click();
       await expect(row("Aqua").getByRole("status")).toHaveText("6 sprites");

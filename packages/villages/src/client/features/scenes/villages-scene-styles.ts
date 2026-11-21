@@ -194,7 +194,7 @@ ${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat
 
 /* The same reader frame is used during Founding and ordinary Scene playback. */
 .${tag}-room-screen[data-reader-theme=night] { ${STORYBOOK_NIGHT_PALETTE} }
-.${tag}-room-screen[data-reader-theme=day] { ${STORYBOOK_DAY_PALETTE} --popover:#faf8ee; --foreground:#17392f; --primary:#45694d; --primary-foreground:#fffbed; }
+.${tag}-room-screen[data-reader-theme=day] { ${STORYBOOK_DAY_PALETTE} }
 .${tag}-room-screen .villages-dialogue-reader { background:var(--popover); color:var(--foreground); border-color:var(--border); }
 .${tag}-room-screen .villages-dialogue-reader .${tag}-chat-vn-row { display:block; padding:.75rem; }
 .${tag}-room-screen .villages-dialogue-reader .villages-reader-icon { width:1.5rem; height:1.5rem; }

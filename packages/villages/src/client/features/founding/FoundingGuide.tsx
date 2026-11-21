@@ -27,7 +27,7 @@ export function FoundingGuide({
       inert={inactive || undefined}
     >
       {scene ? null : <img src={foundingMariSprite("neutral")} alt="" />}
-      <FoundingReader text={children} lineRef={lineRef} active={!inactive}>
+      <FoundingReader text={children} lineRef={lineRef}>
         {replies ? <div className="villages-founding-replies">{replies}</div> : null}
       </FoundingReader>
     </aside>

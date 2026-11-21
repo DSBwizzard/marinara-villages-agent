@@ -154,9 +154,10 @@ await withBrowser(browser, async () => {
     await expect(reading).toBeVisible();
     const sceneTheme = page.locator(`.${tag}-room-screen`);
     const reader = page.locator(".villages-dialogue-reader");
+    await expect(reader.getByRole("button", { name: "Transcript", exact: true })).toBeVisible();
     const retainedPassage = await text.textContent();
     for (const [theme, color] of [
-      ["day", "rgb(250, 248, 238)"],
+      ["day", "rgb(212, 229, 222)"],
       ["night", "rgb(57, 48, 71)"],
     ]) {
       await sceneTheme.evaluate((node, theme) => {

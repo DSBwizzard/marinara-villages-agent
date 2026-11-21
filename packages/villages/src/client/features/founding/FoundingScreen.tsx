@@ -1,4 +1,3 @@
-import { FoundingTranscript } from "./FoundingReader.js";
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { simpleFoundingMap } from "./simple-map.js";
 import { foundingHomeMembers, selectFoundingHomes } from "./founding-homes.js";
@@ -104,15 +103,7 @@ type FoundingScreenProps = {
   storybookDaylight: boolean;
   appearanceControl?: ReactNode;
 };
-export function FoundingScreen(props: FoundingScreenProps) {
-  return (
-    <FoundingTranscript>
-      <FoundingContent {...props} />
-    </FoundingTranscript>
-  );
-}
-
-function FoundingContent({ controller, storybookDaylight, appearanceControl }: FoundingScreenProps) {
+export function FoundingScreen({ controller, storybookDaylight, appearanceControl }: FoundingScreenProps) {
   const {
     busy,
     catalog,

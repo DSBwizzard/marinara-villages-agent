@@ -3,11 +3,11 @@ const P = "marinara-capability-villages";
 export const STORYBOOK_NIGHT_PALETTE = `--background:#302d47;--foreground:#f0dfbc;--popover:#393047;--muted:#4f3c53;--muted-foreground:#d0c1b3;--border:#a39b8460;--primary:#969b7e;--primary-foreground:#292938;--secondary:#514157;--destructive:#f3b6b7;--menu-rose:#b97980;--menu-sage:#969b7e;--menu-selected:#b979809e;--menu-tab-line:#d29399;--menu-field:#74536755;--menu-field-border:#b47f92aa;`;
 
 export const STORYBOOK_DAY_PALETTE = `
- --background:#b7d5e2;--foreground:#213e36;--popover:#e8efdf;--muted:#d4e4da;--muted-foreground:#3d5b53;
- --border:#668d8170;--primary:#a7c3a6;--primary-foreground:#203b32;--secondary:#d6e6d9;--destructive:#862f37;
+ --background:#b7d5e2;--foreground:#213e36;--popover:#d4e5de;--muted:#d4e4da;--muted-foreground:#3d5b53;
+ --border:#668d8170;--primary:#416b57;--primary-foreground:#e8f2ec;--secondary:#d4e5de;--destructive:#862f37;
  --menu-rose:#466547;--menu-sage:#52754b;--menu-selected:#a8c6aa;--menu-tab-line:#41674f;
  --menu-field:#eff5efd9;--menu-field-border:#658a80;--menu-option:var(--popover);--menu-placeholder:#42635f;
- --menu-rail:#ccdcc2e8;--menu-mobile-rail:#d2e0c8;--menu-selected-ink:var(--primary-foreground);
+ --menu-rail:#ccdcc2e8;--menu-mobile-rail:#d2e0c8;--menu-selected-ink:var(--foreground);
  --menu-focus:#295e51;--menu-hover:#bfd6c7;--menu-control-border:#6b8a6c;--menu-selected-border:#74947a;
  --menu-selection-fill:var(--menu-selected);
  --menu-card:#dae7d2;--menu-card-line:#789483;--menu-card-selected:#a8c6aa;
