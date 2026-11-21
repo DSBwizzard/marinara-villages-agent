@@ -122,6 +122,25 @@ await withBrowser(browser, async () => {
       await replyChip.click();
       await expect(popout).toContainText(reply[0].name);
       assert.equal(await popout.locator("img").count(), 0);
+      await page.evaluate(
+        (replyEntries) => window.showLore({ replyEntries }),
+        Array.from({ length: 24 }, (_, i) => entry(`long-${i}`, `Included entry ${i + 1}`)),
+      );
+      await page.getByRole("button", { name: "Lorebooks · 24 entries", exact: true }).click();
+      bounds = await popout.boundingBox();
+      assert(bounds.height <= 844 * 0.35 + 1, "long lists retain the other notice chips' height limit");
+      await popout.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+      assert(
+        await popout.getByRole("button", { name: "Close Lorebooks used" }).evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          return document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest("button") === node;
+        }),
+        "Close stays reachable in a long list",
+      );
+      await page.evaluate((replyEntries) => window.showLore({ replyEntries }), reply);
+      await replyChip.click();
       current = [{ ...records[1], id: "unrelated", revision: 3 }, ...records];
       revision = 3;
       const before = calls.length;
