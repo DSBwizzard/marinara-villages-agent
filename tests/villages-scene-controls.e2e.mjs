@@ -143,9 +143,11 @@ await withBrowser(browser, async () => {
       const send = page.getByRole("button", { name: "Send", exact: true });
       const dock = page.locator(`.${tag}-chat-vn`);
       const images = page.locator(`.${tag}-chat-cast-person > img`);
+      while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+        await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
       await expect(composer).toBeVisible();
       await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
-      await expect(page.locator(`.${tag}-chat-vn-portrait`)).toBeVisible();
+      await expect(page.locator(`.${tag}-chat-vn-portrait`).first()).toBeVisible();
       await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
       const buttonBox = await send.boundingBox();
       assert.equal(buttonBox.width, mobile ? 44 : 32);
@@ -158,11 +160,9 @@ await withBrowser(browser, async () => {
       const inputAfter = await composer.locator("..").boundingBox();
       assert.equal(inputAfter.width, inputBefore.width, "scrollbars cannot resize the composer");
       await composer.fill("Tea sounds perfect.");
-      await page.getByRole("button", { name: "Previous paragraph" }).click();
-      await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Rain taps");
-      await expect(composer).toHaveCount(0);
-      await expect(send).toHaveCount(0);
-      await page.getByRole("button", { name: "History", exact: true }).click();
+      await expect(composer).toBeVisible();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
       await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
       await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Rain taps against the window.");
       const historyPages = page.getByRole("navigation", { name: "Scene history pages" });
@@ -170,12 +170,17 @@ await withBrowser(browser, async () => {
         (await historyPages.getByRole("button", { name: "Refresh", exact: true }).boundingBox()).height,
         mobile ? 44 : 32,
       );
-      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
-      await expect(composer).toHaveCount(0);
-      await expect(send).toHaveCount(0);
-      await page.getByRole("button", { name: "Hide history" }).click();
-      await page.getByRole("button", { name: "Next paragraph" }).click();
+      await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
+      await expect(composer).toBeVisible();
+      await expect(send).toBeVisible();
+      await page.getByRole("button", { name: "Close transcript", exact: true }).click();
       await expect(send).toBeEnabled();
+      await expect(composer).toHaveValue("Tea sounds perfect.");
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
+      await expect(composer).toBeHidden();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
       for (const action of ["Move", "Conclude"])
@@ -250,6 +255,7 @@ await withBrowser(browser, async () => {
         );
         const keyboardHeight = Math.min(300, Math.round(height * 0.45));
         const visible = height - keyboardHeight;
+        let keyboardFirstY = 0;
         for (const resizesLayout of [false, true]) {
           await composer.focus();
           await page.evaluate((height) => {
@@ -268,11 +274,16 @@ await withBrowser(browser, async () => {
             }),
           );
           for (let i = 0; i < baseline.length; i++)
-            for (const key of ["x", "y", "width", "height"])
+            for (const key of ["x", "width", "height"])
               assert.ok(
                 Math.abs(baseline[i][key] - after[i][key]) < 1,
                 `keyboard preserves sprite ${i} ${key} (${resizesLayout ? "layout" : "visual"} viewport)`,
               );
+          assert.ok(
+            after.every((box, index) => box.y <= baseline[index].y + 1),
+            "the keyboard may lift the art",
+          );
+          keyboardFirstY = Math.round(after[0].y);
           assert.ok((await dock.boundingBox()).y >= 0, "dock stays inside the visible screen");
           assert.ok(
             after.some((box) => box.y + box.height > visible),
@@ -291,7 +302,7 @@ await withBrowser(browser, async () => {
           await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
           await expect(composer).toHaveValue("Keyboard draft");
         }
-        // Viewport panning moves the dock, not the artwork.
+        // Panning that preserves the visible bottom also preserves the keyboard layout.
         await page.evaluate(
           ({ visible }) => {
             window.sceneViewport.height = visible - 30;
@@ -302,9 +313,7 @@ await withBrowser(browser, async () => {
           { visible },
         );
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        await expect
-          .poll(async () => Math.round((await images.first().boundingBox()).y))
-          .toBe(Math.round(baseline[0].y));
+        await expect.poll(async () => Math.round((await images.first().boundingBox()).y)).toBe(keyboardFirstY);
         await page.evaluate((height) => {
           window.sceneViewport.height = height;
           window.sceneViewport.offsetTop = 0;
@@ -348,9 +357,10 @@ await withBrowser(browser, async () => {
       await composer.fill("Ready to send.");
       await send.click();
       await expect.poll(() => turns).toBe(1);
-      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
-      while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
-        await page.getByRole("button", { name: "Next paragraph" }).click();
+      await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
+
+      while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+        await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
       await expect(composer).toHaveValue("");
       assert.equal(turns, 1);
       if (count === 4) {
@@ -367,7 +377,7 @@ await withBrowser(browser, async () => {
         );
       } else {
         await page.getByRole("button", { name: "Venue actions" }).click();
-        await page.getByRole("menuitem", { name: "End Scene now", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Conclude", exact: true }).click();
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "Return to map", exact: true }).click();
         await expect(host).not.toHaveAttribute("data-scene-play", "");

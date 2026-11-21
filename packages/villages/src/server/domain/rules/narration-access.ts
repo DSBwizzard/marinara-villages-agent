@@ -10,6 +10,7 @@ import { narrationWitnesses, type NarrationCommunication } from "./narration-sou
 import { findLocation, findNpc, sceneActorIds } from "./places.js";
 import { contactNeighbors } from "./venue-contact.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
+import { findCardCharacter } from "./visitors.js";
 import {
   applyAccessCommand,
   defaultZonePolicy,
@@ -89,7 +90,6 @@ export function narrationAccessScopes(state: VillageState, actors: string[]) {
             venue.workerIds,
             venue.occupancy.playerHome,
             venue.zones?.map((zone) => [zone.id, zone.kind, zone.ownerId, zone.controllerIds, zone.access]),
-            state.communityVenueId,
           ]),
           authorities,
         },
@@ -233,7 +233,15 @@ export type NarrationAccessDecision = {
   | {
       type: "access.decide";
       visitor: string;
-      outcome: "invite-now" | "invite-later" | "invite-outside-hours" | "refuse" | "dismiss" | "ban-zone" | "ban-venue";
+      outcome:
+        | "invite-now"
+        | "invite-later"
+        | "invite-outside-hours"
+        | "host-visitor"
+        | "refuse"
+        | "dismiss"
+        | "ban-zone"
+        | "ban-venue";
       accompanies?: boolean;
     }
   | { type: "access.decide"; outcome: "access-management"; management: unknown }
@@ -292,7 +300,7 @@ export function applyNarrationAccess(
   state: VillageState,
   decision: NarrationAccessDecision,
   readset: Pick<NarrationReadset, "setupAt" | "access"> & {
-    source: Pick<NarrationReadset["source"], "seed" | "episodeId">;
+    source: Pick<NarrationReadset["source"], "seed" | "episodeId" | "visitorTrips">;
   },
   context: NarrationCommunication,
   sources: ContinuityEvidence[],
@@ -315,6 +323,10 @@ export function applyNarrationAccess(
       captured.authorities.some((authority) => authority.actorId === decision.by),
     "the captured access authority changed or was not supplied",
   );
+  memoryRequire(
+    !(decision.type === "access.decide" && decision.outcome === "host-visitor"),
+    "Visitor hosting is unavailable until sleeping arrangements are defined.",
+  );
   assertNarrationDecision(state, decision.by, context, sources);
   memoryRequire(
     sources.every((source) => source.perceptions.some((row) => row.channel === "words" && row.actorId !== decision.by)),
@@ -330,7 +342,6 @@ export function applyNarrationAccess(
       at,
       known,
       lineIds,
-      state.communityVenueId,
     );
   };
   if (decision.type === "permission.revoke") {
@@ -409,9 +420,7 @@ export function applyNarrationAccess(
   const person = (id: string) =>
     id === "player"
       ? state.playerPersonaName || state.playerName || "Player"
-      : state.villagers.find((actor) => actor.characterId === id)?.cardSnapshot.name ||
-        findNpc(state, id)?.name ||
-        "Former resident";
+      : findCardCharacter(state, id)?.cardSnapshot.name || findNpc(state, id)?.name || "Former resident";
   const grant = venue.access.permissions.find((grant) => grant.id === receiptId);
   const destination =
     (venue.zones?.find((zone) => zone.id === decision.zone)?.name ?? "the Venue") + " at " + venue.name;

@@ -1,8 +1,22 @@
 import { observedZone } from "./zone-observation.js";
 import type { VenueScene } from "../models/scene-model.js";
-import { sceneMoveAccompanying } from "./venue-contact.js";
+import {
+  contactCanEnter,
+  contactNeighbors,
+  contactPath,
+  liveSceneMovePermission,
+  physicalVenuePath,
+  sceneMoveAccompanying,
+  sceneTrespassReason,
+} from "./venue-contact.js";
+import { sceneZoneOccupants } from "./scene-attendance.js";
+import { findLocation } from "./places.js";
+import { followingMovementParty } from "./resident-movement.js";
+import { contactPosition } from "./venue-contact.js";
+import { VillagesRequestError } from "./errors.js";
 import { zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
+import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import {
   engineSpriteUrl,
@@ -11,11 +25,11 @@ import {
 } from "../../../shared/helpers/sprite-variants.js";
 import type {
   VillageMomentView,
+  VillageCardCharacter,
   VillagePlaceView,
   VillagePlayerIdentity,
   VillageSettingsView,
   VillageState,
-  VillageVillager,
   VillageVillagerView,
 } from "../models/world.js";
 import { agendaBlocksFor } from "./agenda-week.js";
@@ -43,14 +57,15 @@ import {
   VILLAGES_GALLERY_FOLDER_NAME,
 } from "./prompt-preset.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
-import { projectVenueAccess, projectZoneAccess } from "./venue-access.js";
+import { evaluateZoneAccess, projectVenueAccess, projectZoneAccess } from "./venue-access.js";
 import { villageVenueLimit } from "./venue-capacity.js";
-import { venueZones, zoneClosed } from "./venue-zones.js";
+import { resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
+import { nextVisitorTransition } from "./visitors.js";
 
 export function projectVillager(
-  villager: VillageVillager,
+  villager: VillageCardCharacter,
   cardName: string | null,
   _cardSummary: string,
   cardTags: string[],
@@ -83,7 +98,10 @@ export function projectVillager(
             label,
             expressionId,
             variantGroup: variantGroups.get(expressionId),
-            isDefault: Boolean(expressionId) && expressionId === sprite.defaultExpressionId,
+            isDefault:
+              Boolean(expressionId) &&
+              expressionId === sprite.defaultExpressionId &&
+              (!sprite.defaultView || view === sprite.defaultView),
             url: engineSpriteUrl(assetId, filename, version),
           })),
         }
@@ -140,7 +158,7 @@ export function exactSnapshotTransition(village: VillageState, now: Date): strin
     timeZone: village.timeZone || undefined,
     now,
   });
-  const candidates = [Date.parse(moment.nextTransitionAt)];
+  const candidates = [Date.parse(moment.nextTransitionAt), nextVisitorTransition(village, now)];
   const currentMinute = moment.minuteOfDay;
   const addMinute = (minute: number) => {
     if (minute <= currentMinute || minute >= 1440) return;
@@ -167,6 +185,7 @@ export function villageSettings(
   residenceAccess: VenueScene | null,
   accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
   now = new Date(),
+  liveSceneWorld?: VillageState,
 ): VillageSettingsView {
   return {
     foundingLore: [
@@ -181,7 +200,7 @@ export function villageSettings(
         (venue.zones ?? [])
           .filter((zone) => zone.preparation?.status === "ready" && (!isVillageFounded(village) || !!zone.observed))
           .map((zone) => ({
-            label: `${venue.name} · ${observedZone(zone, !isVillageFounded(village)).name}`,
+            label: `${venue.name} · ${zone.name}`,
             entries: readLoreUse(zone.preparation?.lore),
           })),
       ),
@@ -191,6 +210,7 @@ export function villageSettings(
     backgroundPaces: ["off", "quiet", "balanced", "lively"],
     characterSpeechColors: village.characterSpeechColors,
     sendOnEnter: village.sendOnEnter,
+    spontaneousEvents: village.spontaneousEvents === true,
     spriteCardFlipEnabled: village.spriteCardFlipEnabled,
     spriteVariantsEnabled: village.spriteVariantsEnabled,
     villageNameMaxLength: MAX_VILLAGE_NAME_LENGTH,
@@ -203,7 +223,6 @@ export function villageSettings(
     playerPersonaMissing: player.missing,
     setting: village.setting,
     worldRules: village.worldRules,
-    communityVenueId: village.communityVenueId,
     worldName: village.worldName ?? null,
     playerBackground: village.playerBackground,
     selectedLorebookIds: village.selectedLorebookIds,
@@ -244,8 +263,93 @@ export function villageSettings(
               ),
             };
       const authoring = !isVillageFounded(village);
+      const liveVenue = liveSceneWorld && findLocation(liveSceneWorld, venue.id);
       const zones = venueZones(venue).map((originalZone) => {
         const visible = observedZone(originalZone, authoring);
+        const scene = residenceAccess?.placeId === venue.id ? residenceAccess : null;
+        const escort = scene ? sceneMoveAccompanying(scene, venue, originalZone, village) : undefined;
+        const party =
+          scene && liveSceneWorld && liveVenue
+            ? followingMovementParty(liveSceneWorld, liveVenue, scene, originalZone.id, escort)
+            : undefined;
+        const accompanying = party?.accompanying ?? escort;
+        const closed = zoneClosed(village, venue, originalZone);
+        const access = {
+          ...context,
+          ...(scene
+            ? {
+                positions: {
+                  ...context?.positions,
+                  ...Object.fromEntries(
+                    (accompanying ?? [])
+                      .filter((entry) => !scene.departedIds?.includes(entry.characterId))
+                      .map((entry) => [entry.characterId, entry.zoneId]),
+                  ),
+                },
+              }
+            : {}),
+          sceneId: context?.sceneId ?? "next-visit-preview",
+          accepting: true,
+          unavailable: closed,
+          environment: village.narrative,
+        };
+        const accessView = projectZoneAccess(venue, originalZone, "player", access);
+        const movement = scene && { ...scene, accompanying };
+        const route =
+          movement && context?.at && physicalVenuePath(village, venue, movement, originalZone.id, context.at);
+        const approach =
+          route &&
+          movement &&
+          context?.at &&
+          physicalVenuePath(village, venue, movement, originalZone.id, context.at, true);
+        const liveZone = liveVenue && resolveVenueZone(liveVenue, originalZone.id);
+        const trespassReason =
+          movement && context?.at && sceneTrespassReason(village, venue, originalZone, movement, context.at);
+        const canTrespass = !!(
+          scene &&
+          scene.status === "active" &&
+          liveVenue &&
+          liveZone &&
+          liveSceneWorld &&
+          context?.at &&
+          !accessView.decision.allowed &&
+          contactNeighbors(liveVenue, scene.zoneId ?? "").includes(originalZone.id) &&
+          trespassReason &&
+          sceneTrespassReason(liveSceneWorld, liveVenue, liveZone, movement!, context.at) === trespassReason
+        );
+        let reachable = false;
+        if (
+          liveSceneWorld &&
+          liveVenue &&
+          venue.access &&
+          scene?.status === "active" &&
+          movement &&
+          originalZone.id !== scene.zoneId &&
+          accessView.decision.allowed &&
+          !closed &&
+          ((party?.path && !party.playerTrespass) ||
+            contactPath(village, venue, movement.zoneId, originalZone.id, "player", movement, context?.at)) &&
+          sceneZoneOccupants(movement, venue, originalZone.id).filter(
+            (person) => !person.characterId.startsWith("npc:"),
+          ).length <= MAX_ZONE_VILLAGERS
+        ) {
+          try {
+            if (!party?.path || party.playerTrespass)
+              liveSceneMovePermission(
+                liveSceneWorld,
+                liveVenue,
+                originalZone.id,
+                scene,
+                accompanying,
+                context?.at,
+                evaluateZoneAccess(venue, originalZone, "player", access).permissionId,
+                escort,
+              );
+            reachable = true;
+          } catch (error) {
+            if (!(error instanceof VillagesRequestError)) throw error;
+          }
+        }
         const present =
           residenceAccess?.placeId === venue.id &&
           residenceAccess?.zoneId === originalZone.id &&
@@ -289,29 +393,56 @@ export function villageSettings(
             : undefined,
           access: undefined,
           controllerIds: undefined,
-          accessView: projectZoneAccess(venue, originalZone, "player", {
-            ...context,
-            ...(residenceAccess?.placeId === venue.id
-              ? {
-                  positions: {
-                    ...context?.positions,
-                    ...Object.fromEntries(
-                      (sceneMoveAccompanying(residenceAccess, venue, originalZone, village) ?? [])
-                        .filter((entry) => !residenceAccess.departedIds?.includes(entry.characterId))
-                        .map((entry) => [entry.characterId, entry.zoneId]),
-                    ),
-                  },
-                }
-              : {}),
-            sceneId: context?.sceneId ?? "next-visit-preview",
-            accepting: true,
-            unavailable: zoneClosed(village, venue, originalZone),
-            environment: village.narrative,
-          }),
+          accessView: liveSceneWorld
+            ? {
+                ...accessView,
+                reachable,
+                canTrespass,
+                companions:
+                  scene && party
+                    ? [
+                        ...new Set([
+                          ...party.moves.map((row) => row.actorId),
+                          ...party.staying,
+                          ...(party.accompanying ?? [])
+                            .filter(
+                              (row) =>
+                                contactPosition(scene, row.characterId) === scene.zoneId && row.zoneId !== scene.zoneId,
+                            )
+                            .map((row) => row.characterId),
+                        ]),
+                      ].flatMap((id) => {
+                        const person = scene.sceneAttendance?.occupants.find(
+                          (row) => row.characterId === id && contactPosition(scene, id) === scene.zoneId,
+                        );
+                        return person
+                          ? [
+                              {
+                                id,
+                                name: person.name,
+                                ...(party.staying.includes(id) ? { staying: true as const } : {}),
+                                ...(party.moves.find((row) => row.actorId === id)?.trespass
+                                  ? { trespass: true as const }
+                                  : {}),
+                              },
+                            ]
+                          : [];
+                      })
+                    : undefined,
+                routeBlocked: !reachable && !!scene && !route,
+                accessNeededVia:
+                  !reachable && !approach && movement && route
+                    ? route
+                        .slice(1, -1)
+                        .find((id) => !contactCanEnter(village, venue, id, "player", movement, context?.at))
+                    : undefined,
+              }
+            : accessView,
         };
+        if ("companions" in zone.accessView && !zone.accessView.companions?.length) delete zone.accessView.companions;
         return {
           ...zone,
-          closed: zoneClosed(village, venue, zone),
+          closed,
         };
       });
       const entrance = zones.find((zone) => zone.kind === "exterior");
@@ -322,7 +453,7 @@ export function villageSettings(
         form: authoring ? venue.form : venue.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
         presentation: { ...venue.presentation, image: entrance?.image ?? null },
         access: undefined,
-        accessView: projectVenueAccess(venue, "player", village.communityVenueId),
+        accessView: projectVenueAccess(venue, "player"),
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],

@@ -11,6 +11,7 @@ import {
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { appendEpisode } from "../packages/villages/src/server/domain/rules/episodes.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
+import { CHARACTER_DIALOGUE_DIRECTION } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { captureResidentNarration } from "../packages/villages/src/server/domain/rules/resident-narration.js";
 import { buildResidentPlanningMessages } from "../packages/villages/src/server/domain/rules/resident-planning.js";
@@ -51,6 +52,7 @@ const state = coerceVillageState({
   setting: "S".repeat(2000) + "WORLD SETTING TAIL",
   worldRules: "R".repeat(2000) + "WORLD RULES TAIL",
   worldName: "WORLD NAME TAIL",
+  narrationStyle: { tense: "present", person: "second", rating: "sfw", writingGuidance: "RETIRED STYLE OVERRIDE" },
   venues: [venue],
   villagers: [
     {
@@ -63,7 +65,7 @@ const state = coerceVillageState({
     },
   ],
 });
-state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
+assert.deepEqual(state.narrationStyle, { tense: "present", person: "second", rating: "sfw" });
 const authored = readEffectiveVillagerCard(state.villagers[0]);
 const wishId = retainAuthoredNote(state, "concert", "See a concert", [card.id], at, {
   class: "desire",
@@ -86,14 +88,14 @@ const next = await prepareScenePrompt(state, card, "chat", "A different question
   startedAt: "2026-10-07T12:01:00.000Z",
 });
 const prefix = (value: typeof prepared) =>
-  value.fitted.messages.filter((message) => message.cacheBreakpoint).slice(0, 2);
-assert.equal(prefix(prepared).length, 2);
+  value.fitted.messages.slice(0, value.fitted.messages.findIndex((message) => message.cacheBreakpoint) + 1);
+assert.equal(prepared.fitted.messages.filter((message) => message.cacheBreakpoint).length, 1);
 assert.deepEqual(
   prefix(next),
   prefix(prepared),
   "Changing the source and time preserves the cacheable authored prefix",
 );
-assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+assert.deepEqual(next.fitted.messages.at(-2), { role: "user", content: "A different question?" });
 for (const tail of [
   "PLAYER IDENTITY TAIL",
   "PLAYER BACKGROUND TAIL",
@@ -101,7 +103,10 @@ for (const tail of [
   "WORLD RULES TAIL",
   "WORLD NAME TAIL",
 ]) {
-  assert(prefix(next)[1].content.includes(tail), tail);
+  assert(
+    prefix(next).some(({ content }) => content.includes(tail)),
+    tail,
+  );
   assert.equal(prepared.prompt.split(tail).length - 1, 1);
 }
 for (const fragment of [
@@ -117,11 +122,30 @@ for (const fragment of [
   assert(prepared.prompt.includes(fragment), fragment);
 assert.equal(prepared.prompt.split("REMEMBERED MECCA; CURRENT LOCATION UNDECIDED").length - 1, 1);
 assert(venueCardProfile(authored).includes(RESIDENT_CONTINUITY_RULE));
-assert.match(prepared.prompt, /where compatible with character identity/);
+assert.doesNotMatch(prepared.prompt, /Additional writing guidance|RETIRED STYLE OVERRIDE/);
 assert.match(prepared.prompt, /present tense/);
 assert.match(prepared.prompt, /Address the player as "you"/);
-assert.match(prepared.prompt, /Residents may initiate plausible actions according to their own cards/);
+assert.match(prepared.prompt, /Portray authored residents using what they know/);
+assert.match(prepared.prompt, /Residents can initiate within evidence and permissions/);
 assert.doesNotMatch(prepared.prompt, /UNRELATED SECRET FROM AN ABSENT RESIDENT|SCRIPTED TELL SECRET/);
+assert.match(prepared.prompt, /SFW: Mature themes, romance, and conflict can play out/);
+assert.match(prepared.prompt, /Keep violence non-graphic and leave explicit intimacy off-page/);
+assert.doesNotMatch(prepared.prompt, /NSFW: Explicit adult intimacy/);
+for (const mode of ["chat", "greet"] as const) {
+  const withRating = await prepareScenePrompt(
+    { ...state, narrationStyle: { ...state.narrationStyle, rating: "nsfw" } },
+    card,
+    mode,
+    "Is anyone here?",
+    scene,
+  );
+  assert.match(withRating.prompt, /NSFW: Explicit adult intimacy and graphic violence are permitted/);
+  assert.doesNotMatch(withRating.prompt, /SFW: Mature themes/);
+  assert.match(withRating.prompt, /mutual interest develop through words and actions/);
+  assert.equal(withRating.prompt.split(CHARACTER_DIALOGUE_DIRECTION).length - 1, 1);
+  assert.match(withRating.prompt, /portray the conflict and its consequences within the rating/);
+  assert.doesNotMatch(withRating.prompt, /as binding on advances/);
+}
 assert(
   prepared.readset.admission.supplied.some((row) => row.id === wishId),
   "The purchased request can use only the fitted current desire",
@@ -207,7 +231,7 @@ state.playerBackground = "Neighbors know me through harbor projects.";
 const outside = await prepareScenePrompt(state, card, "greet", "", scene);
 assert.equal(scenePromptPacket(outside.prompt, "location").location.player.zone.id, "exterior");
 assert.match(outside.prompt, /Neighbors know me through harbor projects/);
-assert.deepEqual(outside.fitted.messages.at(-1), { role: "user", content: "" });
+assert.deepEqual(outside.fitted.messages.at(-2), { role: "user", content: "" });
 
 const background = buildResidentPlanningMessages({
   format: 1,
@@ -237,6 +261,7 @@ for (const fragment of [
 ])
   assert(background.includes(fragment), fragment);
 assert.doesNotMatch(background, /UNRELATED SECRET FROM AN ABSENT RESIDENT|SCRIPTED TELL SECRET/);
+assert.equal(background.split(CHARACTER_DIALOGUE_DIRECTION).length - 1, 1);
 
 const withoutPostHistory = coerceVillageState({
   ...state,

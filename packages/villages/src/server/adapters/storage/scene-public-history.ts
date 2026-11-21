@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VenueLine, VenueScene } from "../../domain/models/scene-model.js";
+import type { SceneHistoryVisit } from "../../../shared/contracts/scene-history.js";
+import { sceneHistoryVisits } from "../../domain/rules/scene-history-visits.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isImmutableSceneLine } from "../../domain/rules/scene-transcript.js";
 import { publicSceneHistoryPositions, publicSceneResponse } from "../../domain/rules/scene-public.js";
@@ -28,7 +30,7 @@ import {
 } from "./scene-presentation-pages.js";
 
 type Owner = Pick<VenueScene, "id" | "villageSeed" | "participants">;
-export type PublicScenePosition = { id: string; position: number; publicDigest: string };
+export type PublicScenePosition = { id: string; position: number; publicDigest: string; visit?: SceneHistoryVisit };
 export type ScenePublicHistoryHead = {
   format: 3;
   world: string;
@@ -97,7 +99,15 @@ export function readScenePublicHistoryHead(
   return value as ScenePublicHistoryHead;
 }
 function readPosition(value: unknown, id: string, lineCount: number): PublicScenePosition {
-  memoryObject(value, ["id", "position", "publicDigest"]);
+  memoryObject(value, ["id", "position", "publicDigest", "visit"]);
+  if (value.visit !== undefined) {
+    memoryObject(value.visit, ["id", "name", "at"]);
+    memoryRequire(
+      typeof value.visit.at === "string" &&
+        [value.visit.id, value.visit.name].every((field) => typeof field === "string" && field.length > 0),
+      "invalid public Scene visit",
+    );
+  }
   memoryRequire(
     value.id === id &&
       id.length > 0 &&
@@ -147,6 +157,8 @@ export function projectSceneHistoryPage(
   });
 }
 const lineDigests = new WeakMap<VenueLine, string>();
+const positionVersion = (row: PublicScenePosition) =>
+  row.visit ? hash(JSON.stringify([row.publicDigest, row.visit])) : row.publicDigest;
 function lineDigest(line: VenueLine, cast: Set<string>) {
   // Canonical transcript lines retain every staging dependency in the historical cast.
   const old = isImmutableSceneLine(line) ? lineDigests.get(line) : undefined;
@@ -162,7 +174,7 @@ function publicVersion(layout: HistoryPageTree, known: WeakMap<HistoryPageRef, s
     if (!known.has(group.ref))
       known.set(
         group.ref,
-        hash("public-leaf:" + group.entries.map(([, value]) => (value as PublicScenePosition).publicDigest).join("")),
+        hash("public-leaf:" + group.entries.map(([, value]) => positionVersion(value as PublicScenePosition)).join("")),
       );
   for (let level = 1; level < layout.levels.length; level++)
     for (const [index, parent] of layout.levels[level].entries())
@@ -229,13 +241,21 @@ function encodePositions(
   );
   const positions = publicSceneHistoryPositions(scene),
     cast = new Set(scene.participants.map((person) => person.characterId));
+  const visits = sceneHistoryVisits(scene, positions);
   const rows = positions.map((position, index) => {
     const line = scene.lines[position],
       publicDigest = lineDigest(line, cast),
       before = old?.rows[index];
-    return before && before.id === line.id && before.position === position && before.publicDigest === publicDigest
+    const visit = visits[index];
+    return before &&
+      before.id === line.id &&
+      before.position === position &&
+      before.publicDigest === publicDigest &&
+      before.visit?.id === visit.id &&
+      before.visit?.name === visit.name &&
+      before.visit?.at === visit.at
       ? before
-      : { id: line.id, position, publicDigest };
+      : { id: line.id, position, publicDigest, visit };
   });
   const writer = createHistoryPageWriter(worldOf(scene)),
     layout = writer.tree(
@@ -317,7 +337,13 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
     const old = previous ? await read(previous, previous.lineCount) : undefined;
     const encoded = encodePositions(scene, transcript, submissions, old, versions);
     const { rows, layout, pages } = encoded;
-    const presentation = await presentations.prepare(scene, rows, encoded.head.source, previous?.presentation);
+    const presentation = await presentations.prepare(
+      scene,
+      rows,
+      encoded.head.source,
+      previous && { head: previous.presentation, lineCount: previous.lineCount },
+      previous?.source === encoded.head.source && previous.publicVersion !== encoded.head.publicVersion,
+    );
     const head = { ...encoded.head, presentation };
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {
@@ -354,7 +380,7 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
   return { prepare, readRange };
 }
 const stores = new WeakMap<object, ReturnType<typeof createScenePublicHistory>>();
-export function scenePublicHistoryStore(documents: CapabilityDocumentStore) {
+export function scenePublicHistoryStore(documents: Pick<CapabilityDocumentStore, "getById" | "create">) {
   let store = stores.get(documents);
   if (!store) stores.set(documents, (store = createScenePublicHistory(documents)));
   return store;
@@ -425,7 +451,7 @@ export function createScenePublicHistoryTracer(get: (id: string) => Promise<Memo
         if (first === -1) first = value.position;
         last = value.position;
         ids.add(value.id);
-        hashes.push(value.publicDigest);
+        hashes.push(positionVersion(value));
       }
       count = rows.length;
       version = hash("public-leaf:" + hashes.join(""));

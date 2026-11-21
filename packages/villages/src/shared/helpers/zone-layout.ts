@@ -46,7 +46,7 @@ export function readZoneLayout(value: unknown, ids: readonly string[]): ZoneLayo
     if (typeof point.x !== "number" || typeof point.y !== "number" || !zonePositionFits(layout, id, point)) return null;
     layout[id] = { x: point.x, y: point.y };
   }
-  return layout;
+  return { ...layout };
 }
 /** Old saves and newly added Zones get free positions without moving authored rectangles. */
 export function resolveZoneLayout(ids: readonly string[], saved?: ZoneLayout): ZoneLayout {
@@ -64,7 +64,7 @@ export function resolveZoneLayout(ids: readonly string[], saved?: ZoneLayout): Z
     if (!position) return Object.fromEntries(ids.map((key, i) => [key, { ...slots[i % slots.length] }]));
     layout[id] = { ...position };
   }
-  return layout;
+  return { ...layout };
 }
 /** Public structure only, suitable for optimistic concurrency without attendance/interiors. */
 export function zoneLayoutKey(zones: readonly ConnectedSpace[], saved?: ZoneLayout): string {

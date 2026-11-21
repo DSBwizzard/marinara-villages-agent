@@ -10,6 +10,7 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { ContinuityHolder, ContinuityEvidence, ContinuityVersion } from "../models/continuity-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import { continuityActor, relationshipActors } from "./continuity-actors.js";
+import { cardCharacters, findCardCharacter, knownCardCharacters } from "./visitors.js";
 import {
   actorContinuityEvidence,
   continuityHolderKey,
@@ -148,9 +149,7 @@ const person = (state: VillageState, id: string) => ({
   name:
     id === "player"
       ? state.playerName || "You"
-      : (state.villagers.find((row) => row.characterId === id)?.cardSnapshot.name ??
-        findNpc(state, id)?.name ??
-        "Former resident"),
+      : (findCardCharacter(state, id)?.cardSnapshot.name ?? findNpc(state, id)?.name ?? "Former resident"),
 });
 function projections(
   state: VillageState,
@@ -201,7 +200,11 @@ function projections(
 
 /** Administrative books share the same per-holder projections as ordinary recall and Inspect. */
 export function continuityRepairEntries(state: VillageState, at: string) {
-  const ids = ["player", ...state.villagers.map((row) => row.characterId), ...Object.keys(state.worldPlaces.npcs)];
+  const ids = [
+    "player",
+    ...knownCardCharacters(state).map((row) => row.characterId),
+    ...Object.keys(state.worldPlaces.npcs),
+  ];
   return ids.flatMap((id) => {
     const holder = continuityActor(state, id);
     return holder
@@ -236,7 +239,7 @@ function relationshipAnswers(state: VillageState, residentIds?: readonly string[
     const holder = version.id === continuityVersionId(state.seed, version.operationId, owner) ? owner : player;
     const holderKey = continuityHolderKey(holder);
     if (!record.heads[holderKey]?.current || record.protection[holderKey]) continue;
-    const concluded = state.villagers.find(
+    const concluded = cardCharacters(state).find(
       ({ characterId, incarnation }) => characterId === owner.id && incarnation === owner.incarnation,
     )?.relationshipScene;
     if (
@@ -284,7 +287,7 @@ export function recordClosedRelationshipScene(state: VillageState, scene: { id: 
       return version.relationshipAnswerScene === scene.id && owner ? [continuityHolderKey(owner)] : [];
     }),
   );
-  for (const resident of state.villagers) {
+  for (const resident of knownCardCharacters(state)) {
     const key = continuityHolderKey({ kind: "actor", id: resident.characterId, incarnation: resident.incarnation });
     if (!participants.has(key) || (resident.relationshipScene && resident.relationshipScene.endedAt >= scene.endedAt))
       continue;
@@ -306,7 +309,7 @@ export function dueRelationshipAnswers(
   const answers = relationshipAnswers(state, residentIds, true);
   const scores = latestRelationshipScores(state.continuity);
   const player = continuityActor(state, "player")!;
-  const owners = state.villagers.flatMap((resident) => {
+  const owners = cardCharacters(state).flatMap((resident) => {
     const actor = { id: resident.characterId, incarnation: resident.incarnation };
     if (
       !residentIds.includes(actor.id) ||
@@ -345,7 +348,8 @@ export function continuityRelationships(state: VillageState, at: string): Relati
     rows = holder ? projections(state, holder, false, at) : [];
   const scores = latestRelationshipScores(state.continuity);
   const interests = latestRomanticInterests(state.continuity);
-  const actors = relationshipActors(state);
+  const knownIds = new Set(["player", ...knownCardCharacters(state).map((person) => person.characterId)]);
+  const actors = relationshipActors(state).filter((actor) => knownIds.has(actor.id));
   const answers = relationshipAnswers(state);
   const visibleRoots = new Set(rows.map((row) => row.record.id));
   const learnedReceipts = new Set(
@@ -373,7 +377,7 @@ export function continuityRelationships(state: VillageState, at: string): Relati
       .filter((place) => !place.disabled)
       .map((place) => place.location),
   ].filter((place, index, all) => all.findIndex((other) => other.id === place.id) === index);
-  return state.villagers.map((resident) => {
+  return knownCardCharacters(state).map((resident) => {
     const actor = continuityActor(state, resident.characterId)!;
     return {
       characterId: actor.id,
@@ -401,7 +405,7 @@ export function continuityRelationships(state: VillageState, at: string): Relati
               )),
         )
         .map((row) => relationshipEntry(state, row)),
-      knownWishes: continuityWishes(state, actor.id, false, at),
+      knownWishes: "visitsEnabled" in resident ? [] : continuityWishes(state, actor.id, false, at),
       access: places.flatMap((venue) =>
         (venue.access?.permissions ?? []).flatMap((grant) => {
           const zone = venue.zones?.find((zone) => zone.id === grant.zoneId);
@@ -505,7 +509,7 @@ export function continuityMemoryLibrary(state: VillageState, input: MemoryQuery,
     characterId,
     revision,
     query,
-    residents: [person(state, "player"), ...state.villagers.map((row) => person(state, row.characterId))],
+    residents: [person(state, "player"), ...knownCardCharacters(state).map((row) => person(state, row.characterId))],
     entries,
     total: rows.length,
     next: after + 1 + limit < rows.length ? { revision, afterId: entries.at(-1)!.id } : null,

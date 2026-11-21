@@ -8,7 +8,11 @@ import {
   readFoundingZoneIds,
   parseFoundingVenueDraft,
 } from "../../domain/rules/founding-venue-draft.js";
-import type { FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
+import { FOUNDING_SETTING_BRIEF_LIMIT, type FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { mapName } from "../../domain/rules/village-maps.js";
+import { readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
+import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import type { findVillagerCard } from "../../adapters/engine/catalog.js";
@@ -83,8 +87,107 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     decodeVillageImageDataUrl,
   } = ports;
 
+  async function draftSetting(input: Record<string, unknown>): Promise<FoundingSuggestionsResult> {
+    const brief = asTrimmedString(input.brief);
+    if (!asTrimmedString(input.actionId) || !brief || brief.length > FOUNDING_SETTING_BRIEF_LIMIT)
+      throw badRequest("Tell Mari about your village in up to 4,096 characters.");
+    const worldBrief = asTrimmedString(input.worldBrief);
+    if (
+      (input.worldBrief !== undefined && typeof input.worldBrief !== "string") ||
+      worldBrief.length > FOUNDING_SETTING_BRIEF_LIMIT
+    )
+      throw badRequest("Use up to 4,096 characters to describe the world.");
+    const authoredWorldName = readWorldName(input.worldName === undefined ? "" : input.worldName);
+    if (authoredWorldName === null) throw badRequest("Use a world name within 120 characters.");
+    const authoredRules = input.worldRules === undefined ? "" : input.worldRules;
+    if (typeof authoredRules !== "string" || authoredRules.length > MAX_SETTING_LENGTH)
+      throw badRequest("Standing rules must be text of at most 4,096 characters.");
+    const world = {
+      world: worldBrief,
+      worldName: authoredWorldName || undefined,
+      worldRules: authoredRules.trim() || undefined,
+    };
+    const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
+    const budget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
+    let inspection: LoreInspection | undefined;
+    const lore =
+      ids.length && budget
+        ? await readVillageLore(
+            ids,
+            [worldBrief, authoredWorldName, authoredRules.trim()].filter(Boolean).join("\n"),
+            undefined,
+            budget,
+            {
+              current: brief,
+              purpose: "Mari’s setting draft",
+              inspect: (report) => {
+                inspection = report;
+              },
+            },
+          )
+        : [];
+    const model = await villagesLanguageModels().resolveForRequest({
+      connectionId: await villagesConnectionIdFor("system"),
+    });
+    const requested = model.maxOutputTokens ?? 4096;
+    const sources = inspectedLoreUse(inspection, "Mari’s setting draft");
+    const fitted = fitVenueWritingMessages(
+      model,
+      [
+        {
+          text: [
+            "Draft the opening setting for this player's shared-life village. It can be any kind of community, in any setting.",
+            'Return one JSON object with strings: "name" (community, up to 60 characters), "startingLocationName" (the area the map will cover, up to 80), "description" (a short paragraph describing that area and everyday life there), "worldName" (up to 120) and "rules" (standing facts for the setting).',
+            "The village name identifies the whole community. The first map covers the area where the starting villagers live and meet. When the player names a large city, station, or other expansive home but leaves the first area open, choose one locally meaningful district, deck, or equivalent within it. A city can be the village and its market district the first map. Use a district or local area named in the player's description or relevant lore when it fits. Use the whole place as the first map if it is small or the player explicitly requests it. Describe the first map area and its relationship to the larger place.",
+            "Preserve the player's explicit names and details. Follow any supplied world name and standing world rules. Use the lorebook references for relevant setting facts, and follow the player's description whenever they differ. Treat all source material as context. If a required name is unspecified, suggest one that fits. Use empty strings for worldName and rules unless established by the player or relevant lore. Leave first-day events, the starting cast, living arrangements and map placement for later steps. Write in the language of the player's village description.",
+          ].join(" "),
+        },
+        ...lore.map((text, index) => ({ text, optional: "lore" as const, lore: sources[index] })),
+      ],
+      worldBrief || world.worldName || world.worldRules ? JSON.stringify({ ...world, village: brief }) : brief,
+      requested,
+      "System",
+    );
+    const allowance = Math.min(fitted.maxTokens ?? requested, requested);
+    if (allowance < 256)
+      throw badRequest(
+        "The System connection cannot fit this draft. Try a shorter description or check Model Connections.",
+      );
+    if (fitted.lore.length) await recordLoreUse(fitted.lore, "Mari’s setting draft");
+    const completion = await completeWithRoom(model, fitted.messages, allowance, {
+      temperature: undefined,
+      responseFormat: { type: "json_object" },
+      usagePurpose: "other",
+      debugMode: false,
+    });
+    if (["length", "max_tokens"].includes(completion.finishReason))
+      throw badRequest(
+        "I ran out of room before I could finish your setting. Try again or check the System output limit.",
+      );
+    const reply = extractModelJsonObject(completion);
+    if (reply) {
+      const worldName = authoredWorldName || readWorldName(reply.worldName ?? "");
+      const rules = world.worldRules ?? reply.rules ?? "";
+      if (worldName !== null && typeof rules === "string" && rules.length <= MAX_SETTING_LENGTH) {
+        try {
+          const name = readVillageName(reply.name);
+          const startingLocationName = mapName(reply.startingLocationName);
+          const description = readVillageSetting(reply.description);
+          if (description)
+            return { venues: [], setting: { name, startingLocationName, description, worldName, rules: rules.trim() } };
+        } catch {
+          // A readable object still needs complete, valid setting fields.
+        }
+      }
+    }
+    throw badRequest(
+      "Mari’s reply didn’t contain a complete setting. Try drafting again or fill in the fields yourself.",
+    );
+  }
+
   async function suggestStartingVenues(value: unknown): Promise<FoundingSuggestionsResult> {
     const input = record(value);
+    if (input.mode === "draft-setting") return draftSetting(input);
     const quickStart = input.mode === "quick-start";
     const fullDraft = input.mode === "draft-venue";
     if (fullDraft && (!asTrimmedString(input.actionId) || !asTrimmedString(input.targetVenueId)))
@@ -95,14 +198,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const context = readFoundingDraftContext(input.context);
     if (!setting || setting.length > MAX_SETTING_LENGTH) throw badRequest("Describe the place first.");
     const rows = rowsOf(input.venues);
-    const communityVenueId = asTrimmedString(input.communityVenueId);
-    const community = rows.find((row) => row.id === communityVenueId);
+    const openingVenueId = asTrimmedString(input.openingVenueId);
+    const community = rows.find((row) => row.id === openingVenueId);
     const residents = rows.flatMap((row) => row.residentIds);
     if (
       !community ||
-      community.venueClass === "residence" ||
-      community.residentIds.length ||
-      community.playerHome ||
       rows.filter((row) => row.playerHome).length !== 1 ||
       residents.length < 1 ||
       residents.length > 3 ||
@@ -110,7 +210,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       rows.some((row) => row.residentIds.length + Number(row.playerHome) > 4)
     )
       throw badRequest(
-        "Assign homes for one to three residents and choose a separate Community Venue before suggestions.",
+        "Assign homes for one to three residents and choose an opening gathering Venue before suggestions.",
       );
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && !rows.some((row) => row.id === targetId))
@@ -183,11 +283,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   "The player requested details for one existing Venue. Preserve its current condition and supplied physical facts. The player keeps all existing Zones, access rules, residents, sleeping assignments and map placement; your suggested layout is not applied.",
                 ]
               : []),
-            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Community Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
+            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. Starting Community Venues default to public Common Space, with distinct uses suited to the setting.",
             ...(quickStart
               ? [
-                  "Quick Start: a single-person Residence uses both Common and Private Space. A shared Residence uses a common sleeping/living space, without a Private Space. The designated Community Venue has a public Common Space.",
-                  "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Tailor the Community Venue and its Common Zone to the Village itself. These template defaults do not restrict later editing.",
+                  "Quick Start: a single-person Residence uses both Common and Private Space. A shared Residence uses a common sleeping/living space, without a Private Space. Each starting Community Venue has a public Common Space.",
+                  "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Give each Community Venue a distinct everyday use suited to the Village. These template defaults do not restrict later editing.",
                 ]
               : []),
             "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned household member. Describe the space and ordinary furnishings, not private thoughts or secrets. The explicit playerHome flag identifies the player's home; residentIds identifies its other household members.",
@@ -213,7 +313,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         setting,
         worldName: asTrimmedString(input.worldName),
         villageName,
-        communityVenueId,
+        openingVenueId,
         worldRules,
         currentCircumstances,
         venues: rows,
@@ -267,7 +367,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   form: "",
                   description: "",
                   layout:
-                    row.id === communityVenueId
+                    row.venueClass === "community"
                       ? "common"
                       : quickStart && row.venueClass === "residence"
                         ? row.residentIds.length + Number(row.playerHome) > 1
@@ -316,9 +416,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     if (draftSource)
       return {
         ...(fitted.lore.length ? { lore: fitted.lore } : {}),
-        venues: [
-          parseFoundingVenueDraft(payload, draftSource, newZoneIds, targetId === communityVenueId, villageNow()),
-        ],
+        venues: [parseFoundingVenueDraft(payload, draftSource, newZoneIds, villageNow())],
       };
     return {
       ...(fitted.lore.length ? { lore: fitted.lore } : {}),
@@ -327,8 +425,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         requestedRows.map((row) => row.id),
         requestedRows.map((row) => ({
           ...row,
-          venueClass:
-            row.id === communityVenueId ? "community" : row.venueClass === "community" ? "other" : row.venueClass,
+          venueClass: row.venueClass,
         })),
         true,
       ),

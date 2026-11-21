@@ -8,6 +8,8 @@ import {
   continuitySourceUnit,
   continuityOfferSource,
   assertContinuitySoundIdentity,
+  isRelationshipEvent,
+  perceivedContinuitySource,
 } from "./continuity.js";
 import {
   circumstanceRoomOrigins,
@@ -453,15 +455,19 @@ export function assertContinuityRetention(continuity: ContinuityCollection, epis
         key = continuityHolderKey(owner);
       const initial = continuity.versions.filter((version) => version.rootId === record.id && !version.administrative);
       const firstRevision = Math.min(...initial.map((version) => version.createdRevision));
+      const first = initial.filter((version) => version.createdRevision === firstRevision);
       memoryRequire(
-        initial.some((version) => {
+        first.some((version) => {
           const episode = byEpisode.get(owners.get(version.id)!);
           return (
-            version.createdRevision === firstRevision &&
             episode &&
             version.id === continuityVersionId(episode.seed, version.operationId, owner) &&
             episode.actors.some((actor) => actor.id === owner.id && actor.incarnation === owner.incarnation) &&
-            version.sources.some((source) => source.actorId === owner.id || source.kind === "native") &&
+            (version.sources.some((source) => source.actorId === owner.id || source.kind === "native") ||
+              (first.length === 1 &&
+                (version.relationshipScore !== undefined || version.romanticInterest !== undefined) &&
+                version.sources.every((source) => perceivedContinuitySource(source, owner.id)) &&
+                version.sources.some((source) => source.episodeId === episode.id && isRelationshipEvent(source)))) &&
             record.heads[key]
           );
         }),

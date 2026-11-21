@@ -4,8 +4,8 @@ import type { VillageState } from "../models/world.js";
 import { asRecord, asStringArray, asTrimmedString } from "./coerce.js";
 import { conflict } from "./errors.js";
 export type OpeningRecord = OpeningView;
-export function initialOpening(residentIds: string[], communityVenueId: string, id: string): OpeningRecord {
-  return { id, version: 3, stage: "gathering", communityVenueId, gatheringSceneId: "", residentIds: [...residentIds] };
+export function initialOpening(residentIds: string[], openingVenueId: string, id: string): OpeningRecord {
+  return { id, version: 3, stage: "gathering", openingVenueId, gatheringSceneId: "", residentIds: [...residentIds] };
 }
 export function readOpening(value: unknown): OpeningRecord | undefined {
   if (value == null) return undefined;
@@ -16,7 +16,7 @@ export function readOpening(value: unknown): OpeningRecord | undefined {
     id: asTrimmedString(row.id),
     version: 3,
     stage: row.stage as OpeningRecord["stage"],
-    communityVenueId: asTrimmedString(row.communityVenueId),
+    openingVenueId: asTrimmedString(row.openingVenueId),
     gatheringSceneId: asTrimmedString(row.gatheringSceneId),
     residentIds: asStringArray(row.residentIds),
   };
@@ -30,7 +30,7 @@ export function matchesOpeningGathering(state: VillageState, scene: VenueScene):
     opening?.stage === "gathering" &&
     opening.id === scene.openingGatheringId &&
     opening.gatheringSceneId === scene.id &&
-    opening.communityVenueId === scene.placeId &&
+    opening.openingVenueId === scene.placeId &&
     state.seed === scene.villageSeed
   );
 }

@@ -1,343 +1,166 @@
-import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
-import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
-const { authorSceneResponse } = await scenePlaybackFixtures();
-import { checkReadingSessionLifecycle } from "./fixtures/villages-reading-session.fixture.mjs";
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
-import { resolve } from "node:path";
-import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium, expect, withBrowser, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
 
-const tag = "marinara-capability-villages";
-const browser = await chromium.launch({
-  headless: true,
+const built = await build({
+  stdin: {
+    contents: `
+import {createRoot} from 'react-dom/client';
+import {StrictMode,useState,useLayoutEffect} from 'react';
+import {useSceneReadingSession} from './packages/villages/src/client/features/scenes/reading-session.js';
+import {RoomPanel} from './packages/villages/src/client/features/scenes/ScenePanel.js';
+import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
+import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
+const at='2026-11-20T12:00:00Z',noop=()=>{},scope='a'.repeat(64);
+const line=(id,content,speakerId='__venue_scene__')=>({id,content,role:'assistant',kind:speakerId==='__venue_scene__'?'narration':'dialogue',speakerId,name:speakerId==='mara'?'Mara':'Narration',at});
+const initial={id:'A',placeId:'mill',placeName:'The Mill',zoneId:'workshop',zoneArrivalId:'arrival-workshop',status:'active',startedAt:at,endedAt:'',activeIds:['mara','jo'],participants:[{characterId:'mara',name:'Mara',doing:''},{characterId:'jo',name:'Jo',doing:''}],lines:[line('old','Old Entrance dialogue.'),line('arrival-workshop','You arrive at Workshop.'),line('new-1','**Mara sets her cup down.**'),line('new-2','Welcome to the Workshop.','mara'),line('new-3','The workbench is covered in tools.')],submissions:[{id:'latest',replyLineIds:['new-1','new-2','new-3']}]};
+function Harness(){const reading=useSceneReadingSession(true);const [room,setRoom]=useState(initial),[draft,setDraft]=useState('Unsent draft');
+useLayoutEffect(syncVillagesStyles,[]);window.h={setRoom,room,line};
+const props={sceneReading:reading,worldScope:scope,mobile:innerWidth<704,nameColors:{},speechColors:{},picture:'',draft,busy:false,error:'',greetingNotice:'',open:true,ended:false,playerName:'Player',portraits:{},sprites:{},onDraft:setDraft,onSend:noop,sendOnEnter:false,spriteCardFlipEnabled:false,onViewVenue:noop,onEnd:noop,onRetryGreeting:noop,onContinueWithoutGreeting:noop,notices:[],onDismissNotice:noop,debugDiscardEnabled:false,onDebugDiscard:noop,sceneSettings:null,movementZones:[],onMovementTarget:noop,currentZoneLabel:'Workshop'};
+return <marinara-capability-villages><div className='marinara-capability-villages-root marinara-capability-villages-room-screen' data-mobile={innerWidth<704?'true':'false'}><RoomPanel {...props} room={authorSceneView(room,scope)}/></div></marinara-capability-villages>}
+syncVillagesStyles();createRoot(document.getElementById('root')).render(<StrictMode><Harness/></StrictMode>);
+`,
+    resolveDir: process.cwd(),
+    loader: "tsx",
+  },
+  bundle: true,
+  write: false,
+  format: "iife",
+  platform: "browser",
+  jsx: "automatic",
 });
-const sentences = Array.from(
-  { length: 12 },
-  (_, index) => `Sentence ${index + 1} describes the quiet room and the people gathered beside its window.`,
-);
-const prose = `**${sentences.join(" ")}**`;
-const expected = sentences.join(" ");
-mkdirSync("artifacts", { recursive: true });
+const browser = await chromium.launch({ headless: true });
 await withBrowser(browser, async () => {
-  await checkReadingSessionLifecycle(browser);
-  for (const { width, height } of [
-    { width: 320, height: 568 },
-    { width: 390, height: 844 },
-    { width: 360, height: 640 },
-    { width: 1440, height: 900 },
-  ]) {
-    const mobile = width !== 1440;
-    const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+  for (const width of [320, 390, 1366]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
-    const errors = [];
+    const errors = [],
+      writes = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.addInitScript(() => {
-      const viewport = new EventTarget();
-      Object.assign(viewport, { height: innerHeight, width: innerWidth, offsetTop: 0, scale: 1 });
-      Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
-      window.sceneViewport = viewport;
-    });
-    const session = {
-      version: 2,
-      id: "reading-pages",
-      placeId: "mill",
-      placeName: "The Mill",
-      area: "public",
-      zoneId: "exterior",
-      startedAt: now,
-      lastActivityAt: now,
-      endedAt: "",
-      status: "active",
-      sceneRevision: 0,
-      activeIds: [residents[0].characterId],
-      participants: residents.slice(0, 1).map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
-      lines: [
-        {
-          id: "intro",
-          role: "assistant",
-          speakerId: "__venue_scene__",
-          kind: "narration",
-          name: "",
-          content: "A quiet afternoon.",
-          at: now,
-        },
-        {
-          id: "long",
-          role: "assistant",
-          speakerId: residents[0].characterId,
-          kind: "dialogue",
-          name: residents[0].name,
-          content: prose,
-          at: now,
-        },
-      ],
-      submissions: [],
-    };
-    let events = [{ id: "heart", kind: "relationship-up", text: "Mara's warmth toward you increased (0 → 2)." }];
-    const closedCursors = [];
-    await page.route("**/api/villages**", async (route) => {
-      const path = new URL(route.request().url()).pathname;
-      let value = snapshot;
-      if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
-      else if (path.endsWith("/changes") && session.status === "closed") {
-        const cursor = new URL(route.request().url()).searchParams.get("cursor");
-        closedCursors.push(cursor);
-        const first = cursor !== "2:0:0";
-        value = {
-          changes: [
-            {
-              notices: [
-                {
-                  id: first ? "recovered-older" : "recovered-final",
-                  kind: "memory",
-                  text: first ? "Earlier turn recovered during close." : "Final recovery notice.",
-                },
-              ],
-            },
-          ],
-          notices: [],
-          dismissedNoticeIds: [],
-          nextCursor: first ? "2:0:0" : "3:0:0",
-          hasMore: first,
-          processingSummary: { pending: 0, failed: 0, rejected: 0 },
-        };
-      } else if (path.endsWith("/changes"))
-        value = {
-          changes: [],
-          notices: events,
-          dismissedNoticeIds: [],
-          nextCursor: "1:0:0",
-          processingSummary: { pending: 0, failed: 0, rejected: 0 },
-        };
-      else if (path.endsWith("/rooms/close") || path.endsWith("/rooms/end")) {
-        session.status = "closed";
-        session.endedAt = now;
-        session.memoryReview = { status: "complete", decisions: [] };
-        value = { session, recordEvents: [] };
-      }
-      await fulfill(route, {
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
-      });
-    });
-    await page.route("http://reading.test/", (route) =>
-      fulfill(route, {
-        status: 200,
+    await page.route("http://latest.test/", (route) =>
+      route.fulfill({
         contentType: "text/html",
-        body: `<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial}[data-component=HomeBrowserHub],.shell{height:100%;display:flex;flex-direction:column}.mari-home-browser-chrome{height:80px;flex-shrink:0}main{flex:1;min-height:0;overflow:auto}${tag}{display:block;width:100%;height:100%}</style><div data-component="HomeBrowserHub"><div class="shell"><header class="mari-home-browser-chrome">Home</header><main data-component="HomeBrowserHub.Content"><${tag}></${tag}></main></div></div>`,
+        body: `<style>:root{--background:#231c2d;--popover:#372e45;--foreground:#e8dcc0;--primary:#acb48b;--border:#786a80;--muted-foreground:#b9ada8}html,body,#root{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><div id='root'></div>`,
       }),
     );
-    await page.goto("http://reading.test/");
-    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const reading = page.getByRole("region", { name: "Current paragraph" });
-    const text = reading.locator(`p:not(.${tag}-reading-measure)`).first();
-    const counter = page.locator(`.${tag}-chat-vn-counter`);
-    const next = page.getByRole("button", { name: "Next paragraph" });
-    const previous = page.getByRole("button", { name: "Previous paragraph" });
-    const draft = page.getByRole("textbox", { name: "Message at The Mill" });
-    const dock = page.locator(`.${tag}-chat-vn`);
-    const tray = page.getByRole("button", { name: /World changes?/ });
-    const visitVenueAndReturn = async () => {
-      await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
-      await expect(page.getByRole("region", { name: "About this venue" })).toBeVisible();
-      await page
-        .locator(".marinara-capability-villages-desk-header")
-        .getByRole("button", { name: "Return to Scene", exact: true })
-        .click();
-      await expect(reading).toBeVisible();
-    };
-
-    await expect(reading).toBeVisible();
-    await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
-    if (mobile) {
-      const scene = await page.locator(`.${tag}-room-screen`).boundingBox();
-      await expect(draft).toHaveCount(0);
-      const card = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
-      assert.ok(
-        Math.abs(scene.y + scene.height - card.y - card.height) < 1,
-        "dialogue touches Scene bottom while reading",
-      );
-    }
-    await expect(tray).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByLabel("World changes", { exact: true })).toBeVisible();
-    events.push({ id: "memory", kind: "memory", text: "Mara remembered the exchange." });
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(tray).toHaveAccessibleName("2 World changes");
-    await expect(tray).toHaveAttribute("aria-expanded", "true");
-    await tray.click();
-    await expect(tray).toHaveAttribute("aria-expanded", "false");
-    // Opening a dossier keeps the same mounted scene and its earlier reading position.
-    while (await next.isEnabled()) await next.click();
-    await draft.fill("Draft retained across dossier navigation");
-    while (await previous.isEnabled()) await previous.click();
-    await expect(text).toHaveText("A quiet afternoon.");
-    for (let repeat = 0; repeat < 2; repeat++) {
-      await visitVenueAndReturn();
-      await expect(text).toHaveText("A quiet afternoon.");
-      await expect(draft).toHaveCount(0);
-    }
-    if ((await tray.getAttribute("aria-expanded")) === "true") await tray.click();
-
-    events.push({
-      id: "wish-navigation",
-      kind: "wish",
-      text: "Inspect Mara's wish",
-      detail: { text: "Wish update" },
-      wishUpdate: { actorId: "mara", wishId: "swim" },
+    await page.route("**/api/villages/**", async (route) => {
+      if (route.request().method() !== "GET") writes.push(route.request().url());
+      const line = (id, content) => ({
+        id,
+        content,
+        at: "2026-11-20T12:00:00Z",
+        role: "assistant",
+        kind: "narration",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+      });
+      await route.fulfill({
+        json: {
+          sceneId: "A",
+          scope: "a".repeat(64),
+          version: "1".repeat(64),
+          lines: [
+            line("old", "Old Entrance dialogue."),
+            line("arrival-airstrip", "You arrive at Airstrip."),
+            line("back-entrance", "You return to Entrance."),
+            line("arrival-workshop", "You arrive at Workshop."),
+          ],
+          visits: [
+            { id: "A", name: "Entrance", at: "2026-11-20T12:00:00Z", lineIds: ["old"] },
+            { id: "arrival-airstrip", name: "Airstrip", at: "2026-11-20T12:01:00Z", lineIds: ["arrival-airstrip"] },
+            { id: "back-entrance", name: "Entrance", at: "2026-11-20T12:02:00Z", lineIds: ["back-entrance"] },
+            { id: "arrival-workshop", name: "Workshop", at: "2026-11-20T12:03:00Z", lineIds: ["arrival-workshop"] },
+          ],
+        },
+      });
     });
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(tray).toHaveAccessibleName("3 World changes");
-    await expect(page.getByLabel("World changes", { exact: true })).toBeVisible();
-    // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
-    await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
-    await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
-    await expect(page.locator("[data-desk=people]")).toHaveAttribute("data-phase", "open");
-    await page
-      .getByRole("navigation", { name: "Village navigation", exact: true })
-      .getByRole("button", { name: "People", exact: true })
-      .focus();
-    await page.keyboard.press("Escape");
-    await expect(text).toHaveText("A quiet afternoon.");
-    await expect(draft).toHaveCount(0);
-    await tray.click();
+    await page.goto("http://latest.test/");
+    await page.addScriptTag({ content: built.outputFiles[0].text });
+    const reply = page.getByRole("region", { name: "Latest reply", exact: true });
+    const next = page.getByRole("button", { name: "Next paragraph", exact: true }),
+      previous = page.getByRole("button", { name: "Previous paragraph", exact: true });
+    await expect(reply).toContainText("Mara sets her cup down.");
+    await expect(reply).not.toContainText("Welcome to the Workshop.");
+    await expect(reply.locator("strong")).toHaveText("Mara sets her cup down.");
+    await expect(previous).toBeDisabled();
     await next.click();
-    if (mobile) {
-      await expect(counter).toContainText("Page 1/");
-      await previous.click();
-      await expect(text).toHaveText("A quiet afternoon.");
-      await expect(counter).toHaveText("Paragraph 1/2");
-      await next.click();
-      await expect(counter).toContainText("Page 1/");
-      assert.equal((await page.locator(`.${tag}-chat-vn-portrait`).boundingBox()).width, 32);
-      assert.ok((await reading.boundingBox()).width > width - 48, "text spans the card width");
-      while (await next.isEnabled()) await next.click();
-      await draft.fill("Preserve this draft");
-      while (await previous.isEnabled()) await previous.click();
-      await next.click();
-
-      await next.click();
-      await expect(counter).toContainText("Page 2/");
-      const retainedPage = await counter.textContent();
-      const retainedText = await text.textContent();
-      if (width === 390) {
-        // Rotation is allowed; only state survival is promised outside portrait.
-        await page.setViewportSize({ width: 844, height: 390 });
-        await expect(draft).toHaveValue("Preserve this draft");
-        await page.setViewportSize({ width, height });
-        await expect(counter).toHaveText(retainedPage);
-        await expect(text).toHaveText(retainedText);
-        await expect(draft).toHaveCount(0);
-      }
-      for (let repeat = 0; repeat < 2; repeat++) {
-        await visitVenueAndReturn();
-        await expect(counter).toHaveText(retainedPage);
-        await expect(text).toHaveText(retainedText);
-        await expect(draft).toHaveCount(0);
-      }
-      if ((await tray.getAttribute("aria-expanded")) === "true") await tray.click();
-      await previous.click();
-      await expect(counter).toContainText("Page 1/");
-      const initialText = await text.textContent();
-      await page.screenshot({ path: `artifacts/compact-before-hide-${width}x${height}.png` });
-      await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
-      await expect(reading).toBeHidden();
-      await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
-      await expect(draft).toHaveCount(0);
-      assert.equal(await text.textContent(), initialText);
-      const images = page.locator(`.${tag}-chat-cast-person > img`);
-      const baseline = await images.first().boundingBox();
-      let combined = "",
-        pageCount = 0;
-      do {
-        await expect(counter).toContainText(`Page ${pageCount + 1}/`);
-        const rendered = await text.evaluate((el) => ({
-          height: el.getBoundingClientRect().height,
-          line: parseFloat(getComputedStyle(el).lineHeight),
-        }));
-        assert.ok(
-          rendered.height <= 3 * rendered.line + 1,
-          `at most three rendered dialogue lines (${width}x${height}, page ${pageCount + 1}, ${JSON.stringify(rendered)}, ${await text.textContent()})`,
-        );
-        combined += await text.textContent();
-        assert.ok(await text.locator("strong").count(), "bold survives each page boundary");
-        assert.ok(
-          await reading.evaluate((el) => el.scrollHeight <= el.clientHeight + 2),
-          "ordinary page fits without scrolling",
-        );
-        assert.deepEqual(await images.first().boundingBox(), baseline, "paging does not replay sprite staging");
-        pageCount++;
-        if (await next.isDisabled()) break;
-        await next.click();
-      } while (pageCount < 100);
-      assert.ok(pageCount > 1 && pageCount < 100);
-      assert.equal(combined, expected, "every rendered character appears exactly once");
-      await expect(draft).toHaveValue("Preserve this draft");
-      const atBottom = await page.locator(`.${tag}-chat-input`).boundingBox();
-      assert.ok(Math.abs(atBottom.y + atBottom.height - height) <= 1, "action input has no padding beneath it");
-      const beforeKeyboard = await text.textContent(),
-        counterBeforeKeyboard = await counter.textContent();
-      await draft.focus();
-      await page.evaluate(() => {
-        window.sceneViewport.height = Math.max(220, innerHeight - 280);
-        window.sceneViewport.dispatchEvent(new Event("resize"));
-      });
-      await expect(page.locator(tag)).toHaveAttribute("data-scene-keyboard", "");
-      assert.equal(await text.textContent(), beforeKeyboard);
-      assert.equal(await counter.textContent(), counterBeforeKeyboard);
-      assert.deepEqual(await images.first().boundingBox(), baseline);
-      await page.evaluate(() => {
-        window.sceneViewport.height = innerHeight;
-        window.sceneViewport.dispatchEvent(new Event("resize"));
-      });
-      await expect(page.locator(tag)).not.toHaveAttribute("data-scene-keyboard", "");
-      await draft.blur();
-      if (width === 320) {
-        const anchor = (await text.textContent()).trim().split(/\s+/).slice(0, 3).join(" ");
-        await page.setViewportSize({ width: 390, height });
-        await expect(text).toContainText(anchor);
-        await page.setViewportSize({ width, height });
-        await expect(text).toContainText(anchor);
-        await page.evaluate(() => {
-          document.documentElement.style.fontSize = "18px";
-        });
-        await expect(text).toContainText(anchor);
-        await page.evaluate(() => {
-          document.documentElement.style.fontSize = "";
-        });
-      }
-      await page.screenshot({ path: `artifacts/compact-scene-active-${width}x${height}.png` });
-    } else {
-      await expect(counter).not.toContainText("Page");
-      assert.equal(await text.textContent(), expected);
-      await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
-    }
-    await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "End Scene now" }).click();
-    await expect(draft).toHaveCount(0);
-    await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toHaveCount(0);
-    await expect(tray).toHaveAccessibleName("5 World changes");
+    await expect(reply).toHaveText("Welcome to the Workshop.");
+    await previous.click();
+    await expect(reply).toHaveText("Mara sets her cup down.");
+    await next.click();
+    await next.click();
+    await expect(reply).toHaveText("The workbench is covered in tools.");
+    await expect(next).toBeDisabled();
+    await expect(reply).not.toContainText("Old Entrance");
+    const cast = page.locator('[class$="-chat-cast-person"]');
+    await expect(cast).toHaveCount(2);
+    const initialCast = await cast.evaluateAll((nodes) => nodes.map((node) => node.outerHTML));
+    const trigger = page.getByRole("button", { name: "Transcript", exact: true });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Scene transcript", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Entrance", exact: true })).toHaveCount(2);
+    await expect(dialog.getByRole("log", { name: "Scene history" })).toContainText("Old Entrance dialogue.");
+    const sceneBox = await page.locator('[class$="-room-screen"]').boundingBox(),
+      box = await dialog.boundingBox();
+    assert(Math.abs(box.height - sceneBox.height) < 2, JSON.stringify({ sceneBox, box, width }));
+    assert(width < 704 ? Math.abs(box.width - sceneBox.width) < 2 : box.width < sceneBox.width * 0.6);
+    assert(Math.abs(box.x + box.width - sceneBox.x - sceneBox.width) < 2, "desktop drawer is anchored to the right");
     assert.deepEqual(
-      closedCursors,
-      ["1:0:0", "2:0:0"],
-      "Closing drains new pages after the existing cursor exactly once",
+      await cast.evaluateAll((nodes) => nodes.map((node) => node.outerHTML)),
+      initialCast,
+      "history does not change current cast",
     );
-    if ((await tray.getAttribute("aria-expanded")) !== "true") await tray.click();
-    await expect(page.getByText("Earlier turn recovered during close.", { exact: true })).toBeVisible();
-    await expect(page.getByText("Final recovery notice.", { exact: true })).toBeVisible();
-    await tray.click();
-    const box = await dock.boundingBox();
-    assert.ok(Math.abs(box.y + box.height - height) <= 1, "ended dialogue dock reaches the bottom");
-    await page.screenshot({ path: `artifacts/compact-scene-ended-${width}x${height}.png` });
-    await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "Scene settings" }).click();
+    assert.equal(await page.evaluate(() => window.h.room.zoneId), "workshop");
+    await expect(page.getByRole("button", { name: "Close transcript", exact: true })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(dialog.getByRole("log")).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsent draft");
+    await page.evaluate(() => {
+      const h = window.h,
+        arrival = h.line("arrival-return", "You arrive back at Workshop.");
+      h.setRoom({ ...h.room, zoneArrivalId: arrival.id, lines: [...h.room.lines, arrival] });
+    });
+    await expect(reply).toContainText("You arrive back at Workshop.");
+    await expect(reply).not.toContainText("Welcome to the Workshop.");
+    await expect(previous).toBeDisabled();
+    await expect(next).toBeDisabled();
+    const long = Array.from(
+      { length: 12 },
+      (_, i) => "Sentence " + i + " stays complete while the paragraph is fitted to the phone. ",
+    ).join("");
+    await page.evaluate((long) => {
+      const h = window.h,
+        line = h.line("long", "**" + long + "**\n\nFinal reply paragraph.");
+      h.setRoom({
+        ...h.room,
+        lines: [...h.room.lines, line],
+        submissions: [...h.room.submissions, { id: "long", replyLineIds: [line.id] }],
+      });
+    }, long);
+    await expect(reply).toContainText("Sentence 0");
+    await expect(previous).toBeDisabled();
+    const parts = [];
+    for (let i = 0; i < 100; i++) {
+      const text = await reply.textContent();
+      if (text === "Final reply paragraph.") break;
+      parts.push(text);
+      await expect(next).toBeEnabled();
+      await next.click();
+    }
+    assert.equal(parts.join(""), long, "all pages preserve the paragraph exactly");
+    await expect(reply).toHaveText("Final reply paragraph.");
+    await expect(next).toBeDisabled();
+    const composer = await page.getByRole("textbox", { name: "Message at The Mill" }).boundingBox();
+    assert(composer.y + composer.height <= 901);
+    assert.deepEqual(writes, []);
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log(
-    "villages-reading-pages: mobile paging, formatting, sprites, keyboard, notices, hide/restore, reflow and ended docking passed",
-  );
 });
+console.log(
+  "Paragraph-by-paragraph latest reply, Back/Next, fresh arrivals, repeat Zone transcript sections, live cast, desktop drawer, full-screen phones, focus and draft preservation passed.",
+);

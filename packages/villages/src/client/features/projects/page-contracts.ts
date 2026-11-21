@@ -13,7 +13,7 @@ export type ProjectsPagePorts = {
   readonly setFocusedProjectId: (id: string) => void;
   readonly setPlacingProjectId: React.Dispatch<React.SetStateAction<string>>;
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"person" | "venue" | "home" | "menu" | "room" | "setup" | "resume" | "preparing">
+    React.SetStateAction<"person" | "venue" | "home" | "menu" | "room" | "setup" | "preparing">
   >;
   readonly siteProjectId: string;
   readonly snapshot: VillageSnapshot;

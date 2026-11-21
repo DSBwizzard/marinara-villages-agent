@@ -19,7 +19,11 @@ export function createSceneRepository({ villagesDocuments, mutateDocument, onPla
     return withRepairWork(async () => {
       const documents = villagesDocuments();
       const active = await readActiveSceneOwner(documents);
-      return coerceActive(active.pointer?.data);
+      const arrival = (active.scene?.data as Pick<VenueScene, "arrival"> | undefined)?.arrival;
+      return {
+        ...coerceActive(active.pointer?.data),
+        ...(arrival?.sourceId && !arrival.settled ? { settlingSourceId: arrival.sourceId } : {}),
+      };
     });
   }
 
@@ -48,10 +52,11 @@ export function createSceneRepository({ villagesDocuments, mutateDocument, onPla
     return result!;
   }
 
-  async function selectActiveScene(id: string, placeId: string): Promise<void> {
+  async function selectActiveScene(id: string, placeId: string, fromId?: string): Promise<void> {
     let released = "";
     await mutateDocument(ACTIVE_ID, activeSlot, (state) => {
-      if (state.sessionId && state.sessionId !== id) throw conflict("Finish the active Scene first.");
+      if (state.sessionId !== id && (fromId ? state.sessionId !== fromId : state.sessionId))
+        throw conflict("The active Scene changed. Refresh before entering.");
       released = state.playbackSceneId ?? "";
       state.sessionId = id;
       state.placeId = placeId;

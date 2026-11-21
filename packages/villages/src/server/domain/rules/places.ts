@@ -1,3 +1,4 @@
+import { cardCharacters } from "./visitors.js";
 import { z } from "zod";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import type { PlaceSummary } from "../../../shared/contracts/places.js";
@@ -186,7 +187,7 @@ export function findNpc(state: VillageState, id: string): NpcIdentity | undefine
 
 export function sceneActorIds(state: VillageState): string[] {
   return [
-    ...state.villagers.map((person) => person.characterId),
+    ...cardCharacters(state).map((person) => person.characterId),
     ...Object.values(placeRegistry(state)?.npcs ?? {})
       .filter((npc) => !npc.disabled)
       .map((npc) => npc.id),
@@ -207,8 +208,14 @@ export function placeSummary(place: WorldPlace): PlaceSummary {
   };
 }
 
+export function hasAssociatedNpc(state: VillageState, placeId: string): boolean {
+  return Object.values(placeRegistry(state)?.npcs ?? {}).some(
+    (npc) => !npc.disabled && npc.associations.some((row) => row.placeId === placeId),
+  );
+}
+
 export function npcProfile(npc: NpcIdentity): string {
-  return `${npc.name} (${npc.id}): ${npc.characterization}\nEstablished facts: ${npc.facts.join("; ")}.\nCurrent associations: ${npc.associations.map((row) => `${row.placeId}: ${row.role}`).join("; ")}.\nAvailability: ${npc.availability || "No established restriction"}. This is a supporting character, not a simulated Villager. Association is not attendance or mechanical authority.`;
+  return `${npc.name} (${npc.id}, player-facing label: ${npc.label || npc.name}): ${npc.characterization}\nEstablished facts: ${npc.facts.join("; ")}.\nCurrent associations: ${npc.associations.map((row) => `${row.placeId}: ${row.role}`).join("; ")}.\nAvailability: ${npc.availability || "No established restriction"}. This is a supporting character, not a simulated Villager. Association is not attendance or mechanical authority.`;
 }
 
 export function capturePlaceContext(state: VillageState, placeId: string, actors: readonly string[]): PlaceRegistry {

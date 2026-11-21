@@ -1,4 +1,6 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { assertSharedPlayspace } from "../../domain/rules/shared-playspace.js";
+import { villageNow } from "../time/clock-gate.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { coerceVillageState, defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageMemoryWrite, VillageRepository } from "../../domain/models/world-repository.js";
@@ -17,6 +19,7 @@ import {
 import { withRepairWork } from "./repair-gate.js";
 import { validateBackgroundJobRecord } from "./background-responses.js";
 import type { Job } from "../../domain/models/background-model.js";
+import { readSceneRetryRecord } from "./scene-retry-record.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["continuity", "episodes", "worldPlaces", "mailbox"] as const;
@@ -32,9 +35,13 @@ export function readVillageRoot(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 19) throw new Error("Unsupported Village format. Start a fresh Village.");
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
   readMemoryHead(raw.memoryHead);
+  if (raw.sceneRetry !== undefined) {
+    memoryRequire(typeof raw.seed === "string" && typeof raw.setupAt === "string", "invalid Scene Retry world");
+    readSceneRetryRecord(raw as { seed: string; setupAt: string });
+  }
   return raw;
 }
 function blockHistory(state: VillageState) {
@@ -130,14 +137,32 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 18, "invalid Village mutation format");
+            memoryRequire(state.version === 19, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
             );
+            if (state.setupAt) assertSharedPlayspace(state, villageNow(state.clock?.advanceMs ?? 0));
             const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
-            const stamp = new Date().toISOString(),
-              data = encodeRoot(state, nextHead);
+            const stamp = new Date().toISOString();
+            const data: ReturnType<typeof encodeRoot> & { sceneRetry?: unknown } = encodeRoot(state, nextHead);
+            if (identity === JSON.stringify([state.seed, state.setupAt])) {
+              const previous = readSceneRetryRecord({
+                seed: state.seed,
+                setupAt: state.setupAt,
+                sceneRetry: (record?.data as { sceneRetry?: unknown } | undefined)?.sceneRetry,
+              });
+              const capture = options?.captureSceneRetry?.();
+              if (capture) {
+                const { replaces, ...next } = capture;
+                memoryRequire(
+                  loaded && nextHead && (!replaces || previous?.episodeId === replaces),
+                  "Scene Retry owner changed",
+                );
+                data.sceneRetry = { ...next, before: replaces ? previous!.before : head, after: nextHead };
+                readSceneRetryRecord({ ...state, sceneRetry: data.sceneRetry });
+              } else if (capture === undefined && previous) data.sceneRetry = previous;
+            }
             for (const source of options?.sourceJobs ?? []) {
               const row = await store.getById(VILLAGES_PACKAGE_ID, source.slot);
               memoryRequire(

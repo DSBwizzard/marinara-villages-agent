@@ -201,9 +201,7 @@ export function useOpenSetup(ports: {
   setResetArmed: React.Dispatch<SetStateAction<boolean>>;
   setSceneryStyle: React.Dispatch<SetStateAction<string>>;
   setSceneryStyleProfileId: React.Dispatch<SetStateAction<string | null>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
   setSearch: React.Dispatch<SetStateAction<string>>;
   setSelectedSetupVenueId: React.Dispatch<SetStateAction<string>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
@@ -296,7 +294,7 @@ export function useOpenSetup(ports: {
       setPickerOpen(false);
       setSearch("");
       setSetupStep(0);
-      setSetupWorkspace(emptyFoundingWorkspace());
+      setSetupWorkspace({ ...emptyFoundingWorkspace(), settingIntroPending: true });
       setSetupShowIssues(false);
       setSetupFocusIssue(null);
       // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
@@ -309,7 +307,7 @@ export function useOpenSetup(ports: {
       setSetupContext({
         rules: "",
         circumstances: [],
-        communityVenueId: "founding-community",
+        openingVenueId: "founding-community",
       });
       const foundingPlaces =
         fresh || !village
@@ -406,9 +404,7 @@ export function useFoundVillage(ports: {
   selectedResidentAdmissions: { [k: string]: ResidentAdmission };
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setDraftReady: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
   setSelectedSetupVenueId: React.Dispatch<SetStateAction<string>>;
   setSetupProblem: React.Dispatch<SetStateAction<string>>;
   setSetupStep: React.Dispatch<SetStateAction<number>>;
@@ -508,7 +504,7 @@ export function useFoundVillage(ports: {
           worldName: setupWorldName,
           setting: setupSetting.trim(),
           worldRules: ports.setupContext.rules,
-          communityVenueId: ports.setupContext.communityVenueId,
+          openingVenueId: ports.setupContext.openingVenueId,
           playerBackground: setupPlayerBackground,
           circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),
           selectedLorebookIds: setupLorebookDraft,
@@ -531,7 +527,9 @@ export function useFoundVillage(ports: {
       setDraftReady(false);
       await draftSaveQueue.current;
       await removeDeviceDraft(API_PATH).catch(() => undefined);
-      setScreen(founded.foundingPreparation?.canPlay ? "home" : "preparing");
+      setScreen((current) =>
+        current === "setup" ? (founded.foundingPreparation?.canPlay ? "home" : "preparing") : current,
+      );
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "The village could not be founded."));
     } finally {

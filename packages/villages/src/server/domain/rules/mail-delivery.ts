@@ -11,6 +11,7 @@ import { readNarrationEffectHeader } from "./narration-contract.js";
 import { mailSourceHash, type MailIdentity } from "./mail-evidence.js";
 import { asRecord } from "./coerce.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { applyVisitPreference } from "./visitors.js";
 
 export type MailMeaning = { keep: unknown[]; requires: string[] };
 export class HeldMail extends Error {
@@ -188,6 +189,9 @@ export type MailExchange = {
   replyText: string;
   replyMeaning: MailMeaning;
   responseDigest: string;
+  visitPreference?: NonNullable<import("../models/social-mail.js").PersonalMailResult["visitPreference"]> & {
+    visitsRevision: string;
+  };
 };
 /** Incoming writing/reading and the reply's writing share one Village CAS; Player reading stays separate. */
 export function acceptMailExchange(state: VillageState, exchange: MailExchange, at: string) {
@@ -259,6 +263,19 @@ export function acceptMailExchange(state: VillageState, exchange: MailExchange, 
   state.mailbox = candidate.mailbox;
   state.residentPlans = candidate.residentPlans;
   state.villagers = candidate.villagers;
+  const preference = exchange.visitPreference;
+  const visitor = state.visitors?.find(
+    (person) => person.characterId === incoming.to.id && person.incarnation === incoming.to.incarnation,
+  );
+  if (
+    preference &&
+    visitor?.firstMetAt &&
+    visitor.visitsEnabled &&
+    visitor.visitsRevision === preference.visitsRevision &&
+    incoming.text.includes(preference.requestQuote) &&
+    exchange.replyText.includes(preference.replyQuote)
+  )
+    applyVisitPreference(visitor, preference.kind, incoming, at);
   return delivered.rejected;
 }
 

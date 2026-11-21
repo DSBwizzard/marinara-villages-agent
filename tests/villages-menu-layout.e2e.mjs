@@ -170,8 +170,6 @@ await withBrowser(browser, async () => {
               tense: "present",
               person: "second",
               rating: "sfw",
-              writingGuidance: "",
-              writingGuidanceMaxLength: 4000,
             }
           : path.endsWith("/catalog")
             ? { characters: [] }

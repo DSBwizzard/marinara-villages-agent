@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { applyWorldRepair, worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
@@ -5,10 +7,7 @@ import { sameSceneRoutine } from "../packages/villages/src/server/domain/rules/s
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   addRoutineIdea,
   routineProfileFromWeek,
@@ -98,7 +97,7 @@ const raw = {
   setting: "Quiet valley",
   backgroundPace: "off",
   selectedLorebookIds: [],
-  venues: [],
+  venues: [...[], ...sharedVenuesFixture()],
   villagers: [
     {
       letterFontId: "caveat",
@@ -713,7 +712,7 @@ async function main() {
       ...defaultVillageState(),
 
       ...raw,
-      venues: [safeVenue],
+      venues: [...[safeVenue], ...sharedVenuesFixture()],
     });
     resident.scheduleInfluence = influenceSettings({ enabled: true });
     const pendingInfluence = deriveInfluence(
@@ -735,7 +734,7 @@ async function main() {
       ...defaultVillageState(),
 
       ...raw,
-      venues: [safeVenue],
+      venues: [...[safeVenue], ...sharedVenuesFixture()],
       villagers: Array.from({ length: 6 }, (_, i) => ({
         letterFontId: "caveat",
         ...raw.villagers[0],

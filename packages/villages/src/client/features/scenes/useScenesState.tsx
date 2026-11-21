@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue } from "../../../shared/contracts/village.js";
 import { useSceneReadingSession } from "./reading-session.js";
+import type { SceneFailure } from "./scene-error-report.js";
 
 export type ContactRecovery = { sceneId: string; operation: RoomOperation };
 
@@ -19,8 +20,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const [roomContactBoundary, setRoomContactBoundary] = useState("");
 
-  const [roomContactKind, setRoomContactKind] = useState<"knock" | "call">("call");
-
   const [roomTargetId, setRoomTargetId] = useState("");
 
   const [roomMoveZoneId, setRoomMoveZoneId] = useState("");
@@ -32,8 +31,6 @@ export function useScenesState(isFounded?: boolean) {
   const seenRoomEventIdsRef = useRef(new Set<string>());
 
   const dismissedRoomEventIdsRef = useRef(new Set<string>());
-
-  const [roomChangeStatus, setRoomChangeStatus] = useState({ pending: 0, failed: 0, rejected: 0 });
 
   const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<SceneChangeIssue[]>([]);
 
@@ -50,8 +47,6 @@ export function useScenesState(isFounded?: boolean) {
 
   const roomSubmissionIdRef = useRef<string | null>(null);
 
-  const roomLeaveSubmissionIdRef = useRef<string | null>(null);
-
   const roomCompletionRef = useRef<{ roomId: string; submissionId: string } | null>(null);
 
   const roomSendInFlightRef = useRef(false);
@@ -61,7 +56,7 @@ export function useScenesState(isFounded?: boolean) {
   const restoredSceneDraftRef = useRef("");
 
   /** What the room's last attempt had to say, and empty when it has nothing to. */
-  const [roomError, setRoomError] = useState("");
+  const [roomFailure, setRoomError] = useState<string | SceneFailure>("");
 
   const [roomGreetingError, setRoomGreetingError] = useState<{ sessionId: string; message: string } | null>(null);
 
@@ -94,8 +89,6 @@ export function useScenesState(isFounded?: boolean) {
     setContactRecovery,
     roomContactBoundary,
     setRoomContactBoundary,
-    roomContactKind,
-    setRoomContactKind,
     roomTargetId,
     setRoomTargetId,
     roomMoveZoneId,
@@ -105,8 +98,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomNotices,
     seenRoomEventIdsRef,
     dismissedRoomEventIdsRef,
-    roomChangeStatus,
-    setRoomChangeStatus,
     roomUnresolvedChanges,
     setRoomUnresolvedChanges,
     debugDiscardEnabled,
@@ -118,12 +109,12 @@ export function useScenesState(isFounded?: boolean) {
     setRoomBusy,
     leavingRoomPendingRef,
     roomSubmissionIdRef,
-    roomLeaveSubmissionIdRef,
     roomCompletionRef,
     roomSendInFlightRef,
     composerEditVersionRef,
     restoredSceneDraftRef,
-    roomError,
+    roomError: typeof roomFailure === "string" ? roomFailure : roomFailure.message,
+    roomErrorTrace: typeof roomFailure === "string" ? undefined : roomFailure.trace,
     setRoomError,
     roomGreetingError,
     setRoomGreetingError,

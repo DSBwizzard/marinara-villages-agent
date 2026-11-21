@@ -13,6 +13,10 @@ import {
 } from "../packages/villages/src/server/features/media/sprite-setup-service.js";
 import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
 import { retainedSpriteFiles } from "../packages/villages/src/server/adapters/storage/sprite-files.js";
+import { automaticVisitorSprites } from "../packages/villages/src/server/domain/rules/visitor-sprites.js";
+import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
+import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 
 const id = "mara";
 const documents = new Map<string, unknown>();
@@ -116,6 +120,8 @@ const expressions = [
 ];
 const body = { token: initial.token, requestId: "batch", useSprites: true, expressions, defaultExpressionId: happyId };
 
+await assert.rejects(service.save(id, { ...body, defaultView: "side" }, signal), /Choose an available default facing/);
+
 await assert.rejects(
   service.save(
     id,
@@ -154,7 +160,9 @@ await assert.rejects(
 );
 assert.deepEqual(documents.get(documentId), initialDocument);
 const readsBeforeSave = catalogReads;
-const saved = await service.save(id, body, signal);
+const chosen = { ...body, defaultView: "front" };
+const saved = await service.save(id, chosen, signal);
+assert.equal(saved.manager.defaultView, "front");
 assert.equal(catalogReads, readsBeforeSave + 1, "A whole batch validates against one Engine catalog read");
 assert.equal(saved.revision, 6);
 assert.equal(saved.manager.assignments.length, 19);
@@ -165,8 +173,12 @@ assert.deepEqual(
 );
 assert.equal(saved.manager.framing.mode, "half");
 assert.equal(saved.manager.assignments[0].artworkId, front.id);
-assert.deepEqual(await service.save(id, body, signal), saved, "Lost acknowledgements replay the exact committed save");
-await assert.rejects(service.save(id, { ...body, useSprites: false }, signal), /save changed/);
+assert.deepEqual(
+  await service.save(id, chosen, signal),
+  saved,
+  "Lost acknowledgements replay the exact committed save",
+);
+await assert.rejects(service.save(id, { ...chosen, useSprites: false }, signal), /save changed/);
 await assert.rejects(service.preparedManager(id, 5), /changed/);
 assert.deepEqual(await service.preparedManager(id, 6), saved.manager);
 assert.equal(
@@ -249,6 +261,90 @@ assert.equal((await service.settled(id, true)).token, removed.token);
 await assert.rejects(
   service.save(id, { ...body, token: portrait.token, requestId: "stale", resident: true }, signal),
   /Appearance changed/,
+);
+
+const spriteFile = (filename: string, label: string, folderId?: string) => ({
+  filename,
+  label,
+  folderId,
+  url: "",
+  version,
+});
+const catalog = [
+  spriteFile("1_1.png", "1_1", "faces"),
+  spriteFile("untitled.png", "Neutral", "faces"),
+  spriteFile("red.png", "happy_02", "faces"),
+  spriteFile("blue.png", "happy_01", "faces"),
+  spriteFile("blink.png", "neutral_blink", "faces"),
+  spriteFile("full_neutral.png", "neutral", "bodies"),
+];
+const folders = [
+  { id: "faces", name: "Faces", category: "expressions" as const },
+  { id: "bodies", name: "Bodies", category: "full-body" as const },
+];
+const auto = automaticVisitorSprites(catalog, folders)!;
+assert.deepEqual(auto, automaticVisitorSprites([...catalog].reverse(), [...folders].reverse()));
+assert.deepEqual(
+  auto.assignments.map((row) => row.engineFilename),
+  ["untitled.png", "blue.png", "red.png"],
+);
+assert.equal(auto.defaultExpressionId, auto.expressions[0].id);
+assert(auto.assignments.every((row) => row.view === "front"));
+const opaque = automaticVisitorSprites([spriteFile("z.png", "jdflghdfhgdf"), spriteFile("a.png", "1_1")], []);
+assert.deepEqual(
+  opaque?.assignments.map((row) => row.engineFilename),
+  ["a.png"],
+);
+assert.equal(automaticVisitorSprites([], []), null);
+assert.equal(automaticVisitorSprites([spriteFile("blink.png", "neutral_eyes_shut")], []), null);
+
+const person = world.villagers[0];
+const untouched = { ...person, sprite: null, spriteManager: null, visitsEnabled: true, visitsRevision: "visit" };
+world.visitors = [untouched];
+world.villagers = [];
+const scope = villageWorldScope(world);
+assert.equal(
+  await service.initializeCharacter(scope, untouched),
+  null,
+  "A library failure leaves the Visitor eligible.",
+);
+assert.equal(world.visitors[0].spriteManager, null);
+libraryAvailable = true;
+assert.equal(await service.initializeCharacter("stale-world", untouched), undefined);
+assert.equal(await service.initializeCharacter(scope, { ...untouched, incarnation: "other" }), undefined);
+const initialized = await service.initializeCharacter(scope, untouched);
+assert.deepEqual(world.visitors[0].spriteManager, initialized);
+assert(initialized?.assignments.length);
+world.visitors[0].spriteManager = portrait.manager;
+const readsBefore = catalogReads;
+assert.deepEqual(await service.initializeCharacter(scope, untouched), portrait.manager);
+assert.equal(catalogReads, readsBefore, "An explicit Portrait choice keeps its settings.");
+
+world.visitors = [];
+world.villagers = [{ ...person, spriteManager: null, sprite: null }];
+assert((await service.initializeCharacter(scope, world.villagers[0]))?.assignments.length);
+world.villagers[0].spriteManager = portrait.manager;
+assert.deepEqual(await service.initializeCharacter(scope, world.villagers[0]), portrait.manager);
+
+const newCard = readVillagerCard({ id: "new-visitor", comment: "", data: { name: "New Visitor" } });
+world.foundedAt ||= new Date().toISOString();
+const roster = createResidentRoster({
+  readVillageState: async () => structuredClone(world),
+  mutateVillageState: async (change) => {
+    change(world);
+    return world;
+  },
+  findVillagerCard: async () => newCard,
+  automaticSprites: service.automaticManager,
+  queueVillagerAgenda: async () => {
+    throw new Error("Visitor setup cannot queue Villager work.");
+  },
+  retireBackgroundResident: () => {},
+});
+await roster.setVisitor(newCard.id, villageWorldScope(world), true);
+assert(
+  world.visitors[0].spriteManager?.assignments.length,
+  "Adding a Visitor settles their sprites before attendance.",
 );
 console.log(
   "Appearance saves independent Engine references, preserves owned art and retries, and resolves 2 Front and 17 Side sprites.",

@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: scene-narration/outbox, scene-narration/held, scene-narration/lost-ack, scene-narration/accepted-notices, scene-narration/write-failure, scene-narration/startup-hold, scene-narration/activation-owner, scene-narration/private-projection, scene-narration/validation-hold, scene-narration/cancellation, scene-narration/connected-turn, scene-narration/saved-changes, scene-narration/coordinator-startup-hold, scene-narration/abandon, scene-narration/abandon-lost-ack, scene-narration/abandon-committed, scene-narration/abandon-fence, scene-narration/startup-no-write, scene-narration/replace-committed, scene-narration/retirement, scene-narration/skip-ownership, scene-narration/input-playback, scene-narration/native-close, scene-narration/native-close-recovery, scene-narration/native-contact-end, scene-narration/native-close-authority, scene-narration/native-delta-fence, scene-narration/native-delta-integrity, scene-narration/native-movement, scene-narration/native-movement-recovery, scene-narration/native-departure, scene-narration/native-npc, scene-narration/native-circumstance
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -6,7 +8,6 @@ import {
   activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
@@ -390,12 +391,12 @@ await runCase("scene-narration/native-npc", async () => {
 });
 await runCase("scene-narration/native-circumstance", async () => {
   for (const lost of [false, true]) {
-    const f = fixture(),
+    const f = fixture("native-circumstance-2"),
       scene = f.scenes.get("scene")!,
       turn = f.turn(),
       venue = structuredClone(turn.narration!.readset.source.venue);
     for (const zone of venue.zones ?? []) if (zone.id !== scene.zoneId) zone.description = "";
-    f.world.venues = [venue];
+    f.world.venues = [venue, ...sharedVenuesFixture()];
     ensureNarrative(f.world, at);
     scene.continuity = captureSceneContinuity(f.world, scene, Date.parse(at));
     const context = narrationContinuityContext(
@@ -1042,7 +1043,11 @@ await runCase("scene-narration/input-playback", async () => {
     const projected = await query.projectSceneResponse(reloaded as unknown as Record<string, unknown>);
     const scope = projected.playback.scope;
     const playback = await query.readPlaybackPage("scene", { scope, first: "1" });
-    for (const lines of [projected.lines, (await query.readHistoryPage("scene", { scope })).lines, playback.lines]) {
+    assert(
+      projected.lines.every((line) => line.role === "assistant"),
+      "live Scene shows only its latest reply",
+    );
+    for (const lines of [(await query.readHistoryPage("scene", { scope })).lines, playback.lines]) {
       const own = lines.filter((line) => line.kind === "input");
       assert.equal(own.length, 1);
       assert.equal(own[0].content, message);
@@ -1215,7 +1220,21 @@ await runCase("scene-narration/write-failure", async () => {
 });
 await runCase("scene-narration/startup-hold", async () => {
   const f = fixture();
+  const raw = {
+    segments: [
+      {
+        kind: "dialogue",
+        speakerId: f.actorId,
+        text: "The saved hello.",
+        expression: "happy",
+        look: { target: "player" },
+      },
+    ],
+  };
+  f.turn().narration!.raw = raw;
+  f.turn().narration!.responseDigest = memoryHash(raw);
   f.turn().acceptance.status = "held";
+  f.turn().acceptance.rejected = [{ id: "narration", reason: "Unrecognized keys: expression, look" }];
   f.add("pending");
   f.queue.push({ sessionId: "scene", submissionId: "turn" }, { sessionId: "pending", submissionId: "turn" });
   const stop = f.service.startProgressRecovery();
@@ -1225,6 +1244,8 @@ await runCase("scene-narration/startup-hold", async () => {
   assert.equal(f.scenes.get("pending")!.submissions[0].acceptance.status, "applied");
   await f.service.processSavedExchange("scene", "turn");
   assert.equal(f.turn().acceptance.status, "applied", "explicit saved-result replay may retry a held request");
+  assert.equal(f.scenes.get("scene")!.lines.at(-1)!.content, "The saved hello.");
+  assert.equal(f.world.episodes.records.filter((episode) => episode.sceneId === "scene").length, 1);
 });
 await runCase("scene-narration/activation-owner", async () => {
   const a = createActivationScope(),
@@ -1273,7 +1294,8 @@ await runCase("scene-narration/private-projection", async () => {
     assert.equal(projection.processingSummary.failed, 1);
   }
   const publicScene = publicSceneResponse(f.scenes.get("scene")!);
-  assert.equal(publicScene.submissions[0].message, turn.message, "the player retains their own original submission");
+  assert(!Object.hasOwn(publicScene.submissions[0], "message"), "a held input stays in its private request");
+  assert.equal(f.turn().message, turn.message);
   assert.deepEqual(publicScene.lines, []);
 });
 
@@ -1367,7 +1389,7 @@ await runCase("scene-narration/connected-turn", async () => {
     readVillageLore: async () => [],
     completeWithRoom: async (_model, messages) => {
       purchases++;
-      promptInput = messages.at(-1)!.content;
+      promptInput = messages.at(-2)!.content;
       promptBody = messages.map((message) => message.content).join("\n");
       if (operationId === "contact-turn")
         return {

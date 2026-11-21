@@ -272,7 +272,7 @@ export function useFoundingMapReceipt(ports: {
     React.SetStateAction<import("./villages-founding-workspace-state.js").FoundingWorkspaceState>
   >;
   visible: boolean;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   setSetupMapBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupMapGeneratedKey: React.Dispatch<React.SetStateAction<string>>;
   setSetupMapImage: React.Dispatch<React.SetStateAction<string>>;
@@ -426,7 +426,7 @@ export function useFoundingSetupBlocker(ports: {
         return "Place every starting Venue.";
       if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap) return "Check the Venue positions on the map.";
 
-      const shapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.communityVenueId);
+      const shapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.openingVenueId);
       if (!snapshot?.isFounded && shapeProblem) return shapeProblem;
       const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
       const villagerHomes = residences;
@@ -469,27 +469,6 @@ export function useFoundingSetupBlocker(ports: {
         return "Give each Private Space a name, purpose, and controller on Venues.";
       if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
         return "A chosen villager is no longer in your character cards. Choose another villager on People.";
-      const community = setupVenues.find((venue) => venue.id === setupContext.communityVenueId);
-      if (
-        !community ||
-        community.classes?.includes("residence") ||
-        community.residentIds?.length ||
-        community.occupancy.playerHome ||
-        community.workerIds?.length
-      )
-        return "Choose a separate non-residential Community Venue.";
-      if (
-        !community.spaces?.some(
-          (zone) =>
-            zone.description.trim() &&
-            (!zone.access ||
-              (zone.access.mode === "public" &&
-                !zone.access.accompanied &&
-                !zone.access.managerIds?.length &&
-                !Array.isArray(zone.access.visitorHours))),
-        )
-      )
-        return "The Community Venue needs a usable public common Zone.";
       if (setupVenues.length > 16) return "A Village supports at most 16 Venues.";
       if (
         residences.some(
@@ -523,10 +502,10 @@ export function useFoundingPreparationPolling(ports: {
   historyPending: boolean;
   canPlay: boolean | undefined;
   status: VillageSnapshot["foundingPreparation"]["status"] | undefined;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
+  screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   setPreparationProblem: React.Dispatch<React.SetStateAction<string>>;
   setScreen: React.Dispatch<
-    React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
+    React.SetStateAction<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">
   >;
   setSnapshot: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageSnapshot>>;
 }) {
@@ -535,7 +514,7 @@ export function useFoundingPreparationPolling(ports: {
   useEffect(() => {
     if (screen !== "preparing" || !ports.visible) return;
     if (ports.canPlay) {
-      setScreen("home");
+      setScreen((current) => (current === "preparing" ? "home" : current));
       return;
     }
     if (status === "failed" && !ports.historyPending) return;
@@ -548,7 +527,8 @@ export function useFoundingPreparationPolling(ports: {
         if (cancelled) return;
         setSnapshot(next);
         setPreparationProblem("");
-        if (!next.foundingPreparation || next.foundingPreparation.canPlay) setScreen("home");
+        if (!next.foundingPreparation || next.foundingPreparation.canPlay)
+          setScreen((current) => (current === "preparing" ? "home" : current));
         else if (
           next.foundingPreparation.status === "pending" ||
           next.backgroundWork?.some((row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status))

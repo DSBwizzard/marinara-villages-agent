@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { configureLiveScenes } from "../packages/villages/src/server/features/scenes/live-session.js";
 import type { LiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -733,11 +735,12 @@ async function main() {
       townMapImage:
         "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
       setting: settingText,
-      communityVenueId: "village-square",
+      openingVenueId: "village-square",
       circumstances: [],
       worldRules: "",
       playerPersonaId: "persona-robin",
       venues: [
+        { ...newSetupVenue("garden", "community", 0.8, 0.6), name: "Shared garden" },
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
           id: "player-home",
@@ -835,7 +838,7 @@ async function main() {
     });
     assert.equal(founded.statusCode, 200, founded.body);
     const foundedWorld = await readVillageState({ memories: true });
-    const square = foundedWorld.venues.find((venue) => venue.classes?.includes("community"))!;
+    const square = foundedWorld.venues.find((venue) => venue.id === "village-square")!;
     assert.equal(
       observableRoomDescription(foundedWorld, square.id, "exterior", foundedWorld.setupAt),
       "A public square where neighbours meet.",
@@ -843,8 +846,8 @@ async function main() {
     );
     assert.equal(
       founded.json().settings.venues.filter((venue: any) => venue.classes.includes("community")).length,
-      1,
-      "founding creates exactly one public venue",
+      2,
+      "founding creates two public venues",
     );
     assert.equal(draws().length, 0, "founding a village does not spend the player's money on a picture");
     assert.equal(galleryCalls(UPLOAD_PATH).length, 1, "founding stores the uploaded first map in the gallery");
@@ -1463,6 +1466,7 @@ async function mediaConnectionOwnership() {
               },
             ],
           }),
+          ...sharedVenuesFixture(),
         ],
       });
       type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;

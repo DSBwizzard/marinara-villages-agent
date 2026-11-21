@@ -14,7 +14,7 @@ export async function verifySettingsRequestLifetimes(browser) {
       contents: `
 import {createRoot} from 'react-dom/client';import {StrictMode,useState} from 'react';
 import {useSettingsState} from './packages/villages/src/client/features/settings/useSettingsState.js';
-import {useSaveSettings,useSaveScenerySettings,useSaveBackgroundPace,useSaveSendOnEnter} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveSettings,useSaveScenerySettings,useSaveBackgroundPace,useSaveVillageSwitch} from './packages/villages/src/client/features/settings/actions.js';
 import {useSpriteVisualSettings} from './packages/villages/src/client/features/settings/SpriteVisualSettings.js';
 function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
@@ -22,7 +22,7 @@ function Harness(){
  [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false);
  const ports={...settings,snapshot,busy,setSnapshot,setBusy,setArchiveVersion,
   sceneryStyle,sceneryStyleProfileId,personalizeHomes,acceptSavedSettings:()=>{window.acks++}};
- const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),visual=useSpriteVisualSettings(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports);
+ const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),visual=useSpriteVisualSettings(ports),pace=useSaveBackgroundPace(ports),enter=useSaveVillageSwitch('sendOnEnter',ports);
  const commands={save,scenery:()=>scenery.save({sceneryArtStyle:sceneryStyle,sceneryStyleProfileId}),flip:()=>visual.save('spriteCardFlipEnabled',window.flipValue??true),variants:()=>visual.save('spriteVariantsEnabled',false),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>visual.save('characterSpeechColors',false)};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},

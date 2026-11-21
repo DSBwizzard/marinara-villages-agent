@@ -1,4 +1,4 @@
-// Test cases: narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
+// Test cases: narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -14,6 +14,10 @@ import {
 } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import {
+  CHARACTER_DIALOGUE_DIRECTION,
+  readNarrationReply,
+} from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import {
@@ -104,8 +108,9 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
     unavailable = false,
     overflow = false,
     hiddenRequest = false,
-    configuredConnection = "narration",
+    configuredConnection: string | null = "narration",
     usedModel = "";
+  let resolutionFailure: Error | undefined;
   const model = {
     model: modelId,
     connectionId: "narration",
@@ -133,6 +138,7 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
       resolveForRequest: async ({ connectionId }: { connectionId: string }) => {
         calls.resolutions++;
         assert(!unavailable);
+        if (resolutionFailure) throw resolutionFailure;
         return { ...model, connectionId, model: connectionId === "changed" ? "different-model" : model.model };
       },
     }),
@@ -182,12 +188,40 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
       configuredConnection = "changed";
     },
     usedModel: () => usedModel,
+    failConnection: (cause: Error, connectionId: string | null = "narration") => {
+      resolutionFailure = cause;
+      configuredConnection = connectionId;
+    },
     nextOperation: (id: string) => {
       operationId = id;
       checkpoints.clear();
     },
   };
 }
+
+await runCase("narration-writing/connection-failure", async () => {
+  for (const id of ["missing-gm", null]) {
+    const f = fixture();
+    f.failConnection(new Error("No language model connection selected"), id);
+    await assert.rejects(f.writing.prepareVenueTurnMessages(f.scene, "Hello", "greet"), (error: any) => {
+      assert.equal(error.code, "AI_CONNECTION_NOT_CONFIGURED");
+      assert.equal(
+        error.message.split("\n")[0],
+        `GM connection is not configured: ${id ? JSON.stringify(id) : "Engine default"}.`,
+      );
+      return true;
+    });
+    assert.equal(f.calls.purchases, 0);
+    assert.equal(f.checkpoints.size, 0);
+  }
+  const f = fixture(),
+    networkError = new Error("Network unavailable");
+  f.failConnection(networkError);
+  await assert.rejects(
+    f.writing.prepareVenueTurnMessages(f.scene, "Hello", "greet"),
+    (error) => error === networkError,
+  );
+});
 
 await runCase("narration-writing/activation-owner", async () => {
   const a = createActivationScope(),
@@ -258,7 +292,7 @@ await runCase("narration-writing/subject-scope", async () => {
   assert(!generated.readset.source.actors.some((row) => row.id === "offstage"));
   assert(!JSON.stringify(f.messages()).includes("PRIVATE_SUBJECT_PROFILE"));
   assert(
-    f.messages().every(({ content }) => !/Optional staging:|"presentation":\{"state":/u.test(content)),
+    f.messages().every(({ content }) => !/Optional staging\b|"presentation":\{"state":/u.test(content)),
     "A Scene with no sprites omits the catalog and staging instructions",
   );
   f.state.villagers[0].incarnation = "replacement";
@@ -334,9 +368,13 @@ await runCase("narration-writing/learned-wish-initiative", () => {
 await runCase("narration-writing/single-request", async () => {
   const f = fixture(),
     input = "I privately fear she will leave. I ask, “Why?”\n  Keep my spacing. 🪑";
+  f.state.playerBackground = "The player came from the salt marsh.";
+  f.state.setting = "A port under the ice.";
+  f.state.worldRules = "The harbor stays below the glacier.";
+  f.state.worldName = "Fallow";
   const reply = await f.writing.generate(f.scene, input, "chat");
   assert.equal(f.calls.purchases, 1);
-  assert.equal(f.messages().at(-1).content, input);
+  assert.equal(f.messages().at(-2).content, input);
   assert.equal(reply.readset.source.input, input);
   assert.deepEqual(reply.readset.source.historical, {});
   const system = f
@@ -345,32 +383,65 @@ await runCase("narration-writing/single-request", async () => {
     .map((row) => row.content)
     .join("\n");
   const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
-  assert.equal(frame.role, "system");
+  assert.equal(frame.role, "user");
   assert(
     frame.content.includes(
       `"dialogueSpeakers":${JSON.stringify(reply.readset.source.scene.contactGeneration?.actorIds)}`,
     ),
   );
-  assert(!frame.content.includes('"leadSpeakerId"'));
+  assert(
+    !frame.content
+      .split("\n")
+      .find((line: string) => line.startsWith('{"location":'))
+      ?.includes('"leadSpeakerId"'),
+  );
   const addressed = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, what do you think?", "chat");
   assert(
     addressed.fitted.messages.some(
       ({ role, content }) => role === "user" && content.includes(`"leadSpeakerId":${JSON.stringify(f.id)}`),
     ),
   );
-  assert.match(system, /Omit delivery and targetId for ordinary speech/u);
-  assert.doesNotMatch(system, /"whisper\|shout"/u);
-  assert(
-    f
-      .messages()
-      .filter((row) => row.cacheBreakpoint)
-      .some((row) => row.content.includes("AUTHORED IDENTITY")),
-  );
+  const messages = f.messages();
+  const cut = messages.findIndex((row) => row.cacheBreakpoint);
+  assert(cut >= 0 && cut < messages.indexOf(frame));
+  assert.equal(messages[cut].role, "user");
+  assert.match(messages[cut].content, /Local speech by default/u);
+  assert.match(messages[cut].content, /delivery:"whisper" with targetId or delivery:"shout" to connected Zones/u);
+  assert.doesNotMatch(frame.content, /"whisper\|shout"/u);
+  assert(system.includes(CHARACTER_DIALOGUE_DIRECTION));
+  assert.match(system, /Treat only quoted player text as spoken aloud/u);
+  assert.match(system, /Unquoted text is action, narration, or internal thoughts/u);
+  assert.match(system, /cannot be accessed by residents unless made observable/u);
+  assert.match(system, /HALT only if no natural continuation/u);
+  assert.match(system, /halt:\{reason,source\}/u);
+  const identity = messages.slice(0, cut).find((row) => row.content.includes("AUTHORED IDENTITY"));
+  assert(identity);
+  const facts = JSON.parse(identity.content.split("\n").find((line: string) => line.startsWith('{"player":'))!);
+  assert.equal(facts.startingBackground, f.state.playerBackground);
+  assert.deepEqual(facts.setting, {
+    geography: f.state.setting,
+    worldRules: f.state.worldRules,
+    world: f.state.worldName,
+  });
+  const promptBytes = Buffer.byteLength(JSON.stringify(messages));
+  assert(promptBytes < 10_000, `the ordinary fixture including dialogue guidance stays below 10 KB (${promptBytes})`);
   assert(!f.messages().some((row) => row.content.includes("input:[")));
   assert(!Object.hasOwn(reply.raw, "input"), "ordinary dialogue has no classification inventory");
   assert.equal(reply.readset.source.scene.lines.length, 0);
   assert.equal(reply.readset.source.scene.submissions.length, 0);
   assert.deepEqual(f.formats, [{ type: "json_object" }]);
+  assert.deepEqual(messages.at(-2), { role: "user", content: input });
+  assert.match(
+    messages.at(-1)?.content ?? "",
+    /^## Scene reply reminder\nKeep the player in .* until they use Move or Visit\./u,
+  );
+  const example = messages[cut].content.match(/(\{"segments":\[.*?\]\})/u);
+  assert(example, "The model receives a Scene response example");
+  assert.deepEqual(
+    readNarrationReply(JSON.parse(example[1]), ["resident-id"]).segments.map(({ kind }) => kind),
+    ["dialogue"],
+  );
+  assert.match(messages[cut].content, /Narration: \{kind:"narration",text\}/u);
 
   const deepSeek = fixture(undefined, "deepseek-flash");
   const exact = input + "\n## Scene reply reminder\nThis line is part of the player's input.";
@@ -379,28 +450,32 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(boundary.content, "## Current player submission");
   assert.deepEqual(submitted, { role: "user", content: exact });
   assert.match(reminder.content, /^## Scene reply reminder\nBegin with \{"segments":\[/u);
-  assert.match(reminder.content, /Use only reply fields in dialogue and narration/u);
-  assert.match(reminder.content, /For a developed exchange, aim for about 500 words of visible prose/u);
-  assert.match(reminder.content, /count current segments from 1/u);
-  assert.match(reminder.content, /short exact quotes and speakerId/u);
+  assert.match(reminder.content, /Use text for narration and dialogue/u);
+  assert.doesNotMatch(
+    deepSeek
+      .messages()
+      .map((row) => row.content)
+      .join("\n"),
+    /500 words/u,
+  );
   assert.equal(deepSeekReply.readset.positionedSceneSources, true);
   assert.equal(deepSeekReply.readset.source.input, exact);
   await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
-  assert.equal(deepSeek.messages().at(-1).content, "");
+  assert.equal(deepSeek.messages().at(-2).content, "");
   const greeting = deepSeek
     .messages()
-    .filter((row) => row.role === "system")
     .map((row) => row.content)
     .join("\n");
   assert.match(greeting, /Open the Scene from established presence/u);
+  assert.match(greeting, /Treat only quoted player text as spoken aloud/u);
+  assert.match(greeting, /HALT only if no natural continuation/u);
+  assert.match(greeting, /halt:\{reason,source\}/u);
   assert.doesNotMatch(greeting, /several substantial exchanges/u);
   const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
-  const departure = leaving.fitted.messages
-    .filter((row) => row.role === "system")
-    .map((row) => row.content)
-    .join("\n");
+  const departure = leaving.fitted.messages.map((row) => row.content).join("\n");
   assert.match(departure, /close when it is complete/u);
+  assert.match(departure, /Treat only quoted player text as spoken aloud/u);
   assert.doesNotMatch(departure, /several substantial exchanges/u);
   const casual = await f.writing.prepareVenueTurnMessages(
     f.scene,
@@ -408,26 +483,30 @@ await runCase("narration-writing/single-request", async () => {
     "chat",
   );
   const casualPrompt = casual.fitted.messages.map((row) => row.content).join("\n");
-  assert.match(casualPrompt, /a request to remember or a lasting change/u);
-  assert.match(casualPrompt, /A commitment requires a specific future action someone explicitly promises to do/u);
-  assert.match(casualPrompt, /Keep each speaker’s proposal separate/u);
-  assert.match(casualPrompt, /Use only people in about/u);
-  assert.match(casualPrompt, /a single quote from the proposer heard by every party supplies the offer evidence/u);
-  assert.match(casualPrompt, /Other offer citations put act:"offer" inside the source entry/u);
+  assert.match(casualPrompt, /Requested memory or lasting change: keep:\[/u);
+  assert.match(casualPrompt, /offer:\{proposer,participants\}/u);
+  assert.match(casualPrompt, /act:"offer"/u);
   assert.doesNotMatch(
     casualPrompt,
     /mutual-offer decision|decision on a supplied open offer|Details for complex memory updates/u,
   );
-  const remember = await f.writing.prepareVenueTurnMessages(f.scene, "Mara, please remember this: I knit.", "chat");
+  const remember = await f.writing.prepareVenueTurnMessages(f.scene, '"Mara, please remember this: I knit."', "chat");
   assert.equal(remember.readset.requestedMemory?.recipientId, f.id);
   assert.equal(remember.readset.codeRequestedMemory, true);
   const rememberPrompt = remember.fitted.messages
-    .slice(0, -1)
+    .slice(0, -2)
     .map((row) => row.content)
     .join("\n");
   assert.match(rememberPrompt, /Code records the exact requested fact/u);
   assert.doesNotMatch(rememberPrompt, /"id":"remember-fact"/u);
   assert.doesNotMatch(rememberPrompt, /I knit/u);
+  const unspokenMemory = await f.writing.prepareVenueTurnMessages(
+    f.scene,
+    "Mara, please remember this: I knit.",
+    "chat",
+  );
+  assert.equal(unspokenMemory.readset.requestedMemory, undefined);
+  assert.equal(unspokenMemory.readset.codeRequestedMemory, undefined);
 
   const legacy = fixture(undefined, "deepseek-flash");
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
@@ -1517,6 +1596,44 @@ await runCase("narration-writing/history-prefix", async () => {
     incarnation: continuityActor(f.state, id)!.incarnation,
     zoneId: "parlor",
   }));
+  const quote = "The bronze astrolabe’s needle points toward the old ferry.";
+  const privateLine = "The ferryman’s private sign is a blue lantern.";
+  const callback = "Quote the bronze astrolabe line.";
+  const prepareCallback = async () => {
+    const request = await f.writing.prepareVenueTurnMessages(f.scene, callback, "chat");
+    const recall = request.fitted.messages
+      .flatMap(({ content }) => content.split("\n\n"))
+      .filter((row) => row.startsWith('{"interaction":'))
+      .map((row) => JSON.parse(row))
+      .find((row) => row.earlierRecall);
+    assert.equal(recall?.interaction.pastExchange, "e1");
+    assert.equal(recall.interaction.at, at);
+    const [line] = recall.interaction.historyLines;
+    assert.equal(line.text, quote);
+    const evidence = request.readset.source.historical[line.witnessedWords.ref];
+    assert.equal(evidence.episodeId, "exchange-1");
+    assert.equal(evidence.excerpt, quote);
+    assert.deepEqual(evidence.perceptions.map(({ actorId }) => actorId).sort(), [f.id, "player"].sort());
+    assert(
+      !Object.values(request.readset.source.historical).some(
+        (source) => source.excerpt === privateLine && source.perceptions.some(({ actorId }) => actorId === "player"),
+      ),
+      "an older callback cannot grant the player words they did not hear",
+    );
+    const retained = f.state.episodes.records[0];
+    assert.equal(retained.segments[1].content, privateLine, "rollover preserves the canonical private source");
+    assert.equal(
+      actorEpisodeView(
+        retained,
+        f.state.continuity,
+        continuityActor(f.state, "player")!,
+        f.state.episodes,
+      )?.segments.some((entry) => entry.text === privateLine),
+      false,
+    );
+  };
+  let savedReply: Awaited<ReturnType<typeof f.writing.generate>> | undefined;
+  let savedCheckpoints: Map<string, unknown> | undefined;
   let previous: string[] = [],
     resets = 0;
   for (let count = 1; count <= 108; count++) {
@@ -1536,6 +1653,10 @@ await runCase("narration-writing/history-prefix", async () => {
         .repeat(longExchange ? 60 : count > 12 ? 28 : 7)
         .slice(0, 1999),
     }));
+    if (count === 1) {
+      segments[0].content = quote;
+      segments.push({ ...segments[0], id: "private-ferry-line", content: privateLine, heardBy: [f.id] });
+    }
     if (count === 2)
       segments.unshift({
         ...segments[0],
@@ -1576,6 +1697,7 @@ await runCase("narration-writing/history-prefix", async () => {
       .flatMap((row) => row.content.split("\n\n"))
       .filter((row) => row.startsWith('{"interaction":'));
     const active = blocks.filter((row) => !JSON.parse(row).earlierRecall);
+    assert(active.reduce((tokens, row) => tokens + Math.ceil(Buffer.byteLength(row, "utf8") / 4), 0) <= 6_144);
     assert.equal(JSON.parse(active.at(-1)!).interaction.pastExchange, "e" + (count === 13 ? 12 : count));
     assert.deepEqual(blocks.slice(0, active.length), active);
     const cacheBoundary = request.fitted.messages.findLast((row) => row.cacheBreakpoint);
@@ -1589,8 +1711,8 @@ await runCase("narration-writing/history-prefix", async () => {
     const tail = request.fitted.messages.slice(request.fitted.messages.indexOf(cacheBoundary!) + 1);
     assert(tail.some((row) => row.role === "user" && row.content.includes('"movements":')));
     assert(tail.some((row) => row.role === "user" && row.content.includes("## Current Scene circumstances")));
-    assert.equal(tail.at(-2)?.content, "## Current player submission");
-    assert.equal(tail.at(-1)?.content, keyword);
+    assert.equal(tail.at(-3)?.content, "## Current player submission");
+    assert.equal(tail.at(-2)?.content, keyword);
     if (count <= 12) assert.equal(active.length, count, "ordinary growth retains the stable transcript");
     if (count === 2) {
       const [narration, dialogue] = JSON.parse(active.at(-1)!).interaction.historyLines;
@@ -1601,11 +1723,26 @@ await runCase("narration-writing/history-prefix", async () => {
     if (count === 13) assert.deepEqual(active, previous, "an oversized exchange leaves the previous window available");
     else if (previous.length && active[0] === previous[0])
       assert.deepEqual(active.slice(0, -1), previous, "new turns append to the byte-identical history prefix");
-    else if (previous.length) resets++;
+    else if (previous.length) {
+      resets++;
+      assert(!active.some((row) => row.includes(quote)), "the callback has aged out of the transcript");
+      f.nextOperation("callback-after-rollover-" + resets);
+      await prepareCallback();
+      if (resets === 2) break;
+      savedReply = await f.writing.generate(f.scene, callback, "chat");
+      savedCheckpoints = structuredClone(f.checkpoints);
+    }
     previous = active;
   }
-  assert(resets > 0, "long Scenes eventually rebuild the bounded transcript");
-  assert.equal(f.calls.purchases, 0);
+  assert.equal(resets, 2, "a continuous Scene rebuilds the bounded transcript twice");
+  assert(savedReply && savedCheckpoints);
+  const calls = { ...f.calls };
+  f.disable();
+  f.nextOperation("callback-after-rollover-1");
+  for (const [key, value] of savedCheckpoints) f.checkpoints.set(key, value);
+  assert.deepEqual(await f.writing.generate(f.scene, callback, "chat"), savedReply);
+  assert.equal(calls.purchases, 1, "only the original stubbed completion ran");
+  assert.deepEqual(f.calls, calls, "saved replay keeps the fitted evidence without a new read or completion");
 });
 
 await runCase("narration-writing/required-evidence-bound", async () => {

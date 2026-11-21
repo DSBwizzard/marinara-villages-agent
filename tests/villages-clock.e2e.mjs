@@ -19,6 +19,9 @@ await withBrowser(browser, async () => {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let founding = false;
+    let foundingSceneChecks = 0;
+    let holdSnapshot = false;
+    let heldSnapshot;
     let serverInstant = "2026-10-15T02:30:00Z";
     const state = () => {
       const value = structuredClone(base);
@@ -31,18 +34,33 @@ await withBrowser(browser, async () => {
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
-        body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: `<style>
+          html,body{margin:0;background:#171b25;color:white;font:16px Arial}
+          marinara-capability-villages{display:block;height:100vh}
+          [data-marinara-accent-animation] :where(.mari-rgb-icon-scope) svg:not(.mari-rgb-static-icon){
+            color:var(--marinara-chat-chrome-button-text-active);stroke:currentColor
+          }
+        </style><div class="mari-rgb-icon-scope"><marinara-capability-villages></marinara-capability-villages></div>`,
       }),
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (holdSnapshot && path === "/api/villages") {
+        heldSnapshot = route;
+        return;
+      }
       if (path.endsWith("/background/presence"))
         return fulfill(route, { json: { status: "ready", snapshot: state() } });
       let value = state();
       const status = 200;
-      if (path.endsWith("/rooms/active")) value = { session: null };
-      else if (path.endsWith("/connections"))
-        value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
+      if (path.endsWith("/rooms/active")) {
+        if (founding) {
+          foundingSceneChecks++;
+          return fulfill(route, { status: 503, json: { error: "Scene check should not run during Founding" } });
+        }
+        value = { session: null };
+      } else if (path.endsWith("/connections"))
+        value = { systemConnectionId: "clock-test", narrationConnectionId: "clock-test", imageConnectionId: "" };
       else if (path.endsWith("/catalog")) value = { characters: [] };
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/lorebooks")) value = { books: [] };
@@ -60,6 +78,9 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/town-map")) value = { image: base.settings.townMapImage };
       await fulfill(route, { status, contentType: "application/json", body: JSON.stringify(value) });
     });
+    await page.route("**/api/connections", (route) =>
+      fulfill(route, { json: [{ id: "clock-test", name: "Clock fixture", provider: "language" }] }),
+    );
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await runCase("village-clock/" + width, async () => {
@@ -73,15 +94,68 @@ await withBrowser(browser, async () => {
     });
     await runCase("founding-timezone/" + width, async () => {
       founding = true;
+      serverInstant = "2026-10-15T02:59:57Z";
+      await page.clock.install({ time: new Date("2030-01-01T12:00:00Z") });
+      await page.clock.pauseAt(new Date("2030-01-01T12:01:00Z"));
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      const zone = page.getByRole("combobox", { name: "Village Timezone" });
-      await expect(zone).toHaveCount(0);
-      await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
-      await page.screenshot({ path: ".build-tmp/clock-visual/founding-" + width + ".png" });
-      await page.getByRole("button", { name: "Exit", exact: true }).click();
-      await page.getByRole("button", { name: "Resume founding", exact: true }).click();
-      await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
+      const scene = page.locator(".villages-forging-v2");
+      await expect(scene.locator(".villages-founding-title")).toBeVisible();
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      await page.evaluate(() => {
+        document.documentElement.dataset.marinaraAccentAnimation = "true";
+        document.documentElement.style.setProperty("--marinara-chat-chrome-button-text-active", "#ec4899");
+      });
+      const skyline = scene.locator(".villages-founding-logo path");
+      await expect(skyline).toHaveCSS("fill", "rgb(224, 228, 201)");
+      await expect(skyline).toHaveCSS("stroke", "none");
+      await page.getByRole("button", { name: "START", exact: true }).click();
+      const phases = page.getByRole("list", { name: "Founding phases" });
+      const mari = scene.getByRole("region", { name: "Professor Mari", exact: true });
+      await expect(scene).toHaveAttribute("aria-busy", "true");
+      await expect(scene.locator(".villages-founding-title")).toHaveJSProperty("inert", true);
+      await expect(scene.locator(".villages-founding-title")).toHaveCSS("animation-name", "villages-title-fade");
+      await expect(scene.locator('.villages-setting-stage img[src$="mari-founding-looking-up.webp"]')).toHaveCount(1);
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      await page.clock.fastForward(350);
+      const models = scene.getByRole("region", { name: "Choose your models" });
+      await expect(models).toBeVisible();
+      await expect(phases).toHaveCount(0);
+      await expect(mari).toHaveCount(0);
+      await models.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(scene).toHaveAttribute("data-mari-turning", "true");
+      await page.clock.fastForward(500);
+      await expect(scene.locator(".villages-founding-title")).toHaveCount(0);
+      await expect(phases).toBeVisible();
+      await expect(mari.getByText("Professor Mari", { exact: true })).toBeVisible();
+      await expect(page.getByRole("combobox", { name: "Village Timezone" })).toHaveCount(0);
+      await expect(scene).toHaveAttribute("data-lighting", "day");
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook-day\.webp/);
+      await page.screenshot({ path: ".build-tmp/clock-visual/founding-day-" + width + ".png" });
+      await scene.getByRole("button", { name: "Draft with Mari", exact: true }).click();
+      const world = scene.getByLabel(width === 390 ? "World description" : "The larger world");
+      await world.fill("A string of settlements along the coast");
+      await page.clock.fastForward(3000);
+      await expect(scene).toHaveAttribute("data-lighting", "night");
+      await expect(scene).toHaveCSS("background-image", /mari-founding-overlook\.webp/);
+      await expect(world).toHaveValue("A string of settlements along the coast");
+      await page.screenshot({ path: ".build-tmp/clock-visual/founding-night-" + width + ".png" });
+      holdSnapshot = true;
+      await page.evaluate(async () => {
+        const villages = document.querySelector("marinara-capability-villages");
+        const parent = villages.parentElement;
+        villages.remove();
+        await Promise.resolve();
+        parent.append(villages);
+      });
+      await expect.poll(() => !!heldSnapshot).toBe(true);
+      await expect(page.locator(".marinara-capability-villages-root")).toHaveCount(0);
+      holdSnapshot = false;
+      await fulfill(heldSnapshot, { status: 503, json: { error: "Village snapshot unavailable" } });
+      await expect(page.getByRole("alert")).toContainText("Village snapshot unavailable");
+      await page.getByRole("button", { name: "Try again", exact: true }).click();
+      await expect(world).toHaveValue("A string of settlements along the coast");
+      assert.equal(foundingSceneChecks, 0, "Founding remounts never ask for an active Scene");
     });
     assert.deepEqual(errors, []);
     await context.close();

@@ -1,6 +1,8 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { contactNeighborIds, materializeConnections, type ConnectedSpace } from "../../shared/helpers/zone-contact.js";
 import { resolveZoneLayout, zonePositionFits, ZONE_TILE, type ZoneLayout } from "../../shared/helpers/zone-layout.js";
+import { ArtworkImage } from "./ArtworkImage.js";
+import { zoneConnectionPath } from "./zone-connection-path.js";
 
 export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   zones,
@@ -8,23 +10,30 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   onPositions,
   onConnections,
   selectedId,
+  currentId,
   onSelect,
   disabled = false,
   labels,
   toolbar,
   modifyConnections = false,
+  angular = false,
+  artwork,
 }: {
   zones: T[];
   positions?: ZoneLayout;
   onPositions?(layout: ZoneLayout): void;
   onConnections?(zones: T[]): void;
   selectedId?: string;
+  currentId?: string;
   onSelect?(id: string): void;
   disabled?: boolean;
   labels?(zone: T): ReactNode;
   toolbar?: ReactNode;
   modifyConnections?: boolean;
+  angular?: boolean;
+  artwork?(zone: T): string | undefined;
 }) {
+  const descriptionId = useId();
   const [connecting, setConnecting] = useState(false),
     [first, setFirst] = useState<string | null>(null);
   const [preview, setPreview] = useState<ZoneLayout | null>(null);
@@ -105,18 +114,22 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
         </div>
       ) : null}
       <div className="villages-zone-map-canvas">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          {pairs.map(([a, b]) => (
-            <line
-              key={JSON.stringify([a, b])}
-              x1={layout[a].x + ZONE_TILE.width / 2}
-              y1={layout[a].y + ZONE_TILE.height / 2}
-              x2={layout[b].x + ZONE_TILE.width / 2}
-              y2={layout[b].y + ZONE_TILE.height / 2}
-            />
-          ))}
+        <svg className="mari-rgb-static-icon" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          {pairs.map(([a, b]) =>
+            angular ? (
+              <polyline key={JSON.stringify([a, b])} points={zoneConnectionPath(layout, a, b)} />
+            ) : (
+              <line
+                key={JSON.stringify([a, b])}
+                x1={layout[a].x + ZONE_TILE.width / 2}
+                y1={layout[a].y + ZONE_TILE.height / 2}
+                x2={layout[b].x + ZONE_TILE.width / 2}
+                y2={layout[b].y + ZONE_TILE.height / 2}
+              />
+            ),
+          )}
         </svg>
-        {zones.map((zone) => (
+        {zones.map((zone, index) => (
           <button
             type="button"
             key={zone.id}
@@ -132,13 +145,15 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               height: `${ZONE_TILE.height}%`,
             }}
             aria-pressed={connecting ? first === zone.id : selectedId === zone.id}
+            aria-current={currentId === zone.id ? "location" : undefined}
             aria-label={name(zone.id)}
+            aria-describedby={labels ? `${descriptionId}-${index}` : undefined}
             title={name(zone.id)}
             onClick={(event) => {
-              if (event.detail === 0) select(zone.id);
+              if (!onPositions || event.detail === 0) select(zone.id);
             }}
             onPointerDown={(event) => {
-              if (disabled || event.button !== 0) return;
+              if (disabled || !onPositions || event.button !== 0) return;
               event.currentTarget.setPointerCapture(event.pointerId);
               drag.current = {
                 id: zone.id,
@@ -212,8 +227,13 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               }
             }}
           >
+            {artwork?.(zone) && <ArtworkImage src={artwork(zone)!} alt="" tile className="villages-zone-map-art" />}
             <strong>{name(zone.id)}</strong>
-            {labels?.(zone)}
+            {labels && (
+              <span className="villages-zone-map-label" id={`${descriptionId}-${index}`}>
+                {labels(zone)}
+              </span>
+            )}
           </button>
         ))}
       </div>

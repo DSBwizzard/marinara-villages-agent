@@ -1,4 +1,4 @@
-import { findLocation } from "./places.js";
+import { findLocation, findNpc } from "./places.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageAgendaBlock, VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
@@ -6,7 +6,7 @@ import { agendaAt } from "./agenda-plan.js";
 import { agendaDateKey } from "./agenda-week.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
-import { contactPath, sceneAccessContext } from "./venue-contact.js";
+import { contactPath, physicalVenuePath, physicallyUsableZone, sceneAccessContext } from "./venue-contact.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
@@ -14,10 +14,12 @@ import { venueResidentIds } from "./venue-model.js";
 import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagePresence } from "./village-projections.js";
+import { sameVisitorPhase, visitorPosition } from "./visitors.js";
 
 export function sameSceneRoutine(village: VillageState, scene: VenueScene, actorId: string, now: Date): boolean {
   const resident = village.villagers.find((row) => row.characterId === actorId);
-  if (!resident) return false;
+  if (!resident)
+    return sameVisitorPhase(village, actorId, new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt), now);
   const previous = scene.continuity?.facts.villagers.find((row) => row.characterId === actorId) ?? resident;
   const timeZone = village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const before = new ZonedDate(scene.sceneAttendance?.capturedAt ?? scene.startedAt, timeZone);
@@ -85,30 +87,43 @@ export function captureSceneAttendance(
     now,
   });
   const presence = villagePresence(village, moment.minuteOfDay, now, positions);
+  const visitor = visitorPosition(village, now, presence, positions);
   return {
     layout: captureSceneLayout(venue),
     capturedAt: now.toISOString(),
-    occupants: village.villagers.flatMap((villager) => {
-      const position = presence.get(villager.characterId);
-      if (position?.id !== placeId) return [];
-      const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
-      const zone =
-        resolveVenueZone(venue, position.zoneId ?? "") ??
-        chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
-          at: now,
-        });
-      return [
-        {
-          characterId: villager.characterId,
-          name: villager.cardSnapshot.name,
-          doing:
-            (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
-              ? "Taking care of their own affairs"
-              : (block?.activity ?? ""),
-          zoneId: zone.id,
-        },
-      ];
-    }),
+    occupants: [
+      ...village.villagers.flatMap((villager) => {
+        const position = presence.get(villager.characterId);
+        if (position?.id !== placeId) return [];
+        const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
+        const zone =
+          resolveVenueZone(venue, position.zoneId ?? "") ??
+          chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
+            at: now,
+          });
+        return [
+          {
+            characterId: villager.characterId,
+            name: villager.cardSnapshot.name,
+            doing:
+              (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
+                ? "Taking care of their own affairs"
+                : (block?.activity ?? ""),
+            zoneId: zone.id,
+          },
+        ];
+      }),
+      ...(visitor?.venueId === placeId
+        ? [
+            {
+              characterId: visitor.person.characterId,
+              name: visitor.person.cardSnapshot.name,
+              doing: visitor.sleeping ? "Turning in for the night" : "Visiting",
+              zoneId: visitor.zoneId,
+            },
+          ]
+        : []),
+    ],
   };
 }
 export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zoneId: string) {
@@ -123,6 +138,38 @@ export function sceneZoneOccupants(session: VenueScene, venue: VillageVenue, zon
       !session.departedIds?.includes(person.characterId) &&
       !positions.some((entry) => entry.characterId === person.characterId && entry.zoneId !== zoneId),
   );
+}
+
+export function projectLiveAttendance(village: VillageState, scene: VenueScene, venue: VillageVenue, now: Date) {
+  const sameRoutine = (id: string) => !!findNpc(village, id) || sameSceneRoutine(village, scene, id, now);
+  const accompanying = (scene.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
+  const positions = new Map(
+    accompanying.flatMap((row) => {
+      const zone = resolveVenueZone(venue, row.zoneId);
+      return zone
+        ? [
+            [
+              row.characterId,
+              {
+                id: venue.id,
+                name: venue.name,
+                kind: "venue" as const,
+                zoneId: zone.id,
+                zoneName: zone.name,
+                image: zone.image,
+              },
+            ] as const,
+          ]
+        : [];
+    }),
+  );
+  const attendance = captureSceneAttendance(village, venue.id, now, positions);
+  attendance.occupants.push(
+    ...(scene.sceneAttendance?.occupants ?? []).filter(
+      (person) => !!findNpc(village, person.characterId) && !scene.departedIds?.includes(person.characterId),
+    ),
+  );
+  return { attendance, accompanying, departedIds: (scene.departedIds ?? []).filter(sameRoutine), sameRoutine };
 }
 /** Iterate escort dependencies using actual Scene positions, never background schedules. */
 export function accessExits(session: VenueScene, village: VillageState, venue: VillageVenue) {
@@ -139,10 +186,21 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
     for (const [actor, from] of Object.entries(positions)) {
       if (!from || from === "exterior") continue;
       const zone = resolveVenueZone(venue, from);
-      if (
+      const decision =
         zone &&
-        evaluateZoneAccess(venue, zone, actor, { ...context, positions, unavailable: zoneClosed(village, venue, zone) })
-          .allowed
+        evaluateZoneAccess(venue, zone, actor, {
+          ...context,
+          positions,
+          unavailable: zone.closed || zoneClosed(village, venue, zone),
+        });
+      const trespass =
+        actor === "player" ? session.trespass : session.actorTrespasses?.find((row) => row.actorId === actor);
+      if (
+        decision?.allowed ||
+        (trespass?.zoneId === from &&
+          zone &&
+          trespass.reason === decision?.reason &&
+          physicallyUsableZone(village, venue, zone, context.at ?? new Date(session.startedAt)))
       )
         continue;
       const previous = actor === "player" ? session.enteredFromZoneId : session.accessPreviousZones?.[actor];
@@ -164,7 +222,18 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
               unavailable: zoneClosed(village, venue, target),
               environment: village.narrative,
             }).allowed &&
-            !!contactPath(village, venue, from, target.id, actor, session, context.at),
+            // Forced access removal keeps physical egress; voluntary Move still checks every entered Zone.
+            !!(
+              contactPath(village, venue, from, target.id, actor, session, context.at) ||
+              (target.id === "exterior" &&
+                physicalVenuePath(
+                  { ...village, narrative: undefined },
+                  venue,
+                  { ...session, zoneId: from },
+                  target.id,
+                  context.at ?? new Date(session.startedAt),
+                ))
+            ),
         )?.id ?? "";
       if (!to && actor === "player") continue;
       let destinationVenueId: string | undefined;

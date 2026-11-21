@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { sceneErrorMessage } from "../packages/villages/src/client/features/scenes/scene-error-message.js";
-import { sceneErrorReport } from "../packages/villages/src/client/features/scenes/scene-error-report.js";
+import {
+  isSceneConnectionError,
+  sceneErrorCause,
+  sceneErrorMessage,
+} from "../packages/villages/src/client/features/scenes/scene-error-message.js";
+import { anonymousSceneErrorReport } from "../packages/villages/src/client/features/scenes/scene-error-report.js";
 
 const cases = [
   ["Invalid request details", "The request contains invalid details."],
@@ -27,6 +31,10 @@ const cases = [
   ["The model request outcome is unknown.", "The game couldn’t confirm whether the reply finished."],
   ["The model returned no answer.", "The AI returned an empty reply."],
   ["The saved update could not be applied to storage.", "The game couldn’t save the update."],
+  [
+    "The alternate reply failed validation. Your reply is kept.",
+    "The game kept your original reply because the alternate couldn’t be used.",
+  ],
   ["Insufficient credits", "The AI account has run out of credits or reached its usage limit."],
   ["Rate limit exceeded (429)", "The AI service received too many requests."],
   [
@@ -65,44 +73,73 @@ assert.equal(
   "The game couldn’t confirm whether the reply finished.",
 );
 
-const items = [
-  {
-    id: "operation",
-    title: "Message failed",
-    message: "The reply used an invalid narrated sound. Your draft is preserved.",
-    diagnosticId: "operation:turn:attempt",
-    fields: [
-      { label: "Scene ID", value: "scene" },
-      { label: "Attempt", value: "attempt" },
-    ],
-  },
-  {
-    id: "keep",
-    title: "Continuity update held",
-    message: "The saved narration needs recovery.",
-    diagnosticId: "turn:continuity",
-    fields: [
-      { label: "Scene ID", value: "scene" },
-      { label: "Message ID", value: "turn" },
-    ],
-  },
-];
-const report = sceneErrorReport(items, [
-  {
-    id: "operation:turn:attempt",
-    details: '{"cause":"missing_result","stage":"sound-witnesses","field":"attentionWitnesses.segment"}',
-  },
-  { id: "turn:continuity", details: '{"rejected":[{"id":"note","reason":"Exact validation failure"}]}' },
-  { id: "unrelated", details: "UNRELATED ERROR AND PRIVATE EVIDENCE" },
-]);
-assert.ok(report.includes("Original error: " + items[0]!.message));
-assert.match(report, /attentionWitnesses.segment/);
-assert.match(report, /Exact validation failure/);
-assert.equal(report.match(/Scene ID: scene/gu)?.length, 1, "share repeated Scene context");
-assert.doesNotMatch(report, /UNRELATED ERROR/);
-assert.match(sceneErrorReport(items, [], "Exact network failure"), /Saved details unavailable: Exact network failure/);
-assert.doesNotMatch(
-  sceneErrorReport(items, [{ id: "operation:turn:new-attempt", details: "NEW ATTEMPT FAILURE" }]),
-  /NEW ATTEMPT FAILURE/,
+const report = anonymousSceneErrorReport(
+  [
+    {
+      id: "operation:private-request-id",
+      title: "Private title: Elder Mills",
+      message: "The reply used an invalid narrated sound. Exact private dialogue is here.",
+      trace: {
+        action: "move",
+        submissionId: "private-submission-id",
+        request: "POST /api/villages/rooms/zone",
+        status: 409,
+        code: "SCENE_STALE",
+        elapsedMs: 42,
+      },
+      operation: {
+        kind: "move",
+        status: "interrupted",
+        stage: "writing-completion:private-hash",
+        failureCause: "missing_result",
+      },
+    },
+    {
+      id: "room",
+      title: "Private title",
+      message: "PRIVATE_CHAT_TEXT at https://private-host.example",
+      trace: {
+        action: "retry",
+        request: "GET /api/villages/rooms/private-scene/operations/private-attempt",
+        status: 502,
+        code: "SECRET_AUTH_TOKEN",
+      },
+    },
+  ],
+  { sceneStatus: "active", revision: 1, mobile: true, draftRetained: true },
 );
-console.log("Scene errors: short specific messages, exact scoped diagnostics, and attempt identity passed.");
+const connectionError =
+  'GM connection is not configured: "private-connection-id".\nLanguage model connection not found';
+assert.equal(isSceneConnectionError(connectionError), true);
+assert.equal(isSceneConnectionError(`${connectionError}\n401 unauthorized: invalid API key`), true);
+assert.equal(sceneErrorMessage(connectionError), 'GM connection is not configured: "private-connection-id".');
+assert.equal(sceneErrorCause(`${connectionError} Retry it or continue without an opening.`), connectionError);
+assert.equal(isSceneConnectionError("Failed to fetch"), false);
+assert.doesNotMatch(
+  anonymousSceneErrorReport([{ id: "connection", title: "Scene opening failed", message: connectionError }]),
+  /private-connection-id/,
+);
+assert.match(report, /Scene: active · revision 1\nView: phone · Draft: retained/);
+assert.match(
+  report,
+  /Move between Zones\nRequest: POST \/api\/villages\/rooms\/zone\nResult: HTTP 409 · SCENE_STALE · 42 ms/,
+);
+assert.match(report, /Cause: missing_result/);
+assert.match(report, /Saved request: interrupted · stage writing-completion/);
+assert.match(report, /GET \/api\/villages\/rooms\/:scene\/operations\/:request/);
+assert.doesNotMatch(
+  report,
+  /Elder Mills|private-|SECRET_AUTH_TOKEN|PRIVATE_CHAT_TEXT|Exact private dialogue|What I was trying/iu,
+);
+const heldReport = anonymousSceneErrorReport([
+  {
+    id: "held",
+    title: "Message failed",
+    message: "The game couldn’t apply the AI’s reply.",
+    held: true,
+    operation: { kind: "turn", status: "interrupted", failureCause: "missing_result" },
+    diagnostic: { rejected: 1, checks: [] },
+  },
+]);
+assert.match(heldReport, /Operation code: missing_result\nPhase: reply validation\nValidator details: unavailable/);
+console.log("Scene errors: player messages and actionable anonymous request traces passed.");

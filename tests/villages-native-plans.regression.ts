@@ -1,12 +1,11 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: native-plans/admission, native-plans/relationship-priority, native-plans/attendance, native-plans/follow-through, native-plans/epochs, native-plans/stale, native-plans/availability, native-plans/project-priority, native-plans/round-trip, native-plans/continuity, native-plans/planner-publication
 import assert from "node:assert/strict";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { runCase } from "../scripts/test-cases.mjs";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readResidentPlans } from "../packages/villages/src/server/domain/decoding/resident-plans-codec.js";
 import type {
   VillageState,
@@ -56,6 +55,7 @@ function fixture() {
   });
   state.venues = [venueFixture({ id: "square", name: "Square", category: "public" })];
   const zone = state.venues[0].zones!.find((row) => row.kind !== "exterior")!.id;
+
   const block = {
     startMinute: 0,
     endMinute: 1440,
@@ -82,6 +82,7 @@ function fixture() {
   const candidates = socialPlanCandidates(state, now),
     plan = candidates.find((row) => row.kind === "meeting" && row.zoneId === zone)!;
   assert(plan, "one native feasible meeting must be offered without a relationship store");
+  state.venues.push(...sharedVenuesFixture());
   const accept = () => acceptSocialPlan(state, candidates, plan.id, now),
     during = new Date(
       date +

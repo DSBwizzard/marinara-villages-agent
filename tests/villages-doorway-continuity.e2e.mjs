@@ -22,6 +22,9 @@ await withBrowser(browser, async () => {
     let issues = [];
     let summary = { pending: 0, failed: 0, rejected: 1 };
     let mutatingRequests = 0;
+    let moves = 0;
+    const destination = snapshot.settings.venues.find((venue) => venue.id === "mill").zones[1];
+    destination.name = "Workshop";
     const line = (id, kind, speakerId, content, extra = {}) => ({
       id,
       kind,
@@ -81,6 +84,27 @@ await withBrowser(browser, async () => {
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/rooms/zone") && route.request().method() === "POST") {
+        assert.equal(route.request().postDataJSON().zoneId, destination.id);
+        moves++;
+        Object.assign(session, {
+          zoneId: destination.id,
+          area: "public",
+          activeIds: ["mara"],
+          zoneArrivalId: "arrival-new-zone",
+          sceneRevision: session.sceneRevision + 1,
+        });
+        session.lines.push({
+          id: "arrival-new-zone",
+          role: "assistant",
+          kind: "narration",
+          speakerId: "__venue_scene__",
+          name: "Narration",
+          content: "You arrive at " + destination.name + ".",
+          at: now,
+        });
+        return fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
+      }
       if (route.request().method() !== "GET" && /\/(?:turn|generate|interpret|replay)(?:\/|$)/u.test(path))
         mutatingRequests++;
       const value =
@@ -113,24 +137,8 @@ await withBrowser(browser, async () => {
     await Promise.all([page.addScriptTag({ path: resolve("packages/villages/client.js") }), initialSceneRead]);
     const chip = page.getByRole("button", { name: "1 Scene error", exact: true });
     await expect(chip).toHaveCount(0);
-    const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-    const previous = page.getByRole("button", { name: "Previous paragraph", exact: true });
-    while (await previous.isEnabled()) await previous.click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("I am inside");
-    await expect(page.getByText("Nearby", { exact: true })).toBeVisible();
-    await page.screenshot({ path: `.build-tmp/doorway-continuity/nearby-${width}.png` });
-    await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
-    await next.click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("steps into the Exterior");
-    await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(1);
-    await next.click();
-    const current = page.getByRole("region", { name: "Current paragraph" });
-    await expect(current).toContainText("Good to meet you out here");
-    await expect(current).not.toContainText("Through the doorway");
-    await expect(page.getByText("Nearby", { exact: true })).toHaveCount(0);
-    await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(1);
-    await page.screenshot({ path: `.build-tmp/doorway-continuity/arrival-${width}.png` });
-    await next.click();
+    const current = page.getByRole("region", { name: "Latest reply" });
+    await expect(current).toContainText("Mara steps back inside");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     issues = [
       {
@@ -152,13 +160,27 @@ await withBrowser(browser, async () => {
     const status = await openSceneErrors(page);
     await expect(status.getByRole("group", { name: "Saved reply needs review", exact: true })).toBeVisible();
     await expect(status).not.toContainText(/Applying the saved reply|Scene ID/);
-    await expect(status.getByRole("button", { name: "Replay", exact: true })).toBeEnabled();
+    await expect(status.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
     await expect(status.getByRole("button", { name: /Retry/ })).toHaveCount(0);
     await page.screenshot({ path: `.build-tmp/doorway-continuity/errors-${width}.png` });
     issues = [];
     summary = { pending: 0, failed: 0, rejected: 1 };
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(chip).toHaveCount(0);
+    // The new Zone has Mara, but the saved end of the old conversation has an empty cast.
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Move to Zone" })
+      .getByRole("button", { name: destination.name, exact: true })
+      .click();
+    await page.getByRole("dialog", { name: "Move to Zone" }).getByRole("button", { name: "Move", exact: true }).click();
+    await expect.poll(() => moves).toBe(1);
+    const mara = page.locator('[class$="-chat-cast-person"][data-character-id="mara"]');
+    await expect(mara).toBeVisible({ timeout: 3000 });
+    await expect(mara).toHaveAttribute("data-position", /left|center|right/);
+    await expect(current).not.toContainText("Mara steps back inside");
+    await expect(mara).toBeVisible();
     assert.equal(mutatingRequests, 0, "Reading feedback never replays saved work or generates a response");
     assert.deepEqual(errors, []);
     await page.close();

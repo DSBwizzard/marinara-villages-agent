@@ -20,6 +20,7 @@ import {
 import { exactInputSpan } from "./source-span.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { nativeReceiptSupportsRoom } from "./episode-sources.js";
+import { sceneVisitCommand } from "./scene-visit-speech.js";
 
 /** A complete native outcome is known only to holders who perceived every material proof. */
 export function narrationWitnesses(
@@ -46,6 +47,7 @@ export type NarrationSourceContext = {
   input: string;
   actors: Actor[];
   subjects?: { id: string; incarnation: string }[];
+  visitorTrips?: { characterId: string; arrivedAt: string; leavesAt: string }[];
   scene: VenueScene;
   venue: VillageVenue;
   lines: VenueLine[];
@@ -72,7 +74,20 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
   }
   const field = fields[0];
   if (field && misplaced.length) return raw;
-  const keep = field ? (raw[field] as unknown[]) : misplaced;
+  let keep = field ? (raw[field] as unknown[]) : misplaced;
+  if (field === "effects" && keep.length === 1) {
+    const { kind, id, keep: wrapped, ...other } = asRecord(keep[0]);
+    if (
+      kind === "keep" &&
+      typeof id === "string" &&
+      Array.isArray(wrapped) &&
+      wrapped.length === 1 &&
+      !Object.keys(other).length
+    ) {
+      const proposal = asRecord(wrapped[0]);
+      if (!Object.hasOwn(proposal, "id") || proposal.id === id) keep = [{ ...proposal, id }];
+    }
+  }
   if (
     (field === "effects" || field === "keeps" || misplaced.length > 0) &&
     keep.some((value) => {
@@ -88,7 +103,7 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
     if (kind !== "keep" || field !== "effects") return value;
     const candidate = positions ? bindSceneSourcePositions({ segments, keep: [fields] }, quotes).keep : [fields];
     try {
-      readContinuityProposal((candidate as unknown[])[0]);
+      readContinuityProposal((candidate as unknown[])[0], true);
       return fields;
     } catch {
       return value;
@@ -110,7 +125,12 @@ function bindSceneSourcePositions(
   quotes: boolean,
   directOffers?: NarrationReadset["recognizeDirectOfferSpeech"],
 ) {
-  if (!Array.isArray(raw.segments) || Object.hasOwn(raw, "commands")) return raw;
+  if (
+    !Array.isArray(raw.segments) ||
+    (Object.hasOwn(raw, "commands") &&
+      (!Array.isArray(raw.commands) || raw.commands.some((command) => asRecord(command).type !== "npc.introduce")))
+  )
+    return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
     typeof position === "number" && Number.isSafeInteger(position) && position >= 1
@@ -194,11 +214,97 @@ export function readSceneNarrationReply(
   readset: NarrationReadset,
   continuity: ContinuityCollection,
 ) {
+  const visit = raw.visit;
+  const readReply = (payload: Record<string, unknown>) => {
+    const movements: Record<string, unknown>[] = [];
+    const automaticIds = new Set(
+      [
+        ...(Array.isArray(payload.commands) ? payload.commands : []),
+        ...(Array.isArray(payload.keep) ? payload.keep : []),
+      ].map((value) => asRecord(value).id),
+    );
+    let followingId = 0;
+    const segments =
+      (readset.sceneResidentMovement || readset.sceneFollowing === 2) && Array.isArray(payload.segments)
+        ? payload.segments.map((value, index) => {
+            const row = asRecord(value);
+            if (readset.sceneFollowing === 2 && Object.hasOwn(row, "follow")) {
+              const { follow, ...line } = row;
+              const decision = asRecord(follow);
+              memoryRequire(
+                row.kind === "dialogue" &&
+                  typeof decision.agrees === "boolean" &&
+                  (line.requires === undefined || Array.isArray(line.requires)) &&
+                  Object.keys(decision).every((key) => ["agrees", "to", "trespass"].includes(key)),
+                "following needs an explicit decision on the actor's own spoken line",
+              );
+              while (automaticIds.has("resident-follow-" + followingId)) followingId++;
+              const id = "resident-follow-" + followingId++;
+              automaticIds.add(id);
+              const at = line.id ?? "segment-" + index;
+              memoryRequire(
+                !(Array.isArray(payload.commands) ? payload.commands : []).some((value) => {
+                  const command = asRecord(value);
+                  return command.type === "move.decide" && command.who === line.speakerId && command.at === at;
+                }),
+                "use one following decision for each spoken line",
+              );
+              movements.push({
+                ...decision,
+                id,
+                type: "move.decide",
+                who: line.speakerId,
+                at,
+                source: [{ segment: at }],
+              });
+              return { ...line, requires: [...(Array.isArray(line.requires) ? line.requires : []), id] };
+            }
+            if (!readset.sceneResidentMovement) return value;
+            if (row.kind !== "crossing" && row.kind !== "departure") return value;
+            const { kind, who, to, trespass, ...line } = row;
+            memoryRequire(kind === "crossing" || !Object.hasOwn(row, "to"), "a Scene departure has no destination");
+            memoryRequire(kind === "crossing" || trespass === undefined, "only a crossing can trespass");
+            const at = line.id ?? "segment-" + index;
+            movements.push({
+              type: kind === "crossing" ? "move" : "depart",
+              who,
+              ...(kind === "crossing" ? { to } : {}),
+              ...(trespass === undefined ? {} : { trespass }),
+              at,
+              source: [{ segment: at, perceive: { kind: "seen", by: ["player"] } }],
+            });
+            return { ...line, kind: "narration" };
+          })
+        : undefined;
+    const parsed = readNarrationReply(segments ? { ...payload, segments } : payload, speakers);
+    const command = sceneVisitCommand(parsed, readset, visit);
+    const commands = [...parsed.commands, ...(command ? [command] : [])];
+    memoryRequire(commands.length + movements.length <= 16, "too many native Scene actions");
+    if (movements.length) {
+      memoryRequire(!parsed.halt, "halt cannot assert resident movement");
+      const ids = new Set([...parsed.keep, ...commands].map((row) => asRecord(row).id));
+      let next = 0;
+      for (const move of movements) {
+        if (typeof move.id === "string") {
+          ids.add(move.id);
+          commands.push(move);
+          continue;
+        }
+        while (ids.has("resident-move-" + next)) next++;
+        commands.push({ ...move, id: "resident-move-" + next++ });
+      }
+    }
+    return { ...parsed, commands, visitCommandId: command?.id };
+  };
+  if (readset.sceneVisitOptions && Object.hasOwn(raw, "visit")) {
+    const { visit: _visit, ...rest } = raw;
+    raw = rest;
+  }
   const positions = readset.positionedSceneSources === true;
   const quotes = readset.quotedSceneSources === true;
   const format = readset.ordinaryFormatRecovery;
   const recovery = format === 5 || format === 6 ? 4 : format;
-  const decorations = readset.stripSceneReplyDecorations;
+  const decorations = readset.stripSceneReplyDecorations === 5 ? 4 : readset.stripSceneReplyDecorations;
   const knownDecorations = decorations === true || decorations === 2 || decorations === 3 || decorations === 4;
   if (
     readset.recoverCodeMemoryEcho === true &&
@@ -260,6 +366,7 @@ export function readSceneNarrationReply(
     Array.isArray(raw.segments) &&
     Object.keys(raw).every((key) => key === "segments" || key === "keep")
   ) {
+    const proseOnly = !Object.hasOwn(raw, "keep");
     raw = {
       ...raw,
       segments: raw.segments.map((value: unknown) => {
@@ -273,10 +380,12 @@ export function readSceneNarrationReply(
           recovery === 4 &&
           (line.delivery === "normal" || (knownDecorations && line.delivery === null)) &&
           !Object.hasOwn(line, "targetId");
-        if (!normal && line.truncated !== false) return value;
+        const emptyNote = proseOnly && readset.stripSceneReplyDecorations === 5 && line.textNote === "";
+        if (!normal && !emptyNote && line.truncated !== false) return value;
         const normalized = { ...line };
         if (line.truncated === false) delete normalized.truncated;
         if (normal) delete normalized.delivery;
+        if (emptyNote) delete normalized.textNote;
         return normalized;
       }),
     };
@@ -303,7 +412,9 @@ export function readSceneNarrationReply(
       }),
     };
   }
-  if (Object.keys(raw).length !== 1 || !Array.isArray(raw.segments)) return readNarrationReply(raw, speakers);
+  const proseOnly = Object.keys(raw).length === 1;
+  const recoverMixedAside = format === 6 && Object.keys(raw).every((key) => key === "segments" || key === "keep");
+  if ((!proseOnly && !recoverMixedAside) || !Array.isArray(raw.segments)) return readReply(raw);
   const {
     source: { historical, seed },
     admission,
@@ -312,6 +423,7 @@ export function readSceneNarrationReply(
     const line = asRecord(value),
       source = line.source;
     if (
+      proseOnly &&
       knownDecorations &&
       line.kind === "narration" &&
       Object.keys(line).every((key) => ["kind", "text", "place"].includes(key)) &&
@@ -333,6 +445,7 @@ export function readSceneNarrationReply(
       const { delivery: _delivery, ...prose } = line;
       return { ...prose, presentation: "aside" };
     }
+    if (!proseOnly) return value;
     if (
       readset.stripSceneHistoryDecoration &&
       line.kind === "dialogue" &&
@@ -396,7 +509,7 @@ export function readSceneNarrationReply(
     const { source: _citation, ...prose } = line;
     return prose;
   });
-  return readNarrationReply({ segments }, speakers);
+  return readReply({ ...raw, segments });
 }
 export type NarrationCommunication = Pick<
   NarrationSourceContext,

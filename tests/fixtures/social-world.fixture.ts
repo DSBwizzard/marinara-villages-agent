@@ -1,4 +1,4 @@
-import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
+import { sharedVenuesFixture, defaultVillageFixture as defaultVillageState } from "../helpers/venues.fixture.js";
 import type { VillageVillager } from "../../packages/villages/src/server/domain/models/world.js";
 import { initializeVenueAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
 import { venueDraftFixture as venueDraft } from "../helpers/venues.fixture.js";
@@ -58,24 +58,27 @@ export function socialWorldFixture() {
         },
       }) as VillageVillager,
   );
-  state.venues = profiles.map(([id, name]) => {
-    const v = venueDraft(
-      {
-        id: `home-${id}`,
-        name: `${name}'s home`,
-        description: "A simple home.",
-        classes: ["residence"],
-        residenceCapacity: 2,
-        residentIds: [id],
-      },
-      null,
-    );
-    v.residentIds = [id!];
-    v.occupancy.residentCharacterId = id!;
-    v.residenceCapacity = 2;
-    v.destinations = { [id]: { home: "residence", sleep: "residence" } };
-    initializeVenueAccess(v);
-    return v;
-  });
+  state.venues = [
+    ...profiles.map(([id, name]) => {
+      const v = venueDraft(
+        {
+          id: `home-${id}`,
+          name: `${name}'s home`,
+          description: "A simple home.",
+          classes: ["residence"],
+          residenceCapacity: 2,
+          residentIds: [id],
+        },
+        null,
+      );
+      v.residentIds = [id!];
+      v.occupancy.residentCharacterId = id!;
+      v.residenceCapacity = 2;
+      v.destinations = { [id]: { home: "residence", sleep: "residence" } };
+      initializeVenueAccess(v);
+      return v;
+    }),
+    ...sharedVenuesFixture(),
+  ];
   return state;
 }

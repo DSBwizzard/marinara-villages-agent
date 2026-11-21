@@ -4,6 +4,8 @@ import type { AcceptedEpisode } from "./episode-model.js";
 
 /** Exact final fitted evidence and native circumstances, retained by the existing operation checkpoint. */
 export type NarrationReadset = {
+  visitorIntroductionFarewell?: true;
+  visitorIds?: string[];
   agendaOptions?: {
     actorId: string;
     activity: string;
@@ -16,11 +18,17 @@ export type NarrationReadset = {
   calendar: ReturnType<typeof import("../rules/scene-calendar.js").capturedSceneCalendar>;
   sceneRevision: number;
   continuityRevision: number;
+  retryEpisodeRevision?: number;
   presentation: import("../rules/sprite-expressions.js").SpriteSelectionContext;
   source: Omit<NarrationSourceContext, "lines" | "labels" | "native" | "moves"> & { operationId: string };
   admission: Omit<ContinuityAdmission, "sources" | "blockedSources">;
   readOnlyKnowledge?: ContinuityEvidence[];
   ordinaryDialogue?: true;
+  playerNavigation?: "explicit" | "conclude";
+  sceneResidentMovement?: true;
+  sceneFollowing?: true | 2;
+  automaticTrespass?: true;
+  sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string }[];
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;
@@ -32,7 +40,8 @@ export type NarrationReadset = {
   stripOfferContributionEcho?: true;
   recognizeDirectOfferSpeech?: true | 2 | 3 | 4 | 5;
   optionalActorMemories?: true | 2 | 3 | 4 | 5;
-  stripSceneReplyDecorations?: true | 2 | 3 | 4;
+  continuityEffectRecovery?: true;
+  stripSceneReplyDecorations?: true | 2 | 3 | 4 | 5;
   recoverCodeMemoryEcho?: true;
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;

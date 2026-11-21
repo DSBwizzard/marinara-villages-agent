@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
@@ -25,7 +26,7 @@ import {
   backgroundRevision,
   backgroundSlotId,
 } from "../packages/villages/src/server/domain/rules/background-revision.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import type { Job } from "../packages/villages/src/server/domain/models/background-model.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -926,6 +927,7 @@ for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
     await repo.mutateAuthority((state) => {
       state.seed = job.seed;
       state.setupAt = at;
+      state.venues = sharedVenuesFixture();
       state.backgroundReceipts = { [slot]: job.id };
     });
     job.steps[0].responseClaim = backgroundResponseClaim(job, 0);

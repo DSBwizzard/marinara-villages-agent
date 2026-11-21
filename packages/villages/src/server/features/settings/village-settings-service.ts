@@ -81,6 +81,15 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
+  async function setSpontaneousEvents(value: unknown): Promise<VillageSnapshot> {
+    if (typeof value !== "boolean") throw badRequest("Spontaneous events must be on or off.");
+    await mutateVillageState((state) => {
+      if (value) state.spontaneousEvents = true;
+      else delete state.spontaneousEvents;
+    });
+    return buildVillageSnapshot();
+  }
+
   async function setVillageCharacterSpeechColors(value: unknown): Promise<VillageSnapshot> {
     if (typeof value !== "boolean") throw badRequest("Character speech colors must be on or off.");
     await mutateVillageState((state) => {
@@ -184,6 +193,7 @@ export function createVillageSettings({
     setVillageSpriteCardFlipEnabled,
     setVillageSpriteVariantsEnabled,
     setVillageSendOnEnter,
+    setSpontaneousEvents,
     setVillageCharacterSpeechColors,
     setVillageName,
     setVillagePlayer,

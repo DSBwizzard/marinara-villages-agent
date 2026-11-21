@@ -1,12 +1,10 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: departure-history/growth, departure-history/ownership, departure-history/publication, departure-history/comparison
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { continuityMemoryLibrary } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import {
   captureReturnContext,

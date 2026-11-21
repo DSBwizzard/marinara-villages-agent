@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { configureFoundingSuggestions } from "../packages/villages/src/server/features/founding/founding-suggestions.js";
 import { configureFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts.js";
+import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
 import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
@@ -10,6 +11,7 @@ import {
   type FoundingSuggestionsPorts,
 } from "../packages/villages/src/server/features/founding/founding-suggestions-service.js";
 import { requestFoundingSuggestions } from "../packages/villages/src/client/features/founding/suggestion-request.js";
+import { createFoundingDraftSetting } from "../packages/villages/src/client/features/founding/setup-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 
 const tick = () => new Promise<void>((done) => setImmediate(done));
@@ -58,6 +60,99 @@ const ports: FoundingSuggestionsPorts = {
 };
 const service = createFoundingSuggestions(ports);
 const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
+{
+  const brief = "Home is a converted freighter named Wayfarer.";
+  const worldBrief = "The Relay Belt has settlements on former cargo routes.";
+  const lorebookReference = "The Wayfarer runs supply deliveries between Relay Belt stations.";
+  const setting = {
+    name: "Wayfarer",
+    startingLocationName: "The Main Deck",
+    description: "A converted freighter with a shared galley.",
+    worldName: "",
+    rules: "",
+  };
+  let completions = 0;
+  let lookups = 0;
+  let finishReason = "stop";
+  let connectionLimit: number | null = 8192;
+  let requestedTokens: number | undefined;
+  let dispatchedTokens: number | undefined;
+  let prompt: { role: string; content: string }[] = [];
+  const writer = createFoundingDrafts({
+    readVillageLore: async (
+      ids: string[],
+      context: string,
+      _signal: AbortSignal | undefined,
+      budget: number,
+      options: { current: string },
+    ) => {
+      lookups++;
+      assert.equal(context, worldBrief);
+      assert.equal(options.current, brief);
+      assert.equal(budget, 900);
+      if (ids.includes("missing")) throw new Error("Selected lorebooks are unavailable.");
+      assert.deepEqual(ids, ["relay-belt"]);
+      return [lorebookReference];
+    },
+    villagesConnectionIdFor: async (role: string) => {
+      assert.equal(role, "system");
+      return "test-system";
+    },
+    villagesLanguageModels: () => ({
+      resolveForRequest: async ({ connectionId }: { connectionId: string }) => {
+        assert.equal(connectionId, "test-system");
+        return {
+          maxOutputTokens: connectionLimit,
+          fitContext(messages: unknown[], { maxTokens }: { maxTokens: number }) {
+            requestedTokens ??= maxTokens;
+            return { messages, maxTokens: Math.min(maxTokens, 6144) };
+          },
+        };
+      },
+    }),
+    completeWithRoom: async (_model: unknown, messages: typeof prompt, maxTokens: number, options: any) => {
+      prompt = messages;
+      dispatchedTokens = maxTokens;
+      assert.equal(options.reasoningEffort, undefined);
+      completions++;
+      return { content: JSON.stringify(setting), finishReason };
+    },
+  } as any);
+  const draftInput = { ...input, mode: "draft-setting", brief };
+  await assert.rejects(writer.suggestStartingVenues({ ...draftInput, brief: " " }), /Tell Mari/);
+  assert.equal(completions, 0);
+  assert.deepEqual(await writer.suggestStartingVenues(draftInput), { venues: [], setting });
+  assert.equal(requestedTokens, 8192, "Use the selected System connection's output limit when fitting the prompt");
+  assert.equal(dispatchedTokens, 6144, "Dispatch with the output room Engine found in context");
+  assert.deepEqual(prompt.slice(1), [{ role: "user", content: brief }]);
+  assert.equal(lookups, 0, "Old or skipped lore selection never reads books");
+  assert.equal(completions, 1);
+  finishReason = "length";
+  await assert.rejects(writer.suggestStartingVenues(draftInput), /I ran out of room/);
+  assert.equal(completions, 2, "A truncated result never starts another request on its own");
+  finishReason = "stop";
+  const withLore = { ...draftInput, worldBrief, selectedLorebookIds: ["relay-belt"], loreTokenBudget: 900 };
+  await assert.rejects(writer.suggestStartingVenues({ ...withLore, loreTokenBudget: -1 }), /token budget/);
+  assert.equal(lookups, 0);
+  await assert.rejects(writer.suggestStartingVenues({ ...withLore, selectedLorebookIds: ["missing"] }), /unavailable/);
+  assert.equal(completions, 2, "Unavailable lore does not dispatch a paid completion");
+  assert.deepEqual(await writer.suggestStartingVenues(withLore), { venues: [], setting });
+  assert.match(prompt[0]!.content, /follow the player's description whenever they differ/u);
+  assert.match(prompt[0]!.content, /choose one locally meaningful district, deck, or equivalent/u);
+  assert.deepEqual(
+    prompt.slice(1).map((row) => JSON.parse(row.content)),
+    [{ lorebookReferences: [lorebookReference] }, { world: worldBrief, village: brief }],
+  );
+  assert.equal(completions, 3);
+  const authoredWorld = { worldName: "Relay Belt", worldRules: "The gates only open at noon." };
+  connectionLimit = null;
+  requestedTokens = undefined;
+  const authoredDraft = await writer.suggestStartingVenues({ ...draftInput, ...authoredWorld });
+  assert.equal(requestedTokens, 4096, "Use the bounded fallback when the connection supplies no output limit");
+  assert.equal(authoredDraft.setting?.worldName, authoredWorld.worldName);
+  assert.equal(authoredDraft.setting?.rules, authoredWorld.worldRules);
+  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredWorld, village: brief });
+}
 {
   const app = Fastify();
   const releaseSuggestions = configureFoundingSuggestions(createFoundingSuggestions(ports));
@@ -301,6 +396,125 @@ try {
   };
   await requestFoundingSuggestions(clientPorts, {}, {});
   assert.equal(retried, 1);
+  assert.equal(workspace.suggestionRequest, undefined);
+
+  const originalSetting = {
+    mode: "draft-setting",
+    brief: "Old village",
+    worldBrief: "Old world",
+    selectedLorebookIds: ["original-book"],
+    loreTokenBudget: 700,
+  };
+  workspace = {
+    ...emptyFoundingWorkspace(),
+    settingBrief: "Edited village",
+    settingWorldBrief: "Edited world",
+    suggestionRequest: {
+      id: "lore-draft-1",
+      sourceKey: "founding-setting",
+      quickStart: false,
+      draftSetting: true,
+      sourceInputs: JSON.stringify(originalSetting),
+    },
+  };
+  let settingPosts = 0;
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method !== "POST") return Response.json({ error: "Saved attempt not found" }, { status: 404 });
+    settingPosts++;
+    assert.deepEqual(JSON.parse(String(init.body)), {
+      ...originalSetting,
+      actionId: "lore-draft-1",
+      sourceKey: "founding-setting",
+    });
+    const setting = {
+      name: "Old village",
+      startingLocationName: "Old quay",
+      description: "An old quay.",
+      worldName: "Old world",
+      rules: "",
+    };
+    return Response.json({
+      id: "lore-draft-1",
+      sourceKey: "founding-setting",
+      status: "complete",
+      result: { setting, venues: [] },
+      error: "",
+    });
+  };
+  const noop = () => undefined;
+  let name = "My village";
+  let location = "My quay";
+  let worldName = "  My world  ";
+  let rules = "  The tide stops at midnight.  ";
+  const settingPorts: Parameters<typeof createFoundingDraftSetting>[0] = {
+    ...clientPorts,
+    setupWorkspace: workspace,
+    setupDraftData: { name, startingLocationName: location, setting: "", worldName, context: { rules } },
+    setupLorebookDraft: ["new-book"],
+    setupLoreTokenBudgetDraft: 1800,
+    setupSuggestionsClaim: { current: false },
+    setSetupSuggestionsBusy: noop,
+    setSetupName: (update) => {
+      name = typeof update === "function" ? update(name) : update;
+    },
+    setSetupLocationName: (update) => {
+      location = typeof update === "function" ? update(location) : update;
+    },
+    setSetupSetting: noop,
+    setSetupWorldName: (update) => {
+      worldName = typeof update === "function" ? update(worldName) : update;
+    },
+    setSetupContext: (update) => {
+      rules = (typeof update === "function" ? update({ rules } as any) : update).rules;
+    },
+  };
+  const resume = createFoundingDraftSetting(settingPorts);
+  await resume("recover");
+  assert.equal(settingPosts, 0, "Automatic recovery only reads the saved attempt");
+  await resume("request");
+  assert.equal(settingPosts, 1, "Explicit resume keeps the original lore selection and request ID");
+  assert.equal(name, "My village", "An older request cannot replace existing text without confirmation");
+  assert.equal(workspace.suggestionRequest, undefined);
+
+  workspace = { ...emptyFoundingWorkspace(), settingBrief: "A new village" };
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method, "POST");
+    settingPosts++;
+    assert.equal(persisted.workspace.suggestionRequest.settingReplacement.name, "My village");
+    assert.equal(persisted.workspace.suggestionRequest.settingReplacement.startingLocationName, "My quay");
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.settingReplacement, undefined);
+    assert.equal(body.worldName, worldName.trim());
+    assert.equal(body.worldRules, rules.trim());
+    throw new TypeError("Synthetic lost connection after admission");
+  };
+  const draft = createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace });
+  await draft("request");
+  assert.equal(settingPosts, 1, "A populated setting needs confirmation");
+  await draft("replace");
+  assert.equal(settingPosts, 2);
+  assert.equal(name, "My village", "A lost response leaves the setting alone");
+  location = "";
+  const pending = persisted.workspace.suggestionRequest;
+  workspace = persisted.workspace;
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method ?? "GET", "GET");
+    return Response.json({
+      id: pending.id,
+      sourceKey: pending.sourceKey,
+      status: "complete",
+      result: {
+        venues: [],
+        setting: { name: "New village", startingLocationName: "New quay", description: "", worldName: "", rules: "" },
+      },
+      error: "",
+    });
+  };
+  await createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace })("recover");
+  assert.equal(name, "New village", "A recovered result honors the original replacement confirmation");
+  assert.equal(location, "", "Recovery preserves a field cleared after confirmation");
+  assert.equal(worldName, "  My world  ", "A draft cannot rewrite a supplied world name");
+  assert.equal(rules, "  The tide stops at midnight.  ", "A draft cannot rewrite supplied standing rules");
   assert.equal(workspace.suggestionRequest, undefined);
   lost = false;
 } finally {

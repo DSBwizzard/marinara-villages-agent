@@ -19,6 +19,10 @@ const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(valu
 const scopeKey = (scope: OperationEvidenceScope) => JSON.stringify([scope.id, scope.villageSeed ?? ""]);
 const key = (ref: OperationEvidenceReference) => ref.id + ":" + ref.digest;
 const associations = new WeakMap<object, { scope: string; ref: OperationEvidenceReference; claim: string | null }>();
+export function savedOperationReference(value: object, scope: OperationEvidenceScope) {
+  const saved = associations.get(value);
+  return saved?.scope === scopeKey(scope) ? saved.ref : undefined;
+}
 const TEXT_PREFIX = "operation:";
 const decodedValues = new WeakMap<object, unknown>();
 const operationIdentity = (raw: VenueOperation, scope: OperationEvidenceScope) => [

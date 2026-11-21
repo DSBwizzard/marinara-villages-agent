@@ -1,13 +1,23 @@
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createHistoryPageWriter } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { pendingSceneSubmission } from "./helpers/narration-submission.fixture.js";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { appendSceneInput } from "../packages/villages/src/server/domain/rules/scene-input.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import {
+  scenePublicHistoryStore,
+  readScenePublicHistoryRange,
+} from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
+import { readSceneMomentRange } from "../packages/villages/src/server/adapters/storage/scene-presentation-pages.js";
+import { SCENE_PLAYBACK_CURSOR_STALE } from "../packages/villages/src/shared/contracts/scene-playback.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
@@ -37,6 +47,223 @@ const line = (index: number) => ({
 });
 function deferred() {
   return Promise.withResolvers<void>();
+}
+{
+  const f = sceneHistoryFixture();
+  try {
+    const world = { ...defaultVillageState(), seed: "visit-upgrade", setupAt: at, foundedAt: at };
+    await createVillageRepository(() => f.gate.documents).mutateAuthority((saved) => Object.assign(saved, world));
+    const scene = coerceSession({
+      version: 5,
+      id: "visit-upgrade",
+      villageSeed: world.seed,
+      sceneRevision: 7,
+      status: "active",
+      zoneId: "workshop",
+      startedAt: "",
+    });
+    scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
+    scene.sceneAttendance = {
+      capturedAt: at,
+      occupants: [],
+      layout: [
+        { id: "exterior", name: "Entrance", kind: "exterior", venueClass: "workplace", connectedTo: ["workshop"] },
+        { id: "workshop", name: "Workshop", kind: "public", venueClass: "workplace", connectedTo: ["exterior"] },
+      ],
+    };
+    scene.lines = [
+      { ...line(1), id: "prefix", at: "", contactHidden: false },
+      { ...line(2), id: "arrival-workshop", zoneId: "workshop", contactHidden: false },
+      ...Array.from({ length: 65 }, (_, index) => ({ ...line(index + 3), id: "visit-" + index, contactHidden: false })),
+    ] as any;
+    const raw = authorSceneFixture(f.rows, scene);
+    const oldEntries = await readScenePublicHistoryRange(
+      f.documents,
+      raw.publicHistory,
+      raw.transcript.count,
+      0,
+      raw.publicHistory.count,
+    );
+    const writer = createHistoryPageWriter(raw.publicHistory.world);
+    const legacy = oldEntries.map(({ id, position, publicDigest }) => ({ id, position, publicDigest }));
+    const layout = writer.tree(legacy.map((row) => [row.id, row]));
+    for (const [id, data] of writer.pages)
+      f.rows.set(id, {
+        id,
+        packageId: "villages",
+        kind: "memory-page",
+        name: "History",
+        description: "",
+        revision: 1,
+        createdAt: at,
+        updatedAt: at,
+        data,
+      });
+    const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+    const leaves = layout.groups.map((group) =>
+      hash("public-leaf:" + group.entries.map(([, row]) => (row as { publicDigest: string }).publicDigest).join("")),
+    );
+    const version = leaves.length === 1 ? leaves[0] : hash("public-branch:" + leaves.join(""));
+    const record = {
+      id: "villages-venue-visit-" + scene.id,
+      packageId: "villages",
+      kind: "venue-visit",
+      name: "Legacy visit",
+      description: "",
+      revision: 1,
+      createdAt: at,
+      updatedAt: at,
+      data: {
+        ...raw,
+        publicHistoryPolicy: 1,
+        publicHistory: { ...raw.publicHistory, positions: layout.root, publicVersion: version },
+      },
+    };
+    f.rows.set(record.id, record);
+    const before = structuredClone(record);
+    const service = createSceneQueryService({
+      readSession: f.repository.readSession,
+      readVillageState: async () => world,
+      villagesDocuments: () => f.gate.documents,
+    });
+    await service.projectSceneResponse(scene as any);
+    assert.deepEqual(f.rows.get(record.id), before, "active projection leaves policy-1 saved history untouched");
+    const scope = villageWorldScope(world);
+    const latest = await service.readHistoryPage(scene.id, { scope });
+    const after = f.rows.get(record.id);
+    assert.equal(after.data.publicHistoryPolicy, 2);
+    assert.equal(after.revision, 2);
+    for (const key of ["transcript", "submissionHistory", "sceneRevision"])
+      assert.deepEqual(after.data[key], before.data[key]);
+    assert.deepEqual(
+      latest.visits?.map((visit) => visit.name),
+      ["Workshop"],
+    );
+    const older = await service.readHistoryPage(scene.id, { scope, cursor: latest.olderCursor });
+    assert.equal(older.visits?.at(-1)?.id, latest.visits?.[0]?.id, "a visit spanning pages retains its identity");
+    assert.equal(older.visits?.[0]?.at, "", "unknown historical dates remain readable");
+    assert.equal(f.rows.get(record.id).revision, 2, "metadata backfill happens once");
+    scene.startedAt = at;
+    scene.lines = [
+      ...scene.lines.slice(0, 2),
+      ...Array.from({ length: 24 }, (_, index) => ({
+        ...line(index + 3),
+        id: "near-limit-" + index,
+        content: "é".repeat(2300),
+        contactHidden: false,
+      })),
+    ] as any;
+    scene.submissions = [
+      {
+        ...pendingSceneSubmission(scene, "large-reply", "Hello", "near-limit-0"),
+        acceptance: { status: "applied", rejected: [] },
+        replyLineIds: scene.lines.slice(2).map((line) => line.id),
+        episodeId: "large-episode",
+        progressProcessedAt: at,
+      },
+    ];
+    const changed = authorSceneFixture(f.rows, scene);
+    f.rows.set(record.id, { ...after, revision: 3, data: changed });
+    const response = await service.projectSceneResponse(scene as any);
+    assert.equal(response.lines.length, 24);
+    assert.equal(response.liveReplyId, "large-episode");
+    assert.equal(response.playback.moments.length, 1);
+    assert(!Object.hasOwn(response, "liveReply"), "response does not duplicate the reply prose");
+    assert(
+      Buffer.byteLength(JSON.stringify(response)) < 128 * 1024,
+      "near-limit reply remains within the ordinary response budget",
+    );
+  } finally {
+    f.release();
+  }
+}
+{
+  const f = sceneHistoryFixture();
+  try {
+    const world = { ...defaultVillageState(), seed: "legacy-inputs", setupAt: at, foundedAt: at };
+    await createVillageRepository(() => f.gate.documents).mutateAuthority((saved) => Object.assign(saved, world));
+    const scene = coerceSession({
+      version: 5,
+      id: "legacy-inputs",
+      villageSeed: world.seed,
+      status: "active",
+      startedAt: at,
+      sceneRevision: 5,
+    });
+    scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
+    const message = "I ask if I can help.";
+    for (const status of ["abandoned", "applied", "held"] as const) {
+      const pending = pendingSceneSubmission(scene, status, message, "reply-" + status);
+      const turn =
+        status === "applied"
+          ? {
+              ...pending,
+              narration: undefined,
+              acceptance: { status, rejected: [] },
+              episodeId: "episode",
+              progressProcessedAt: at,
+            }
+          : { ...pending, acceptance: { status, rejected: [] } };
+      scene.submissions.push(turn);
+      appendSceneInput(scene, turn);
+      if (status === "applied") scene.lines.push({ ...line(1), id: "reply-applied" } as (typeof scene.lines)[number]);
+    }
+    const ownerId = "villages-venue-visit-" + scene.id;
+    const { publicHistoryPolicy: _policy, ...raw } = authorSceneFixture(f.rows, scene);
+    const old = await scenePublicHistoryStore(f.documents).prepare(
+      {
+        ...scene,
+        submissions: scene.submissions.map((turn) => ({ ...turn, acceptance: { status: "applied", rejected: [] } })),
+      },
+      raw.transcript,
+      raw.submissionHistory,
+    );
+    assert.equal(old.count, 4);
+    await f.documents.create({
+      id: ownerId,
+      packageId: "villages",
+      kind: "venue-visit",
+      name: "Legacy Scene",
+      description: "",
+      createdAt: at,
+      updatedAt: at,
+      data: { ...raw, publicHistory: old },
+    });
+    const queries = createSceneQueryService({
+      readSession: f.repository.readSession,
+      readVillageState: async () => world,
+      villagesDocuments: () => f.gate.documents,
+    });
+    const scope = villageWorldScope(world);
+    const [failedAnchor] = await readSceneMomentRange(f.documents, old.presentation, raw.transcript.count, 0, 1);
+    const playback = await queries.readPlaybackPage(scene.id, { scope });
+    assert.equal(playback.totalParagraphs, 2);
+    const history = await queries.readHistoryPage(scene.id, { scope });
+    assert.deepEqual(playback.lines, history.lines);
+    assert.deepEqual(
+      history.lines.map((entry) => (entry.kind === "input" ? entry.inputOf : entry.id)),
+      ["applied", "reply-applied"],
+    );
+    const updated = f.rows.get(ownerId);
+    assert.equal(updated.revision, 2, "the legacy derived index upgrades once");
+    assert.equal(updated.data.sceneRevision, 5);
+    assert.deepEqual(updated.data.transcript, raw.transcript);
+    assert.deepEqual(updated.data.submissionHistory, raw.submissionHistory);
+    const cursor = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        scope,
+        sceneId: scene.id,
+        direction: "around",
+        index: 0,
+        id: failedAnchor.id,
+        digest: failedAnchor.publicDigest,
+      }),
+    ).toString("base64url");
+    await assert.rejects(queries.readPlaybackPage(scene.id, { scope, cursor }), { code: SCENE_PLAYBACK_CURSOR_STALE });
+  } finally {
+    f.release();
+  }
 }
 for (const count of [1000, 10_000, 25_000]) {
   const f = sceneHistoryFixture();
@@ -68,6 +295,8 @@ for (const count of [1000, 10_000, 25_000]) {
       readVillageState: async () => assert.fail("History cannot hydrate or settle World state"),
       villagesDocuments: () => ({
         list: () => assert.fail("A History page never lists all documents"),
+        create: () => assert.fail("Current History reads do not create pages"),
+        update: () => assert.fail("Current History reads do not update the Scene"),
         getById: async (packageId, key) => {
           readIds.push(key);
           if (key === holdId) {
@@ -139,7 +368,7 @@ for (const count of [1000, 10_000, 25_000]) {
       ...scene,
       unknownPrivateAuthority: "private authority sentinel",
     });
-    assert.deepEqual(response.lines, playback.lines);
+    assert.deepEqual(response.lines, playback.lines.slice(-1), "active projection contains only the latest reply");
     assert.equal(response.playback.totalParagraphs, expected.length);
     assert.equal(Object.hasOwn(response, "submissions"), false);
     assert.equal(Object.hasOwn(response.playback, "lines"), false, "Playback metadata never duplicates response prose");
@@ -341,6 +570,8 @@ for (const count of [1000, 10_000, 25_000]) {
         readVillageState: async () => world,
         villagesDocuments: () => ({
           list: f.gate.documents.list.bind(f.gate.documents),
+          create: () => assert.fail("Current History reads do not create pages"),
+          update: () => assert.fail("Current History reads do not update the Scene"),
           getById: async (pkg, key) => {
             if (hold && key === "villages-venue-visit-" + id) {
               hold = false;

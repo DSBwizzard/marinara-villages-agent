@@ -64,6 +64,7 @@ const glyphs: Record<VillageIconName, ReactNode> = {
 export function VillageIcon({ name }: { name: VillageIconName }) {
   return (
     <svg
+      className="mari-rgb-static-icon"
       viewBox="0 0 32 32"
       width="24"
       height="24"

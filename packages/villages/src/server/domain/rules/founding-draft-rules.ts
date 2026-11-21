@@ -75,14 +75,8 @@ export function parseFoundingVenueSuggestions(
     };
     const layout = row.layout;
     const venue = template?.find((venue) => venue.id === id);
-    if (
-      venue &&
-      ((venue.venueClass === "community" && layout !== "common") ||
-        (venue.venueClass === "residence" && layout === "exterior"))
-    )
-      throw badRequest(
-        "Residences require Common or Private Space; the starting Community Place requires Common only.",
-      );
+    if (venue && venue.venueClass === "residence" && layout === "exterior")
+      throw badRequest("Residences require Common or Private Space.");
     if (!["exterior", "common", "private", "both"].includes(String(layout)))
       throw badRequest("Choose a valid suggested Zone layout.");
     const connections = row.connections;

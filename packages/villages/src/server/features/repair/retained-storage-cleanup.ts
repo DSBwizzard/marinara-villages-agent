@@ -340,7 +340,7 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         memoryObject(row.data);
         memoryRequire(
           row.id === "villages-village" &&
-            row.data.version === 18 &&
+            row.data.version === 19 &&
             typeof row.data.seed === "string" &&
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",
@@ -359,6 +359,16 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         }
         const head = readMemoryHead(row.data.memoryHead);
         if (head) await history(head, row.data as { seed: string; setupAt: string }, view);
+        const retry = readSceneRetryRecord(row.data as { seed: string; setupAt: string });
+        if (retry) {
+          const scope = { id: retry.sceneId, villageSeed: row.data.seed };
+          if (retry.before) await history(retry.before, row.data as { seed: string; setupAt: string }, view);
+          await history(retry.after, row.data as { seed: string; setupAt: string }, view);
+          const body = await view.lookup(retry.request.id);
+          memoryRequire(body, "Scene Retry request is missing");
+          evidenceBody(body, scope, retry.request);
+          marked.add(retry.request.id);
+        }
       } else if (row.kind === "venue-visit") {
         memoryObject(row.data);
         memoryRequire(
@@ -685,3 +695,4 @@ const cleanupBinding = createActivationBinding<ReturnType<typeof createRetainedS
 export const configureRetainedStorageCleanup = (service: ReturnType<typeof createRetainedStorageCleanup>) =>
   cleanupBinding.configure(bindActivationService(service));
 export const startRetainedStorageCleanup = () => cleanupBinding.get().start();
+import { readSceneRetryRecord } from "../../adapters/storage/scene-retry-record.js";

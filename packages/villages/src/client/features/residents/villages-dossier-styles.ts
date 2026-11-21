@@ -27,6 +27,7 @@ export const DOSSIER_STYLES = `
 .${P}-description-editor textarea{resize:vertical;margin:6px 0}
 .${P}-dossier-refresh{width:100%;border-top:1px solid var(--dossier-line);padding-top:10px}
 .${P}-dossier-identity{flex:none;min-width:0;padding:72px 0 24px}
+.${P}-dossier-root .${P}-dossier-back{display:none;align-items:center;gap:8px;margin:0 0 16px;padding:4px 0;background:transparent;border:0;font-size:18px;text-align:left}
 .${P}-dossier-journal{display:flex;align-items:start;gap:20px;min-width:0}
 .${P}-dossier-journal-content{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-content:start}
 .${P}-dossier-portrait{width:100%;max-width:240px;aspect-ratio:1;margin:0;overflow:hidden;background:#969b7e70;border-radius:7px}
@@ -113,6 +114,57 @@ export const DOSSIER_STYLES = `
 .${P}-directory-text:has(small) strong{-webkit-line-clamp:1}
 .${P}-directory-pagination{display:flex;align-items:center;justify-content:center;gap:16px;flex:none;margin-top:12px;font-size:17px}
 .${P}-directory-root .${P}-directory-pagination button{min-width:44px;min-height:44px;padding:4px 10px;background:transparent;border-color:var(--dossier-line)}
+.${P}-people-sections{display:flex;align-items:stretch;flex:none;margin:0 0 18px;gap:0}
+.${P}-directory-root .${P}-people-sections button{min-width:132px;min-height:48px;border:0;border-bottom:3px solid transparent;border-radius:10px 10px 0 0;background:var(--menu-field,#74536755);padding:10px 18px}
+.${P}-directory-root .${P}-people-sections button[aria-pressed=true]{background:var(--menu-card,#969b7eb0);border-bottom-color:var(--menu-selected-ink,#fff0d5);color:var(--menu-selected-ink,#fff0d5)}
+.${P}-visitor-overview{background:var(--menu-field,#74536755);border-radius:12px;padding:24px;margin-bottom:22px}
+.${P}-visitor-overview>p{font-size:24px;margin-bottom:24px}
+.${P}-visitor-actions{display:flex;flex-wrap:wrap;gap:16px;border-top:1px solid var(--dossier-line);padding-top:24px}
+.${P}-visitor-actions button{display:flex;align-items:center;justify-content:center;gap:10px;min-width:160px;min-height:52px;padding:10px 18px;border-radius:12px;background:var(--menu-card,#969b7eb0)}
+.${P}-dossier-root[data-visitor=true] .${P}-dossier-tabs>div{gap:6px}
+.${P}-dossier-root[data-visitor=true] .${P}-dossier-tabs button{background:var(--menu-card,#969b7eb0);border-radius:10px 10px 0 0;padding:10px;font-size:18px}
+.${P}-dossier-root[data-visitor=true] .${P}-dossier-tabs button[aria-pressed=true]{background:var(--menu-field,#74536755);border-bottom-color:var(--menu-selected-ink,#fff0d5)}
+.${P}-directory-filters{display:flex;align-items:flex-start;gap:.5rem}
+.${P}-directory-filters label{min-width:0;flex:1 1 0;width:auto}
+.${P}-directory-head>button{margin-left:auto;flex:none;width:44px}
+.${P}-directory-filters button{flex:none}
+.villages-founding-overlay:has(>.${P}-visitor-picker){padding:16px;background:#172c3b88}
+dialog.villages-founding-dialog.${P}-visitor-picker{position:relative;inset:auto;width:min(960px,100%);height:min(760px,100%);max-height:100%;margin:0;padding:0;border:1px solid var(--menu-card-line,#a39b84);border-radius:18px;background:var(--popover,#393047);color:var(--menu-dossier-ink,#f0dfbc);box-shadow:0 18px 60px #0005;font:400 20px/1.4 var(--menu-font,Georgia,serif)}
+.${P}-visitor-picker button{min-height:44px;max-width:100%;padding:8px 12px;border:1px solid var(--menu-card-line,#a39b84);border-radius:8px;background:var(--secondary,#514157);color:inherit;font:inherit;cursor:pointer;overflow-wrap:anywhere}
+.${P}-visitor-picker button:disabled{opacity:.55;cursor:default}
+.${P}-visitor-picker :is(button,input):focus-visible{outline:3px solid var(--menu-focus,#dca5ab);outline-offset:2px}
+.${P}-visitor-picker>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 24px 8px;background:transparent}
+.${P}-visitor-picker>header h3{margin:0;font-size:36px;font-weight:600}
+.${P}-visitor-picker>header button{flex:none;width:48px;height:48px}
+.${P}-visitor-picker form{display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden}
+.${P}-visitor-picker .${P}-visitor-picker-search{flex:none;padding:8px 24px}
+.${P}-visitor-picker label.${P}-directory-search{display:block;max-width:none;margin:0}
+.${P}-visitor-picker .${P}-directory-search input{min-height:50px;padding-left:56px;background:var(--menu-field,#74536755);color:inherit;border-color:var(--menu-field-border,#a39b84)}
+.${P}-visitor-picker .${P}-visitor-picker-body{flex:1;min-height:0;overflow:hidden;padding:8px 24px}
+.${P}-visitor-picker-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:14px;padding:4px;height:100%}
+.${P}-visitor-picker button.${P}-visitor-picker-card{position:relative;display:grid;grid-template-rows:minmax(0,1fr) auto;align-items:center;justify-items:center;gap:6px;min-width:0;min-height:0;padding:10px;border:1px solid var(--menu-card-line,#a39b84);border-radius:14px;background:var(--menu-card,#969b7e);font-size:20px;text-align:center;container-type:size}
+.${P}-visitor-picker button.${P}-visitor-picker-card[aria-pressed=true]{outline:3px solid var(--menu-tab-line,#d29399);outline-offset:0;background:var(--menu-card-selected,#b97980bf)}
+.${P}-visitor-picker-card .${P}-avatar{position:relative;display:grid;place-items:center;width:auto;height:min(100%,100cqw);aspect-ratio:1;max-width:100%;overflow:hidden;border:0;border-radius:7px;background:var(--menu-avatar,#514157);font-size:36px}
+.${P}-visitor-picker-card .${P}-avatar img{width:100%;height:100%;object-fit:cover}
+.${P}-visitor-picker-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25}
+.${P}-visitor-picker-check{position:absolute;top:5px;right:5px;display:grid;place-items:center;width:34px;height:34px;border:2px solid var(--popover,#393047);border-radius:50%;background:var(--menu-tab-line,#d29399);color:var(--popover,#393047);font:700 24px/1 Georgia,serif}
+.${P}-visitor-picker-pages{display:flex;align-items:center;justify-content:center;gap:16px;flex:none;padding:4px 24px 12px}
+.${P}-visitor-picker-pages button{width:44px;padding:4px}
+.${P}-visitor-picker form>footer{display:flex;justify-content:flex-end;align-items:center;gap:12px;flex:none;margin:0 24px;padding:12px 0 16px;border-top:1px solid var(--menu-dossier-line,#a39b8460);background:transparent}
+.${P}-visitor-picker form>footer>span{flex:1;min-width:0;overflow-wrap:anywhere}
+.${P}-visitor-picker form>footer>button{flex:none;min-width:110px;border-radius:10px}
+.${P}-visitor-picker form>footer>button:last-child{background:var(--menu-tab-line,#969b7e);color:var(--popover,#393047);border-color:transparent}
+.${P}-visitor-picker form>.${P}-dossier-warning{flex:none;margin:0 24px 8px}
+@container village-desk (max-width:700px){
+ .villages-founding-overlay:has(>.${P}-visitor-picker){padding:8px}
+ dialog.villages-founding-dialog.${P}-visitor-picker{border-radius:14px;font-size:17px}
+ .${P}-visitor-picker>header{padding:10px 12px 4px}.${P}-visitor-picker>header h3{font-size:26px}.${P}-visitor-picker>header button{width:44px;height:44px}
+ .${P}-visitor-picker .${P}-visitor-picker-search{padding:6px 12px}.${P}-visitor-picker .${P}-visitor-picker-body{padding:6px 12px}
+ .${P}-visitor-picker-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.${P}-visitor-picker button.${P}-visitor-picker-card{padding:8px;font-size:17px}
+ .${P}-visitor-picker-pages{padding:2px 12px 6px}
+ .${P}-visitor-picker form>footer{margin:0 12px;padding:8px 0 10px;flex-wrap:wrap;gap:8px}.${P}-visitor-picker form>footer>span{flex-basis:100%}.${P}-visitor-picker form>footer>button{flex:1;min-width:0}
+ .${P}-visitor-picker form>.${P}-dossier-warning{margin:0 12px 6px}
+}
 
 @container village-desk (min-width:701px) and (max-width:1100px){
  .${P}-people-layout{grid-template-columns:220px minmax(0,1fr);gap:24px}
@@ -133,6 +185,8 @@ export const DOSSIER_STYLES = `
  .${P}-dossier-book{overflow:visible;container-type:normal}
  .${P}-dossier-character{position:absolute;right:0;top:0;width:150px;height:230px;padding:0}
  .${P}-dossier-identity{padding-top:0}
+ .${P}-dossier-root .${P}-dossier-back{display:inline-flex;max-width:calc(100% - 164px);font-size:17px}
+ .${P}-dossier-identity:has(.${P}-dossier-back) .${P}-dossier-journal h1{min-height:175px;padding-top:12px}
  .${P}-dossier-journal{flex-wrap:wrap;gap:12px}
  .${P}-dossier-journal-content{display:block;flex-basis:100%}
  .${P}-dossier-journal h1{font-size:32px;min-height:235px;padding:32px 164px 0 0}
@@ -145,6 +199,9 @@ export const DOSSIER_STYLES = `
  .${P}-dossier-tabs>div{display:none}
  .${P}-dossier-content{overflow:visible;flex:none;padding:8px 0 18px}
  .${P}-dossier-content h2{font-size:27px}
+ .${P}-visitor-overview{padding:18px}
+ .${P}-visitor-actions{gap:10px;padding-top:18px}
+ .${P}-visitor-actions button{min-width:0;flex:1 1 140px}
  .${P}-dossier-venues article{grid-template-columns:1fr}
  .${P}-dossier-root .${P}-agenda-days{grid-template-columns:1fr;gap:12px}
  .${P}-directory-head{--menu-heading-size:40px;margin-bottom:20px;gap:12px}

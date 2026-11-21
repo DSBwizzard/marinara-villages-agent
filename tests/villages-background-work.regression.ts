@@ -1,5 +1,6 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
 import {
@@ -259,7 +260,7 @@ async function queueWorldWork(subjectId: string, catchup = false) {
   const state = await readVillageState({ memories: true });
   const at = villageNow().toISOString(),
     dateKey = localDateKey(villageNow());
-  state.venues = [venueFixture({ id: "common", name: "Commons", category: "public" })];
+  state.venues = [...[venueFixture({ id: "common", name: "Commons", category: "public" })], ...sharedVenuesFixture(20)];
   ensureNarrative(state, at);
   const grant = admitNarrative(state, at, subjectId);
   assert(grant);
@@ -366,6 +367,7 @@ async function reset() {
           addedAt: "2026-09-01T00:00:00.000Z",
         }) as any,
     );
+    state.venues = sharedVenuesFixture(state.villagers.length);
   });
   stop = startBackgroundWork({ now: () => now });
 }

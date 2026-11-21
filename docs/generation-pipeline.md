@@ -18,9 +18,9 @@ Standalone, Scene and background receipts retain their own ownership and uncerta
 
 ## Scenes
 
-Scene format 5 in Village format 18 uses one narration contract: `{segments, keep?, commands?, halt?}`. An ordinary successful exchange requires one GM response. Ordinary conversation needs only prose segments; meaningful retained changes use common continuity, while game mechanics use native commands. The same model portrays the exchange and proposes meaning, so semantic judgment still needs playtesting.
+Scene format 5 in Village format 19 uses one narration contract: `{segments, keep?, commands?, halt?}`. An ordinary successful exchange requires one GM response. Simple dialogue needs only an attributed line. The same reply can propose a lasting change and point to witnessed evidence. Ordinary prompts supply authored setting and backstory directly, with concise shared rules and the applicable Scene evidence. Native actions use their existing command rules. The same model portrays the exchange and proposes meaning, so semantic judgment still needs playtesting.
 
-Exact submitted input is the final model message, including whitespace, private thoughts and empty Conclude input. The model does not classify the whole submission. Only consequential excerpts need grounding as actual speech, visible action or private input. Code derives source offsets, positions, witnesses, identities and revisions. Generated narration cannot invent the Player's speech, consent or travel. History and playback may display original source input to Engine users; those rows have no resident audience and never establish character speech.
+Exact submitted input is the final model message, including whitespace, and private thoughts. The model does not classify the whole submission. Only consequential excerpts need grounding as actual speech, visible action or private input. Code derives source offsets, positions, witnesses, identities and revisions. Generated narration cannot invent the Player's speech, consent or travel. History and playback may display original source input to Engine users; those rows have no resident audience and never establish character speech.
 
 The prompt places stable rules and complete authored identities before witnessed history, with a captured Scene reference and current circumstances. Context fitting preserves required identities, exact input and required evidence. Only actually fitted sources can support later effects. Optional recall and standing initiative are bounded selections, not saved-history deletion. Cache markers remain provider hints; stable prefixes do not establish cache hits or real cost savings.
 
@@ -40,9 +40,9 @@ Unsupported saved formats fail without conversion. Deterministic navigation and 
 
 ## Scene outcome boundaries
 
-Cards and lore establish identity and abilities, not authority over time, attendance, access or construction. The GM can return a native halt with a short explanation and source references, including an exact unspoken input excerpt as context. The original input and response remain held for recovery; no assistant fiction, common meaning, native change or accepted Episode is published.
+Cards and lore establish identity and abilities, not authority over time, attendance, access or construction. The Scene GM first tries to continue in character. If an unsupported outcome cannot be avoided while preserving what the player explicitly declared, the GM can return a halt reason and source references, including an exact unspoken input excerpt. The original input and response remain held for recovery; no assistant fiction, common meaning, native change or accepted Episode is published.
 
-Before showing that explanation, code checks fresh identities, protection and provenance, then binds every cited halt source. Invalid citations and an in-flight Correct or Forget remain validation failures without exposing the model explanation. A valid halt uses the existing intentional request-error channel and the existing held-reply lifecycle. Saved replay repeats the explanation without purchasing another response.
+Code checks fresh identities, protection and provenance, then binds every cited halt source. The public notice is fixed text for the validated reason. Saved replies can still contain a legacy message field, which is discarded when interpreting the result. Invalid citations and an in-flight Correct or Forget remain validation failures. A valid halt uses the existing intentional request-error channel and held-reply lifecycle. Saved replay uses the server notice without purchasing another response.
 
 ## Resident access actions
 

@@ -3,7 +3,7 @@ import type { VillageVenue } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badGateway, VillagesRequestError } from "./errors.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
-import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
+import { isSceneAside, MAX_SCENE_ASIDES, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -68,7 +68,7 @@ export function addressedSceneResidents<T extends { name: string; characterId: s
 export function zoneEventScene(
   scene: VenueScene,
   venue: VillageVenue,
-  intent: { targetId?: string; message?: string; zoneId?: string } = {},
+  intent: { targetId?: string; message?: string; zoneId?: string; priorityIds?: string[] } = {},
 ): VenueScene {
   const occupants = (scene.sceneAttendance?.occupants ?? []).filter(
     (person) => !scene.departedIds?.includes(person.characterId),
@@ -79,6 +79,29 @@ export function zoneEventScene(
     (person) =>
       !scene.activeIds.includes(person.characterId) && neighbors.includes(contactPosition(scene, person.characterId)),
   );
+  const move = scene.navigationReceipts?.at(-1);
+  const previous = move && scene.submissions.findLast((turn) => turn.acceptance.status === "applied");
+  const previousSpeakers = new Set<string>();
+  if (
+    move &&
+    move.originZoneId !== move.destinationZoneId &&
+    move.destinationZoneId === scene.zoneId &&
+    previous?.zoneIdAtTurn === move.originZoneId &&
+    Date.parse(previous.at) <= Date.parse(move.at)
+  ) {
+    const replyIds = new Set(previous.replyLineIds);
+    for (const line of scene.lines) {
+      if (
+        replyIds.has(line.id) &&
+        line.kind === "dialogue" &&
+        line.zoneId === move.originZoneId &&
+        !line.contactHidden &&
+        !line.viaDoorway &&
+        line.heardBy?.includes("player")
+      )
+        previousSpeakers.add(line.speakerId);
+    }
+  }
   const continuing = new Set(
     scene.lines
       .filter((line) => !line.contactHidden && line.kind !== "narration" && line.role !== "user")
@@ -100,12 +123,17 @@ export function zoneEventScene(
       (person) =>
         contactPosition(scene, person.characterId) === intent.zoneId ||
         crossZones.includes(contactPosition(scene, person.characterId)) ||
+        (previousSpeakers.has(person.characterId) &&
+          contactPosition(scene, person.characterId) === move?.originZoneId) ||
         scene.doorwayContacts?.some((contact) => contact.characterId === person.characterId),
     ),
     ...(calling ? near.slice(0, 1) : []),
   ];
   const offered = [...new Map(candidates.map((person) => [person.characterId, person])).values()].slice(0, 4);
   const priority = [
+    ...(intent.priorityIds ?? []).filter(
+      (id) => scene.activeIds.includes(id) && contactPosition(scene, id) === scene.zoneId,
+    ),
     ...named.filter((person) => person.characterId === intent.targetId).map((person) => person.characterId),
     ...named.map((person) => person.characterId),
     ...scene.activeIds.filter((id) => continuing.has(id)),
@@ -281,13 +309,20 @@ export function routeZoneEvents(
   const visible = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => !line.contactHidden || line.soundOnly?.player);
-  let main = visible.filter(({ line }) => !isSceneAside(line));
-  if (!main.length && visible.length) {
-    visible[0]!.line.presentation = "main";
-    main = [visible[0]!];
-  }
+  const first = visible.find(({ line }) => !isSceneAside(line)) ?? visible[0];
+  if (!first) return;
+  if (isSceneAside(first.line)) first.line.presentation = "main";
+  let anchor = first.index;
+  const asideCounts = new Map<number, number>();
   for (const { line, index } of visible) {
     delete line.anchorIndex;
-    if (isSceneAside(line)) line.anchorIndex = (main.findLast((entry) => entry.index < index) ?? main[0])?.index;
+    const asideCount = asideCounts.get(anchor) ?? 0;
+    if (isSceneAside(line) && asideCount < MAX_SCENE_ASIDES) {
+      line.anchorIndex = anchor;
+      asideCounts.set(anchor, asideCount + 1);
+    } else {
+      if (isSceneAside(line)) line.presentation = "main";
+      anchor = index;
+    }
   }
 }

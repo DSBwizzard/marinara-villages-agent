@@ -119,6 +119,7 @@ export const serverFeatureInterfaces = Object.freeze({
   "venues/zone-edits.ts": ["updateVillageZone", "proposeResidenceSpaceEdit", "applyResidenceEditApproval"],
   "world/snapshot.ts": ["buildVillageSnapshot"],
   "world/village-store.ts": [
+    "peekVillageAuthority",
     "readVillageAuthority",
     "readVillageSnapshot",
     "readVillageState",
@@ -136,6 +137,7 @@ export const serverFeatureInterfaces = Object.freeze({
 
 /** Named client presentation contracts; entry and shell assemble private feature implementations. */
 export const clientFeatureInterfaces = Object.freeze({
+  "venues/layout-draft.tsx": ["VenueLayoutDraft"],
   "projects/ProjectDesign.tsx": ["ClassChoices"],
   "background/BackgroundPanel.tsx": ["BackgroundWorkPanel"],
   "exploration/MapStage.tsx": ["defaultView", "MapStage", "MobileMapView", "PROJECT_BLUEPRINT_IMAGE", "TOWN_MAP_FITS"],
@@ -148,7 +150,7 @@ export const clientFeatureInterfaces = Object.freeze({
   "residents/ResidentPanels.tsx": ["AvatarFace", "readAvatarCrop"],
   "residents/Appearance.tsx": ["Appearance"],
   "residents/villages-dossier.tsx": ["DossierNavigation"],
-  "settings/AgentConnections.tsx": ["AgentConnections"],
+  "settings/AgentConnections.tsx": ["AgentConnections", "AgentConnectionsControls", "useAgentConnections"],
   "settings/villages-decisions-control.tsx": ["DecisionsControl"],
   "settings/villages-saved-changes.tsx": ["SavedChangesDiagnostics"],
   "venues/VenuePanels.tsx": ["MailboxImprovementEditor", "VENUE_CLASS_CHOICES", "VenueDraftFields"],

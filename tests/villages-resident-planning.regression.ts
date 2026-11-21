@@ -1,10 +1,9 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 // Test cases: resident-planning/one-gm, resident-planning/housing, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/catchup-relationship, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   readEffectiveVillagerCard,
   readVillagerCard,
@@ -67,7 +66,7 @@ function fixture(now = new Date()) {
     timeZone: "UTC",
     backgroundPace: "lively",
   });
-  state.venues = [venueFixture({ id: "square", name: "Square", category: "public" })];
+  state.venues = [...[venueFixture({ id: "square", name: "Square", category: "public" })], ...sharedVenuesFixture()];
   const zone = state.venues[0].zones!.find((row) => row.kind !== "exterior")!.id,
     room = { kind: "room" as const, placeId: "square", zoneId: zone };
   state.villagers = ["mara", "leo"].map((id) => ({
@@ -691,8 +690,17 @@ await runCase("resident-planning/mail-initiative", async () => {
 await runCase("resident-planning/delayed-meeting", async () => {
   const source = new Date(Date.now() - 3 * 3600000);
   source.setUTCMinutes(0, 0, 0);
-  const f = fixture(source),
-    local = new ZonedDate(source, "UTC"),
+  const f = fixture(source);
+  // This case tests delayed meeting recovery, without unrelated avoidance destinations in the candidate pool.
+  f.state.venues = f.state.venues.filter((venue) => venue.id === "square");
+  for (const resident of f.state.villagers)
+    resident.agenda!.activeDay = {
+      dateKey: source.toISOString().slice(0, 10),
+      weekday: new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(source),
+      scheduleInformed: false,
+      blocks: resident.agenda!.day,
+    };
+  const local = new ZonedDate(source, "UTC"),
     plan = socialPlanCandidates(f.state, local).find((row) => row.kind === "meeting")!;
   assert(plan);
   acceptSocialPlan(f.state, [plan], plan.id, local);

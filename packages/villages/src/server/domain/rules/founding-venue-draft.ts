@@ -5,7 +5,6 @@ import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
 import { parsePlace } from "./founding-record.js";
 import { accessibleVenueRoute } from "./venue-path.js";
-import { communityVenueEligible } from "./community-venue.js";
 
 function readDayNight(value: unknown): boolean {
   if (typeof value !== "boolean") throw badRequest("The Zone daylight decision must be on or off.");
@@ -58,7 +57,6 @@ export function parseFoundingVenueDraft(
   value: unknown,
   source: ReturnType<typeof readFoundingVenueDraftSource>,
   newIds: string[],
-  community: boolean,
   at: Date,
 ): FoundingVenueSuggestion {
   const payload = asRecord(value),
@@ -86,8 +84,7 @@ export function parseFoundingVenueDraft(
       (prior &&
         (personal !== (source.privateSpaces ?? []).some((zone) => zone.id === id) ||
           ownerId !== (prior.ownerId ?? ""))) ||
-      (!prior && (personal ? !source.classes?.includes("residence") || !actors.includes(ownerId) : !!ownerId)) ||
-      (community && personal)
+      (!prior && (personal ? !source.classes?.includes("residence") || !actors.includes(ownerId) : !!ownerId))
     )
       throw badRequest("Preserve existing Zone use and ownership; assign new private Zones only to this household.");
     if (!Array.isArray(zone.connectedTo) || zone.connectedTo.some((id) => typeof id !== "string"))
@@ -137,7 +134,5 @@ export function parseFoundingVenueDraft(
     if (!sleep || !accessibleVenueRoute({ projects: [] }, candidate, actor, sleep, at, true))
       throw badRequest("Every household member needs an accessible sleeping Zone and route from Entrance.");
   }
-  if (community && !communityVenueEligible(candidate))
-    throw badRequest("The Community Venue must remain public and unowned.");
   return plan;
 }

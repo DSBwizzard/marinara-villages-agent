@@ -152,6 +152,18 @@
       "path": "/artwork/:size/:id/:extension"
     },
     {
+      "method": "put",
+      "path": "/visitors/:characterId"
+    },
+    {
+      "method": "post",
+      "path": "/visitors/:characterId/move-in"
+    },
+    {
+      "method": "post",
+      "path": "/visitors/:characterId/host"
+    },
+    {
       "method": "patch",
       "path": "/villagers/:characterId/description"
     },
@@ -216,6 +228,10 @@
       "path": "/venues/:venueId/zones/:zoneId/name"
     },
     {
+      "method": "post",
+      "path": "/rooms/react"
+    },
+    {
       "method": "get",
       "path": "/rooms/:id/error-details"
     },
@@ -263,6 +279,10 @@
     {
       "method": "post",
       "path": "/rooms/turn"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/retry"
     },
     {
       "method": "post",

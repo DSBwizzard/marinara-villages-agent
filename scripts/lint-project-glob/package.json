@@ -1,0 +1,10 @@
+{
+  "name": "@villages/lint-project-glob",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "dependencies": {
+    "minimatch": "11.0.1"
+  }
+}

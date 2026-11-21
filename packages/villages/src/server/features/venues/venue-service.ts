@@ -15,7 +15,6 @@ import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import { zonePictureBaseline, zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { applyVenueZoneLayout } from "../../domain/rules/venue-layout.js";
-import { designateCommunityVenue } from "../../domain/rules/community-venue.js";
 export type VillageVenueDeletionDependencies = {
   venueId: string;
   venueName: string;
@@ -158,10 +157,6 @@ export function createVenueCommands({
       (state) => {
         const venue = state.venues.find((row) => row.id === venueId);
         if (!venue) throw notFound("That Venue is no longer here.");
-        if (command.action === "community-venue") {
-          designateCommunityVenue(state, venue, command, villageNow().toISOString());
-          return;
-        }
         applyAccessCommand(
           venue,
           command,
@@ -169,7 +164,6 @@ export function createVenueCommands({
           villageNow().toISOString(),
           ["player", ...sceneActorIds(state)],
           [],
-          state.communityVenueId,
         );
       },
       { memories: true },
@@ -212,12 +206,11 @@ export function createVenueCommands({
 
   async function updateVenueZoneLayout(venueId: string, value: unknown): Promise<VillageSnapshot> {
     return withSceneNavigation(async () => {
-      if (await sceneQueries().activeVenueSession())
-        throw conflict("End the active Scene before editing Zone positions or connections.");
+      const sceneActive = !!(await sceneQueries().activeVenueSession());
       await mutateVillageState((state) => {
         const venue = state.venues.find((entry) => entry.id === venueId);
         if (!venue) throw notFound("That Venue no longer exists.");
-        applyVenueZoneLayout(state, venue, value);
+        applyVenueZoneLayout(state, venue, value, sceneActive);
       });
       return buildVillageSnapshot();
     });

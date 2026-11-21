@@ -5,6 +5,7 @@ import { publicSceneRoutes } from "../adapters/http/public-scene-routes.js";
 import { withRepairWork } from "../adapters/storage/repair-gate.js";
 import { villageNow } from "../adapters/time/clock-gate.js";
 import { asRecord } from "../domain/rules/coerce.js";
+import { playerVisitAbsenceElapsed } from "../domain/rules/return-catchup-state.js";
 import { isVillageFounded } from "../domain/rules/world-snapshot.js";
 import { registerBackgroundRoutes } from "../features/background/routes.js";
 import { prepareReturnCatchup } from "../features/background/return-catchup.js";
@@ -52,6 +53,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
     if (
       method === "get" ||
       settingsFields?.length === 0 ||
+      (settingsFields?.length === 1 &&
+        settingsFields[0] === "spontaneousEvents" &&
+        asRecord(body).spontaneousEvents === false) ||
       path === "/background/presence" ||
       path === "/background/catchup/retry" ||
       path === "/background/catchup/continue" ||
@@ -61,7 +65,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
     let state = await peekVillageAuthority();
     if (path === "/setup" && isVillageFounded(state))
       return "This Village is already founded. Use World Configuration.";
-    if (!hasVillagePresence() && state.returnCatchup?.capture) {
+    const longAbsence = playerVisitAbsenceElapsed(state, Date.now());
+    if (!hasVillagePresence() && (state.returnCatchup?.capture || longAbsence)) {
       await prepareReturnCatchup(villageNow(), randomUUID());
       state = await peekVillageAuthority();
     }
@@ -87,19 +92,25 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return "Village catch-up is still in progress. Finish or continue before changing the Village.";
     return null;
   };
-  const surface = publicSceneRoutes(engine, projectSceneResponse, guard, [
-    "post /setup",
-    "get /memories",
-    "get /rooms/:id/history",
-    "get /rooms/:id/playback",
-    "get /rooms/:id/error-details",
-    "get /memories/inspect",
-    "get /memories/:id/evidence",
-    "get /memories/inspect/:id",
-    "get /artwork/:size/:id/:extension",
-    "post /memories/:id/forget",
-    "post /memories/:id/correct",
-  ]);
+  const surface = publicSceneRoutes(
+    engine,
+    projectSceneResponse,
+    guard,
+    [
+      "post /setup",
+      "get /memories",
+      "get /rooms/:id/history",
+      "get /rooms/:id/playback",
+      "get /rooms/:id/error-details",
+      "get /memories/inspect",
+      "get /memories/:id/evidence",
+      "get /memories/inspect/:id",
+      "get /artwork/:size/:id/:extension",
+      "post /memories/:id/forget",
+      "post /memories/:id/correct",
+    ],
+    ["post /rooms/retry"],
+  );
   registerRelationshipRoutes(surface);
   registerSpriteManagerRoutes(surface);
   registerSnapshotCatalogRoutes(surface);

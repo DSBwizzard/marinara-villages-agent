@@ -1,9 +1,10 @@
+import { sharedVenuesFixture } from "../helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "../helpers/venues.fixture.js";
 import { venueFixture } from "../helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { captureSceneLayout } from "../../packages/villages/src/server/domain/rules/scene-layout.js";
@@ -18,6 +19,7 @@ export async function packagedSceneServer(
     configure?: (world: ReturnType<typeof defaultVillageState>, now: string) => void;
     configureScene?: (scene: VenueScene, world: ReturnType<typeof defaultVillageState>) => void;
     bundle?: string;
+    records?: Map<string, any>;
   } = {},
 ) {
   const now = new Date().toISOString();
@@ -49,35 +51,38 @@ export async function packagedSceneServer(
     },
   ] as typeof world.villagers;
   world.venues = [
-    {
-      id: "mill",
-      name: "The Mill",
-      classes: ["other"],
-      layoutVersion: 1,
-      zones: [
-        {
-          ...defaultVenueSpace("other"),
-          id: "exterior",
-          name: "Exterior",
-          venueClass: "other",
-          kind: "exterior",
-          description: "A stone threshold outside the mill.",
-          connectedTo: ["common"],
-          seen: true,
-        },
-        {
-          ...defaultVenueSpace("other"),
-          id: "common",
-          name: "Common",
-          venueClass: "other",
-          kind: "public",
-          description: "A wooden bench stands against a plaster wall.",
-          connectedTo: ["exterior"],
-          seen: true,
-        },
-      ],
-    },
-  ].map(venueFixture) as typeof world.venues;
+    ...([
+      {
+        id: "mill",
+        name: "The Mill",
+        classes: ["other"],
+        layoutVersion: 1,
+        zones: [
+          {
+            ...defaultVenueSpace("other"),
+            id: "exterior",
+            name: "Exterior",
+            venueClass: "other",
+            kind: "exterior",
+            description: "A stone threshold outside the mill.",
+            connectedTo: ["common"],
+            seen: true,
+          },
+          {
+            ...defaultVenueSpace("other"),
+            id: "common",
+            name: "Common",
+            venueClass: "other",
+            kind: "public",
+            description: "A wooden bench stands against a plaster wall.",
+            connectedTo: ["exterior"],
+            seen: true,
+          },
+        ],
+      },
+    ].map(venueFixture) as typeof world.venues),
+    ...sharedVenuesFixture(),
+  ];
   options.configure?.(world, now);
   world.startingHistory.reviewed = Object.fromEntries(world.villagers.map((row) => [row.characterId, row.incarnation]));
   for (const actor of world.villagers)
@@ -119,23 +124,31 @@ export async function packagedSceneServer(
   });
   options.configureScene?.(scene, world);
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(now));
-  const records = new Map<string, any>([
-    ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world }],
-    [
-      "villages-active-venue",
-      {
-        id: "villages-active-venue",
-        packageId: "villages",
-        kind: "venue-active",
-        revision: 1,
-        data: { sessionId: scene.id, placeId: scene.placeId },
-      },
-    ],
-    [
-      "villages-venue-visit-browser",
-      { id: "villages-venue-visit-browser", packageId: "villages", kind: "venue-visit", revision: 1, data: scene },
-    ],
-  ]);
+  const records =
+    options.records ??
+    new Map<string, any>([
+      [
+        "villages-village",
+        { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world },
+      ],
+      [
+        "villages-active-venue",
+        {
+          id: "villages-active-venue",
+          packageId: "villages",
+          kind: "venue-active",
+          revision: 1,
+          data: { sessionId: scene.id, placeId: scene.placeId },
+        },
+      ],
+      [
+        "villages-venue-visit-browser",
+        { id: "villages-venue-visit-browser", packageId: "villages", kind: "venue-visit", revision: 1, data: scene },
+      ],
+    ]);
+  if (!options.records)
+    for (const row of records.values())
+      Object.assign(row, { name: row.id, description: "", createdAt: now, updatedAt: now });
   const documents = {
     getById: async (_pkg: string, id: string) => structuredClone(records.get(id) ?? null),
     list: async (_pkg: string, kind: string) =>
@@ -156,10 +169,11 @@ export async function packagedSceneServer(
     remove: async (_pkg: string, id: string, revision: number) =>
       records.get(id)?.revision === revision && records.delete(id),
   };
-  await seedVillageFixtureDocuments(documents as any);
+  if (!options.records) await seedVillageFixtureDocuments(documents as any);
   assert(Object.hasOwn(records.get("villages-village").data, "memoryHead"));
   assert(!Object.hasOwn(records.get("villages-village").data, "memories"));
-  assert(!Object.hasOwn(records.get("villages-venue-visit-browser").data, "lines"));
+  if (records.has("villages-venue-visit-browser"))
+    assert(!Object.hasOwn(records.get("villages-venue-visit-browser").data, "lines"));
   let calls = 0;
   const model = {
     connectionId: "synthetic",
@@ -224,6 +238,7 @@ export async function packagedSceneServer(
     app,
     stop,
     model,
+    resources: runtime.resources,
     calls: () => calls,
     records,
     documents,

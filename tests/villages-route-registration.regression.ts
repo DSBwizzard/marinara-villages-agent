@@ -3,7 +3,6 @@ import type { FastifyInstance } from "fastify";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { WRITING_GUIDANCE_MAX_LENGTH } from "../packages/villages/src/server/domain/rules/narration-style.js";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import type { ResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
@@ -175,8 +174,6 @@ async function currentSceneAndWritingHttp() {
     tense: "past",
     person: "third",
     rating: "nsfw",
-    writingGuidance: "Keep the narration dry and preserve each character's voice.",
-    writingGuidanceMaxLength: WRITING_GUIDANCE_MAX_LENGTH,
   };
   // Recreate the complete activation graph over the same document store to
   // prove persisted settings survive reload without an old preset document.
@@ -206,8 +203,6 @@ async function currentSceneAndWritingHttp() {
           tense: "present",
           person: "second",
           rating: "sfw",
-          writingGuidance: "",
-          writingGuidanceMaxLength: WRITING_GUIDANCE_MAX_LENGTH,
         });
         const saved = await app.inject({ method: "PUT", url: "/narration", payload: desired });
         assert.equal(saved.statusCode, 200);
@@ -217,6 +212,7 @@ async function currentSceneAndWritingHttp() {
           { person: "fourth" },
           { rating: "unknown" },
           { writingGuidance: null },
+          { writingGuidance: "Legacy guidance" },
         ]) {
           assert.equal((await app.inject({ method: "PUT", url: "/narration", payload })).statusCode, 400);
         }

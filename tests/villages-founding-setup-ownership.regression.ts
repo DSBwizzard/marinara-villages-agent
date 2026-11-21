@@ -31,20 +31,20 @@ function input(name: string) {
     ),
     setting: "An observatory village",
     townMapImage: "test-map",
-    communityVenueId: "hall",
+    openingVenueId: "hall",
     worldRules: "",
     circumstances: [],
     playerPersonaId: "player",
     foundingCharacterIds: ["same"],
-    venues: ["player", "same", "hall"].map((id, index) => {
+    venues: ["player", "same", "hall", "garden"].map((id, index) => {
       const venue = venueFixture({
         residentIds: [id === "same" ? id : null].filter((id) => typeof id === "string" && !!id),
         id,
         name: `${name} ${id}`,
         form: "A room",
         description: "A welcoming doorway",
-        category: id === "hall" ? "public-center" : "house",
-        classes: [id === "hall" ? "community" : "residence"],
+        category: ["hall", "garden"].includes(id) ? "public-center" : "house",
+        classes: [["hall", "garden"].includes(id) ? "community" : "residence"],
         layoutVersion: 1,
         layout: id === "same" ? "both" : "common",
         spaces: [
@@ -53,7 +53,7 @@ function input(name: string) {
             name: "Shared room",
             purpose: "Conversation",
             description: "A table",
-            venueClass: id === "hall" ? "community" : "residence",
+            venueClass: ["hall", "garden"].includes(id) ? "community" : "residence",
           },
         ],
         privateSpaces:
@@ -72,7 +72,7 @@ function input(name: string) {
         occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
         presentation: { x: 0.2 + index * 0.2, y: 0.5 },
       });
-      if (id === "hall") venue.access!.managerIds = [];
+      if (["hall", "garden"].includes(id)) venue.access!.managerIds = [];
       return venue;
     }),
   };
@@ -353,7 +353,7 @@ assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
 assert.equal(direct.state.villagers[0]!.cardSnapshot.description, "Private card Direct");
 assert.equal(direct.state.villagers[0]!.agenda!.personalizationPending, true);
 assert.equal(direct.state.foundingPreparation!.status, "pending");
-assert.equal(direct.state.venues.length, 3);
+assert.equal(direct.state.venues.length, 4);
 assert.equal(observableRoomDescription(direct.state, "same", "private:same", direct.state.setupAt), "A narrow oak bed");
 assert.equal(observableRoomDescription(direct.state, "same", "common:base", direct.state.setupAt), "A table");
 assert(direct.calls.indexOf("validate-connections") < direct.calls.indexOf("persona:player"));

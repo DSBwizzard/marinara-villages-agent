@@ -1,6 +1,69 @@
 import type { VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import { privateRejectedText } from "../../domain/rules/rejected-response.js";
+import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import {
+  MISSING_PRIVATE_STATE_EVIDENCE,
+  ROOM_OUTCOME_UNVERIFIED,
+  UNWITNESSED_CONTINUITY_SUPPORT,
+} from "../../domain/rules/continuity.js";
+import { ACTOR_MEMORY_TARGETS_ROOM } from "../../domain/rules/narration-acceptance.js";
+import { MISSING_CONTINUITY_TEXT } from "../../domain/rules/narration-contract.js";
+
+const continuityChecks = new Map([
+  [UNWITNESSED_CONTINUITY_SUPPORT, { code: "continuity_evidence_not_witnessed", path: ["source"] }],
+  ["continuity actor was not admitted", { code: "continuity_actor_not_admitted", path: ["for"] }],
+  [ACTOR_MEMORY_TARGETS_ROOM, { code: "room_target_in_actor_memory", path: ["for"] }],
+  [MISSING_CONTINUITY_TEXT, { code: "missing_continuity_text", path: ["text"] }],
+  [MISSING_PRIVATE_STATE_EVIDENCE, { code: "missing_private_state_evidence", path: ["source"] }],
+  [ROOM_OUTCOME_UNVERIFIED, { code: "room_outcome_unverified", path: ["source"] }],
+]);
+
+function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 4).flatMap((value) => {
+    const issue = asRecord(value);
+    const path = [...parent, ...(Array.isArray(issue.path) ? issue.path.slice(0, 6) : [])].slice(0, 6);
+    const check = { code: issue.code, path };
+    if (depth < 2 && issue.code === "invalid_union" && Array.isArray(issue.errors)) {
+      const nested = issue.errors.slice(0, 4).flatMap((branch) => schemaChecks(branch, depth + 1, path));
+      return [...nested, check];
+    }
+    if (issue.code === "unrecognized_keys" && Array.isArray(issue.keys) && issue.keys.length)
+      return issue.keys.slice(0, 3).map((key) => ({ ...check, path: [...path, key] }));
+    return [check];
+  });
+}
+
+function rejectionChecks(reason: string): unknown[] {
+  if (typeof reason !== "string" || reason.length > 2000) return [];
+  const continuityCheck = continuityChecks.get(reason.replace(/^(?:Error:\s*)?(?:Memory:\s*)?/u, ""));
+  if (continuityCheck) return [continuityCheck];
+  if (reason.startsWith("Tentative movement routing failed:")) return [{ code: "invalid_movement_route", path: [] }];
+  if (reason === "The required effect is missing.") return [{ code: "missing_required_effect", path: [] }];
+  if (/^Required effect .+ did not validate\.$/u.test(reason)) return [{ code: "invalid_effect_dependency", path: [] }];
+  if (reason === "The requested memory needs a saved entry with the resident's witnessed player words.")
+    return [{ code: "unwitnessed_requested_memory", path: [] }];
+  try {
+    const value: unknown = JSON.parse(reason.replace(/^(?:ZodError|Error):\s*/u, ""));
+    return schemaChecks(value);
+  } catch {
+    return [];
+  }
+}
+
+export function describeHeldSceneReply(turn: VenueSubmission) {
+  // Older saves already contain the fallback validator receipts as strings.
+  return sceneFailureDiagnostic({
+    checks: turn.acceptance.rejected.slice(0, 12).flatMap(({ reason }) => rejectionChecks(reason)),
+    rejected: turn.acceptance.rejected.length,
+    parseStatus: turn.responseDiagnostics?.parseStatus,
+    finishReason: turn.responseDiagnostics?.finishReason,
+    responseLength: turn.responseDiagnostics?.responseLength,
+    modelAttempts: turn.requestMetrics?.length,
+  });
+}
 
 export const sceneChangeDiagnosticId = (turn: VenueSubmission) => turn.id + ":narration:" + memoryHash(turn.acceptance);
 /** Explicit saved diagnostics omit prompts, fitted private knowledge and connection configuration. */

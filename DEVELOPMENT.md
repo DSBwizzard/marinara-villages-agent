@@ -59,19 +59,21 @@ The runner executes selected tests afresh. Focused local tests are feedback; pas
 
 `npm run bench:scene:live -- <private-config.json> [report.json]` deliberately purchases model requests through actual Villages and Game Mode HTTP paths. Prepare a quiet synthetic Village and native Game chat on the same isolated Engine and saved connection first. Set `VILLAGES_ENGINE_URL` to its loopback URL (8500 is refused) and `VILLAGES_ENGINE_ADMIN_SECRET` when required. The private JSON supplies `sessionId`, `chatId`, `connectionId` and `pairs: [{id, message}]`; optional `runtimeIdentity` records externally verified package/image identities, while `rate` and `pricingProvider` supply separately verified current pricing. The driver never changes model settings or resets progress. It retains every tracked attempt, unknown billing, replay checks, provider usage and actual Game prompt hashes; rated costs remain distinct from invoices and provider-internal retries are explicitly unobservable. Human review of consequences and identity correspondence remains necessary.
 
+The report records `published` and `firstPassPublished` separately from the comparison status. A duplicate or ambiguous attempt can have unknown first-pass publication. `failedResponseCosts` reports the observed request count, known rated subtotal and unknown costs on confirmed unpublished turns, including a turn that stopped the run. Keep the earlier report when measuring an explicit retry.
+
 The [Scene cost characterization](docs/scene-cost.md) records the actual staging integration target, measured provider usage, cache behavior and remaining limits.
 
 ## Preview and saved data
 
 Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
 
-The current build requires a fresh format-18 Village. The [saved-state contract](docs/architecture-migration.md#saved-work-and-compatibility) describes strict format checks and preservation of existing storage. See [social Wishes](docs/wishes.md) for the current continuity behavior.
+The current build requires a fresh format-19 Village. The [saved-state contract](docs/architecture-migration.md#saved-work-and-compatibility) describes strict format checks and preservation of existing storage. See [social Wishes](docs/wishes.md) for the current continuity behavior.
 
 During development, **DEBUG Settings → Advance Village time** advances the current instance by a chosen elapsed duration. The saved offset survives restart; days are 24 hours. It runs ordinary absence catch-up across Village mechanics, including any normally enabled model work, and preserves active Scene snapshots and held failures. Operational clocks and model settings remain unchanged. It is available in every development instance. Before admitting active playtesters, remove the `TimeControl.tsx` UI and `/clock/advance` route. Retain saved-offset compatibility so existing development worlds do not jump backwards; resetting the offset is not an undo operation. Checkpoint retained worlds before consequential time tests.
 
 **DEBUG Settings → Verbose runtime logging** defaults Off and can print prompts, replies and private conversation context in the server terminal. It is separate from destructive debug controls. Keep logs private. Background leases renew every 30 seconds while visible; unsettled work may use scoped status reads, while settled views have no dedicated polling timer. The [generation lifecycle](docs/generation-pipeline.md), [Scene privacy](docs/scene-response-privacy.md), [response recovery](docs/scene-response-recovery.md) and [saved-state contracts](docs/architecture-migration.md#saved-work-and-compatibility) own request, evidence, persistence and compatibility details.
 
-Sprite setup is manual and provider-free. New Scenes use the single GM exchange to select expressions and attention from a captured catalog. Code owns placement, mirroring and animation.
+Sprite setup is provider-free. Untouched Appearance uses available automatic defaults; players can adjust them manually. New Scenes use the single GM exchange to select expressions and attention from a captured catalog. Code owns placement, mirroring and animation.
 
 New previews copy selective setup and Villages data from a verified saved checkpoint into independent storage, without stopping the source environment. Existing preview progress is preserved on feedback. Package changes require the guarded installer and checkpoint/recovery protection. Deliberate paid gameplay and personal installation operations require separate authorization.
 
@@ -85,8 +87,9 @@ The builder owns generated bundles, manifests, locales and ZIPs. Commit maintain
 
 1. If the package changed, choose a higher Villages version in the staging PR. A matching ZIP digest can reuse the current catalog entry.
 2. Merge through the staging turn and required checks. Run the full `ci.yml` workflow by manual dispatch on `staging` and verify its exact final staging revision, successful required jobs, Linux and Windows artifact digests, and matching inner ZIP hashes and build receipts. Verify the exact package on a compatible Engine.
-3. Upload that ZIP to the `agent-catalog-artifacts` prerelease as `villages-<version>-<first-16-hex-of-sha256>.zip`. Give each digest a new asset name. Update `catalog.json` on `agent-catalog` with the manifest, HTTPS asset URL, byte count and full SHA-256. Set `provenance.kind` to `custom` and `provenance.url` to the successful staging workflow run. Verify the published catalog and downloadable ZIP before reporting publication.
-4. Report the staging merge and catalog publication. The owner selects the update in 8500 Agent Organizer, which checks and activates the chosen package. A catalog publication alone leaves the running instance available for play.
+3. Before advertising the version in Agent Organizer, stage both original authenticated Actions ZIPs from that run in the 8500 host's private catalog cache using the isolated runtime guide. Verify both files at their final artifact-ID paths against GitHub's artifact digests. Defer catalog publication if either check fails.
+4. Upload the verified Villages ZIP to the `agent-catalog-artifacts` prerelease as `villages-<version>-<first-16-hex-of-sha256>.zip`. Give each digest a new asset name. Update `catalog.json` on `agent-catalog` with the manifest, HTTPS asset URL, byte count and full SHA-256. Set `provenance.kind` to `custom` and `provenance.url` to the successful staging workflow run. Verify the published catalog and downloadable ZIP before reporting publication.
+5. Report the staging merge and catalog publication. The owner selects the update in 8500 Agent Organizer, which checks and activates the chosen package. A catalog publication alone leaves the running instance available for play.
 
 ### Numbered releases
 

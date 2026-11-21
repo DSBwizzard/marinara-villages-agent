@@ -183,12 +183,18 @@ function holderAllowed(holder: ContinuityHolder, context: ContinuityAdmission) {
   memoryKnowerId(holder.id);
   return context.actors.some((actor) => actor.id === holder.id && actor.incarnation === holder.incarnation);
 }
-function perceived(source: ContinuityEvidence, actorId: string) {
+export function perceivedContinuitySource(source: ContinuityEvidence, actorId: string) {
   if (source.kind === "context") return false;
   if (source.kind === "self" || source.kind === "private" || source.kind === "knowledge")
     return source.actorId === actorId;
   if (source.kind === "native") return source.perceptions.some((row) => row.actorId === actorId);
   return source.actorId === actorId || source.perceptions.some((row) => row.actorId === actorId);
+}
+export const UNWITNESSED_CONTINUITY_SUPPORT = "unwitnessed continuity support";
+export const ROOM_OUTCOME_UNVERIFIED = "room condition needs an actual outcome";
+export const MISSING_PRIVATE_STATE_EVIDENCE = "private state needs its owner's evidence";
+export function isRelationshipEvent(source: ContinuityEvidence) {
+  return ["speech", "written", "observation", "native"].includes(source.kind);
 }
 function heardWords(source: ContinuityEvidence, actorId: string) {
   return (
@@ -228,7 +234,7 @@ export function continuityOfferSource(
   return read || undefined;
 }
 export function actorContinuityEvidence(source: ContinuityEvidence, actorId: string): ContinuityEvidence {
-  memoryRequire(perceived(source, actorId), "unwitnessed saved continuity source");
+  memoryRequire(perceivedContinuitySource(source, actorId), "unwitnessed saved continuity source");
   const perception = source.perceptions.find((row) => row.actorId === actorId),
     acoustic = perception?.channel === "sound-only" && source.actorId !== actorId;
   const excerpt = perception?.text ?? source.excerpt;
@@ -455,19 +461,19 @@ export function applyContinuityWrite(
       memoryRequire(
         sources.every(
           (source) =>
-            perceived(source, holder.id) &&
+            perceivedContinuitySource(source, holder.id) &&
             (source.episodeId === context.episodeId ? context.actors : context.sourceActors?.[source.episodeId])?.some(
               (actor) => actor.id === holder.id && actor.incarnation === holder.incarnation,
             ),
         ),
-        "unwitnessed continuity support",
+        UNWITNESSED_CONTINUITY_SUPPORT,
       );
     } else
       memoryRequire(
         sources.every(
           (source) => source.kind === "native" || (source.kind === "observation" && source.unitId !== "input"),
         ) && sources.some((source) => source.episodeId === context.episodeId),
-        "room condition needs an actual outcome",
+        ROOM_OUTCOME_UNVERIFIED,
       );
   const original = write.target ? targetRecord(collection, write.target, context) : undefined;
   memoryRequire(
@@ -493,10 +499,6 @@ export function applyContinuityWrite(
     memoryRequire(
       write.holders.some((holder) => same(holder, owner)),
       "new private state needs its owning holder",
-    );
-    memoryRequire(
-      sources.some((source) => source.actorId === owner.id || source.kind === "native"),
-      "private state needs its owner's evidence",
     );
     record.owner = structuredClone(owner);
   }
@@ -648,9 +650,7 @@ export function applyContinuityWrite(
         write.current === true,
       "relationship change needs a current villager-owned perspective about one person",
     );
-    const experienced = sources.filter((source) =>
-      ["speech", "written", "observation", "native"].includes(source.kind),
-    );
+    const experienced = sources.filter(isRelationshipEvent);
     const { impact, romance } = write.relationship;
     ownerAnswer = write.holders.length === 1;
     memoryRequire(
@@ -782,6 +782,13 @@ export function applyContinuityWrite(
       );
     }
   }
+  // A private score records the owner's reaction to the verified event.
+  if (owner && !original)
+    memoryRequire(
+      sources.some((source) => source.actorId === owner.id || source.kind === "native") ||
+        (write.holders.length === 1 && (relationshipScore !== undefined || romanticInterest !== undefined)),
+      MISSING_PRIVATE_STATE_EVIDENCE,
+    );
   for (const { key, holder, head, version: prior } of before) {
     const text = write.text ?? prior?.text;
     const completeNativeMeaning = sources.length === 1 && sources[0].kind === "native" && sources[0].excerpt === text;
@@ -1182,7 +1189,9 @@ export function protectContinuity(
             .filter((row) => row.rootId === record.id || row.parentId === record.id)
             .flatMap((row) => [
               continuityVersionUnit(row.id),
-              ...row.sources.filter((source) => holder.kind === "room" || perceived(source, holder.id)).map(unit),
+              ...row.sources
+                .filter((source) => holder.kind === "room" || perceivedContinuitySource(source, holder.id))
+                .map(unit),
             ]),
         ]),
       ],

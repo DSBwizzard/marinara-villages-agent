@@ -20,7 +20,7 @@ await withBrowser(browser, async () => {
       page.on("pageerror", (error) => errors.push(error.message));
       let held,
         reads = 0;
-      const session = {
+      let session = {
         id: "navigation",
         version: 2,
         sceneRevision: 0,
@@ -37,6 +37,7 @@ await withBrowser(browser, async () => {
         lastActivityAt: now,
         endedAt: "",
       };
+      let trips = 0;
       const sceneSnapshot = structuredClone(snapshot);
       const currentVenue = sceneSnapshot.settings.venues.find((venue) => venue.id === "mill");
       currentVenue.zones = [
@@ -62,6 +63,18 @@ await withBrowser(browser, async () => {
       );
       await page.route("**/api/villages**", async (route) => {
         const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/rooms") && route.request().method() === "POST") {
+          assert.deepEqual(route.request().postDataJSON(), {
+            travel: { sourceId: "navigation", offerId: "hotel-invitation" },
+            expectedSceneRevision: 0,
+          });
+          trips++;
+          session = { ...session, id: "arrival", placeId: "hotel", placeName: "Willow Hotel", zoneId: "room" };
+          return fulfill(route, {
+            contentType: "application/json",
+            body: JSON.stringify(authorSceneResponse({ session }, snapshot.worldScope)),
+          });
+        }
         if (path.endsWith("/rooms/active")) {
           reads++;
           if (reads === 1) {
@@ -76,16 +89,27 @@ await withBrowser(browser, async () => {
             });
           return fulfill(route, {
             contentType: "application/json",
-            body: JSON.stringify(authorSceneResponse({ session: restore ? session : null }, snapshot.worldScope)),
+            body: JSON.stringify(
+              authorSceneResponse(
+                {
+                  session:
+                    restore && !trips
+                      ? { ...session, travel: { id: "hotel-invitation", label: "Willow Hotel" } }
+                      : restore
+                        ? session
+                        : null,
+                },
+                snapshot.worldScope,
+              ),
+            ),
           });
         }
         return fulfill(route, { contentType: "application/json", body: JSON.stringify(sceneSnapshot) });
       });
       await page.goto("http://scene-navigation.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await expect(page.getByRole("status")).toContainText("Checking Scene");
-      await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
       await expect.poll(() => !!held).toBe(true);
+      await expect(page.locator(".marinara-capability-villages-root")).toHaveCount(0);
       await fulfill(held, {
         status: 503,
         contentType: "application/json",
@@ -99,14 +123,34 @@ await withBrowser(browser, async () => {
       await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
       await page.getByRole("button", { name: "Retry Scene check" }).click();
       if (restore) {
-        await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
+        const message = page.getByRole("textbox", { name: "Message at The Mill" });
+        const offer = page.getByRole("group", { name: "Travel offer" });
+        await expect(message).toBeEnabled();
+        await expect(offer).toContainText("Willow Hotel");
+        const card = await offer.boundingBox();
+        assert(card.y + card.height < (await message.boundingBox()).y);
+        assert(Math.abs(card.x + card.width / 2 - width / 2) < 2);
+        await offer.getByRole("button", { name: "Dismiss travel offer" }).click();
+        await expect(offer).toHaveCount(0);
+        await expect(message).toBeEnabled();
+        assert.equal(trips, 0);
+        await page.reload();
+        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await expect(offer).toBeVisible();
         await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
         await page.getByRole("button", { name: "Venue actions" }).click();
         await expect(page.getByRole("menuitem", { name: "Move", exact: true })).toBeEnabled();
         await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-        await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator("option[value=workshop]")).toHaveText(
-          "Captured workshop",
-        );
+        await expect(
+          page
+            .getByRole("dialog", { name: "Move to Zone" })
+            .getByRole("button", { name: "Captured workshop", exact: true }),
+        ).toBeVisible();
+        await page.keyboard.press("Escape");
+        await offer.getByRole("button", { name: "Visit", exact: true }).click();
+        await expect(page.getByRole("textbox", { name: "Message at Willow Hotel" })).toBeEnabled();
+        await expect(offer).toHaveCount(0);
+        assert.equal(trips, 1);
       } else await expect(page.locator(".marinara-capability-villages-home")).toBeVisible();
       assert.deepEqual(errors, []);
       await page.close();
@@ -188,7 +232,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   await expect(page.locator("#screen")).toHaveText("room");
   for (const status of ["opening", "active", "closing"]) {
     await page.evaluate((status) => window.navigation.setRoom((current) => ({ ...current, status })), status);
-    for (const destination of ["setup", "resume", "preparing"]) {
+    for (const destination of ["setup", "preparing"]) {
       await page.evaluate((destination) => window.navigation.setScreen(destination), destination);
       await expect(page.locator("#screen")).toHaveText("room");
     }

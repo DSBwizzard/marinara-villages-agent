@@ -20,7 +20,7 @@ import type { useOpenPlace } from "../features/exploration/actions.js";
 
 import type { FoundingState } from "../features/founding/useFoundingState.js";
 
-import type { useSaveSendOnEnter } from "../features/settings/actions.js";
+import type { useSaveVillageSwitch } from "../features/settings/actions.js";
 
 import type { useSaveScenerySettings } from "../features/settings/actions.js";
 
@@ -67,7 +67,8 @@ export type MenuScreenController = {
   readonly requestEdits: SettingsState["requestEdits"];
   readonly resetArmed: boolean;
   readonly room: import("../../shared/contracts/village").SceneView;
-  readonly saveSendOnEnter: ReturnType<typeof useSaveSendOnEnter>;
+  readonly saveSendOnEnter: ReturnType<typeof useSaveVillageSwitch>;
+  readonly saveSpontaneousEvents: ReturnType<typeof useSaveVillageSwitch>;
   readonly spriteVisualSettings: ReturnType<
     typeof import("../features/settings/SpriteVisualSettings.js").useSpriteVisualSettings
   >;
@@ -76,7 +77,7 @@ export type MenuScreenController = {
   readonly saveBackgroundPace: ReturnType<typeof useSaveBackgroundPace>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
+  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly setBusy: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setFocusedProjectId: ProjectsState["setFocusedProjectId"];
   readonly setLoreTokenBudgetDraft: SettingsState["setLoreTokenBudgetDraft"];
@@ -90,7 +91,7 @@ export type MenuScreenController = {
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
   readonly setSceneryStyleProfileId: FoundingState["setSceneryStyleProfileId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setSettingsError: SettingsState["setSettingsError"];
   readonly setSiteProjectId: ProjectsState["setSiteProjectId"];

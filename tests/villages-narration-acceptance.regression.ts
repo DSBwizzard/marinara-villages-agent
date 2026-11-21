@@ -1,7 +1,10 @@
-// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer
+// Test cases: narration-acceptance/atomic-episode, narration-acceptance/important-retention, narration-acceptance/independent-failure, narration-acceptance/ordinary-dialogue, narration-acceptance/requested-memory, narration-acceptance/lost-ack, narration-acceptance/protection-race, narration-acceptance/conflicting-head, narration-acceptance/combined-source-order, narration-acceptance/frozen-source-scope, narration-acceptance/shared-room-provenance, narration-acceptance/player-movement, narration-acceptance/dropped-movement, narration-acceptance/inherited-private-context, narration-acceptance/inherited-room-context, narration-acceptance/anonymous-metadata, narration-acceptance/anonymous-experience, narration-acceptance/private-relationship-replay, narration-acceptance/romantic-interest, narration-acceptance/unspoken-relationship-answer, narration-acceptance/unwitnessed-relationship-and-room-target, narration-acceptance/passive-actor-notes, narration-acceptance/visitor-introduction
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
@@ -49,8 +52,11 @@ import {
 
 const at = "2026-11-09T12:00:00.000Z",
   later = "2026-11-09T12:01:00.000Z";
-function fixture(input = "I think privately that I am nervous. I say, “My mother taught me weaving.”\n  🪑") {
-  const state = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
+function fixture(
+  input = "I think privately that I am nervous. I say, “My mother taught me weaving.”\n  🪑",
+  visitor = false,
+) {
+  const state: VillageState = { ...defaultVillageState(), seed: "world", setupAt: at, foundedAt: at };
   const place = establishPlace(
     state,
     {
@@ -66,7 +72,21 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
     at,
     true,
   );
-  const id = Object.keys(state.worldPlaces.npcs)[0];
+  const id = visitor ? "visitor-mara" : Object.keys(state.worldPlaces.npcs)[0];
+  if (visitor) {
+    const card = readVillagerCard({ id, comment: "", data: { name: "Mara" } });
+    state.visitors = [
+      {
+        characterId: id,
+        incarnation: "visiting-mara",
+        addedAt: at,
+        letterFontId: "caveat",
+        cardSnapshot: { ...snapshotFromCard(card, 1), capturedAt: at },
+        visitsRevision: "visits-enabled",
+        visitsEnabled: true,
+      },
+    ];
+  }
   const scene = zoneEventScene(
     coerceSession({
       version: 5,
@@ -135,9 +155,23 @@ function fixture(input = "I think privately that I am nervous. I say, “My moth
   };
 }
 
+await runCase("narration-acceptance/visitor-introduction", () => {
+  const f = fixture("Hello, I'm glad I caught you.", true);
+  const silent = f.publication(
+    { segments: [{ id: "silent", kind: "narration", text: "Footsteps cross the room." }] },
+    "silent",
+  );
+  assert.equal(acceptNarrationContinuity(f.state, silent, "silent", later).held, false);
+  assert.equal(f.state.visitors![0].firstMetAt, undefined);
+  const introduction = f.publication({ segments: f.response() }, "introduction");
+  assert.equal(acceptNarrationContinuity(f.state, introduction, "introduction", later).held, false);
+  assert.equal(f.state.visitors![0].firstMetAt, at);
+  assert.equal(acceptNarrationContinuity(f.state, introduction, "introduction", later).replayed, true);
+});
+
 await runCase("narration-acceptance/requested-memory", () => {
   const fact = "My mother taught me weaving";
-  const input = `Mara, please remember this for future visits: ${fact}.`;
+  const input = `"Mara, please remember this for future visits: ${fact}."`;
   for (const variant of ["missing", "wrong-text", "wrong-recipient", "wrong-source", "valid", "legacy"] as const) {
     const f = fixture(input);
     const keep = {
@@ -176,6 +210,9 @@ await runCase("narration-acceptance/requested-memory", () => {
       assert.equal(acceptNarrationContinuity(f.state, publication, "memory", later).episode?.id, result.episode?.id);
   }
   for (const casual of [
+    `Mara, please remember this for future visits: ${fact}.`,
+    `"Mara, "please remember this: ${fact}"`,
+    `“Mara, please remember this: ${fact}"`,
     "Mara, please remember that weaving memory.",
     "Mara, do you remember this: the weaving?",
     "Mara, remember this: I weave. How are you?",
@@ -183,7 +220,7 @@ await runCase("narration-acceptance/requested-memory", () => {
   ]) {
     assert.equal(fixture(casual).publication({}, "operation", true).readset.requestedMemory, undefined);
   }
-  const repeated = fixture(`Mara, remember this for ${fact}: ${fact}.`);
+  const repeated = fixture(`  “Mara, remember this for ${fact}: ${fact}. ”  `);
   const raw = { segments: repeated.response(["remember-fact"]) };
   const publication = repeated.publication(raw, "operation", true);
   const result = acceptNarrationContinuity(repeated.state, publication, "remember", later);
@@ -198,14 +235,28 @@ await runCase("narration-acceptance/requested-memory", () => {
   assert.equal(Object.hasOwn(raw, "keep"), false);
   acceptNarrationContinuity(repeated.state, publication, "remember", later);
   assert.equal(repeated.state.continuity.versions.length, 1);
-  const unnamed = fixture(`Remember this: ${fact}.`).publication({}, "operation", true).readset;
+  const unnamed = fixture(`"Remember this: ${fact}."`).publication({}, "operation", true).readset;
   assert(unnamed.requestedMemory);
   assert.equal(unnamed.codeRequestedMemory, undefined);
   for (const aside of ["*I use the west peg*", "I think privately that I use the west peg", "[I use the west peg]"])
     assert.equal(
-      fixture(`Mara, remember this: ${aside}`).publication({}, "operation", true).readset.codeRequestedMemory,
+      fixture(`"Mara, remember this: ${aside}"`).publication({}, "operation", true).readset.codeRequestedMemory,
       undefined,
     );
+  const admitted = fixture(`Mara, remember this: ${fact}.`);
+  const captured = admitted.publication({ segments: admitted.response(["remember-fact"]) }, "saved-operation", true);
+  captured.readset.requestedMemory = {
+    start: admitted.input.indexOf(fact),
+    end: admitted.input.indexOf(fact) + fact.length,
+    recipientId: admitted.id,
+  };
+  captured.readset.codeRequestedMemory = true;
+  assert.equal(
+    acceptNarrationContinuity(admitted.state, captured, "saved-memory", later).held,
+    false,
+    "an older admitted request retains its captured speech and exact evidence",
+  );
+  assert.equal(admitted.state.continuity.versions[0].text, "Player said: " + fact);
   const protectedWorld = fixture(input);
   acceptNarrationContinuity(
     protectedWorld.state,
@@ -329,6 +380,25 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.equal(result.held, false);
     assert.deepEqual(result.episode?.segments[0]?.heardBy?.toSorted(), [f.id, "player"].toSorted());
     assert.equal(raw.segments[0].delivery, "aside");
+  }
+  {
+    const f = fixture();
+    const aside = { kind: "dialogue", speakerId: f.id, text: "A brief aside.", delivery: "aside" };
+    const mixed = { segments: [aside], keep: [f.keep] };
+    const p = f.publication(mixed);
+    p.readset.ordinaryFormatRecovery = 5;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "saved-mixed-aside", later), /delivery/u);
+    p.readset.ordinaryFormatRecovery = 6;
+    assert.throws(
+      () =>
+        acceptNarrationContinuity(
+          f.state,
+          { ...p, raw: { ...mixed, segments: [{ ...aside, targetId: "player" }] } },
+          "mixed-targeted-aside",
+          later,
+        ),
+      /delivery/u,
+    );
   }
   {
     const f = fixture();
@@ -458,6 +528,26 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.deepEqual(p.raw, raw);
     assert.equal(f.state.continuity.versions.length, 1);
   }
+  {
+    const f = fixture();
+    const line = { ...f.response()[0], delivery: "normal", textNote: "" };
+    const raw = { segments: [line] };
+    const p = f.publication(raw);
+    p.readset.ordinaryFormatRecovery = 6;
+    p.readset.stripSceneReplyDecorations = 4;
+    assert.throws(() => acceptNarrationContinuity(f.state, p, "old-empty-note", later), /textNote/u);
+    p.readset.stripSceneReplyDecorations = 5;
+    for (const rejected of [
+      { segments: [{ ...line, textNote: "Something to keep." }] },
+      { ...raw, keep: [f.keep] },
+      { segments: [{ ...line, unrelated: "" }] },
+    ])
+      assert.throws(() => acceptNarrationContinuity(f.state, { ...p, raw: rejected }, "unrecognized-note", later));
+    const result = acceptNarrationContinuity(f.state, p, "empty-dialogue-note", later);
+    assert.equal(result.held, false);
+    assert.equal(result.episode?.segments[0]?.content, line.text);
+    assert.deepEqual(p.raw, raw);
+  }
   for (const delivery of ["normal", null]) {
     const f = fixture();
     const line = { ...f.response(["remember"])[0], delivery };
@@ -568,13 +658,23 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
     assert.equal(result.held, held);
     assert.equal(f.state.continuity.records[0]?.offer?.events[0].act, held ? undefined : "offer");
   }
-  for (const layout of ["embedded", "effects", "whisper", "mixed", "redundant-owner", "different-owner"]) {
+  for (const layout of [
+    "embedded",
+    "effects",
+    "wrapped",
+    "wrapped-conflict",
+    "whisper",
+    "mixed",
+    "redundant-owner",
+    "different-owner",
+  ]) {
     const f = fixture();
     const text = "Come to the bench and I'll show you.";
     const reply = {
       ...f.response()[0],
       text,
       color: "",
+      ...(layout.startsWith("wrapped") ? { requires: [f.keep.id] } : {}),
       ...(layout === "whisper" ? { delivery: "whisper", targetId: "player" } : {}),
     };
     const proposal = {
@@ -587,12 +687,21 @@ await runCase("narration-acceptance/ordinary-dialogue", () => {
       source: layout.endsWith("-owner") ? [{ segment: "reply", act: "offer" }] : ["reply"],
       ...(layout.endsWith("-owner") ? { owner: layout === "redundant-owner" ? f.id : "player" } : {}),
     };
+    const { kind, id, ...wrapped } = proposal;
     const p = f.publication({
       segments: [reply, ...(layout === "embedded" || layout === "mixed" ? [proposal] : [])],
-      ...(layout !== "embedded" ? { effects: [proposal] } : {}),
+      ...(layout !== "embedded"
+        ? {
+            effects: [
+              layout.startsWith("wrapped")
+                ? { kind, id, keep: [{ ...wrapped, ...(layout === "wrapped-conflict" ? { id: "other" } : {}) }] }
+                : proposal,
+            ],
+          }
+        : {}),
     });
     p.readset.ordinaryReplyRecovery = true;
-    if (layout === "mixed") {
+    if (layout === "mixed" || layout === "wrapped-conflict") {
       assert.throws(() => acceptNarrationContinuity(f.state, p, "layout", later));
       continue;
     }
@@ -1073,7 +1182,7 @@ await runCase("narration-acceptance/independent-failure", () => {
     "missing-owner-legacy",
     "missing-owner-asserted",
   ]) {
-    const f = fixture(variant === "remember" ? "Mara, please remember this: I use the west peg." : undefined);
+    const f = fixture(variant === "remember" ? '"Mara, please remember this: I use the west peg."' : undefined);
     const line = "I mean to read the two entries tonight.";
     const current = variant.startsWith("current-");
     const openMatter = variant.startsWith("open-matter-");
@@ -1226,6 +1335,134 @@ await runCase("narration-acceptance/private-relationship-replay", () => {
   }
 });
 
+await runCase("narration-acceptance/unwitnessed-relationship-and-room-target", () => {
+  const action = "I knock the cup out of Mara’s hand.";
+  for (const variant of [
+    "standalone",
+    "required",
+    "legacy",
+    "witnessed",
+    "score-only",
+    "score-only-unwitnessed",
+    "wrong-witness",
+    "wrong-subject",
+    "room-fact",
+    "room-required",
+  ]) {
+    const f = fixture(action);
+    f.state.villagers = [
+      { characterId: f.id, incarnation: "one", cardSnapshot: { name: "Mara" } },
+    ] as typeof f.state.villagers;
+    const roomFact = variant === "room-fact";
+    const hasImpact = !roomFact && variant !== "room-required";
+    const witnessed = variant === "witnessed" || variant === "score-only";
+    const scoreOnly = variant.startsWith("score-only");
+    const required = variant === "required" ? ["attitude"] : variant === "room-required" ? ["keep-0"] : [];
+    const body = {
+      segments: [
+        { kind: "narration", text: "The cup strikes the tiles." },
+        { ...f.response(required)[0], text: "Give me some space." },
+      ],
+      keep: [
+        ...(hasImpact
+          ? [
+              {
+                id: "attitude",
+                class: "perspective",
+                current: true,
+                owner: f.id,
+                for: [f.id],
+                about: variant === "wrong-subject" ? ["player", f.id] : ["player"],
+                ...(scoreOnly ? {} : { text: "Mara trusts the player less." }),
+                relationship: { impact: "turning-negative" },
+                source:
+                  witnessed || variant === "wrong-witness" || variant === "score-only-unwitnessed"
+                    ? [
+                        {
+                          input: action,
+                          ground: { kind: "visible-action", to: [witnessed ? f.id : "player"] },
+                        },
+                        ...(scoreOnly ? [] : ["self"]),
+                      ]
+                    : [{ segment: 1 }],
+              },
+            ]
+          : []),
+        {
+          for: ["room"],
+          text: "A fallen cup is on the tiles.",
+          ...(roomFact ? {} : { class: "experience" }),
+          source: [{ segment: 1 }],
+        },
+      ],
+    };
+    const publication = f.publication(body);
+    publication.readset.ordinaryDialogue = true;
+    publication.readset.positionedSceneSources = true;
+    if (scoreOnly) publication.readset.ordinaryReplyRecovery = true;
+    if (variant !== "legacy") publication.readset.continuityEffectRecovery = true;
+    const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+    assert.equal(
+      result.held,
+      ["required", "legacy", "room-required"].includes(variant),
+      variant + " " + JSON.stringify(result.rejected),
+    );
+    if (!result.held) assert.equal(result.episode?.segments[1].content, "Give me some space.");
+    assert.deepEqual(
+      result.rejected.map(({ reason }) => reason).sort(),
+      [
+        ...(!witnessed && hasImpact ? ["Memory: unwitnessed continuity support"] : []),
+        ...(!roomFact
+          ? ["Memory: " + (variant === "legacy" ? "continuity actor was not admitted" : "actor memory targeted Room")]
+          : []),
+      ].sort(),
+      variant,
+    );
+    assert.equal(f.state.continuity.versions.length, witnessed || roomFact ? 1 : 0, variant);
+    if (witnessed) assert.equal(f.state.continuity.versions[0].relationshipScore, -10);
+    if (variant === "score-only") {
+      const changed = structuredClone(f.state.continuity);
+      const [source] = changed.versions[0].sources;
+      assert.equal(source.kind, "observation");
+      assert.equal(changed.versions[0].sources.length, 1);
+      source.perceptions = [];
+      assert.throws(() => assertContinuityRetention(changed, f.state.episodes), /lost its initial evidence/);
+    }
+    if (roomFact)
+      assert.equal(
+        f.state.continuity.records[0].heads[continuityHolderKey(publication.readset.admission.room!)].current,
+        true,
+      );
+  }
+});
+
+await runCase("narration-acceptance/passive-actor-notes", () => {
+  for (const dependency of ["none", "segment", "effect"] as const) {
+    const f = fixture("I ask if I may help.");
+    const publication = f.publication({
+      segments: f.response(dependency === "segment" ? ["plan"] : []),
+      keep: [
+        {
+          id: "plan",
+          for: [f.id],
+          class: "open-matter",
+          text: "The player offered to help.",
+          source: ['{"segment":2}'],
+        },
+        ...(dependency === "effect" ? [{ ...f.keep, requires: ["plan"] }] : []),
+      ],
+    });
+    publication.readset.ordinaryDialogue = true;
+    publication.readset.positionedSceneSources = true;
+    publication.readset.continuityEffectRecovery = true;
+    const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+    assert.equal(result.held, dependency !== "none");
+    assert.equal(result.rejected[0].id, "plan");
+    assert.equal(f.state.continuity.versions.length, 0);
+    if (dependency === "none") assert(result.episode?.segments.length);
+  }
+});
+
 await runCase("narration-acceptance/romantic-interest", () => {
   const f = fixture("I say, “I’ve been hoping we could go out sometime.”");
   f.state.villagers = [
@@ -1244,10 +1481,7 @@ await runCase("narration-acceptance/romantic-interest", () => {
         text: "PRIVATE: Mara is newly interested in a date.",
         relationship: { romance: "grows" },
         independent: true,
-        source: [
-          { input: "I’ve been hoping we could go out sometime.", ground: { kind: "spoken", to: [f.id] } },
-          "self",
-        ],
+        source: [{ input: "I’ve been hoping we could go out sometime.", ground: { kind: "spoken", to: [f.id] } }],
       },
     ],
   });
@@ -1461,12 +1695,12 @@ await runCase("narration-acceptance/conflicting-head", () => {
 });
 
 await runCase("narration-acceptance/combined-source-order", () => {
-  for (const independent of [true, false]) {
+  for (const kind of ["explicit", "passive", "required"] as const) {
     const f = fixture();
     const publication = f.publication({
       segments: [
         { kind: "dialogue", id: "first", speakerId: f.id, text: "I understand." },
-        { kind: "dialogue", id: "last", speakerId: f.id, text: "Thank you for telling me." },
+        { kind: "dialogue", id: "last", speakerId: f.id, text: "Thank you for telling me.", requires: ["remember"] },
       ],
       keep: [
         {
@@ -1474,7 +1708,7 @@ await runCase("narration-acceptance/combined-source-order", () => {
           for: ["player"],
           text: "I felt privately nervous.",
           class: "perspective",
-          ...(independent ? { independent: true } : {}),
+          ...(kind === "explicit" ? { independent: true } : {}),
           source: [
             { input: "I think privately that I am nervous.", ground: { kind: "private", at: { after: "last" } } },
           ],
@@ -1487,10 +1721,14 @@ await runCase("narration-acceptance/combined-source-order", () => {
         },
       ],
     });
+    if (kind === "passive") {
+      publication.readset.ordinaryDialogue = true;
+      publication.readset.continuityEffectRecovery = true;
+    }
     const before = structuredClone(f.state),
       result = acceptNarrationContinuity(f.state, publication, "submission", later);
-    assert.equal(result.held, !independent);
-    if (independent) {
+    assert.equal(result.held, kind === "required");
+    if (kind !== "required") {
       assert.deepEqual(result.acceptedIds, ["remember"]);
       assert.equal(
         result.rejected[0].id,

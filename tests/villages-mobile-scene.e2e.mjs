@@ -192,7 +192,7 @@ await withBrowser(browser, async () => {
     const person = (id) => page.locator(`.${tag}-chat-cast-person[data-character-id="${id}"]`);
     const input = page.locator(`.${tag}-chat-input`);
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
-    const reading = page.getByRole("region", { name: "Current paragraph" });
+    const reading = page.getByRole("region", { name: "Latest reply" });
     const next = page.getByRole("button", { name: "Next paragraph" });
     const previous = page.getByRole("button", { name: "Previous paragraph" });
     const counter = page.locator(`.${tag}-chat-vn-counter`);
@@ -209,6 +209,7 @@ await withBrowser(browser, async () => {
     await expect(reading).toBeVisible();
     await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
     await expect(people).toHaveCount(count);
+    await next.click();
     await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 48);
     if (mobile) {
       const positions =
@@ -233,10 +234,7 @@ await withBrowser(browser, async () => {
         const canvas = await page.locator(`.${tag}-chat-cast`).boundingBox();
         for (const image of await people.locator(":scope > img").all()) {
           const box = await image.boundingBox();
-          assert.ok(
-            Math.abs(box.width - Math.min(canvas.width * 0.7, (canvas.height * 2) / 3)) < 1,
-            "sprite scale is independent of cast count",
-          );
+          assert.ok(Math.abs(box.width - canvas.width * 0.8) < 1, "sprite scale is independent of cast count");
           assert.ok(box.y >= canvas.y - 1, "sprite heads stay clear of top controls");
           if (width === 390) {
             const dock = await page.locator(`.${tag}-chat-vn`).boundingBox();
@@ -295,10 +293,12 @@ await withBrowser(browser, async () => {
       assert.ok(await composer.evaluate((el) => el.scrollHeight > el.clientHeight));
       await composer.fill("Preserve this draft.");
       const text = await reading.innerText();
-      await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
       await expect(reading).toBeHidden();
       assert.deepEqual(await boxes(), baseline, "hiding does not move the cast");
-      await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       // Restore deliberately focuses the reading region on the next frame.
       // Finish that transition before simulating a tap into the composer.
       await expect(reading).toBeFocused();
@@ -312,24 +312,38 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         });
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        assert.deepEqual(await boxes(), baseline, "keyboard movement does not shrink or reposition the cast");
-        assert.equal(await reading.innerText(), text);
+        const withKeyboard = await boxes();
+        for (const [index, { x, y, width, height }] of withKeyboard.entries()) {
+          assert.deepEqual(
+            { x, width, height },
+            {
+              x: baseline[index].x,
+              width: baseline[index].width,
+              height: baseline[index].height,
+            },
+            "the keyboard preserves sprite scale and horizontal positions",
+          );
+          assert.ok(y <= baseline[index].y, "the keyboard may lift the cast into view");
+        }
         const keyboardInput = await input.boundingBox();
         assert.ok(Math.abs(keyboardInput.y + keyboardInput.height - (height - 280)) < 1);
+        await expect(reading).toBeHidden();
         await screenshot("keyboard");
-        await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();
+        await page.getByRole("button", { name: "Done", exact: true }).click();
         assert.equal(
           await page.locator("textarea[data-villages-scene-composer]").evaluate((el) => el === document.activeElement),
           false,
-          "hide dismisses keyboard focus",
+          "Done dismisses keyboard focus",
         );
         await page.evaluate(() => {
           window.sceneViewport.height += 280;
           window.sceneViewport.dispatchEvent(new Event("resize"));
         });
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-        await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
-        await expect(reading).toBeFocused();
+        await expect.poll(boxes).toEqual(baseline);
+        await expect(reading).toBeVisible();
+        assert.equal(await reading.innerText(), text);
+        await expect(composer).toHaveValue("Preserve this draft.");
       }
       await screenshot();
       if (count === 4 && mode === "sprites") {
@@ -342,16 +356,16 @@ await withBrowser(browser, async () => {
           .toBe("50%");
       }
     } else {
-      await expect(counter).toHaveText("2 / 2");
+      await expect(next).toBeDisabled();
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "End Scene now" }).click();
+    await page.getByRole("menuitem", { name: "Conclude" }).click();
     await expect(composer).toHaveCount(0);
     await expect
       .poll(
         async () => {
-          const ended = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
+          const ended = await page.locator(`.${tag}-chat-vn`).boundingBox();
           return Math.abs(ended.y + ended.height - height);
         },
         { message: `ended dialogue reaches its normal bottom position (${count}, ${mode}, ${width}x${height})` },

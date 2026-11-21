@@ -125,7 +125,6 @@ const api = async (route) => {
     return fulfill(route, { status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
   } else if (path.endsWith("/changes/replay")) {
     replays++;
-    failed = false;
     value = {};
   } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
     closingReviews++;
@@ -253,7 +252,7 @@ await withBrowser(browser, async () => {
   await expect(tray.locator('[data-icon="presence"]')).toHaveCount(1);
   await expect(stack.locator('[data-icon="presence"]')).toHaveCount(1);
   await expect(tray.locator('[data-icon="presence"] path')).toHaveCSS("stroke", "none");
-  await expect(tray.locator('[data-icon="presence"]')).toHaveCSS("color", "rgb(217, 70, 168)");
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCSS("color", "rgb(229, 177, 62)");
   const countAlignment = await tray.evaluate((button) => {
     const icon = button.querySelector("svg").getBoundingClientRect();
     const count = document.createRange();
@@ -267,8 +266,8 @@ await withBrowser(browser, async () => {
     .filter({ hasText: arrival.content })
     .screenshot({ path: "artifacts/attendance-notice-detail.png" });
   await expect(stack).toContainText("★");
-  await expect(page.locator(".marinara-capability-villages-chat-vn-reading")).not.toContainText(arrival.content);
-  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText(/1\s*\/\s*1$/u);
+  await expect(page.getByRole("region", { name: "Latest reply" })).not.toContainText(arrival.content);
+  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText("Paragraph 1/1");
   await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
   await expect(page.locator('[data-character-id="bob"]')).toHaveCount(0);
   await expect(composer).toBeEnabled();
@@ -289,7 +288,6 @@ await withBrowser(browser, async () => {
   await mount(empty);
   await expect(empty.getByRole("textbox", { name: "Message at The Park" })).toBeEnabled();
   await expect(empty.locator('[data-character-id="jimmy"]')).toBeVisible();
-  await expect(empty.locator(".marinara-capability-villages-chat-vn-counter")).toHaveCount(0);
   await expect(empty.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
   await empty.close();
   session.lines = history;
@@ -310,9 +308,10 @@ await withBrowser(browser, async () => {
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/memory-cause-desktop.png" });
-  await status.getByRole("button", { name: "Replay" }).click();
-  await expect.poll(() => replays).toBe(1);
+  await expect(status.getByRole("button", { name: "Replay" })).toHaveCount(0);
+  assert.equal(replays, 0);
   assert.equal(interpretations, 0);
+  failed = false;
   await refresh();
   await expect(chip).toHaveCount(0);
   assert.equal(diagnosticReads, 0, "Ordinary feed polling never requests owner diagnostics");

@@ -1,3 +1,5 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { createFoundingRestoreSetupDraft } from "../packages/villages/src/client/features/founding/draft-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -11,10 +13,7 @@ import {
   activationScope,
   createActivationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { Ledger } from "../packages/villages/src/server/domain/models/usage-model.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
@@ -389,16 +388,19 @@ async function foundingConnectionOwnership() {
           error: "",
         },
         venues: [
-          venueFixture({
-            id: "equal-venue",
-            name: label + " room",
-            form: "Room",
-            description: "Blue door",
-            classes: ["residence"],
-            residentIds: ["equal-resident"],
-            presentation: { mapId: "", image: null, x: null, y: null },
-            occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-          }),
+          ...[
+            venueFixture({
+              id: "equal-venue",
+              name: label + " room",
+              form: "Room",
+              description: "Blue door",
+              classes: ["residence"],
+              residentIds: ["equal-resident"],
+              presentation: { mapId: "", image: null, x: null, y: null },
+              occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+            }),
+          ],
+          ...sharedVenuesFixture(),
         ],
       });
       type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
@@ -607,7 +609,7 @@ async function foundingConnectionOwnership() {
         }),
     );
     const scenarioInput = {
-      communityVenueId: "community",
+      openingVenueId: "community",
       context: { rules: "", circumstances: [] },
       setting: "Quiet harbor",
       selectedLorebookIds: ["visual"],
@@ -916,14 +918,23 @@ await main()
   const draft = {
     version: 2,
     name: "Willowmere",
-    context: { rules: "", circumstances: [], communityVenueId: "community", households: {} },
+    setting: "A village by the river.",
+    persona: "",
+    lorebooks: [],
+    context: { rules: "", circumstances: [], openingVenueId: "community", households: {} },
     workspace: emptyFoundingWorkspace(),
     zoneDrafts: {},
     venues: [],
     roster: [],
     step: 0,
   } as any;
-  createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
+  const restore = createFoundingRestoreSetupDraft(setters as any);
+  assert.equal(restore({ ...draft, venues: [null] }), false);
+  assert.equal(restore({ ...draft, setting: null }), false);
+  assert.equal(restore({ ...draft, startingLocationName: 42 }), false);
+  assert.equal(restore({ ...draft, workspace: { ...draft.workspace, settingWorldBrief: 42 } }), false);
+  assert.deepEqual(values, {}, "Unreadable drafts never populate the editor or enable autosave");
+  assert.equal(restore(JSON.parse(JSON.stringify(draft))), true);
   assert.equal(values.setSetupName, "Willowmere");
   assert.equal(values.setSetupLocationName, "Willowmere", "Older v2 drafts retain their original first-map name");
   for (const startingLocationName of ["Old Harbour", ""]) {

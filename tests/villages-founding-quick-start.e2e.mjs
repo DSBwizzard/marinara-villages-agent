@@ -36,7 +36,7 @@ function Harness(){
  useEffect(()=>{readDeviceDraft('page-three').then(draft=>{if(draft){revision.current=draft.revision;setVenues(draft.data.venues);setWorkspace({...draft.data.workspace,view:'map',paused:true});setAuthored(draft.data.authored);setKey(draft.data.suggestionsKey)}})},[]);
  const persist=async data=>{const result=await saveDeviceDraft('page-three',data,revision.current);revision.current=result.revision;setSaved(true)};
  const data={venues,workspace,authored,suggestionsKey:key,roster:["ada","bryn"]};
- const suggest=createFoundingSuggestSetupVenues({signal,setupWorkspace:workspace,setSetupWorkspace:setWorkspace,setupDraftData:data,persistSetupDraft:persist,personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:[],setupLoreTokenBudgetDraft:1600,setupSetting:'An oceanfront community',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[],communityVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
+ const suggest=createFoundingSuggestSetupVenues({signal,setupWorkspace:workspace,setSetupWorkspace:setWorkspace,setupDraftData:data,persistSetupDraft:persist,personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:[],setupLoreTokenBudgetDraft:1600,setupSetting:'An oceanfront community',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[],openingVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
  useVisibleInterval(signal=>{if(workspace.suggestionRequest&&!workspace.suggestionRequest.failure)return suggest(undefined,signal)},workspace.suggestionRequest&&!workspace.suggestionRequest.failure?2000:null,visible);
  window.setFoundingVisible=setVisible;
  const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
@@ -49,7 +49,7 @@ function Harness(){
  spaces:row.spaces.map(zone=>zone.id!=='common:base'?zone:{...zone,access:{mode:'public',managerIds:null,memberIds:[],memberRoles:[],inviterIds:[],visitorHours:'inherit',accompanied:false}})}));
  window.editDuringRequest=()=>patch('founding-home:player',row=>({...row,form:'A newer manual description'}));
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
- <QuickStartVenues communityVenueId='community' venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
+ <QuickStartVenues openingVenueId='community' venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
  actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure} onGenerate={()=>suggest({quickStart:true,separateHomes:true})}/>}/>
  {problem?<p role='alert'>{problem}</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
 }
@@ -90,7 +90,7 @@ await withBrowser(browser, async () => {
         const input = route.request().postDataJSON();
         calls++;
         assert.equal(input.mode, "quick-start");
-        assert.equal(input.venues.length, 4);
+        assert.equal(input.venues.length, 5);
         assert.ok(
           input.venues.every(
             (row) => row.venueClass === "community" || row.residentIds.length + Number(row.playerHome) === 1,
@@ -210,18 +210,18 @@ await withBrowser(browser, async () => {
       await expect(button("+ Add Venue")).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("combobox")).toHaveCount(0);
-      await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toHaveCount(0);
+      await expect(button("Zones")).toBeVisible();
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("switch")).toHaveCount(0);
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
-      await expect(button("Edit layout")).toBeVisible();
+      await expect(button("Manage")).toBeVisible();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Remove Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
       await expect(sheet.locator(".villages-zone-map")).toHaveCount(0);
       const originalVenues = await page.evaluate(() => window.quickState.venues);
-      await button("Edit layout").click();
-      await expect(button("Finish layout")).toBeVisible();
+      await button("Manage").click();
+      await expect(sheet.locator(".villages-zone-map")).toBeVisible();
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues),
         originalVenues,
@@ -353,14 +353,15 @@ await withBrowser(browser, async () => {
       await assertGraph();
       await button("Add Zone").click();
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
-      const addedZone = await sheet.locator(".villages-quick-selected-zone").getAttribute("data-zone-id");
-      await button("Finish layout").click();
+      const addedZone = await page.evaluate(() => window.quickState.venues[0].spaces.at(-1).id);
+      await button("Zones").click();
+      await zone(addedZone).click();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Reading nook");
       await sheet.getByLabel("Zone name", { exact: true }).press("Enter");
       await expect(sheet.getByRole("heading", { name: "Reading nook", exact: true })).toBeVisible();
       await button("Rename Zone").click();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
-      await button("Edit layout").click();
+      await button("Manage").click();
       const beforeConnect = await page.evaluate(() => window.quickState.venues);
       await button("Modify Zone Connections").click();
       assert.deepEqual(
@@ -385,7 +386,7 @@ await withBrowser(browser, async () => {
       await button("Modify Zone Connections").click();
       await zone("exterior").click();
       const beforeFinish = await page.evaluate(() => window.quickState.venues);
-      await button("Finish layout").click();
+      await button("Zones").click();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
       await expect(sheet.locator(".villages-zone-map")).toHaveCount(0);
@@ -403,10 +404,12 @@ await withBrowser(browser, async () => {
 
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
-      const access = sheet.getByRole("switch", { name: "Restricted access", exact: true });
-      await expect(access).not.toBeChecked();
+      const access = sheet.getByRole("group", { name: "Visitor access" });
+      const restricted = access.getByRole("button", { name: "Permission required", exact: true });
+      const publicAccess = access.getByRole("button", { name: "Open to all", exact: true });
+      await expect(publicAccess).toHaveAttribute("aria-pressed", "true");
       const preserved = await page.evaluate(() => window.quickState.venues[0]);
-      await access.check();
+      await restricted.click();
       const expected = structuredClone(preserved);
       expected.spaces[0].access.mode = "permission-required";
       assert.deepEqual(
@@ -416,7 +419,10 @@ await withBrowser(browser, async () => {
       );
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
       expected.spaces[0].name = "Front Office";
+      await button("About").click();
       await sheet.getByLabel("Venue form", { exact: true }).fill("A converted school bus");
+      await button("Zones").click();
+      await zone("common:base").click();
       expected.form = "A converted school bus";
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues[0]),
@@ -428,6 +434,7 @@ await withBrowser(browser, async () => {
       await upload.setInputFiles(file);
       await expect(sheet.getByRole("img", { name: "Artwork for Front Office", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("status")).toHaveText("Reference saved. Generate artwork to use it.");
+      await button("← Zones").click();
       await zone("exterior").click();
       await expect(access).toHaveCount(0);
       await expect(sheet.getByRole("img")).toHaveCount(0);
@@ -466,10 +473,11 @@ await withBrowser(browser, async () => {
         ),
       );
       await first.click();
+      await button("Zones").click();
       await zone("private:base").click();
-      await expect(access).toBeChecked();
+      await expect(restricted).toHaveAttribute("aria-pressed", "true");
       const personalBefore = await page.evaluate(() => window.quickState.venues[0]);
-      await access.uncheck();
+      await publicAccess.click();
       const personalExpected = structuredClone(personalBefore);
       personalExpected.privateSpaces[0].access.mode = "public";
       assert.deepEqual(
@@ -477,7 +485,7 @@ await withBrowser(browser, async () => {
         personalExpected,
         "Making a personal Zone public keeps its owner and sleeping assignment",
       );
-      await access.check();
+      await restricted.click();
       assert.deepEqual(await page.evaluate(() => window.quickState.venues[0]), personalBefore);
       failReply = true;
       await confirm();

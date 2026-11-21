@@ -9,6 +9,7 @@ export function publicSceneRoutes(
   projectScene: (scene: Record<string, unknown>) => Promise<unknown>,
   guard?: (method: string, path: string, body: unknown) => Promise<string | null>,
   clockIndependentRoutes: readonly string[] = [],
+  repairIndependentRoutes: readonly string[] = [],
 ): FastifyInstance {
   const owner = activationScope();
   const surface = Object.create(engine) as FastifyInstance;
@@ -22,6 +23,10 @@ export function publicSceneRoutes(
           const result = await handler(request, reply);
           if (result && typeof result === "object") {
             const payload = result as Record<string, unknown>;
+            for (const container of [payload, payload.operation as Record<string, unknown> | undefined]) {
+              if (Array.isArray(container?.recordEvents))
+                container.recordEvents = container.recordEvents.map(({ travel: _travel, ...event }) => event);
+            }
             for (const key of ["session", "visit"]) {
               const saved = payload[key] as Record<string, unknown> | undefined;
               if (saved) {
@@ -35,9 +40,9 @@ export function publicSceneRoutes(
           }
           return result;
         };
-        return withRepairWork(() =>
-          clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work),
-        );
+        const key = `${method} ${path}`;
+        const run = () => (clockIndependentRoutes.includes(key) ? work() : withVillageClockWork(work));
+        return repairIndependentRoutes.includes(key) ? run() : withRepairWork(run);
       };
       return owner ? owner.bind(wrapped) : wrapped;
     };

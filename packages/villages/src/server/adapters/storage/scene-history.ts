@@ -22,6 +22,7 @@ import {
   scenePublicHistoryStore,
   createScenePublicHistoryTracer,
   rebindScenePublicHistory,
+  type ScenePublicHistoryHead,
 } from "./scene-public-history.js";
 import {
   sceneSubmissionStore,
@@ -31,6 +32,7 @@ import {
   type SceneSubmissionHead,
 } from "./scene-submission-pages.js";
 export const SCENE_STORAGE_FORMAT = 15;
+export const SCENE_PUBLIC_HISTORY_POLICY = 2;
 function publicHistoryHead(raw: Record<string, any>) {
   return readScenePublicHistoryHead(
     raw.publicHistory,
@@ -244,6 +246,31 @@ export async function readSceneTranscriptIndex(documents: Pick<CapabilityDocumen
   );
   return { ...scene, lines };
 }
+/** Older Scenes can have failed inputs in their derived playback index. */
+export async function upgradeScenePublicHistory(
+  documents: Pick<CapabilityDocumentStore, "getById" | "create" | "update">,
+  record: NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>,
+  transcript: SceneTranscriptHead,
+  submissions: SceneSubmissionHead,
+  previous: ScenePublicHistoryHead,
+) {
+  const scene = await readSceneTranscriptIndex(documents, record.data);
+  const head = await scenePublicHistoryStore(documents).prepare(scene, transcript, submissions, previous);
+  await documents.update({
+    id: record.id,
+    packageId: record.packageId,
+    expectedRevision: record.revision,
+    name: record.name,
+    description: record.description,
+    data: {
+      ...(record.data as Record<string, unknown>),
+      publicHistory: head,
+      publicHistoryPolicy: SCENE_PUBLIC_HISTORY_POLICY,
+    },
+    updatedAt: record.updatedAt,
+  });
+  return head;
+}
 /** Coordinator saves operation metadata and submission timing, preserving public turn visibility. */
 export function publishSceneOperationHistory(before: Record<string, unknown>, next: Record<string, unknown>) {
   const old = publicHistoryHead(before);
@@ -401,6 +428,7 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
       transcript,
       submissionHistory,
       publicHistory,
+      publicHistoryPolicy: SCENE_PUBLIC_HISTORY_POLICY,
     };
     readSceneHistoryRoot(result);
     return result;

@@ -1,3 +1,4 @@
+import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
@@ -110,7 +111,7 @@ const village = coerceVillageState({
     ...defaultVillageState().startingHistory,
     reviewed: Object.fromEntries(people.map(({ characterId }) => [characterId, "resident-" + characterId])),
   },
-  venues: [venue],
+  venues: [venue, ...sharedVenuesFixture()],
   villagers: people.map(({ characterId, name, zoneId }) => {
     const block = {
       startMinute: 0,
@@ -237,6 +238,7 @@ const documents = {
 let completions = 0;
 let answer: { content: string; finishReason: string } | undefined;
 let lastInput = "";
+const contactMessage = "I call out across the terrace.";
 const model = {
   connectionId: "synthetic",
   model: "fixture",
@@ -247,9 +249,13 @@ const model = {
     completions++;
     assert.match(messages[0].content, /GM of Villages/);
     const prompt = messages.map(({ content }) => content).join("\n");
-    if (prompt.includes("Requested Contact shortcut:")) assert.match(prompt, /Native changes use commands/u);
-    assert.equal(messages.at(-1)?.role, "user");
-    lastInput = messages.at(-1)!.content;
+    assert.equal(messages.at(-2)?.role, "user");
+    lastInput = messages.at(-2)!.content;
+    if (lastInput === contactMessage) {
+      assert.match(prompt, /Native changes use commands/u);
+      assert.match(prompt, /Contact context: .*"boundaryZoneId":"kitchen"/u);
+      assert.doesNotMatch(prompt, /"kind":"knock"|doorway contact/iu);
+    }
     assert(answer, "Only an explicitly supplied synthetic response may dispatch");
     const selected = answer;
     answer = undefined;
@@ -319,6 +325,15 @@ async function request(url: string, payload?: object, status = 200) {
   });
   assert.equal(response.statusCode, status, url + " " + response.body);
   return response.json();
+}
+async function setSpontaneousEvents(value: boolean) {
+  const response = await app.inject({
+    method: "PATCH",
+    url: "/api/villages/settings",
+    payload: { spontaneousEvents: value },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().settings.spontaneousEvents, value);
 }
 const submit = (id: string, message = "I watch the water.") => ({
   sessionId: sceneId,
@@ -412,10 +427,15 @@ try {
 
   const beforeContact = completions;
   provide({ segments: [{ kind: "dialogue", speakerId: "aqua", text: "I am here." }] });
-  await request("/rooms/turn", {
-    ...submit("contact"),
+  const contact = {
+    ...submit("contact", contactMessage),
     mode: "contact",
-    contact: { kind: "call", boundaryZoneId: "kitchen" },
+    contact: { boundaryZoneId: "kitchen" },
+  };
+  await request("/rooms/turn", contact);
+  await request("/rooms/turn", {
+    ...contact,
+    contact: { ...contact.contact, kind: "knock" },
   });
   assert.equal(completions, beforeContact + 1);
   assert.equal(turnOf("contact")?.mode, "contact");
@@ -496,8 +516,12 @@ try {
   const visits: string[] = [];
   for (const note of ["I am making cedar shelves.", "I am learning glassblowing."]) {
     const opened = (await request("/rooms", { venueId: placeId, zoneId: "terrace" })).session;
-    assert.equal(opened.status, "opening");
+    assert.equal(opened.status, "active", "an occupied ordinary visit is quiet with spontaneous events off");
     visits.push(opened.id);
+    const record = records.get("villages-venue-visit-" + opened.id)!;
+    record.data = { ...record.data, status: "opening", visitEvent: "opening" };
+    await restart();
+    await setSpontaneousEvents(true);
     provide({
       segments: [{ id: "news", kind: "dialogue", speakerId: "aqua", text: note }],
       keep: [{ id: "news", for: ["player"], class: "information", text: note, source: [{ segment: "news" }] }],
@@ -505,10 +529,12 @@ try {
     const before = completions;
     const greeted = (await request("/rooms/greet", { sessionId: opened.id })).session;
     assert.equal(greeted.status, "active");
+    assert.equal(records.get("villages-venue-visit-" + opened.id)!.data.visitEvent, undefined);
     assert.equal(completions, before + 1);
     await request("/rooms/greet", { sessionId: opened.id });
     assert.equal(completions, before + 1, "Repeating a greeting replays only the same Scene");
     await request("/rooms/end", { sessionId: opened.id, expectedSceneRevision: greeted.sceneRevision });
+    await setSpontaneousEvents(false);
   }
   assert.equal(new Set(visits).size, 2);
   const greetings = storedVillage(records).episodes.records.filter((episode) => episode.submissionId === "greeting");
@@ -517,6 +543,29 @@ try {
     visits,
   );
   assert.equal(new Set(greetings.flatMap((episode) => episode.continuityVersionIds)).size, 2);
+
+  const arrivalAtEntrance = (await request("/rooms", { venueId: placeId, zoneId: "exterior" })).session;
+  const entranceRecord = records.get("villages-venue-visit-" + arrivalAtEntrance.id)!;
+  entranceRecord.data = { ...entranceRecord.data, status: "opening", visitEvent: "place" };
+  await restart();
+  const beforeDisabled = completions;
+  const quietEntrance = (await request("/rooms/greet", { sessionId: arrivalAtEntrance.id })).session;
+  assert.equal(quietEntrance.status, "active");
+  assert.equal(completions, beforeDisabled, "a persisted visit event is skipped if the setting is off before dispatch");
+  await request("/rooms/end", { sessionId: quietEntrance.id, expectedSceneRevision: quietEntrance.sceneRevision });
+  const placeArrival = (await request("/rooms", { venueId: placeId, zoneId: "exterior" })).session;
+  const placeRecord = records.get("villages-venue-visit-" + placeArrival.id)!;
+  placeRecord.data = { ...placeRecord.data, status: "opening", visitEvent: "place" };
+  await restart();
+  await setSpontaneousEvents(true);
+  const readyEntrance = (await request("/rooms/active")).session;
+  assert.equal(readyEntrance.visitEventOpening, true);
+  assert.deepEqual(readyEntrance.activeIds, []);
+  provide({ segments: [{ id: "wind", kind: "narration", text: "A gust rattles the shutters." }] });
+  const greetedEntrance = (await request("/rooms/greet", { sessionId: placeArrival.id })).session;
+  assert.equal(greetedEntrance.status, "active");
+  assert.equal(completions, beforeDisabled + 1);
+  assert.match(JSON.stringify(greetedEntrance.lines), /gust rattles the shutters/);
 
   await restart(baseline);
   const validKeep = {
@@ -630,7 +679,14 @@ try {
   freshGathering.delete(sceneRecordId);
   freshGathering.get(villageRecordId).data.opening = initialOpening(["aqua", "feddy"], placeId, "fresh-founding");
   await restart(freshGathering);
-  const founded = (await request("/rooms", { venueId: placeId, zoneId: "terrace" })).session;
+  await request("/rooms", { venueId: placeId, zoneId: "bedroom" }, 409);
+  assert.equal(
+    storedVillage(records).opening?.gatheringSceneId,
+    "",
+    "An explicit private target cannot start a gathering",
+  );
+  const founded = (await request("/rooms", { venueId: placeId })).session;
+  assert.equal(founded.zoneId, "terrace", "Opening entry chooses a qualifying public Zone");
   assert.equal(founded.status, "opening");
   assert.equal(storedVillage(records).opening?.gatheringSceneId, founded.id);
   assert.equal((await request("/rooms/active")).session?.id, founded.id);

@@ -57,6 +57,39 @@ export type NarrationPublication = {
 };
 
 type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
+export const ACTOR_MEMORY_TARGETS_ROOM = "actor memory targeted Room";
+const roomNoteFields = new Set(["id", "for", "text", "source", "requires", "independent"]);
+const roomFactFields = new Set([
+  ...roomNoteFields,
+  "replace",
+  "visibility",
+  "knownBy",
+  "expiresInMinutes",
+  "protection",
+]);
+const actorNoteFields = new Set([
+  "id",
+  "for",
+  "owner",
+  "about",
+  "class",
+  "current",
+  "text",
+  "source",
+  "relationship",
+  "independent",
+  "requires",
+]);
+const haltNotices = {
+  time: "Village time can’t be skipped or rewritten in a Scene. Revise your draft to stay in the current moment.",
+  activity: "This Scene can begin the activity. Revise your draft to play the current moment.",
+  condition:
+    "The Village can’t continue from that permanent change to a character. Revise the outcome or describe what you attempt.",
+  world: "The playable Village must remain intact. Revise the outcome to a local effect or describe what you attempt.",
+  structure: "Structural changes to a Venue need a Project. Revise your draft to describe what you propose or attempt.",
+  authority:
+    "That outcome needs permission or a choice the Scene hasn’t established. Revise your draft as a request or attempt.",
+};
 const abandonmentKey = (publication: SavedNarration) => "narration-abandoned:" + publication.readset.source.episodeId;
 const abandonmentFingerprint = (publication: SavedNarration, submissionId: string) =>
   memoryHash([submissionId, publication.responseDigest, publication.raw, publication.readset]);
@@ -257,7 +290,7 @@ export function acceptNarrationContinuity(
     );
   if (reply.halt) {
     for (const ref of reply.halt.source) bindNarrationSource(ref, source);
-    throw conflict(reply.halt.message);
+    throw conflict("HALT · " + haltNotices[reply.halt.reason]);
   }
   const offeredAnswers = readset.admission.relationshipAnswers;
   const closingEffect = offeredAnswers?.onSceneEnd && native.sceneEffects?.find((effect) => effect.closed)?.effectId;
@@ -300,16 +333,23 @@ export function acceptNarrationContinuity(
   const repeatedOfferDecisions = new Set<string>();
   const allowTranscriptNotes = readset.ordinaryDialogue && !reply.commands.length && !admission.protectedRoots.length;
   const requestedMemory = readset.requestedMemory;
+  const incidentalNotes = new Set<string>();
   const memoryFallback = readset.optionalActorMemories;
+  const onlyResidentCrossings =
+    memoryFallback === 5 &&
+    readset.ordinaryDialogue &&
+    readset.sceneResidentMovement &&
+    !admission.protectedRoots.length &&
+    native.moves.length > 0 &&
+    native.effects.length === native.moves.length;
   const optionalActorMemories =
     (memoryFallback === true ||
       memoryFallback === 2 ||
       memoryFallback === 3 ||
       memoryFallback === 4 ||
       memoryFallback === 5) &&
-    allowTranscriptNotes &&
+    ((allowTranscriptNotes && !native.effects.length) || onlyResidentCrossings) &&
     !requestedMemory &&
-    !native.effects.length &&
     !native.admissions.length
       ? new Set<string>()
       : undefined;
@@ -399,8 +439,17 @@ export function acceptNarrationContinuity(
       note.about.length === 2 &&
       note.about.includes(note.owner) &&
       note.about.includes("room");
+    const optionalCrossingPerspective =
+      onlyResidentCrossings &&
+      note.class === "perspective" &&
+      note.current === true &&
+      typeof note.owner === "string" &&
+      Array.isArray(note.for) &&
+      note.for.length === 1 &&
+      note.for[0] === note.owner;
     if (
       optionalActorMemories &&
+      (allowTranscriptNotes || optionalCrossingPerspective) &&
       typeof note.text === "string" &&
       note.text.trim() &&
       Array.isArray(note.for) &&
@@ -423,6 +472,7 @@ export function acceptNarrationContinuity(
             typeof note.current === "boolean" &&
             (note.class === "information" ||
               note.class === "experience" ||
+              optionalCrossingPerspective ||
               (optionalCurrentOpenMatter && note.current === true))),
       ) &&
       Array.isArray(note.source) &&
@@ -448,6 +498,33 @@ export function acceptNarrationContinuity(
       typeof note.text === "string" &&
       (note.class === "experience" || note.class === "information") &&
       Object.keys(note).every((key) => ["for", "text", "class", "source"].includes(key));
+    const roomArray =
+      readset.continuityEffectRecovery &&
+      Array.isArray(note.for) &&
+      note.for.length === 1 &&
+      note.for[0] === "room" &&
+      !source.actors.some((actor) => actor.id === "room") &&
+      !state.villagers.some((actor) => actor.characterId === "room") &&
+      !findNpc(state, "room");
+    const passiveActorNote =
+      Array.isArray(note.for) &&
+      note.for.length > 0 &&
+      note.for.every((id) => source.actors.some((actor) => actor.id === id)) &&
+      (note.class === undefined ||
+        ["experience", "information", "perspective", "open-matter"].includes(String(note.class))) &&
+      Object.keys(note).every((field) => actorNoteFields.has(field));
+    const roomObservation =
+      (note.for === "room" || roomArray) &&
+      typeof note.text === "string" &&
+      note.text.trim() !== "" &&
+      Object.keys(note).every((field) => roomNoteFields.has(field));
+    if (
+      readset.continuityEffectRecovery &&
+      allowTranscriptNotes &&
+      !requestedMemory &&
+      (passiveActorNote || roomObservation)
+    )
+      incidentalNotes.add(header.id);
     const optionalAnswer =
       note.class === "perspective" &&
       typeof asRecord(note.relationship).answer === "string" &&
@@ -473,8 +550,12 @@ export function acceptNarrationContinuity(
       independent: openingOfferEcho || optionalNote || optionalAnswer || header.independent,
     };
     try {
+      memoryRequire(
+        !roomArray || Object.keys(note).every((field) => roomFactFields.has(field)),
+        ACTOR_MEMORY_TARGETS_ROOM,
+      );
       const keep = prepareNarrationKeep(
-        raw,
+        roomArray ? { ...note, for: "room" } : raw,
         index,
         state.continuity,
         admission,
@@ -659,9 +740,11 @@ export function acceptNarrationContinuity(
   let scheduledWorld = state;
   let selection: ReturnType<typeof selectSceneEffects>;
   const referenced = new Set([...reply.assertedDependencies, ...effects.flatMap((effect) => effect.requires)]);
+  for (const effect of effects)
+    if (incidentalNotes.has(effect.id) && !referenced.has(effect.id)) effect.independent = true;
   for (;;) {
     for (const effect of effects)
-      if (effect.failure && optionalActorMemories?.has(effect.id) && !referenced.has(effect.id))
+      if (effect.failure && !referenced.has(effect.id) && optionalActorMemories?.has(effect.id))
         effect.independent = true;
     selection = selectSceneEffects(effects, [
       ...reply.assertedDependencies,
@@ -839,7 +922,9 @@ export function acceptNarrationContinuity(
     sceneEffects.every(
       (effect) =>
         native.receipts[effect.effectId] &&
-        ["contact", "scene", "movement", "departure", "npc"].includes(native.receipts[effect.effectId].kind),
+        ["contact", "scene", "movement", "movement-agreement", "departure", "npc", "npc-introduction"].includes(
+          native.receipts[effect.effectId].kind,
+        ),
     ),
     "Scene effect lost its native command",
   );
@@ -946,6 +1031,14 @@ export function acceptNarrationContinuity(
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
   state.episodes = episodes;
+  for (const visitor of state.visitors ?? []) {
+    if (
+      !visitor.firstMetAt &&
+      source.actors.some((actor) => actor.id === visitor.characterId && actor.incarnation === visitor.incarnation) &&
+      episode.segments.some((line) => line.speakerId === visitor.characterId && line.heardBy?.includes("player"))
+    )
+      visitor.firstMetAt = readset.capturedAt;
+  }
   state.residentPlans = scheduledWorld.residentPlans;
   state.villagers = scheduledWorld.villagers;
   return { ...selection, episode: episodes.records.at(-1)! };

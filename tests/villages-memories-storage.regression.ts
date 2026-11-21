@@ -1,7 +1,7 @@
 // Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/conflict, memories-storage/interruptions, memories-storage/reader-retention, memories-storage/active-preparation, memories-storage/reset, memories-storage/malformed, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary, memories-storage/world-namespace, memories-storage/backend-ownership
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import type { AcceptedEpisode } from "../packages/villages/src/server/domain/models/episode-model.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -517,7 +517,7 @@ await runCase("memories-storage/missing-page", async () => {
   const page = [...f.records.values()].find((r) => r.kind === "memory-page");
   f.records.delete(page.id);
   await assert.rejects(f.restart().readAuthority({ memories: true }), /history page is missing/);
-  assert.equal(f.root().data.version, 18);
+  assert.equal(f.root().data.version, 19);
   f.root().data.version = 7;
   await assert.rejects(f.restart().readAuthority(), /Unsupported Village format/);
 });

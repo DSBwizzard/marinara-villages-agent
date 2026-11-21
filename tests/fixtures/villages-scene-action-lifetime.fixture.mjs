@@ -16,7 +16,7 @@ import {StrictMode,useEffect,useState} from 'react';
 import {useSceneRecord} from './packages/villages/src/client/features/scenes/useSceneRecord.js';
 import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 import {useScenesState} from './packages/villages/src/client/features/scenes/useScenesState.js';
-import {useMoveRoom,useContinueRoomWithoutGreeting,useCloseRoom,useLeaveRoom,useRetrySavedScene} from './packages/villages/src/client/features/scenes/actions.js';
+import {useMoveRoom,useContinueRoomWithoutGreeting,useCloseRoom,useRetrySavedScene} from './packages/villages/src/client/features/scenes/actions.js';
 function scene(id,revision=0,status='active'){return authorSceneView({id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,
  zoneId:'exterior',area:'public',status,startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:00:00Z',
  endedAt:'',participants:[],activeIds:[],lines:[],submissions:[],
@@ -33,15 +33,15 @@ function Harness(){
   roomMoveOperationIdRef:state.roomMoveOperationIdRef,roomMoveZoneId:state.roomMoveZoneId,
   setRoomContactBoundary:state.setRoomContactBoundary,setRoomMoveZoneId:state.setRoomMoveZoneId});
  const continueScene=useContinueRoomWithoutGreeting({...common,setRoomGreetingNotice:state.setRoomGreetingNotice});
- const closeRoom=useCloseRoom(common),leaveRoom=useLeaveRoom(common),retry=useRetrySavedScene(common);
+ const closeRoom=useCloseRoom(common),retry=useRetrySavedScene(common);
  useEffect(()=>{setRoom(scene('A',0,window.initiallyClosed?'closed':window.opening?'opening':'active'));
   state.setRoomEnded(!!window.initiallyClosed);state.setRoomOpen(true);state.setRoomDraft(window.draft??'A message');
   state.setRoomMoveZoneId('private-A');state.setRoomContactBoundary('A-boundary');
-  state.setRoomTargetId('A-target');state.setRoomContactKind('knock');
-  if(window.operation){state.roomSubmissionIdRef.current='A-turn';state.roomLeaveSubmissionIdRef.current='A-leave';}
+  state.setRoomTargetId('A-target');
+  if(window.operation){state.roomSubmissionIdRef.current='A-turn';}
  },[]);
  const launch=work=>{window.pending.push(work());return window.pending.length-1;};
- const commands={move:()=>move(state.roomMoveZoneId),continue:()=>continueScene(room.id),close:closeRoom,leave:leaveRoom,retry:()=>retry(room?.operation?.input?.mode==="contact"?{sceneId:room.id,operation:room.operation}:undefined)};
+ const commands={move:()=>move(state.roomMoveZoneId),continue:()=>continueScene(room.id),close:closeRoom,retry:()=>retry(room?.operation?.input?.mode==="contact"?{sceneId:room.id,operation:room.operation}:undefined)};
  window.h={launch:kind=>launch(commands[kind]),retain:kind=>{window.retained=commands[kind]},old:()=>launch(window.retained),
   select:(id='B',pending=false,revision=0,closed=false)=>{setRoom(scene(id,revision,closed?'closed':'active'));
    state.setRoomEnded(closed);state.setRoomMoveZoneId('private-'+id);
@@ -49,12 +49,11 @@ function Harness(){
    state.setRoomGreetingNotice(id+' notice');state.setRoomDraft(id+' draft');state.setRoomBusy(pending);
    state.roomSendInFlightRef.current=pending;state.roomMoveOperationIdRef.current=pending?id+'-move':null;
    state.roomSubmissionIdRef.current=pending?id+'-submission':null;
-   state.roomLeaveSubmissionIdRef.current=pending?id+'-leave':null;
    state.roomCompletionRef.current=pending?{roomId:id,submissionId:id+'-submission'}:null;},
   reset:()=>{setFounded(false);setRoom(null);setScreen('home');state.setRoomEnded(false);state.setRoomBusy(false);state.setRoomError('reset error');
    state.setRoomGreetingNotice('reset notice');state.roomSendInFlightRef.current=false;
    state.roomMoveOperationIdRef.current=null;state.roomSubmissionIdRef.current=null;
-   state.roomLeaveSubmissionIdRef.current=null;state.roomCompletionRef.current=null;},
+   state.roomCompletionRef.current=null;},
   refound:()=>{setFounded(true);setRoom(scene('A',10));state.setRoomMoveZoneId('private-A');},
   hydrate:()=>setFounded(true),unfound:()=>setFounded(false),
   marker:()=>{state.roomCompletionRef.current={roomId:'A',submissionId:'prior-marker'}},
@@ -65,12 +64,12 @@ function Harness(){
   end:()=>state.setRoomEnded(true),close:()=>setRoom(scene('A',10,'closed')),
   refs:()=>({flight:state.roomSendInFlightRef.current,move:state.roomMoveOperationIdRef.current,
    submission:state.roomSubmissionIdRef.current,completion:state.roomCompletionRef.current,
-   leave:state.roomLeaveSubmissionIdRef.current,leaving:state.leavingRoomPendingRef.current,seen:[...state.seenRoomEventIdsRef.current]})};
+   leaving:state.leavingRoomPendingRef.current,seen:[...state.seenRoomEventIdsRef.current]})};
  return <pre id='state'>{JSON.stringify({id:room?.id??null,revision:room?.sceneRevision??null,zone:room?.zoneId??null,
   founded,busy:state.roomBusy,error:state.roomError,notice:state.roomGreetingNotice,
   target:state.roomMoveZoneId,boundary:state.roomContactBoundary,draft:state.roomDraft,status:room?.status??null,
   ended:state.roomEnded,screen,open:state.roomOpen,notices:state.roomNotices,
-  residentTarget:state.roomTargetId,contactKind:state.roomContactKind})}</pre>;
+  residentTarget:state.roomTargetId})}</pre>;
 }
 window.pending=[];window.loads=0;window.received=[];
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
@@ -266,7 +265,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   });
 
   async function verifyExitActions(strict, width) {
-    for (const action of ["close", "leave"]) {
+    {
+      const action = "close";
       const f = await mount(strict, width, { retired: true, fail: true });
       try {
         const index = await f.launch(action);
@@ -280,16 +280,16 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         await f.close();
       }
     }
-    for (const action of ["close", "leave", "retry"]) {
+    for (const action of ["close", "retry"]) {
       const operation = action === "retry" ? savedOperation() : undefined;
-      const hold = action === "close" ? "end" : action === "leave" ? "preflight" : "saved";
+      const hold = action === "close" ? "end" : "saved";
       const f = await mount(strict, width, { operation, hold });
       try {
         const indices = await f.page.evaluate(
           (kind) => [
             window.h.launch(kind),
             window.h.launch(kind),
-            window.h.launch(kind === "close" ? "leave" : "close"),
+            window.h.launch(kind === "close" ? "retry" : "close"),
           ],
           action,
         );
@@ -313,17 +313,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           assert.equal(after.state.ended, true);
           assert.equal(after.state.draft, "");
           assert.deepEqual(after.refs.completion, { roomId: "A", submissionId: "" });
-        } else if (action === "leave") {
-          assert.deepEqual(post.body, {
-            sessionId: "A",
-            submissionId: post.body.submissionId,
-            message: "A message",
-            expectedSceneRevision: 0,
-          });
-          assert.ok(post.body.submissionId);
-          assert.equal(after.refs.leave, null);
-          assert.equal(after.state.ended, true);
-          assert.deepEqual(after.refs.completion, { roomId: "A", submissionId: post.body.submissionId });
         } else {
           assert.deepEqual(post.body, {
             zoneId: "private-A",
@@ -448,10 +437,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       ["close", "end", {}],
       ["close", "active", { fail: true }],
       ["close", "archive", { fail: true, archive: true }],
-      ["leave", "leave", {}],
-      ["leave", "active", { fail: true }],
-      ["leave", "archive", { fail: true, archive: true }],
-      ["leave", "archive", { fail: true, archive: true, holdOrdinal: 2 }],
       ["retry", "zone", {}],
       ["retry", "active", { fail: true }],
       ["retry", "archive", { fail: true, archive: true }],
@@ -477,8 +462,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         await f.close();
       }
     }
-    for (const action of ["close", "leave", "retry"]) {
-      const hold = action === "close" ? "end" : action === "leave" ? "leave" : "zone";
+    for (const action of ["close", "retry"]) {
+      const hold = action === "close" ? "end" : "zone";
       const f = await mount(strict, width, {
         hold,
         fail: true,
@@ -608,16 +593,12 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           retryOfAttemptId: "A-attempt",
         });
         assert.equal(after.refs.submission, null);
-        assert.equal(after.refs.leave, null);
         assert.equal(after.refs.completion, null);
         assert.equal(after.state.draft, kind === "turn" ? "" : "A message");
         assert.equal(after.state.busy, false);
         assert.equal(after.loads, 1);
         assert.equal(after.received.length, 1);
-        if (mode === "contact") {
-          assert.equal(after.state.residentTarget, "");
-          assert.equal(after.state.contactKind, "call");
-        }
+        if (mode === "contact") assert.equal(after.state.residentTarget, "");
         if (kind === "close") {
           assert.equal(after.state.ended, true);
           assert.equal(after.state.status, "closed");
@@ -626,65 +607,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       } finally {
         await f.close();
       }
-    }
-    for (const recovered of [false, true]) {
-      const saved = { ...savedOperation("turn", "leave"), id: "saved-leave" };
-      const f = await mount(strict, width, { saved, fail: true, recovered, closed: recovered, archive: recovered });
-      try {
-        const index = await f.launch("leave");
-        await f.settle(index);
-        const after = await f.snapshot();
-        assert.deepEqual(f.requests.find((item) => item.kind === "leave").body, {
-          sessionId: "A",
-          submissionId: "saved-leave",
-          retryOfAttemptId: "saved-attempt",
-          message: "A message",
-          expectedSceneRevision: 0,
-        });
-        assert.equal(after.state.error, recovered ? "" : "Exact action failure");
-        assert.equal(after.refs.leave, recovered ? null : "saved-leave");
-        assert.equal(after.state.draft, recovered ? "" : "A message");
-        assert.equal(after.state.busy, false);
-        assert.equal(after.loads, recovered ? 1 : 0);
-        assert.equal(f.requests.filter((item) => item.method === "POST").length, 1);
-      } finally {
-        await f.close();
-      }
-    }
-    const recovery = await mount(strict, width, {
-      fail: true,
-      recovered: true,
-      recoveredOnlyArchive: true,
-      closed: true,
-      latestRevision: 10,
-    });
-    try {
-      const index = await recovery.launch("leave");
-      await recovery.settle(index);
-      const after = await recovery.snapshot();
-      assert.deepEqual(
-        recovery.requests.map((item) => item.kind),
-        ["preflight", "leave", "active", "recovery-operation", "archive"],
-      );
-      assert.equal(
-        after.state.revision,
-        10,
-        "Publishing latest before recovered retains the highest observed revision",
-      );
-      assert.equal(after.state.ended, true);
-      assert.equal(after.state.error, "");
-      assert.equal(after.refs.leave, null);
-      assert.equal(after.loads, 1);
-    } finally {
-      await recovery.close();
-    }
-    const empty = await mount(strict, width, { draft: "" });
-    try {
-      const index = await empty.launch("leave");
-      await empty.settle(index);
-      assert.equal(empty.requests.find((item) => item.kind === "leave").body.message, "");
-    } finally {
-      await empty.close();
     }
     for (const action of ["close", "retry"]) {
       const f = await mount(strict, width, {
@@ -737,6 +659,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
               assert.deepEqual(control.requests[1].body, {
                 sessionId: "A",
                 zoneId: "private-A",
+                follow: true,
                 operationId: control.requests[1].body.operationId,
                 expectedSceneRevision: 0,
               });
@@ -937,7 +860,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             kind: "move",
             status: "failed",
             attemptId: "saved-attempt",
-            input: { zoneId: "private-A" },
+            input: { zoneId: "private-A", follow: true },
           };
           const f = await mount(strict, width, { fail: true, recovered, closed: recovered, archive: recovered, saved });
           try {
@@ -950,6 +873,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             assert.deepEqual(f.requests.find((request) => request.kind === "zone").body, {
               sessionId: "A",
               zoneId: "private-A",
+              follow: true,
               operationId: "saved-move",
               expectedSceneRevision: 0,
               retryOfAttemptId: "saved-attempt",

@@ -9,6 +9,7 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
+import { groupSceneMoments } from "../packages/villages/src/shared/helpers/scene-speech.js";
 const actors = ["reserved", "outgoing", "bystander"],
   venue = venueFixture({ id: "home", name: "Home" });
 const people = actors.map((characterId) => ({ characterId, name: characterId, doing: "Talking", zoneId: "common" }));
@@ -70,6 +71,24 @@ await runCase("scene-text/private-witnesses", () => {
   assert.equal(toPlayer.targetId, "player");
   assert(toPlayer.heardBy.includes("player") && !toPlayer.heardBy.includes("bystander"));
   assert.deepEqual(lineStagingCues(toPlayer), [{ characterId: "reserved", look: { target: "player" } }]);
+
+  const aside = { kind: "dialogue", speakerId: "reserved", presentation: "aside" };
+  const crowded = route([
+    { kind: "narration", text: "Everyone gathers at the rail." },
+    { ...aside, text: "One." },
+    { ...aside, text: "Private.", delivery: "whisper", targetId: "outgoing" },
+    { ...aside, text: "Two." },
+    { ...aside, text: "Three.", delivery: "whisper", targetId: "player" },
+    { ...aside, text: "Four." },
+  ]);
+  const visible = groupSceneMoments(crowded.filter((line) => line.heardBy.includes("player")));
+  assert.deepEqual(
+    visible.map(({ asides }) => asides.map((line) => line.content)),
+    [["One.", "Two."], ["Four."]],
+  );
+  assert.equal(visible[1].line.content, "Three.");
+  assert.equal(visible[1].line.delivery, "whisper");
+  assert.deepEqual(visible[1].line.heardBy.toSorted(), ["player", "reserved"]);
 });
 await runCase("scene-text/rejection", () => {
   for (const reply of [

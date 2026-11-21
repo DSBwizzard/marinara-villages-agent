@@ -1,4 +1,4 @@
-// Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order, scene-halt/explanation, scene-halt/protection-race
+// Test cases: scene-halt/captured-calendar, scene-halt/calendar, scene-halt/evidence, scene-halt/world, scene-halt/authority-order, scene-halt/explanation, scene-halt/unsupported-outcomes, scene-halt/playable-outcomes, scene-halt/private-explanation, scene-halt/protection-race
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -22,7 +22,12 @@ import { continuityActor } from "../packages/villages/src/server/domain/rules/co
 import { protectContinuity } from "../packages/villages/src/server/domain/rules/continuity.js";
 const at = "2026-10-15T20:00:00.000Z",
   zone = "America/Los_Angeles";
-function fixture(when: object = { dayOffset: 1 }, minute: number | undefined = 15 * 60, capturedAt = at) {
+function fixture(
+  when: object = { dayOffset: 1 },
+  minute: number | undefined = 15 * 60,
+  capturedAt = at,
+  input = "I would like to meet.",
+) {
   const state = { ...defaultVillageState(), seed: "calendar-world", setupAt: at, foundedAt: at, timeZone: zone };
   const place = establishPlace(
     state,
@@ -61,14 +66,7 @@ function fixture(when: object = { dayOffset: 1 }, minute: number | undefined = 1
     }),
     place.location,
   );
-  const context = narrationContinuityContext(
-    state,
-    scene,
-    place.location,
-    "calendar-operation",
-    "I would like to meet.",
-    capturedAt,
-  );
+  const context = narrationContinuityContext(state, scene, place.location, "calendar-operation", input, capturedAt);
   const readset = fittedNarrationReadset(
     state,
     context,
@@ -205,20 +203,20 @@ await runCase("scene-halt/world", () => {
   assert.throws(() => changedActor.accept(), /incarnation changed/);
   assert.equal(changedActor.state.episodes.records.length, 0);
 });
-const haltMessage = "Village time cannot be skipped through narration.";
-const halt = (source: unknown[]) => ({ segments: [], halt: { reason: "time", message: haltMessage, source } });
+const halt = (source: unknown[]) => ({ segments: [], halt: { reason: "time", source } });
+const timeNotice = /^HALT · Village time/;
 await runCase("scene-halt/explanation", () => {
   const f = fixture(),
     before = memoryHash(f.state);
   f.raw.segments = [];
   delete f.raw.commands;
-  f.raw.halt = halt([{ input: f.readset.source.input }]).halt;
+  f.raw.halt = { ...halt([{ input: f.readset.source.input }]).halt, message: "A legacy model-written explanation." };
   for (let replay = 0; replay < 2; replay++)
     assert.throws(
       () => f.accept(),
       (error) =>
         error instanceof Error &&
-        error.message === haltMessage &&
+        timeNotice.test(error.message) &&
         (error as { statusCode?: number }).statusCode === 409,
     );
   assert.equal(memoryHash(f.state), before);
@@ -226,10 +224,106 @@ await runCase("scene-halt/explanation", () => {
     f.raw.halt.source = [source];
     assert.throws(
       () => f.accept(),
-      (error) => error instanceof Error && !error.message.includes(haltMessage),
+      (error) => error instanceof Error && !error.message.startsWith("HALT"),
     );
-    assert.equal(memoryHash(f.state), before, "invalid halt evidence publishes no state or model explanation");
+    assert.equal(memoryHash(f.state), before, "invalid halt evidence publishes no state or public HALT notice");
   }
+});
+
+await runCase("scene-halt/unsupported-outcomes", () => {
+  for (const [reason, input, notice] of [
+    ["condition", "I die permanently here.", /permanent change to a character/],
+    ["condition", "Mara dies and cannot return.", /permanent change to a character/],
+    ["condition", "Mara returns from the dead, fully alive.", /permanent change to a character/],
+    ["condition", "Mara can never wake or act again.", /permanent change to a character/],
+    ["time", "I travel ten years into the future and arrive.", /Village time/],
+    ["time", "I reset the Village clock to yesterday.", /Village time/],
+    ["activity", "We sleep six hours and wake up here.", /begin the activity/],
+    ["world", "The entire Village is destroyed. Nothing remains.", /playable Village/],
+    ["structure", "A new floor is now part of this Venue.", /need a Project/],
+    ["authority", "Mara agrees and gives me permanent access to her private room.", /needs permission or a choice/],
+  ] as const) {
+    const f = fixture(undefined, undefined, at, input);
+    const before = memoryHash(f.state);
+    delete f.raw.commands;
+    f.raw.segments = [];
+    f.raw.halt = { reason, source: [{ input }] };
+    assert.throws(
+      () => f.accept(),
+      (error) =>
+        error instanceof Error &&
+        (error as { statusCode?: number }).statusCode === 409 &&
+        error.message.startsWith("HALT") &&
+        notice.test(error.message),
+      input,
+    );
+    assert.equal(memoryHash(f.state), before, input);
+  }
+});
+
+await runCase("scene-halt/playable-outcomes", () => {
+  for (const [input, text] of [
+    ["I lie down to rest.", "Mara draws the curtains while the room settles."],
+    ["I try to turn the clock back.", "Mara watches the clock face and waits for an explanation."],
+    ["I threaten to tear down the whole Village.", "Mara steps back. Her hand stays on the door."],
+    ['I quote the story: "Mara died a hundred years ago."', "Mara asks where that version of the story came from."],
+    ["What would happen if we could travel through time?", "Mara considers how much she would miss."],
+    ["I knock the cup off the counter.", "The cup cracks on the floor."],
+    ["May I go into your private room?", "Mara shakes her head and stays where she is."],
+  ]) {
+    const f = fixture(undefined, undefined, at, input);
+    delete f.raw.commands;
+    f.raw.segments = [{ kind: "narration", text }];
+    const result = f.accept();
+    assert.equal(result.held, false, input);
+    assert.equal(result.episode!.segments[0].content, text);
+  }
+});
+
+await runCase("scene-halt/private-explanation", () => {
+  const f = fixture();
+  const privateFact = "Mara privately knows the key is under the tea tin.";
+  retainNativeFact(
+    f.state,
+    {
+      id: "private-key",
+      kind: "initialization",
+      targetId: f.actor,
+      revision: 1,
+      text: privateFact,
+      witnesses: [f.actor],
+    },
+    at,
+    { class: "information", current: true },
+  );
+  const context = narrationContinuityContext(
+    f.state,
+    f.scene,
+    f.state.worldPlaces.places.cafe.location,
+    "halt-private",
+    "I declare that I may enter the private room.",
+    at,
+  );
+  const readset = fittedNarrationReadset(
+    f.state,
+    context,
+    context.parts.map((part) => part.block.evidenceId!),
+  );
+  const privateSource = Object.entries(readset.source.historical).find(
+    ([, source]) => source.excerpt === privateFact && !source.perceptions.some(({ actorId }) => actorId === "player"),
+  );
+  assert(privateSource);
+  const raw = {
+    segments: [],
+    halt: { reason: "authority", source: [privateSource[0]], message: privateFact },
+  };
+  assert.throws(
+    () => acceptNarration(f.state, { raw, readset, responseDigest: memoryHash(raw) }, "halt-private", at),
+    (error) =>
+      error instanceof Error &&
+      /^HALT · That outcome needs permission/.test(error.message) &&
+      !error.message.includes(privateFact),
+  );
 });
 
 await runCase("scene-halt/protection-race", () => {

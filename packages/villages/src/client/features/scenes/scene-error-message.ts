@@ -1,10 +1,39 @@
-/** Display only; Copy details keeps the original error. */
-export function sceneErrorMessage(original: string): string {
-  const message = original
+import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
+
+export function heldSceneErrorMessage(value: unknown): string {
+  const checks = sceneFailureDiagnostic(value)?.checks ?? [];
+  if (checks.some(({ code }) => code === "continuity_evidence_not_witnessed"))
+    return "The AI reply couldn’t show that a character witnessed the event.";
+  if (checks.some(({ code }) => code === "missing_private_state_evidence"))
+    return "The AI reply couldn’t show whose private memory it was recording.";
+  if (checks.some(({ code }) => code === "room_target_in_actor_memory"))
+    return "The AI reply tried to save a character’s memory to the room.";
+  if (checks.some(({ code }) => code === "room_outcome_unverified"))
+    return "The AI reply couldn’t verify a change to the Room.";
+  if (checks.some(({ code }) => code === "continuity_actor_not_admitted"))
+    return "The AI reply tried to update a character outside the Scene.";
+  const [check] = checks;
+  if (!check) return "The game couldn’t apply the AI’s reply.";
+  if (check.code === "invalid_format" && check.path.at(-1) === "segment")
+    return "The AI reply contained an invalid Scene reference (invalid_format).";
+  return `The AI reply failed validation (${check.code}).`;
+}
+
+export function sceneErrorCause(original: string): string {
+  return original
     .trim()
     .replace(/^(?:Error|VillagesRequestError|VillageApiError):\s*/u, "")
-    .replace(/\s*\(HTTP \d+; [^)]+\)/gu, "");
+    .replace(/\s*\(HTTP \d+; [^)]+\)/gu, "")
+    .replace(/ Retry it or continue without an opening\.$/u, "");
+}
+
+/** Returns only fixed strings safe to include in a shareable report. */
+export function sceneErrorCategory(message: string): string | undefined {
   const rules: [RegExp, string][] = [
+    [/^A line can be at most 4000 characters\.$/u, "A line can be at most 4000 characters."],
+    [/^This (?:Venue )?zone is closed for Renovation\./iu, "The destination Zone is closed for renovation."],
+    [/^There is no permitted connection route to that space;/u, "There is no permitted route to the destination Zone."],
+    [/^Five residents occupy this Zone/u, "The destination Zone is at capacity."],
     [/^Invalid request details/iu, "The request contains invalid details."],
     [/History temporarily unavailable|Could not load Scene history/iu, "The game couldn’t load the Scene history."],
     [/^Interrupted$|^Request interrupted$/iu, "The request stopped before it finished."],
@@ -116,6 +145,10 @@ export function sceneErrorMessage(original: string): string {
     [/Invalid changes cursor/iu, "The saved update list changed while the game read it."],
     [/No saved (?:live )?exchange/iu, "The game couldn’t find the saved exchange."],
     [
+      /^The alternate reply failed validation\./iu,
+      "The game kept your original reply because the alternate couldn’t be used.",
+    ],
+    [
       /submission ID|navigation ID|Village identity changed|request conflicts with the current saved state|request changed|action changed|Scene changed|Refresh the scene before/iu,
       "The Scene changed during the request.",
     ],
@@ -125,7 +158,21 @@ export function sceneErrorMessage(original: string): string {
       "The game hit an internal error.",
     ],
   ];
-  const friendly = rules.find(([pattern]) => pattern.test(message))?.[1];
+  return rules.find(([pattern]) => pattern.test(message))?.[1];
+}
+
+export function isSceneConnectionError(message: string): boolean {
+  const cause = sceneErrorCause(message);
+  return (
+    cause.startsWith("GM connection is not configured: ") ||
+    sceneErrorCategory(cause) === "The game has no usable AI connection."
+  );
+}
+
+export function sceneErrorMessage(original: string): string {
+  const message = sceneErrorCause(original);
+  if (message.startsWith("GM connection is not configured: ")) return message.split("\n")[0]!;
+  const friendly = sceneErrorCategory(message);
   if (friendly) return friendly;
   // Keep the cause in the panel and the recovery details in the copied report.
   const cause = message

@@ -8,7 +8,7 @@ import type {
   VillageSnapshot,
   VillageVenue,
 } from "../../../shared/contracts/village.js";
-import { messageFrom, request, VillageApiError } from "../../shared/api.js";
+import { request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
@@ -21,7 +21,8 @@ import {
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
-import { useTurnRecovery } from "./turn-recovery.js";
+import { sceneSubmissionText, useTurnRecovery } from "./turn-recovery.js";
+import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
 import type { ContactRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
@@ -69,7 +70,7 @@ export function useDismissRoomNotice(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
   room: SceneView;
   seenRoomEventIdsRef: React.RefObject<Set<string>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
 }) {
   const { dismissedRoomEventIdsRef, room, seenRoomEventIdsRef, setRoomError, setRoomNotices } = ports;
@@ -84,7 +85,9 @@ export function useDismissRoomNotice(ports: {
       }).catch((cause) => {
         dismissedRoomEventIdsRef.current.delete(id);
         seenRoomEventIdsRef.current.delete(id);
-        setRoomError(messageFrom(cause, "The notice dismissal could not be saved. It will return after refresh."));
+        setRoomError(
+          sceneFailure(cause, "The notice dismissal could not be saved. It will return after refresh.", "notice"),
+        );
       });
     },
     [dismissedRoomEventIdsRef, room?.id, seenRoomEventIdsRef, setRoomError, setRoomNotices],
@@ -108,13 +111,11 @@ export function useCloseRoom(ports: {
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
 }) {
   const {
     isFounded,
@@ -191,6 +192,11 @@ export function useCloseRoom(ports: {
       receiveRoomRecordEvents(answer.recordEvents ?? []);
       setRoomDraft("");
       setRoomGreetingNotice("");
+      if (room.visitorIntroduction) {
+        setRoomOpen(false);
+        setRoom(null);
+        setScreen("home");
+      }
       void loadSnapshot();
     } catch (cause) {
       if (!lifetime.owns(claim) || leavingRoomPendingRef.current) return;
@@ -234,7 +240,7 @@ export function useCloseRoom(ports: {
         setRoom(currentRoom(authoritative));
         setRoomEnded(authoritative.status === "closed");
       }
-      setRoomError(messageFrom(cause, "You could not leave the venue."));
+      setRoomError(sceneFailure(cause, "You could not leave the venue.", "close"));
     } finally {
       if (lifetime.finish(claim)) setRoomBusy(false);
     }
@@ -263,198 +269,6 @@ export function useCloseRoom(ports: {
   ]);
 }
 
-export function useLeaveRoom(ports: {
-  composerEditVersionRef: React.RefObject<number>;
-  isFounded: boolean | undefined;
-  loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
-  receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void;
-  room: SceneView;
-  contactRecovery: ContactRecovery | null;
-  roomBusy: boolean;
-  roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
-  roomDraft: string;
-  roomEnded: boolean;
-  roomLeaveSubmissionIdRef: React.RefObject<string>;
-  roomSendInFlightRef: React.RefObject<boolean>;
-  seenRoomEventIdsRef: React.RefObject<Set<string>>;
-  setLastSceneEnding: React.Dispatch<SetStateAction<string>>;
-  setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
-  setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
-  setRoomDraft: React.Dispatch<SetStateAction<string>>;
-  setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
-  setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
-  setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
-}) {
-  const {
-    composerEditVersionRef,
-    isFounded,
-    loadSnapshot,
-    receiveRoomRecordEvents,
-    room,
-    contactRecovery,
-    roomBusy,
-    roomCompletionRef,
-    roomDraft,
-    roomEnded,
-    roomLeaveSubmissionIdRef,
-    roomSendInFlightRef,
-    seenRoomEventIdsRef,
-    setLastSceneEnding,
-    setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomNotices,
-    setRoomOpen,
-    setScreen,
-  } = ports;
-  const lifetime = useSceneRequestLifetime({
-    sceneId: room?.id,
-    isFounded,
-    ended: roomEnded || room?.status === "closed",
-    inFlight: roomSendInFlightRef,
-    submission: roomLeaveSubmissionIdRef,
-    completion: roomCompletionRef,
-    setBusy: setRoomBusy,
-  });
-  return useCallback(async () => {
-    if (
-      !room?.id ||
-      room.status !== "active" ||
-      roomBusy ||
-      roomSendInFlightRef.current ||
-      contactRecovery?.sceneId === room.id
-    )
-      return;
-    const claim = lifetime.begin(room.id);
-    if (!claim) return;
-    let submissionId = roomLeaveSubmissionIdRef.current ?? createVillagesClientId();
-    roomLeaveSubmissionIdRef.current = submissionId;
-    claim.submission = submissionId;
-    roomCompletionRef.current = { roomId: room.id, submissionId };
-    claim.completion = roomCompletionRef.current;
-    claim.busy = true;
-    setRoomBusy(true);
-    setRoomError("");
-    const editVersion = composerEditVersionRef.current;
-    try {
-      const { operation } = await request<{ operation: RoomOperation | null }>(
-        `/rooms/${encodeURIComponent(room.id)}/operation`,
-      );
-      if (!lifetime.owns(claim)) return;
-      if (hasPendingContact(operation)) throw new Error("Review the saved action before continuing.");
-      const resend = sceneResend(operation, { message: roomDraft, mode: "leave", targetId: "" }, submissionId);
-      submissionId = resend.submissionId;
-      roomLeaveSubmissionIdRef.current = submissionId;
-      claim.submission = submissionId;
-      roomCompletionRef.current = { roomId: room.id, submissionId };
-      claim.completion = roomCompletionRef.current;
-      const answer = await request<{
-        session: SceneView;
-        recordEvents: RoomRecordEvent[];
-      }>("/rooms/leave", {
-        method: "POST",
-        body: JSON.stringify({
-          sessionId: room.id,
-          ...resend,
-          message: roomDraft,
-          expectedSceneRevision: room.sceneRevision ?? 0,
-        }),
-        signal: AbortSignal.timeout(300_000),
-      });
-      if (!lifetime.owns(claim)) return;
-      setRoom(currentRoom(answer.session));
-      setRoomEnded(true);
-      receiveRoomRecordEvents(answer.recordEvents ?? []);
-      roomLeaveSubmissionIdRef.current = null;
-      claim.submission = null;
-      setRoomDraft("");
-      void loadSnapshot();
-    } catch (cause) {
-      if (!lifetime.owns(claim)) return;
-      const latest = await refreshSceneAfterFailure(room.id, submissionId, () => lifetime.owns(claim));
-      if (!lifetime.owns(claim)) return;
-      const { operation } = await request<{ operation: RoomOperation | null }>(
-        `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(submissionId)}`,
-      ).catch(() => ({ operation: null }));
-      if (!lifetime.owns(claim)) return;
-      if (operation?.id === submissionId && operation.terminal && operation.status === "complete") {
-        setRoom({ ...room, status: "closed" });
-        setRoomEnded(true);
-        receiveRoomRecordEvents(operation.recordEvents ?? []);
-        if (composerEditVersionRef.current === editVersion) setRoomDraft("");
-        setRoomError("The Scene ended. Your turn completed, but the reply text is no longer available.");
-        roomLeaveSubmissionIdRef.current = null;
-        claim.submission = null;
-        void loadSnapshot();
-        return;
-      }
-      const recovered =
-        hasPublishedRoomSubmission(latest, submissionId) ||
-        (latest && operation?.id === submissionId && operation.committed && operation.replyReady)
-          ? latest
-          : await completedRoomAfterFailure(room.id, submissionId, () => lifetime.owns(claim));
-      if (!lifetime.owns(claim)) return;
-      if (latest) setRoom(currentRoom(latest));
-      if (recovered) {
-        setRoom(currentRoom(recovered));
-        setRoomEnded(recovered.status === "closed");
-        setRoomDraft("");
-        setRoomError("");
-        roomLeaveSubmissionIdRef.current = null;
-        claim.submission = null;
-        void loadSnapshot();
-        return;
-      }
-      roomCompletionRef.current = null;
-      claim.completion = null;
-      const staleReason = staleVenueReason(cause);
-      if (staleReason) {
-        setRoom(null);
-        setRoomOpen(false);
-        setRoomNotices([]);
-        seenRoomEventIdsRef.current.clear();
-        setLastSceneEnding(
-          staleReason === "inactivity" ? "Interrupted: Inactivity." : "This Scene ended while you were away.",
-        );
-        setScreen("home");
-        void loadSnapshot();
-        return;
-      }
-      setRoomError(messageFrom(cause, "The scene could not end yet."));
-    } finally {
-      if (lifetime.finish(claim)) setRoomBusy(false);
-    }
-  }, [
-    composerEditVersionRef,
-    lifetime,
-    loadSnapshot,
-    receiveRoomRecordEvents,
-    room,
-    contactRecovery,
-    roomBusy,
-    roomCompletionRef,
-    roomDraft,
-    roomLeaveSubmissionIdRef,
-    roomSendInFlightRef,
-    seenRoomEventIdsRef,
-    setLastSceneEnding,
-    setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomNotices,
-    setRoomOpen,
-    setScreen,
-  ]);
-}
-
 export function useDiscardRoomDebug(ports: {
   debugDiscardEnabled: boolean;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
@@ -464,12 +278,10 @@ export function useDiscardRoomDebug(ports: {
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
 }) {
   const confirmVillages = useConfirmation(ports.room?.id);
   const {
@@ -505,7 +317,7 @@ export function useDiscardRoomDebug(ports: {
       setScreen("home");
       void loadSnapshot();
     } catch (cause) {
-      setRoomError(messageFrom(cause, "The debug discard failed."));
+      setRoomError(sceneFailure(cause, "The debug discard failed.", "discard"));
     } finally {
       setRoomBusy(false);
     }
@@ -540,7 +352,7 @@ export function useMoveRoom(ports: {
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomContactBoundary: React.Dispatch<SetStateAction<string>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
 }) {
   const {
@@ -571,7 +383,7 @@ export function useMoveRoom(ports: {
     clearCompletionOnRetire: false,
   });
   return useCallback(
-    async (zoneId: string) => {
+    async (zoneId: string, trespass = false) => {
       if (
         !room?.id ||
         roomEnded ||
@@ -597,7 +409,17 @@ export function useMoveRoom(ports: {
         );
         if (!owns()) return;
         if (hasPendingContact(operation)) throw new Error("Review the saved action before moving.");
-        const resend = sceneResend(operation, { zoneId }, operationId);
+        if (operation?.input?.trespass !== (trespass ? true : undefined) || operation?.input?.follow !== true)
+          operationId = createVillagesClientId();
+        const resend = sceneResend(
+          operation,
+          {
+            zoneId,
+            follow: true,
+            ...(trespass ? { trespass: true } : {}),
+          },
+          operationId,
+        );
         operationId = resend.submissionId;
         roomMoveOperationIdRef.current = operationId;
         claim.submission = operationId;
@@ -606,6 +428,8 @@ export function useMoveRoom(ports: {
           body: JSON.stringify({
             sessionId: room.id,
             zoneId,
+            follow: true,
+            ...(trespass ? { trespass: true } : {}),
             operationId,
             expectedSceneRevision: room.sceneRevision ?? 0,
             retryOfAttemptId: resend.retryOfAttemptId,
@@ -633,7 +457,7 @@ export function useMoveRoom(ports: {
           roomMoveOperationIdRef.current = null;
           claim.submission = null;
           void loadSnapshot();
-        } else setRoomError(messageFrom(cause, "That Zone could not be entered."));
+        } else setRoomError(sceneFailure(cause, "That Zone could not be entered.", "move"));
       } finally {
         if (lifetime.finish(claim)) setRoomBusy(false);
       }
@@ -677,13 +501,11 @@ export function useSendRoom(ports: {
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
   snapshot: VillageSnapshot;
 }) {
   const { composerEditVersionRef } = ports;
@@ -724,6 +546,8 @@ export function useSendRoom(ports: {
   });
   const recovery = useTurnRecovery({
     visible: ports.visible,
+    worldScope: snapshot?.worldScope,
+    draft: roomDraft,
     room,
     setRoom,
     setRoomEnded,
@@ -734,26 +558,65 @@ export function useSendRoom(ports: {
     receiveRoomRecordEvents,
     refreshSnapshot: () => void loadSnapshot({ quiet: true }),
   });
-  const { pending: recoveryPending, begin: beginRecovery } = recovery;
+  const { pending: recoveryPending, attempt: uncertain, check, begin: beginRecovery, finish, track } = recovery;
   const sendRoom = useCallback(
     async (replacement?: ContactRecovery) => {
-      if (recoveryPending || (contactRecovery?.sceneId === room?.id && !replacement)) return;
+      if (contactRecovery?.sceneId === room?.id && !replacement) return;
       const editVersion = composerEditVersionRef?.current ?? 0;
-      const text = roomDraft;
+      const text = roomDraft.trim() ? roomDraft : (uncertain?.text ?? "");
       if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.trim().length === 0)
         return;
       const claim = lifetime.begin(room.id);
       if (!claim) return;
       const owns = () => lifetime.owns(claim);
+      setRoomBusy(true);
+      claim.busy = true;
       let submissionId = roomSubmissionIdRef.current ?? createVillagesClientId();
       let resend: ReturnType<typeof sceneResend>;
+      let sharedIdentity = false;
+      let keptUnconfirmedId = false;
       const before = room;
       recordTurnTiming(room.id, submissionId, "send");
       try {
         const { operation } = await request<{ operation: RoomOperation | null }>(
           `/rooms/${encodeURIComponent(room.id)}/operation`,
+          { signal: AbortSignal.timeout(5_000) },
         );
         if (!owns()) return;
+        if (operation?.status === "running")
+          setRoom((current) =>
+            current?.id === room.id &&
+            current.status === room.status &&
+            current.sceneRevision === room.sceneRevision &&
+            current.operation?.id === room.operation?.id &&
+            current.operation?.attemptId === room.operation?.attemptId &&
+            current.operation?.status === room.operation?.status
+              ? { ...current, operation }
+              : current,
+          );
+        if (uncertain) {
+          const previous =
+            operation?.id === uncertain.submissionId
+              ? operation
+              : (
+                  await request<{ operation: RoomOperation | null }>(
+                    `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(uncertain.submissionId)}`,
+                    { signal: AbortSignal.timeout(5_000) },
+                  )
+                ).operation;
+          if (!owns()) return;
+          if (previous && (previous.committed || previous.terminal || previous.status === "running")) {
+            await check();
+            if (lifetime.finish(claim)) setRoomBusy(false);
+            return;
+          }
+          if (!previous) {
+            // One submission ID lets the server admit either input while a late original is still possible.
+            submissionId = uncertain.submissionId;
+            sharedIdentity = !!uncertain.changed || text !== uncertain.text;
+            keptUnconfirmedId = true;
+          } else if (previous.id !== operation?.id) submissionId = createVillagesClientId();
+        }
         if (
           !replacement &&
           (operation?.status !== "complete" || !!operation.error) &&
@@ -772,10 +635,13 @@ export function useSendRoom(ports: {
           submissionId,
         );
         submissionId = resend.submissionId;
+        finish();
+        track({ sceneId: room.id, submissionId, text, editVersion, started: Date.now(), changed: sharedIdentity });
         roomSubmissionIdRef.current = submissionId;
         claim.submission = submissionId;
       } catch (cause) {
         if (!lifetime.finish(claim)) return;
+        setRoomBusy(false);
         const staleReason = staleVenueReason(cause);
         if (staleReason) {
           setRoom(null);
@@ -787,7 +653,7 @@ export function useSendRoom(ports: {
           );
           setScreen("home");
           void loadSnapshot();
-        } else setRoomError(messageFrom(cause, "The Scene could not be checked."));
+        } else setRoomError(sceneFailure(cause, "The Scene could not be checked.", "send"));
         return;
       }
       const mine: RoomLine = {
@@ -798,10 +664,9 @@ export function useSendRoom(ports: {
         content: text,
         at: new Date().toISOString(),
       };
-      setRoomBusy(true);
-      claim.busy = true;
       setRoomError("");
-      setRoomDraft("");
+      if (!composerEditVersionRef || composerEditVersionRef.current === editVersion)
+        setRoomDraft((current) => (current === roomDraft ? "" : current));
       setRoom({ ...room, lines: [...room.lines, mine] });
       roomCompletionRef.current = { roomId: room.id, submissionId };
       claim.completion = roomCompletionRef.current;
@@ -822,6 +687,7 @@ export function useSendRoom(ports: {
           signal: AbortSignal.timeout(300_000),
         });
         if (!owns()) return;
+        finish();
         recordTurnTiming(room.id, submissionId, "responseReceived");
         setRoom(currentRoom(answer.session));
         setRoomEnded(answer.session.status === "closed");
@@ -841,6 +707,7 @@ export function useSendRoom(ports: {
         if (!owns()) return;
         const { operation } = await request<{ operation: RoomOperation | null }>(
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(submissionId)}`,
+          { signal: AbortSignal.timeout(5_000) },
         ).catch(() => ({ operation: null }));
         if (!owns()) return;
         // A turn can commit between recovery reads. Check the final active read
@@ -854,13 +721,25 @@ export function useSendRoom(ports: {
         const authoritative = recovered ? null : await refreshSceneAfterFailure(room.id, submissionId, owns);
         if (!owns()) return;
         if (hasPublishedRoomSubmission(authoritative, submissionId)) recovered = authoritative;
+        const rejectedInput = cause instanceof VillageApiError && cause.code === "SUBMISSION_MISMATCH";
         if (recovered) {
+          const acceptedText = sceneSubmissionText(operation, submissionId);
+          if (sharedIdentity && !rejectedInput && acceptedText === undefined) {
+            const failure = sceneFailure(cause, "The reply connection was interrupted.", "send", submissionId);
+            setRoom(currentRoom(recovered));
+            beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
+            return;
+          }
+          finish();
           if (replacement) setContactRecovery(null);
           if (latest) setRoom(currentRoom(latest));
           setRoom(currentRoom(recovered));
           setRoomEnded(recovered.status === "closed");
-          setRoomError("");
-          setRoomDraft("");
+          if (sharedIdentity && (rejectedInput || acceptedText !== text)) {
+            if (!composerEditVersionRef || composerEditVersionRef.current === editVersion)
+              setRoomDraft((current) => current || text);
+            setRoomError(sceneFailure(cause, "An earlier version of this message went through.", "send"));
+          } else setRoomError("");
           roomSubmissionIdRef.current = null;
           claim.submission = null;
           setRoomGreetingNotice("");
@@ -871,6 +750,7 @@ export function useSendRoom(ports: {
         claim.completion = null;
         const staleReason = staleVenueReason(cause);
         if (staleReason) {
+          finish();
           if (latest) setRoom(currentRoom(latest));
           setRoom(null);
           setRoomOpen(false);
@@ -889,24 +769,55 @@ export function useSendRoom(ports: {
             : (authoritative ?? latest);
         if (newest) setRoom(currentRoom(newest));
         else setRoom(before);
-        if (cause instanceof VillageApiError && (cause.code === "SCENE_BUSY" || cause.code === "SCENE_STALE"))
+        if (
+          rejectedInput ||
+          (cause instanceof VillageApiError && (cause.code === "SCENE_BUSY" || cause.code === "SCENE_STALE"))
+        )
           roomSubmissionIdRef.current = null;
         claim.submission = roomSubmissionIdRef.current;
-        setRoomDraft((current) => current || text);
-        const uncertain =
-          !(cause instanceof VillageApiError) ||
-          cause.status === 0 ||
-          ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "");
-        if (uncertain) {
-          beginRecovery(submissionId, text, editVersion, messageFrom(cause, "The reply connection was interrupted."));
+        const confirmedFailure =
+          operation?.id === submissionId &&
+          (operation.acceptance === "abandoned" ||
+            operation.status === "interrupted" ||
+            (operation.status === "complete" && !!operation.error));
+        if (operation?.id === submissionId && operation.acceptance === "abandoned") {
+          roomSubmissionIdRef.current = null;
+          claim.submission = null;
+        }
+        const stillUncertain =
+          !rejectedInput &&
+          !confirmedFailure &&
+          (!(cause instanceof VillageApiError) ||
+            cause.status === 0 ||
+            cause.status >= 500 ||
+            ["RESPONSE_READ_FAILED", "INVALID_RESPONSE"].includes(cause.code ?? "") ||
+            keptUnconfirmedId);
+        if (stillUncertain) {
+          const failure = sceneFailure(cause, "The reply connection was interrupted.", "send", submissionId);
+          beginRecovery(submissionId, text, editVersion, failure.message, sharedIdentity, failure.trace);
           setRoomError("");
-        } else setRoomError(messageFrom(cause, "That line could not be sent."));
+        } else {
+          finish();
+          if (!composerEditVersionRef || composerEditVersionRef.current === editVersion)
+            setRoomDraft((current) => current || text);
+          setRoomError(
+            sceneFailure(
+              cause,
+              "That line could not be sent.",
+              "send",
+              confirmedFailure && !rejectedInput ? submissionId : undefined,
+            ),
+          );
+        }
       } finally {
         if (lifetime.finish(claim)) setRoomBusy(false);
       }
     },
     [
-      recoveryPending,
+      uncertain,
+      check,
+      finish,
+      track,
       composerEditVersionRef,
       roomDraft,
       contactRecovery,
@@ -934,7 +845,13 @@ export function useSendRoom(ports: {
       beginRecovery,
     ],
   );
-  return { sendRoom, turnRecovery: recovery.status, checkSavedReply: recovery.check, replyPending: recoveryPending };
+  const trace = uncertain && { action: "send" as const, ...uncertain.trace, submissionId: uncertain.submissionId };
+  return {
+    sendRoom,
+    turnRecovery: recovery.status && trace ? { message: recovery.status, trace } : recovery.status,
+    checkSavedReply: recovery.check,
+    replyPending: recoveryPending,
+  };
 }
 
 type EntryGreeting = { owns(): boolean; handoff(session: SceneView): boolean };
@@ -948,7 +865,7 @@ export function useGreetRoom(ports: {
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
 }) {
@@ -1019,6 +936,82 @@ export function useGreetRoom(ports: {
   );
 }
 
+/** Automatic reactions are ordinary recoverable turns and never consume the unsent composer. */
+export function useReactToTrespass(
+  ports: Parameters<typeof useGreetRoom>[0] & { receiveRoomRecordEvents: (events: readonly RoomRecordEvent[]) => void },
+) {
+  const {
+    room,
+    isFounded,
+    roomEnded,
+    roomBusy,
+    roomSendInFlightRef,
+    roomCompletionRef,
+    setRoomBusy,
+    setRoom,
+    setRoomError,
+    loadSnapshot,
+    receiveRoomRecordEvents,
+  } = ports;
+  const submission = useRef<string | null>(null);
+  const lifetime = useSceneRequestLifetime({
+    sceneId: room?.id,
+    isFounded,
+    ended: roomEnded || room?.status === "closed",
+    inFlight: roomSendInFlightRef,
+    submission,
+    completion: roomCompletionRef,
+    setBusy: setRoomBusy,
+    clearCompletionOnRetire: false,
+  });
+  return useCallback(async () => {
+    const reaction = room?.trespassReactionId;
+    if (!isFounded || !room?.id || !reaction || roomBusy || roomEnded || roomSendInFlightRef.current) return;
+    const claim = lifetime.begin(room.id);
+    if (!claim) return;
+    const owns = () => lifetime.owns(claim);
+    claim.busy = true;
+    claim.submission = reaction;
+    submission.current = reaction;
+    setRoomBusy(true);
+    setRoomError("");
+    try {
+      const { session, recordEvents } = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(
+        "/rooms/react",
+        {
+          method: "POST",
+          body: JSON.stringify({ sessionId: room.id, reactionId: reaction, expectedSceneRevision: room.sceneRevision }),
+        },
+      );
+      if (!owns()) return;
+      setRoom(currentRoom(session));
+      receiveRoomRecordEvents(recordEvents ?? []);
+      void loadSnapshot();
+    } catch (cause) {
+      if (!owns()) return;
+      const latest = await refreshSceneAfterFailure(room.id, reaction, owns);
+      if (!owns()) return;
+      if (latest) setRoom(currentRoom(latest));
+      if (latest?.operation?.id !== reaction || latest.operation.status !== "complete" || latest.operation.error)
+        setRoomError(sceneFailure(cause, "The trespass response could not be completed.", "send"));
+    } finally {
+      if (lifetime.finish(claim)) setRoomBusy(false);
+    }
+  }, [
+    room,
+    isFounded,
+    roomEnded,
+    roomBusy,
+    roomSendInFlightRef,
+    lifetime,
+    setRoomBusy,
+    setRoom,
+    setRoomError,
+    loadSnapshot,
+    receiveRoomRecordEvents,
+  ]);
+}
+
 export function useRetrySavedScene(ports: {
   isFounded: boolean | undefined;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
@@ -1029,7 +1022,6 @@ export function useRetrySavedScene(ports: {
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomDraft: string;
   roomEnded: boolean;
-  roomLeaveSubmissionIdRef: React.RefObject<string>;
   roomMoveOperationIdRef: React.RefObject<string>;
   roomSendInFlightRef: React.RefObject<boolean>;
   roomSubmissionIdRef: React.RefObject<string>;
@@ -1037,10 +1029,9 @@ export function useRetrySavedScene(ports: {
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomContactBoundary: React.Dispatch<SetStateAction<string>>;
-  setRoomContactKind: React.Dispatch<SetStateAction<"knock" | "call">>;
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
@@ -1055,7 +1046,6 @@ export function useRetrySavedScene(ports: {
     roomCompletionRef,
     roomDraft,
     roomEnded,
-    roomLeaveSubmissionIdRef,
     roomMoveOperationIdRef,
     roomSendInFlightRef,
     roomSubmissionIdRef,
@@ -1063,7 +1053,6 @@ export function useRetrySavedScene(ports: {
     setRoom,
     setRoomBusy,
     setRoomContactBoundary,
-    setRoomContactKind,
     setRoomDraft,
     setRoomEnded,
     setRoomError,
@@ -1101,6 +1090,7 @@ export function useRetrySavedScene(ports: {
       try {
         const { operation } = await request<{ operation: RoomOperation }>(
           `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
+          { signal: AbortSignal.timeout(5_000) },
         );
         if (!lifetime.owns(claim)) return;
         if (!expected && operation?.kind === "turn" && operation.input?.mode === "contact")
@@ -1126,17 +1116,21 @@ export function useRetrySavedScene(ports: {
             : operation.kind === "greet"
               ? "/rooms/greet"
               : operation.kind === "turn"
-                ? operation.input?.mode === "leave"
-                  ? "/rooms/leave"
-                  : "/rooms/turn"
+                ? operation.input?.trespassReaction
+                  ? "/rooms/react"
+                  : operation.input?.mode === "leave"
+                    ? "/rooms/leave"
+                    : "/rooms/turn"
                 : "/rooms/end";
         const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
           method: "POST",
+          signal: AbortSignal.timeout(300_000),
           body: JSON.stringify({
             ...operation.input,
             sessionId: room.id,
             submissionId: operation.id,
             operationId: operation.id,
+            ...(operation.input?.trespassReaction ? { reactionId: operation.id } : {}),
             expectedSceneRevision: room.sceneRevision ?? 0,
             ...(operation.kind === "greet" && operation.recoverable
               ? { recovery: true }
@@ -1154,7 +1148,6 @@ export function useRetrySavedScene(ports: {
         )
           setRoomDraft("");
         roomSubmissionIdRef.current = null;
-        roomLeaveSubmissionIdRef.current = null;
         roomCompletionRef.current = null;
         claim.completion = null;
         setRoomError("");
@@ -1165,17 +1158,14 @@ export function useRetrySavedScene(ports: {
           setRoomContactBoundary("");
           roomMoveOperationIdRef.current = null;
         }
-        if (operation.kind === "turn" && operation.input?.mode === "contact") {
-          setRoomTargetId("");
-          setRoomContactKind("call");
-        }
+        if (operation.kind === "turn" && operation.input?.mode === "contact") setRoomTargetId("");
         void loadSnapshot();
       } catch (cause) {
         if (!lifetime.owns(claim)) return;
         const latest = await refreshSceneAfterFailure(room.id, undefined, () => lifetime.owns(claim));
         if (!lifetime.owns(claim)) return;
         if (latest) setRoom(currentRoom(latest));
-        setRoomError(messageFrom(cause, "The saved request could not be recovered."));
+        setRoomError(sceneFailure(cause, "The saved request could not be recovered.", "retry"));
       } finally {
         if (lifetime.finish(claim)) setRoomBusy(false);
       }
@@ -1189,14 +1179,12 @@ export function useRetrySavedScene(ports: {
       receiveRoomRecordEvents,
       loadSnapshot,
       roomCompletionRef,
-      roomLeaveSubmissionIdRef,
       roomMoveOperationIdRef,
       roomSubmissionIdRef,
       composerEditVersionRef,
       setRoom,
       setRoomBusy,
       setRoomContactBoundary,
-      setRoomContactKind,
       setRoomDraft,
       setRoomEnded,
       setRoomError,
@@ -1216,7 +1204,7 @@ export function useContinueRoomWithoutGreeting(ports: {
   roomSendInFlightRef: React.RefObject<boolean>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
 }) {
   const {
@@ -1261,7 +1249,7 @@ export function useContinueRoomWithoutGreeting(ports: {
         setRoomError("");
       } catch (cause) {
         if (!lifetime.owns(claim)) return;
-        setRoomError(messageFrom(cause, "The Scene could not continue. Retry or leave the venue."));
+        setRoomError(sceneFailure(cause, "The Scene could not continue. Retry or leave the venue.", "continue"));
       } finally {
         if (lifetime.finish(claim)) setRoomBusy(false);
       }
@@ -1288,14 +1276,12 @@ export function useOpenRoom(ports: {
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
-  setRoomError: React.Dispatch<SetStateAction<string>>;
+  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
   setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
   setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
-  setScreen: React.Dispatch<
-    SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
-  >;
+  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
 }) {
   const {
     greetRoom,
@@ -1348,7 +1334,12 @@ export function useOpenRoom(ports: {
         try {
           const { session } = await request<{ session: SceneView }>("/rooms/zone", {
             method: "POST",
-            body: JSON.stringify({ sessionId: room.id, zoneId, expectedSceneRevision: room.sceneRevision ?? 0 }),
+            body: JSON.stringify({
+              sessionId: room.id,
+              zoneId,
+              follow: true,
+              expectedSceneRevision: room.sceneRevision ?? 0,
+            }),
           });
           if (!owns()) return;
           setRoom(currentRoom(session));
@@ -1358,7 +1349,7 @@ export function useOpenRoom(ports: {
           void loadSnapshot();
         } catch (cause) {
           if (!owns()) return;
-          setRoomError(messageFrom(cause, "That zone could not be entered."));
+          setRoomError(sceneFailure(cause, "That zone could not be entered.", "move"));
         } finally {
           if (lifetime.finish(claim)) setRoomBusy(false);
         }
@@ -1399,7 +1390,8 @@ export function useOpenRoom(ports: {
           method: "POST",
           body: JSON.stringify({
             venueId: place.id,
-            zoneId,
+            follow: true,
+            zoneId: zoneId ?? place.zones?.find((zone) => zone.kind === "exterior")?.id,
             expectedSceneRevision: room?.sceneRevision,
           }),
           signal: AbortSignal.timeout(20_000),
@@ -1409,16 +1401,17 @@ export function useOpenRoom(ports: {
         setRoom(currentRoom(session));
         setRoomTargetId("");
         setLastSceneEnding("");
+        setRoomEnded(session.status === "closed");
         setRoomOpen(true);
         void loadSnapshot();
-        if (session.status === "opening")
+        if (session.status === "opening" && !session.visitEventOpening)
           await greetRoom(session.id, {
             owns,
             handoff: (next) => lifetime.handoff(claim, next, false),
           });
       } catch (cause) {
         if (!owns()) return;
-        setRoomError(messageFrom(cause, "That Zone could not be opened. Retry or leave the venue."));
+        setRoomError(sceneFailure(cause, "That Zone could not be opened. Retry or leave the venue.", "open"));
       } finally {
         if (lifetime.finish(claim)) setRoomBusy(false);
       }

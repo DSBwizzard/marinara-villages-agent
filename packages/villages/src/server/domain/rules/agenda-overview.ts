@@ -194,6 +194,7 @@ export function sceneAgendaEvidence(
   memoryRequire(
     actor &&
       resident?.agenda &&
+      !readset.visitorIds?.includes(actorId) &&
       write.holders.some((row) => row.kind === "actor" && row.id === "player") &&
       write.about?.some((row) => row.id === actorId && row.incarnation === actor.incarnation) &&
       !write.target &&

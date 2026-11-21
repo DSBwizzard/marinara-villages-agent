@@ -14,8 +14,6 @@ import type { useDismissRoomNotice } from "./actions.js";
 
 import type { useGreetRoom } from "./actions.js";
 
-import type { useLeaveRoom } from "./actions.js";
-
 import type { useLoadVillageSnapshot } from "../../shared/data-controller.js";
 
 import type { useMoveRoom } from "./actions.js";
@@ -25,6 +23,7 @@ import type { useOpenRoom } from "./actions.js";
 import type { useRetrySavedScene } from "./actions.js";
 
 import type { useSendRoom } from "./actions.js";
+import type { VenueLayoutDraft } from "../venues/layout-draft.js";
 
 /** Values and actions used by SceneScreen; independent of shell implementation. */
 export type SceneScreenController = {
@@ -38,7 +37,6 @@ export type SceneScreenController = {
   readonly dismissRoomNotice: ReturnType<typeof useDismissRoomNotice>;
   readonly goHome: () => void;
   readonly greetRoom: ReturnType<typeof useGreetRoom>;
-  readonly leaveRoom: ReturnType<typeof useLeaveRoom>;
   readonly loadSnapshot: ReturnType<typeof useLoadVillageSnapshot>;
   readonly mailboxOpen: ScenesState["mailboxOpen"];
   readonly mobile: boolean;
@@ -52,14 +50,13 @@ export type SceneScreenController = {
   readonly retrySavedScene: ReturnType<typeof useRetrySavedScene>;
   readonly room: import("../../../shared/contracts/village").SceneView;
   readonly roomBusy: ScenesState["roomBusy"];
-  readonly roomChangeStatus: ScenesState["roomChangeStatus"];
   readonly roomContactBoundary: ScenesState["roomContactBoundary"];
   readonly roomDraft: ScenesState["roomDraft"];
   readonly roomEnded: ScenesState["roomEnded"];
   readonly roomError: ScenesState["roomError"];
+  readonly roomErrorTrace?: ScenesState["roomErrorTrace"];
   readonly roomGreetingError: ScenesState["roomGreetingError"];
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
-  readonly roomLeaveSubmissionIdRef: ScenesState["roomLeaveSubmissionIdRef"];
   readonly contactRecovery: ScenesState["contactRecovery"];
   readonly setContactRecovery: ScenesState["setContactRecovery"];
   readonly roomMoveOperationIdRef: ScenesState["roomMoveOperationIdRef"];
@@ -69,21 +66,20 @@ export type SceneScreenController = {
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
   readonly sendRoom: ReturnType<typeof useSendRoom>["sendRoom"];
-  readonly turnRecovery?: string;
-  readonly replyPending?: boolean;
+  readonly turnRecovery?: ReturnType<typeof useSendRoom>["turnRecovery"];
   readonly checkSavedReply?: () => Promise<void>;
   readonly setMailboxOpen: ScenesState["setMailboxOpen"];
   readonly setRoom: React.ActionDispatch<
     [next: React.SetStateAction<import("../../../shared/contracts/village").SceneView>]
   >;
-  readonly setRoomBusy: ScenesState["setRoomBusy"];
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
-  readonly setRoomContactKind: ScenesState["setRoomContactKind"];
+  readonly setRoomBusy: ScenesState["setRoomBusy"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
   readonly setRoomError: ScenesState["setRoomError"];
+  readonly setRoomNotices: ScenesState["setRoomNotices"];
   readonly setRoomTargetId: ScenesState["setRoomTargetId"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setSnapshot: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>
@@ -91,4 +87,4 @@ export type SceneScreenController = {
   readonly setVenueEditDraft: React.Dispatch<React.SetStateAction<VillageVenue | null>>;
   readonly setVenueId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-};
+} & Pick<VenueLayoutDraft, "venueLayouts" | "stageVenueZoneLayout" | "commitVenueZoneLayout">;

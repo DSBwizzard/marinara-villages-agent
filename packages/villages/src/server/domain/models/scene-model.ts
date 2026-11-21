@@ -69,13 +69,18 @@ export type VenueRecordEvent = {
   wishUpdate?: { actorId?: string; wishId: string; state: "revealed" | "progress" | "fulfilled" };
   /** Player-visible saved details; formatting never makes a model request. */
   detail?: string;
+  travel?: { venueId: string; zoneId: string; grantId: string; label: string };
 };
 export type VenueScene = {
+  visitorIntroduction?: true;
   /** Provisional writer cast, validated before publication; never persisted as Scene authority. */
   pendingNpcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   /** Private captured writing context; never part of a client projection. */
   continuity?: import("../rules/scene-continuity.js").SceneContinuity;
   openingGatheringId?: string;
+  visitEvent?: "waiting" | "opening" | "place";
+  /** The active pointer commits arrival. Keep the source reference until its closure is saved. */
+  arrival?: { sourceId: string; offerId: string; settled?: true };
   version: 5;
   changeSequence?: number;
   villageSeed?: string;
@@ -84,7 +89,16 @@ export type VenueScene = {
   /** Opaque stored operation heads retain purchases from explicitly abandoned requests. */
   abandonedOperations?: VenueOperation[];
   /** Idempotent free navigation, separate from conversational turns. */
-  navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
+  navigationReceipts?: {
+    id: string;
+    originZoneId: string;
+    destinationZoneId: string;
+    at: string;
+    trespass?: true;
+    companions?: string[];
+    follow?: true;
+    path?: string[];
+  }[];
   generationReceipts?: {
     operationId: string;
     attemptId: string;
@@ -98,6 +112,11 @@ export type VenueScene = {
   spaceClass?: VillageVenueClass;
   zoneId?: string;
   enteredFromZoneId?: string;
+  trespass?: { zoneId: string; reason: import("../../../shared/helpers/venue-access.js").TrespassReason };
+  actorTrespasses?: import("../rules/scene-trespass.js").ActorTrespass[];
+  movementAgreements?: import("../rules/scene-trespass.js").MovementAgreement[];
+  trespassEncounterKeys?: string[];
+  trespassReaction?: import("../rules/scene-trespass.js").TrespassReaction;
   accessPreviousZones?: Record<string, string>;
   pendingAccessClaim?: string;
   pendingRoomQuestions?: string[];
@@ -135,7 +154,7 @@ export type VenueScene = {
   recap: string;
 };
 export type VenueSession = VenueScene;
-export type ActiveVenue = { sessionId: string; placeId: string; playbackSceneId?: string };
+export type ActiveVenue = { sessionId: string; placeId: string; playbackSceneId?: string; settlingSourceId?: string };
 export type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
 export type VenueReplyLine = {
   zoneId?: string;

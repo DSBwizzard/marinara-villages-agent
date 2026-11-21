@@ -116,7 +116,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     const map = page.locator(".villages-zone-map");
     const leave = () => page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
     const manage = page.getByRole("button", { name: "Manage", exact: true });
-    const save = page.getByRole("button", { name: "Save connections", exact: true });
+    const save = page.getByRole("button", { name: "Save layout", exact: true });
     const openEditor = async () => {
       if ((await manage.getAttribute("aria-pressed")) !== "true") await manage.click();
       await page.getByRole("button", { name: "Zone connections", exact: true }).click();
@@ -128,9 +128,15 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     const select = (id) => map.locator(`[data-layout-zone="${id}"]`).click();
     const connection = (name) => page.getByRole("checkbox", { name, exact: true });
     await openEditor();
+    const arrangement = map.locator('[data-layout-zone="exterior"]');
+    await arrangement.focus();
+    await arrangement.press("ArrowRight");
+    await expect.poll(entranceX).toBe(1);
+    assert.equal(requests.length, 0, "Keyboard arranging remains a local draft until Save or navigation");
+    await arrangement.press("ArrowLeft");
     await select("exterior");
     await connection("common").uncheck();
-    await expect(map.locator("svg line")).toHaveCount(1);
+    await expect(map.locator("svg :is(line, polyline)")).toHaveCount(1);
     await expect(save).toBeDisabled();
     await leave();
     const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
@@ -142,7 +148,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await dialog.getByRole("button", { name: "Discard and leave", exact: true }).click();
     await back();
     await expect.poll(entranceX).toBe(0);
-    await expect(map.locator("svg line")).toHaveCount(2);
+    await expect(map.locator("svg :is(line, polyline)")).toHaveCount(2);
     assert.equal(requests.length, 0, "discard restores all saved positions and links without writing");
     await select("common");
     await connection("other").check();
@@ -163,7 +169,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     assert.equal((await read()).snapshot.settings.name, "Newer name");
     await openEditor();
     await expect.poll(entranceX).toBe(0);
-    await expect(map.locator("svg line")).toHaveCount(3);
+    await expect(map.locator("svg :is(line, polyline)")).toHaveCount(3);
     await select("common");
     await connection("other").uncheck();
     await leave();
@@ -172,7 +178,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await reply(1, { fail: true });
     await back();
     await expect(page.getByRole("alert")).toContainText("Layout unavailable");
-    await expect(map.locator("svg line")).toHaveCount(2);
+    await expect(map.locator("svg :is(line, polyline)")).toHaveCount(2);
     await leave();
     await expect.poll(() => requests.length).toBe(3);
     await reply(2);
@@ -181,7 +187,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
     await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
     await back();
-    await expect(map.locator("svg line")).toHaveCount(2);
+    await expect(map.locator("svg :is(line, polyline)")).toHaveCount(2);
     await select("common");
     await connection("other").check();
     await leave();
@@ -204,7 +210,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     );
     await back();
     await expect.poll(entranceX).toBe(0);
-    await expect(map.locator("svg line")).toHaveCount(3);
+    await expect(map.locator("svg :is(line, polyline)")).toHaveCount(3);
     await select("common");
     await connection("other").uncheck();
     await page.evaluate(() => window.h.scene({ id: "scene", status: "active", placeId: "b", zoneId: "exterior" }));
@@ -228,6 +234,67 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
     await back();
     await expect.poll(entranceX).toBe(0);
+    await page.evaluate(() => {
+      const snapshot = window.h.read().snapshot;
+      window.h.snapshot({
+        ...snapshot,
+        settings: {
+          ...snapshot.settings,
+          venues: snapshot.settings.venues.map((venue) => ({
+            ...venue,
+            accessView: { ...venue.accessView, canManage: false },
+          })),
+        },
+      });
+      window.h.scene({ id: "cosmetic-scene", status: "active", placeId: "a", zoneId: "exterior" });
+    });
+    await expect(page.getByText("End the Scene to edit the layout.", { exact: true })).toBeVisible();
+    await arrangement.press("ArrowRight");
+    await expect.poll(entranceX).toBe(0);
+    await expect(save).toBeDisabled();
+    await leave();
+    await back();
+    assert.equal(requests.length, 7, "A cosmetic draft cannot save during a Scene");
+    await page.evaluate(() => window.h.scene(null));
+    await expect(page.getByText("End the Scene to edit the layout.", { exact: true })).toHaveCount(0);
+    await arrangement.press("ArrowRight");
+    await expect.poll(entranceX).toBe(1);
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect.poll(() => requests.length).toBe(8);
+    assert.deepEqual(
+      requests[7].body.connections,
+      server.settings.venues[0].zones.map((zone) => ({ id: zone.id, connectedTo: zone.connectedTo })),
+      "Outside a Scene, cosmetic positioning preserves the actual connections",
+    );
+    await reply(7);
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await arrangement.press("ArrowRight");
+    await save.click();
+    await expect.poll(() => requests.length).toBe(9);
+    await page.evaluate(() => window.h.snapshot({ ...window.h.read().snapshot, worldScope: "c".repeat(64) }));
+    await reply(8);
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await expect.poll(entranceX).toBe(1);
+    server = structuredClone((await read()).snapshot);
+    await arrangement.press("ArrowRight");
+    await save.click();
+    await expect.poll(() => requests.length).toBe(10);
+    await reply(9, { fail: true, committed: true });
+    await expect(page.getByRole("alert")).toContainText("Layout unavailable");
+    await save.click();
+    await expect.poll(() => requests.length).toBe(11);
+    const currentScope = server.worldScope;
+    server.worldScope = "d".repeat(64);
+    await reply(10);
+    await expect(page.getByRole("alert")).toContainText("The Village changed");
+    assert.equal(requests.length, 11, "An uncertain reply from a different world never authorizes a retry PUT");
+    server.worldScope = currentScope;
+    await save.click();
+    await expect.poll(() => requests.length).toBe(12);
+    await reply(11);
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await expect.poll(entranceX).toBe(2);
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
     await context.close();

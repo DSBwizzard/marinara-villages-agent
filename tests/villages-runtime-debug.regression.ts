@@ -17,7 +17,7 @@ import { selectVillageLore } from "../packages/villages/src/server/domain/rules/
 import { inspectedLoreUse } from "../packages/villages/src/server/domain/rules/lore-context.js";
 import { registerRuntimeDiagnosticsRoutes } from "../packages/villages/src/server/features/settings/routes.js";
 import Fastify from "fastify";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { backgroundCalls } from "../packages/villages/src/server/adapters/operations/background-context.js";
 import { createTownMapImage } from "../packages/villages/src/server/features/media/town-map-image-service.js";
 import { createImageGeneration } from "../packages/villages/src/server/features/media/image-generation-service.js";

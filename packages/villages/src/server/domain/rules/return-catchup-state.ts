@@ -1,6 +1,7 @@
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { defaultVillageState } from "../decoding/village-codec.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT, type ReturnCatchupBatch, type VillageState } from "../models/world.js";
+import { placeRegistry } from "./places.js";
 import { calendarReplay } from "./clock-state.js";
 import { dueRelationshipAnswers } from "./continuity-library.js";
 import { captureReturnContext, departureContinuityAvailable } from "./return-catchup-capture.js";
@@ -150,4 +151,28 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
     opportunities,
     records: opportunities.map((opportunity) => ({ opportunityId: opportunity.id, status: "pending" })),
   };
+}
+
+export function playerVisitAbsenceElapsed(state: VillageState, wallTime: number): boolean {
+  const lastPresence = state.returnCatchup?.lastPresenceWallTime;
+  return lastPresence !== undefined && wallTime - lastPresence >= 60 * 60_000;
+}
+
+/** Consume the return boundary in the same write as expiration. */
+export function expirePlayerVisitsOnReturn(state: VillageState, wallTime: number): false | void {
+  if (!state.returnCatchup || !playerVisitAbsenceElapsed(state, wallTime)) return false;
+  state.returnCatchup.lastPresenceWallTime = wallTime;
+  const locations = [
+    ...state.venues,
+    ...Object.values(placeRegistry(state)?.places ?? {}).map((place) => place.location),
+  ];
+  for (const { access } of locations) {
+    if (!access) continue;
+    const expired = access.permissions.filter(
+      (grant) => !grant.revoked && grant.visitorId === "player" && grant.duration === "visit" && grant.sceneId,
+    );
+    if (!expired.length) continue;
+    for (const grant of expired) grant.revoked = true;
+    access.revision++;
+  }
 }

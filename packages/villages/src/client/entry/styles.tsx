@@ -1,8 +1,8 @@
 import { EXPLORATION_STYLES } from "../features/exploration/villages-exploration-styles.js";
 import { VILLAGES_FORGING_STYLES } from "../features/founding/villages-forging-styles.js";
 import { DOSSIER_STYLES } from "../features/residents/villages-dossier-styles.js";
-import { SCENE_ASIDE_STYLES } from "../features/scenes/villages-scene-asides.js";
 import { VILLAGES_SCENE_STYLES } from "../features/scenes/villages-scene-styles.js";
+import { SCENE_ASIDE_STYLES } from "../features/scenes/villages-scene-asides.js";
 import { ELEMENT_TAG, STYLE_ID } from "../shared/constants.js";
 import { LORE_ACTIVITY_STYLES } from "../shared/lore-activity-styles.js";
 
@@ -15,6 +15,46 @@ import { LORE_ACTIVITY_STYLES } from "../shared/lore-activity-styles.js";
 const VILLAGES_STYLES = `
 
 ${LORE_ACTIVITY_STYLES}
+
+${ELEMENT_TAG} {
+  --background: #302d47;
+  --foreground: #f0dfbc;
+  --popover: #393047;
+  --card: #352c44;
+  --muted: #4f3c53;
+  --muted-foreground: #d0c1b3;
+  --border: #a39b8460;
+  --primary: #969b7e;
+  --primary-foreground: #292938;
+  --secondary: #514157;
+  --destructive: #f3b6b7;
+  --ring: var(--primary);
+  color: var(--foreground);
+  background: var(--background);
+  color-scheme: dark;
+  accent-color: var(--primary);
+  /* Use the Village palette fallbacks instead of Engine's inherited chrome colors. */
+  --marinara-chat-chrome-accent: initial;
+  --marinara-chat-chrome-button-bg: initial;
+  --marinara-chat-chrome-button-bg-hover: initial;
+  --marinara-chat-chrome-button-border: initial;
+  --marinara-chat-chrome-button-border-hover: initial;
+  --marinara-chat-chrome-button-text: initial;
+  --marinara-chat-chrome-button-text-active: initial;
+  --marinara-chat-chrome-button-text-hover: initial;
+  --marinara-chat-chrome-focus-ring: initial;
+  --marinara-chat-chrome-highlight-text: initial;
+  --marinara-chat-chrome-input-bg: initial;
+  --marinara-chat-chrome-input-border: initial;
+  --marinara-chat-chrome-input-border-focus: initial;
+  --marinara-chat-chrome-panel-bg: initial;
+  --marinara-chat-chrome-panel-border: initial;
+  --marinara-chat-chrome-panel-divider: initial;
+  --marinara-chat-chrome-panel-muted: initial;
+  --marinara-chat-chrome-panel-text: initial;
+}
+${ELEMENT_TAG}, ${ELEMENT_TAG} :where(*) { scrollbar-color: #a3899680 transparent; }
+${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(--primary); }
 
 .${ELEMENT_TAG}-root {
   --${ELEMENT_TAG}-pad: clamp(.625rem, 2cqw, 1.25rem);
@@ -162,7 +202,7 @@ ${LORE_ACTIVITY_STYLES}
 .${ELEMENT_TAG}-room-star {
   display: flex; align-items: flex-start; gap: .5rem; padding: .55rem .65rem;
   border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: .65rem;
-  background: var(--marinara-chat-chrome-panel-bg, var(--surface)); color: var(--text);
+  background: var(--marinara-chat-chrome-panel-bg, var(--popover)); color: var(--foreground);
   box-shadow: 0 .25rem 1rem #0003; font-size: .82rem; line-height: 1.35;
 }
 .${ELEMENT_TAG}-room-star > span:first-child { color: #e5b13e; font-size: 1.2rem; line-height: 1; }
@@ -387,7 +427,6 @@ ${LORE_ACTIVITY_STYLES}
 .${ELEMENT_TAG}-chat-cast-rest > span { display: inline-flex; align-items: center; gap: .2rem; padding: .1rem .35rem; border-radius: .35rem; background: #000a; color: white; font-size: .625rem; }
 .${ELEMENT_TAG}-chat-cast-rest .${ELEMENT_TAG}-avatar { width: 1rem; height: 1rem; border-radius: 50%; overflow: hidden; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-activities { display: none; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-history-toggle { width: auto; height: auto; min-height: 2rem; align-self: center; padding: .2rem .65rem; border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: .5rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-text { font-size: .9375rem; line-height: 1.55; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-aside-text { font-size: .8125rem; line-height: 1.45; }
 
@@ -407,27 +446,6 @@ ${LORE_ACTIVITY_STYLES}
   background: var(--marinara-chat-chrome-panel-bg, color-mix(in srgb, var(--popover) 92%, transparent));
   backdrop-filter: blur(12px);
   box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .28);
-}
-
-.${ELEMENT_TAG}-chat-tab { display: flex; justify-content: center; }
-.${ELEMENT_TAG}-chat-history-toggle {
-  position: relative;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 2.5rem; height: 1.5rem; padding: 0; box-sizing: border-box;
-  border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border));
-  border-bottom: 0; border-radius: .5rem .5rem 0 0;
-  background: var(--marinara-chat-chrome-panel-bg, var(--popover));
-  color: var(--marinara-chat-chrome-button-text, var(--foreground));
-  backdrop-filter: blur(12px);
-  cursor: pointer; font-family: inherit;
-}
-.${ELEMENT_TAG}-chat-history-toggle::before { content: ""; position: absolute; inset: -.625rem -.25rem; }
-.${ELEMENT_TAG}-chat-history-toggle:hover { color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
-.${ELEMENT_TAG}-chat-history-toggle svg { width: .875rem; height: .875rem; }
-.${ELEMENT_TAG}-chat-history-toggle[aria-expanded="true"] {
-  margin-top: -1px;
-  border-top: 0; border-bottom: 1px solid var(--marinara-chat-chrome-panel-border, var(--border));
-  border-radius: 0 0 .5rem .5rem;
 }
 
 .${ELEMENT_TAG}-chat-vn-card {
@@ -487,13 +505,6 @@ ${LORE_ACTIVITY_STYLES}
   color: var(--muted-foreground);
 }
 
-.${ELEMENT_TAG}-chat-vn-asides {
-  display: flex; flex-direction: column; align-items: flex-end; gap: .375rem;
-  flex: 0 1 auto; min-height: 0; max-height: min(12rem, 30cqh);
-  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
-  padding-right: .25rem;
-}
-
 .${ELEMENT_TAG}-chat-vn-aside {
   flex: 0 0 auto;
   display: flex; align-items: flex-start; gap: .5rem;
@@ -522,7 +533,6 @@ ${LORE_ACTIVITY_STYLES}
   display: flex; align-items: center; gap: .375rem;
   margin: 0; min-width: 0;
 }
-.${ELEMENT_TAG}-chat-vn-aside-icon { flex: 0 0 auto; font-size: .5625rem; }
 .${ELEMENT_TAG}-chat-vn-aside-name {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: .6875rem; font-weight: 600; line-height: 1.4;
@@ -1895,11 +1905,9 @@ ${ELEMENT_TAG} {
 
 .${ELEMENT_TAG}-root.${ELEMENT_TAG}-room-screen { box-sizing: border-box; padding: 0; overflow: hidden; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { position: relative; align-self: center; width: min(58rem, 100%); margin-top: auto; padding: .6rem; box-sizing: border-box; border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: 1rem; background: var(--marinara-chat-chrome-panel-bg, color-mix(in srgb, var(--popover) 88%, transparent)); backdrop-filter: blur(14px); box-shadow: 0 .75rem 2rem #0007; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .5rem); width: min(75%, 24rem); max-height: min(30cqh, 12rem); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-card { background: color-mix(in srgb, var(--background) 62%, transparent); box-shadow: none; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-reading { max-height: min(30cqh, 18rem); }
 .${ELEMENT_TAG}-room-panel-tools { display: flex; align-items: center; gap: .5rem; min-height: 2rem; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-history-toggle { min-height: 2rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { min-width: 0; }
 .${ELEMENT_TAG}-mailbox-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 1rem; background: #0009; }
 .${ELEMENT_TAG}-mailbox { width: min(42rem, 100%); max-height: min(80vh, 48rem); overflow: auto; padding: 1.5rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--popover); box-shadow: 0 1rem 3rem #0009; }
@@ -1914,11 +1922,10 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-memory-dialog-head h2 { margin: 0; font-size: 1rem; line-height: 1.4; }
 .${ELEMENT_TAG}-memory-dialog-head button { border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.5rem; cursor: pointer; }
 .${ELEMENT_TAG}-memory-dialog p { margin: .75rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
-@container ${ELEMENT_TAG} (max-width: 44rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 100%; padding: .45rem; } .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { width: min(85%, 22rem); } }
+@container ${ELEMENT_TAG} (max-width: 44rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 100%; padding: .45rem; } }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-stars { top: 4.25rem; left: .625rem; width: min(15rem, calc(100% - 1.25rem)); max-height: 20cqh; gap: .25rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star { gap: .35rem; padding: .35rem .45rem; font-size: .75rem; line-height: 1.3; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star-dismiss { margin: -.3rem -.35rem -.3rem 0; }
-.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { position: static; flex: 0 0 auto; align-self: flex-end; width: min(90%, 20rem); max-height: 9rem; margin-bottom: .125rem; z-index: 2; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-aside { max-width: 100%; padding: .4rem .55rem; gap: .375rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-aside-face { width: 1.5rem; height: 1.5rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-memory-backdrop { padding: .5rem; }
@@ -1971,16 +1978,41 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-beat { max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--foreground); font-size: 1rem; line-height: 1.45; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-name,
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-label { align-self: flex-start; margin: 0; padding: 0; border-radius: 0; background: transparent; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); font-size: .72rem; font-weight: 650; line-height: 1.35; letter-spacing: 0; text-transform: none; }
-.${ELEMENT_TAG}-room-panel-tools { display: grid; grid-template-columns: minmax(4rem, 1fr) auto minmax(4rem, 1fr); gap: .4rem; min-height: 1.75rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); padding-top: .25rem; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-history-toggle { justify-self: start; min-height: 1.75rem; padding: .15rem .35rem; border: 0; background: transparent; font-size: .75rem; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-counter { justify-self: center; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-nav { justify-self: end; gap: .25rem; padding: 0; border: 0; }
-.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-button { min-height: 1.75rem; padding: .2rem .4rem; border: 0; color: var(--foreground); }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-log { position: absolute; z-index: 8; bottom: calc(100% + .45rem); left: 0; width: 100%; max-height: min(55cqh, 32rem); box-sizing: border-box; overflow-y: auto; padding: .75rem; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); box-shadow: 0 .75rem 2rem #0009; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .45rem); width: min(25vw, 22rem); max-height: min(20cqh, 10rem); overflow-y: auto; }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .5rem; }
-.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .45rem); width: min(25vw, 22rem); max-height: min(20cqh, 10rem); margin: 0; }
-.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .5rem; }
+.${ELEMENT_TAG}-scene-message { display: flex; align-items: flex-start; gap: .75rem; padding: .65rem 0; }
+.${ELEMENT_TAG}-scene-message + .${ELEMENT_TAG}-scene-message { border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
+.${ELEMENT_TAG}-scene-message-face { flex: 0 0 2.5rem; width: 2.5rem; height: 2.5rem; display: grid; place-items: center; color: var(--foreground); }
+.${ELEMENT_TAG}-scene-message-face > svg { width: 1.5rem; height: 1.5rem; }
+.${ELEMENT_TAG}-scene-message-face > img { width: 100%; height: 100%; object-fit: contain; }
+.${ELEMENT_TAG}-scene-message-face .${ELEMENT_TAG}-avatar { width: 100%; height: 100%; }
+.${ELEMENT_TAG}-scene-message-body { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-scene-message-name { margin: 0 0 .2rem; font-size: .875rem; font-weight: 650; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
+.${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text { margin: 0; white-space: pre-wrap; }
+.${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text > p { margin: 0 0 .5rem; }
+.${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text > :last-child { margin-bottom: 0; }
+.${ELEMENT_TAG}-scene-transcript-overlay { position: absolute; inset: 0; z-index: 30; display: flex; justify-content: flex-end; background: #0003; }
+.${ELEMENT_TAG}-scene-transcript { width: min(42rem, 52%); height: 100%; min-width: 0; display: flex; flex-direction: column; box-sizing: border-box; padding: 1rem 1.25rem; border-left: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); background: var(--marinara-chat-chrome-panel-bg, var(--popover)); color: var(--foreground); backdrop-filter: blur(20px); box-shadow: -.5rem 0 2rem #0005; }
+.${ELEMENT_TAG}-scene-transcript-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; padding-bottom: .75rem; }
+.${ELEMENT_TAG}-scene-transcript-head h2 { margin: 0; font-size: 1.35rem; }
+.${ELEMENT_TAG}-scene-transcript-head p { margin: .15rem 0 0; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); font-size: .875rem; }
+.${ELEMENT_TAG}-scene-transcript-head button { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.4rem; }
+.${ELEMENT_TAG}-scene-transcript-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.${ELEMENT_TAG}-scene-history-pages { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; padding-bottom: .5rem; }
+.${ELEMENT_TAG}-scene-history-pages button { min-height: 2.75rem; }
+.${ELEMENT_TAG}-scene-history-pages button[hidden] { display: none; }
+.${ELEMENT_TAG}-scene-history-pages button[aria-label="Refresh"] { margin-left: auto; min-width: 2.75rem; }
+.${ELEMENT_TAG}-scene-transcript-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: .5rem; }
+.${ELEMENT_TAG}-scene-history-visit { padding-bottom: 1rem; }
+.${ELEMENT_TAG}-scene-history-visit > header { display: flex; align-items: center; gap: .5rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); border-bottom: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); padding: .6rem 0; margin: .4rem 0; }
+.${ELEMENT_TAG}-scene-history-visit h3 { margin: 0 auto 0 0; font-size: 1rem; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
+.${ELEMENT_TAG}-scene-history-visit time { font-size: .75rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); }
+.${ELEMENT_TAG}-scene-visit-current { border: 1px solid var(--border); border-radius: 1rem; padding: .15rem .45rem; font-size: .7rem; }
+.${ELEMENT_TAG}-scene-transcript button:focus-visible, .${ELEMENT_TAG}-scene-transcript-body:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.${ELEMENT_TAG}-scene-history-event { font-size: .875rem; color: var(--marinara-chat-chrome-muted-text, var(--muted-foreground)); font-style: italic; }
+@container ${ELEMENT_TAG} (max-width: 44rem) {
+  .${ELEMENT_TAG}-scene-transcript { width: 100%; padding: .75rem; border: 0; }
+  .${ELEMENT_TAG}-scene-message { gap: .5rem; }
+  .${ELEMENT_TAG}-scene-message-face { flex-basis: 2rem; width: 2rem; height: 2rem; }
+}
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { padding-top: .35rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-input > .${ELEMENT_TAG}-textarea { height: 1.75rem; min-height: 0; max-height: none; overflow-y: hidden; }
 .${ELEMENT_TAG}-room-actions-trigger:focus-visible, .${ELEMENT_TAG}-room-actions-menu button:focus-visible, .${ELEMENT_TAG}-room-notices-trigger:focus-visible, .${ELEMENT_TAG}-room-panel-tools button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
@@ -1989,16 +2021,11 @@ ${ELEMENT_TAG} {
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person, .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { flex: 1 1 0; max-width: 25%; height: 100%; }
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > img { height: 100%; }
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: calc(100% - .75rem); margin-bottom: .35rem; padding: .45rem .55rem; }
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .25rem; bottom: calc(100% + .3rem); width: min(52vw, 13rem); max-height: 20cqh; margin: 0; }
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides[data-side="left"], .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .25rem; }
 }
 @container ${ELEMENT_TAG} (max-height: 30rem) {
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-stage { min-height: 0; padding-top: 2.5rem; }
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: min(72rem, calc(100% - .75rem)); align-self: center; }
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-reading { max-height: 4.35rem; }
-}
-@container ${ELEMENT_TAG} (max-width: 44rem) and (min-height: 40rem) {
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { bottom: calc(100% + 13rem); }
 }
 
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-stage .${ELEMENT_TAG}-chat-cast > .${ELEMENT_TAG}-chat-cast-person,
@@ -2010,14 +2037,13 @@ ${ELEMENT_TAG} {
   transform: none;
 }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-stage .${ELEMENT_TAG}-chat-cast > .${ELEMENT_TAG}-chat-cast-person[data-sprite="true"] {
-  --cast-display-width: min(70cqw, 66.666667cqh);
+  --cast-display-width: 80cqw;
 }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-cast-person > img { flex: 0 0 auto; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-cast-person > img[data-framing="half"] { object-fit: cover; object-position: center top; }
 @media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person { transition: none; } }
 
 .${ELEMENT_TAG}-setup-root { display: flex; flex-direction: column; gap: .65rem; padding: .75rem; height: 100%; overflow: hidden; }
-.${ELEMENT_TAG}-setup-heading h1 { margin: 0; font-size: 1.5rem; }
 .${ELEMENT_TAG}-setup-root > .${ELEMENT_TAG}-setup-body { display: grid; grid-template-columns: 10rem minmax(0, 1fr); flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .${ELEMENT_TAG}-setup-workspace { display: flex; flex-direction: column; gap: .65rem; min-width: 0; padding: .15rem .25rem .5rem; }
 .${ELEMENT_TAG}-setup-workspace > h2 { margin: 0; }
@@ -2130,10 +2156,11 @@ ${VILLAGES_FORGING_STYLES}
 .villages-zone-map button:disabled, .villages-zone-map-actions button:disabled { opacity:.5; cursor:default; }
 .villages-zone-map-canvas { position:relative; width:100%; height:clamp(320px,48dvh,480px); min-height:320px; border:1px solid var(--border); border-radius:.5rem; background:var(--background); overflow:hidden; box-sizing:border-box; }
 .villages-zone-map-canvas > svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-.villages-zone-map-canvas line { stroke:var(--primary); stroke-width:2; vector-effect:non-scaling-stroke; }
+.villages-zone-map-canvas :is(line, polyline) { fill:none; stroke:var(--primary); stroke-width:2; vector-effect:non-scaling-stroke; }
 .villages-zone-map-canvas button.villages-zone-map-tile { position:absolute; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; min-width:0; min-height:0; margin:0; padding:4px; overflow:hidden; border-radius:.6rem; touch-action:none; user-select:none; cursor:grab; line-height:1.2; }
 .villages-zone-map-tile strong { display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(12px,.8rem,16px); }
 .villages-zone-map-tile small { display:block; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(11px,.65rem,14px); }
+.villages-zone-map-label { display:block; width:100%; min-width:0; max-width:100%; }
 .villages-zone-map-tile[aria-pressed="true"] { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
 .villages-zone-map-canvas button[data-draggable="false"] { cursor:pointer; touch-action:pan-y; }
 .villages-zone-map-connections { list-style:none; padding:0; }

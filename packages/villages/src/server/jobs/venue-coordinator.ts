@@ -29,8 +29,9 @@ export async function venueCheckpoint<T>(stage: string, work: () => Promise<T>):
 export async function coordinatedCompletion<T>(
   fingerprint: string,
   work: (signal?: AbortSignal) => Promise<T>,
+  beforeDispatch?: () => Promise<void>,
 ): Promise<T> {
-  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work);
+  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, beforeDispatch);
 }
 export async function rejectVenueCompletion(
   ...args: Parameters<VenueCoordinatorService["rejectVenueCompletion"]>
@@ -45,7 +46,7 @@ export async function coordinateVenue<T>(
   expected: number | undefined,
   retryOfAttemptId: string | undefined,
   work: () => Promise<T>,
-  options: { replay?: boolean; recovery?: boolean; replaceOfOperationId?: string; abandonOfOperationId?: string } = {},
+  options: Parameters<VenueCoordinatorService["coordinateVenue"]>[7] = {},
 ): Promise<T> {
   return coordinatorBinding
     .get()

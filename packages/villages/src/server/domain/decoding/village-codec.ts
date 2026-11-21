@@ -17,6 +17,7 @@ import { readEstablishment } from "../rules/establishment.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
+  VillageCardCharacter,
   VillagePendingDecision,
   VillageProject,
   VillageResidence,
@@ -28,6 +29,7 @@ import type {
   VillageVenueZone,
   VillageVillager,
   VillageVillagerCardSnapshot,
+  VillageVisitor,
   VillageZoneDraft,
 } from "../models/world.js";
 import { completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
@@ -78,6 +80,7 @@ import {
 } from "../rules/prompt-preset.js";
 
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
+import { withMariSpriteDefaults } from "../rules/professor-mari.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
@@ -88,10 +91,22 @@ import { readStartingHistory } from "./starting-history-codec.js";
 import { emptyMailbox, readMailboxState } from "./mailbox-codec.js";
 import { emptyResidentPlans, readResidentPlans } from "./resident-plans-codec.js";
 
+function readVisitorIntroduction(value: unknown): NonNullable<VillageState["visitorIntroduction"]> {
+  const raw = asRecord(value);
+  memoryRequire(
+    typeof raw.sceneId === "string" &&
+      raw.sceneId.length <= 160 &&
+      typeof raw.completedAt === "string" &&
+      (!raw.completedAt || (raw.sceneId && asIsoString(raw.completedAt))),
+    "invalid saved Visitor introduction",
+  );
+  return { sceneId: raw.sceneId as string, completedAt: raw.completedAt as string };
+}
+
 export function defaultVillageState(): VillageState {
   return {
     worldPlaces: emptyPlaceRegistry(),
-    version: 18,
+    version: 19,
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
     mailbox: emptyMailbox(),
@@ -110,7 +125,6 @@ export function defaultVillageState(): VillageState {
     setting: "",
     worldRules: "",
     worldName: "",
-    communityVenueId: "",
     playerBackground: "",
     selectedLorebookIds: [],
     sceneryArtStyle: "",
@@ -174,7 +188,7 @@ export function defaultVillageState(): VillageState {
     maps: [],
   };
 }
-function coerceVillager(value: unknown): VillageVillager | null {
+function coerceCardCharacter(value: unknown, applySpriteDefaults: boolean): VillageCardCharacter | null {
   const raw = asRecord(value);
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
@@ -188,7 +202,8 @@ function coerceVillager(value: unknown): VillageVillager | null {
     throw new Error("This saved resident needs a current writing-style assignment.");
   const relationshipScene = asRecord(raw.relationshipScene);
   const relationshipSceneEndedAt = asIsoString(relationshipScene.endedAt);
-  const spriteManager = coerceSpriteManager(raw.spriteManager);
+  const savedSprites = coerceSpriteManager(raw.spriteManager);
+  const spriteManager = applySpriteDefaults ? withMariSpriteDefaults(characterId, savedSprites) : savedSprites;
   return {
     incarnation: raw.incarnation,
     ...(relationshipSceneEndedAt && typeof relationshipScene.id === "string" && relationshipScene.id.length <= 180
@@ -204,7 +219,6 @@ function coerceVillager(value: unknown): VillageVillager | null {
       : {}),
     characterId,
     letterFontId: raw.letterFontId,
-    agendaGeneration: asString(raw.agendaGeneration),
     cardSnapshot,
     ...(typeof asRecord(raw.identityDescription).revision === "string"
       ? {
@@ -216,10 +230,19 @@ function coerceVillager(value: unknown): VillageVillager | null {
         }
       : {}),
     ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
-    admission: readResidentAdmission(raw.admission) ?? { ...EMPTY_RESIDENT_ADMISSION },
     spriteManager,
     sprite: managerResidentSprite(spriteManager, characterId),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
+  };
+}
+function coerceVillager(value: unknown, applySpriteDefaults: boolean): VillageVillager | null {
+  const person = coerceCardCharacter(value, applySpriteDefaults);
+  if (!person) return null;
+  const raw = asRecord(value);
+  return {
+    ...person,
+    agendaGeneration: asString(raw.agendaGeneration),
+    admission: readResidentAdmission(raw.admission) ?? { ...EMPTY_RESIDENT_ADMISSION },
     // Absent reads as null rather than as an empty agenda, and the difference
     // matters: null means "not written for yet", which is what makes the
     // village write one. An empty agenda is a positive statement that asking
@@ -227,6 +250,82 @@ function coerceVillager(value: unknown): VillageVillager | null {
     agenda: coerceAgenda(raw.agenda),
     scheduleInfluence: influenceSettings(raw.scheduleInfluence),
   };
+}
+function coerceVisitors(value: unknown, residentIds: Set<string>, applySpriteDefaults: boolean): VillageVisitor[] {
+  memoryRequire(Array.isArray(value), "invalid saved Visitor list");
+  return value.map((entry) => {
+    const raw = asRecord(entry);
+    const person = coerceCardCharacter(entry, applySpriteDefaults);
+    const firstMetAt = asIsoString(raw.firstMetAt);
+    const trip = asRecord(raw.trip);
+    const arrivedAt = asIsoString(trip.arrivedAt);
+    const leavesAt = asIsoString(trip.leavesAt);
+    const visitVenueId = asTrimmedString(trip.venueId);
+    const lodging = asRecord(trip.lodging);
+    const venueId = asString(lodging.venueId);
+    const zoneId = asString(lodging.zoneId);
+    const hostId = asString(lodging.hostId);
+    const preference = asRecord(raw.visitPreference);
+    const sentAt = asIsoString(preference.sentAt);
+    const from = asIsoString(preference.from);
+    const until = asIsoString(preference.until);
+    const kind = preference.kind;
+    const sourceId = asString(preference.sourceId);
+    const latestSourceId = asString(preference.latestSourceId);
+    memoryRequire(
+      person &&
+        asIsoString(raw.addedAt) &&
+        !residentIds.has(person.characterId) &&
+        typeof raw.visitsEnabled === "boolean" &&
+        typeof raw.visitsRevision === "string" &&
+        raw.visitsRevision.length > 0 &&
+        raw.visitsRevision.length <= 160 &&
+        (raw.firstMetAt === undefined || firstMetAt) &&
+        (raw.trip === undefined ||
+          (arrivedAt &&
+            leavesAt &&
+            arrivedAt < leavesAt &&
+            (trip.venueId === undefined || (visitVenueId && visitVenueId.length <= 200)) &&
+            (trip.lodging === undefined ||
+              (venueId &&
+                venueId.length <= 200 &&
+                zoneId &&
+                zoneId.length <= 200 &&
+                (lodging.hostId === undefined || (hostId && hostId.length <= 200)))))) &&
+        (raw.visitPreference === undefined ||
+          ((kind === "invite" || kind === "space") &&
+            sentAt &&
+            from &&
+            until &&
+            sentAt < until &&
+            from < until &&
+            sourceId.length > 0 &&
+            sourceId.length <= 400 &&
+            latestSourceId.length > 0 &&
+            latestSourceId.length <= 400)),
+      "invalid saved Visitor",
+    );
+    residentIds.add(person.characterId);
+    return {
+      ...person,
+      visitsEnabled: raw.visitsEnabled,
+      visitsRevision: raw.visitsRevision,
+      ...(firstMetAt ? { firstMetAt } : {}),
+      ...(arrivedAt && leavesAt
+        ? {
+            trip: {
+              arrivedAt,
+              leavesAt,
+              ...(visitVenueId ? { venueId: visitVenueId } : {}),
+              ...(venueId && zoneId ? { lodging: { venueId, zoneId, ...(hostId ? { hostId } : {}) } } : {}),
+            },
+          }
+        : {}),
+      ...(sentAt && from && until && (kind === "invite" || kind === "space")
+        ? { visitPreference: { kind, sentAt, from, until, sourceId, latestSourceId } }
+        : {}),
+    };
+  });
 }
 function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot | null {
   const raw = asRecord(value);
@@ -1107,6 +1206,11 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
   if (typeof value !== "object" || Array.isArray(value))
     throw new Error("The saved Village catch-up could not be read.");
   const record = value as Record<string, unknown>;
+  if (
+    record.lastPresenceWallTime !== undefined &&
+    (!Number.isSafeInteger(record.lastPresenceWallTime) || Number(record.lastPresenceWallTime) <= 0)
+  )
+    throw new Error("The saved Village presence time could not be read.");
   if (record.capture !== undefined) {
     if (!record.capture || typeof record.capture !== "object" || Array.isArray(record.capture))
       throw new Error("The saved Village departure capture could not be read.");
@@ -1344,9 +1448,9 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
   };
 }
 
-export function coerceVillageState(value: unknown): VillageState {
+export function coerceVillageState(value: unknown, { applySpriteDefaults = true } = {}): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 18) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 19) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null)
     memoryRequire(
       raw.continuity && raw.episodes && raw.startingHistory && raw.mailbox && raw.residentPlans,
@@ -1355,7 +1459,9 @@ export function coerceVillageState(value: unknown): VillageState {
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
-    ? raw.villagers.map((entry) => coerceVillager(entry)).filter((entry): entry is VillageVillager => entry !== null)
+    ? raw.villagers
+        .map((entry) => coerceVillager(entry, applySpriteDefaults))
+        .filter((entry): entry is VillageVillager => entry !== null)
     : [];
   const seen = new Set<string>();
 
@@ -1364,7 +1470,7 @@ export function coerceVillageState(value: unknown): VillageState {
   const episodes = readEpisodes(raw.episodes ?? fallback.episodes, asString(raw.seed));
   const state: VillageState = {
     worldPlaces: readPlaceRegistry(raw.worldPlaces),
-    version: 18,
+    version: 19,
     continuity,
     episodes,
     mailbox: value == null ? fallback.mailbox : readMailboxState(raw.mailbox, asString(raw.seed)),
@@ -1385,12 +1491,21 @@ export function coerceVillageState(value: unknown): VillageState {
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
     sendOnEnter: raw.sendOnEnter === true,
+    ...(raw.spontaneousEvents === true ? { spontaneousEvents: true as const } : {}),
+    ...(raw.recentVisitRolls === undefined
+      ? {}
+      : {
+          recentVisitRolls: Object.fromEntries(
+            Object.entries(asRecord(raw.recentVisitRolls)).flatMap(([placeId, at]) =>
+              typeof at === "number" && Number.isSafeInteger(at) && at >= 0 ? [[placeId, at]] : [],
+            ),
+          ),
+        }),
     spriteCardFlipEnabled: raw.spriteCardFlipEnabled !== false,
     spriteVariantsEnabled: raw.spriteVariantsEnabled !== false,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     worldRules: boundText(raw.worldRules, MAX_SETTING_LENGTH),
     worldName: readWorldName(raw.worldName) ?? "",
-    communityVenueId: asTrimmedString(raw.communityVenueId),
     playerBackground: coercePlayerBackground(raw.playerBackground),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),
@@ -1520,6 +1635,10 @@ export function coerceVillageState(value: unknown): VillageState {
       seen.add(entry.characterId);
       return true;
     }),
+    ...(raw.visitors === undefined ? {} : { visitors: coerceVisitors(raw.visitors, seen, applySpriteDefaults) }),
+    ...(raw.visitorIntroduction === undefined
+      ? {}
+      : { visitorIntroduction: readVisitorIntroduction(raw.visitorIntroduction) }),
     // A stored box keeps its internal formatting, so it is bounded but not
     // trimmed to nothing; an empty box means "this village wrote nothing", which
     // is what the renderer answers with the shipped text.

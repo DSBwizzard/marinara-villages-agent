@@ -64,6 +64,15 @@ assert.deepEqual(
   "left-facing originals mirror toward a resident on the right",
 );
 assert.equal(selectSpriteImage([], "e-smile", "front"), null);
+const exactDefaultImages = [
+  { ...directionalImages[0], isDefault: false },
+  { ...directionalImages[2], isDefault: true },
+];
+assert.equal(selectSpriteImage(exactDefaultImages, "", "front", undefined, true, "side")?.image.url, "/side-default");
+assert.equal(
+  selectSpriteImage(exactDefaultImages, "e-neutral", "front", undefined, true, "side")?.image.url,
+  "/front-default",
+);
 const semanticSprite = {
   assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
   expressions: [

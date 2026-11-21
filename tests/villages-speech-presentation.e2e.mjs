@@ -75,9 +75,10 @@ await withBrowser(browser, async () => {
         content: `Main ${delivery} conversation.`,
         at: now,
       };
+      const asideVoices = ["ordinary", delivery === "shout" ? "shout" : "whisper"];
       session.lines = [
         main,
-        ...["ordinary", "whisper", "shout"].map((voice, index) => ({
+        ...asideVoices.map((voice, index) => ({
           id: `aside-${voice}`,
           role: "assistant",
           speakerId: residents[index].characterId,
@@ -94,12 +95,13 @@ await withBrowser(browser, async () => {
       ];
       await page.goto("http://speech.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      const reading = page.getByRole("region", { name: "Current paragraph" });
+      const reading = page.getByRole("region", { name: "Latest reply" });
       await expect(reading).toContainText(`Main ${delivery} conversation.`);
       await expect(page.locator(`.${tag}-chat-vn-card`)).toHaveAttribute("data-delivery", delivery);
-      const band = page.locator(`.${tag}-chat-vn-asides`);
-      await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(3);
-      for (const voice of ["ordinary", "whisper", "shout"])
+      await expect(page.getByLabel(/^(Whisper|Shout)$/u)).toHaveCount(0);
+      const band = page.locator(`.${tag}-scene-asides`);
+      await expect(band.locator(`.${tag}-chat-vn-aside`)).toHaveCount(2);
+      for (const voice of asideVoices)
         await expect(band.locator(`[data-register="${voice === "ordinary" ? "side" : voice}"]`)).toContainText(
           `Floating ${voice} remark.`,
         );
@@ -129,14 +131,13 @@ await withBrowser(browser, async () => {
     ];
     await page.goto("http://speech.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const reading = page.getByRole("region", { name: "Current paragraph" });
-    // Reopening an existing scene starts at its most recent line.
-    await expect(reading).toContainText("A good place to stop for a drink.");
-    await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
+    const reading = page.getByRole("region", { name: "Latest reply" });
+
     await expect(reading).toContainText(prose);
     await expect(page.getByRole("button", { name: "Previous paragraph", exact: true })).toBeDisabled();
     await page.screenshot({ path: resolve(output, `narrated-sound-${width}.png`) });
-    await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
+    while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
+      await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
     await expect(reading).toContainText("A good place to stop for a drink.");
     await expect(page.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
     assert.deepEqual(errors, []);

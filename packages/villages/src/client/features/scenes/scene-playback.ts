@@ -24,7 +24,7 @@ export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: stri
       register: speechDelivery(line) === "ordinary" ? "side" : (speechDelivery(line) as "whisper" | "shout"),
       text: line.content,
       ...(line.targetId
-        ? { target: line.targetId === "player" ? playerName : (names.get(line.targetId) ?? line.targetId) }
+        ? { target: line.targetId === "player" ? "you" : (names.get(line.targetId) ?? line.targetId) }
         : {}),
       speakerId: line.speakerId,
       name: line.name,

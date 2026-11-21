@@ -1,3 +1,4 @@
+import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVenue, VillageVenueZone } from "../../packages/villages/src/server/domain/models/world.js";
 import { readPlacePosition } from "../../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { asTrimmedString } from "../../packages/villages/src/server/domain/rules/coerce.js";
@@ -180,4 +181,28 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     workerIds: venueStringList(record.workerIds, existing?.workerIds ?? []),
   };
   return draft;
+}
+
+/** Complete public capacity for synthetic worlds whose subject is another feature. */
+export function sharedVenuesFixture(residents = 8) {
+  return [1, 2].map((index) => {
+    const venue = venueFixture({
+      id: "fixture-public-" + index,
+      name: "Fixture commons " + index,
+      classes: ["community"],
+    });
+    const zone = venue.zones!.find((zone) => zone.kind === "public")!;
+    venue.zones!.push(
+      ...Array.from({ length: Math.max(0, Math.ceil(residents / 8) - 1) }, (_, i) => i + 2).map((room) => ({
+        ...structuredClone(zone),
+        id: "shared-" + room,
+        connectedTo: ["exterior"],
+      })),
+    );
+    venue.spaces = venue.zones!.filter((zone) => zone.kind === "public");
+    return venue;
+  });
+}
+export function defaultVillageFixture() {
+  return { ...defaultVillageState(), venues: sharedVenuesFixture() };
 }

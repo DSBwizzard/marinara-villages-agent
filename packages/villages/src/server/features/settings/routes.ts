@@ -21,6 +21,7 @@ import { readUsageMeter, resetUsagePeriod, saveLinkApiGroup, saveUsageRate } fro
 import { previewVillageBurst } from "./usage-preview.js";
 import {
   setScenerySettings,
+  villageSettings,
   setVillageBackgroundPace,
   setVillageNarrativeConsequence,
   setVillageCharacterSpeechColors,
@@ -210,6 +211,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       narrativeConsequence?: unknown;
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
+      spontaneousEvents?: unknown;
       spriteCardFlipEnabled?: unknown;
       spriteVariantsEnabled?: unknown;
     };
@@ -249,6 +251,8 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       if (body.narrativeConsequence !== undefined)
         snapshot = await setVillageNarrativeConsequence(body.narrativeConsequence);
       if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);
+      if (body.spontaneousEvents !== undefined)
+        snapshot = await villageSettings().setSpontaneousEvents(body.spontaneousEvents);
       if (body.spriteVariantsEnabled !== undefined)
         snapshot = await setVillageSpriteVariantsEnabled(body.spriteVariantsEnabled);
       if (body.spriteCardFlipEnabled !== undefined)
@@ -269,7 +273,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
     }
   });
   app.put<{
-    Body: { tense?: unknown; person?: unknown; rating?: unknown; writingGuidance?: unknown };
+    Body: { tense?: unknown; person?: unknown; rating?: unknown };
   }>("/narration", async (request, reply) => {
     try {
       await saveVillageWriting(request.body ?? {});

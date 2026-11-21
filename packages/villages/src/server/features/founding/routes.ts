@@ -7,6 +7,10 @@ import { resetVenueSessions } from "../scenes/archive.js";
 import { draftVenueDescriptions, runVillageSetup } from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, uploadFoundingVenueImage } from "./founding-drafts.js";
+import { asRecord } from "../../domain/rules/coerce.js";
+import { conflict } from "../../domain/rules/errors.js";
+import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
+import { peekVillageAuthority } from "../world/village-store.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerFoundingRoutes(engine: FastifyInstance) {
@@ -22,7 +26,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       setting?: unknown;
       worldRules?: unknown;
       worldName?: unknown;
-      communityVenueId?: unknown;
+      openingVenueId?: unknown;
       playerBackground?: unknown;
       circumstances?: unknown;
       selectedLorebookIds?: unknown;
@@ -51,7 +55,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
         setting: body.setting,
         worldRules: body.worldRules,
         worldName: body.worldName,
-        communityVenueId: body.communityVenueId,
+        openingVenueId: body.openingVenueId,
         playerBackground: body.playerBackground,
         circumstances: body.circumstances,
         selectedLorebookIds: body.selectedLorebookIds,
@@ -72,9 +76,11 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
   });
   app.post<{ Body: unknown }>("/setup/venues/suggest", async (request, reply) => {
     try {
+      if (asRecord(request.body).mode === "draft-setting" && isVillageFounded(await peekVillageAuthority()))
+        throw conflict("This Village is already founded. Use World Configuration.");
       return await requestFoundingSuggestions(request.body);
     } catch (error) {
-      return fail(reply, error, "suggesting starting spaces");
+      return fail(reply, error, "requesting a Founding draft");
     }
   });
   app.get<{ Params: { actionId: string; targetId: string } }>(
@@ -83,7 +89,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       try {
         return await readFoundingSuggestions(request.params.actionId);
       } catch (error) {
-        return fail(reply, error, "retrieving Venue suggestions");
+        return fail(reply, error, "retrieving the Founding draft");
       }
     },
   );

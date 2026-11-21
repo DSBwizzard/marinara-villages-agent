@@ -19,7 +19,7 @@ await withBrowser(browser, async () => {
     const snapshot = structuredClone(fixture);
     snapshot.villagers = residents.slice(0, 1);
     snapshot.settings.venues[0].zones = [
-      { id: "exterior", name: "Exterior", kind: "exterior", venueClass: "workplace", state: {}, seen: true },
+      { id: "exterior", name: "Entrance", kind: "exterior", venueClass: "workplace", state: {}, seen: true },
       { id: "hall", name: "Common Space", kind: "public", venueClass: "community", state: {}, seen: true },
     ];
     snapshot.settings.venues[0] = venueSnapshotFixture(snapshot.settings.venues[0]);
@@ -54,13 +54,23 @@ await withBrowser(browser, async () => {
     let releaseContact,
       heldContact,
       lastContact,
-      lastLeave,
+      lastClose,
       moves = 0;
     let staleMove = true;
     const navigation = new Map();
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
     await mockEngineLookups(context);
     const page = await context.newPage();
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            window.sceneReport = text;
+          },
+        },
+      });
+    });
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await context.route("http://actions.test/", (route) =>
@@ -89,6 +99,19 @@ await withBrowser(browser, async () => {
           ...scene,
           sceneRevision: scene.sceneRevision + 1,
           zoneId: body.zoneId,
+          zoneArrivalId: "arrival-move-" + moves,
+          lines: [
+            ...scene.lines,
+            {
+              id: "arrival-move-" + moves,
+              role: "assistant",
+              kind: "narration",
+              speakerId: "__venue_scene__",
+              name: "Narration",
+              content: "You arrive.",
+              at: now,
+            },
+          ],
           area: "outside",
           activeIds: body.zoneId === "hall" ? ["mara"] : [],
           operation: { id: body.operationId, kind: "move", status: "complete", input: { zoneId: body.zoneId } },
@@ -100,8 +123,8 @@ await withBrowser(browser, async () => {
         value = { operation: navigation.get(decodeURIComponent(path.split("/").at(-1))) ?? null };
       } else if (path.endsWith("/operation")) {
         value = { operation: scene.operation ?? null };
-      } else if (path.endsWith("/rooms/leave")) {
-        lastLeave = route.request().postDataJSON();
+      } else if (path.endsWith("/rooms/end")) {
+        lastClose = route.request().postDataJSON();
         scene = { ...scene, status: "closed" };
         value = { session: scene, recordEvents: [] };
       } else if (path.endsWith("/rooms/turn")) {
@@ -113,6 +136,14 @@ await withBrowser(browser, async () => {
           sceneRevision: scene.sceneRevision + 1,
           lines: [
             ...scene.lines,
+            {
+              id: "contact-player",
+              role: "user",
+              speakerId: "player",
+              name: "Player",
+              content: lastContact.message,
+              at: now,
+            },
             {
               id: "contact-answer",
               role: "assistant",
@@ -163,23 +194,21 @@ await withBrowser(browser, async () => {
     });
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await contactStarted;
-    await expect(composer).toHaveCount(0);
-    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+    await expect(composer).toBeEditable();
+    await expect(composer).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Sending", exact: true })).toBeDisabled();
+    await composer.fill("Typed while the reply was pending");
+    await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     assert.equal(lastContact.mode, "chat");
     assert.equal(lastContact.contact, undefined);
     finishContact();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("No answer.");
+    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("No answer.");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     await next.click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
-    while (await next.isEnabled()) {
-      await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
-      await expect(composer).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
-      await next.click();
-    }
-    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
-    await expect(composer).toBeVisible();
+    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("quiet doorway");
+    while (await next.isEnabled()) await next.click();
+    await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
+    await expect(composer).toHaveValue("Typed while the reply was pending");
     const preservedDraft = "Draft survives Zone changes. ".repeat(35);
     await composer.fill(preservedDraft);
     const dockAtBottom = async (selector) => {
@@ -189,19 +218,20 @@ await withBrowser(browser, async () => {
     await dockAtBottom('[class$="-chat-input"]');
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-ready-" + width + ".png") });
-    await page.getByRole("button", { name: "Previous paragraph", exact: true }).click();
-    await expect(composer).toHaveCount(0);
-    await dockAtBottom('[class$="-chat-vn-card"]');
-    if (process.env.VILLAGES_VISUAL_OUTPUT)
-      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-reading-" + width + ".png") });
-    while (await next.isEnabled()) await next.click();
     await expect(composer).toHaveValue(preservedDraft);
+    const picker = page.getByRole("dialog", { name: "Move to Zone" });
     const selectMove = async () => {
       await page.getByRole("button", { name: "Venue actions", exact: true }).click();
       await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-      await expect(page.getByLabel("Move to Zone")).toBeFocused();
+      await expect(picker.getByRole("button", { name: "Arrange", exact: true })).toHaveCount(0);
+      await expect(picker.getByRole("button", { name: "Close Move to Zone", exact: true })).toBeFocused();
+      assert.ok((await picker.boundingBox()).height < 700, "The route diagram fits the Scene viewport");
+      await expect(picker.getByRole("region", { name: "Zone layout", exact: true })).toBeVisible();
+      await expect(picker.locator('[data-layout-zone="' + scene.zoneId + '"]')).toHaveAttribute(
+        "aria-current",
+        "location",
+      );
       await expect(composer).toHaveValue(preservedDraft);
-      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
       await dockAtBottom('[class$="-chat-input"]');
     };
     scene.sceneRevision++;
@@ -209,24 +239,37 @@ await withBrowser(browser, async () => {
     await selectMove();
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-move-" + width + ".png") });
-    await page.getByLabel("Move to Zone").selectOption("exterior");
+    await picker.getByRole("button", { name: "Entrance", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
     await page.getByRole("button", { name: /^1 Scene error$/ }).click();
     await expect(page.getByText(/Scene changed/).last()).toBeVisible();
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(page.getByText("Anonymous report copied.")).toBeVisible();
+    const report = await page.evaluate(() => window.sceneReport);
+    assert.match(
+      report,
+      /Move between Zones\nRequest: POST \/api\/villages\/rooms\/zone\nResult: HTTP 409 · SCENE_STALE/,
+    );
+    assert.doesNotMatch(report, /The Mill|Entrance|Mara|Scene ID|Keep this draft/);
     await page.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(moves, 0);
     await selectMove();
-    await page.getByLabel("Move to Zone").selectOption("exterior");
-    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+    await picker.getByRole("button", { name: "Entrance", exact: true }).click();
+    await picker.getByRole("button", { name: "Move", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     await expect(composer).toHaveValue(preservedDraft);
     assert.equal(moves, 1);
-    assert.equal(scene.lines.length, lineCount);
+    assert.equal(scene.lines.length, lineCount + moves, "movement appends an arrival without deleting history");
     assert.equal(scene.submissions.length, 0);
     for (const zoneId of ["hall", "exterior", "hall", "exterior"]) {
       await selectMove();
-      await page.getByLabel("Move to Zone").selectOption(zoneId);
+      await picker.getByRole("button", { name: zoneId === "hall" ? "Common Space" : "Entrance", exact: true }).click();
+      await picker.getByRole("button", { name: "Move", exact: true }).click();
       await expect(composer).toHaveValue(preservedDraft);
-      await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+      await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
       await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(zoneId === "hall" ? 1 : 0);
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
     }
     assert.equal(moves, 5, "selection immediately navigates repeatedly without Send");
     await expect(composer).toHaveValue(preservedDraft);
@@ -238,27 +281,27 @@ await withBrowser(browser, async () => {
     assert.equal(await page.locator("[data-scene-scope]").count(), 0);
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
-    while (await next.isEnabled()) await next.click();
+    await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
+
     await expect(composer).toBeVisible();
-    await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     assert.equal(moves, 5);
-    assert.equal(scene.lines.length, lineCount);
+    assert.equal(scene.lines.length, lineCount + moves);
     await expect(page.getByLabel("Contact Zone")).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
     const finalMessage = width === 1366 ? "Goodbye." : "";
     await composer.fill(finalMessage);
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    assert.equal(lastLeave, undefined, "opening Venue actions does not end the Scene");
+    assert.equal(lastClose, undefined, "opening Venue actions does not end the Scene");
     await expect(composer).toHaveValue(finalMessage);
     await page.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await expect(page.getByRole("button", { name: "Return to map", exact: true }).first()).toBeVisible();
-    assert.equal(lastLeave.message, finalMessage, "Conclude keeps its optional final message");
+    assert.equal(lastClose.message, undefined, "Conclude closes without sending the unfinished draft");
     assert.deepEqual(errors, []);
     await context.close();
   }
   console.log(
-    "Scene actions browser: freeform input, immediate movement, final-paragraph readiness, busy and stale navigation, draft preservation and optional concluding messages passed",
+    "Scene actions browser: freeform input, immediate movement, final-paragraph readiness, busy and stale navigation, draft preservation and provider-free conclusion passed",
   );
 });

@@ -152,7 +152,7 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     let lastTurn = null;
     let lastEntry = null;
-    let lastLeave = null;
+    let lastClose = null;
     let session = {
       version: 2,
       id: "visit-1",
@@ -205,8 +205,6 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/story")) value = { entries: [], total: 0 };
       else if (path.endsWith("/narration"))
         value = {
-          writingGuidance: "",
-          writingGuidanceMaxLength: 4000,
           tense: "present",
           person: "third",
           rating: "sfw",
@@ -287,8 +285,8 @@ await withBrowser(browser, async () => {
             },
           ],
         };
-      } else if (path.endsWith("/rooms/leave")) {
-        lastLeave = route.request().postDataJSON();
+      } else if (path.endsWith("/rooms/end")) {
+        lastClose = route.request().postDataJSON();
         session = { ...session, status: "closed", endedAt: now };
         value = { session, recordEvents: [] };
       }
@@ -395,7 +393,7 @@ await withBrowser(browser, async () => {
     const dock = page.locator(".marinara-capability-villages-chat-vn");
     const stage = page.locator(".marinara-capability-villages-chat-stage");
     const cast = page.locator(".marinara-capability-villages-chat-cast-person");
-    const reading = page.getByRole("region", { name: "Current paragraph" });
+    const reading = page.getByRole("region", { name: "Latest reply" });
     await expect(cast).toHaveCount(4);
     const castPositions = await cast.evaluateAll(
       (people, mobile) => people.map((person) => person.offsetLeft + (mobile ? person.offsetWidth / 2 : 0)),
@@ -442,13 +440,13 @@ await withBrowser(browser, async () => {
         await expect(reading).toContainText(longGreeting);
       }
     }
-    const historyButton = page.locator(".marinara-capability-villages-chat-history-toggle");
-    await expect(historyButton).toHaveCount(1);
-    await historyButton.click();
+    const sceneMenu = page.getByRole("button", { name: "Venue actions" });
+    await sceneMenu.click();
+    await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
     await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
     const stageWithHistory = await stage.boundingBox();
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
-    await historyButton.click();
+    await page.getByRole("button", { name: "Close transcript", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(composer).toBeVisible();
@@ -462,7 +460,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(page.getByRole("menuitem", { name: /Leave Scene/u })).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "End Scene now" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Conclude" })).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(page.getByRole("button", { name: /^Mode: /u })).toHaveCount(0);
     const oneLine = await composer.evaluate((field) => {
@@ -495,14 +493,14 @@ await withBrowser(browser, async () => {
     await expect(menu.getByRole("menuitem", { name: "Conclude", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Move", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Contact", exact: true })).toHaveCount(0);
-    await historyButton.focus();
+    await reading.focus();
     await expect(menu).toHaveCount(0);
     await actions.click();
     await page.keyboard.press("Escape");
     await expect(actions).toBeFocused();
     await expect(composer).toHaveValue("My response.");
     assert.equal(lastTurn, null, "opening Venue actions does not send the draft");
-    assert.equal(lastLeave, null, "opening Venue actions does not conclude the Scene");
+    assert.equal(lastClose, null, "opening Venue actions does not conclude the Scene");
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await page.getByRole("button", { name: "Send" }).click();
@@ -535,7 +533,7 @@ await withBrowser(browser, async () => {
     await expect(reading).toContainText("Sixth reply.");
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: /^Mode: /u })).toHaveCount(0);
-    const asideBand = page.locator(".marinara-capability-villages-chat-vn-asides");
+    const asideBand = page.locator(".marinara-capability-villages-scene-asides");
     await expect(asideBand).toContainText("A small aside rides with the final reply.");
     await expect(asideBand).toContainText("A quiet word stays visible too.");
     const asideOverflow = await asideBand.evaluate((element) => ({
@@ -557,7 +555,7 @@ await withBrowser(browser, async () => {
     assert.equal(
       await asideBand.evaluate((element) => getComputedStyle(element).position),
       "absolute",
-      "asides float without reserving stage height",
+      "asides float above the cast",
     );
     assert.deepEqual(errors, [], `${width}×${height} renders without page errors`);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
@@ -568,10 +566,10 @@ await withBrowser(browser, async () => {
     const finalLine = width === 390 ? "" : "Goodbye.";
     await composer.fill(finalLine);
     await actions.click();
-    assert.equal(lastLeave, null, "opening Venue actions does not submit the final draft");
+    assert.equal(lastClose, null, "opening Venue actions does not submit the final draft");
     await menu.getByRole("menuitem", { name: "Conclude", exact: true }).click();
     await expect(page.getByRole("button", { name: "Return to map" }).first()).toBeVisible();
-    assert.equal(lastLeave.message, finalLine, "Conclude sends the optional final line");
+    assert.equal(lastClose.message, undefined, "Conclude closes without sending the unfinished draft");
     if (width === 1440) {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();

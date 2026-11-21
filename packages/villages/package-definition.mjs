@@ -7,12 +7,34 @@ const menuArtAssets = [
   "storybook-scenery-matte.webp",
   "venue-fallback.webp",
   "venue-fallback-day.webp",
+  "mari-founding-overlook.webp",
+  "mari-founding-overlook-day.webp",
+  "mari-founding-neutral.webp",
+  "mari-founding-happy.webp",
+  "mari-founding-looking-up.webp",
+  "mari-founding-playful.webp",
 ];
+
+const sceneSprite = "npc-silhouette.webp";
+const mariVisitorSprites = [
+  "Happy",
+  "Happy_2",
+  "Neutral",
+  "Neutral_2",
+  "Neutral_3",
+  "Playful",
+  "Thinking",
+  "Thinking_2",
+  "Wave",
+  "Angry",
+  "Sad",
+  "Surprised",
+].map((name) => `mari-visitor-sprites/${name}.png`);
 
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.8.4",
+  version: "0.9.0",
   minEngineVersion: "2.5.2",
   maxEngineExclusive: "4.0.0",
   name: "Villages",
@@ -31,7 +53,14 @@ export const villagesDefinition = {
     description,
     runtimeDisabled: false,
   },
-  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", ...menuArtAssets],
+  assetPaths: [
+    ...letterFontAssets,
+    "villages-icon.png",
+    "icon-licenses.txt",
+    ...menuArtAssets,
+    sceneSprite,
+    ...mariVisitorSprites,
+  ],
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
@@ -45,7 +74,12 @@ export const villagesDefinition = {
       iconPaths: ["villages-icon.png"],
     },
     assets: {
-      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), ...menuArtAssets],
+      paths: [
+        ...letterFontAssets.filter((path) => path.endsWith(".json")),
+        ...menuArtAssets,
+        sceneSprite,
+        ...mariVisitorSprites,
+      ],
     },
   },
 };

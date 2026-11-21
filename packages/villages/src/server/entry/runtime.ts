@@ -1,5 +1,6 @@
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
+import { prepareIntroductionVisitor } from "../features/world/visitor-introduction.js";
 import { activationScope, bindActivationService } from "../adapters/engine/activation-scope.js";
 import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
 import {
@@ -126,7 +127,7 @@ import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.j
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
 import { createSpriteSetup } from "../features/media/sprite-setup-service.js";
-import { configureSpriteSetup, preparedSpriteManager } from "../features/media/sprite-setup.js";
+import { configureSpriteSetup, preparedSpriteManager, spriteSetup } from "../features/media/sprite-setup.js";
 import { createTownMapImage } from "../features/media/town-map-image-service.js";
 import { configureTownMapImage, generateVillageTownMap } from "../features/media/town-map-image.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
@@ -177,6 +178,7 @@ import { configureSceneArchive, listVenueVisits } from "../features/scenes/archi
 import { createSceneChanges } from "../features/scenes/changes-service.js";
 import { configureSceneChanges, replaySceneChanges } from "../features/scenes/changes.js";
 import { createSceneCommands } from "../features/scenes/command-service.js";
+import { createSceneRetry } from "../features/scenes/retry-service.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import {
   activeVenueSession,
@@ -224,6 +226,7 @@ import { configureVenueRequests } from "../features/venues/venue-requests.js";
 import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVillageSnapshot } from "../features/world/snapshot-service.js";
 import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
+import { settleTripsForAttendance } from "../features/world/visitor-trips.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
 import { createVillageStateService } from "../features/world/village-state-service.js";
 import {
@@ -510,6 +513,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       withSceneWork: backendWork.sceneFence.run,
       withIdleSceneWork: (id, work) =>
         backendWork.sceneFence.isBusy(id) ? Promise.resolve() : backendWork.sceneFence.run(id, work),
+      initializeCharacterSprites: (scope, character) => spriteSetup().initializeCharacter(scope, character),
+      settleVisitorAttendance: (state, at) => settleTripsForAttendance(state, at, mutateVillageMemoryState),
       readVillageState: readVillageMemoryState,
       mutateVillageState: mutateVillageMemoryState,
     }),
@@ -531,8 +536,26 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readVillageState: readVillageMemoryState,
     }),
   );
+  const sceneRetry = createSceneRetry({
+    documents: villagesDocuments,
+    repository: villageRepository,
+    gate: repairGate(),
+    readActive,
+    readSession,
+    changeSession,
+    requireLiveVenueSession,
+    generate,
+    coordinateVenue,
+    cancelVenueOperation,
+    assertVenueOwnership,
+    venueOperationSignal,
+    venueRequestMetrics,
+  });
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      retry: sceneRetry,
+      prepareIntroductionVisitor: (state, at) =>
+        prepareIntroductionVisitor(state, at, mutateVillageMemoryState, (id) => spriteSetup().automaticManager(id)),
       selectActiveScene: sceneRepository.selectActiveScene,
       readTerminal: sceneTerminals.read,
       withSceneWork: backendWork.sceneFence.run,
@@ -566,6 +589,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       hasVenueOperation,
       recoverVenueOperations,
       rollActiveAgendas,
+      withVillageSceneAcceptance,
+      settleVisitorAttendance: (state, at) => settleTripsForAttendance(state, at, mutateVillageMemoryState),
       mutateVillageState: mutateVillageMemoryState,
       readVillageState: readVillageMemoryState,
     }),
@@ -608,6 +633,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseQueries = configureSceneQueries({
     ...createSceneQueryService({
+      retryTarget: sceneRetry.target,
       readSession,
       readVillageState,
       villagesDocuments,
@@ -618,6 +644,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
+      mutateVillageState: mutateVillageMemoryState,
       readVillageState,
       listVillagerCards,
       rollActiveAgendas,
@@ -666,6 +693,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseResidentRoster = configureResidentRoster(
     createResidentRoster({
       preparedSpriteManager,
+      automaticSprites: (id) => spriteSetup().automaticManager(id),
       readVillageState,
       mutateVillageState: mutateVillageMemoryState,
       findVillagerCard,
@@ -731,6 +759,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readFoundingImageLore,
       peekVillageAuthority,
       preparedSpriteManager,
+      automaticSprites: (id) => spriteSetup().automaticManager(id),
       readVillageState,
       mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,

@@ -1,5 +1,7 @@
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import { VenueAccessPanel } from "./VenueAccessPanel.js";
+import { invitationLabel } from "../../shared/zone-access.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -16,7 +18,7 @@ import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
-import { VillageIcon } from "../../shared/VillageIcon.js";
+import { VenueSections, VenueZoneRow } from "../../shared/VenueNavigation.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const id = useId();
@@ -343,6 +345,8 @@ export function VenueScreen({
 }) {
   const confirmVillages = useConfirmation();
   const [editingConnections, setEditingConnections] = useState(false);
+  const [editingAccess, setEditingAccess] = useState(false);
+  const [venueHoursScope, setVenueHoursScope] = useState(false);
   const [zoneDetails, setZoneDetails] = useState<"open" | "closed" | null>(null);
   const zoneDetailsOpen = zoneDetails === "open";
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
@@ -573,31 +577,24 @@ export function VenueScreen({
             ) : null}
           </dl>
         </header>
-        <nav className={`${ELEMENT_TAG}-venue-sections`} aria-label="Venue sections">
-          {(["about", "zones", "manage"] as const).map((section) => (
-            <button
-              type="button"
-              key={section}
-              disabled={navigationBusy}
-              aria-pressed={venueSection === section}
-              onClick={async () => {
-                if (section === venueSection) {
-                  if (zoneDetailsOpen) await closeZoneDetails();
-                  else if (editingConnections) await closeConnections();
-                  return;
-                }
-                if (!(await canLeave())) return;
-                setEditingConnections(false);
-                setZoneDetails(null);
-                zoneReturn.current = null;
-                setZoneNameDirty(false);
-                setVenueSection(section);
-              }}
-            >
-              {section === "about" ? "About" : section === "zones" ? "Zones" : "Manage"}
-            </button>
-          ))}
-        </nav>
+        <VenueSections
+          section={venueSection}
+          disabled={navigationBusy}
+          onSelect={async (section) => {
+            if (section === venueSection) {
+              if (zoneDetailsOpen) await closeZoneDetails();
+              else if (editingConnections) await closeConnections();
+              return;
+            }
+            if (!(await canLeave())) return;
+            setEditingConnections(false);
+            setEditingAccess(false);
+            setZoneDetails(null);
+            zoneReturn.current = null;
+            setZoneNameDirty(false);
+            setVenueSection(section);
+          }}
+        />
         <main className={`${ELEMENT_TAG}-venue-profile-body`}>
           {navigationBusy ? <p role="status">Saving…</p> : null}
           {about ? (
@@ -640,24 +637,15 @@ export function VenueScreen({
                 {zones.map((zone) => {
                   const image = roomArtwork(zone);
                   return (
-                    <button
+                    <VenueZoneRow
                       key={zone.id}
-                      type="button"
-                      aria-current={zone.id === selected?.id || undefined}
+                      name={zone.name}
+                      image={image?.url}
+                      accessLabel={zone.accessLabel}
+                      current={zone.id === selected?.id}
                       disabled={navigationBusy}
-                      onClick={(event) => openZoneDetails(zone.id, event.currentTarget)}
-                    >
-                      <span className={`${ELEMENT_TAG}-venue-zone-thumb`} aria-hidden="true">
-                        {image ? <ArtworkImage src={image.url} alt="" tile /> : <VillageIcon name="places" />}
-                      </span>
-                      <span className={`${ELEMENT_TAG}-venue-zone-caption`}>
-                        <span>{zone.name}</span>
-                        {zone.accessLabel !== "Open to you" ? <small>{zone.accessLabel}</small> : null}
-                      </span>
-                      <span className={`${ELEMENT_TAG}-venue-zone-chevron`} aria-hidden="true">
-                        ›
-                      </span>
-                    </button>
+                      onOpen={(event) => openZoneDetails(zone.id, event.currentTarget)}
+                    />
                   );
                 })}
               </section>
@@ -691,6 +679,18 @@ export function VenueScreen({
                         <h2>{selected.name}</h2>
                       )}
                     </div>
+                    {selected.accessView?.invitation && (
+                      <small>
+                        {[
+                          invitationLabel(selected.accessView.invitation),
+                          controller.nameOfCharacter(selected.accessView.invitation.issuerId),
+                          selected.accessView.invitation.accompanied && "Escort required",
+                          selected.accessView.invitation.outsideHours && "After hours allowed",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </small>
+                    )}
                     <ZoneArtwork
                       key={selected.id}
                       place={place}
@@ -739,9 +739,40 @@ export function VenueScreen({
               </div>
             </section>
           ) : null}
-          {venueSection === "manage" && !editingConnections ? (
+          {venueSection === "manage" && editingAccess ? (
+            <VenueAccessPanel
+              key={venueHoursScope ? "venue" : selected?.id}
+              place={place}
+              zone={venueHoursScope ? undefined : selected}
+              controller={controller}
+              onClose={() => setEditingAccess(false)}
+              onSelect={(id) => {
+                setVenueHoursScope(!id);
+                if (id) selectRoom(id);
+              }}
+            />
+          ) : null}
+          {venueSection === "manage" && !editingConnections && !editingAccess ? (
             <section className={ELEMENT_TAG + "-venue-manage"} aria-label="Manage this venue">
               <VenueName place={place} controller={controller} />
+              {(place.accessView?.canManage || zones.some((zone) => zone.accessView?.decision.canInvite)) && (
+                <button
+                  type="button"
+                  className={ELEMENT_TAG + "-button"}
+                  disabled={navigationBusy}
+                  onClick={async () => {
+                    if (!(await canLeave())) return;
+                    const accessZone =
+                      zones.find((zone) => zone.id === selected?.id && zone.accessView?.decision.canInvite) ??
+                      zones.find((zone) => zone.accessView?.decision.canInvite);
+                    setVenueHoursScope(!accessZone);
+                    if (accessZone) selectRoom(accessZone.id);
+                    setEditingAccess(true);
+                  }}
+                >
+                  Access <span aria-hidden="true">›</span>
+                </button>
+              )}
               <button
                 type="button"
                 className={ELEMENT_TAG + "-button"}

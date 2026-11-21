@@ -147,6 +147,7 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
               }),
           ),
         ),
+        options.beforeSceneDispatch,
       ).catch((error) => {
         try {
           villagesLogger().warn(

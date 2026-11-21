@@ -12,7 +12,7 @@ import { VillageIcon } from "../../shared/VillageIcon.js";
 import type { EngineConnectionRow, VillageConnectionOption } from "../../shared/types.js";
 
 const jobs = [
-  { key: "systemConnectionId", label: "System", purpose: "World setup and background activity" },
+  { key: "systemConnectionId", label: "System", purpose: "Drafts and village activity" },
   { key: "narrationConnectionId", label: "GM", purpose: "Scenes and dialogue" },
   { key: "imageConnectionId", label: "Images", purpose: "Maps and artwork" },
 ] as const;
@@ -158,6 +158,19 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
     [readFailed, refresh],
   );
 
+  const language = options.filter((option) => option.category === "language");
+  const required = [settings?.systemConnectionId, settings?.narrationConnectionId];
+  const setupProblem = pending
+    ? CONNECTION_SETUP_PROBLEMS.saving
+    : readFailed
+      ? CONNECTION_SETUP_PROBLEMS.failed
+      : refreshing || !settings
+        ? CONNECTION_SETUP_PROBLEMS.reading
+        : required.some((id) => !id)
+          ? CONNECTION_SETUP_PROBLEMS.required
+          : required.some((id) => !language.some((option) => option.id === id))
+            ? CONNECTION_SETUP_PROBLEMS.missing
+            : "";
   return {
     settings,
     options,
@@ -166,25 +179,26 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
     pending,
     saving: pending !== null,
     refreshing,
+    setupProblem,
     busy: pending !== null || refreshing || readFailed,
     choose,
     refresh,
   };
 }
 
-export function AgentConnections(props: { onSetupProblem?: (problem: string) => void; compact?: boolean }) {
+export function AgentConnections() {
   const connections = useAgentConnections(true);
-  return <AgentConnectionsControls {...props} connections={connections} />;
+  return <AgentConnectionsControls connections={connections} />;
 }
 
 export function AgentConnectionsControls({
   connections,
-  onSetupProblem,
+  kind,
   compact = false,
   disabled = false,
 }: {
   connections: ReturnType<typeof useAgentConnections>;
-  onSetupProblem?: (problem: string) => void;
+  kind?: "language" | "images";
   compact?: boolean;
   disabled?: boolean;
 }) {
@@ -195,19 +209,8 @@ export function AgentConnectionsControls({
   const pendingId = useId();
   const language = options.filter((option) => option.category === "language");
   const images = options.filter((option) => option.category === "image_generation");
-  const systemId = settings?.systemConnectionId;
-  const gmId = settings?.narrationConnectionId;
-  const hasLanguageChoices = [systemId, gmId].every((id) => language.some((option) => option.id === id));
   const progress = !readFailed && (connections.refreshing || !settings) ? CONNECTION_SETUP_PROBLEMS.reading : "";
-
-  useEffect(() => {
-    if (pending) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.saving);
-    else if (progress) onSetupProblem?.(progress);
-    else if (readFailed) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.failed);
-    else if (!systemId || !gmId) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.required);
-    else if (!hasLanguageChoices) onSetupProblem?.(CONNECTION_SETUP_PROBLEMS.missing);
-    else onSetupProblem?.("");
-  }, [gmId, hasLanguageChoices, onSetupProblem, pending, progress, readFailed, systemId]);
+  const foundingLanguage = kind === "language";
 
   const pickingImages = job?.key === "imageConnectionId";
   const modelOptions = pickingImages ? images : language;
@@ -217,14 +220,13 @@ export function AgentConnectionsControls({
   const specialChoices = [];
   if (pickingImages)
     specialChoices.push({ id: VILLAGES_IMAGE_CONNECTION_DISABLED, name: "Disabled", detail: "", needsReview: false });
-  if (pickingImages || !onSetupProblem)
-    specialChoices.push({ id: "", name: "Use Engine default", detail: "", needsReview: false });
+  if (!foundingLanguage) specialChoices.push({ id: "", name: "Use Engine default", detail: "", needsReview: false });
   const problem = error ? (
     <div
       className={`${P}-model-problem`}
       role="alert"
-      data-founding-problem={onSetupProblem ? "" : undefined}
-      tabIndex={onSetupProblem ? -1 : undefined}
+      data-founding-problem={foundingLanguage ? "" : undefined}
+      tabIndex={foundingLanguage ? -1 : undefined}
     >
       <span>{error}</span>
       {readFailed ? (
@@ -235,7 +237,11 @@ export function AgentConnectionsControls({
     </div>
   ) : null;
   const feedback = progress ? (
-    <p role="status" data-founding-problem={onSetupProblem ? "" : undefined} tabIndex={onSetupProblem ? -1 : undefined}>
+    <p
+      role="status"
+      data-founding-problem={foundingLanguage ? "" : undefined}
+      tabIndex={foundingLanguage ? -1 : undefined}
+    >
       {progress}
     </p>
   ) : (
@@ -245,7 +251,7 @@ export function AgentConnectionsControls({
   return (
     <section
       className={`${P}-model-connections`}
-      aria-label={compact ? "Model Connections" : undefined}
+      aria-label={compact ? (kind === "images" ? "Image connection" : "Model Connections") : undefined}
       aria-labelledby={compact ? undefined : titleId}
     >
       {compact ? null : <h2 id={titleId}>Model Connections</h2>}
@@ -257,54 +263,56 @@ export function AgentConnectionsControls({
       ) : null}
       {settings ? (
         <div className={`${P}-model-rows`}>
-          {jobs.map((entry) => {
-            const artwork = entry.key === "imageConnectionId";
-            const saving = pending?.key === entry.key;
-            const id = saving ? pending.id : settings[entry.key];
-            const selected = (artwork ? images : language).find((option) => option.id === id);
-            const off = artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
-            const missing = !!id && !off && !selected;
-            const needsChoice = !!onSetupProblem && !artwork && !id;
-            let value = "Engine default";
-            if (off) value = "Disabled";
-            else if (missing) value = "Missing connection";
-            else if (needsChoice) value = "Choose a model";
-            else if (selected) value = selected.name;
-            return (
-              <button
-                key={entry.key}
-                type="button"
-                className={`${P}-model-row`}
-                aria-haspopup="dialog"
-                aria-disabled={pending ? true : undefined}
-                aria-describedby={saving ? pendingId : undefined}
-                data-founding-problem={saving && onSetupProblem ? "" : undefined}
-                disabled={(busy && !pending) || disabled}
-                onClick={() => {
-                  if (pending) return;
-                  setSearch("");
-                  setJob(entry);
-                }}
-              >
-                <span className={`${P}-model-icon`}>
-                  <JobIcon job={entry} />
-                </span>
-                <span>
-                  <strong>{entry.label}</strong>
-                  <small>{entry.purpose}</small>
-                </span>
-                <span
-                  className={`${P}-model-assignment`}
-                  data-needs-choice={missing || needsChoice || selected?.needsReview || undefined}
+          {jobs
+            .filter((entry) => !kind || (entry.key === "imageConnectionId") === (kind === "images"))
+            .map((entry) => {
+              const artwork = entry.key === "imageConnectionId";
+              const saving = pending?.key === entry.key;
+              const id = saving ? pending.id : settings[entry.key];
+              const selected = (artwork ? images : language).find((option) => option.id === id);
+              const off = artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
+              const missing = !!id && !off && !selected;
+              const needsChoice = foundingLanguage && !id;
+              let value = "Engine default";
+              if (off) value = "Disabled";
+              else if (missing) value = "Missing connection";
+              else if (needsChoice) value = "Choose a model";
+              else if (selected) value = selected.name;
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  className={`${P}-model-row`}
+                  aria-haspopup="dialog"
+                  aria-disabled={pending ? true : undefined}
+                  aria-describedby={saving ? pendingId : undefined}
+                  data-founding-problem={saving && foundingLanguage ? "" : undefined}
+                  disabled={(busy && !pending) || disabled}
+                  onClick={() => {
+                    if (pending) return;
+                    setSearch("");
+                    setJob(entry);
+                  }}
                 >
-                  <strong>{value}</strong>
-                  {selected?.detail ? <small>{selected.detail}</small> : null}
-                  {selected?.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
-                </span>
-                <span className={saving ? `${P}-model-pending ${P}-spin` : `${P}-model-chevron`} aria-hidden="true" />
-              </button>
-            );
-          })}
+                  <span className={`${P}-model-icon`}>
+                    <JobIcon job={entry} />
+                  </span>
+                  <span>
+                    <strong>{entry.label}</strong>
+                    <small>{entry.purpose}</small>
+                  </span>
+                  <span
+                    className={`${P}-model-assignment`}
+                    data-needs-choice={missing || needsChoice || selected?.needsReview || undefined}
+                  >
+                    <strong>{value}</strong>
+                    {selected?.detail ? <small>{selected.detail}</small> : null}
+                    {selected?.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
+                  </span>
+                  <span className={saving ? `${P}-model-pending ${P}-spin` : `${P}-model-chevron`} aria-hidden="true" />
+                </button>
+              );
+            })}
         </div>
       ) : null}
       {job && settings ? (
@@ -372,6 +380,7 @@ function JobIcon({ job }: { job: ConnectionJob }) {
   if (job.key === "systemConnectionId") return <VillageIcon name="settings" />;
   return (
     <svg
+      className="mari-rgb-static-icon"
       viewBox="0 0 24 24"
       width="24"
       height="24"

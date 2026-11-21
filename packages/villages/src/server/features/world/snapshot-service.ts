@@ -11,11 +11,15 @@ import { foundingCompletedIds, foundingReadyForPlay } from "../../domain/rules/f
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { openingView } from "../../domain/rules/opening-project.js";
+import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagePresence } from "../../domain/rules/village-projections.js";
+import { cardCharacters, visitorLodging, visitingCharacter, visitorPosition } from "../../domain/rules/visitors.js";
+import { settleTripsForAttendance } from "./visitor-trips.js";
 import {
   exactSnapshotTransition,
   isVillageFounded,
@@ -26,6 +30,7 @@ import {
 
 export type VillageSnapshotPorts = {
   readVillageState: typeof import("./village-store.js").readVillageState;
+  mutateVillageState: typeof import("./village-store.js").mutateVillageState;
   listVillagerCards: typeof import("../../adapters/engine/catalog.js").listVillagerCards;
   rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
   sceneQueries: () => Pick<ReturnType<typeof import("../scenes/services.js").sceneQueries>, "activeVenueSession">;
@@ -36,6 +41,7 @@ export type VillageSnapshotPorts = {
 /** Inert snapshot assembly; connections belong to its activation. */
 export function createVillageSnapshot({
   readVillageState,
+  mutateVillageState,
   listVillagerCards,
   rollActiveAgendas,
   sceneQueries,
@@ -49,7 +55,7 @@ export function createVillageSnapshot({
     let now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
     if (clock) now = new ZonedDate(now, clock.timeZone);
     if (await rollActiveAgendas(now, village, clock?.revision)) village = await readVillageState({ memories: true });
-    const residentIds = village.villagers.map((villager) => villager.characterId);
+    const residentIds = cardCharacters(village).map((villager) => villager.characterId);
     const cards = await listVillagerCards(residentIds);
     const cardsById = new Map(cards.map((card) => [card.id, card]));
     if (
@@ -71,14 +77,16 @@ export function createVillageSnapshot({
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
     if (residenceAccess) village = await readVillageState({ memories: true });
+    village = await settleTripsForAttendance(village, now, mutateVillageState);
     const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess) : village;
     const capturedVenue = residenceAccess && findLocation(sceneWorld, residenceAccess.placeId);
     const liveVenue = residenceAccess && findLocation(village, residenceAccess.placeId);
-    const scenePresentation = capturedVenue && {
-      ...capturedVenue,
-      zones: capturedVenue.zones?.map((zone) => {
-        const observed = liveVenue && resolveVenueZone(liveVenue, zone.id)?.observed;
-        return observed ? { ...zone, observed } : zone;
+    const sceneLayout = capturedVenue && residenceAccess && sceneLayoutVenue(capturedVenue, residenceAccess);
+    const scenePresentation = sceneLayout && {
+      ...sceneLayout,
+      zones: sceneLayout.zones?.map((zone) => {
+        const liveZone = liveVenue && resolveVenueZone(liveVenue, zone.id);
+        return liveZone ? { ...zone, name: liveZone.name, observed: liveZone.observed ?? zone.observed } : zone;
       }),
     };
     const presence = villagePresence(village, minuteOfDay, now);
@@ -147,6 +155,61 @@ export function createVillageSnapshot({
         villager.cardSnapshot.dialogueColor ?? "",
         destination,
       );
+    });
+    const introductionVisitor =
+      residenceAccess?.visitorIntroduction && capturedVenue
+        ? village.visitors?.find(
+            (person) =>
+              person.characterId === residenceAccess.activeIds[0] &&
+              person.incarnation ===
+                residenceAccess.continuity?.facts.visitors?.find((saved) => saved.characterId === person.characterId)
+                  ?.incarnation,
+          )
+        : undefined;
+    const position = introductionVisitor
+      ? {
+          person: introductionVisitor,
+          venueId: residenceAccess!.placeId,
+          zoneId: residenceAccess!.zoneId!,
+          name: capturedVenue!.name,
+          sleeping: false,
+        }
+      : visitorPosition(village, now, presence);
+    const visit = position?.sleeping ? undefined : position;
+    const ordinaryVisitor = visitingCharacter(village, now);
+    const visiting = introductionVisitor ?? ordinaryVisitor;
+    const trip = visiting?.trip;
+    const visitors = village.visitors?.map((visitor) => {
+      const card = cardsById.get(visitor.characterId);
+      const stayingWithPlayer =
+        visiting === visitor && trip?.lodging?.hostId === "player" && !!visitorLodging(village, visitor, now);
+      const canSeeTrip =
+        trip && visiting === visitor && visitor.firstMetAt && (visit?.person === visitor || stayingWithPlayer);
+      return {
+        ...projectVillager(
+          visitor,
+          card || visitor.characterId === PROFESSOR_MARI_ID ? visitor.cardSnapshot.name : null,
+          "",
+          visitor.cardSnapshot.tags,
+          visitor.cardSnapshot.nameColor ?? "",
+          visitor.cardSnapshot.dialogueColor ?? "",
+          null,
+        ),
+        met: Boolean(visitor.firstMetAt),
+        ...(visitor.firstMetAt ? { firstMetAt: visitor.firstMetAt } : {}),
+        visitsEnabled: visitor.visitsEnabled,
+        ...(canSeeTrip
+          ? {
+              visit: {
+                arrivedAt: trip.arrivedAt,
+                leavesAt: trip.leavesAt,
+                stayingWithPlayer,
+                offerHome: false,
+                ...(introductionVisitor === visitor ? { introductory: true as const } : {}),
+              },
+            }
+          : {}),
+      };
     });
     const snapshot: VillageSnapshot = {
       worldScope: villageWorldScope(village),
@@ -268,6 +331,16 @@ export function createVillageSnapshot({
       })),
       residences: village.residences,
       villagers,
+      ...(visitors?.length ? { visitors } : {}),
+      ...(visit
+        ? {
+            visitorNotice: {
+              venueId: visit.venueId,
+              venueName: visit.name,
+              ...(visit.person.firstMetAt ? { name: visit.person.cardSnapshot.name } : {}),
+            },
+          }
+        : {}),
       isFounded: isVillageFounded(village),
       settings: villageSettings(
         village,
@@ -289,6 +362,7 @@ export function createVillageSnapshot({
                   residenceAccess.continuity?.capturedAt ?? residenceAccess.startedAt,
                   sceneWorld.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
                 ),
+                village,
               ).venues.find((venue) => venue.id === scenePresentation.id)!,
             },
           }

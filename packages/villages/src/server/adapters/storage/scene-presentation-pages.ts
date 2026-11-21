@@ -362,6 +362,10 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
     if (remembered) {
       assertParagraphs(remembered.moments);
       memoryRequire(
+        remembered.moments.every((moment) => moment.lines.every((line) => line.position < lineCount)),
+        "invalid Scene moment position",
+      );
+      memoryRequire(
         versionOf(remembered.layout, versions) === head.publicVersion,
         "Scene presentation version changed",
       );
@@ -406,11 +410,17 @@ export function createScenePresentations(documents: Pick<CapabilityDocumentStore
     remember(head, entry);
     return entry;
   }
-  async function prepare(scene: VenueScene, positions: Position[], source: string, previous?: ScenePresentationHead) {
-    if (previous) readScenePresentationHead(previous, scene);
-    const old = previous ? await read(previous, scene, scene.lines.length) : undefined;
-    if (previous?.source === source) return previous;
-    const { head, pages, ...entry } = encodeScenePresentations(scene, positions, source, previous, old, versions);
+  async function prepare(
+    scene: VenueScene,
+    positions: Position[],
+    source: string,
+    previous?: { head: ScenePresentationHead; lineCount: number },
+    refresh = false,
+  ) {
+    if (previous) readScenePresentationHead(previous.head, scene);
+    const old = previous ? await read(previous.head, scene, previous.lineCount) : undefined;
+    if (!refresh && previous?.head.source === source) return previous.head;
+    const { head, pages, ...entry } = encodeScenePresentations(scene, positions, source, previous?.head, old, versions);
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {
       const exists = await documents.getById("villages", id);
@@ -463,7 +473,7 @@ export function encodeScenePresentations(
     lines,
     scene.submissions.filter((turn) => turn.acceptance.status === "applied"),
   );
-  const byId = new Map(positions.map((position) => [position.id, position]));
+  const byId = new Map(positions.map(({ id, position, publicDigest }) => [id, { id, position, publicDigest }]));
   const sources = groupSceneMoments(lines).map(({ line, asides }) => {
     const selected = [line, ...asides],
       edges = selected.map((line) => boundaries.get(line.id));

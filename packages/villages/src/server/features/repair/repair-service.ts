@@ -1239,7 +1239,7 @@ export function createRepairService(ports: RepairPorts) {
         (value) => {
           Object.assign(value, restored);
         },
-        { memories: true },
+        { memories: true, captureSceneRetry: () => null },
       );
       for (const value of wanted.values()) {
         if (value.id === "villages-village" || value.kind === "memory-payload" || value.kind === MEMORY_PAGE_KIND)

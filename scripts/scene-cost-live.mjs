@@ -60,7 +60,7 @@ export async function runLiveSceneComparison(config, output) {
     reasoningAccounting:
       "Reported reasoning is a subset of completion for OpenAI-compatible providers; zero is not proof of no reasoning.",
     requestAccounting:
-      "All Villages capability attempts are retained. Provider-internal retries are not exposed by the Capability API. Unknown billed usage is never counted as zero.",
+      "All observed attempts are retained. Failed-response costs cover observed calls on turns confirmed unpublished. Null denotes unknown publication or attribution. Provider-internal retries are unobservable.",
     turns: [],
   };
   await mkdir(dirname(output), { recursive: true });
@@ -76,6 +76,9 @@ export async function runLiveSceneComparison(config, output) {
       submissionId: mode === "villages" ? (pair.submissionId ?? randomUUID()) : randomUUID(),
       startedAt: new Date().toISOString(),
       status: "running",
+      published: null,
+      firstPassPublished: null,
+      failedResponseCosts: null,
       actualInvoiceCostUsd: null,
       ratedCostUsd: null,
       reportedRequestCount: null,
@@ -83,7 +86,9 @@ export async function runLiveSceneComparison(config, output) {
     report.turns.push(turn);
     await save();
     const started = performance.now();
-    let beforeUsage;
+    let beforeUsage, primaryAttempts;
+    let submitted = false,
+      preexisting = false;
     try {
       if (mode === "game") {
         const before = rows(await call(`/api/chats/${config.chatId}/messages`));
@@ -109,8 +114,9 @@ export async function runLiveSceneComparison(config, output) {
         const message = after
           .filter((row) => row.role === "assistant" && !before.some((old) => old.id === row.id))
           .at(-1);
+        turn.published = !!message;
         assert(message, "Game Mode must save a new response");
-        const extra = typeof message.extra === "string" ? JSON.parse(message.extra) : message.extra;
+        const extra = (typeof message.extra === "string" ? JSON.parse(message.extra) : message.extra) ?? {};
         const info = extra.generationInfo ?? {};
         turn.gameToolPlanning = extra.gameToolPlanning ?? null;
         turn.generationInfo = info;
@@ -140,6 +146,8 @@ export async function runLiveSceneComparison(config, output) {
         beforeUsage = await call("/api/villages/usage?details=1");
         assert.equal(beforeUsage.running, 0, "Use a quiet isolated world");
         const active = await call("/api/villages/rooms/active");
+        preexisting =
+          active.session?.latestTurn?.id === turn.submissionId || active.session?.operation?.id === turn.submissionId;
         const payload = {
           sessionId: config.sessionId,
           submissionId: turn.submissionId,
@@ -149,7 +157,15 @@ export async function runLiveSceneComparison(config, output) {
           expectedSceneRevision: active.session.sceneRevision,
           ...(pair.retryOfAttemptId ? { retryOfAttemptId: pair.retryOfAttemptId } : {}),
         };
+        submitted = true;
         const result = await call("/api/villages/rooms/turn", "POST", payload);
+        if (
+          result.session?.id === config.sessionId &&
+          result.session.latestTurn?.id === turn.submissionId &&
+          typeof result.session.latestTurn.published === "boolean"
+        )
+          turn.published = result.session.latestTurn.published;
+        assert.equal(turn.published, true, "Scene must publish the submitted turn");
         turn.processingSummary = result.session?.processingSummary;
         const changes = await call(`/api/villages/rooms/${encodeURIComponent(config.sessionId)}/changes`);
         assert(Array.isArray(changes.unresolved), "Native consequence status must be available");
@@ -161,7 +177,8 @@ export async function runLiveSceneComparison(config, output) {
           "A failed, pending or discarded consequence invalidates this comparison",
         );
         const after = await call("/api/villages/usage?details=1");
-        turn.attempts = after.requests.filter((row) => !beforeUsage.requests.some((old) => old.id === row.id));
+        primaryAttempts = after.requests.filter((row) => !beforeUsage.requests.some((old) => old.id === row.id));
+        turn.attempts = primaryAttempts;
         assert(
           turn.attempts.every((row) => row.status !== "complete" || intendedAttempt(row)),
           "Unrelated or changed-model usage invalidates a controlled comparison",
@@ -175,12 +192,38 @@ export async function runLiveSceneComparison(config, output) {
     } catch (error) {
       turn.status = "failed";
       turn.error = String(error);
+      if (submitted && turn.published === null) {
+        try {
+          const { operation } = await call(
+            `/api/villages/rooms/${encodeURIComponent(config.sessionId)}/operations/${encodeURIComponent(turn.submissionId)}`,
+          );
+          if (operation?.id === turn.submissionId) {
+            if (operation.committed === true && operation.replyReady === true) turn.published = true;
+            else if (operation.acceptance === "held" || (!operation.terminal && operation.status === "interrupted")) {
+              turn.published = false;
+              turn.failureStage = operation.stage ?? null;
+            }
+          }
+        } catch (readError) {
+          turn.publicationReadError = String(readError);
+        }
+      }
       throw error;
     } finally {
       if (beforeUsage) {
         try {
           const after = await call("/api/villages/usage?details=1");
           turn.attempts = after.requests.filter((row) => !beforeUsage.requests.some((old) => old.id === row.id));
+          // The first saved request establishes the initial ledger's start time.
+          const initialized =
+            beforeUsage.totals?.requests === 0 &&
+            beforeUsage.requests.length === 0 &&
+            after.requests[0]?.periodId === "initial";
+          const completeUsage =
+            !beforeUsage.error && !after.error && (beforeUsage.since === after.since || initialized);
+          if (!completeUsage) turn.usageAttributionIncomplete = true;
+          if (primaryAttempts)
+            turn.replayAttempts = turn.attempts.filter((row) => !primaryAttempts.some((old) => old.id === row.id));
           turn.capabilityAttemptCount = turn.attempts.length;
           turn.additionalAttempts = Math.max(0, turn.attempts.length - 1);
           turn.identityMismatch = turn.attempts.some((row) => row.status === "complete" && !intendedAttempt(row));
@@ -188,14 +231,37 @@ export async function runLiveSceneComparison(config, output) {
             turn.status = "failed";
             turn.error = "Unrelated or changed-model usage invalidates a controlled comparison";
           }
-          const costs = turn.attempts.map((row) =>
-            row.status === "complete" && intendedAttempt(row) ? price(row.usage) : null,
-          );
+          const rateAttempt = (row) => (row.status === "complete" && intendedAttempt(row) ? price(row.usage) : null);
+          const costs = turn.attempts.map(rateAttempt);
           turn.knownRatedSubtotalUsd = costs.reduce((sum, value) => sum + (value ?? 0), 0);
           turn.unknownCostAttempts = costs.filter((value) => value === null).length;
-          turn.ratedCostUsd = turn.attempts.length && !turn.unknownCostAttempts ? turn.knownRatedSubtotalUsd : null;
+          turn.ratedCostUsd =
+            completeUsage && turn.attempts.length && !turn.unknownCostAttempts ? turn.knownRatedSubtotalUsd : null;
+          const initial = primaryAttempts ?? turn.attempts;
+          if (completeUsage && initial.length === 1 && intendedAttempt(initial[0])) {
+            if (pair.retryOfAttemptId) turn.firstPassPublished = false;
+            else if (!preexisting) turn.firstPassPublished = turn.published;
+          }
+          if (turn.published === false) {
+            const failed = initial.map(rateAttempt);
+            turn.failedResponseCosts = {
+              observedRequests: failed.length,
+              knownRatedSubtotalUsd: failed.reduce((sum, value) => sum + (value ?? 0), 0),
+              unknownCostAttempts: completeUsage ? failed.filter((value) => value === null).length : null,
+            };
+          }
         } catch (error) {
           turn.usageReadError = String(error);
+        }
+      } else if (mode === "game") {
+        if (turn.reportedRequestCount === 1) turn.firstPassPublished = turn.published;
+        if (turn.published === false) {
+          turn.failedResponseCosts = {
+            observedRequests: turn.reportedRequestCount,
+            knownRatedSubtotalUsd: turn.ratedCostUsd ?? 0,
+            unknownCostAttempts:
+              turn.reportedRequestCount === null ? null : turn.ratedCostUsd === null ? turn.reportedRequestCount : 0,
+          };
         }
       }
       turn.latencyMs = Math.round(performance.now() - started);

@@ -22,8 +22,14 @@ export function configureSceneCommands(service: SceneCommands): () => void {
 export async function moveVenueZone(...args: Parameters<SceneCommands["moveVenueZone"]>) {
   return binding.get().moveVenueZone(...args);
 }
+export async function reactToTrespass(...args: Parameters<SceneCommands["reactToTrespass"]>) {
+  return binding.get().reactToTrespass(...args);
+}
 export function enterVenue(...args: Parameters<SceneCommands["enterVenue"]>) {
   return binding.get().enterVenue(...args);
+}
+export function travelVenue(...args: Parameters<SceneCommands["travelVenue"]>) {
+  return binding.get().travelVenue(...args);
 }
 export async function greetVenue(...args: Parameters<SceneCommands["greetVenue"]>) {
   return binding.get().greetVenue(...args);
@@ -59,4 +65,7 @@ export async function recoverVenueSceneWork(...args: Parameters<SceneCommands["r
 }
 export async function settleScene(...args: Parameters<SceneCommands["settleScene"]>) {
   return binding.get().settleScene(...args);
+}
+export function retryReply(...args: Parameters<SceneCommands["retryReply"]>) {
+  return binding.get().retryReply(...args);
 }

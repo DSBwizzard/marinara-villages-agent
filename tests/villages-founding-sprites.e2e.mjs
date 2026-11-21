@@ -27,7 +27,7 @@ const snapshot = {
     venues: [],
     worldRules: "",
     circumstances: [],
-    communityVenueId: "",
+    openingVenueId: "",
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     maps: [],
@@ -158,12 +158,17 @@ await withBrowser(browser, async () => {
       );
       await page.goto("http://founding-sprites.test/");
       await page.addScriptTag({ content: bundle });
+      const phone = viewport.width <= 727;
       const root = page.locator(".villages-forging-v2"),
-        next = root.getByRole("button", { name: "Continue to Venues and Map", exact: true });
+        next = root.getByRole("button", { name: phone ? "Next" : "Let’s set up their homes", exact: true });
+      for (const reply of ["START", "Next", "Set it up myself"])
+        await root.getByRole("button", { name: reply, exact: true }).click();
       await root.getByLabel("Village Name", { exact: true }).fill("Tidebreak");
-      await root.getByLabel("Location name", { exact: true }).fill("Harbour");
+      await root.getByLabel("First map name", { exact: true }).fill("Harbour");
       await root.getByLabel("Location description", { exact: true }).fill("A village beside the sea.");
-      await root.getByRole("button", { name: "Continue to People", exact: true }).click();
+      for (const reply of ["Next", "Next", phone ? "Next" : "Let’s meet the villagers"])
+        await root.getByRole("button", { name: reply, exact: true }).click();
+      if (phone) await next.click();
       for (const person of people) {
         await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
         await page
@@ -210,7 +215,10 @@ await withBrowser(browser, async () => {
       await expect(pane.getByRole("heading", { name: "Side · 1" })).toBeVisible();
       await expect(pane.getByRole("img", { name: "Happy_01 · Front" })).toBeVisible();
       await expect(pane.getByRole("img", { name: "Happy_blush · Side" })).toBeVisible();
-      await pane.getByRole("button", { name: "Set as default" }).click();
+      await pane
+        .getByRole("region", { name: "Front", exact: true })
+        .getByRole("button", { name: "Set as default" })
+        .click();
       await expect(next).toBeDisabled();
       assert.equal(writes.length, 0);
       await pane.getByRole("button", { name: "Save", exact: true }).click();

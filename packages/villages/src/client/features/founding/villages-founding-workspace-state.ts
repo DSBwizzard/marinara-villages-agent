@@ -1,9 +1,20 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { FoundingSetting } from "../../../shared/contracts/founding.js";
+import { foundingHomeMembers, foundingSleepZones } from "./founding-homes.js";
 import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
+  settingBrief?: string;
+  settingBeat?: "welcome" | "world" | "lorebooks" | "village";
+  settingManual?: true;
+  settingIntroPending?: true | "connections";
+  settingWorldBrief?: string;
+  settingDraft?: Partial<FoundingSetting>;
+  settingEditorOpen?: boolean;
+  mobileMenu?: "people" | "venues" | "review";
+  settingProblem?: string;
   suggestionRequest?: {
     id: string;
     sourceKey: string;
@@ -14,6 +25,8 @@ export type FoundingWorkspaceState = {
     sourceInputs?: string;
     fullVenue?: boolean;
     draftEntranceImage?: boolean;
+    draftSetting?: boolean;
+    settingReplacement?: FoundingSetting;
     failure?: string;
   };
 
@@ -43,7 +56,8 @@ export type FoundingIssue = {
     | "zone-name"
     | "zone-purpose"
     | "zone-appearance"
-    | "controller";
+    | "controller"
+    | "sleep";
   message: string;
 };
 /** The existing founding requirements, collected rather than stopping at the first field. */
@@ -65,6 +79,12 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
       (venue.occupancy.playerHome && venues.some((row) => row.id !== venue.id && row.occupancy.playerHome))
     )
       add("assignment", "Assign this resident to only one home.");
+    if (!existing && venue.destinations)
+      for (const actor of foundingHomeMembers(venue)) {
+        const sleep = venue.destinations?.[actor]?.sleep;
+        if (!foundingSleepZones(venue, actor).some((zone) => zone.id === sleep))
+          add("sleep", `Choose an accessible sleeping Zone in ${venue.name || "this Venue"}.`, sleep);
+      }
     for (const zone of [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])]) {
       const privateZone = venue.privateSpaces?.some((row) => row.id === zone.id);
       if (!existing || zone.access || privateZone) {

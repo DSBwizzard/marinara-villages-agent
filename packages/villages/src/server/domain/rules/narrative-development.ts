@@ -1,3 +1,4 @@
+import { sharedPlayspace } from "./shared-playspace.js";
 import type { VillageState } from "../models/world.js";
 import type {
   NarrativeAdmission,
@@ -171,6 +172,9 @@ export function admitNarrative(
           zoneId: zone.id,
           name: venue.name + " / " + zone.name,
           exterior: zone.kind === "exterior",
+          ordinaryUseRestrictionAllowed:
+            zone.kind !== "exterior" &&
+            sharedPlayspace(state, new Date(at), { venueId: venue.id, zoneId: zone.id }).sufficient,
           structure: narrativeStructure(venue, zone),
           controllers: [...zoneControllerIds(venue, zone)].sort(),
           correctiveActorIds: correctiveActors(state, venue, zone, at),
@@ -357,7 +361,9 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
     const remedy = prior && change.remedy === undefined ? undefined : text(change.remedy, 600, true);
     if (
       change.restriction === "ordinary-use" &&
-      (admitted.exterior || (!endsAt && (!(remedy ?? prior?.remedy)?.trim() || !admitted.correctiveActorIds.length)))
+      (!admitted.ordinaryUseRestrictionAllowed ||
+        admitted.exterior ||
+        (!endsAt && (!(remedy ?? prior?.remedy)?.trim() || !admitted.correctiveActorIds.length)))
     )
       throw badGateway(
         "A restriction needs accessible corrective work or an established timed release; Entrances remain open.",

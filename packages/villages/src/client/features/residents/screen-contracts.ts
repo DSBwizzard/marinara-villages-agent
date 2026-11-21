@@ -38,7 +38,7 @@ export type ResidentsScreenController = {
   readonly refreshBusyId: ResidentsState["refreshBusyId"];
   readonly refreshPreviews: ResidentsState["refreshPreviews"];
   readonly rewriteAgenda: ReturnType<typeof useRewriteAgenda>;
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
+  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly setScheduleInfluence: ReturnType<typeof useSetScheduleInfluence>;
   readonly setExploreSheet: React.Dispatch<React.SetStateAction<ExplorationSheet | null>>;
   readonly setFocusedProjectId: (id: string) => void;
@@ -49,7 +49,7 @@ export type ResidentsScreenController = {
   readonly setPersonProfile: ResidentsState["setPersonProfile"];
   readonly setProfileInspection: ResidentsState["setProfileInspection"];
   readonly setScreen: React.Dispatch<
-    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
+    React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person">
   >;
   readonly setSiteProjectId: React.Dispatch<React.SetStateAction<string>>;
   readonly setSnapshot: React.Dispatch<
@@ -64,11 +64,13 @@ export type ResidentsScreenController = {
 
 /** Values and actions used by RosterScreen; independent of shell implementation. */
 export type RosterScreenController = {
+  readonly setSnapshot: ResidentsScreenController["setSnapshot"];
+  readonly openVenue: ResidentsScreenController["openVenue"];
   readonly error: string;
   readonly menuPage: import("../../shared/types").MenuPage;
   readonly openPerson: (navigation: DossierNavigation) => void;
   readonly portraits: ResidentsState["portraits"];
-  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
+  readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
   readonly setMenuPage: React.Dispatch<React.SetStateAction<import("../../shared/types").MenuPage>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 };

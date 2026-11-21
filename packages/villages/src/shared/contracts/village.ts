@@ -51,9 +51,17 @@ export type VillageVillagerView = {
   place: VillagePlaceView | null;
 };
 
+export type VillageVisitorView = VillageVillagerView & {
+  met: boolean;
+  firstMetAt?: string;
+  visitsEnabled: boolean;
+  visit?: { arrivedAt: string; leavesAt: string; offerHome: boolean; stayingWithPlayer: boolean; introductory?: true };
+};
+
 export type ResidentSprite = {
   assetId: string;
   named?: true;
+  defaultView?: "front" | "side";
   expressions: Array<{ view: "front" | "side"; label: string; filename: string }>;
   images: Array<{
     view: "front" | "side";
@@ -174,6 +182,8 @@ export type VillageSnapshot = {
     completesAt?: string;
   }[];
   villagers: VillageVillagerView[];
+  visitors?: VillageVisitorView[];
+  visitorNotice?: { venueId: string; venueName: string; name?: string };
   /**
    * Whether the village has been founded yet. Not part of the settings: it is a
    * fact about the village, not something the player can edit.
@@ -487,6 +497,7 @@ export type VillageSettings = {
   foundingLore?: { label: string; entries: import("./lore.js").LoreUse[] }[];
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
+  spontaneousEvents?: boolean;
   spriteCardFlipEnabled: boolean;
   spriteVariantsEnabled: boolean;
   backgroundPace: VillageBackgroundPace;
@@ -503,7 +514,6 @@ export type VillageSettings = {
   setting: string;
   settingMaxLength: number;
   worldRules: string;
-  communityVenueId: string;
   worldName: string | null;
   playerBackground: PlayerBackground | null;
   selectedLorebookIds: string[];
@@ -684,12 +694,16 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  failureCause?: string;
+  acceptance?: "pending" | "held" | "applied" | "abandoned";
   committed?: boolean;
   replyReady?: boolean;
   /** The Scene has ended and its completed transcript is no longer retained. */
   terminal?: boolean;
   recordEvents?: RoomRecordEvent[];
   recoverable?: boolean;
+  /** Player input from an exact, published turn whose operation has since changed. */
+  submittedMessage?: string;
   id: string;
   kind: string;
   attemptId: string;
@@ -698,6 +712,10 @@ export type RoomOperation = {
   error?: string;
   input?: {
     zoneId?: string;
+    trespass?: true;
+    companions?: string[];
+    follow?: true;
+    trespassReaction?: string;
     message?: string;
     mode?: string;
     targetId?: string;
@@ -711,9 +729,12 @@ export type SceneChangeIssue = {
   status: "pending" | "held";
   at?: string;
   reason?: string;
+  diagnostic?: import("./scene-failure-diagnostic.js").SceneFailureDiagnostic;
 };
 
 export type SceneView = {
+  visitorIntroduction?: true;
+  visitEventOpening?: true;
   lore?: import("./lore.js").LoreUse[];
   currentTime?: string;
   lighting?: "day" | "night";
@@ -731,6 +752,11 @@ export type SceneView = {
   placeName: string;
   spaceClass?: VenueClass;
   zoneId?: string;
+  trespassing?: true;
+  /** Latest player-visible arrival; earlier dialogue remains in History. */
+  zoneArrivalId?: string;
+  trespassReactionId?: string;
+  movementCompanions?: { id: string; name: string; zoneId: string; trespass?: true }[];
   doorwayContacts?: { characterId: string; playerZoneId: string }[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;
@@ -744,8 +770,13 @@ export type SceneView = {
   /** Residents encountered during this Scene; activeIds identifies the current Zone audience. */
   participants: RoomParticipant[];
   lines: RoomLine[];
+  /** Active lines contain one complete published reply, or the latest arrival. */
+  liveReplyId?: string;
   playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
   latestTurn?: { id: string; at: string; published: boolean };
+  retryReply?: { token: string };
+  retryStart?: Pick<import("./scene-playback.js").ScenePlaybackMoment, "id" | "index" | "anchorCursor">;
+  travel?: { id: string; label: string };
 };
 
 export type RoomRecordEvent = {
@@ -907,8 +938,6 @@ export type VillageWritingView = {
   tense: "present" | "past";
   person: "first" | "second" | "third";
   rating: "sfw" | "nsfw";
-  writingGuidance: string;
-  writingGuidanceMaxLength: number;
 };
 
 export type VillageConnectionSettings = {

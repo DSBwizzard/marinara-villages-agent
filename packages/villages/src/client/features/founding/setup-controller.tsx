@@ -3,6 +3,7 @@ import { reconcileFoundingHome } from "./founding-homes.js";
 import { applyFoundingVenueDraft, foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
+import type { FoundingSetting } from "../../../shared/contracts/founding.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
@@ -19,6 +20,93 @@ import {
 } from "./quick-start-drafts.js";
 import { requestFoundingSuggestions, type FoundingSuggestionOptions } from "./suggestion-request.js";
 import { useCallback } from "react";
+
+export function createFoundingDraftSetting(
+  ports: Pick<
+    FoundingState,
+    | "setupWorkspace"
+    | "setSetupWorkspace"
+    | "setupSuggestionsClaim"
+    | "setSetupSuggestionsBusy"
+    | "setSetupName"
+    | "setSetupLocationName"
+    | "setSetupSetting"
+    | "setSetupWorldName"
+    | "setSetupContext"
+    | "setupLorebookDraft"
+    | "setupLoreTokenBudgetDraft"
+  > & {
+    signal?: AbortSignal;
+    persistSetupDraft: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
+    setupDraftData: import("./draft-model.js").SetupDraftData;
+  },
+) {
+  return async (mode: "request" | "replace" | "recover", signal = ports.signal) => {
+    const { setupWorkspace, setSetupWorkspace, setupSuggestionsClaim, setSetupSuggestionsBusy } = ports;
+    const request = setupWorkspace.suggestionRequest;
+    const pending = request && !request.failure ? request : undefined;
+    if (setupSuggestionsClaim.current || (pending && !pending.draftSetting) || (!pending && mode === "recover")) return;
+    if (!pending && !setupWorkspace.settingBrief?.trim()) return;
+    const { name, startingLocationName, setting: description, worldName, context } = ports.setupDraftData;
+    const current = { name, startingLocationName, description, worldName, rules: context?.rules ?? "" };
+    if (!pending && mode !== "replace" && [name, startingLocationName, description].some((value) => value.trim()))
+      return;
+    const baseline = pending ? pending.settingReplacement : current;
+    setupSuggestionsClaim.current = true;
+    setSetupSuggestionsBusy(true);
+    if (mode !== "recover") setSetupWorkspace((workspace) => ({ ...workspace, settingProblem: undefined }));
+    try {
+      const input = pending
+        ? JSON.parse(pending.sourceInputs ?? "null")
+        : {
+            mode: "draft-setting",
+            brief: setupWorkspace.settingBrief!.trim(),
+            worldBrief: setupWorkspace.settingWorldBrief?.trim() ?? "",
+            ...(worldName.trim() ? { worldName: worldName.trim() } : {}),
+            ...(current.rules.trim() ? { worldRules: current.rules.trim() } : {}),
+            selectedLorebookIds: ports.setupLorebookDraft,
+            loreTokenBudget: ports.setupLoreTokenBudgetDraft,
+          };
+      const { setting } = await requestFoundingSuggestions(
+        { ...ports, signal, setupBeginningSourceKey: "founding-setting" },
+        { draftSetting: true, checkSetting: mode !== "recover", settingReplacement: baseline },
+        input,
+      );
+      signal?.throwIfAborted();
+      if (!setting) throw new Error("The saved attempt has no setting draft.");
+      // Fields may have been edited while Mari was working, including after a reload.
+      const apply = (field: keyof FoundingSetting, value: string) =>
+        (baseline ? value === baseline[field] : !value.trim()) ? setting[field] : value;
+      ports.setSetupName((value) => apply("name", value));
+      ports.setSetupLocationName((value) => apply("startingLocationName", value));
+      ports.setSetupSetting((value) => apply("description", value));
+      ports.setSetupWorldName((value) => (value.trim() ? value : apply("worldName", value)));
+      ports.setSetupContext((context) => ({
+        ...context,
+        rules: context.rules.trim() ? context.rules : apply("rules", context.rules),
+      }));
+      setSetupWorkspace((workspace) => ({
+        ...workspace,
+        settingBeat: "village",
+        settingManual: undefined,
+        suggestionRequest: undefined,
+        settingDraft: setting,
+        settingEditorOpen: true,
+        settingProblem: undefined,
+      }));
+    } catch (cause) {
+      if (!signal?.aborted && !(cause instanceof Error && cause.name === "AbortError")) {
+        const problem = messageFrom(cause, "Mari couldn’t draft the setting. You can fill it in yourself.");
+        setSetupWorkspace((workspace) =>
+          workspace.settingProblem === problem ? workspace : { ...workspace, settingProblem: problem },
+        );
+      }
+    } finally {
+      setupSuggestionsClaim.current = false;
+      setSetupSuggestionsBusy(false);
+    }
+  };
+}
 
 export function createFoundingSuggestSetupVenues(ports: {
   signal?: AbortSignal;
@@ -57,6 +145,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   return async (options?: FoundingSuggestionOptions, signal = ports.signal) => {
     const request = ports.setupWorkspace.suggestionRequest;
     const pending = request?.failure ? undefined : request;
+    if (pending?.draftSetting) return;
     options = pending
       ? {
           quickStart: pending.quickStart,
@@ -97,7 +186,7 @@ export function createFoundingSuggestSetupVenues(ports: {
     const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData.roster ?? [];
     const replacementSource = JSON.stringify(setupVenues);
     const rows = options.separateHomes
-      ? separateFoundingTemplates(roster, ports.setupContext?.communityVenueId ?? "founding-community")
+      ? separateFoundingTemplates(roster, ports.setupContext?.openingVenueId ?? "founding-community")
       : replacing
         ? quickStartTemplates(setupVenues)
         : setupVenues;
@@ -143,7 +232,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         targetVenueId: options.venueId,
         villageName: ports.setupName,
         context: ports.setupContext,
-        communityVenueId: ports.setupContext?.communityVenueId,
+        openingVenueId: ports.setupContext?.openingVenueId,
         playerPersonaId: personaDraft,
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,

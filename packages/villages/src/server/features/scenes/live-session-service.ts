@@ -1,28 +1,35 @@
 import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
 import { observableRoomDescription, zonePictureContext } from "../../domain/rules/zone-picture.js";
-import { findLocation } from "../../domain/rules/places.js";
-import { findNpc } from "../../domain/rules/places.js";
+import { findLocation, hasAssociatedNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import type { VillageCardCharacter, VillageState } from "../../domain/models/world.js";
+import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
+import { managerResidentSprite } from "../../domain/rules/sprite-manager-model.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { cardCharacters } from "../../domain/rules/visitors.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { completeOpeningGathering } from "../../domain/rules/opening-project.js";
 import { recordClosedRelationshipScene } from "../../domain/rules/continuity-library.js";
 import { recordSceneFollowup } from "../../domain/rules/activity-followup.js";
+import { completeVisitorIntroduction, PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
+import { queueTrespassReaction } from "../../domain/rules/scene-trespass.js";
 
 import {
   accessExits,
   captureSceneAttendance,
   sceneZoneOccupants,
-  sameSceneRoutine,
+  projectLiveAttendance,
 } from "../../domain/rules/scene-attendance.js";
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { requireSceneZoneId, captureSceneLayout } from "../../domain/rules/scene-layout.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { expirePlayerVisitsOnReturn, playerVisitAbsenceElapsed } from "../../domain/rules/return-catchup-state.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
-import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
+import { contactPath, contactPosition, sceneAccessContext } from "../../domain/rules/venue-contact.js";
 import { resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 export interface LiveScenePorts {
@@ -35,6 +42,11 @@ export interface LiveScenePorts {
   withIdleSceneWork(id: string, work: () => Promise<void>): Promise<void>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
+  settleVisitorAttendance?(state: VillageState, at: Date): VillageState | Promise<VillageState>;
+  initializeCharacterSprites?(
+    scope: string,
+    character: VillageCardCharacter,
+  ): Promise<SpriteManagerState | null | undefined>;
 }
 const ACTIVITY_WRITE_MS = 15 * 1000;
 /** Inert active-Scene lifecycle and attendance coordination with originating connections. */
@@ -46,6 +58,8 @@ export function createLiveScenes({
   hasVenueOperation,
   withSceneWork,
   withIdleSceneWork,
+  initializeCharacterSprites,
+  settleVisitorAttendance,
   readVillageState: readVillageStateWithoutPlaces,
   mutateVillageState: mutateVillageStateWithoutPlaces,
 }: LiveScenePorts) {
@@ -113,24 +127,28 @@ export function createLiveScenes({
   async function activeVenueSession(): Promise<VenueScene | null> {
     const active = await readActive();
     if (!active.sessionId) return null;
-    const session = await readSession(active.sessionId);
+    let session = await readSession(active.sessionId);
     await observeVillageClock();
+    if (session.arrival && !session.arrival.settled) {
+      const arrival = session.arrival;
+      await withSceneWork(arrival.sourceId, async () => {
+        session = await readSession(session.id);
+        if (session.arrival?.settled) return;
+        const source = await changeSession(arrival.sourceId, (state) => {
+          if (state.status === "closed") return;
+          state.status = "closed";
+          state.endedAt = session.startedAt;
+          state.endReason = "player";
+        });
+        await recordClosure(source);
+        // Publish the marker under the source fence so a concurrent refresh cannot redo the closure.
+        session = await changeSession(session.id, (state) => {
+          state.arrival = { ...arrival, settled: true };
+        });
+      });
+    }
     if (session.status === "closed") {
-      if (session.openingGatheringId || ["player", "scene"].includes(session.endReason))
-        await mutateVillageState(
-          (state) => {
-            if (session.openingGatheringId) completeOpeningGathering(state, session);
-            if (
-              state.seed === session.villageSeed &&
-              session.endedAt &&
-              ["player", "scene"].includes(session.endReason)
-            ) {
-              recordClosedRelationshipScene(state, session);
-              recordSceneFollowup(state, session);
-            }
-          },
-          { memories: true },
-        );
+      await recordClosure(session);
       await clearActivePointer(session.id, true);
       return null;
     }
@@ -138,10 +156,26 @@ export function createLiveScenes({
     return refreshZoneParticipants(session);
   }
 
+  async function recordClosure(session: VenueScene) {
+    if (!session.openingGatheringId && !["player", "scene"].includes(session.endReason)) return;
+    await mutateVillageState((state) => {
+      if (session.visitorIntroduction) {
+        completeVisitorIntroduction(state, session);
+        return;
+      }
+      if (session.openingGatheringId) completeOpeningGathering(state, session);
+      if (state.seed === session.villageSeed && session.endedAt && ["player", "scene"].includes(session.endReason)) {
+        recordClosedRelationshipScene(state, session);
+        recordSceneFollowup(state, session);
+      }
+    });
+  }
+
   async function requireLiveVenueSession(id: string): Promise<VenueScene> {
     const session = await readSession(id);
     if (session.status === "closed") throw conflict("That Scene has already ended.");
     if ((await readActive()).sessionId !== id) throw conflict("That Scene is not active.");
+    if (session.arrival && !session.arrival.settled) throw conflict("Travel is settling. Refresh the Scene.");
     return refreshZoneParticipants(session);
   }
 
@@ -156,12 +190,30 @@ export function createLiveScenes({
     });
   }
 
-  async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
+  async function refreshZoneParticipants(
+    session: VenueScene,
+    completing = false,
+    firstAdmission = false,
+  ): Promise<VenueScene> {
     await observeVillageClock();
     if (session.status === "closed") return session;
+    if (session.visitorIntroduction) {
+      // This fixed introduction resumes its admitted cast instead of live routines.
+      const state = await readVillageState();
+      if (session.villageSeed !== state.seed || session.continuity?.setupAt !== state.setupAt)
+        throw conflict("That introduction belongs to another Village.");
+      if (
+        state.visitorIntroduction &&
+        (!state.visitorIntroduction.sceneId ||
+          (session.status === "active" &&
+            !state.visitors?.find((person) => person.characterId === PROFESSOR_MARI_ID)?.trip))
+      )
+        await mutateVillageState((current) => completeVisitorIntroduction(current, session));
+      return session;
+    }
     if (session.pendingAccessClaim) {
       const settled = await withSceneWork(session.id, () => settleEntryInvitation(session));
-      return refreshZoneParticipants(settled, completing);
+      return refreshZoneParticipants(settled, completing, true);
     }
     if (!completing && hasVenueOperation(session.id)) return session;
     if (!completing) {
@@ -171,7 +223,7 @@ export function createLiveScenes({
     }
     if (!session.zoneId || !session.sceneAttendance) throw conflict("That Scene has no current live admission.");
     if (!completing) {
-      session = await refreshLiveScene(session);
+      session = await refreshLiveScene(session, firstAdmission);
       await withIdleSceneWork(session.id, () => rememberCurrentZone(session));
       if (hasVenueOperation(session.id)) return session;
     }
@@ -187,7 +239,35 @@ export function createLiveScenes({
       return refreshZoneParticipants(captured, completing);
     }
     const zoneId = requireSceneZoneId(session);
+    const trespassZone = session.trespass && resolveVenueZone(venue, session.trespass.zoneId);
+    if (
+      trespassZone &&
+      evaluateZoneAccess(venue, trespassZone, "player", {
+        ...sceneAccessContext(session, undefined, village.timeZone),
+        unavailable: zoneClosed(village, venue, trespassZone),
+        environment: village.narrative,
+      }).allowed
+    ) {
+      session = await changeSession(session.id, (saved) => {
+        if (saved.zoneId === trespassZone.id) delete saved.trespass;
+      });
+    }
     if (venue.access && session.sceneAttendance) {
+      const retained = (session.actorTrespasses ?? []).filter((row) => {
+        const target = resolveVenueZone(venue, row.zoneId);
+        return (
+          target &&
+          contactPosition(session, row.actorId) === row.zoneId &&
+          !evaluateZoneAccess(venue, target, row.actorId, {
+            ...sceneAccessContext(session, undefined, village.timeZone),
+            environment: village.narrative,
+          }).allowed
+        );
+      });
+      if (retained.length !== (session.actorTrespasses ?? []).length)
+        session = await changeSession(session.id, (saved) => {
+          saved.actorTrespasses = retained;
+        });
       const exits = accessExits(session, village, venue);
       if (exits.length) {
         const displaced = await changeSession(session.id, (state) => {
@@ -202,23 +282,32 @@ export function createLiveScenes({
             ].filter((actor) => actor !== "player");
             const playerPosition = requireSceneZoneId(state);
             appendLine(state, {
-              id: randomUUID(),
+              id: (exit.actor === "player" ? "arrival-" : "") + randomUUID(),
               role: "assistant",
               speakerId: "__venue_scene__",
               name: "Narration",
               kind: "narration",
               content: `${exit.actor === "player" ? "You" : (state.sceneAttendance?.occupants.find((person) => person.characterId === exit.actor)?.name ?? "A visitor")} leave ${resolveVenueZone(venue, exit.from)?.name ?? "the Zone"}${exit.to ? ` and return to ${resolveVenueZone(venue, exit.to)?.name ?? "Entrance"}` : " and depart the Venue"} because access has ended.`,
               at: villageNow().toISOString(),
-              heardBy: witnesses,
-              zoneId: exit.from,
+              heardBy: exit.actor === "player" ? ["player", ...witnesses] : witnesses,
+              zoneId: exit.actor === "player" ? exit.to : exit.from,
+              ...(exit.actor === "player"
+                ? {
+                    physicalIdsAfter: sceneZoneOccupants(state, venue, exit.to).map((person) => person.characterId),
+                  }
+                : {}),
               contactHidden: exit.actor !== "player" && playerPosition !== exit.from && playerPosition !== exit.to,
             });
             state.accessPreviousZones ??= {};
             state.accessPreviousZones[exit.actor] = exit.from;
+            state.actorTrespasses = state.actorTrespasses?.filter((row) => row.actorId !== exit.actor);
+            state.movementAgreements = state.movementAgreements?.filter((row) => row.actorId !== exit.actor);
             if (exit.actor === "player") {
+              state.movementAgreements = [];
               const destination = resolveVenueZone(venue, exit.to)!;
               state.enteredFromZoneId = exit.from;
               state.zoneId = exit.to;
+              delete state.trespass;
               state.area = zoneArea(destination);
               state.spaceClass = destination.venueClass;
               state.privateOwnerId = destination.ownerId ?? "";
@@ -266,7 +355,15 @@ export function createLiveScenes({
     if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     const activeIds = people.map((person) => person.characterId);
-    if (session.zoneId === zoneId && JSON.stringify(activeIds) === JSON.stringify(session.activeIds)) return session;
+    const projected = structuredClone(session);
+    queueTrespassReaction(projected, village.spontaneousEvents === true);
+    if (
+      session.zoneId === zoneId &&
+      JSON.stringify(activeIds) === JSON.stringify(session.activeIds) &&
+      JSON.stringify(projected.trespassReaction) === JSON.stringify(session.trespassReaction) &&
+      JSON.stringify(projected.trespassEncounterKeys) === JSON.stringify(session.trespassEncounterKeys)
+    )
+      return session;
     return changeSession(session.id, (state) => {
       if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = zoneId;
@@ -276,6 +373,7 @@ export function createLiveScenes({
       }
       if (activeIds.some((id) => !state.activeIds.includes(id))) state.recap = "";
       state.activeIds = activeIds;
+      queueTrespassReaction(state, village.spontaneousEvents === true);
     });
   }
   async function settleEntryInvitation(admission: VenueScene): Promise<VenueScene> {
@@ -292,10 +390,12 @@ export function createLiveScenes({
     )
       throw conflict("The saved invitation changed. Refresh the Scene.");
     let claimed = false;
+    const wallTime = Date.now();
     const authority = await mutateVillageState((state) => {
       claimed = false;
       if (state.seed !== scene.villageSeed || (scene.continuity && state.setupAt !== scene.continuity.setupAt))
         throw conflict("That Village changed. Its saved Scene is preserved.");
+      expirePlayerVisitsOnReturn(state, wallTime);
       const venue = findLocation(state, scene.placeId);
       const target = venue && resolveVenueZone(venue, requireSceneZoneId(scene));
       if (!venue) throw conflict("That Place is no longer available.");
@@ -307,7 +407,13 @@ export function createLiveScenes({
         unavailable: zoneClosed(state, venue, target),
         environment: state.narrative,
       });
-      claimed = decision.allowed && decision.permissionId === permissionId;
+      const stillReachable =
+        !scene.arrival ||
+        (contactPath(state, venue, "exterior", target.id, "player", scene) &&
+          (scene.accompanying ?? []).every(({ characterId }) =>
+            contactPath(state, venue, "exterior", target.id, characterId, scene),
+          ));
+      claimed = !!stillReachable && decision.allowed && decision.permissionId === permissionId;
       if (claimed) claimVisitPermission(venue, permissionId, scene.id);
     });
     return changeSession(scene.id, (saved) => {
@@ -322,16 +428,27 @@ export function createLiveScenes({
       if (!claimed) {
         const entrance = resolveVenueZone(venue, "exterior")!;
         saved.zoneId = entrance.id;
+        delete saved.trespass;
         saved.area = zoneArea(entrance);
         saved.spaceClass = entrance.venueClass;
         saved.privateOwnerId = "";
         saved.privateAccessOwnerId = "";
+        if (saved.arrival) saved.accompanying = [];
         saved.sceneAttendance = captureSceneAttendance(authority, venue.id, now);
       } else if (saved.sceneAttendance) saved.sceneAttendance.layout = captureSceneLayout(venue);
       const people = sceneZoneOccupants(saved, venue, requireSceneZoneId(saved));
       saved.participants = people.map(({ characterId, name, doing }) => ({ characterId, name, doing }));
       saved.activeIds = people.map((person) => person.characterId);
-      if (!people.length && saved.status === "opening") saved.status = "active";
+      if (!claimed && saved.visitEvent === "opening") {
+        saved.visitEvent = "waiting";
+        saved.status = "active";
+      } else if (
+        !people.length &&
+        saved.status === "opening" &&
+        !saved.visitEvent &&
+        !hasAssociatedNpc(authority, venue.id)
+      )
+        saved.status = "active";
       saved.continuity = captureSceneContinuity(authority, saved, now.getTime());
       saved.pendingAccessClaim = undefined;
     });
@@ -393,14 +510,23 @@ export function createLiveScenes({
     });
   }
 
-  async function refreshLiveScene(session: VenueScene): Promise<VenueScene> {
+  async function refreshLiveScene(session: VenueScene, firstAdmission: boolean): Promise<VenueScene> {
     if (session.status === "closed") return session;
-    const village = await readVillageState({ memories: true });
+    let village = await readVillageState({ memories: true });
+    const wallTime = Date.now();
+    if (playerVisitAbsenceElapsed(village, wallTime)) {
+      await mutateVillageState((state) => {
+        if (state.seed !== session.villageSeed || state.setupAt !== village.setupAt) return false;
+        return expirePlayerVisitsOnReturn(state, wallTime);
+      });
+      village = await readVillageState({ memories: true });
+    }
+    const now = villageNow();
+    village = (await settleVisitorAttendance?.(village, now)) ?? village;
     if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
     const venue = findLocation(village, session.placeId);
     if (!venue) return session;
     if (!venue.access) throw conflict("That Place has no native access record.");
-    const now = villageNow();
     const moment = (at: Date) =>
       deriveVillageMoment({
         foundedAt: village.foundedAt,
@@ -412,36 +538,39 @@ export function createLiveScenes({
     const currentMoment = moment(now);
     const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
     const previousMoment = moment(new Date(previousAt));
-    const sameRoutine = (id: string) => !!findNpc(village, id) || sameSceneRoutine(village, session, id, now);
-    const accompanying = (session.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
-    const positions = new Map(
-      accompanying.flatMap((row) => {
-        const zone = resolveVenueZone(venue, row.zoneId);
-        return zone
-          ? [
-              [
-                row.characterId,
-                {
-                  id: venue.id,
-                  name: venue.name,
-                  kind: "venue" as const,
-                  zoneId: zone.id,
-                  zoneName: zone.name,
-                  image: zone.image,
-                },
-              ] as const,
-            ]
-          : [];
-      }),
+    const { attendance, accompanying, departedIds, sameRoutine } = projectLiveAttendance(village, session, venue, now);
+    const untouched = cardCharacters(village).filter(
+      (person) =>
+        !person.spriteManager &&
+        !person.sprite &&
+        attendance.occupants.some((row) => row.characterId === person.characterId) &&
+        (firstAdmission ||
+          !session.continuity ||
+          !session.sceneAttendance?.occupants.some((row) => row.characterId === person.characterId) ||
+          !sameRoutine(person.characterId)),
     );
-    const attendance = captureSceneAttendance(village, venue.id, now, positions);
-    attendance.occupants.push(
-      ...(session.sceneAttendance?.occupants ?? []).filter(
-        (person) => !!findNpc(village, person.characterId) && !session.departedIds?.includes(person.characterId),
+    const managers = new Map(
+      await Promise.all(
+        untouched.map(
+          async (person) =>
+            [person.characterId, await initializeCharacterSprites?.(villageWorldScope(village), person)] as const,
+        ),
       ),
     );
-    const departedIds = (session.departedIds ?? []).filter(sameRoutine);
-    const continuity = captureSceneContinuity(village, session, now.getTime());
+    const initialize = <T extends VillageCardCharacter>(person: T): T => {
+      const manager = managers.get(person.characterId);
+      return manager
+        ? { ...person, spriteManager: manager, sprite: managerResidentSprite(manager, person.characterId) }
+        : person;
+    };
+    const appearance = managers.size
+      ? {
+          ...village,
+          villagers: village.villagers.map(initialize),
+          visitors: village.visitors?.map(initialize),
+        }
+      : village;
+    const continuity = captureSceneContinuity(appearance, { ...session, sceneAttendance: attendance }, now.getTime());
     if (
       session.continuity &&
       Math.floor(Date.parse(session.continuity.capturedAt) / 60_000) === Math.floor(now.getTime() / 60_000) &&
@@ -461,10 +590,18 @@ export function createLiveScenes({
       state.continuity = continuity;
       state.accompanying = accompanying;
       state.departedIds = departedIds;
+      state.movementAgreements = state.movementAgreements?.filter(
+        (row) =>
+          sameRoutine(row.actorId) &&
+          contactPosition(state, row.actorId) === state.zoneId &&
+          (row.following || row.from === state.zoneId),
+      );
       state.departureDestinations = Object.fromEntries(
         Object.entries(state.departureDestinations ?? {}).filter(([id]) => departedIds.includes(id)),
       );
       state.doorwayContacts = (state.doorwayContacts ?? []).filter((row) => sameRoutine(row.characterId));
+      // Let the access-exit path move the player before publishing any new occupancy.
+      if (accessExits(state, village, venue).some((exit) => exit.actor === "player")) return;
       const people = sceneZoneOccupants(state, venue, requireSceneZoneId(state));
       if (
         people.filter((person) => village.villagers.some((resident) => resident.characterId === person.characterId))
@@ -481,7 +618,13 @@ export function createLiveScenes({
         else state.participants[existing] = participant;
       }
       state.activeIds = activeIds;
-      if (state.status === "opening" && activeIds.length === 0) state.status = "active";
+      if (
+        state.status === "opening" &&
+        !state.visitEvent &&
+        activeIds.length === 0 &&
+        !hasAssociatedNpc(village, venue.id)
+      )
+        state.status = "active";
       if (departed.length || arrived.length || currentMoment.dayIndex !== previousMoment.dayIndex) {
         // Report current presence, never fabricate witnessed departures or player activity during an absence.
         appendLine(state, {

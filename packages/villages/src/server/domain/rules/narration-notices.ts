@@ -5,6 +5,7 @@ import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityProtectionUnits, continuitySourceUnit, continuityVersionId, continuityViews } from "./continuity.js";
 import { memoryHash } from "./memory-integrity.js";
+import { findLocation } from "./places.js";
 
 const nativeNotices: Partial<
   Record<AcceptedEpisode["commandReceipts"][number]["kind"], Pick<VenueRecordEvent, "kind" | "text">>
@@ -58,7 +59,11 @@ export function visibleSceneNotices(state: VillageState, events: VenueRecordEven
 }
 
 /** Project from the current Player view. Fixed labels keep notice history free of saved source text. */
-export function narrationSceneNotices(state: VillageState, episode: AcceptedEpisode): VenueRecordEvent[] {
+export function narrationSceneNotices(
+  state: VillageState,
+  episode: AcceptedEpisode,
+  sourcePlaceId?: string,
+): VenueRecordEvent[] {
   const player = continuityActor(state, "player")!;
   if (
     state.seed !== episode.seed ||
@@ -81,7 +86,33 @@ export function narrationSceneNotices(state: VillageState, episode: AcceptedEpis
     );
     if (!proof || blocked.has(continuitySourceUnit(proof))) continue;
     const id = "notice:" + memoryHash([episode.id, "receipt", receipt.id]);
-    notices.set(id, { id, ...label });
+    const destination =
+      sourcePlaceId && receipt.kind === "access" && receipt.targetId !== sourcePlaceId
+        ? findLocation(state, receipt.targetId)
+        : undefined;
+    const invite = destination?.access?.permissions.find(
+      (grant) =>
+        grant.id === receipt.id &&
+        grant.visitorId === "player" &&
+        grant.duration === "visit" &&
+        grant.sceneId === null &&
+        !grant.revoked,
+    );
+    const zone = destination?.zones?.find((room) => room.id === invite?.zoneId);
+    notices.set(id, {
+      id,
+      ...label,
+      ...(destination && zone && invite
+        ? {
+            travel: {
+              venueId: destination.id,
+              zoneId: zone.id,
+              grantId: invite.id,
+              label: destination.name,
+            },
+          }
+        : {}),
+    });
     notifiedReceipts.add(receipt.id);
   }
   if (!episode.continuityVersionIds.length) return [...notices.values()];

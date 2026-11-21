@@ -1,3 +1,4 @@
+import { findCardCharacter } from "./visitors.js";
 import { compactSceneExchange, projectEpisodeRecall } from "./episode-recall.js";
 import { readOnlyRoomContext } from "./continuity-context.js";
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
@@ -170,6 +171,7 @@ function sourceScene(scene: VenueScene) {
     privateAccessOwnerId: scene.privateAccessOwnerId,
     startedAt: scene.startedAt,
     openingGatheringId: scene.openingGatheringId,
+    visitorIntroduction: scene.visitorIntroduction,
     lastActivityAt: scene.lastActivityAt,
     status: scene.status,
     participants: scene.participants,
@@ -180,6 +182,11 @@ function sourceScene(scene: VenueScene) {
     doorwayContacts: scene.doorwayContacts,
     accessPreviousZones: scene.accessPreviousZones,
     enteredFromZoneId: scene.enteredFromZoneId,
+    trespass: scene.trespass,
+    actorTrespasses: scene.actorTrespasses,
+    movementAgreements: scene.movementAgreements,
+    trespassEncounterKeys: scene.trespassEncounterKeys,
+    trespassReaction: scene.trespassReaction,
   });
   snapshot.contactGeneration = scene.contactGeneration && structuredClone(scene.contactGeneration);
   return snapshot;
@@ -208,7 +215,7 @@ export function narrationContinuityContext(
     .map((id) => {
       const holder = continuityActor(state, id);
       memoryRequire(holder, "captured Scene actor no longer has an identity");
-      const captured = scene.continuity?.facts.villagers.find((row) => row.characterId === id);
+      const captured = scene.continuity && findCardCharacter(scene.continuity.facts, id);
       memoryRequire(!captured || captured.incarnation === holder.incarnation, "captured resident incarnation changed");
       return holder;
     });
@@ -302,15 +309,20 @@ export function narrationContinuityContext(
     : [];
   const recallQuery = addressed.length ? input.slice(comma + 1) : input;
   const memoryChange = requestsMemoryChange(recallQuery);
+  const speech = /^\s*(?:"([^"\r\n]*)"|“([^“”\r\n]*)”)\s*$/du.exec(input);
+  const speechRange = speech?.indices?.[1] ?? speech?.indices?.[2];
+  const rememberStart = addressed.length ? comma + 1 : (speechRange?.[0] ?? 0);
   const remember =
-    memoryChange && separateRecallFromEvidence && addressed.length < 2
-      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)\s*$/diu.exec(recallQuery)
+    memoryChange && separateRecallFromEvidence && addressed.length < 2 && speechRange
+      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+[^:\r\n]{1,60})?\s*:\s*(\S[^\r\n]*?)\s*$/diu.exec(
+          input.slice(rememberStart, speechRange[1]),
+        )
       : null;
   const fact = remember?.[1].replace(/[.!]+$/u, "").trimEnd();
   const factRange = remember?.indices?.[1];
   const recipientId = addressed[0]?.characterId;
   const local = (id: string) => id !== "player" && contactPosition(scene, id) === scene.zoneId;
-  // shortcut: gate only a single explicit “remember this:” fact until mixed-intent speech has a structured input.
+  // shortcut: gate only a single quoted “remember this:” fact until mixed-intent speech has a structured input.
   const requestedMemory =
     fact &&
     factRange &&
@@ -318,8 +330,8 @@ export function narrationContinuityContext(
     Buffer.byteLength("Player said: " + fact) < CONTINUITY_TEXT_BYTES &&
     actors.some(({ id }) => local(id) && (!recipientId || id === recipientId))
       ? {
-          start: input.length - recallQuery.length + factRange[0],
-          end: input.length - recallQuery.length + factRange[0] + fact.length,
+          start: rememberStart + factRange[0],
+          end: rememberStart + factRange[0] + fact.length,
           ...(recipientId ? { recipientId } : {}),
         }
       : undefined;
@@ -365,7 +377,7 @@ export function narrationContinuityContext(
     });
   // Raw witness views are larger than the rendered transcript. Fit the model-facing
   // transcript below, with a separate ceiling on raw projection work.
-  const transcriptBudget = 12_000;
+  const transcriptBudget = 6_144;
   const recallBudget = 750;
   const history = selectEpisodeHistory(state.episodes, state.continuity, holders, recallQuery, 256_000, scene.id);
   const episodeOrder = new Map(state.episodes.records.map((row, index) => [row.id, index]));
@@ -413,7 +425,7 @@ export function narrationContinuityContext(
   );
   const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
   parts.push(...transcript);
-  const recallCandidates = history.recallCandidates ?? [];
+  const recallCandidates = scene.visitEvent && opening ? [] : (history.recallCandidates ?? []);
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   for (const { npc } of npcCandidates)
@@ -425,7 +437,7 @@ export function narrationContinuityContext(
             id: npc.id,
             profile: npcProfile(npc),
             presence:
-              "Not present. Private continuity/history is for this person only; an observed npc.admit is required before speech, hearing or Scene participation.",
+              "If their presence is plausible, bring back this same ID with npc.admit and use their own witnessed history. Use private continuity only for this character. Let them recognize the player when they have met and follow up naturally. They can speak or hear only after the player observes their arrival.",
           },
         }),
         evidenceId: "npc-candidate:" + npc.id,
@@ -819,6 +831,11 @@ export function narrationContinuityContext(
       operationId,
       input,
       actors,
+      visitorTrips: captured.visitors?.flatMap((person) =>
+        person.trip && actors.some((actor) => actor.id === person.characterId)
+          ? [{ characterId: person.characterId, arrivedAt: person.trip.arrivedAt, leavesAt: person.trip.leavesAt }]
+          : [],
+      ),
       scene: sourceScene(scene),
       venue: structuredClone(venue),
       historical: {},

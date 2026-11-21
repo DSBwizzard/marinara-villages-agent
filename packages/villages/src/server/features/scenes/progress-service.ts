@@ -1,6 +1,7 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { appendSceneInput } from "../../domain/rules/scene-input.js";
 import { applyAcceptedSceneDelta } from "../../domain/rules/scene-delta.js";
+import { appendVisitorIntroductionTutorial } from "../../domain/rules/visitor-introduction.js";
 import {
   acceptedNarrationEpisode,
   abandonNarration,
@@ -12,6 +13,9 @@ import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js"
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
+import type { SceneRetryCapture } from "../../domain/models/scene-retry.js";
+import { savedOperationReference } from "../../adapters/storage/operation-evidence.js";
+import { retryableEpisode, sceneRetryAuthority } from "../../domain/rules/scene-retry.js";
 
 export interface SceneProgressPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
@@ -70,11 +74,19 @@ export function createSceneProgress({
         else abandoned = narrationIsAbandoned(state, publication, turn.id);
         if (!result && !abandoned) return;
       }
-      if (!result && !abandoned)
+      if (!result && !abandoned) {
+        let capture: SceneRetryCapture | null | undefined;
+        const readset = publication.readset;
+        const original =
+          scene.operation?.id === readset.source.operationId &&
+          Object.entries(scene.operation.checkpoints).find(([stage]) => stage.startsWith("writing-request:"))?.[1];
+        const request = original && typeof original === "object" ? savedOperationReference(original, scene) : undefined;
         await mutateVillageState(
           (state) => {
+            capture = undefined;
             try {
-              if (!acceptedNarrationEpisode(state, publication, turn.id)) {
+              const prior = acceptedNarrationEpisode(state, publication, turn.id);
+              if (!prior) {
                 abandoned = narrationIsAbandoned(state, publication, turn.id);
                 if (abandoned) return;
                 assertVenueOwnership(scene);
@@ -89,19 +101,43 @@ export function createSceneProgress({
                   "the admitted Scene changed before narration acceptance",
                 );
               }
+              const authority =
+                !prior &&
+                request &&
+                turn.mode === "chat" &&
+                turn.id !== "greeting" &&
+                readset.continuityRevision === state.continuity.revision &&
+                readset.retryEpisodeRevision === state.episodes.revision
+                  ? sceneRetryAuthority(state)
+                  : undefined;
               result = acceptNarration(
                 state,
                 publication,
                 turn.id,
                 villageNow(state.clock?.advanceMs ?? 0).toISOString(),
               );
+              if (!prior && result.episode) {
+                const episode = result.episode;
+                capture =
+                  authority && request && retryableEpisode(state, episode, authority)
+                    ? {
+                        sceneId: scene.id,
+                        submissionId: turn.id,
+                        episodeId: episode.id,
+                        request,
+                        sceneRevision: scene.sceneRevision + 1,
+                        originalOperationId: readset.source.operationId,
+                      }
+                    : null;
+              }
             } catch (error) {
               validationFailure = error;
               throw error;
             }
           },
-          { memories: true },
+          { memories: true, captureSceneRetry: () => capture },
         );
+      }
       memoryRequire(result || abandoned, "narration acceptance returned no result");
       const accepted = result;
       const episode = accepted?.episode;
@@ -113,7 +149,6 @@ export function createSceneProgress({
             "saved narration changed during publication",
           );
           if (entry.acceptance.status === "applied") return;
-          appendSceneInput(saved, entry);
           if (abandoned) {
             entry.acceptance = { ...entry.acceptance, status: "abandoned" };
             return;
@@ -129,6 +164,7 @@ export function createSceneProgress({
           }
           memoryRequire(episode, "narration acceptance returned no episode");
           applyAcceptedSceneDelta(saved, episode);
+          appendSceneInput(saved, entry);
           for (const line of episode.segments) {
             const prior = saved.lines.find((row) => row.id === line.id);
             memoryRequire(!prior || memoryHash(prior) === memoryHash(line), "published Scene line identity changed");
@@ -139,7 +175,14 @@ export function createSceneProgress({
           if (notices.length) entry.recordEvents = notices;
           else delete entry.recordEvents;
           entry.acceptance = { status: "applied", rejected: accepted.rejected };
-          if (entry.id === "greeting" && saved.status === "opening") saved.status = "active";
+          if (entry.id === "greeting") {
+            appendVisitorIntroductionTutorial(
+              saved,
+              publication.readset.visitorIntroductionFarewell ? episode.segments.at(-1)!.id : undefined,
+            );
+            if (saved.status === "opening") saved.status = "active";
+            delete saved.visitEvent;
+          }
           entry.progressProcessedAt = episode.acceptedAt;
           entry.progressError = "";
           delete entry.narration;
@@ -174,7 +217,7 @@ export function createSceneProgress({
           );
           return publish(
             committed.continuityVersionIds.length || committed.commandReceipts.length
-              ? narrationSceneNotices(state, committed)
+              ? narrationSceneNotices(state, committed, scene.placeId)
               : [],
           );
         });
@@ -187,7 +230,6 @@ export function createSceneProgress({
             (entry.acceptance.status === "pending" || entry.acceptance.status === "held") &&
             memoryHash(entry.narration) === identity
           ) {
-            if (matchesScene) appendSceneInput(saved, entry);
             entry.progressError = String(error).slice(0, 300);
             if (validationFailure === error)
               entry.acceptance = {
@@ -267,7 +309,6 @@ export function createSceneProgress({
           "saved narration changed during abandonment",
         );
         entry.acceptance = { ...entry.acceptance, status: "abandoned" };
-        appendSceneInput(saved, entry);
       });
       onSettled?.(sessionId);
       return "abandoned" as const;

@@ -167,7 +167,7 @@ assert.throws(
       rows,
       true,
     ),
-  /Common only/,
+  /Unreachable Zones/,
 );
 assert.throws(
   () =>
@@ -244,7 +244,7 @@ const request = {
   mode: "quick-start",
   villageName: "Tidebreak",
   setting: "A coastal settlement made of salvaged shelters",
-  communityVenueId: "community",
+  openingVenueId: "community",
   context: {
     rules: "The tide floods the lower street",
     circumstances: [{ scope: "village", summary: "The railway is abandoned" }],
@@ -306,11 +306,11 @@ assert.equal(calls, beforeInvalidModel + 1, "invalid model output is rejected wi
     venues: rows.map((row) => (row.id === "community" ? { ...row, venueClass: "other" } : row)),
   };
   await service.suggestStartingVenues(selectedPlace);
-  assert.equal(input.communityVenueId, "community");
+  assert.equal(input.openingVenueId, "community");
   assert.equal(
     input.responseTemplate.venues.find((row: any) => row.id === "community").layout,
-    "common",
-    "The Community designation is independent of a Venue's class",
+    "exterior|common|private|both",
+    "Opening location does not impose a Venue class or layout",
   );
   replyState.override = {
     venues: suggestions.map((row) =>
@@ -329,11 +329,8 @@ assert.equal(calls, beforeInvalidModel + 1, "invalid model output is rejected wi
         : row,
     ),
   };
-  await assert.rejects(
-    service.suggestStartingVenues(selectedPlace),
-    /Common only/,
-    "The designated place needs a public common space even when its Class is Other",
-  );
+  const ordinary = await service.suggestStartingVenues(selectedPlace);
+  assert.equal(ordinary.venues.find((row) => row.id === "community")!.layout, "private");
   replyState.override = undefined;
 }
 
@@ -361,7 +358,7 @@ assert.equal(calls, beforeInvalidModel + 1, "invalid model output is rejected wi
   };
   const moved = {
     ...request,
-    communityVenueId: "courtyard",
+    openingVenueId: "courtyard",
     venues: [...rows, { ...rows.find((row) => row.id === "community")!, id: "courtyard", venueClass: "other" }],
   };
   const result = await service.suggestStartingVenues(moved);
@@ -526,16 +523,12 @@ console.log(
     })),
   );
   const collision = separateFoundingTemplates(["a"], "founding-home:a");
-  assert.equal(
-    new Set(collision.map((row) => row.id)).size,
-    3,
-    "Legacy Community IDs never collide with replacement homes",
-  );
-  assert.equal(separate.length, 5);
+  assert.equal(new Set(collision.map((row) => row.id)).size, 4, "Opening IDs never collide with replacement homes");
+  assert.equal(separate.length, 6);
   const stored = parsePlaces(separate, new Set(["a", "b", "c"]), true, "community");
   assert.ok(
     stored
-      .filter((row) => row.id !== "community")
+      .filter((row) => row.classes?.includes("residence"))
       .every(
         (row) =>
           row.classes!.length === 1 &&
@@ -543,17 +536,33 @@ console.log(
           row.residentIds!.length + Number(row.occupancy.playerHome) === 1,
       ),
   );
-  for (const invalid of [
-    [...separate, newSetupVenue("extra", "other", 0.5, 0.5)],
-    separate.map((row) =>
-      row.id === "founding-home:a" ? { ...row, residentIds: ["a", "b"], residenceCapacity: 2 } : row,
+  assert.throws(() =>
+    parsePlaces(
+      separate.map((row) =>
+        row.id === "founding-home:a" ? { ...row, residentIds: ["a", "b"], residenceCapacity: 2 } : row,
+      ),
+      new Set(["a", "b", "c"]),
+      true,
+      "community",
     ),
+  );
+  for (const ordinary of [
+    [...separate, newSetupVenue("extra", "other", 0.5, 0.5)],
     separate.map((row) =>
       row.id === "founding-home:a" ? { ...row, classes: ["residence", "workplace"], workerIds: ["a"] } : row,
     ),
-    separate.map((row) => (row.id === "community" ? { ...row, classes: ["other"] } : row)),
+    separate.map((row) =>
+      row.id === "community"
+        ? { ...row, classes: ["other"], spaces: row.spaces?.map((zone) => ({ ...zone, venueClass: "other" })) }
+        : row,
+    ),
   ])
-    assert.throws(() => parsePlaces(invalid, new Set(["a", "b", "c"]), true, "community"));
+    assert.doesNotThrow(() => parsePlaces(ordinary, new Set(["a", "b", "c"]), true, "community"));
+  for (const opening of ["founding-garden", "founding-home:a"]) {
+    const replacement = separateFoundingTemplates(["a"], opening);
+    assert.equal(new Set(replacement.map((row) => row.id)).size, replacement.length);
+    assert.equal(replacement.filter((row) => row.classes?.includes("community")).length, 2);
+  }
   const { calculateSetupMapSrc } = await import("../packages/villages/src/client/features/founding/calculations.js");
   assert.equal(
     calculateSetupMapSrc({

@@ -123,11 +123,6 @@ const css = entrySource.split("${ELEMENT_TAG}").join(tagName);
 const countIn = (needle: string) => entrySource.split(needle).length - 1;
 
 assert.equal(countIn('type VillageBeatRegister = "speech" | "narration";'), 1);
-assert.equal(countIn("classifyVillagesParagraph(step.text)"), 1, "venue fallback classification is singular");
-assert.equal(countIn("data-register={register}"), 1, "venue card uses one register");
-assert.equal(countIn('data-register="narration"'), 1, "venue narration has its own register");
-assert.equal(countIn("<SceneAsides"), 1, "one aside presentation belongs to Visit");
-assert.ok(css.includes(`.${tagName}-chat-vn-aside[data-register="whisper"]`));
-assert.ok(entrySource.includes("renderVillagesMarkdown(aside.text"));
-assert.ok(entrySource.includes("drawVillagesNodes(readingPages.nodes"));
+assert.ok(css.includes(`.${tagName}-scene-message`));
+assert.ok(css.includes(`.${tagName}-scene-transcript`));
 assert.equal(countIn("ChatPanel"), 0, "the private stage is gone");
