@@ -6,6 +6,7 @@ import { SETUP_STEPS } from "./founding-steps.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
+import { useFocusRevision } from "../../shared/activity.js";
 import { measureImage } from "../../shared/presentation.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { requestSetupMapReceipt, SETUP_MAX_VILLAGER_COUNT, SETUP_MIN_VILLAGER_COUNT } from "./FoundingPanels.js";
@@ -299,6 +300,7 @@ export function useFoundingMapReceipt(ports: {
     setupMapRequest,
     updateSetupMapRequest,
   } = ports;
+  const focusRevision = useFocusRevision(ports.visible && screen === "setup" && setupMapRequest?.phase === "waiting");
   useEffect(() => {
     if (!ports.visible || screen !== "setup" || setupMapRequest?.phase !== "waiting") return;
     const pending = setupMapRequest;
@@ -370,6 +372,7 @@ export function useFoundingMapReceipt(ports: {
     setupMapRequest,
     updateSetupMapRequest,
     ports.visible,
+    focusRevision,
   ]);
 }
 
