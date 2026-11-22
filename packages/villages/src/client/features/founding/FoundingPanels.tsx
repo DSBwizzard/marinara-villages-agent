@@ -501,7 +501,7 @@ export function VillageLorebookPicker({
         <LoreTokenBudgetField {...budget} value={pendingBudget ?? budget.value} onChange={setPendingBudget} />
       ) : null}
       <footer className="villages-lorebook-footer">
-        <span aria-live="polite">{active.length} selected</span>
+        {founding ? null : <span aria-live="polite">{active.length} selected</span>}
         <FoundingPagination compact page={pageIndex} count={pages} onPage={setPage} label="Lorebooks" />
         <div className="villages-lorebook-actions">
           {founding ? (

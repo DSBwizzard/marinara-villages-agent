@@ -202,7 +202,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   }, []);
   const chapterMenu = CHAPTER_MENUS[setupStep];
   const [starterIntro, setStarterIntro] = useState(false);
-  const explainingStarters = setupStep === FOUNDING_STEP.Venues && starterIntro && !draftSaveError;
+  const explainingStarters =
+    setupStep === FOUNDING_STEP.Venues &&
+    (starterIntro || (phone && setupWorkspace.mobileMenu !== chapterMenu)) &&
+    !draftSaveError;
   const confirmStarterHomes = useConfirmation(setupVenues);
   const mobileScene =
     phone && !!chapterMenu && (explainingStarters || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
@@ -788,6 +791,11 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       </>
     );
     const closeChapterMenu = () => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }));
+    const backToChapterGuide = () => {
+      rememberMariPosition();
+      setStarterIntro(setupStep === FOUNDING_STEP.Venues);
+      closeChapterMenu();
+    };
     const canCloseChapterMenu = !busy && !setupEditorOpen;
     const guide =
       setupStep > FOUNDING_STEP.Setting ? (
@@ -802,7 +810,8 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 data-reader-direction="back"
                 disabled={busy || setupEditorOpen}
                 onClick={() => {
-                  changeStep(setupStep - 1, explainingStarters);
+                  if (setupStep === FOUNDING_STEP.Venues && !explainingStarters) backToChapterGuide();
+                  else changeStep(setupStep - 1, true);
                 }}
               >
                 Back
@@ -827,7 +836,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </>
           }
         >
-          {explainingStarters
+          {setupStep === FOUNDING_STEP.Venues && (phone || explainingStarters)
             ? "A new Village starts with 2 public locations, and each of you gets a home with two rooms to start. Don't worry, you can cram everyone into the same house later if you want to. I won't judge."
             : [
                 "",
@@ -990,21 +999,13 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           }
           mobileReplies={
             <>
-              <button
-                type="button"
-                disabled={!canCloseChapterMenu}
-                onClick={() => {
-                  if (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues)
-                    changeStep(setupStep - 1, true);
-                  else closeChapterMenu();
-                }}
-              >
+              <button type="button" disabled={!canCloseChapterMenu} onClick={backToChapterGuide}>
                 Back
               </button>
               {nextReply}
             </>
           }
-          onCloseMenu={closeChapterMenu}
+          onCloseMenu={backToChapterGuide}
         >
           <div hidden={setupStep !== FOUNDING_STEP.People}>
             <div className="villages-people-panel">

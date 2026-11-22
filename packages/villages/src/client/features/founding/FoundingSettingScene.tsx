@@ -125,7 +125,13 @@ export function FoundingSettingScene({
       mobileMenu: undefined,
     }));
     setTurn({ beat: settingBeat, index: showLast ? script[settingBeat].length - 1 : 0 });
-    const openedPopup = phone && settingBeat === "world" ? "world" : undefined;
+    const openedPopup = phone
+      ? settingBeat === "world"
+        ? "world"
+        : settingBeat === "village-overview" && showLast
+          ? "village"
+          : undefined
+      : undefined;
     setPopup(openedPopup);
     onBeatChange();
     const openLorebooks = settingBeat === "lorebooks" && showLast;

@@ -427,7 +427,7 @@ export function AgentConnectionsControls({
                     aria-current={current || undefined}
                     disabled={busy || disabled}
                     onClick={() => {
-                      if ((current || choose({ key: job.key, id: option.id })) && !kind) setJob(null);
+                      if (current || choose({ key: job.key, id: option.id })) setJob(null);
                     }}
                   >
                     <span>
@@ -450,14 +450,6 @@ export function AgentConnectionsControls({
             <footer>
               <button type="button" onClick={() => setJob(null)}>
                 Back
-              </button>
-              <button
-                type="button"
-                className="villages-forging-primary"
-                disabled={busy || disabled}
-                onClick={() => setJob(null)}
-              >
-                Next
               </button>
             </footer>
           ) : null}

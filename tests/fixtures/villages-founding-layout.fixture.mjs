@@ -835,7 +835,7 @@ export async function verifyFoundingLayout(group) {
           await timedOut.getByRole("button", { name: "Retry", exact: true }).click();
           await system.click();
           await picker.getByRole("button", { name: /^Draft model/ }).click();
-          await picker.getByRole("button", { name: "Next", exact: true }).click();
+          await expect(picker).toHaveCount(0);
           await expect(system).toContainText("Draft model");
           assert.equal(modelSelection.systemConnectionId, "alt-talk");
           assert.equal(modelSelection.narrationConnectionId, "talk");
@@ -1196,13 +1196,14 @@ export async function verifyFoundingLayout(group) {
           "Maximum lorebook information added to each model request.",
         );
         const loreFooter = picker.locator(".villages-lorebook-footer");
+        await expect(loreFooter.getByText(/selected$/)).toHaveCount(0);
         if (!phone) {
-          const actions = await loreFooter.locator(".villages-lorebook-actions").boundingBox();
+          const back = await loreFooter.getByRole("button", { name: "Back", exact: true }).boundingBox();
+          const next = await loreFooter.getByRole("button", { name: "Next", exact: true }).boundingBox();
           const pages = await picker.getByRole("navigation", { name: "Lorebooks pages" }).boundingBox();
-          const selected = await loreFooter.locator(":scope > span").boundingBox();
           assert.ok(
-            actions.x + actions.width <= pages.x && pages.x + pages.width <= selected.x,
-            "Lorebook Back/Next sit left of pagination and the selected count",
+            back.x + back.width <= pages.x && pages.x + pages.width <= next.x,
+            "Lorebook pagination sits between Back and Next",
           );
         }
         const loreElements = [
@@ -1412,9 +1413,7 @@ export async function verifyFoundingLayout(group) {
         await expect(villageBrief).toHaveCount(0);
         await previousLine();
         if (phone) {
-          await expect(line).toHaveText(/^What should we call your Village/);
-          await expect(namingDialog).toHaveCount(0);
-          await nextLine();
+          await expect(namingDialog).toBeVisible();
         }
         await expect(villageName).toHaveValue("Coastal Community");
         await expect(villageBrief).toHaveValue(initialBrief);
@@ -1502,9 +1501,7 @@ export async function verifyFoundingLayout(group) {
           await expect(line).toHaveText(/^A Map is where we actually play/);
           await previousLine();
           if (phone) {
-            await expect(line).toHaveText(/^What should we call your Village/);
-            await expect(namingDialog).toHaveCount(0);
-            await nextLine();
+            await expect(namingDialog).toBeVisible();
           }
           await expect(villageName).toHaveValue("Coastal Community");
           await villageBrief.fill("Our village is inside a dumpster.");
@@ -1663,13 +1660,13 @@ export async function verifyFoundingLayout(group) {
         const gmPicker = page.getByRole("dialog", { name: "GM", exact: true });
         await expect(gmPicker.getByRole("button", { name: "Use Engine default", exact: true })).toHaveCount(0);
         await gmPicker.getByRole("button", { name: /^Draft model/ }).click();
-        await gmPicker.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(gmPicker).toHaveCount(0);
         await expect(modelSettings.getByRole("button", { name: /^GM / })).toContainText("Draft model");
         await modelSettings.getByRole("button", { name: /^Images / }).click();
         const imagePicker = page.getByRole("dialog", { name: "Images", exact: true });
         await expect(imagePicker.getByRole("button", { name: "Use Engine default", exact: true })).toBeVisible();
         await imagePicker.getByRole("button", { name: "Disabled", exact: true }).click();
-        await imagePicker.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(imagePicker).toHaveCount(0);
         await expect(modelSettings.getByRole("button", { name: /^Images / })).toContainText("Disabled");
         await modelSettings.getByRole("button", { name: "Back", exact: true }).click();
         await button("Model Connections").click();
@@ -1677,10 +1674,10 @@ export async function verifyFoundingLayout(group) {
         await expect(modelSettings.getByRole("button", { name: /^Images / })).toContainText("Disabled");
         await modelSettings.getByRole("button", { name: /^GM / }).click();
         await gmPicker.getByRole("button", { name: /^Language model/ }).click();
-        await gmPicker.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(gmPicker).toHaveCount(0);
         await modelSettings.getByRole("button", { name: /^Images / }).click();
         await imagePicker.getByRole("button", { name: /^Image model/ }).click();
-        await imagePicker.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(imagePicker).toHaveCount(0);
         await modelSettings.getByRole("button", { name: "Back", exact: true }).click();
         await expect(button("Model Connections")).toBeFocused();
         await expect(resident.getByText("No Sprites Assigned!", { exact: false })).toBeVisible();
@@ -1819,6 +1816,11 @@ export async function verifyFoundingLayout(group) {
         }
         await bounds("maps");
         await retreat();
+        if (phone) {
+          await expect(root).toHaveAttribute("data-step", "2");
+          await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeHidden();
+          await retreat();
+        }
         await expect(root).toHaveAttribute("data-step", "1");
         await expect(root.locator(".villages-selected-villager")).toHaveCount(view.count);
         if (phone) await expect(root.getByRole("dialog", { name: "People", exact: true })).toBeVisible();
@@ -1831,6 +1833,14 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByText(/^A new Village starts with 2 public locations/)).toBeVisible();
         await expect(work).toHaveCount(0);
         await enterChapter();
+        await retreat();
+        await expect(root).toHaveAttribute("data-step", "3");
+        await expect(root.locator("[data-explanation]")).toHaveCount(1);
+        if (phone)
+          await expect(root.locator(".villages-setting-dialogue:visible")).not.toHaveAttribute("data-reader-next-page");
+        await finishPassage(root, -1);
+        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toBeVisible();
+        await expect(work).toHaveCount(0);
         await retreat();
         await expect(root).toHaveAttribute("data-step", "2");
         await expect(root.locator("[data-explanation]")).toHaveCount(0);
