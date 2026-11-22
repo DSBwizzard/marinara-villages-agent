@@ -97,6 +97,8 @@ export async function verifyFoundingLayout(group) {
           settingReady = false,
           failVenueConnection = false,
           failMapGeneration = false,
+          holdMapStatus = false,
+          mapStatusHeld = false,
           holdConnectionRead = false,
           connectionReadHeld = false,
           generatedImages = 0,
@@ -132,7 +134,13 @@ export async function verifyFoundingLayout(group) {
             };
             return send({ ...mapReceipt, status: "running", result: null });
           }
-          if (path.includes("/maps/generation/founding-map/")) return send(mapReceipt);
+          if (path.includes("/maps/generation/founding-map/")) {
+            if (holdMapStatus) {
+              mapStatusHeld = true;
+              return;
+            }
+            return send(mapReceipt);
+          }
           if (settingReceipt && path.endsWith("/setup/venues/suggestions/" + settingReceipt.id))
             return send(settingReady ? settingReceipt : { ...settingReceipt, status: "running", result: null });
           if (path.endsWith("/setup/venues/suggest")) {
@@ -1662,12 +1670,24 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-step", "2");
         await expect(mapWarning).toBeVisible();
         assert.deepEqual(await root.boundingBox(), frame, "Missing artwork keeps the player on Maps");
-        if (view.width === 1366) {
+        if (view.width === 1366 || phone) {
           failMapGeneration = true;
+          holdMapStatus = phone;
           await button("Generate artwork").click();
+          if (phone) {
+            await expect.poll(() => mapStatusHeld).toBe(true);
+            await expect(button("Generating map…")).toBeDisabled();
+            holdMapStatus = false;
+            await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+          }
           await expect(
             root.getByRole("alert").filter({ hasText: "Map artwork could not be generated." }),
           ).toBeVisible();
+          await expect(button("Generate artwork")).toBeEnabled();
+          await expect(button("Upload image")).toBeEnabled();
+          assert.equal(generatedImages, 1, "Reading the failed attempt never generates another image");
+          assert.equal(await page.evaluate(() => window.featureController.setupMapRequest), null);
+          assert.equal(await page.evaluate(() => window.featureController.setupMapBusy), false);
           await expect(root).toHaveAttribute("data-step", "2");
           await expect(settingNext()).toBeEnabled();
           await advance();
@@ -2319,7 +2339,7 @@ export async function verifyFoundingLayout(group) {
             .map((row) => row.id)
             .sort(),
         );
-        assert.equal(generatedImages, 3 * Number(view.width === 1366));
+        assert.equal(generatedImages, phone ? 2 : 3 * Number(view.width === 1366));
         assert.equal(suggestions, 2);
         await context.close();
       });
