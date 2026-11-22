@@ -12,7 +12,6 @@ import { AgentConnectionsControls, useAgentConnections } from "../settings/Agent
 import { VillageIcon } from "../../shared/VillageIcon.js";
 import { Appearance } from "../residents/Appearance.js";
 import { FoundingPagination } from "./FoundingPagination.js";
-import { LoreActivitySlot } from "../../shared/LoreActivity.js";
 import { FoundingDialog } from "./FoundingDialog.js";
 import {
   FOUNDING_CIRCUMSTANCE_MAX_LENGTH,
@@ -192,6 +191,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     if (screen === "setup") setConnectionSetupProblem(connections.setupProblem);
   }, [screen, connections.setupProblem, setConnectionSetupProblem]);
   const [connectionPickerOpen, setConnectionPickerOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [phone, setPhone] = useState(() => window.matchMedia(PHONE_LAYOUT).matches);
   useEffect(() => {
     const layout = window.matchMedia(PHONE_LAYOUT);
@@ -202,7 +202,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   }, []);
   const chapterMenu = CHAPTER_MENUS[setupStep];
   const [starterIntro, setStarterIntro] = useState(false);
-  const explainingStarters = setupStep === FOUNDING_STEP.Maps && starterIntro && !draftSaveError;
+  const explainingStarters = setupStep === FOUNDING_STEP.Venues && starterIntro && !draftSaveError;
   const confirmStarterHomes = useConfirmation(setupVenues);
   const mobileScene =
     phone && !!chapterMenu && (explainingStarters || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
@@ -352,24 +352,9 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const mapUpload = useRef<HTMLInputElement>(null);
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
-  const cameraSource = useRef<string | null>(null);
   useEffect(() => {
     setMapNavigation(null);
-    cameraSource.current = null;
   }, [setupMapSrc]);
-  useEffect(() => {
-    if (
-      screen !== "setup" ||
-      setupStep < FOUNDING_STEP.Maps ||
-      !setupMapSrc ||
-      !setupVenues.length ||
-      cameraSource.current === setupMapSrc
-    )
-      return;
-    cameraSource.current = setupMapSrc;
-    const venue = setupVenues.find((row) => row.id === selectedSetupVenueId) ?? setupVenues[0]!;
-    setMapNavigation({ zoom: 1, centerX: venue.presentation.x ?? 0.5, centerY: venue.presentation.y ?? 0.5 });
-  }, [screen, setupStep, setupMapSrc, setupVenues, selectedSetupVenueId]);
   const [validationAttempt, setValidationAttempt] = useState(0);
   const focusedValidationAttempt = useRef(0);
   const [validatedFields, setValidatedFields] = useState<string[]>([]);
@@ -427,26 +412,22 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   ]);
   if (screen === "setup") {
     const connectionPrompt = (
-      <>
-        <AgentConnectionsControls connections={connections} kind="founding" compact />
-        {appearanceControl}
-        <button
-          type="button"
-          className="villages-forging-primary"
-          disabled={!!connections.setupProblem || !!draftSaveError}
-          onClick={() => {
-            const turn = mariFlipEnabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-            setArrival(turn ? "turning" : "greeting");
-            setSetupWorkspace((workspace) => ({
-              ...workspace,
-              settingIntroPending: undefined,
-              settingBeat: "welcome",
-            }));
-          }}
-        >
-          Next
-        </button>
-      </>
+      <AgentConnectionsControls
+        connections={connections}
+        kind="founding"
+        compact
+        disabled={!!draftSaveError}
+        onContinue={() => {
+          if (connections.setupProblem || draftSaveError) return;
+          const turn = mariFlipEnabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          setArrival(turn ? "turning" : "greeting");
+          setSetupWorkspace((workspace) => ({
+            ...workspace,
+            settingIntroPending: undefined,
+            settingBeat: "welcome",
+          }));
+        }}
+      />
     );
     const title = showTitle ? (
       <div className="villages-founding-title" inert={fading}>
@@ -500,15 +481,18 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       <button
         type="button"
         className="villages-founding-models"
-        aria-label={setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
-        title={setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
+        aria-label={
+          prelude ? "Menu appearance" : setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"
+        }
+        title={prelude ? "Menu appearance" : setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
         aria-haspopup="dialog"
         disabled={
           setupStep === FOUNDING_STEP.Maps &&
           (busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest)
         }
         onClick={() => {
-          if (setupStep === FOUNDING_STEP.Maps) {
+          if (prelude) setAppearanceOpen(true);
+          else if (setupStep === FOUNDING_STEP.Maps) {
             connections.refresh();
             setArtSettingsOpen(true);
           } else openConnectionPicker();
@@ -521,7 +505,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     const changeStep = (step: number, openMenu = false) => {
       rememberMariPosition();
       setSetupFocusIssue(null);
-      setStarterIntro(step === FOUNDING_STEP.Maps && setupStep === FOUNDING_STEP.People && !openMenu);
+      setStarterIntro(step === FOUNDING_STEP.Venues && setupStep === FOUNDING_STEP.Maps && !openMenu);
       if (openMenu && step === FOUNDING_STEP.Setting) setSettingEditorOpen(true);
       if (phone && openMenu) {
         setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: CHAPTER_MENUS[step] }));
@@ -736,7 +720,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         return;
       }
       if (setupStep === FOUNDING_STEP.Review) void foundVillage();
-      else changeStep(setupStep + 1, setupStep === FOUNDING_STEP.Maps);
+      else changeStep(setupStep + 1);
     };
     const nextReply = (
       <button
@@ -871,9 +855,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         aria-busy={fading || turning || undefined}
         ref={rootRef}
       >
-        <div className="villages-founding-lore">
-          <LoreActivitySlot />
-        </div>
         <div className="villages-setting-stage" aria-hidden="true">
           <CardFlipSprite
             url={foundingMariSprite(mariPose)}
@@ -898,7 +879,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               title={label}
             >
               <span aria-hidden="true" className="villages-founding-star">
-                ✦
+                {index <= setupStep ? "✦" : "✧"}
               </span>
               {index === setupStep ? (
                 <span className="villages-founding-step-label" aria-hidden="true">
@@ -908,12 +889,14 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </li>
           ))}
         </ol>
-        {!prelude && (!phone || (!settingEditorOpen && (!chapterMenu || mobileScene))) ? modelButton : null}
+        {(prelude ? !phone || !chooseConnections : !phone || (!settingEditorOpen && (!chapterMenu || mobileScene)))
+          ? modelButton
+          : null}
         {connectionPickerOpen ? (
           <FoundingDialog title="Model Connections" onClose={() => setConnectionPickerOpen(false)}>
             <div className="villages-founding-editor-body">
-              <AgentConnectionsControls connections={connections} kind="founding" compact />
               {appearanceControl}
+              <AgentConnectionsControls connections={connections} kind="founding" compact />
             </div>
             <footer>
               <button type="button" disabled={connections.saving} onClick={() => setConnectionPickerOpen(false)}>
@@ -966,9 +949,30 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         {phone && chooseConnections ? (
           <FoundingDialog
             title="Choose your models"
+            className="villages-founding-connections villages-founding-connections-dialog"
+            headerContent={
+              <>
+                <h3>Choose your models</h3>
+                {modelButton}
+              </>
+            }
             onClose={() => setSetupWorkspace((workspace) => ({ ...workspace, settingIntroPending: true }))}
           >
             {connectionPrompt}
+          </FoundingDialog>
+        ) : null}
+        {appearanceOpen ? (
+          <FoundingDialog
+            title="Menu appearance"
+            className="villages-founding-appearance"
+            onClose={() => setAppearanceOpen(false)}
+          >
+            {appearanceControl}
+            <footer>
+              <button type="button" onClick={() => setAppearanceOpen(false)}>
+                Back
+              </button>
+            </footer>
           </FoundingDialog>
         ) : null}
         <FoundingChapter

@@ -8,13 +8,11 @@ export function FoundingReader({
   lineRef,
   children,
   hidden,
-  counter,
 }: {
   text: string;
   lineRef?: Ref<HTMLParagraphElement>;
   children?: ReactNode;
   hidden?: boolean;
-  counter?: string;
 }) {
   const readingRef = useRef<HTMLDivElement>(null);
   const pages = useReadingPages(text, text, readingRef);
@@ -27,9 +25,6 @@ export function FoundingReader({
       speaker="Professor Mari"
       footer={
         <>
-          <span className="villages-reader-counter" aria-label={`Page ${pages.index + 1} of ${pages.count}`}>
-            {pages.count > 1 ? `${pages.index + 1} / ${pages.count}` : (counter ?? "1 / 1")}
-          </span>
           {pages.index > 0 ? (
             <button className="villages-reader-page-back" type="button" data-reader-direction="back">
               Back

@@ -567,7 +567,7 @@ function VillageDestinations({ controller, daylight, people, openMapVenue, arriv
           storybookDaylight={daylight}
           appearanceControl={
             <>
-              <MenuAppearanceField settings={controller.spriteVisualSettings} disabled={controller.busy} />
+              <MenuAppearanceField settings={controller.spriteVisualSettings} disabled={controller.busy} compact />
               {controller.spriteVisualSettings.error ? (
                 <p role="alert">{controller.spriteVisualSettings.error}</p>
               ) : null}

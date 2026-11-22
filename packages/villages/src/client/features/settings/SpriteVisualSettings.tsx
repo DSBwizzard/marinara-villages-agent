@@ -117,18 +117,47 @@ export function SpriteVisualSettings({
 export function MenuAppearanceField({
   settings,
   disabled,
+  compact = false,
 }: {
   settings: ReturnType<typeof useSpriteVisualSettings>;
   disabled: boolean;
+  compact?: boolean;
 }) {
   const { snapshot, saving, draft, save } = settings;
   if (!snapshot) return null;
+  const appearance = draft.menuAppearance ?? snapshot.settings.menuAppearance ?? "auto";
+  if (compact)
+    return (
+      <fieldset className="villages-founding-appearance-options">
+        <legend>Menu appearance</legend>
+        {(
+          [
+            ["auto", "Day & night"],
+            ["day", "Day"],
+            ["night", "Night"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={appearance === value}
+            disabled={disabled || saving}
+            onClick={() => {
+              if (appearance !== value) void save("menuAppearance", value);
+            }}
+          >
+            <span>{label}</span>
+            <span aria-hidden="true">{appearance === value ? "✓" : ""}</span>
+          </button>
+        ))}
+      </fieldset>
+    );
   return (
     <div className={`${ELEMENT_TAG}-visual-setting`}>
       <label htmlFor={`${ELEMENT_TAG}-menu-appearance`}>Menu appearance</label>
       <select
         id={`${ELEMENT_TAG}-menu-appearance`}
-        value={draft.menuAppearance ?? snapshot.settings.menuAppearance ?? "auto"}
+        value={appearance}
         disabled={disabled || saving}
         onChange={(event) => void save("menuAppearance", event.target.value as VisualValues["menuAppearance"])}
       >

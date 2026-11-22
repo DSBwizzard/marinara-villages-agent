@@ -202,7 +202,7 @@ export function FoundingSettingScene({
           autoComplete="off"
           maxLength={120}
           value={controller.setupWorldName}
-          placeholder="The Shattered Isles"
+          placeholder="e.g. The Shattered Isles"
           disabled={controller.busy}
           onChange={(event) => controller.setSetupWorldName(event.currentTarget.value)}
         />
@@ -213,7 +213,7 @@ export function FoundingSettingScene({
           rows={2}
           maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
           value={world}
-          placeholder="A chain of island kingdoms linked by trade ships."
+          placeholder="e.g. A chain of island kingdoms linked by trade ships."
           onChange={(event) => {
             const value = event.currentTarget.value;
             setSetupWorkspace((workspace) => ({ ...workspace, settingWorldBrief: value }));
@@ -227,7 +227,7 @@ export function FoundingSettingScene({
           maxLength={4096}
           rows={2}
           value={controller.setupContext.rules}
-          placeholder="Magic only works after sunset."
+          placeholder="e.g. Magic only works after sunset."
           disabled={controller.busy}
           onChange={(event) => {
             const rules = event.currentTarget.value;
@@ -318,12 +318,7 @@ export function FoundingSettingScene({
       inert={inactive || undefined}
     >
       {title}
-      <FoundingReader
-        text={lines[lineIndex]!}
-        lineRef={lineRef}
-        hidden={!!title}
-        counter={`${lineIndex + 1} / ${lines.length}`}
-      >
+      <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title}>
         {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}
         {!lastLine ? (
           <div className="villages-founding-replies">

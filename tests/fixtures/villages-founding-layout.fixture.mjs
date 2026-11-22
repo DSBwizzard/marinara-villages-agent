@@ -104,11 +104,25 @@ export async function verifyFoundingLayout(group) {
           mapReceipt;
         const artRequests = [];
         let modelSelection = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
+        const connectionRows = [
+          { id: "talk", name: "Language model", provider: "language", defaultForAgents: true },
+          { id: "alt-talk", name: "Draft model", provider: "language" },
+          {
+            id: "image",
+            name: "Image model",
+            provider: "image_generation",
+            profileImportReviewRequired: view.width !== 2550,
+          },
+        ];
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname,
             method = route.request().method();
           const send = (value) =>
             fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+          if (path.endsWith("/settings") && method === "PATCH") {
+            Object.assign(snapshot.settings, route.request().postDataJSON());
+            return send(snapshot);
+          }
           if (/\/characters\/[^/]+\/sprites\/setup\/settled$/.test(path)) {
             return send({
               revision: 0,
@@ -313,11 +327,7 @@ export async function verifyFoundingLayout(group) {
           fulfill(route, {
             status: 200,
             contentType: "application/json",
-            body: JSON.stringify([
-              { id: "talk", name: "Language model", provider: "language", defaultForAgents: true },
-              { id: "alt-talk", name: "Draft model", provider: "language" },
-              { id: "image", name: "Image model", provider: "image_generation", profileImportReviewRequired: "true" },
-            ]),
+            body: JSON.stringify(connectionRows),
           }),
         );
         await page.route("http://villages.test/", (route) =>
@@ -374,13 +384,13 @@ export async function verifyFoundingLayout(group) {
         const finishPassage = async (guide = root, direction = 1) => {
           const passages = [];
           for (let attempt = 0; attempt < 30; attempt++) {
-            const counter = guide.locator(".villages-reader-counter:visible");
-            if (!(await counter.count())) return passages.join("");
-            if (await counter.evaluate((node) => !!node.closest('[inert],[aria-hidden="true"]')))
+            const reader = guide.locator(".villages-setting-dialogue:visible").first();
+            if (!(await reader.count())) return passages.join("");
+            if (await reader.evaluate((node) => !!node.closest('[inert],[aria-hidden="true"]')))
               return passages.join("");
             passages.push(await guide.locator('p[aria-live="polite"]').textContent());
-            const [current, total] = (await counter.getAttribute("aria-label")).match(/\d+/gu).map(Number);
-            if (direction === 1 ? current === total : current === 1) return passages.join("");
+            if ((await reader.getAttribute(direction === 1 ? "data-reader-next-page" : "data-reader-page")) === null)
+              return passages.join("");
             await guide.getByRole("button", { name: direction === 1 ? "Next" : "Back", exact: true }).click();
           }
           assert.fail("Reading pages did not reach their boundary");
@@ -404,8 +414,8 @@ export async function verifyFoundingLayout(group) {
             await expect(button("Back")).toBeInViewport({ ratio: 1 });
             await expect(button("Next")).toBeInViewport({ ratio: 1 });
             await retreat();
-            await expect(root).toHaveAttribute("data-step", "1");
-            await expect(root.locator(".villages-selected-villager")).toHaveCount(view.count);
+            await expect(root).toHaveAttribute("data-step", "2");
+            await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
             await advance();
             await expect(introduction).toBeVisible();
             await expect(work).toHaveCount(0);
@@ -415,18 +425,6 @@ export async function verifyFoundingLayout(group) {
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `venue-intro-${view.width}.png`),
               });
             await finishPassage(guide);
-            const pausedMap = view.width === 320 || view.width === 1366;
-            if (pausedMap) {
-              await page.evaluate(() =>
-                window.featureController.updateSetupMapRequest({
-                  id: "paused-map",
-                  sourceKey: "unchanged-map-inputs",
-                  startedAt: "2026-11-20T00:00:00.000Z",
-                  phase: "paused",
-                }),
-              );
-              await expect(button("Next")).toBeEnabled();
-            }
             if (view.width === 1366) {
               const move = await page.evaluate(async () => {
                 const root = document.querySelector(".villages-forging-v2");
@@ -494,12 +492,6 @@ export async function verifyFoundingLayout(group) {
                 0,
                 "Phone and reduced-motion layouts do not slide Mari",
               );
-            if (pausedMap) {
-              await expect(button("Check map status")).toBeEnabled();
-              await expect(button("Next")).toBeDisabled();
-              await page.evaluate(() => window.featureController.updateSetupMapRequest(null));
-              await expect(button("Next")).toBeEnabled();
-            }
           }
           if (!phone || !(await root.locator("dialog.villages-chapter-menu[open]").count())) {
             const currentLayer = { 2: "Map", 3: "Venue" }[await root.getAttribute("data-step")];
@@ -747,6 +739,71 @@ export async function verifyFoundingLayout(group) {
         await expect(models.getByRole("button", { name: /^GM / })).toContainText("Scenes and dialogue");
         await expect(system).toContainText("Language model");
         await expect(system).toContainText("Drafts and village activity");
+        await expect(system).toContainText("✓ Ready");
+        await expect(models.getByRole("button", { name: /^GM / })).toContainText("✓ Ready");
+        const recommendation = root.getByRole("dialog", { name: "Image connection", exact: true });
+        await expect(recommendation).toHaveCount(0);
+        await expect(modelGate.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+        if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
+          await button("Menu appearance").click();
+          const appearance = root.getByRole("dialog", { name: "Menu appearance", exact: true });
+          const gateBounds = await modelGate.boundingBox();
+          for (const [label, lighting] of [
+            ["Night", "night"],
+            ["Day", "day"],
+            ["Day & night", daylight ? "day" : "night"],
+          ]) {
+            await appearance.getByRole("button", { name: label, exact: true }).click();
+            await expect(root).toHaveAttribute("data-lighting", lighting);
+            await expect(appearance.getByRole("button", { name: label, exact: true })).toHaveAttribute(
+              "aria-pressed",
+              "true",
+            );
+            if (process.env.VILLAGES_SCREENSHOT_DIR && label !== "Day & night")
+              await page.screenshot({
+                path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `appearance-${lighting}-${view.width}.png`),
+              });
+            assert.deepEqual(
+              await modelGate.boundingBox(),
+              gateBounds,
+              "Appearance changes preserve the connection setup layout",
+            );
+          }
+          await appearance.getByRole("button", { name: "Back", exact: true }).click();
+          if (view.width === 1366) {
+            const refreshConnections = async () => {
+              await system.click();
+              const picker = page.getByRole("dialog", { name: "System", exact: true });
+              await picker.getByRole("button", { name: "Refresh list", exact: true }).click();
+              await expect(picker.getByRole("button", { name: "Refresh list", exact: true })).toBeEnabled();
+              await picker.getByRole("button", { name: "Back", exact: true }).click();
+            };
+            for (const role of ["systemConnectionId", "narrationConnectionId"]) {
+              for (const value of ["", "deleted", "image", "alt-talk"]) {
+                modelSelection[role] = value;
+                connectionRows[1].profileImportReviewRequired = value === "alt-talk";
+                await refreshConnections();
+                await expect(modelGate.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+              }
+              modelSelection[role] = "talk";
+              connectionRows[1].profileImportReviewRequired = false;
+              await refreshConnections();
+              await expect(modelGate.getByRole("button", { name: "Next", exact: true })).toBeEnabled();
+            }
+            await modelGate.getByRole("button", { name: "Next", exact: true }).click();
+            await expect(recommendation).toBeVisible();
+            await expect(recommendation).toContainText("An image connection is highly recommended");
+            await recommendation.getByRole("button", { name: "Choose image connection", exact: true }).click();
+            const imageChoice = root.getByRole("dialog", { name: "Images", exact: true });
+            await expect(imageChoice).toBeVisible();
+            await imageChoice.getByRole("button", { name: "Back", exact: true }).click();
+            await expect(modelGate).toBeVisible();
+          }
+        }
+        assert.ok(
+          await modelGate.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+          "Connection setup fits without a scrollable body",
+        );
         await expect(modelGate.getByRole("button", { name: "Next" })).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
@@ -792,7 +849,27 @@ export async function verifyFoundingLayout(group) {
           await expect(system).toContainText("Draft model");
         }
         await modelGate.getByRole("button", { name: "Next" }).click();
+        if (view.width !== 2550) {
+          await expect(recommendation).toBeVisible();
+          await expect(root).toHaveAttribute("data-prelude", "true");
+          assert.ok(
+            await recommendation.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+            "The optional image acknowledgement fits without scrolling",
+          );
+          assert.ok(
+            await recommendation.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+            "Image acknowledgement actions fit the narrow screen",
+          );
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `image-recommendation-${view.width}.png`),
+            });
+          await recommendation.getByRole("button", { name: "Continue without images", exact: true }).click();
+        } else await expect(recommendation).toHaveCount(0);
         await expect(root).toHaveCSS("background-image", titleBackdrop);
+        await expect(
+          root.locator(".villages-reader-counter,.villages-founding-lore,.villages-lore-chip-slot"),
+        ).toHaveCount(0);
         await expect.poll(() => root.evaluate((element) => getComputedStyle(element, "::before").content)).toBe("none");
         await expect(
           root.locator(".villages-forging-heading, .villages-forging-footer, .villages-forging-saved"),
@@ -899,14 +976,14 @@ export async function verifyFoundingLayout(group) {
             await hierarchy
               .locator("[data-active] .villages-founding-hierarchy-star path")
               .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill)),
-            Array(activeCount).fill(daylight ? "rgb(232, 242, 236)" : palette(daylight).ink),
+            Array(activeCount).fill(daylight ? "rgb(255, 227, 160)" : "rgb(255, 240, 195)"),
           );
           const inactiveStars = await hierarchy
-            .locator("g:not([data-active]) > .villages-founding-hierarchy-star path")
+            .locator("g:not([data-active],[data-complete]) > .villages-founding-hierarchy-star path")
             .evaluateAll((stars) => stars.map((star) => getComputedStyle(star).fill));
-          assert.deepEqual(
-            inactiveStars,
-            Array(9 - activeCount).fill(daylight ? "rgb(212, 229, 222)" : "rgb(208, 193, 179)"),
+          assert.ok(
+            inactiveStars.every((fill) => fill === "none"),
+            "Future hierarchy stars remain unlit outlines",
           );
           assert.deepEqual(await stage.boundingBox(), stageBounds, "The chart leaves Mari’s standing mark in place");
         };
@@ -917,7 +994,7 @@ export async function verifyFoundingLayout(group) {
         if (daylight) {
           await expect(hierarchy.locator("circle").first()).toHaveCSS("fill", "rgb(33, 72, 62)");
           await expect(currentStar.locator(".villages-founding-star")).toHaveCSS("background-color", "rgb(33, 72, 62)");
-          await expect(currentStar.locator(".villages-founding-star")).toHaveCSS("color", "rgb(232, 242, 236)");
+          await expect(currentStar.locator(".villages-founding-star")).toHaveCSS("color", "rgb(255, 227, 160)");
           await expect(currentStar.locator(".villages-founding-star")).not.toHaveCSS("box-shadow", "none");
         }
         await expect(line).toHaveCSS("color", palette(daylight).ink);
@@ -1037,18 +1114,23 @@ export async function verifyFoundingLayout(group) {
           /^World rules/,
         ]);
         await expect(worldField).toBeVisible();
+        assert.equal(
+          await worldField.evaluate((field) => getComputedStyle(field, "::placeholder").fontStyle),
+          "italic",
+        );
+        await expect(worldField).toHaveAttribute("placeholder", /^e\.g\./);
         if (!phone) {
           const chartLabel = hierarchy.locator("text").first();
           await worldField.focus();
           await expect(chartLabel).toHaveCSS("stroke", "none");
           const star = hierarchy.locator("[data-active] .villages-founding-hierarchy-star path");
           await expect(star).toHaveCSS("stroke", "none");
-          await expect(star).toHaveCSS("filter", "none");
+          await expect(star).not.toHaveCSS("filter", "none");
           await worldField.blur();
           await expect(chartLabel).toHaveCSS("stroke", "none");
           await expect(chartLabel).toHaveCSS("text-shadow", "none");
           await expect(star).toHaveCSS("stroke", "none");
-          await expect(star).toHaveCSS("filter", "none");
+          await expect(star).not.toHaveCSS("filter", "none");
         }
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
@@ -1599,6 +1681,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("people");
         await advance();
         await expect(root).toHaveAttribute("data-step", "2");
+        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toHaveCount(0);
         await enterChapter();
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
@@ -1607,11 +1690,12 @@ export async function verifyFoundingLayout(group) {
           "background-color",
           daylight ? "rgb(212, 229, 222)" : "rgb(81, 65, 87)",
         );
-        await expect(artSettings.locator("fieldset")).toHaveCSS(
+        await expect(artSettings.locator(".villages-scenery-fields")).toHaveCSS(
           "border-top-color",
           daylight ? "rgb(120, 148, 131)" : "rgba(180, 127, 146, 0.667)",
         );
-        await expect(artSettings.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
+        if (view.width !== 2550)
+          await expect(artSettings.getByRole("button", { name: /^Images / })).toContainText("Needs Engine review");
         await expect(artSettings.getByRole("button", { name: /^System / })).toHaveCount(0);
         await expect(artSettings.getByRole("button", { name: /^GM / })).toHaveCount(0);
         await expect(root.getByRole("dialog", { name: "Model Connections", exact: true })).toHaveCount(0);
@@ -1690,6 +1774,24 @@ export async function verifyFoundingLayout(group) {
           await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("upload");
         }
         await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
+        const mapPreview = root.getByRole("region", { name: "Map artwork preview" });
+        await expect(mapPreview.locator("img")).toBeVisible();
+        const stillMap = await mapPreview.evaluate(async (node) => {
+          const image = node.querySelector("img");
+          const samples = [];
+          for (let frame = 0; frame < 45; frame++) {
+            await new Promise(requestAnimationFrame);
+            samples.push(image.getBoundingClientRect().toJSON());
+          }
+          return samples;
+        });
+        for (const dimension of ["x", "y", "width", "height"]) {
+          const values = stillMap.map((sample) => sample[dimension]);
+          assert.ok(
+            Math.max(...values) - Math.min(...values) < 0.5,
+            `The idle Map image keeps its ${dimension}; it never grows or moves on its own`,
+          );
+        }
         const mapTitle = await root
           .getByRole("region", { name: "Map artwork", exact: true })
           .getByRole("heading")
@@ -1716,9 +1818,9 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
-        await expect(root.locator("[data-explanation]")).toHaveCount(0);
-        if (phone) await expect(root.locator("dialog.villages-chapter-map[open]")).toBeVisible();
-        else await expect(root).toHaveAttribute("data-desktop-map", "true");
+        await expect(root.locator("[data-explanation]")).toHaveCount(1);
+        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toBeVisible();
+        await expect(work).toHaveCount(0);
         await enterChapter();
         await retreat();
         await expect(root).toHaveAttribute("data-step", "2");
@@ -1726,6 +1828,7 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
+        await enterChapter();
         await expect(work).toBeVisible();
         await expect(root.getByRole("button", { name: "Upload image", exact: true })).toHaveCount(0);
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);

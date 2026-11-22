@@ -170,7 +170,9 @@ export function useAgentConnections(enabled: boolean, viewing = false) {
           ? CONNECTION_SETUP_PROBLEMS.required
           : required.some((id) => !language.some((option) => option.id === id))
             ? CONNECTION_SETUP_PROBLEMS.missing
-            : "";
+            : required.some((id) => language.find((option) => option.id === id)?.needsReview)
+              ? CONNECTION_SETUP_PROBLEMS.review
+              : "";
   return {
     settings,
     options,
@@ -196,21 +198,25 @@ export function AgentConnectionsControls({
   kind,
   compact = false,
   disabled = false,
+  onContinue,
 }: {
   connections: ReturnType<typeof useAgentConnections>;
   kind?: "founding" | "images";
   compact?: boolean;
   disabled?: boolean;
+  onContinue?(): void;
 }) {
   const { settings, options, error, readFailed, busy, pending, choose, refresh } = connections;
   const [job, setJob] = useState<ConnectionJob | null>(null);
   const [search, setSearch] = useState("");
+  const [recommendImages, setRecommendImages] = useState(false);
   const titleId = useId();
   const pendingId = useId();
   const language = options.filter((option) => option.category === "language");
   const images = options.filter((option) => option.category === "image_generation");
   const progress = !readFailed && (connections.refreshing || !settings) ? CONNECTION_SETUP_PROBLEMS.reading : "";
   const founding = kind === "founding";
+  const imageReady = images.some((option) => option.id === settings?.imageConnectionId && !option.needsReview);
 
   const pickingImages = job?.key === "imageConnectionId";
   const modelOptions = pickingImages ? images : language;
@@ -270,6 +276,18 @@ export function AgentConnectionsControls({
               const off = artwork && id === VILLAGES_IMAGE_CONNECTION_DISABLED;
               const missing = !!id && !off && !selected;
               const needsChoice = founding && !artwork && !id;
+              const valid = !!selected && !selected.needsReview;
+              const status = saving
+                ? "Saving…"
+                : selected?.needsReview
+                  ? "Needs review"
+                  : missing
+                    ? "Unavailable"
+                    : valid
+                      ? "✓ Ready"
+                      : artwork
+                        ? "Optional"
+                        : "Required";
               let value = "Engine default";
               if (off) value = "Disabled";
               else if (missing) value = "Missing connection";
@@ -305,12 +323,66 @@ export function AgentConnectionsControls({
                     <strong>{value}</strong>
                     {selected?.detail ? <small>{selected.detail}</small> : null}
                     {selected?.needsReview ? <small data-needs-review>Needs Engine review</small> : null}
+                    {founding ? (
+                      <span className={`${P}-model-readiness`} data-valid={valid || undefined}>
+                        {status}
+                      </span>
+                    ) : null}
                   </span>
                   <span className={saving ? `${P}-model-pending ${P}-spin` : `${P}-model-chevron`} aria-hidden="true" />
                 </button>
               );
             })}
         </div>
+      ) : null}
+      {founding && onContinue ? (
+        <footer className="villages-founding-connections-footer">
+          <button
+            type="button"
+            className="villages-forging-primary"
+            disabled={!!connections.setupProblem || disabled}
+            onClick={() => {
+              if (imageReady) onContinue();
+              else setRecommendImages(true);
+            }}
+          >
+            Next
+          </button>
+        </footer>
+      ) : null}
+      {recommendImages && onContinue ? (
+        <ModalDialog
+          title="Image connection"
+          className="villages-founding-image-recommendation"
+          compact
+          onClose={() => setRecommendImages(false)}
+        >
+          <p>An image connection is highly recommended for maps and artwork.</p>
+          <footer>
+            <button
+              type="button"
+              disabled={busy || disabled}
+              onClick={() => {
+                setRecommendImages(false);
+                setSearch("");
+                setJob(jobs[2]);
+              }}
+            >
+              Choose image connection
+            </button>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              disabled={!!connections.setupProblem || disabled}
+              onClick={() => {
+                setRecommendImages(false);
+                onContinue();
+              }}
+            >
+              Continue without images
+            </button>
+          </footer>
+        </ModalDialog>
       ) : null}
       {job && settings ? (
         <ModalDialog

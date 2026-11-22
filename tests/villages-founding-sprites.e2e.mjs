@@ -151,13 +151,15 @@ await withBrowser(browser, async () => {
         next = root.getByRole("button", { name: "Next", exact: true });
       const advance = async () => {
         for (let attempt = 0; attempt < 30; attempt++) {
-          const counter = root.locator(".villages-reader-counter:visible");
-          if (!(await counter.count()) || (await counter.evaluate((node) => !!node.closest("[inert]")))) break;
-          const [current, total] = (await counter.getAttribute("aria-label")).match(/\d+/gu).map(Number);
-          if (current === total) break;
+          const reader = root.locator(".villages-setting-dialogue:visible").first();
+          if (!(await reader.count()) || (await reader.evaluate((node) => !!node.closest("[inert]")))) break;
+          if ((await reader.getAttribute("data-reader-next-page")) === null) break;
           await next.click();
         }
         await next.click();
+        const recommendation = root.getByRole("dialog", { name: "Image connection", exact: true });
+        if (await recommendation.isVisible())
+          await recommendation.getByRole("button", { name: "Continue without images", exact: true }).click();
       };
       for (const reply of ["START", "Next", "Next", "Next", "Next", "Next", "Next", "Next"])
         if (reply === "Next") await advance();
