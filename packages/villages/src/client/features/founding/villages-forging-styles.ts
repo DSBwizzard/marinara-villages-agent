@@ -806,7 +806,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .marinara-capability-villages-model-readiness[data-valid] { color:var(--founding-foreground); }
 .villages-founding-connections .marinara-capability-villages-model-readiness { position:absolute; top:.6rem; right:.65rem; }
 .villages-forging-v2 .villages-founding-image-recommendation>footer { display:grid; grid-template-columns:minmax(0,1fr); gap:.5rem; }
-.villages-forging-v2 .villages-founding-image-recommendation>footer>button { width:100%; min-width:0; white-space:normal; }
+.villages-forging-v2 .villages-founding-image-recommendation[data-compact=true]>footer>button { width:100%; min-width:0; white-space:normal; }
 .villages-founding-appearance-options { display:grid; gap:.25rem; margin:0; padding:.6rem; border:1px solid var(--founding-line); border-radius:.6rem; }
 .villages-founding-appearance-options legend { padding:0 .25rem; }
 .villages-forging-v2 .villages-founding-appearance-options button { display:flex; align-items:center; justify-content:space-between; gap:1rem; text-align:left; }

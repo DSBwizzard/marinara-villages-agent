@@ -860,6 +860,15 @@ export async function verifyFoundingLayout(group) {
             await recommendation.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
             "Image acknowledgement actions fit the narrow screen",
           );
+          if (view.width === 320) {
+            const enlarged = await recommendation.evaluate((node) => {
+              node.style.fontSize = "22px";
+              const fits = node.scrollWidth <= node.clientWidth + 1;
+              node.style.fontSize = "";
+              return fits;
+            });
+            assert.ok(enlarged, "Acknowledgement labels wrap at enlarged text size without horizontal scrolling");
+          }
           if (process.env.VILLAGES_SCREENSHOT_DIR)
             await page.screenshot({
               path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `image-recommendation-${view.width}.png`),
