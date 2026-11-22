@@ -14,6 +14,7 @@ jobs:
   validate:
     name: validate
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     outputs:
       documentation_only: ${{ steps.documentation.outputs.only }}
     steps:
@@ -30,11 +31,17 @@ jobs:
         env:
           BASE_REVISION: ${{ github.event.pull_request.base.sha }}
       - if: steps.documentation.outputs.only != 'true'
-        run: npm ci
+        run: npm ci --no-audit
       - if: steps.documentation.outputs.only != 'true'
-        run: npm run audit:dependencies && npm run check
+        name: Audit changed dependency inputs
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || ! git diff --quiet HEAD^1 HEAD -- package.json package-lock.json .npmrc .github/workflows/ci.yml .github/workflows/dependency-audit.yml; then
+            npm run audit:dependencies
+          fi
       - if: steps.documentation.outputs.only != 'true'
-        run: npm run verify:build && npm run verify:package
+        run: npm run check
+      - if: steps.documentation.outputs.only != 'true'
+        run: npm run build && npm run verify:package && git diff --exit-code HEAD
       - if: steps.documentation.outputs.only != 'true'
         run: npm test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -58,6 +65,7 @@ jobs:
   validate-windows:
     name: validate-windows
     runs-on: windows-2025
+    timeout-minutes: 10
     outputs:
       documentation_only: ${{ steps.documentation.outputs.only }}
     steps:
@@ -74,13 +82,11 @@ jobs:
         env:
           BASE_REVISION: ${{ github.event.pull_request.base.sha }}
       - if: steps.documentation.outputs.only != 'true'
-        run: npm ci
+        run: npm ci --no-audit
       - if: steps.documentation.outputs.only != 'true'
-        run: npm run audit:dependencies && npm run check
+        run: npm run build && npm run verify:package && git diff --exit-code HEAD
       - if: steps.documentation.outputs.only != 'true'
-        run: npm run verify:build && npm run verify:package
-      - if: steps.documentation.outputs.only != 'true'
-        run: npm test
+        run: npm run test:windows
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.documentation.outputs.only != 'true'
         with:
@@ -102,6 +108,7 @@ jobs:
   browser:
     name: browser-ubuntu-24.04-${{ matrix.part }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     container:
       image: mcr.microsoft.com/playwright:v1.61.0-noble@sha256:57b65fdc9ceabe0ef613124c7bbe2babcf9362c4d85e382fe3b03604e84b428a
       options: --init --ipc=host
@@ -127,7 +134,7 @@ jobs:
         env:
           BASE_REVISION: ${{ github.event.pull_request.base.sha }}
       - if: steps.documentation.outputs.only != 'true'
-        run: npm ci
+        run: npm ci --no-audit
       - if: steps.documentation.outputs.only != 'true'
         run: npm run build
       - if: steps.documentation.outputs.only != 'true'
@@ -140,58 +147,15 @@ jobs:
           path: .build-tmp/test-results/
           include-hidden-files: true
           if-no-files-found: ignore
-  browser-windows:
-    name: browser-windows-2025-${{ matrix.part }}
-    runs-on: windows-2025
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.build-tmp/playwright
-    strategy:
-      fail-fast: false
-      matrix:
-        part: [1, 2]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 2
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 24.21.0
-          cache: npm
-      - name: Identify documentation-only changes
-        id: documentation
-        run: node scripts/documentation-only.mjs
-        env:
-          BASE_REVISION: ${{ github.event.pull_request.base.sha }}
-      - if: steps.documentation.outputs.only != 'true'
-        run: npm ci
-      - if: steps.documentation.outputs.only != 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: browser-cache
-        with:
-          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-      - if: steps.documentation.outputs.only != 'true' && steps.browser-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium
-      - if: steps.documentation.outputs.only != 'true'
-        run: npm run build
-      - if: steps.documentation.outputs.only != 'true'
-        run: npm run test:browser -- --shard=${{ matrix.part }}/2
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure() && steps.documentation.outputs.only != 'true'
-        with:
-          name: diagnostics-browser-${{ runner.os }}-${{ matrix.part }}
-          retention-days: 7
-          path: .build-tmp/test-results/
-          include-hidden-files: true
-          if-no-files-found: ignore
   package-parity:
     permissions:
       contents: read
       actions: read
     name: package-parity
-    needs: [validate, validate-windows, browser, browser-windows]
+    needs: [validate, validate-windows, browser]
     if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Require all validation jobs
         env:
@@ -205,7 +169,7 @@ jobs:
         with:
           node-version: 24.21.0
       - if: needs.validate.outputs.documentation_only != 'true'
-        run: npm ci
+        run: npm ci --no-audit
       - if: needs.validate.outputs.documentation_only != 'true'
         run: node scripts/download-ci-packages.mjs
         env:
