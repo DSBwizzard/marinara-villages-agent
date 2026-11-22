@@ -15,7 +15,7 @@ import {RetainedView} from './packages/villages/src/client/shared/RetainedView.j
 import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
 const tag=document.createElement('marinara-capability-villages');tag.style.display='none';document.body.appendChild(tag);syncVillagesStyles();
 function Harness(){const [options,setOptions]=useState({enabled:true,daylight:true,world:'a',sceneActive:true});window.showLore=next=>setOptions(prior=>({...prior,...next}));
-return <VillageActivity value={{visible:true,worldScope:options.world,backgroundRevision:''}}><LoreActivity key={options.world} enabled={options.enabled} daylight={options.daylight}><main><RetainedView active={options.sceneActive}><div style={{padding:'16px',display:'grid',gap:'8px',justifyItems:'start'}}><div data-location>The Mill<br/>Saturday · 12:00</div><LoreActivitySlot entries={options.replyEntries}/></div></RetainedView><p>Scene content stays in place.</p></main></LoreActivity></VillageActivity>}
+return <VillageActivity value={{visible:true,worldScope:options.world,backgroundRevision:''}}><LoreActivity key={options.world} enabled={options.enabled} daylight={options.daylight}><main className="marinara-capability-villages-room-screen" style={{display:"block"}}><RetainedView active={options.sceneActive}><div style={{padding:'16px',display:'grid',gap:'8px',justifyItems:'start',alignContent:'start',width:'100%',boxSizing:'border-box'}}><div data-location>The Mill<br/>Saturday · 12:00</div><div data-lane className="marinara-capability-villages-scene-notice-chips" style={{position:"relative",width:"100%"}}><span style={{width:80,flexShrink:0}}>Other chip</span><LoreActivitySlot entries={options.replyEntries}/></div></div></RetainedView><p>Scene content stays in place.</p></main></LoreActivity></VillageActivity>}
 createRoot(document.getElementById('root')).render(<Harness/>);`,
     resolveDir: process.cwd(),
     loader: "tsx",
@@ -85,7 +85,10 @@ await withBrowser(browser, async () => {
       await expect(chip).toBeVisible();
       const locationBox = await page.locator("[data-location]").boundingBox(),
         chipBox = await chip.boundingBox();
-      assert(chipBox.y >= locationBox.y + locationBox.height && Math.abs(chipBox.x - locationBox.x) < 1);
+      assert(
+        chipBox.y >= locationBox.y + locationBox.height &&
+          Math.abs((await page.locator("[data-lane]").boundingBox()).x - locationBox.x) < 1,
+      );
       await chip.click();
       await expect(popout).toBeVisible();
       assert.deepEqual(await popout.locator("li").allTextContents(), ["The winter garden", "Market customs"]);
@@ -95,6 +98,7 @@ await withBrowser(browser, async () => {
       await expect(popout).not.toContainText("World lore");
       let bounds = await popout.boundingBox();
       assert(bounds.width <= 322 && bounds.height < 180 && bounds.x >= 0 && bounds.x + bounds.width <= width);
+      assert(Math.abs(bounds.x - locationBox.x) < 1, "other chips cannot push the popout past the notice lane");
       const dayColor = await popout.evaluate((node) => getComputedStyle(node).backgroundColor);
       await page.screenshot({ path: `artifacts/lorebook-chip-day-${width}.png` });
       await page.evaluate(() => window.showLore({ daylight: false }));

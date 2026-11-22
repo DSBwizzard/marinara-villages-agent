@@ -39,7 +39,7 @@ const mariVisitorSprites = [
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.9.0",
+  version: "0.9.1",
   minEngineVersion: "2.5.2",
   maxEngineExclusive: "4.0.0",
   name: "Villages",

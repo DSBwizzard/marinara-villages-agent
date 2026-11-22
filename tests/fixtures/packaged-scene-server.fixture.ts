@@ -88,6 +88,7 @@ export async function packagedSceneServer(
   for (const actor of world.villagers)
     actor.agenda ??= agendaFixture({
       generatedAt: now,
+      day: [{ startMinute: 0, endMinute: 1440, venueId: "mill", zoneId: "common", activity: "Free time" }],
       activeDay: {
         dateKey: now.slice(0, 10),
         weekday: new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(new Date(now)),

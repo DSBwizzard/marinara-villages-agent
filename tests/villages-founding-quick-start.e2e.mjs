@@ -395,8 +395,21 @@ await withBrowser(browser, async () => {
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(4);
       const addedZone = await page.evaluate(() => window.quickState.venues[0].spaces.at(-1).id);
       await button("Zones").click();
+      await page.evaluate(() => {
+        window.heldFocus = [];
+        window.nativeFrame = window.requestAnimationFrame;
+        window.requestAnimationFrame = (callback) => {
+          window.heldFocus.push(callback);
+          return 0;
+        };
+      });
       await zone(addedZone).click();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Reading nook");
+      await page.evaluate(() => {
+        window.requestAnimationFrame = window.nativeFrame;
+        for (const callback of window.heldFocus) callback(performance.now());
+      });
+      await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
       await sheet.getByLabel("Zone name", { exact: true }).press("Enter");
       await expect(sheet.getByRole("heading", { name: "Reading nook", exact: true })).toBeVisible();
       await button("Rename Zone").click();

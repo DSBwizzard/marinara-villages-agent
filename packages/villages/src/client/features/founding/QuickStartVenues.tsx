@@ -107,10 +107,13 @@ export function QuickStartVenues({
     setChoiceError("");
   };
   const selectZone = (id: string) => {
+    const opener = document.activeElement;
     setZoneId(id);
     setZoneDetails(true);
     setChoiceError("");
-    requestAnimationFrame(() => zoneBack.current?.focus());
+    requestAnimationFrame(() => {
+      if (document.activeElement === opener || document.activeElement === document.body) zoneBack.current?.focus();
+    });
   };
   const backToZones = () => {
     selectSection("zones");
