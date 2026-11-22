@@ -814,7 +814,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-founding-overlay>dialog.villages-founding-appearance { width:min(17rem,100%); height:auto; margin:0; padding:.75rem; }
 .villages-founding-appearance .villages-founding-appearance-options { border:0; padding:0; }
 .villages-founding-appearance legend { display:none; }
-.villages-founding-connections-footer { display:flex; justify-content:flex-end; flex:none; margin-top:.65rem; }
+.villages-forging-v2 .villages-founding-connections-footer { display:flex; justify-content:flex-end; flex:none; margin-top:.65rem; padding:0; border:0; background:transparent; }
 .villages-forging-v2 .villages-founding-connections-dialog[open] { padding:.75rem; }
 .villages-forging-v2 .villages-founding-connections .villages-founding-connections-footer>.villages-forging-primary {
   display:block; min-width:min(5.75rem,100%); margin:.65rem 0 0 auto; padding:.4rem 1rem;
