@@ -14,6 +14,17 @@ export const isolatedTests = new Set([
   "tests/villages-scene-generation-contract.regression.ts",
   // Pure Memories rules and deterministic process-local histories; no runtime or saved worlds.
   "tests/villages-memories-scale.regression.ts",
+  // Reviewed: per-process document Maps, Fastify.inject and read-only packaged server inputs.
+  "tests/villages-retained-storage.regression.ts",
+  "tests/villages-scene-submission-pages.regression.ts",
+  "tests/villages-repair.regression.ts",
+  "tests/villages-departure-history.regression.ts",
+  "tests/villages-scene-playthrough.regression.ts",
+  "tests/villages-captured-admissions.regression.ts",
+  "tests/villages-memories-storage.regression.ts",
+  "tests/villages-scene-cost.regression.ts",
+  "tests/villages-scene-playback-pages.regression.ts",
+  "tests/villages-scene-transcript-pages.regression.ts",
   // Independent temporary runner copies/artifacts and browser contexts.
   "tests/villages-ci-diagnostics.regression.mjs",
   "tests/villages-browser-diagnostics.e2e.mjs",

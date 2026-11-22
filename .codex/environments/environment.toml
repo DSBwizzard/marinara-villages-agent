@@ -2,11 +2,11 @@ version = 1
 name = "Villages"
 
 [setup]
-script = "corepack npm ci && corepack enable --install-directory node_modules/.bin npm"
+script = "corepack npm ci --no-audit && corepack enable --install-directory node_modules/.bin npm"
 
 [setup.win32]
 script = '''
-corepack npm ci
+corepack npm ci --no-audit
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 corepack enable --install-directory node_modules/.bin npm
 '''
