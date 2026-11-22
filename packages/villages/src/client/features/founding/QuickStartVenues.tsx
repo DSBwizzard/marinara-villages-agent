@@ -36,6 +36,7 @@ export function QuickStartVenues({
   onGenerateImage,
   onUploadImage,
   actions,
+  actionsOnMap = false,
   onRetrySaving,
   onCloseVenue,
   backLabel,
@@ -61,6 +62,7 @@ export function QuickStartVenues({
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   actions?: ReactNode;
+  actionsOnMap?: boolean;
   onRetrySaving?(): void;
   onCloseVenue?(): void;
   backLabel?: string;
@@ -567,7 +569,7 @@ export function QuickStartVenues({
         <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
           <div className="villages-quick-map-toolbar" hidden={mobile && inlineOpen}>
             <h2 title={locationName || "Starting location"}>{locationName || "Starting location"}</h2>
-            {mobile ? (
+            {mobile || actionsOnMap ? (
               actions
             ) : (
               <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
@@ -595,7 +597,7 @@ export function QuickStartVenues({
                   Map
                 </button>
               ) : null}
-              {actions}
+              {actionsOnMap ? null : actions}
             </div>
           </header>
           <div className="villages-quick-zone-list">{cards}</div>

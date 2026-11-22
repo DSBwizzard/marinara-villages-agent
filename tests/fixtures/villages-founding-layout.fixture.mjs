@@ -90,6 +90,7 @@ export async function verifyFoundingLayout(group) {
             Object.assign(viewport, { height: innerHeight, width: innerWidth, offsetTop: 0 });
             Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
           });
+        let setupPosts = 0;
         let payload,
           suggestions = 0,
           settingReceipt,
@@ -282,6 +283,13 @@ export async function verifyFoundingLayout(group) {
             );
           }
           if (path.endsWith("/setup") && method === "POST") {
+            setupPosts++;
+            if (view.width === 1366 && setupPosts === 1)
+              return fulfill(route, {
+                status: 503,
+                contentType: "application/json",
+                body: JSON.stringify({ error: "Fixture founding failure." }),
+              });
             payload = route.request().postDataJSON();
             return send(snapshot);
           }
@@ -588,7 +596,7 @@ export async function verifyFoundingLayout(group) {
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${phase}-mari-${view.width}.png`),
               });
           }
-          await (phase === "review" ? button("Found village") : settingNext()).scrollIntoViewIfNeeded();
+          await (phase === "review" ? button("Next") : settingNext()).scrollIntoViewIfNeeded();
           if (phase === "venues") {
             const widths = await root.locator(".villages-forging-body").evaluate((body) => {
               const style = getComputedStyle(body);
@@ -2410,8 +2418,9 @@ export async function verifyFoundingLayout(group) {
           });
         await enterChapter();
         const overview = root.locator(".villages-founding-review");
+        await bounds("review");
         if (phone) {
-          await expect(overview).toHaveAttribute("data-page", "People");
+          await expect(overview).toHaveAttribute("data-page", "people");
           assert.equal(
             await overview
               .locator(".villages-review-people")
@@ -2424,11 +2433,11 @@ export async function verifyFoundingLayout(group) {
               path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-people-${view.width}-${view.height}.png`),
             });
           await expect(overview.getByRole("button", { name: "Found village", exact: true })).toHaveCount(0);
-          await overview.getByRole("button", { name: "Next: Setting", exact: true }).click();
-          await expect(overview).toHaveAttribute("data-page", "Setting");
+          await overview.getByRole("button", { name: "Next", exact: true }).click();
+          await expect(overview).toHaveAttribute("data-page", "setting");
           await overview.getByRole("button", { name: "Back", exact: true }).click();
-          await expect(overview).toHaveAttribute("data-page", "People");
-          await overview.getByRole("button", { name: "Next: Setting", exact: true }).click();
+          await expect(overview).toHaveAttribute("data-page", "people");
+          await overview.getByRole("button", { name: "Next", exact: true }).click();
         }
         if (view.width === 1366)
           await page.evaluate(() =>
@@ -2491,94 +2500,98 @@ export async function verifyFoundingLayout(group) {
           "The People editor fits without a scrolling body",
         );
         await peopleEditor.getByRole("button", { name: "Done", exact: true }).click();
-        if (phone) {
-          await overview.getByRole("button", { name: "Next: Setting", exact: true }).click();
-          await overview.getByRole("button", { name: "Next: Map", exact: true }).click();
-          await expect(overview).toHaveAttribute("data-page", "Map");
-        }
+        if (phone) await advance();
+        await advance();
+        await expect(root).toHaveAttribute("data-review-stage", "map");
+        await expect(overview).toHaveCount(0);
         const positions = await page.evaluate(() =>
           window.featureController.setupVenues.map((venue) => [venue.id, venue.presentation.x, venue.presentation.y]),
         );
-        const reviewPins = overview.locator(".villages-numbered-map-pin");
-        await expect(reviewPins).toHaveCount(positions.length);
-        assert.equal(
-          await overview.locator(".villages-review-map").evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-          true,
-          "The map and its paginated key fit without scrolling",
-        );
-        await expect(reviewPins.first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-        for (const [id, x, y] of positions) {
-          const marker = overview.locator(`[data-pin-id="${id}"]`);
-          await expect
-            .poll(
-              async () =>
-                marker.evaluate(
-                  (node, expected) => {
-                    const holder = node.parentElement;
-                    const stage = node.closest(".marinara-capability-villages-stage");
-                    const frame = stage.querySelector(".marinara-capability-villages-canvas");
-                    const frameBox = frame.getBoundingClientRect();
-                    const width = Number(stage.dataset.pictureWidth),
-                      height = Number(stage.dataset.pictureHeight);
-                    const position = [
-                      (parseFloat(holder.style.left) - (frameBox.width - width) / 2) / width,
-                      (parseFloat(holder.style.top) - (frameBox.height - height) / 2) / height,
-                    ];
-                    return Math.max(Math.abs(position[0] - expected[0]), Math.abs(position[1] - expected[1]));
-                  },
-                  [x, y],
-                ),
-              { message: `Review marker ${id} uses saved artwork coordinates` },
-            )
-            .toBeLessThan(0.001);
+        const reviewMap = root.getByRole("group", { name: "Map navigation", exact: true });
+        const mapStage = root.locator(".marinara-capability-villages-stage");
+        await expect(root.locator("[data-pin-id]").first()).toBeVisible();
+        await expect(mapStage).not.toHaveAttribute("data-pin-movable", "true");
+        await expect(button("Reset map view")).toBeVisible();
+        if (phone) {
+          const box = await reviewMap.boundingBox();
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-map-initial-${view.width}-${view.height}.png`),
+            });
+          assert.ok(
+            box.height >= frame.height * 0.65 && box.width >= frame.width * 0.95,
+            `Review reuses the full-screen Founding map workspace: ${JSON.stringify(box)} in ${JSON.stringify(frame)}`,
+          );
         }
-        await reviewPins.last().click({ force: true });
-        const selectedNumber = await reviewPins.last().textContent();
-        await expect(
-          overview.locator(".villages-review-map-key button[aria-pressed=true] .villages-review-place-number"),
-        ).toHaveText(selectedNumber);
-        await expect(overview.locator(".villages-review-map-key button[aria-pressed=true]")).toBeInViewport();
-        const keyChoice = overview.locator(".villages-review-map-key button").first();
-        const keyNumber = await keyChoice.locator(".villages-review-place-number").textContent();
-        await keyChoice.click();
-        await expect(overview.locator(".villages-numbered-map-pin[aria-pressed=true]")).toHaveText(keyNumber);
-        assert.ok(
-          (await overview.locator(".villages-review-map-preview").boundingBox()).height >= 90,
-          "The review keeps usable map space",
-        );
-        if (process.env.VILLAGES_SCREENSHOT_DIR)
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-map-${view.width}-${view.height}.png`),
-          });
+        await showVenuePin("founding-home:player");
+        const camera = await reviewMap.locator("img").getAttribute("style");
+        await root.locator('[data-pin-id="founding-home:player"]').click();
+        await expect(sheet.getByRole("button", { name: "About", exact: true })).toBeVisible();
+        await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toBeVisible();
+        await expect(sheet.getByRole("button", { name: "Manage", exact: true })).toBeVisible();
+        await sheet.getByRole("button", { name: "← Map", exact: true }).click();
+        await expect(reviewMap.locator("img")).toHaveAttribute("style", camera);
         assert.deepEqual(
           await page.evaluate(() =>
             window.featureController.setupVenues.map((venue) => [venue.id, venue.presentation.x, venue.presentation.y]),
           ),
           positions,
-          "Inspecting review pins never moves a Venue",
+          "Inspecting Venues preserves saved placements",
         );
-        await overview.getByRole("button", { name: "Expand map", exact: true }).click();
-        const expandedMap = page.getByRole("dialog", { name: "Map placements", exact: true });
-        await expect(expandedMap.locator(".villages-numbered-map-pin")).toHaveCount(positions.length);
-        await expandedMap.getByRole("button", { name: "Back", exact: true }).click();
-        if (phone) await overview.getByRole("button", { name: "Next: Places", exact: true }).click();
-        await overview.getByRole("button", { name: "Edit Community Courtyard", exact: true }).click();
-        await expect(sheet).toBeVisible();
-        await sheet.getByRole("button", { name: "← Review", exact: true }).click();
-        await expect(root).toHaveAttribute("data-step", "4");
-        if (phone) await overview.getByRole("button", { name: "Back", exact: true }).click();
-        await overview.locator(".villages-review-map>header>button").click();
+        const homeMarker = root.locator('[data-pin-id="founding-home:player"]');
+        const homeX = positions.find(([id]) => id === "founding-home:player")[1];
+        const currentHomeX = () =>
+          page.evaluate(
+            () =>
+              window.featureController.setupVenues.find((venue) => venue.id === "founding-home:player").presentation.x,
+          );
+        await homeMarker.press("ArrowRight");
+        assert.equal(await currentHomeX(), homeX, "Inspecting a marker cannot move it");
+        const options = root.getByRole("button", { name: "Map options", exact: true });
+        await options.click();
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-options-${view.width}-${view.height}.png`),
+          });
+        await button("Move markers").click();
+        await expect(mapStage).toHaveAttribute("data-pin-movable", "true");
+        await homeMarker.press("ArrowRight");
+        await expect.poll(currentHomeX).not.toBe(homeX);
+        await homeMarker.press("ArrowLeft");
+        await expect.poll(currentHomeX).toBe(homeX);
+        await options.click();
+        await button("Done moving").click();
+        await expect(mapStage).not.toHaveAttribute("data-pin-movable", "true");
+        await options.click();
+        await button("Map artwork").click();
         const mapEditor = page.getByRole("dialog", { name: "Review map", exact: true });
         await expect(mapEditor.getByRole("region", { name: "Map artwork preview", exact: true })).toBeVisible();
-        if (view.width === 320 || view.width === 1366) {
-          await mapEditor.getByRole("group", { name: "Map navigation", exact: true }).press("Home");
-          await mapEditor.locator('[data-pin-id="founding-community"]').click();
-          await expect(sheet).toBeVisible();
-          await sheet.getByRole("button", { name: "← Map", exact: true }).click();
-          await expect(mapEditor).toBeVisible();
-        }
         await mapEditor.getByRole("button", { name: "Done", exact: true }).click();
-        if (phone) await overview.getByRole("button", { name: "Next: Places", exact: true }).click();
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(
+              process.env.VILLAGES_SCREENSHOT_DIR,
+              "review-workspace-" + view.width + "-" + view.height + ".png",
+            ),
+          });
+        await advance();
+        await expect(root).toHaveAttribute("data-review-stage", "confirm");
+        await expect(root.getByText("Ready to found Coastal Community?", { exact: true })).toBeVisible();
+        await retreat();
+        await expect(root).toHaveAttribute("data-review-stage", "map");
+        await expect(button("Reset map view")).toBeVisible();
+        await advance();
+        await button("Found village").click();
+        await expect(root).toHaveAttribute("data-review-stage", "sendoff");
+        assert.equal(setupPosts, 0, "Confirmation and scripted dialogue do not dispatch founding or model requests");
+        await expectPose("presenting");
+        await retreat();
+        await expect(root).toHaveAttribute("data-review-stage", "confirm");
+        await button("Found village").click();
+        await advance();
+        await expect(root).toHaveAttribute("data-review-stage", "playful");
+        await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
+        await expectPose("playful");
         if (view.width === 320 || view.width === 1366) {
           await page.evaluate(() =>
             window.featureController.updateSetupMapRequest({
@@ -2588,16 +2601,37 @@ export async function verifyFoundingLayout(group) {
               phase: "paused",
             }),
           );
-          await expect(button("Found village")).toBeDisabled();
-          assert.equal(payload, undefined, "A paused map attempt cannot be abandoned by founding");
+          await expect(button("Enter village")).toBeDisabled();
+          assert.equal(setupPosts, 0, "A paused map attempt still blocks Enter village after confirmation");
           await page.evaluate(() => window.featureController.updateSetupMapRequest(null));
-          await expect(button("Found village")).toBeEnabled();
         }
-        await expect(overview.getByText("First day", { exact: true })).toHaveCount(0);
-        await expect(overview.getByRole("textbox", { name: "First day", exact: true })).toHaveCount(0);
-        await bounds("review");
-        await button("Found village").click();
+        await expect(button("Enter village")).toBeEnabled();
+        const mariBox = await stage.boundingBox();
+        assert.ok(
+          mariBox.x + mariBox.width / 2 < frame.x + frame.width * 0.5,
+          "Mari stays on the left during her send-off",
+        );
+        await expect(button("Enter village")).toBeInViewport({ ratio: 1 });
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(
+              process.env.VILLAGES_SCREENSHOT_DIR,
+              "review-sendoff-" + view.width + "-" + view.height + ".png",
+            ),
+          });
+        await button("Enter village").click();
+        if (view.width === 1366) {
+          await expect(root.getByRole("alert")).toContainText("Fixture founding failure.");
+          await expect(root).toHaveAttribute("data-review-stage", "playful");
+          await expect(button("Enter village")).toBeEnabled();
+          await button("Enter village").click();
+        }
         await expect.poll(() => payload).toBeTruthy();
+        assert.equal(
+          setupPosts,
+          view.width === 1366 ? 2 : 1,
+          "Only the final action submits, with one explicit retry on failure",
+        );
         assert.equal(payload.name, "Coastal Community");
         assert.equal(payload.timeZone, snapshot.clock?.timeZone || snapshot.village.timeZone);
         assert.equal(

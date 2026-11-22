@@ -182,7 +182,6 @@ export function MapStage({
   navigationView,
   onNavigationView,
   compactPhotos = false,
-  numberedPins = false,
   onMovePin,
   onMoveInvalid,
   onNudgePin,
@@ -236,7 +235,6 @@ export function MapStage({
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
   compactPhotos?: boolean;
-  numberedPins?: boolean;
   onMovePin?(
     id: string,
     x: number,
@@ -773,7 +771,7 @@ export function MapStage({
       data-exploration={exploration ? "true" : "false"}
       data-pin-movable={onMovePin ? true : undefined}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
-      data-photo-pins={exploration || numberedPins ? "false" : "true"}
+      data-photo-pins={exploration ? "false" : "true"}
       data-picture-width={picture?.width}
       data-picture-height={picture?.height}
       data-compact-photos={compactPhotos ? "true" : "false"}
@@ -943,7 +941,7 @@ export function MapStage({
               >
                 <button
                   type="button"
-                  className={`${ELEMENT_TAG}-pin${numberedPins ? " villages-numbered-map-pin" : ""}`}
+                  className={`${ELEMENT_TAG}-pin`}
                   data-pin-id={pin.id}
                   data-tone={pin.tone}
                   data-kind={pin.kind ?? "place"}
@@ -952,12 +950,9 @@ export function MapStage({
                   disabled={pin.onSelect === undefined}
                   title={pin.label ?? pin.text}
                   aria-label={pin.label}
-                  aria-pressed={numberedPins ? pin.selected === true : undefined}
                   {...pinInteractions(pin, picture)}
                 >
-                  {numberedPins ? (
-                    pin.text
-                  ) : pin.kind !== "person" ? (
+                  {pin.kind !== "person" ? (
                     <VenuePolaroid
                       image={pin.image}
                       name={pin.text}

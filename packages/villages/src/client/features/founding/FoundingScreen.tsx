@@ -37,11 +37,13 @@ const PLACE_ERRORS = {
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 const PHONE_LAYOUT = "(max-width:727px)";
 const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "review"] as const;
+type ReviewStage = "people" | "setting" | "map" | "confirm" | "sendoff" | "playful";
 
 function FoundingChapter({
   step,
   explanation,
   mobileScene,
+  mapWorkspace,
   mobileTitle,
   mobileHeader,
   mobileReplies,
@@ -53,6 +55,7 @@ function FoundingChapter({
   step: number;
   explanation: boolean;
   mobileScene: boolean;
+  mapWorkspace: boolean;
   mobileTitle?: string;
   mobileHeader?: ReactNode;
   mobileReplies: ReactNode;
@@ -78,8 +81,8 @@ function FoundingChapter({
           <FoundingDialog
             title={mobileTitle}
             headerContent={mobileHeader}
-            className={`villages-chapter-menu${step === FOUNDING_STEP.Venues ? " villages-chapter-map" : ""}`}
-            headerless={step === FOUNDING_STEP.Venues}
+            className={`villages-chapter-menu${mapWorkspace ? " villages-chapter-map" : ""}`}
+            headerless={mapWorkspace}
             scrollBody
             onClose={onCloseMenu}
           >
@@ -186,6 +189,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   const [connectionPickerOpen, setConnectionPickerOpen] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [phone, setPhone] = useState(() => window.matchMedia(PHONE_LAYOUT).matches);
+  const [reviewStage, setReviewStage] = useState<ReviewStage>("people");
+  const [reviewMoving, setReviewMoving] = useState(false);
+  const reviewingMap = setupStep === FOUNDING_STEP.Review && reviewStage === "map";
+  const reviewScene = setupStep === FOUNDING_STEP.Review && ["confirm", "sendoff", "playful"].includes(reviewStage);
   useEffect(() => {
     const layout = window.matchMedia(PHONE_LAYOUT);
     const update = () => setPhone(layout.matches);
@@ -201,7 +208,8 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     !draftSaveError;
   const confirmStarterHomes = useConfirmation(setupVenues);
   const mobileScene =
-    phone && !!chapterMenu && (explainingStarters || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError;
+    reviewScene ||
+    (phone && !!chapterMenu && (explainingStarters || setupWorkspace.mobileMenu !== chapterMenu) && !draftSaveError);
   const beat = settingBeat(setupWorkspace);
   const [settingExpression, setSettingExpression] = useState<Parameters<typeof foundingMariSprite>[0]>("wave");
   const [arrival, setArrival] = useState<"fading" | "turning" | "greeting">();
@@ -219,9 +227,13 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     setupStep === FOUNDING_STEP.Setting && setupWorkspace.settingIntroPending === "connections" && !fading;
   const prelude = showTitle || chooseConnections || turning;
   const desktopMap =
-    !phone && !explainingStarters && (setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Venues);
+    !phone &&
+    !explainingStarters &&
+    (setupStep === FOUNDING_STEP.Maps ||
+      setupStep === FOUNDING_STEP.Venues ||
+      (setupStep === FOUNDING_STEP.Review && !reviewScene));
   const hierarchyLayer =
-    desktopMap || (phone && setupStep === FOUNDING_STEP.Venues && !mobileScene)
+    desktopMap || (phone && (setupStep === FOUNDING_STEP.Venues || reviewingMap) && !mobileScene)
       ? undefined
       : explainingStarters
         ? "Venue"
@@ -246,7 +258,11 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           : setupStep === FOUNDING_STEP.People
             ? "happy"
             : setupStep === FOUNDING_STEP.Review
-              ? "proud"
+              ? reviewStage === "playful"
+                ? "playful"
+                : reviewStage === "sendoff"
+                  ? "presenting"
+                  : "proud"
               : "playful";
   const mariFacing = mariPose === "happy-side" ? "left" : mariPose === "looking-up" ? "right" : "front";
   const mariFlipEnabled = snapshot?.settings.spriteCardFlipEnabled !== false;
@@ -272,7 +288,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [reviewEditor, setReviewEditor] = useState<ReviewEditor>();
   const [reviewSettingSection, setReviewSettingSection] = useState<ReviewSettingSection>("Map");
-  const [reviewVenueFromMap, setReviewVenueFromMap] = useState(false);
   const [reviewPeopleSection, setReviewPeopleSection] = useState<"you" | "villagers">("you");
   useLetterFont(screen === "setup" ? "lora" : undefined);
   const [openVenueFromMap, setOpenVenueFromMap] = useState<{ id: string }>();
@@ -503,6 +518,8 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     const changeStep = (step: number, openMenu = false) => {
       rememberMariPosition();
       setSetupFocusIssue(null);
+      if (step === FOUNDING_STEP.Review && setupStep !== FOUNDING_STEP.Review) setReviewStage("people");
+      setReviewMoving(false);
       setStarterIntro(step === FOUNDING_STEP.Venues && setupStep === FOUNDING_STEP.Maps && !openMenu);
       if (openMenu && step === FOUNDING_STEP.Setting) setSettingEditorOpen(true);
       if (phone && openMenu) {
@@ -560,10 +577,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                       setSelectedSetupVenueId(pin.id);
                       setSetupFocusIssue(null);
                       setOpenVenueFromMap({ id: pin.id });
-                      if (setupStep === FOUNDING_STEP.Review) {
-                        setReviewVenueFromMap(true);
-                        setReviewEditor("venues");
-                      }
                       setMovingSetupVenueId(null);
                       setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
                     }
@@ -572,6 +585,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             placing={
               !phone &&
               interactive &&
+              (!reviewingMap || reviewMoving) &&
               !!nextPin &&
               mapReady &&
               !setupEditorOpen &&
@@ -580,9 +594,18 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             }
             view={defaultView("contain")}
             shape={setupMapShape}
-            onPlace={!phone && interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
+            onPlace={
+              !phone && interactive && (!reviewingMap || reviewMoving)
+                ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id)
+                : undefined
+            }
             onMovePin={
-              interactive && mapReady && !setupEditorOpen && !setupSuggestionsBusy && !setupVenueBusy
+              interactive &&
+              (!reviewingMap || reviewMoving) &&
+              mapReady &&
+              !setupEditorOpen &&
+              !setupSuggestionsBusy &&
+              !setupVenueBusy
                 ? (id, x, y, size) => {
                     setSelectedSetupVenueId(id);
                     placeSetupPin(x, y, size, id);
@@ -598,10 +621,12 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             onNavigationView={setMapNavigation}
             navigationControlsWhilePlacing
             keyboardPlacementId={
-              !phone && interactive ? (nextPin?.id ?? selectedSetupVenueId ?? setupVenues[0]?.id) : undefined
+              !phone && interactive && (!reviewingMap || reviewMoving)
+                ? (nextPin?.id ?? selectedSetupVenueId ?? setupVenues[0]?.id)
+                : undefined
             }
             onNudgePin={
-              interactive && mapReady && !setupSuggestionsBusy && !setupVenueBusy
+              interactive && (!reviewingMap || reviewMoving) && mapReady && !setupSuggestionsBusy && !setupVenueBusy
                 ? (id, dx, dy) => {
                     const venue = setupVenues.find((row) => row.id === id);
                     if (!venue) return;
@@ -683,6 +708,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       return false;
     };
     const advanceSetup = () => {
+      if (advanceDisabled) return;
       if (connectionSetupProblem) {
         openConnectionPicker();
         return;
@@ -712,17 +738,26 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         );
         return;
       }
-      if (setupStep === FOUNDING_STEP.Venues && venueShapeProblem) {
+      if ((setupStep === FOUNDING_STEP.Venues || reviewingMap) && venueShapeProblem) {
         setSetupProblem(venueShapeProblem);
         return;
       }
-      if (setupStep === FOUNDING_STEP.Venues && setupIssues.length) {
+      if ((setupStep === FOUNDING_STEP.Venues || reviewingMap) && setupIssues.length) {
         setSetupShowIssues(true);
         openIssue(setupIssues[0]);
         return;
       }
       if (setupStep === FOUNDING_STEP.Review) {
-        if (!controller.setupMapReviewed) setReviewEditor("map");
+        rememberMariPosition();
+        if (reviewStage === "people") setReviewStage(phone ? "setting" : "map");
+        else if (reviewStage === "setting") setReviewStage("map");
+        else if (reviewStage === "map") {
+          setSetupMapReviewed(true);
+          setReviewMoving(false);
+          setReviewStage("confirm");
+        } else if (!controller.setupMapReviewed) setReviewStage("map");
+        else if (reviewStage === "confirm") setReviewStage("sendoff");
+        else if (reviewStage === "sendoff") setReviewStage("playful");
         else void foundVillage();
       } else changeStep(setupStep + 1);
     };
@@ -734,7 +769,13 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         disabled={advanceDisabled}
         onClick={advanceSetup}
       >
-        {busy ? "Saving village…" : setupStep === FOUNDING_STEP.Review ? "Found village" : "Next"}
+        {busy
+          ? "Saving village…"
+          : setupStep === FOUNDING_STEP.Review && reviewStage === "confirm"
+            ? "Found village"
+            : setupStep === FOUNDING_STEP.Review && reviewStage === "playful"
+              ? "Enter village"
+              : "Next"}
       </button>
     );
     const villageNameField = (
@@ -907,7 +948,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         ) : null}
         {setupMapSrc ? (
           <section className="villages-quick-map" aria-label="Map artwork preview">
-            {map(setupStep === FOUNDING_STEP.Review)}
+            {map(false)}
           </section>
         ) : (
           <p>Upload or generate your first Map.</p>
@@ -919,28 +960,54 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         <QuickStartVenues
           daylight={storybookDaylight}
           mobile={phone}
-          inlineVenue={setupStep !== FOUNDING_STEP.Review && (desktopMap || phone)}
-          onCloseVenue={
-            setupStep === FOUNDING_STEP.Review
-              ? () => setReviewEditor(reviewVenueFromMap ? "map" : undefined)
-              : undefined
-          }
-          backLabel={reviewVenueFromMap ? "← Map" : "← Review"}
+          inlineVenue={desktopMap || phone}
+          actionsOnMap={reviewingMap}
           venues={setupVenues}
           locationName={setupLocationName}
           onRetrySaving={() => void retrySetupSaving()}
           actions={
             <>
               {phone ? modelButton : null}
-              <QuickStartButton
-                busy={busy || setupSuggestionsBusy}
-                disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
-                pending={
-                  !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
-                }
-                failed={!!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting}
-                onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
-              />
+              {reviewingMap ? (
+                <details
+                  className="villages-review-map-options"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.currentTarget.open = false;
+                      event.currentTarget.querySelector("summary")?.focus();
+                    }
+                  }}
+                  onClick={(event) => {
+                    if (event.target instanceof Element && event.target.closest("button")) {
+                      event.currentTarget.open = false;
+                      event.currentTarget.querySelector("summary")?.focus();
+                    }
+                  }}
+                >
+                  <summary role="button" aria-label="Map options">
+                    <span aria-hidden="true">⋯</span>
+                  </summary>
+                  <div>
+                    <button type="button" disabled={chapterDisabled} onClick={() => setReviewMoving(!reviewMoving)}>
+                      {reviewMoving ? "Done moving" : "Move markers"}
+                    </button>
+                    <button type="button" disabled={chapterDisabled} onClick={() => setReviewEditor("map")}>
+                      Map artwork
+                    </button>
+                  </div>
+                </details>
+              ) : (
+                <QuickStartButton
+                  busy={busy || setupSuggestionsBusy}
+                  disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
+                  pending={
+                    !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
+                  }
+                  failed={!!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting}
+                  onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
+                />
+              )}
             </>
           }
           people={wizardVillagers}
@@ -974,12 +1041,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             ) : undefined
           }
           map={
-            setupStep === FOUNDING_STEP.Review ? undefined : (
-              <>
-                {map(true)}
-                {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
-              </>
-            )
+            <>
+              {map(true)}
+              {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+            </>
           }
           onSelect={(venue) => {
             setSelectedSetupVenueId(venue.id);
@@ -1002,6 +1067,41 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       closeChapterMenu();
     };
     const canCloseChapterMenu = !busy && !setupEditorOpen;
+    const reviewBack = () => {
+      rememberMariPosition();
+      setReviewMoving(false);
+      if (reviewStage === "people") {
+        if (phone) backToChapterGuide();
+        else changeStep(FOUNDING_STEP.Venues, true);
+      } else
+        setReviewStage(
+          reviewStage === "setting"
+            ? "people"
+            : reviewStage === "map"
+              ? phone
+                ? "setting"
+                : "people"
+              : reviewStage === "confirm"
+                ? "map"
+                : reviewStage === "sendoff"
+                  ? "confirm"
+                  : "sendoff",
+        );
+    };
+    const reviewReplies = (
+      <>
+        {reviewScene && (setupProblem || draftSaveError) ? <p role="alert">{draftSaveError || setupProblem}</p> : null}
+        {reviewScene && draftSaveError ? (
+          <button type="button" onClick={() => void retrySetupSaving()}>
+            Retry saving draft
+          </button>
+        ) : null}
+        <button type="button" data-reader-direction="back" disabled={chapterDisabled} onClick={reviewBack}>
+          Back
+        </button>
+        {nextReply}
+      </>
+    );
     const guide =
       setupStep > FOUNDING_STEP.Setting ? (
         <FoundingGuide
@@ -1009,7 +1109,9 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           inactive={phone && !mobileScene}
           lineRef={chapterLine}
           replies={
-            setupStep === FOUNDING_STEP.Review && !phone ? null : (
+            reviewScene ? (
+              reviewReplies
+            ) : setupStep === FOUNDING_STEP.Review && !phone ? null : (
               <>
                 <button
                   type="button"
@@ -1046,7 +1148,15 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           {setupStep === FOUNDING_STEP.Venues && (phone || explainingStarters)
             ? "A new Village starts with 2 public locations, and each of you gets a home with two rooms to start. Don't worry, you can cram everyone into the same house later if you want to. I won't judge."
             : setupStep === FOUNDING_STEP.Review
-              ? "One last look. Shall we found " + setupName + "?"
+              ? reviewStage === "confirm"
+                ? "Ready to found " + setupName + "?"
+                : reviewStage === "sendoff"
+                  ? "Then let's give this place a beginning. Take care of each other—and leave a little room for surprises."
+                  : reviewStage === "playful"
+                    ? "Maybe I'll see you there!"
+                    : reviewingMap
+                      ? "Check your Map and everyone's home."
+                      : "One last look at your people, setting, and Map."
               : [
                   "",
                   "Choose who you’ll play and who lives here. I recommend making sure your Villagers have Sprites assigned to their Character Card, otherwise they’ll spend every Scene doing their best impression of a passport photo.",
@@ -1062,8 +1172,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         data-mobile={phone ? "true" : "false"}
         className={FOUNDING_ROOT}
         data-step={setupStep}
-        data-desktop-map={desktopMap || (!phone && setupStep === FOUNDING_STEP.Review) || undefined}
+        data-desktop-map={desktopMap || undefined}
         data-review={setupStep === FOUNDING_STEP.Review || undefined}
+        data-review-stage={setupStep === FOUNDING_STEP.Review ? reviewStage : undefined}
+        data-review-scene={reviewScene || undefined}
         data-lighting={storybookDaylight ? "day" : "night"}
         data-scene-arrival={enteringScene || undefined}
         data-title={showTitle || undefined}
@@ -1107,7 +1219,11 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </li>
           ))}
         </ol>
-        {(prelude ? !phone || !chooseConnections : !phone || (!settingEditorOpen && (!chapterMenu || mobileScene)))
+        {(
+          prelude
+            ? !phone || !chooseConnections
+            : !phone || (!(setupStep === FOUNDING_STEP.Setting && settingEditorOpen) && (!chapterMenu || mobileScene))
+        )
           ? modelButton
           : null}
         {connectionPickerOpen ? (
@@ -1193,8 +1309,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </footer>
           </FoundingDialog>
         ) : null}
-        {setupStep === FOUNDING_STEP.Review && reviewEditor === "venues" ? venuesPanel : null}
-        {setupStep === FOUNDING_STEP.Review && reviewEditor && reviewEditor !== "venues" ? (
+        {setupStep === FOUNDING_STEP.Review && reviewEditor ? (
           <FoundingDialog
             title={reviewEditor === "people" ? "People" : reviewEditor === "setting" ? "Setting" : "Review map"}
             className={"villages-review-editor villages-review-editor-" + reviewEditor}
@@ -1302,18 +1417,14 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         ) : null}
         <FoundingChapter
           step={setupStep}
-          explanation={explainingStarters}
+          explanation={explainingStarters || reviewScene}
+          mapWorkspace={setupStep === FOUNDING_STEP.Venues || reviewingMap}
           bodyRef={bodyRef}
           guide={guide}
           mobileScene={mobileScene}
           mobileTitle={phone && chapterMenu ? SETUP_STEPS[setupStep] : undefined}
           mobileHeader={
             <>
-              {setupStep === FOUNDING_STEP.Review ? (
-                <span className="villages-review-mari">
-                  <img src={foundingMariSprite("proud")} alt="Professor Mari" />
-                </span>
-              ) : null}
               <h3>
                 {SETUP_STEPS[setupStep]}
                 {setupStep === FOUNDING_STEP.Review ? " " + setupName : ""}
@@ -1322,7 +1433,9 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </>
           }
           mobileReplies={
-            setupStep === FOUNDING_STEP.Review ? null : (
+            reviewingMap ? (
+              reviewReplies
+            ) : setupStep === FOUNDING_STEP.Review ? null : (
               <>
                 <button type="button" disabled={!canCloseChapterMenu} onClick={backToChapterGuide}>
                   Back
@@ -1365,26 +1478,16 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             ) : null}
           </div>
           {setupStep === FOUNDING_STEP.Maps ? mapArtworkPanel : null}
-          {setupStep === FOUNDING_STEP.Venues ? venuesPanel : null}
-          {setupStep === FOUNDING_STEP.Review ? (
+          {setupStep === FOUNDING_STEP.Venues || reviewingMap ? venuesPanel : null}
+          {reviewingMap && !phone ? <footer className="villages-review-actions">{reviewReplies}</footer> : null}
+          {setupStep === FOUNDING_STEP.Review && (reviewStage === "people" || reviewStage === "setting") ? (
             <FoundingReview
               controller={controller}
               phone={phone}
+              section={reviewStage}
               disabled={chapterDisabled}
-              onEdit={(section, venueId) => {
-                if (section === "venues") {
-                  setReviewVenueFromMap(false);
-                  const venue = setupVenues.find((row) => row.id === venueId) ?? setupVenues[0];
-                  if (!venue) return;
-                  setSelectedSetupVenueId(venue.id);
-                  setSetupFocusIssue(null);
-                  setMovingSetupVenueId(null);
-                  setOpenVenueFromMap({ id: venue.id });
-                }
-                setReviewEditor(section);
-              }}
-              onBack={() => (phone ? backToChapterGuide() : changeStep(FOUNDING_STEP.Venues, true))}
-              foundAction={nextReply}
+              onEdit={setReviewEditor}
+              actions={reviewReplies}
             />
           ) : null}
           {setupProblem &&
