@@ -1603,7 +1603,8 @@ export async function verifyFoundingLayout(group) {
           await expect(personas).toBeVisible();
           await personas.press("Escape");
           await expect(personas).toBeVisible();
-          await personas.getByRole("button", { name: "Next", exact: true }).click();
+          await expect(personas.getByRole("button", { name: "Next", exact: true })).toHaveCount(0);
+          await personas.getByRole("button", { name: "Confirm", exact: true }).click();
           await expect
             .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.mobileMenu))
             .toBe("people");

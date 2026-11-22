@@ -239,7 +239,7 @@ export function FoundingPersonaSelector({
               disabled={disabled || !selected}
               onClick={() => setOpen(false)}
             >
-              Next
+              Confirm
             </button>
           </footer>
         </FoundingDialog>
