@@ -78,7 +78,6 @@ export function useProjectsController({
   const workspace = useProjectWorkspaces(
     project ? "project:" + project.id : "draft:" + draftType + ":" + venueId,
     {
-      establishment: project?.establishment,
       revision: project?.lifecycle?.revision,
       venue: initial,
       title: project?.title ?? name,
@@ -161,9 +160,6 @@ export function useProjectsController({
         })
       : action("revise", {
           expectedRevision: draft.revision,
-          establishment: draft.establishment
-            ? { ...draft.establishment, objectives: draft.establishment.objectives.map((row) => row.text) }
-            : undefined,
           title: draft.title,
           detail: draft.detail,
           form: venue.form,

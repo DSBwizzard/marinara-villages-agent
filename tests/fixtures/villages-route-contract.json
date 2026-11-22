@@ -451,10 +451,6 @@
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/complete"
-    },
-    {
-      "method": "post",
       "path": "/projects/:projectId/resume"
     },
     {
@@ -483,15 +479,11 @@
     },
     {
       "method": "post",
-      "path": "/projects/establishments/:placeId"
-    },
-    {
-      "method": "post",
       "path": "/projects/renovations/:venueId"
     },
     {
       "method": "post",
-      "path": "/places/:id/position"
+      "path": "/places/:id/admit"
     },
     {
       "method": "get",
@@ -504,10 +496,6 @@
     {
       "method": "get",
       "path": "/places/:id"
-    },
-    {
-      "method": "post",
-      "path": "/places/:id/prepare"
     },
     {
       "method": "post",

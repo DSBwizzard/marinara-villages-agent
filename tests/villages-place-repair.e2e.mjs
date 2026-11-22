@@ -140,8 +140,8 @@ await withBrowser(browser, async () => {
       await page.goto("http://place-repair.test/");
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       const open = async () => {
-        await page.getByRole("button", { name: "Places & venues", exact: true }).click();
-        await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
+        await page.getByRole("button", { name: "Locations & venues", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Locations", exact: true })).toBeVisible();
         await page.getByRole("button", { name: "Venues", exact: true }).click();
         await page.getByRole("button", { name: "Hall", exact: true }).click();
         await expect(page.getByRole("button", { name: "Venue details", exact: true })).toBeVisible();

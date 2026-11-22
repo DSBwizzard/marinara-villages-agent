@@ -1,3 +1,4 @@
+import { placesPage } from "./fixtures/villages-places.fixture.mjs";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
@@ -187,6 +188,10 @@ await withBrowser(browser, async () => {
         return;
       }
       let value = fixtureSnapshot;
+      if (path.endsWith("/places"))
+        return fulfill(route, {
+          json: placesPage(fixtureSnapshot, new URL(route.request().url()).searchParams.get("query") ?? ""),
+        });
       if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
       else if (path.endsWith("/sprites/setup/settled"))
         value = {
@@ -311,9 +316,9 @@ await withBrowser(browser, async () => {
     await expect(home.locator(".marinara-capability-villages-canvas-img")).toHaveAttribute("src", mapImage);
     await expect(home.locator('[data-pin-id="market"]')).toBeInViewport();
     await expect(page.getByRole("img", { name: "Weather: clear" })).toBeVisible();
-    await expect(home.getByRole("complementary", { name: "Places navigator" })).toHaveCount(0);
+    await expect(home.getByRole("region", { name: "Locations directory" })).toHaveCount(0);
     if (!mobile) {
-      await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Locations", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: /whole screen/u })).toHaveCount(0);
       const stage = await home.locator(".marinara-capability-villages-stage").boundingBox();
       assert.ok(stage && stage.width <= width && stage.height <= height, "desktop fits the whole map");
@@ -363,11 +368,10 @@ await withBrowser(browser, async () => {
 
     await page
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
+      .getByRole("button", { name: "Locations", exact: true })
       .click();
-    const navigator = page.getByRole("complementary", { name: "Places navigator" });
+    const navigator = page.getByRole("region", { name: "Locations directory" });
     await navigator.getByRole("button", { name: mobile ? /^The Market/ : /^The Mill/ }).click();
-    await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     const doors = page.locator(".marinara-capability-villages-venue-profile");
     await expect(doors.getByRole("button", { name: "Visit venue" })).toBeVisible();
     const bounds = await doors.boundingBox();

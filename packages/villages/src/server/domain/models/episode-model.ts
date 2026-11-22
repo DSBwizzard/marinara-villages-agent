@@ -39,7 +39,6 @@ export type AcceptedEpisode = {
       | "discovery"
       | "npc"
       | "npc-introduction"
-      | "establishment"
       | "circumstance"
       | "condition-repair"
       | "initialization"

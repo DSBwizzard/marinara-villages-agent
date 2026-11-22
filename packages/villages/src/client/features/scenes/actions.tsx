@@ -1394,7 +1394,6 @@ export function useOpenRoom(ports: {
             zoneId: zoneId ?? place.zones?.find((zone) => zone.kind === "exterior")?.id,
             expectedSceneRevision: room?.sceneRevision,
           }),
-          signal: AbortSignal.timeout(20_000),
         });
         if (!owns()) return;
         lifetime.handoff(claim, currentRoom(session), false);

@@ -1,15 +1,48 @@
-// Test cases: places/desktop, places/phone, places/social-project
+// Test cases: places/desktop, places/phone
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
 import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
-import { currentProject, openProjectPage, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
+import { projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
+import { placeDirectoryPage } from "./fixtures/villages-places.fixture.mjs";
 import { mkdir } from "node:fs/promises";
 const bundle = await build({
   stdin: {
     loader: "tsx",
     resolveDir: process.cwd(),
-    contents: `import {createRoot} from "react-dom/client";import {PlacesDirectory} from "./packages/villages/src/client/features/exploration/PlacesDirectory.js";import {syncVillagesStyles} from "./packages/villages/src/client/entry/styles.js";syncVillagesStyles();createRoot(document.getElementById("root")).render(<PlacesDirectory snapshot={window.snapshot} mapId="map" onClose={()=>window.closed=true} onVisit={place=>window.visited=place.id} onProject={(_,id)=>window.project=id} onPlace={place=>window.placed=place.id}/>);`,
+    contents: `
+import {useState,useCallback} from 'react';
+import {createRoot} from 'react-dom/client';
+import {PlacesDirectory} from './packages/villages/src/client/features/exploration/PlacesDirectory.js';
+import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
+import {RetainedView} from './packages/villages/src/client/shared/RetainedView.js';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
+import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
+syncVillagesStyles();
+function App(){
+ const [snapshot,setSnapshot]=useState(window.snapshot),[search,onSearch]=useState('');
+ const [location,setLocation]=useState(null),[section,setSection]=useState('about');
+ const [zone,setZone]=useState('exterior'),[screen,setScreen]=useState('home');
+ const loadSnapshot=useCallback(async()=>{},[]);
+ const open=place=>{if(snapshot.settings.venues.some(row=>row.id===place.id)){window.venue=place.id;return;}setLocation(place);setScreen('venue');setSection('about');window.locationOpened=place.id};
+ window.poll=()=>setSnapshot(current=>structuredClone(current));
+ window.reopen=()=>setScreen('venue');
+ return <>
+  <RetainedView active={screen==='home'}><PlacesDirectory snapshot={snapshot} mapId='map'
+   search={search} onSearch={onSearch} focusSearch={false} onMap={()=>window.closed=true}
+   onLocation={open}/></RetainedView>
+  {location?<RetainedView active={screen==='venue'}><VenueScreen controller={{
+   snapshot,venueId:location.id,screen:'venue',mobile:innerWidth<600,
+   venueSection:section,setVenueSection:setSection,venueZoneKey:zone,setVenueZoneKey:setZone,
+   venueLayouts:{},room:null,roomBusy:false,venueEditBusy:false,loadSnapshot,
+   leaveVenue:()=>setScreen('home'),setScreen,
+   openRoom:async place=>{window.visited=place.id},
+   beginPlaceAdmission:place=>{window.admission={id:place.id};setScreen('home')}
+  }}/></RetainedView>:null}
+ </>;
+}
+createRoot(document.getElementById('root')).render(<ConfirmationProvider><App/></ConfirmationProvider>);
+`,
   },
   bundle: true,
   write: false,
@@ -38,123 +71,193 @@ await withBrowser(browser, async () => {
         x: null,
         y: null,
         report: false,
-        prepared: false,
-        location: { ...snapshot.settings.venues[0], id: "place:lantern", name: "The Lantern" },
+        visited: false,
+        classified: false,
+        venue: false,
+        location: {
+          ...snapshot.settings.venues[0],
+          id: "place:lantern",
+          name: "The Lantern",
+          description: "A restaurant at the square.",
+          zones: [
+            {
+              id: "exterior",
+              name: "Entrance",
+              kind: "exterior",
+              seen: true,
+              description: "A restaurant at the square.",
+              connectedTo: ["dining"],
+            },
+            {
+              id: "dining",
+              name: "Dining room",
+              kind: "public",
+              seen: true,
+              description: "A warm dining room.",
+              connectedTo: ["exterior"],
+            },
+            {
+              id: "private",
+              name: "Private kitchen",
+              kind: "public",
+              seen: false,
+              description: "",
+              connectedTo: ["exterior"],
+            },
+          ],
+        },
       };
-      let generations = 0;
-      const bodies = [];
-      const explorations = [];
+      const venue = { ...place, id: snapshot.settings.venues[0].id, name: "Village Hall", venue: true, visited: true };
+      const discovered = {
+        ...place,
+        id: "place:lookout",
+        name: "Cliff Lookout",
+        location: { ...place.location, id: "place:lookout", name: "Cliff Lookout" },
+      };
+      let found = false,
+        unavailable = false,
+        promoted = false;
+      const explorations = [],
+        paths = [];
       await page.route("http://places.test/", (route) =>
         fulfill(route, {
           status: 200,
           contentType: "text/html",
-          body: '<style>html,body{margin:0;background:#16233a;color:#eee;font-family:Arial}:root{--background:#16233a;--foreground:#eee;--border:#718297;--popover:#24334c;--muted-foreground:#ddd}#root{height:100vh}</style><marinara-capability-villages><div class="marinara-capability-villages-root" id="root"></div></marinara-capability-villages>',
+          body: '<style>html,body{margin:0;background:#16233a;color:#eee;font-family:Arial}:root{--background:#16233a;--foreground:#eee;--border:#718297;--popover:#24334c;--muted-foreground:#ddd}#root{height:100vh;position:relative;container:village-desk/inline-size}</style><marinara-capability-villages><div class="marinara-capability-villages-root" id="root"></div></marinara-capability-villages>',
         }),
       );
       await page.route("**/api/villages/**", async (route) => {
         const url = new URL(route.request().url()),
           path = url.pathname.replace(/^.*\/api\/villages/, "");
+        paths.push(path);
         let value;
-        if (path === "/places") value = { items: [place], nextCursor: null };
+        if (path === "/places")
+          value = placeDirectoryPage(
+            [venue, place, { ...venue, id: "late", name: "New Venue" }, ...(found ? [discovered] : [])],
+            url.searchParams,
+          );
         else if (path === "/places/explore") {
           explorations.push(route.request().postDataJSON());
-          value = { status: explorations.at(-1).intent === "A duck" ? "ready" : "failed", placeId: "" };
-        } else if (path === "/places/place%3Alantern" || path === "/places/place:lantern") value = place;
-        else if (path.endsWith("/prepare")) {
-          generations++;
-          place.prepared = true;
-          value = { id: "prepare", attempt: 1, status: "ready", kind: "prepare", placeId: place.id };
-        } else if (path === "/projects/establishments/place%3Alantern") {
-          const body = route.request().postDataJSON();
-          bodies.push(body);
-          value = {
-            ...snapshot,
-            projects: [...snapshot.projects, { ...currentProject("new-establishment"), kind: "establishment" }],
-          };
-        } else throw Error("Unexpected Places route " + path);
-        await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+          value = { status: explorations.length === 1 ? "failed" : "ready", placeId: "" };
+          if (explorations.length === 3) {
+            found = true;
+            value.placeId = discovered.id;
+          }
+        } else if (path === "/places/place%3Alantern" || path === "/places/place:lantern") {
+          if (unavailable) return fulfill(route, { status: 404, json: { error: "Location unavailable" } });
+          value = promoted ? { promoted: true, id: place.id } : place;
+        } else if (path === "/places/place%3Alookout" || path === "/places/place:lookout") value = discovered;
+        else throw Error("Unexpected Places route " + path);
+        await fulfill(route, { status: 200, json: value });
       });
       await page.goto("http://places.test/");
       await page.evaluate((value) => (window.snapshot = value), snapshot);
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
-      await expect(page.getByRole("dialog", { name: "Discover Places" })).toBeVisible();
-      const explore = page.getByRole("button", { name: "Explore", exact: true });
-      await explore.click();
+      await expect(page.getByRole("region", { name: "Locations directory" })).toBeVisible();
+      await page.getByRole("button", { name: "Village Hall · Venue", exact: true }).click();
+      await expect.poll(() => page.evaluate(() => window.venue)).toBe(venue.id);
+      await page.getByLabel("Search locations", { exact: true }).fill(" Lantern ");
+      await expect(page.getByRole("button", { name: "The Lantern", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "The Lantern", exact: true }).click();
+      const profile = page.getByRole("region", { name: "Location", exact: true });
+      await expect(profile).toBeVisible();
+      await expect(profile.getByText(place.description, { exact: true })).toHaveCount(1);
+      await expect(profile.getByRole("button", { name: "Manage", exact: true })).toHaveCount(0);
+      await expect(profile.getByText("Assigned villagers", { exact: true })).toHaveCount(0);
+      await profile.getByRole("button", { name: "Zones", exact: true }).click();
+      await profile.getByRole("button", { name: /Dining room/ }).click();
+      await expect(profile.getByText("A warm dining room.", { exact: true })).toBeVisible();
+      await expect(profile.getByRole("textbox")).toHaveCount(0);
+      await expect(
+        profile.getByRole("button", { name: /Generate artwork|Upload reference|Retry artwork/ }),
+      ).toHaveCount(0);
+      await expect(profile.getByRole("switch")).toHaveCount(0);
+      await profile.getByRole("button", { name: "About", exact: true }).click();
+      await expect(profile.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
+      await profile.getByRole("button", { name: "Visit location", exact: true }).click();
+      await expect.poll(() => page.evaluate(() => window.visited)).toBe(place.id);
+      await profile.getByRole("button", { name: "← Locations", exact: true }).click();
+      const detailReads = () => paths.filter((path) => /\/places\/place(?::|%3A)lantern$/.test(path)).length;
+      const hiddenReads = detailReads();
+      await page.evaluate(() => window.poll());
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(detailReads(), hiddenReads, "A hidden retained location does not refresh");
+      await expect(page.getByLabel("Discover somewhere new", { exact: true })).toBeInViewport();
+      await expect(page.getByRole("button", { name: "Explore", exact: true })).toBeInViewport();
+      await expect(page.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
+      assert(!paths.some((path) => path.endsWith("/prepare")), "Visit delegates first arrival to ordinary Scene entry");
+      place.visited = true;
+      place.classified = true;
+      await page.evaluate(() => window.reopen());
+      await expect(profile.getByRole("button", { name: "Add as Venue", exact: true })).toBeVisible();
+      assert(detailReads() > hiddenReads, "Reopening the retained page reads current admission eligibility");
+      await page.getByRole("button", { name: "Add as Venue", exact: true }).click();
+      await expect(page.getByRole("checkbox")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Choose map position", exact: true })).toHaveCount(0);
+      await expect.poll(() => page.evaluate(() => window.admission)).toEqual({ id: place.id });
+      await expect(page.getByRole("button", { name: "Explore", exact: true })).toHaveCount(1);
+      await expect(page.getByLabel("Discover somewhere new", { exact: true })).toBeVisible();
+      assert.equal(explorations.length, 0, "Search and browsing do not Explore");
+      const submit = page
+        .locator("form")
+        .filter({ has: page.getByLabel("Discover somewhere new", { exact: true }) })
+        .getByRole("button", { name: "Explore", exact: true });
+      await submit.click();
       await expect.poll(() => explorations.length).toBe(1);
-      await expect(explore).toBeEnabled();
-      await page.getByLabel("Explore", { exact: true }).fill("A duck");
-      await explore.click();
+      await expect(submit).toBeEnabled();
+      await page.getByLabel("Discover somewhere new", { exact: true }).fill("A duck");
+      await submit.click();
       await expect.poll(() => explorations.length).toBe(2);
-      await expect(explore).toBeEnabled();
+      await expect(submit).toBeEnabled();
       assert.deepEqual(
-        explorations.map((request) => request.intent),
+        explorations.map((row) => row.intent),
         ["", "A duck"],
       );
+      await expect(page.getByRole("status")).toHaveText("No new location found.");
+      await expect(page.getByLabel("Search locations", { exact: true })).toHaveValue(" Lantern ");
+      await page.getByLabel("Discover somewhere new", { exact: true }).fill("A lookout");
+      await submit.click();
+      await expect(profile).toBeVisible();
+      await expect.poll(() => page.evaluate(() => window.locationOpened)).toBe(discovered.id);
+      await profile.getByRole("button", { name: "← Locations", exact: true }).click();
+      await expect(page.getByLabel("Search locations", { exact: true })).toHaveValue(" Lantern ");
+      await page.getByLabel("Search locations", { exact: true }).fill("Cliff Lookout");
+      await expect(page.getByRole("button", { name: "Cliff Lookout", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Explore", exact: true })).toHaveCount(1);
+      await expect(page.getByLabel("Discover somewhere new", { exact: true })).toBeInViewport();
       await expect(page.getByRole("alert")).toHaveCount(0);
-      await expect(
-        page.getByRole("button", { name: /Retry request|Dismiss request|Resume saved request/ }),
-      ).toHaveCount(0);
-      assert.deepEqual(
-        await page.evaluate(() =>
-          Object.keys(sessionStorage).filter((key) => key.startsWith("villages-place-request:")),
-        ),
-        [],
+      await expect(page.getByRole("button", { name: /Prepare|Establish|Retry request|Dismiss request/ })).toHaveCount(
+        0,
       );
-      await page.getByRole("button", { name: "The Lantern", exact: true }).click();
-      assert.equal(generations, 0, "Browsing makes no model request");
-      await page.getByRole("button", { name: "Prepare and visit", exact: true }).click();
-      await expect.poll(() => page.evaluate(() => window.visited)).toBe(place.id);
-      assert.equal(generations, 1);
-      await page.getByRole("button", { name: "Visit", exact: true }).click();
-      assert.equal(generations, 1, "Repeat visit reuses prepared layout");
-      await page.getByRole("button", { name: "Establish as Venue", exact: true }).click();
-      await page.getByLabel("Ongoing village use").fill("Hold a weekly village supper");
-      await page.getByLabel("Objectives · one per line").fill("Agree a trial supper");
       await page.screenshot({ path: ".build-tmp/places/" + name + ".png", fullPage: true });
+      await page.getByLabel("Search locations", { exact: true }).fill("New Venue");
+      await page.getByRole("button", { name: "New Venue · Venue", exact: true }).click();
+      await expect(page.getByRole("alert")).toHaveText("Refresh the Village to open this Venue.");
+      await page.getByLabel("Search locations", { exact: true }).fill("Lantern");
+      await page.getByRole("button", { name: "The Lantern", exact: true }).click();
+      await expect(profile).toBeVisible();
+      promoted = true;
+      await page.evaluate(() => window.poll());
+      await expect(profile).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
+      await expect(
+        page.getByRole("heading", { name: "This location is now a Venue. Refresh the Village.", exact: true }),
+      ).toBeVisible();
+      promoted = false;
+      await page.evaluate(() => window.poll());
+      await expect(profile).toBeVisible();
+      unavailable = true;
+      await page.evaluate(() => window.poll());
+      await expect(profile).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Visit location", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Location unavailable", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
       assert(
-        await page.getByRole("dialog").evaluate((element) => element.getBoundingClientRect().width <= innerWidth),
-        "The dialog fits its viewport",
+        await page
+          .getByRole("region", { name: "Locations directory", exact: true })
+          .evaluate((element) => element.getBoundingClientRect().width <= innerWidth),
+        "The list fits the viewport",
       );
-      await page.getByRole("button", { name: "Create establishment draft", exact: true }).click();
-      await expect.poll(() => page.evaluate(() => window.project)).toBe("new-establishment");
-      assert.equal(bodies[0].establishment.physical, false);
-      assert.deepEqual(bodies[0].establishment.objectives, ["Agree a trial supper"]);
       await page.close();
     });
-  await runCase("places/social-project", async () => {
-    const snapshot = projectSnapshot(),
-      project = currentProject("establish", "renovation");
-    project.kind = "establishment";
-    project.title = "Establish The Lantern";
-    project.venueId = "place:lantern";
-    project.place = { ...snapshot.settings.venues[0], id: project.venueId };
-    project.lifecycle.builderId = "";
-    project.lifecycle.candidates = [];
-    project.establishment = {
-      goal: "A weekly village supper",
-      physical: false,
-      zoneIds: ["exterior"],
-      objectives: [{ id: "meal", text: "Agree a trial supper", met: true, evidence: [] }],
-    };
-    snapshot.projects = [project];
-    snapshot.settings.venues = [];
-    const f = await openProjectPage(browser, 390, snapshot, async (path, _body, state) => {
-      if (path.endsWith("/start")) {
-        state.projects[0].status = "working";
-        state.projects[0].lifecycle.phase = "working";
-      }
-      if (path.endsWith("/complete")) {
-        state.projects[0].status = "complete";
-        state.projects[0].lifecycle.phase = "complete";
-      }
-    });
-    await f.page.getByRole("button", { name: /Establish The Lantern/ }).click();
-    await expect(f.page.getByRole("button", { name: "Start establishment", exact: true })).toBeEnabled();
-    await f.page.getByRole("button", { name: "Start establishment", exact: true }).click();
-    await f.page.getByRole("button", { name: "Progress", exact: true }).click();
-    await expect(f.page.getByRole("button", { name: "Complete establishment", exact: true })).toBeEnabled();
-    await f.page.getByRole("button", { name: "Complete establishment", exact: true }).click();
-    await expect(f.page.getByRole("button", { name: "Visit Venue", exact: true })).toBeVisible();
-    await f.page.close();
-  });
 });

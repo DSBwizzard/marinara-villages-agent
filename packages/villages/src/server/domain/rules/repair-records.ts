@@ -628,7 +628,7 @@ export function repairPlaceDirectory(state: VillageState, at?: string): RepairBr
     .filter((record) => repairParts(record.id)[0] === "home")
     .map(({ id, title }) => ({ id, title, icon: "people" }));
   return [
-    folder("places", "Places", "places", places),
+    folder("places", "Locations", "places", places),
     folder("venues", "Venues", "venue", venues),
     ...(homes.length ? [folder("homes", "Home assignments", "people", homes)] : []),
   ];

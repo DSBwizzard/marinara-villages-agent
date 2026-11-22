@@ -123,7 +123,7 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
         row.id === "villages-village" && owns(row.data as VillageState, owner),
         "snapshot Village ownership changed",
       );
-      memoryRequire(row.data.version === 19, "unsupported Village snapshot format");
+      memoryRequire(row.data.version === 20, "unsupported Village snapshot format");
     } else if (row.kind === "venue-visit") {
       memoryRequire(
         row.id === "villages-venue-visit-" + row.data.id && row.data.villageSeed === owner.seed,
@@ -192,7 +192,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
         if (row.kind === "village") {
           memoryObject(row.data);
           memoryRequire(
-            row.data.version === 19 && typeof row.data.seed === "string" && typeof row.data.setupAt === "string",
+            row.data.version === 20 && typeof row.data.seed === "string" && typeof row.data.setupAt === "string",
             "unsupported Village snapshot format",
           );
           const world = row.data as VillageState;

@@ -178,7 +178,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           ...(initial === null ? {} : { expectedSceneRevision: 0 }),
         });
         assert.deepEqual(f.requests[1].body, { sessionId: "A-new" });
-        assert.deepEqual(await f.page.evaluate(() => window.timeouts), [20_000]);
+        assert.deepEqual(await f.page.evaluate(() => window.timeouts), []);
         assert.equal(
           (await f.refs()).completion,
           null,

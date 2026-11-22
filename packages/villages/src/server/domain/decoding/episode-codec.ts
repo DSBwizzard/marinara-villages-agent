@@ -77,7 +77,6 @@ const episode = z
               "discovery",
               "npc",
               "npc-introduction",
-              "establishment",
               "circumstance",
               "condition-repair",
               "initialization",

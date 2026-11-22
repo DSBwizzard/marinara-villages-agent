@@ -3,7 +3,6 @@ import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
-import { establishmentControllers, establishmentScope } from "./establishment.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { findLocation, findNpc } from "./places.js";
 import { beginProject, pauseProject, projectFor } from "./project-lifecycle-rules.js";
@@ -140,12 +139,7 @@ export function applyNarrationProject(
     if (request.decision === "approval") {
       const venue = findLocation(state, project.venueId);
       memoryRequire(
-        venue &&
-          flow.change &&
-          (project.kind === "establishment"
-            ? establishmentControllers(state, project)
-            : renovationAffectedIds(venue, flow.change, flow.changedZoneIds)
-          ).includes(actorId),
+        venue && flow.change && renovationAffectedIds(venue, flow.change, flow.changedZoneIds).includes(actorId),
         "this person cannot approve this Project change",
       );
       flow.approvals = flow.approvals.filter((row) => row.residentId !== actorId);
@@ -154,10 +148,7 @@ export function applyNarrationProject(
         incarnation: actor.incarnation,
         source: "conversation",
         evidenceId: request.receiptId,
-        scope:
-          project.kind === "establishment"
-            ? establishmentScope(project)
-            : approvalScope(venue, flow.change, actorId, flow.changedZoneIds, flow.roomBasis),
+        scope: approvalScope(venue, flow.change, actorId, flow.changedZoneIds, flow.roomBasis),
         at: readset.capturedAt,
       });
     } else {

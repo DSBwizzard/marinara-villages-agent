@@ -687,7 +687,7 @@ export function narrationContinuityContext(
     .join("\n");
   const projectQuery = [input, projectDiscussion].join("\n").toLocaleLowerCase("en-US");
   const projects = projectSpeechContexts(projectWorld, writerIds, projectDiscussion, input, scene.placeId);
-  const localProjects = /\b(?:project|renovation|establishment)\b/iu.test(projectQuery)
+  const localProjects = /\b(?:project|renovation)\b/iu.test(projectQuery)
     ? projectSpeechContexts(projectWorld, writerIds, "", "", scene.placeId)
     : [];
   for (const project of projects) {
@@ -703,7 +703,7 @@ export function narrationContinuityContext(
     const localCue = (query: string) =>
       localProjects.length === 1 &&
       localProjects[0].projectId === project.projectId &&
-      /\b(?:project|renovation|establishment)\b/iu.test(query);
+      /\b(?:project|renovation)\b/iu.test(query);
     const request = input.toLocaleLowerCase("en-US");
     const requested = named(request) || localCue(request);
     if (!requested && !opening && !named(projectQuery) && !localCue(projectQuery)) continue;

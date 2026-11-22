@@ -15,8 +15,7 @@ import type { ProjectsController } from "./useProjectsController.js";
 const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as const;
 type Tab = (typeof tabs)[number];
 const active = (status: string) => status === "working" || status === "paused";
-const kindName = (kind: string) =>
-  kind === "new-venue" ? "New Venue" : kind === "establishment" ? "Establishment" : "Renovation";
+const kindName = (kind: string) => (kind === "new-venue" ? "New Venue" : "Renovation");
 function Facts({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <dl className="vp-facts">
@@ -74,8 +73,6 @@ export function ProjectsPanel({
     observer.observe(root);
     return () => observer.disconnect();
   }, []);
-  const social = project?.kind === "establishment" && !project.establishment?.physical;
-  const spec = draft.establishment;
   const tab = selectedTabs[workspace.key] ?? "Overview & Progress";
   const detailKey = workspace.key + ":" + tab;
   const detailPage = detailPages[detailKey] ?? (tab === "Overview & Progress" ? "Overview" : "Design");
@@ -105,13 +102,13 @@ export function ProjectsPanel({
       ? "Save the design."
       : project?.kind === "new-venue" && project.venueDraft?.position?.x == null
         ? "Choose a map position in Location."
-        : !social && !flow?.builderId
+        : !flow?.builderId
           ? "Choose a willing lead in People."
           : missing.length
             ? "Agreement needed · " + missing.map(person).join(", ")
             : otherActive.length >= 2
               ? "Two Projects are already active."
-              : !social && otherActive.some((entry) => entry.lifecycle?.builderId === flow?.builderId)
+              : otherActive.some((entry) => entry.lifecycle?.builderId === flow?.builderId)
                 ? "The lead is working on another Project."
                 : project?.venueId && otherActive.some((entry) => entry.venueId === project.venueId)
                   ? "This Venue already has active work."
@@ -164,12 +161,7 @@ export function ProjectsPanel({
         ]
       : [{ id: "exterior", name: "Entrance", kind: "exterior", connectedTo: [] as string[] }, ...draft.zones]
     : [];
-  const intended =
-    project?.kind === "establishment"
-      ? (spec?.goal ?? "")
-      : project?.kind === "new-venue"
-        ? (venue?.form ?? "")
-        : draft.detail;
+  const intended = project?.kind === "new-venue" ? (venue?.form ?? "") : draft.detail;
   const overviewLimit = mobile ? 45 : 300;
   const count =
     project?.kind === "new-venue"
@@ -526,81 +518,6 @@ export function ProjectsPanel({
                   {!mobile ? <ProjectDrawing image={venue?.presentation.image} caption={project.title} /> : null}
                   <section className="vp-panel">
                     <h3>Project overview</h3>
-                    {spec ? (
-                      <fieldset disabled={draft.busy}>
-                        <legend>Establishment</legend>
-                        <label>
-                          Ongoing village use
-                          <textarea
-                            autoComplete="off"
-                            readOnly={!editable}
-                            maxLength={1000}
-                            value={spec.goal}
-                            onChange={(event) =>
-                              workspace.field("establishment")({ ...spec, goal: event.target.value })
-                            }
-                          />
-                        </label>
-                        <label>
-                          <input
-                            autoComplete="off"
-                            type="checkbox"
-                            disabled={!editable}
-                            checked={spec.physical}
-                            onChange={(event) =>
-                              workspace.field("establishment")({ ...spec, physical: event.target.checked })
-                            }
-                          />
-                          Physical work required
-                        </label>
-                        <label>
-                          Objectives · one per line
-                          <textarea
-                            autoComplete="off"
-                            readOnly={!editable}
-                            maxLength={4000}
-                            value={spec.objectives.map((row) => row.text).join("\n")}
-                            onChange={(event) =>
-                              workspace.field("establishment")({
-                                ...spec,
-                                objectives: event.target.value
-                                  .split("\n")
-                                  .map((text, index) => ({ id: "objective:" + index, text, met: false, evidence: [] })),
-                              })
-                            }
-                          />
-                        </label>
-                        <ul>
-                          {project.establishment?.objectives.map((row) => (
-                            <li key={row.id}>
-                              {row.met ? "✓ " : "○ "}
-                              {row.text}
-                            </li>
-                          ))}
-                        </ul>
-                        <fieldset disabled={!editable}>
-                          <legend>Affected spaces</legend>
-                          {c.target?.zones?.map((zone) => (
-                            <label key={zone.id}>
-                              <input
-                                autoComplete="off"
-                                type="checkbox"
-                                checked={spec.zoneIds.includes(zone.id)}
-                                onChange={(event) =>
-                                  workspace.field("establishment")({
-                                    ...spec,
-                                    zoneIds: event.target.checked
-                                      ? [...spec.zoneIds, zone.id]
-                                      : spec.zoneIds.filter((id) => id !== zone.id),
-                                  })
-                                }
-                              />
-                              {zone.name}
-                            </label>
-                          ))}
-                        </fieldset>
-                      </fieldset>
-                    ) : null}
                     <div className="vp-panel-heading">
                       <span className="vp-label">Physical design</span>
                       {intended.length > overviewLimit ? (
@@ -623,9 +540,7 @@ export function ProjectsPanel({
                     </p>
                     <Facts
                       rows={[
-                        ...(!social
-                          ? [["Lead", flow.builderId ? person(flow.builderId) : "Not selected"] as [string, ReactNode]]
-                          : []),
+                        ["Lead", flow.builderId ? person(flow.builderId) : "Not selected"],
                         ["Design", count + " / 6 Zones"],
                         ["Agreements", missing.length ? missing.map(person).join(", ") : "Ready"],
                       ]}
@@ -782,8 +697,8 @@ export function ProjectsPanel({
                   <div className="vp-detail-pages" role="group" aria-label="People pages">
                     <button
                       type="button"
-                      hidden={social}
-                      aria-pressed={!social && peopleSection === "lead"}
+
+                      aria-pressed={peopleSection === "lead"}
                       onClick={() => {
                         setPeopleSection("lead");
                         setPeoplePage(0);
@@ -793,7 +708,7 @@ export function ProjectsPanel({
                     </button>
                     <button
                       type="button"
-                      aria-pressed={social || peopleSection === "agreements"}
+                      aria-pressed={peopleSection === "agreements"}
                       onClick={() => {
                         setPeopleSection("agreements");
                         setPeoplePage(0);
@@ -803,7 +718,7 @@ export function ProjectsPanel({
                     </button>
                   </div>
                   <div className="vp-columns">
-                    {!social && peopleSection === "lead" ? (
+                    {peopleSection === "lead" ? (
                       <section className="vp-panel">
                         <h3>Resident lead</h3>
                         <div className="vp-people" role="group" aria-label="Willing leads">
@@ -860,7 +775,7 @@ export function ProjectsPanel({
                         ) : null}
                       </section>
                     ) : null}
-                    {social || peopleSection === "agreements" ? (
+                    {peopleSection === "agreements" ? (
                       <section className="vp-panel">
                         <h3>Agreements</h3>
                         {flow.affectedIds.length ? (
@@ -950,7 +865,7 @@ export function ProjectsPanel({
               {tab === "Overview & Progress" && detailPage === "Progress" ? (
                 <div className="vp-columns">
                   <section className="vp-panel">
-                    {!social && (editable || flow.workOrder) ? (
+                    {editable || flow.workOrder ? (
                       <Facts
                         rows={[
                           ...(editable ? [["Duration", "24 hours"] as [string, string]] : []),
@@ -989,17 +904,6 @@ export function ProjectsPanel({
                   </section>
                   <section className="vp-panel">
                     <h3>Project actions</h3>
-                    {social && project.status === "working" ? (
-                      <button
-                        type="button"
-                        disabled={
-                          draft.busy || missing.length > 0 || project.establishment!.objectives.some((row) => !row.met)
-                        }
-                        onClick={() => void c.action("complete")}
-                      >
-                        Complete establishment
-                      </button>
-                    ) : null}
                     <div className="vp-actions">
                       {debugEnabled && project.status === "working" && !!flow.workOrder ? (
                         <button type="button" disabled={draft.busy} onClick={() => void c.action("debug-complete")}>
@@ -1042,7 +946,7 @@ export function ProjectsPanel({
                     disabled={draft.busy || !!unavailable}
                     onClick={() => void start()}
                   >
-                    {resumable ? "Resume" : social ? "Start establishment" : "Start · 24 hours"}
+                    {resumable ? "Resume" : "Start · 24 hours"}
                   </button>
                 </div>
               </footer>

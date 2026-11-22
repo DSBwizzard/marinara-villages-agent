@@ -1,4 +1,4 @@
-// Test cases: scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move, scene-travel/local-permission
+// Test cases: scene-travel/prepared-place, scene-travel/unprepared-place, scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move, scene-travel/local-permission
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -10,6 +10,9 @@ import { createVillageRepository } from "../packages/villages/src/server/adapter
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import { establishPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
+import { findLocation } from "../packages/villages/src/server/domain/rules/places.js";
+import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 
 const localCrossings = {
   boundary: {
@@ -40,6 +43,8 @@ const localCrossings = {
 
 for (const scenario of [
   "invitation",
+  "prepared-place",
+  "unprepared-place",
   "revoked",
   "restore",
   "prose-only",
@@ -62,7 +67,7 @@ for (const scenario of [
     const remoteWalk = "I head over to Willow Hotel.";
     const beforeMove = crossing ? [crossing.departure, crossing.activity, remoteWalk] : [];
     const host = await packagedSceneServer({
-      configure(world) {
+      configure(world, now) {
         world.spontaneousEvents = true;
         if (location) {
           const venue = world.venues[0];
@@ -115,7 +120,35 @@ for (const scenario of [
         });
         initializeVenueAccess(hotel);
         hotel.access!.managerIds = ["mara"];
-        world.venues.push(hotel);
+        if (scenario === "prepared-place" || scenario === "unprepared-place") {
+          world.maps = [
+            {
+              id: "village",
+              name: "Village",
+              revision: 0,
+              width: 100,
+              height: 100,
+              artwork: { id: "map-art", ref: "global-gallery:map-art", url: "/api/global-gallery/file/map-art.png" },
+            },
+          ];
+          hotel.presentation.mapId = "village";
+          for (const venue of world.venues) venue.presentation.mapId = "village";
+          hotel.capabilities = [];
+          hotel.category = "";
+          const place = establishPlace(
+            world,
+            { name: hotel.name, description: "An existing hotel." },
+            hotel.id,
+            "village",
+            "saved-place",
+            now,
+            scenario === "prepared-place",
+          );
+          place.location = hotel;
+          place.knownBy.push("mara");
+          for (const zone of hotel.zones!)
+            initializeRoomContinuity(world, hotel.id, zone.id, zone.description, "saved-place", now);
+        } else world.venues.push(hotel);
       },
       configureScene(scene) {
         if (location) scene.placeName = location.venue;
@@ -128,6 +161,7 @@ for (const scenario of [
       },
     });
     let calls = 0;
+    let classifications = 0;
     const walk = "I walk to the Entrance.";
     const ellaFarewell = "Sure thing, star! We'll be right here.";
     const departure = "I leave now.";
@@ -138,6 +172,10 @@ for (const scenario of [
     const waitInKitchen = "I hold out a plate.";
     const ellaArrivalLine = "Point me at the knife and I’ll slice the cake.";
     host.model.chatComplete = async (messages) => {
+      if (messages[0].content.startsWith('Return only {"classes"')) {
+        classifications++;
+        return { content: JSON.stringify({ classes: ["other"] }), finishReason: "stop" };
+      }
       calls++;
       if (calls === 1) {
         const prompt = messages.map(({ content }) => content).join("\n");
@@ -581,6 +619,15 @@ for (const scenario of [
         assert.equal(interrupted.statusCode, 500, interrupted.body);
       }
       const response = await travel();
+      if (scenario === "unprepared-place") {
+        assert.equal(response.statusCode, 409, response.body);
+        assert.equal(classifications, 0, "An unprepared invitation is refused before any preparation request");
+        assert.equal(calls, 1);
+        assert.equal((await getActive()).json().session.id, source.id);
+        const world = await repository.readAuthority({ memories: true });
+        assert.equal(findLocation(world, "hotel")!.access!.permissions.length, 1, "The invitation is retained");
+        return;
+      }
       assert.equal(response.statusCode, 200, response.body);
       const arrived = response.json().session;
       assert.notEqual(arrived.id, source.id);
@@ -594,7 +641,9 @@ for (const scenario of [
       assert.equal(calls, 1, "travel itself makes no model call");
       assert.equal((await travel()).json().session.id, arrived.id);
       const world = await repository.readAuthority({ memories: true });
-      assert.equal(world.venues.find((row) => row.id === "hotel")!.access!.permissions[0].sceneId, arrived.id);
+      assert.equal(findLocation(world, "hotel")!.access!.permissions[0].sceneId, arrived.id);
+      assert.equal(classifications, scenario === "prepared-place" ? 1 : 0);
+      if (scenario === "prepared-place") assert.equal(world.worldPlaces.places.hotel.classified, true);
       assert.equal(world.recentVisitRolls?.hotel, undefined, "Invited Visit skips the spontaneous opening roll");
       const next = await turn(arrived.id, arrived.sceneRevision, "arrived", "Thanks for bringing me up.");
       assert.equal(next.statusCode, 200, next.body);

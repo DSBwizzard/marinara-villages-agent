@@ -83,7 +83,7 @@ export function zoneClosed(
   if (venue.constructionStatus === "worksite") return true;
   return (state.projects ?? []).some((project) => {
     if (
-      (project.kind !== "renovation" && !(project.kind === "establishment" && project.establishment?.physical)) ||
+      project.kind !== "renovation" ||
       project.venueId !== venue.id ||
       !["working", "paused"].includes(project.lifecycle?.phase ?? "")
     )

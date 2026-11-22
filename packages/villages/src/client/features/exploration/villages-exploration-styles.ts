@@ -58,7 +58,6 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full .${P}-mailbox-launch { position:relative; display:grid; place-items:center; width:44px; height:44px; padding:10px; border:0; border-radius:8px; background:transparent; color:var(--explore-muted); cursor:pointer; }
 .${P}-mailbox-launch svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.7; }
 .${P}-mailbox-dot { position:absolute; top:7px; right:6px; width:7px; height:7px; border-radius:50%; background:#e7bb73; box-shadow:0 0 0 2px var(--explore-background); }
-.${P}-discover-places { margin:0 12px 8px; min-height:44px; padding:8px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; }
 .${P}-stage[data-exploration="true"] { flex:1; display:block; width:100%!important; height:100%!important; aspect-ratio:auto!important; border:0; border-radius:0; touch-action:none; user-select:none; }
 .${P}-stage[data-exploration="true"] .${P}-canvas { overflow:clip; cursor:grab; }
 .${P}-stage[data-exploration="true"][data-mobile-gesturing="true"] .${P}-canvas { cursor:grabbing; }
@@ -78,32 +77,12 @@ export const EXPLORATION_STYLES = `
 .${P}-map-camera-controls { display:flex; gap:2px; position:absolute; z-index:6; right:12px; bottom:12px; padding:3px; border:1px solid var(--explore-border); border-radius:7px; background:#111720ed; }
 .${P}-map-camera-controls button { min-width:44px; min-height:44px; padding:6px 10px; border:0; border-radius:4px; background:transparent; color:var(--explore-text); font:inherit; cursor:pointer; }
 .${P}-map-camera-controls button:first-child,.${P}-map-camera-controls button:last-child { font-size:22px; }
-.${P}-location-navigator { display:flex; flex-direction:column; flex:0 0 clamp(210px,22%,260px); min-height:0; min-width:0; overflow:hidden; border:0; border-right:1px solid var(--explore-border); border-radius:0; background:var(--explore-panel); color:var(--explore-text); }
-.${P}-location-navigator header { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px 2px 16px; }
-.${P}-location-navigator h2 { margin:0; font-size:16px; }
-.${P}-location-navigator header button { display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:4px; background:transparent; color:var(--explore-muted); cursor:pointer; }
-.${P}-location-navigator svg { width:21px; height:21px; flex:none; }
-.${P}-explore-search { display:block; flex:0 0 auto; padding:4px 12px 12px; }
-.${P}-explore-search input { width:100%; box-sizing:border-box; min-height:44px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:#0e141f; color:var(--explore-text); padding:8px 10px; font:inherit; font-size:16px; }
-.${P}-explore-search input::placeholder { color:var(--explore-muted); }
-.${P}-explore-list { min-height:0; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; padding:0 0 10px; }
-.${P}-navigator-place { border-left:3px solid transparent; border-bottom:1px solid #343f5170; }
-.${P}-navigator-place[data-selected="true"] { border-left-color:var(--explore-selected); background:#a88aff1c; }
-.${P}-explore-row { box-sizing:border-box; display:flex; align-items:center; gap:12px; width:100%; min-height:64px; padding:10px 12px; border:0; background:transparent; color:var(--explore-text); text-align:left; font:inherit; cursor:pointer; }
-.${P}-explore-row>span { min-width:0; flex:1; }
-.${P}-explore-row strong,.${P}-explore-row small { display:block; overflow-wrap:anywhere; }
-.${P}-explore-row strong { font-size:14px; line-height:1.35; }
-.${P}-explore-row small { color:var(--explore-muted); font-size:12px; margin-top:3px; }
-.${P}-navigator-actions { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 12px 45px; }
-.${P}-navigator-actions button { min-height:44px; padding:8px 10px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; }
-.${P}-navigator-actions button:first-child { background:var(--explore-selected); border-color:var(--explore-selected); color:var(--explore-ink); }
-.${P}-explore-empty { color:var(--explore-muted); font-size:14px; padding:12px; }
 .${P}-home-full button:disabled { opacity:.5; cursor:default; }
 .${P}-home-full :is(button,input,[tabindex]):focus-visible { outline:3px solid var(--explore-selected); outline-offset:-3px; }
 .${P}-home-full button:hover:not(:disabled) { filter:brightness(1.12); }
 
 /* Engine accent animations must not recolor map-control icons. */
-.${P}-home-full :is(.${P}-home-bar,.${P}-explore-nav,.${P}-location-navigator,.${P}-map-tools) svg { color:inherit; }
+.${P}-home-full :is(.${P}-home-bar,.${P}-explore-nav,.${P}-map-tools) svg { color:inherit; }
 .${P}-home-full[data-mobile="true"] { padding:0; gap:0; }
 .${P}-home-full[data-mobile="true"] .${P}-home-bar { min-height:52px; padding:4px 8px; }
 .${P}-home-full[data-mobile="true"] .${P}-map-identity { flex-direction:column; align-items:flex-start; gap:2px; max-width:65%; }
@@ -112,7 +91,6 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full[data-mobile="true"] .${P}-room { margin:0; padding:0 0 var(--villages-exploration-inset,0px); box-sizing:border-box; flex-direction:column; }
 .${P}-home-full[data-mobile="true"] .${P}-home-map-viewport { width:100%; height:auto; min-height:0; flex:1 1 0; }
 .${P}-home-full[data-mobile="true"] .${P}-map-label { max-width:140px; }
-.${P}-location-navigator[data-layout="navigator-sheet"] { position:relative; order:2; z-index:8; flex:0 1 auto; width:100%; max-height:min(calc(55% + var(--villages-exploration-inset,0px)),25rem); border:1px solid var(--explore-border); border-radius:12px 12px 0 0; box-shadow:0 -5px 20px #0005; }
 .${P}-home-full[data-mobile="true"] .${P}-explore-nav { position:relative; z-index:9; transform:translateY(calc(-1 * var(--villages-exploration-inset,0px))); }
 
 @container (min-width:705px) and (max-width:1000px) {

@@ -473,6 +473,8 @@ await withBrowser(browser, async () => {
         await expect(img).toHaveAttribute("src", thoughts);
         await expect(img).toHaveAttribute("data-flipping", "false");
         await sendExpression("neutral");
+        await expect(img).toHaveAttribute("src", initialArtwork);
+        await expect(img).toHaveAttribute("data-flipping", "false");
         await page.evaluate(() => {
           window.holdSpriteFlips = true;
         });

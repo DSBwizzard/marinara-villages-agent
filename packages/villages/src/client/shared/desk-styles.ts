@@ -42,7 +42,6 @@ export const DESK_STYLES = `
 .${P}-desk-workspace:where(:not([data-desk="none"])) .${P}-storybook-heading{display:flex;align-items:center;gap:12px;min-width:0;margin:0;color:inherit;font:600 var(--menu-heading-size)/1.12 var(--menu-font);letter-spacing:-.025em}
 .${P}-storybook-heading>.${P}-directory-flourish{flex:none;width:clamp(34px,4cqw,60px);height:auto;fill:var(--menu-sage,#969b7e)}
 .${P}-storybook-heading>.${P}-directory-flourish>path[fill="none"]{stroke:var(--menu-sage,#969b7e)}
-.${P}-places-title,.${P}-explore-search .${P}-storybook-search-icon{display:none}
 .${P}-workspace-body{display:grid;grid-template-columns:clamp(185px,25%,300px) minmax(0,1fr);gap:26px;height:100%;min-height:0;min-width:0;color:inherit;font:inherit;background:transparent}
 .${P}-workspace-body:not(:has(>.${P}-workspace-sidebar)){grid-template-columns:minmax(0,1fr)}
 .${P}-workspace-sidebar{min-height:0;min-width:0;overflow:auto;padding:0 20px 12px 0;border-right:1px solid var(--border)}
@@ -180,39 +179,8 @@ export const DESK_STYLES = `
 .${P}-zone-artwork-footer .${P}-zone-picture-freeze{margin-bottom:0}
 .${P}-workspace-content .villages-zone-map-tile[aria-pressed="true"]{background:var(--menu-selected);border-color:var(--menu-tab-line);box-shadow:none}
 .${P}-desk-workspace[data-desk="places"] .${P}-home{--explore-background:transparent;--explore-panel:var(--popover);--explore-surface:var(--secondary);--explore-text:var(--foreground);--explore-muted:var(--muted-foreground);--explore-border:var(--border);--explore-selected:var(--menu-rose);background:transparent;color:inherit;border:0;border-radius:0;box-shadow:none;padding:0;font:inherit;overflow:visible}
-.${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{display:grid;grid-template-columns:clamp(180px,26%,300px) minmax(0,1fr);gap:26px;overflow:visible;background:transparent}
+.${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{height:100%;display:block;overflow:hidden;background:transparent}
 .${P}-desk-workspace[data-desk="places"] :is(.${P}-home-bar,.${P}-explore-nav){display:none}
-.${P}-desk-workspace[data-desk="places"] .${P}-home-map-paper{display:flex;flex-direction:column;grid-column:2;min-width:0;min-height:0;gap:14px;padding:0 0 60px}
-.${P}-desk-workspace[data-desk="places"] .${P}-room:not(:has(>.${P}-location-navigator))>.${P}-home-map-paper{grid-column:1/-1}
-.${P}-desk-workspace[data-desk="places"] .${P}-room:not(:has(>.${P}-location-navigator)) .${P}-places-title{display:block}
-.${P}-desk-workspace[data-desk="places"] .${P}-home-map-viewport{position:relative;flex:1;min-width:0;min-height:0;height:auto;background:var(--menu-map-surface,#242135);border:2px solid var(--menu-map-line,#8a768a);border-radius:9px;box-shadow:none;overflow:visible}
-.${P}-desk-workspace[data-desk="places"] .${P}-home-map-viewport .${P}-canvas{border-radius:7px}
-.${P}-desk-workspace[data-desk="places"] .${P}-location-navigator{position:relative;z-index:3;align-self:stretch;min-width:0;width:auto;height:100%;max-height:none;transform:none;padding:0 20px 0 0;background:transparent;color:inherit;border:0;border-right:1px solid var(--border);border-radius:0;box-shadow:none}
-.${P}-desk-workspace[data-desk="places"] .${P}-location-navigator header{padding:0 0 24px;margin:0}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-search{position:relative;padding:0;margin:0 0 16px}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-search input{width:100%;min-height:50px;padding:9px 10px 9px 44px;background:var(--menu-field);color:inherit;border:1px solid var(--menu-field-border);border-radius:11px;font:inherit}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-search input:focus-visible{outline-offset:-3px}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-search .${P}-storybook-search-icon{display:block;position:absolute;left:14px;top:50%;transform:translateY(-50%);width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;pointer-events:none}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-list{display:flex;flex-direction:column;flex:1}
-.${P}-desk-workspace[data-desk="places"] .${P}-discover-places{order:2;margin:16px 0 4px;background:var(--secondary);color:inherit;border:1px solid var(--menu-field-border);border-radius:7px;font:inherit}
-.${P}-desk-workspace[data-desk="places"] .${P}-navigator-place{flex:none;border:1px solid transparent;border-bottom-color:var(--border);border-radius:7px}
-.${P}-desk-workspace[data-desk="places"] .${P}-navigator-place[data-selected="true"]{background:var(--menu-selected);border-color:var(--menu-selected-border,#c78d9370);color:var(--menu-selected-ink,#fff0d5)}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-row{padding:10px 8px;gap:10px;font:inherit;color:inherit;background:transparent;border:0;border-radius:6px}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-row:hover:not(:disabled){background:var(--menu-field)}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-row strong{font:600 18px/1.3 var(--menu-font)}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-row small{color:var(--muted-foreground)}
-.${P}-desk-workspace[data-desk="places"] .${P}-explore-row>svg{width:22px;height:22px}
-.${P}-place-chevron{display:none}
-.${P}-desk-workspace[data-desk="places"] .${P}-place-chevron{display:block;flex:0;font-size:26px}
-.${P}-desk-workspace[data-desk="places"] .${P}-navigator-actions{padding:0 8px 10px;gap:8px}
-.${P}-desk-workspace[data-desk="places"] .${P}-navigator-actions button{background:var(--primary);color:var(--primary-foreground);font:inherit;border-color:var(--menu-control-border,#a5ac8b)}
-.${P}-desk-workspace[data-desk="places"] .${P}-map-tools{position:relative;left:auto;top:auto;right:auto;flex:none;justify-content:space-between;max-width:100%;gap:12px;z-index:7}
-.${P}-desk-workspace[data-desk="places"] .${P}-map-tools>button{padding:6px 10px;max-width:calc(100% - 56px);font:600 clamp(19px,2.1cqw,30px)/1.2 var(--menu-font);border:0;background:transparent;color:inherit}
-.${P}-desk-workspace[data-desk="places"] .${P}-map-tools>button>svg{color:var(--menu-sage)!important}
-.${P}-desk-workspace[data-desk="places"] :is(.${P}-map-tools summary,.${P}-map-camera-controls){background:var(--secondary);color:inherit;border:1px solid var(--menu-field-border);border-radius:7px;box-shadow:none}
-.${P}-desk-workspace[data-desk="places"] .${P}-map-camera-controls{right:0;bottom:-58px;padding:0;font:600 18px/1.2 var(--menu-font)}
-.${P}-desk-workspace[data-desk="places"] .${P}-map-label{width:max-content;max-width:190px;white-space:normal;color:#f0dfbc;background:#302d47ed;border:1px solid #a39b84;box-shadow:0 1px 3px #18152160;font:600 15px/1.2 var(--menu-font);transform:translateX(clamp(calc(50% - var(--pin-left) + 4px),0px,calc(var(--pin-right) - 50% - 4px)))}
-.${P}-desk-workspace[data-desk="places"] .${P}-map-point{width:14px;height:18px;border:2px solid #f0dfbc;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#b97980;box-shadow:0 1px 3px #18152180}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-overlay{position:relative;inset:auto;height:100%;padding:0;background:transparent;z-index:auto}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog{width:100%;height:100%;max-height:100%;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;font:inherit}
 .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header{background:transparent;color:inherit;padding:0 0 24px}
@@ -240,7 +208,6 @@ export const DESK_STYLES = `
  .${P}-desk-workspace[data-desk]:not([data-desk="none"]){--menu-heading-size:36px}
  .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding:24px 20px 80px}
  .${P}-workspace-body,.${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{grid-template-columns:190px minmax(0,1fr);gap:18px}
- .${P}-workspace-sidebar .${P}-directory-flourish,.${P}-location-navigator .${P}-directory-flourish{display:none}
  .${P}-desk-nav button{gap:10px;padding-inline:10px}
  .${P}-desk-header .${P}-desk-return{font-size:17px}
 }
@@ -257,8 +224,8 @@ export const DESK_STYLES = `
  .${P}-desk-header .${P}-desk-scene{grid-column:1;grid-row:3;font-size:17px;justify-self:start;min-height:36px}
  .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{margin-bottom:60px;padding:16px 12px 0;overflow-x:clip;overflow-y:auto;overscroll-behavior:contain}
  .${P}-desk-workspace:is([data-desk="people"],[data-desk="mailbox"],[data-desk="projects"])>.${P}-desk-stage{overflow:hidden}
- .${P}-desk-workspace:is([data-desk="places"],[data-desk="settings"]) .${P}-desk-document{height:auto;min-height:100%}
- .${P}-desk-workspace[data-desk="places"]>.${P}-desk-stage{margin-bottom:calc(60px + var(--villages-exploration-inset,0px))}
+ .${P}-desk-workspace[data-desk="settings"] .${P}-desk-document{height:auto;min-height:100%}
+ .${P}-desk-workspace[data-desk="places"]:not([data-venue])>.${P}-desk-stage{overflow:hidden;margin-bottom:calc(60px + var(--villages-exploration-inset,0px))}
  .${P}-workspace-body{display:flex;flex-direction:column;height:auto;gap:20px}
  .${P}-workspace-sidebar{flex:none;padding:0;border:0;overflow:visible}
  .${P}-workspace-sidebar>.${P}-storybook-heading{margin:0 0 16px}
@@ -314,20 +281,8 @@ export const DESK_STYLES = `
  .${P}-zone-artwork-footer>p{font-size:12px}
  .${P}-venue-summary .${P}-venue-primary{min-width:8rem}
  .${P}-desk-workspace[data-venue="true"] .${P}-workspace-sidebar{display:none}
- .${P}-desk-workspace[data-desk="places"] .${P}-home{height:auto;min-height:0;display:block}
- .${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{display:flex;flex-direction:column;height:auto;gap:14px;overflow:visible;padding:0}
- .${P}-desk-workspace[data-desk="places"] .${P}-home-map-paper{flex:none;order:0;padding:0 0 60px;gap:12px}
- .${P}-desk-workspace[data-desk="places"] .${P}-places-title{display:block}
- .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator header{position:absolute;right:0;top:3px;padding:0}
- .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator .${P}-storybook-heading{display:none}
- .${P}-desk-workspace[data-desk="places"] .${P}-explore-search{margin-right:48px}
- .${P}-desk-workspace[data-desk="places"] .${P}-home-map-viewport{flex:none;width:auto;height:clamp(210px,62cqw,380px)}
- .${P}-desk-workspace[data-desk="places"] .${P}-map-camera-controls{left:50%;right:auto;transform:translateX(-50%)}
- .${P}-desk-workspace[data-desk="places"] .${P}-map-tools>button{font-size:19px;max-width:calc(100% - 48px)}
- .${P}-desk-workspace[data-desk="places"] .${P}-map-tools>button>span:first-of-type{white-space:normal;overflow:visible;text-overflow:clip}
- .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator{order:2;flex:none;width:auto;height:auto;max-height:none;align-self:stretch;padding:0;border:0}
- .${P}-desk-workspace[data-desk="places"] .${P}-location-navigator .${P}-explore-list{overflow:visible}
- .${P}-desk-workspace[data-desk="places"] .${P}-explore-marker:not([data-selected="true"]) .${P}-map-label{display:none}
+ .${P}-desk-workspace[data-desk="places"] .${P}-home{height:100%;min-height:0;display:flex}
+ .${P}-desk-workspace[data-desk="places"] .${P}-home>.${P}-room{height:100%;display:block;overflow:hidden;padding:0}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-dialog>header{padding-bottom:16px}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-mailbox-title:has(.villages-letter-reading) .${P}-directory-flourish{display:none}
  .${P}-desk-workspace[data-desk="mailbox"] .villages-letter-compose-fields{margin:12px 0;gap:12px}

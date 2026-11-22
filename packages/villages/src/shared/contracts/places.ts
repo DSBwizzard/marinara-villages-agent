@@ -7,11 +7,20 @@ export type PlaceSummary = {
   x: number | null;
   y: number | null;
   report: boolean;
-  prepared: boolean;
+  visited: boolean;
+  venue: boolean;
 };
 
-export type PlaceDirectory = { items: PlaceSummary[]; nextCursor: string | null };
-export type PlaceDetail = PlaceSummary & { location: import("./village.js").VillageVenue };
+export type PlaceKind = "all" | "venues" | "other";
+export type PlaceDirectory = {
+  items: PlaceSummary[];
+  nextCursor: string | null;
+  previousCursor: string | null;
+  offset: number;
+  total: number;
+  counts: Record<PlaceKind, number>;
+};
+export type PlaceDetail = PlaceSummary & { classified: boolean; location: import("./village.js").VillageVenue };
 export type PlaceRequest = {
   worldScope: string;
   requestId: string;
@@ -25,11 +34,4 @@ export type PlaceOperationView = {
   kind: "explore" | "prepare";
   status: "started" | "ready" | "failed";
   placeId: string;
-};
-
-export type Establishment = {
-  goal: string;
-  physical: boolean;
-  zoneIds: string[];
-  objectives: { id: string; text: string; met: boolean; evidence: { source: string; quote: string }[] }[];
 };

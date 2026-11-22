@@ -129,14 +129,6 @@ export function projectDesignKey(project: VillageProject): string {
       : null,
     project.lifecycle?.change,
     project.lifecycle?.roomBasis ?? null,
-    project.establishment
-      ? [
-          project.establishment.goal,
-          project.establishment.physical,
-          project.establishment.zoneIds,
-          project.establishment.objectives.map((row) => [row.id, row.text]),
-        ]
-      : null,
   ]);
 }
 export function matchesProjectDesign(scope: string, project: VillageProject): boolean {

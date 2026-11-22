@@ -23,7 +23,6 @@ import { venueZones } from "./venue-zones.js";
 import { initializeVenueAccess } from "./venue-access.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { findLocation } from "./places.js";
-import { promotePlace, establishmentControllers } from "./establishment.js";
 import { captureZoneObservation } from "./zone-observation.js";
 import { stageProjectRoomEdits } from "./project-room-edits.js";
 
@@ -32,7 +31,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
   const flow = project.lifecycle!;
   const venue = findLocation(state, project.venueId);
   if (!venue) throw conflict("The Project site is missing.");
-  const controllers = project.kind === "establishment" ? establishmentControllers(state, project) : undefined;
   const priorIds = new Set(venueZones(venue).map((zone) => zone.id));
   if (project.kind === "new-venue") {
     if (!project.plan) throw conflict("The committed design is missing.");
@@ -67,7 +65,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
     venue.residenceCapacity = plan.capacity;
     completeWorksiteEntrance(state, venue, project.id, at);
     venue.constructionStatus = "complete";
-  } else if (project.kind !== "establishment" || project.establishment?.physical) {
+  } else {
     const change = effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds);
     if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
       throw conflict("The Venue design changed. Cancel this Project and plan the current layout.");
@@ -125,7 +123,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
   venue.privateSpaces = venue
     .zones!.filter((zone) => zone.kind === "private-residence")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
-  if (project.kind === "establishment") promotePlace(state, project, controllers);
   flow.phase = "complete";
   flow.completedAt = at;
   flow.blockedReason = "";

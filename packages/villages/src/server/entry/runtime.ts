@@ -178,6 +178,7 @@ import { configureSceneArchive, listVenueVisits } from "../features/scenes/archi
 import { createSceneChanges } from "../features/scenes/changes-service.js";
 import { configureSceneChanges, replaySceneChanges } from "../features/scenes/changes.js";
 import { createSceneCommands } from "../features/scenes/command-service.js";
+import { generatePlace } from "../features/places/services.js";
 import { createSceneRetry } from "../features/scenes/retry-service.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import {
@@ -553,6 +554,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      preparePlace: generatePlace,
       retry: sceneRetry,
       prepareIntroductionVisitor: (state, at) =>
         prepareIntroductionVisitor(state, at, mutateVillageMemoryState, (id) => spriteSetup().automaticManager(id)),
@@ -632,6 +634,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseQueries = configureSceneQueries({
+    withSceneNavigation: (operation) => sceneWork().serializeNavigation(operation),
     ...createSceneQueryService({
       retryTarget: sceneRetry.target,
       readSession,

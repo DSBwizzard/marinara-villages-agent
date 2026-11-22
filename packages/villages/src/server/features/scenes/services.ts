@@ -2,6 +2,7 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 
 /** Narrow Scene query interface, bound by each application activation. */
 export interface SceneQueries {
+  withSceneNavigation<T>(operation: () => Promise<T>): Promise<T>;
   activeVenueSession: typeof import("./live-session.js").activeVenueSession;
   progressBacklog: import("./scene-query-service.js").SceneQueryService["progressBacklog"];
   readHistoryPage: import("./scene-query-service.js").SceneQueryService["readHistoryPage"];

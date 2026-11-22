@@ -2,7 +2,6 @@ import { findLocation, placeRegistry } from "../../domain/rules/places.js";
 import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
-import { projectPlace } from "../../domain/rules/place-discovery.js";
 import { createHash } from "node:crypto";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
@@ -61,7 +60,7 @@ export function createVillageSnapshot({
     if (
       village.projects.some(
         (project) =>
-          (project.kind === "establishment" || project.lifecycle?.affectedIds.some((id) => id.startsWith("npc:"))) &&
+          project.lifecycle?.affectedIds.some((id) => id.startsWith("npc:")) &&
           !["complete", "cancelled"].includes(project.status),
       )
     )
@@ -256,23 +255,6 @@ export function createVillageSnapshot({
             return npc ? [[id, npc.label || npc.name]] : [];
           }),
         ),
-        place:
-          project.kind === "establishment" &&
-          !["complete", "cancelled"].includes(project.status) &&
-          village.worldPlaces.places[project.venueId]
-            ? projectPlace(village, village.worldPlaces.places[project.venueId])
-            : undefined,
-        establishment: project.establishment
-          ? {
-              ...project.establishment,
-              objectives: project.establishment.objectives.map(({ id, text, met }) => ({
-                id,
-                text,
-                met,
-                evidence: [],
-              })),
-            }
-          : undefined,
         title: project.title,
         venueId: project.venueId,
         status: project.status,

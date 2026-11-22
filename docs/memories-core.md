@@ -1,6 +1,6 @@
 # Memories core
 
-Common continuity records retain memories, qualitative relationships, Wishes, motivations, offers, commitments and room details. The Village publishes their immutable versions together with accepted Episodes and any native effects. Village format 19 and Scene format 5 use the strict current-format readers described in [saved work and compatibility](architecture-migration.md#saved-work-and-compatibility).
+Common continuity records retain memories, qualitative relationships, Wishes, motivations, offers, commitments and room details. The Village publishes their immutable versions together with accepted Episodes and any native effects. Village format 20 and Scene format 5 use the strict current-format readers described in [saved work and compatibility](architecture-migration.md#saved-work-and-compatibility).
 
 ## Records and authority
 
