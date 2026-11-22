@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   publicSceneLiveReply,
+  publicSceneAuthority,
   publicSceneHistoryPositions,
 } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { sceneHistoryVisits } from "../packages/villages/src/server/domain/rules/scene-history-visits.js";
@@ -60,7 +61,9 @@ scene.submissions.push({
   acceptance: { status: "applied", rejected: [] },
   zoneIdAtTurn: "entrance",
   replyLineIds: ["reply-1", "reply-2", "private"],
+  lore: [{ id: "current", bookId: "world", name: "Current reply entry", targets: ["GM"] }],
 });
+assert.equal(publicSceneAuthority(scene).lore[0]?.name, "Current reply entry");
 assert.deepEqual(
   publicSceneLiveReply(scene).lines.map((line) => line.id),
   ["reply-1", "reply-2"],
@@ -71,7 +74,13 @@ scene.submissions.push({
   id: "held-turn",
   acceptance: { status: "held", rejected: [] },
   replyLineIds: ["held"],
+  lore: [{ id: "held-lore", bookId: "world", name: "Held reply entry", targets: ["GM"] }],
 });
+assert.equal(
+  publicSceneAuthority(scene).lore[0]?.name,
+  "Current reply entry",
+  "held requests do not replace reply lore",
+);
 assert.deepEqual(
   publicSceneLiveReply(scene).lines.map((line) => line.id),
   ["reply-1", "reply-2"],
@@ -119,6 +128,8 @@ assert.equal(
   65,
   "a reply is complete across the ordinary history window limit",
 );
+scene.lines.push(line("arrival-new", "You arrive in a new Zone.", "airstrip"));
+assert.deepEqual(publicSceneAuthority(scene).lore, [], "an arrival never inherits the prior reply's Lorebook entries");
 console.log(
   "Latest complete published reply, return arrivals, held/private output and player-only Zone visits passed.",
 );

@@ -189,6 +189,10 @@ function authority(scene: VenueScene) {
   const visible = new Set(scene.activeIds);
   const travel = sceneTravelOffer(scene);
   const destination = travel?.travel;
+  const replyIds = new Set(publicSceneLiveReply(scene).lines.map((line) => line.id));
+  const replyTurn = scene.submissions.findLast(
+    (turn) => sceneTurnPublished(turn) && turn.replyLineIds?.some((id) => replyIds.has(id)),
+  );
   return {
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
     ...(arrival && arrival.zoneId === scene.zoneId ? { zoneArrivalId: arrival.id } : {}),
@@ -256,7 +260,7 @@ function authority(scene: VenueScene) {
       : {}),
     connectionMap: (scene.sceneAttendance?.layout ?? []).map(({ id, connectedTo }) => ({ id, connectedTo })),
     processingSummary: sceneProcessingSummary(scene),
-    lore: readLoreUse(scene.submissions.filter(sceneTurnPublished).at(-1)?.lore),
+    lore: readLoreUse(replyTurn?.lore),
     ...(scene.submissions.length
       ? {
           latestTurn: {

@@ -615,6 +615,8 @@ export type VillageState = {
   /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;
   characterSpeechColors: boolean;
+  menuAppearance?: "auto" | "day" | "night";
+  lorebookChipsEnabled?: boolean;
   sendOnEnter: boolean;
   spontaneousEvents?: true;
   recentVisitRolls?: Record<string, number>;

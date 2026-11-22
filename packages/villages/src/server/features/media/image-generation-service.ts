@@ -102,7 +102,7 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
       });
       prompt = compiled.prompt;
       negativePrompt = compiled.negativePrompt;
-      // The authored source retains its existing 4k limit; profiles have separate Engine-normalized bounds.
+      // Authored prompts are validated first; profiles have separate Engine-normalized bounds.
       if (!prompt.trim() || prompt.length > 16000 || negativePrompt.length > 16000)
         throw badRequest(
           "The Engine image style makes this prompt too long. Shorten the profile in Generation settings.",

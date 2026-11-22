@@ -13,6 +13,11 @@ const menuArtAssets = [
   "mari-founding-happy.webp",
   "mari-founding-looking-up.webp",
   "mari-founding-playful.webp",
+  "mari-founding-presenting.webp",
+  "mari-founding-wave.webp",
+  "mari-founding-thoughtful.webp",
+  "mari-founding-happy-side.webp",
+  "mari-founding-proud.webp",
 ];
 
 const sceneSprite = "npc-silhouette.webp";
@@ -34,7 +39,7 @@ const mariVisitorSprites = [
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.9.1",
+  version: "0.8.7",
   minEngineVersion: "2.5.2",
   maxEngineExclusive: "4.0.0",
   name: "Villages",

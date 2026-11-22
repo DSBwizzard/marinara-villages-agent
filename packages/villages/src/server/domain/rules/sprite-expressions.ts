@@ -1,7 +1,5 @@
 import {
   currentStaging,
-  lineStagingCues,
-  retainStagingAttention,
   stagingTranscriptEvents,
   type StagingLine,
   type StagingState,
@@ -9,7 +7,6 @@ import {
 import {
   groupNumberedSpritePairs,
   matchingSpriteLabels,
-  spriteLabelKey,
   spriteLook,
   spriteMood,
 } from "../../../shared/helpers/sprite-variants.js";
@@ -140,19 +137,16 @@ function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: b
 
 export function describeSpriteExpressions(sprite: SpriteCatalog | null | undefined, variants = false): string {
   if (sprite?.named) {
-    const names = new Map<string, { views: Set<SpriteEntry["view"]>; isDefault: boolean }>();
+    const names = new Map<string, { isDefault: boolean }>();
     for (const entry of sprite.expressions) {
       for (const name of new Set([spriteMood(entry.name), spriteLook(entry.name)])) {
         if (!name) continue;
-        const choice = names.get(name) ?? { views: new Set<SpriteEntry["view"]>(), isDefault: false };
-        choice.views.add(entry.view);
+        const choice = names.get(name) ?? { isDefault: false };
         choice.isDefault ||= sprite.defaultExpressionId === entry.expressionId;
         names.set(name, choice);
       }
     }
-    return [...names]
-      .map(([name, { views, isDefault }]) => JSON.stringify({ id: name, name, views: [...views], isDefault }))
-      .join("; ");
+    return [...names].map(([name, { isDefault }]) => JSON.stringify({ id: name, name, isDefault })).join("; ");
   }
   const seen = new Set<string>();
   const defaultEntry = sprite?.expressions[0];
@@ -165,13 +159,6 @@ export function describeSpriteExpressions(sprite: SpriteCatalog | null | undefin
         JSON.stringify({
           id,
           name,
-          views: [
-            ...new Set(
-              (sprite?.expressions ?? [])
-                .filter((item) => members.some((member) => member.expressionId === item.expressionId))
-                .map((item) => item.view),
-            ),
-          ],
           isDefault: members.some((member) => member.expressionId === defaultId),
         }),
       ];
@@ -188,26 +175,20 @@ export function resolveSpriteExpression(
   sprite: SpriteCatalog | null | undefined,
   requested: string,
   variants: boolean,
-  view: "front" | "side" | undefined,
   random: number,
 ): string {
   const exact = validateSpriteExpression(sprite, requested);
   if (exact) return exact;
   if (sprite?.named) {
-    const matching = matchingSpriteLabels(
-      sprite.expressions.filter((entry) => entry.view === view),
+    const pool = matchingSpriteLabels(
+      [...new Map(sprite.expressions.map((entry) => [entry.expressionId, entry])).values()],
       requested,
     );
-    const pool = matching.length ? matching : matchingSpriteLabels(sprite.expressions, requested);
     return pickSprite(pool, variants ? random : 0);
   }
   const choice = expressionChoices(sprite, variants).find((entry) => entry.id === requested);
   if (!choice) return "";
-  const matching = choice.members.filter((member) =>
-    sprite?.expressions.some((entry) => entry.expressionId === member.expressionId && entry.view === view),
-  );
-  const pool = matching.length ? matching : choice.members;
-  return pickSprite(pool, random);
+  return pickSprite(choice.members, random);
 }
 
 /** Replies may select only this resident's assigned expression IDs. */
@@ -225,45 +206,26 @@ export function validateSpriteExpression(
 /** Resolve new cues in playback order; the caller persists only concrete expression IDs. */
 export function resolveSceneSpriteExpressions(
   lines: (StagingLine & { physicalIdsAfter?: readonly string[] })[],
-  currentStage: StagingState,
+  _currentStage: StagingState,
   spriteFor: (characterId: string) => SpriteCatalog | null | undefined,
   variants: boolean,
   random: (index: number, characterId: string, expression: string) => number,
 ) {
   for (const [index, line] of lines.entries()) {
-    if (line.physicalIdsAfter) currentStage = retainStagingAttention(currentStage, line.physicalIdsAfter);
     const cues = line.staging ?? [];
-    for (const cue of lineStagingCues(line))
-      if (cue.look && Object.hasOwn(currentStage, cue.characterId)) currentStage[cue.characterId].look = cue.look;
     const choices = new Map<string, string>();
     const resolveExpression = (characterId: string, requested: string) => {
       const key = characterId + ":" + requested;
       if (!choices.has(key))
         choices.set(
           key,
-          resolveSpriteExpression(
-            spriteFor(characterId),
-            requested,
-            variants,
-            (currentStage[characterId]?.look?.target ?? "player") === "player" ? "front" : "side",
-            random(index, characterId, requested),
-          ),
+          resolveSpriteExpression(spriteFor(characterId), requested, variants, random(index, characterId, requested)),
         );
       return choices.get(key)!;
     };
     for (const cue of cues) {
       if (!cue.expression) continue;
-      const sprite = spriteFor(cue.characterId);
-      if (sprite?.named && !validateSpriteExpression(sprite, cue.expression)) {
-        const requested = spriteLabelKey(cue.expression);
-        const roll = random(index, cue.characterId, requested);
-        const front = resolveSpriteExpression(sprite, requested, variants, "front", roll);
-        const side = resolveSpriteExpression(sprite, requested, variants, "side", roll);
-        if (front) cue.expression = front;
-        else delete cue.expression;
-        if (side && side !== front) cue.sideExpression = side;
-        continue;
-      }
+      delete cue.sideExpression;
       const expression = resolveExpression(cue.characterId, cue.expression);
       if (expression) cue.expression = expression;
       else delete cue.expression;

@@ -18,10 +18,15 @@ export function mobileCoverZoom(image: MobileMapSize, frame: MobileMapSize): num
   return Math.max(frame.width / (image.width * contain), frame.height / (image.height * contain));
 }
 
-export function mobileMapBox(image: MobileMapSize, frame: MobileMapSize, view: MobileMapView): MobileMapBox {
+export function mobileMapBox(
+  image: MobileMapSize,
+  frame: MobileMapSize,
+  view: MobileMapView,
+  minimumZoom = mobileCoverZoom(image, frame),
+): MobileMapBox {
   if (!image.width || !image.height || !frame.width || !frame.height) return { left: 0, top: 0, width: 0, height: 0 };
   const contain = Math.min(frame.width / image.width, frame.height / image.height);
-  const zoom = Math.max(view.zoom, mobileCoverZoom(image, frame));
+  const zoom = Math.max(view.zoom, minimumZoom);
   const width = image.width * contain * zoom;
   const height = image.height * contain * zoom;
   const rawLeft = frame.width / 2 - view.centerX * width;
@@ -42,12 +47,12 @@ export function mobileMapGesture(
   startPoint: { x: number; y: number },
   nextPoint: { x: number; y: number },
   factor: number,
+  minimumZoom = mobileCoverZoom(image, frame),
 ): MobileMapView {
-  const before = mobileMapBox(image, frame, start);
+  const before = mobileMapBox(image, frame, start, minimumZoom);
   if (!before.width || !before.height) return start;
-  const cover = mobileCoverZoom(image, frame);
-  const startZoom = Math.max(start.zoom, cover);
-  const zoom = clamp(startZoom * factor, cover, Math.max(4, cover * 2));
+  const startZoom = Math.max(start.zoom, minimumZoom);
+  const zoom = clamp(startZoom * factor, minimumZoom, Math.max(4, mobileCoverZoom(image, frame) * 2));
   const scale = zoom / startZoom;
   const width = before.width * scale;
   const height = before.height * scale;

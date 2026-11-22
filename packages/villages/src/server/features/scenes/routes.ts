@@ -19,6 +19,7 @@ import {
   closeVenueSessionWithReceipts,
   continueVenueWithoutGreeting,
   discardVenueVisitDebug,
+  dismissFailedTurn,
   enterVenue,
   greetVenue,
   leaveVenueSession,
@@ -262,6 +263,23 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       }
     },
   );
+  app.post<{
+    Params: { id: string; operationId: string };
+    Body: { attemptId?: unknown; expectedSceneRevision?: unknown };
+  }>("/rooms/:id/operations/:operationId/dismiss", async (request, reply) => {
+    try {
+      return await sceneQueries().projectSceneResponse(
+        await dismissFailedTurn(
+          readChatId(request.params.id),
+          readSubmissionId(request.params.operationId),
+          readSubmissionId(request.body?.attemptId),
+          readSceneRevision(request.body?.expectedSceneRevision),
+        ),
+      );
+    } catch (error) {
+      return fail(reply, error, "clearing a failed Scene reply");
+    }
+  });
   app.post<{ Body: VenueTurnBody }>("/rooms/turn", async (request, reply) => {
     try {
       await assertFoundedVillageReady();

@@ -10,11 +10,9 @@ export function SceneryStyleFields({
   onCommit,
   disabled,
   hint,
-  asButtons,
 }: {
   disabled?: boolean;
   hint?: string;
-  asButtons?: boolean;
   value: string;
   profileId: string | null;
   onChange(value: string): void;
@@ -31,7 +29,6 @@ export function SceneryStyleFields({
         </small>
       ) : null}
       <SceneryStylePicker
-        asButtons={asButtons}
         profileId={profileId}
         onChange={(id) => {
           onProfileChange(id);

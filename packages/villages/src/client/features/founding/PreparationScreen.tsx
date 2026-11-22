@@ -4,7 +4,13 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
 
-export function PreparationScreen({ controller }: { controller: PreparationScreenController }) {
+export function PreparationScreen({
+  controller,
+  storybookDaylight,
+}: {
+  controller: PreparationScreenController;
+  storybookDaylight: boolean;
+}) {
   const { preparationProblem, retryPreparation, screen, snapshot } = controller;
   if (screen === "preparing") {
     const preparation = snapshot?.foundingPreparation;
@@ -59,6 +65,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
     return (
       <div
         className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-preparing villages-forging-preparing`}
+        data-lighting={storybookDaylight ? "day" : "night"}
         role="status"
         aria-live="polite"
       >

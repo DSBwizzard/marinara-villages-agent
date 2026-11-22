@@ -33,13 +33,14 @@ import { spriteSetup } from "./sprite-setup.js";
 
 export function registerSpriteManagerRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.get<{ Params: CharacterParams; Querystring: { resident?: string } }>(
+  app.get<{ Params: CharacterParams; Querystring: { resident?: string; automatic?: string } }>(
     "/characters/:characterId/sprites/setup/settled",
     async (request, reply) => {
       try {
         return await spriteSetup().settled(
           readCharacterId(request.params.characterId),
           request.query.resident === "true",
+          request.query.automatic === "true",
         );
       } catch (error) {
         return fail(reply, error, "reading settled sprite setup");

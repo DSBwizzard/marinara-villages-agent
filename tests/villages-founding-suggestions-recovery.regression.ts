@@ -13,6 +13,7 @@ import {
 import { requestFoundingSuggestions } from "../packages/villages/src/client/features/founding/suggestion-request.js";
 import { createFoundingDraftSetting } from "../packages/villages/src/client/features/founding/setup-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
+import { FOUNDING_DRAFT_UNAVAILABLE } from "../packages/villages/src/shared/contracts/founding.js";
 
 const tick = () => new Promise<void>((done) => setImmediate(done));
 const records = new Map<string, any>();
@@ -115,13 +116,17 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
       dispatchedTokens = maxTokens;
       assert.equal(options.reasoningEffort, undefined);
       completions++;
-      return { content: JSON.stringify(setting), finishReason };
+      return {
+        content: JSON.stringify({ ...setting, rules: "Model-authored rule that must be ignored." }),
+        finishReason,
+      };
     },
   } as any);
   const draftInput = { ...input, mode: "draft-setting", brief };
   await assert.rejects(writer.suggestStartingVenues({ ...draftInput, brief: " " }), /Tell Mari/);
   assert.equal(completions, 0);
   assert.deepEqual(await writer.suggestStartingVenues(draftInput), { venues: [], setting });
+  assert.match(prompt[0]!.content, /World rules are player-authored constraints: never generate, add or rewrite them/u);
   assert.equal(requestedTokens, 8192, "Use the selected System connection's output limit when fitting the prompt");
   assert.equal(dispatchedTokens, 6144, "Dispatch with the output room Engine found in context");
   assert.deepEqual(prompt.slice(1), [{ role: "user", content: brief }]);
@@ -144,14 +149,36 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     [{ lorebookReferences: [lorebookReference] }, { world: worldBrief, village: brief }],
   );
   assert.equal(completions, 3);
-  const authoredWorld = { worldName: "Relay Belt", worldRules: "The gates only open at noon." };
+  const authoredSetting = {
+    villageName: "The Tide Roads",
+    worldName: "Relay Belt",
+    worldRules: "The gates only open at noon.",
+  };
   connectionLimit = null;
   requestedTokens = undefined;
-  const authoredDraft = await writer.suggestStartingVenues({ ...draftInput, ...authoredWorld });
+  const authoredDraft = await writer.suggestStartingVenues({ ...draftInput, ...authoredSetting });
   assert.equal(requestedTokens, 4096, "Use the bounded fallback when the connection supplies no output limit");
-  assert.equal(authoredDraft.setting?.worldName, authoredWorld.worldName);
-  assert.equal(authoredDraft.setting?.rules, authoredWorld.worldRules);
-  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredWorld, village: brief });
+  assert.equal(authoredDraft.setting?.name, authoredSetting.villageName);
+  assert.equal(authoredDraft.setting?.worldName, authoredSetting.worldName);
+  assert.equal(authoredDraft.setting?.rules, authoredSetting.worldRules);
+  const spacedRules = "  Only the player edits these rules.  ";
+  assert.equal(
+    (await writer.suggestStartingVenues({ ...draftInput, worldRules: spacedRules })).setting?.rules,
+    spacedRules,
+    "A draft returns player rules verbatim, ignoring any rules supplied by the model",
+  );
+  await writer.suggestStartingVenues({ ...draftInput, ...authoredSetting });
+  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", ...authoredSetting, village: brief });
+  const sparseBrief = "Besmoa has a Wendy’s.";
+  await writer.suggestStartingVenues({ ...draftInput, villageName: "Besmoa", brief: sparseBrief });
+  assert.deepEqual(JSON.parse(prompt.at(-1)!.content), { world: "", villageName: "Besmoa", village: sparseBrief });
+  assert.match(prompt[0]!.content, /"description" \(a short in-world paragraph about that place/u);
+  assert.match(prompt[0]!.content, /Describe the place itself, never a map, its coverage/u);
+  assert.match(
+    prompt[0]!.content,
+    /With sparse input, add a few plausible local details consistent with the supplied facts/u,
+  );
+  assert.doesNotMatch(prompt[0]!.content, /the area the map will cover|first map covers|first map area/u);
 }
 {
   const app = Fastify();
@@ -173,6 +200,11 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     assert.equal(response.statusCode, 400, response.body);
     assert.equal(calls, 0, "A missing durable action ID cannot dispatch either suggestion path");
     assert.equal(JSON.stringify([...records]), before, "A refused request creates no saved claim");
+    const missing = await app.inject({ method: "GET", url: "/setup/venues/suggestions/missing-attempt" });
+    assert.equal(missing.statusCode, 404);
+    assert.equal(missing.json().code, FOUNDING_DRAFT_UNAVAILABLE);
+    assert.equal(calls, 0, "An unavailable result never dispatches generation");
+    assert.equal(JSON.stringify([...records]), before, "Checking an absent attempt does not alter storage");
   } finally {
     await app.close();
     releaseDrafts();
@@ -204,6 +236,10 @@ fail = true;
 await restarted.requestFoundingSuggestions({ ...input, actionId: "failed-attempt" });
 await tick();
 assert.equal((await restarted.readFoundingSuggestions("failed-attempt")).status, "failed");
+await assert.rejects(restarted.readFoundingSuggestions(input.actionId), {
+  statusCode: 404,
+  code: FOUNDING_DRAFT_UNAVAILABLE,
+});
 await assert.rejects(restarted.requestFoundingSuggestions(input), /already used/);
 assert.equal(calls, 2);
 // A process restart cannot silently restart an unfinished/billed attempt.
@@ -323,6 +359,32 @@ try {
     beforeReplacement + 1,
     "A stale recovered result never dispatches again",
   );
+  // A result can disappear during observation after the initial POST was admitted.
+  clientPorts.setupWorkspace = emptyFoundingWorkspace();
+  let latePosts = 0,
+    lateReads = 0;
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === "POST") {
+      latePosts++;
+      const pending = workspace.suggestionRequest!;
+      return Response.json({
+        id: pending.id,
+        sourceKey: pending.sourceKey,
+        status: "running",
+        result: null,
+        error: "",
+      });
+    }
+    lateReads++;
+    return Response.json(
+      { error: "Saved draft result is unavailable", code: FOUNDING_DRAFT_UNAVAILABLE },
+      { status: 404 },
+    );
+  };
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /unavailable/);
+  assert.equal(latePosts, 1);
+  assert.equal(lateReads, 1);
+  assert.equal(workspace.suggestionRequest?.failure, "Saved draft result is unavailable");
   // Storage failure must not authorize dispatch.
   clientPorts.setupWorkspace = emptyFoundingWorkspace();
   clientPorts.persistSetupDraft = async () => {
@@ -375,6 +437,43 @@ try {
     Response.json({ id: "waiting", sourceKey: "setting-1", status: "failed", result: null, error: "Invalid draft" });
   await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Invalid draft/);
   assert.equal(workspace.suggestionRequest?.failure, "Invalid draft");
+  workspace = {
+    ...workspace,
+    suggestionRequest: {
+      id: "waiting",
+      sourceKey: "setting-1",
+      quickStart: false,
+      sourceInputs: "original inputs",
+      sourceVenues: "original venues",
+    },
+  };
+  clientPorts.setupWorkspace = workspace;
+  let unavailableReads = 0;
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method ?? "GET", "GET");
+    unavailableReads++;
+    return Response.json(
+      { error: "Saved draft result is unavailable", code: FOUNDING_DRAFT_UNAVAILABLE },
+      { status: 404 },
+    );
+  };
+  await assert.rejects(
+    requestFoundingSuggestions(clientPorts, {}, {}),
+    (error: Error) => /unavailable/.test(error.message) && !/Reconnecting/.test(error.message),
+  );
+  assert.equal(unavailableReads, 1);
+  assert.deepEqual(
+    workspace.suggestionRequest,
+    {
+      id: "waiting",
+      sourceKey: "setting-1",
+      quickStart: false,
+      sourceInputs: "original inputs",
+      sourceVenues: "original venues",
+      failure: "Saved draft result is unavailable",
+    },
+    "A known unavailable result stops observation without discarding the admitted identity or source",
+  );
   clientPorts.setupWorkspace = workspace;
   clientPorts.persistSetupDraft = async (data: any) => {
     persisted = structuredClone(data);
@@ -419,7 +518,21 @@ try {
   };
   let settingPosts = 0;
   globalThis.fetch = async (_url, init) => {
-    if (init?.method !== "POST") return Response.json({ error: "Saved attempt not found" }, { status: 404 });
+    assert.equal(init?.method ?? "GET", "GET", "A generic missing route cannot re-admit a setting request");
+    return Response.json({ error: "Route unavailable" }, { status: 404 });
+  };
+  await assert.rejects(
+    requestFoundingSuggestions(
+      { ...clientPorts, setupWorkspace: workspace, setupBeginningSourceKey: "founding-setting" },
+      { draftSetting: true, checkSetting: true },
+      originalSetting,
+    ),
+    /Reconnecting/,
+  );
+  assert.equal(workspace.suggestionRequest?.failure, undefined);
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method !== "POST")
+      return Response.json({ error: "Saved attempt not found", code: FOUNDING_DRAFT_UNAVAILABLE }, { status: 404 });
     settingPosts++;
     assert.deepEqual(JSON.parse(String(init.body)), {
       ...originalSetting,
@@ -464,9 +577,6 @@ try {
     setSetupWorldName: (update) => {
       worldName = typeof update === "function" ? update(worldName) : update;
     },
-    setSetupContext: (update) => {
-      rules = (typeof update === "function" ? update({ rules } as any) : update).rules;
-    },
   };
   const resume = createFoundingDraftSetting(settingPorts);
   await resume("recover");
@@ -484,6 +594,7 @@ try {
     assert.equal(persisted.workspace.suggestionRequest.settingReplacement.startingLocationName, "My quay");
     const body = JSON.parse(String(init?.body));
     assert.equal(body.settingReplacement, undefined);
+    assert.equal(body.villageName, name);
     assert.equal(body.worldName, worldName.trim());
     assert.equal(body.worldRules, rules.trim());
     throw new TypeError("Synthetic lost connection after admission");
@@ -511,11 +622,40 @@ try {
     });
   };
   await createFoundingDraftSetting({ ...settingPorts, setupWorkspace: workspace })("recover");
-  assert.equal(name, "New village", "A recovered result honors the original replacement confirmation");
+  assert.equal(name, "My village", "A recovered map draft preserves the chosen Village name");
   assert.equal(location, "", "Recovery preserves a field cleared after confirmation");
   assert.equal(worldName, "  My world  ", "A draft cannot rewrite a supplied world name");
   assert.equal(rules, "  The tide stops at midnight.  ", "A draft cannot rewrite supplied standing rules");
   assert.equal(workspace.suggestionRequest, undefined);
+  for (const playerRules of ["", "   ", "  Player-authored rule.  "]) {
+    rules = playerRules;
+    workspace = { ...emptyFoundingWorkspace(), settingBrief: "A new village" };
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      return Response.json({
+        id: body.actionId,
+        sourceKey: body.sourceKey,
+        status: "complete",
+        result: {
+          venues: [],
+          setting: {
+            name,
+            startingLocationName: "New quay",
+            description: "A quay.",
+            worldName,
+            rules: "Legacy generated rule.",
+          },
+        },
+        error: "",
+      });
+    };
+    await createFoundingDraftSetting({
+      ...settingPorts,
+      setupWorkspace: workspace,
+      setupDraftData: { ...settingPorts.setupDraftData, context: { rules } },
+    })("replace");
+    assert.equal(rules, playerRules, "Even a legacy draft result cannot fill or alter player-only World rules");
+  }
   lost = false;
 } finally {
   globalThis.fetch = originalFetch;

@@ -137,7 +137,7 @@ await withBrowser(browser, async () => {
     await Promise.all([page.addScriptTag({ path: resolve("packages/villages/client.js") }), initialSceneRead]);
     const chip = page.getByRole("button", { name: "1 Scene error", exact: true });
     await expect(chip).toHaveCount(0);
-    const current = page.getByRole("region", { name: "Latest reply" });
+    const current = page.getByRole("region", { name: "Current paragraph" });
     await expect(current).toContainText("Mara steps back inside");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     issues = [
@@ -168,8 +168,9 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(chip).toHaveCount(0);
     // The new Zone has Mara, but the saved end of the old conversation has an empty cast.
-    await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+    while (await next.isEnabled()) await next.click();
+    await page.getByRole("button", { name: "Move", exact: true }).click();
     await page
       .getByRole("dialog", { name: "Move to Zone" })
       .getByRole("button", { name: destination.name, exact: true })

@@ -26,8 +26,8 @@ export type SpriteArtwork = {
   | { origin: "engine"; engineSource: { characterId: string; filename: string } }
 );
 export type SpriteAssignment = { expressionId: string; view: SpriteView } & (
-  | { artworkId: string; engineFilename?: never; version?: never }
-  | { engineFilename: string; version?: string; artworkId?: never }
+  | { artworkId: string; engineFilename?: never; version?: never; automatic?: never }
+  | { engineFilename: string; version?: string; artworkId?: never; automatic?: true }
 );
 export type SpriteManagerState = {
   version: 1;
@@ -70,6 +70,7 @@ export type SpriteSetupDraft = {
 export type SpriteAppearance = {
   revision: number;
   token: string;
+  automatic?: true;
   manager: SpriteManagerState;
   files: SpriteLibraryItem[];
   folders: SpriteLibraryFolder[];

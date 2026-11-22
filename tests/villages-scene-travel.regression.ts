@@ -213,8 +213,7 @@ for (const scenario of [
         const zone = afterMove ? crossing.destination : crossing.origin;
         assert.equal(submitted, afterMove ? crossing.activity : beforeMove[calls - 1]);
         assert.match(reminder, new RegExp(`Keep the player in "${zone}" until they use Move or Visit`));
-        assert.match(reminder, /Use that Zone even if earlier prose puts them elsewhere/);
-        assert.match(reminder, /end before the player enters the next Zone/);
+        assert.match(reminder, /End crossing attempts before entry despite prior prose/);
         const segments =
           calls === 1
             ? [

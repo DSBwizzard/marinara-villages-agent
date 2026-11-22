@@ -150,14 +150,15 @@ bad((row) => {
   row.zones.pop();
 }, /every existing Zone/);
 bad((row) => {
-  row.zones[1].ownerId = "player";
+  row.zones.find((zone) => zone.id === "ada-room")!.ownerId = "player";
 }, /ownership/);
 bad((row) => {
   row.zones.at(-1)!.id = "foreign-zone";
 }, /ownership/);
 bad((row) => {
   row.zones[0].connectedTo = ["ada-room"];
-  row.zones[1].connectedTo = ["exterior"];
+  row.zones.find((zone) => zone.id === "private:base")!.connectedTo = ["common:base"];
+  row.zones.find((zone) => zone.id === "ada-room")!.connectedTo = ["exterior"];
 }, /accessible sleeping/);
 bad((row) => {
   row.zones.forEach((zone) => (zone.connectedTo = []));

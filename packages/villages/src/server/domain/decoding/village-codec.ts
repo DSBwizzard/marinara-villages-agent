@@ -1482,6 +1482,8 @@ export function coerceVillageState(value: unknown, { applySpriteDefaults = true 
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
+    menuAppearance: raw.menuAppearance === "day" || raw.menuAppearance === "night" ? raw.menuAppearance : "auto",
+    lorebookChipsEnabled: raw.lorebookChipsEnabled !== false,
     sendOnEnter: raw.sendOnEnter === true,
     ...(raw.spontaneousEvents === true ? { spontaneousEvents: true as const } : {}),
     ...(raw.recentVisitRolls === undefined

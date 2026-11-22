@@ -1,6 +1,7 @@
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { newSetupVenue } from "./FoundingPanels.js";
+import { quickStartTemplates, separateFoundingTemplates } from "./quick-start-drafts.js";
 import { draftZonePolicy, foundingLayoutZones } from "./villages-founding-zones.js";
 
 export const foundingHomeMembers = (venue: SetupVenueDraft): string[] => [
@@ -171,23 +172,65 @@ export function reconcileFoundingRoster(
       venue.name = `${actor.name} home`;
       venue.residentIds = actor.id === "player" ? [] : [actor.id];
       venue.presentation = { ...venue.presentation, x: null, y: null };
-      next.push(reconcileFoundingHome(venue));
+      const template = quickStartTemplates([venue])[0]!;
+      next.push(
+        reconcileFoundingHome({
+          ...venue,
+          layout: template.layout,
+          spaces: template.spaces,
+          privateSpaces: template.privateSpaces,
+        }),
+      );
     }
   }
   for (const [id, name] of [
     [openingVenueId, "Meeting place"],
-    ["founding-community", "Meeting place"],
     ["founding-garden", "Shared space"],
+    ["founding-community", "Meeting place"],
   ]) {
     if (next.filter((venue) => venue.classes?.some((kind) => kind !== "residence")).length >= 2) break;
     if (next.some((venue) => venue.id === id) || next.length >= 16) continue;
-    const venue = newSetupVenue(id!, "community", 0.5, 0.5);
+    const venue = quickStartTemplates([newSetupVenue(id!, "community", 0.5, 0.5)])[0]!;
     venue.name = name!;
     while (next.some((row) => row.name === venue.name)) venue.name += " 2";
     venue.presentation = { ...venue.presentation, x: null, y: null };
     next.push(venue);
   }
   return next;
+}
+
+/** People changes keep a former resident's authored home available if that resident returns. */
+export function selectFoundingHomes(
+  venues: SetupVenueDraft[],
+  unusedHomes: SetupVenueDraft[],
+  actors: { id: string; name: string }[],
+  openingVenueId: string,
+) {
+  const chosen = new Set(actors.map((actor) => actor.id));
+  const active = venues.filter(
+    (venue) => !venue.classes?.includes("residence") || foundingHomeMembers(venue).some((id) => chosen.has(id)),
+  );
+  const unused = [...unusedHomes, ...venues.filter((venue) => !active.includes(venue))];
+  const templates = separateFoundingTemplates(
+    actors.filter((actor) => actor.id !== "player").map((actor) => actor.id),
+    openingVenueId,
+    [...venues, ...unusedHomes].map((venue) => venue.id),
+  );
+  for (const actor of actors) {
+    if (active.some((venue) => foundingHomeMembers(venue).includes(actor.id))) continue;
+    const index = unused.findIndex((venue) => foundingHomeMembers(venue)[0] === actor.id);
+    const template = templates.find((venue) => foundingHomeMembers(venue)[0] === actor.id)!;
+    const home =
+      index >= 0
+        ? unused.splice(index, 1)[0]!
+        : reconcileFoundingHome({
+            ...template,
+            name: `${actor.name} home`,
+            presentation: { ...template.presentation, x: null, y: null },
+          });
+    active.push(home);
+  }
+  return { venues: reconcileFoundingRoster(active, actors, [], openingVenueId), unusedHomes: unused };
 }
 
 export function changeFoundingZoneOwner(venue: SetupVenueDraft, zoneId: string, ownerId: string): SetupVenueDraft {

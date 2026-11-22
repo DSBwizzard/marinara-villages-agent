@@ -18,6 +18,7 @@ import {
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { emptySpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
 import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
 import { registerResidentRoutes } from "../packages/villages/src/server/features/residents/routes.js";
@@ -73,6 +74,7 @@ const original = structuredClone(card);
 let agendas = 0,
   ties = 0;
 const revisions: unknown[] = [];
+const expression = { id: "e-adc201ed-e4b1-422b-8c79-4c6b09ba456d", name: "Neutral" };
 const service = createResidentRoster({
   readVillageState: async () => structuredClone(state),
   mutateVillageState: async (change) => {
@@ -83,7 +85,17 @@ const service = createResidentRoster({
   preparedSpriteManager: async (_id, revision) => {
     revisions.push(revision);
     if (revision === 99) throw Error("Sprite revision changed");
-    return null;
+    return revision === undefined
+      ? {
+          ...emptySpriteManager(),
+          expressions: [expression],
+          assignments: [
+            { expressionId: expression.id, view: "front", engineFilename: "full_neutral.png", automatic: true },
+          ],
+          defaultExpressionId: expression.id,
+          defaultView: "front",
+        }
+      : null;
   },
   queueVillagerAgenda: async () => {
     agendas++;
@@ -96,7 +108,7 @@ const service = createResidentRoster({
 await assert.rejects(service.addVillager("buster", 1, { homeworld: 3, startingSituation: "" }), /120/);
 await assert.rejects(service.addVillager("buster", 99), /Sprite revision/);
 assert.equal(state.villagers.length, 0);
-await service.addVillager("buster", 1, { homeworld: " Koront ", startingSituation: " Visiting the Village. " });
+await service.addVillager("buster", undefined, { homeworld: " Koront ", startingSituation: " Visiting the Village. " });
 assert.deepEqual(state.villagers[0].admission, { homeworld: "Koront", startingSituation: "Visiting the Village." });
 assert.equal(state.villagers[0].cardSnapshot.backstory, original.backstory);
 assert.deepEqual(card, original, "admission never rewrites source material");
@@ -105,6 +117,7 @@ assert.equal(state.villagers.length, 1);
 assert.equal(state.villagers[0].admission.homeworld, "Koront", "duplicate admission never overwrites saved context");
 assert.equal(agendas, 1);
 assert.equal(ties, 1);
+assert.deepEqual(revisions, [99, undefined]);
 const reloaded = coerceVillageState(structuredClone(state));
 assert.equal(reloaded.worldName, "Othiras");
 assert.deepEqual(reloaded.villagers[0].admission, state.villagers[0].admission);
@@ -117,6 +130,7 @@ assert.throws(
   /No reply was requested/,
 );
 const projected = projectVillager(state.villagers[0], "Buster", "", [], "", "", null);
+assert.equal(reloaded.villagers[0].spriteManager?.assignments[0].automatic, true);
 assert.ok(!JSON.stringify(projected).includes("Visiting the Village"));
 assert.ok(!Object.hasOwn(projected, "admission"));
 const before = agendaRevision(state, "buster");

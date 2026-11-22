@@ -397,7 +397,7 @@ await withBrowser(browser, async () => {
     const dock = page.locator(".marinara-capability-villages-chat-vn");
     const stage = page.locator(".marinara-capability-villages-chat-stage");
     const cast = page.locator(".marinara-capability-villages-chat-cast-person");
-    const reading = page.getByRole("region", { name: "Latest reply" });
+    const reading = page.getByRole("region", { name: "Current paragraph" });
     await expect(cast).toHaveCount(4);
     const castPositions = await cast.evaluateAll(
       (people, mobile) => people.map((person) => person.offsetLeft + (mobile ? person.offsetWidth / 2 : 0)),
@@ -444,13 +444,11 @@ await withBrowser(browser, async () => {
         await expect(reading).toContainText(longGreeting);
       }
     }
-    const sceneMenu = page.getByRole("button", { name: "Venue actions" });
-    await sceneMenu.click();
-    await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
+    await page.getByRole("button", { name: "Transcript", exact: true }).click();
     await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
     const stageWithHistory = await stage.boundingBox();
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
-    await page.getByRole("button", { name: "Close transcript", exact: true }).click();
+    await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(composer).toBeVisible();
@@ -495,7 +493,7 @@ await withBrowser(browser, async () => {
     const menu = page.getByRole("menu", { name: "Venue actions" });
     await actions.click();
     await expect(menu.getByRole("menuitem", { name: "Conclude", exact: true })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Move", exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Retry Turn", exact: true })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Contact", exact: true })).toHaveCount(0);
     await reading.focus();
     await expect(menu).toHaveCount(0);
@@ -508,7 +506,7 @@ await withBrowser(browser, async () => {
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^(Send|Sending)$/u })).toBeDisabled();
     await expect(reading).toContainText("First reply.");
     assert.equal(lastTurn.mode, "chat");
     assert.equal(lastTurn.message, "My response.");

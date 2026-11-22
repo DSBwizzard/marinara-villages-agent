@@ -16,8 +16,7 @@ export {
   DEFAULT_LORE_TOKEN_BUDGET,
 } from "../../domain/rules/lore-policy.js";
 
-// Live, read-only Engine lore for one Village generation. The village stores IDs,
-// never copies entry content, so edits in the Engine take effect on the next call.
+// Read live Engine lore for each generation; private request evidence retains the selected text.
 
 type EngineBook = { id: string; name: string; enabled: boolean; hiddenFromLibrary?: boolean };
 type EngineFolder = { id: string; parentFolderId: string | null; enabled: boolean };
@@ -164,7 +163,17 @@ export async function readVillageLore(
       at: new Date().toISOString(),
       requestContext: requestContext.length > 1200 ? requestContext.slice(0, 1199) + "…" : requestContext,
     };
-    inspection.inspectionId = await rememberLoreInspection(inspection);
+    const included = new Set(
+      inspection.entries
+        .filter((entry) => entry.status === "included")
+        .map((entry) => JSON.stringify([entry.bookId, entry.id])),
+    );
+    const contents = new Map(
+      candidates
+        .filter((entry) => included.has(JSON.stringify([entry.bookId, entry.id])))
+        .map((entry) => [JSON.stringify([entry.bookId, entry.id]), entry.content.trim()]),
+    );
+    inspection.inspectionId = await rememberLoreInspection(inspection, contents);
     options?.inspect?.(inspection, result.recentRequirements);
     runtimeDebug("lore inspection", inspection);
     return result.selected;

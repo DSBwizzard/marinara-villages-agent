@@ -335,8 +335,7 @@ await withBrowser(browser, async () => {
     }
     session.operation = null;
     await load();
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Move", exact: true }).click();
     const zoneSelect = page.getByRole("dialog", { name: "Move to Zone" });
     session.operation = {
       id: "held-before-move",
@@ -360,8 +359,7 @@ await withBrowser(browser, async () => {
     await expect(composer).toBeVisible();
     session.operation = null;
     await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+    await page.getByRole("button", { name: "Move", exact: true }).click();
     await expect(zoneSelect).toBeVisible();
     await page.keyboard.press("Escape");
     await composer.fill("My newer unsent draft");
@@ -454,8 +452,8 @@ await withBrowser(browser, async () => {
     const chipBox = await errorChip.boundingBox();
     const actionsBox = await page.getByRole("button", { name: "Venue actions", exact: true }).boundingBox();
     const panelBox = await failurePanel.boundingBox();
-    assert(placeBox.x + placeBox.width <= chipBox.x, "the chip has space beside the place and time");
-    assert(chipBox.x - (placeBox.x + placeBox.width) <= 16, "the chip stays on the left beside the place badge");
+    assert(chipBox.y >= placeBox.y + placeBox.height, "the chip sits below the place and time");
+    assert(Math.abs(chipBox.x - placeBox.x) < 1, "the chip stays aligned to the left of the place badge");
     assert(chipBox.x + chipBox.width <= actionsBox.x, "the chip does not cover Venue actions");
     assert(
       panelBox.y > Math.max(placeBox.y + placeBox.height, chipBox.y + chipBox.height),

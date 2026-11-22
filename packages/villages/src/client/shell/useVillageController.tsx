@@ -85,6 +85,7 @@ import {
   useSetScheduleInfluence,
 } from "../features/residents/actions.js";
 import { calculatePersonaPortraitId, calculatePortraitWanted } from "../features/residents/calculations.js";
+import { FOUNDING_STEP } from "../features/founding/founding-steps.js";
 import {
   useResidentAgendaPolling,
   useResidentInspection,
@@ -100,7 +101,6 @@ import {
 import {
   useCloseRoom,
   useContinueRoomWithoutGreeting,
-  useDiscardRoomDebug,
   useDismissRoomNotice,
   useGreetRoom,
   useReactToTrespass,
@@ -701,8 +701,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setScreen,
   });
 
-  const discardRoomDebug = useDiscardRoomDebug({ ...scenes, loadSnapshot, room, setRoom, setScreen });
-
   /**
    * Submit one speech or action turn in the current Scene.
    *
@@ -1206,7 +1204,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * pictures for a list nobody is looking at is the one kind of work this could
    * do that the player would never see the result of.
    */
-  const portraitWanted = calculatePortraitWanted({ ...founding, catalog, screen, snapshot });
+  const portraitWanted = calculatePortraitWanted({
+    catalog,
+    snapshot,
+    includeCatalog: screen === "setup" && founding.setupStep === FOUNDING_STEP.People,
+  });
 
   /**
    * The faces behind everybody the tab can draw.
@@ -1330,7 +1332,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     generateRequestDescription,
     completeResidenceMove,
     decideResidenceMove,
-    discardRoomDebug,
     dismissRoomNotice,
     draftPins,
     draftSaveError: founding.draftSaveError,

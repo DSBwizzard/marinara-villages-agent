@@ -1293,6 +1293,43 @@ export function createSceneCommands({
     if ((await abandonSavedExchange(scene, operationId)) === "applied")
       throw conflict("The saved reply already committed and has been recovered. Review the Scene before continuing.");
   }
+  async function dismissFailedTurn(id: string, operationId: string, attemptId: string, expected: number | undefined) {
+    const scene = await requireLiveVenueSession(id);
+    const operation = scene.operation;
+    const turn = scene.submissions.find((entry) => entry.id === operationId);
+    if (
+      scene.status !== "active" ||
+      operation?.status !== "interrupted" ||
+      operation.input.mode !== "chat" ||
+      !!operation.input.trespassReaction ||
+      turn?.acceptance.status !== "held" ||
+      !turn.narration ||
+      turn.narration.readset.source.operationId !== operationId ||
+      turn.progressProcessedAt ||
+      turn.episodeId ||
+      turn.replyLineIds?.length
+    )
+      throw conflict("That failed reply cannot be cleared. Review the current Scene.");
+    await abandonFailedRequest(scene, operationId, attemptId, expected, "turn");
+    await cancelVenueOperation(id, operation);
+    const cancelled = await readSession(id);
+    const token = cancelled.operation?.token;
+    return changeSession(id, (saved) => {
+      if (
+        saved.operation?.id !== operationId ||
+        saved.operation.attemptId !== attemptId ||
+        saved.operation.status !== "complete" ||
+        saved.operation.token !== token ||
+        token === operation.token ||
+        saved.sceneRevision !== expected ||
+        saved.submissions.find((entry) => entry.id === operationId)?.acceptance.status !== "abandoned"
+      )
+        throw conflict("The Scene request changed before its error could be cleared.");
+      saved.operation.error = "";
+      delete saved.operation.failure;
+    });
+  }
+
   async function reactToTrespass(
     id: string,
     reactionId: string,
@@ -1717,6 +1754,7 @@ export function createSceneCommands({
     travelVenue,
     greetVenue,
     continueVenueWithoutGreeting,
+    dismissFailedTurn,
     sendVenueTurn,
     leaveVenueSession,
     endVenueSession,

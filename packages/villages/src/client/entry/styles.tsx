@@ -5,6 +5,7 @@ import { VILLAGES_SCENE_STYLES } from "../features/scenes/villages-scene-styles.
 import { SCENE_ASIDE_STYLES } from "../features/scenes/villages-scene-asides.js";
 import { ELEMENT_TAG, STYLE_ID } from "../shared/constants.js";
 import { LORE_ACTIVITY_STYLES } from "../shared/lore-activity-styles.js";
+import { DIALOGUE_READER_STYLES } from "../shared/dialogue-reader-styles.js";
 
 // Named container queries measure the Engine tab; font sizes stay fixed.
 // Avatar frames clip imported card crops and stay square.
@@ -2113,6 +2114,7 @@ ${ELEMENT_TAG} {
   .${ELEMENT_TAG}-founding-role-fields textarea { min-height: 8rem; }
 }
 ${VILLAGES_FORGING_STYLES}
+${DIALOGUE_READER_STYLES}
 
 .${ELEMENT_TAG}-venue-profile { box-sizing:border-box; max-width: 64rem; margin-inline: auto; width: 100%; background:var(--background); }
 .${ELEMENT_TAG}-venue-profile h2 { font-size: 1.1rem; margin: 0 0 .75rem; }

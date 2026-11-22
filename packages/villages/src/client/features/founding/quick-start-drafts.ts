@@ -36,17 +36,35 @@ export function quickStartTemplates(venues: readonly SetupVenueDraft[]): SetupVe
     venue.residenceCapacity = previous.residenceCapacity;
     venue.foundingCapacity = previous.foundingCapacity;
     venue.classes = previous.classes;
-    venue.spaces = [startingZone(venue, false)];
-    venue.privateSpaces = residence ? [startingZone(venue, true)] : [];
+    const community = venue.category === "public-center";
+    venue.layout = residence ? "both" : "common";
+    venue.spaces = [
+      {
+        ...startingZone(venue, false),
+        ...(community ? { name: "Gathering Space" } : residence ? { purpose: "Daily life and shared activities" } : {}),
+        connectedTo: residence ? ["exterior", "private:base"] : ["exterior"],
+      },
+      ...(community
+        ? [
+            {
+              ...startingZone(venue, false),
+              id: "common:activity",
+              name: "Activity Space",
+              purpose: "Shared activities",
+              description: "A public space for community activities.",
+              connectedTo: ["exterior"],
+            },
+          ]
+        : []),
+    ];
+    venue.privateSpaces = residence ? [{ ...startingZone(venue, true), connectedTo: ["common:base"] }] : [];
     return venue;
   });
 }
 
 /** Confirmation authorizes complete replacement; no field-level edit detection is used. */
 export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVenueSuggestion): VillageVenue {
-  const residence = venue.classes?.includes("residence") ?? false;
-  const links = (id: string) =>
-    proposal.connections?.filter((edge) => edge.includes(id)).map((edge) => (edge[0] === id ? edge[1] : edge[0]));
+  const template = quickStartTemplates([venue])[0]!;
   return {
     ...venue,
     ...zoneDayNightDefault(proposal.dayNight),
@@ -54,39 +72,77 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
     venueType: proposal.venueType,
     form: proposal.form,
     description: proposal.description,
-    layout: proposal.layout,
-    spaces: ["common", "both"].includes(proposal.layout)
-      ? [
-          {
-            ...startingZone(venue, false),
+    layout: template.layout,
+    spaces: template.spaces?.map((zone, index) =>
+      index
+        ? zone
+        : {
+            ...zone,
             ...zoneDayNightDefault(proposal.commonDayNight),
-            name: proposal.commonName,
-            purpose: proposal.commonPurpose || (residence ? "Everyday activities" : "Community gatherings"),
-            description: proposal.commonDescription,
-            connectedTo:
-              links("common:base") ?? (proposal.layout === "both" ? ["exterior", "private:base"] : ["exterior"]),
+            name: proposal.commonName || zone.name,
+            purpose: proposal.commonPurpose || zone.purpose,
+            description: proposal.commonDescription || zone.description,
           },
-        ]
-      : [],
-    privateSpaces: ["private", "both"].includes(proposal.layout)
-      ? [
-          {
-            ...startingZone(venue, true),
-            ...zoneDayNightDefault(proposal.privateDayNight),
-            name: proposal.privateName,
-            purpose: proposal.privatePurpose,
-            description: proposal.privateDescription ?? "",
-            connectedTo: links("private:base") ?? [proposal.layout === "private" ? "exterior" : "common:base"],
+    ),
+    privateSpaces: template.privateSpaces?.map((zone) => ({
+      ...zone,
+      ...zoneDayNightDefault(proposal.privateDayNight),
+      name: proposal.privateName || zone.name,
+      purpose: proposal.privatePurpose || zone.purpose,
+      description: proposal.privateDescription || zone.description,
+    })),
+  };
+}
+
+/** Upgrade only the old untouched single-space starter, retaining authored Venue fields. */
+export function upgradeUntouchedStartingLayout(venue: SetupVenueDraft): SetupVenueDraft {
+  const residence = venue.classes?.includes("residence");
+  const community = venue.category === "public-center";
+  const actors = [...(venue.occupancy.playerHome ? ["player"] : []), ...(venue.residentIds ?? [])];
+  if (
+    (!residence && !community) ||
+    venue.layout !== "common" ||
+    venue.zoneLayout ||
+    venue.spaces?.length !== 1 ||
+    venue.privateSpaces?.length ||
+    (residence &&
+      (actors.length !== 1 ||
+        (venue.destinations?.[actors[0]!]?.sleep && venue.destinations[actors[0]!]!.sleep !== "common:base")))
+  )
+    return venue;
+  const original = startingZone(venue, false);
+  const saved = JSON.stringify(venue.spaces[0]);
+  if (saved !== JSON.stringify(original) && saved !== JSON.stringify({ ...original, access: undefined })) return venue;
+  const template = quickStartTemplates([venue])[0]!;
+  const actor = actors[0];
+  return {
+    ...venue,
+    layout: template.layout,
+    spaces: template.spaces,
+    privateSpaces: template.privateSpaces,
+    ...(residence && actor
+      ? {
+          destinations: {
+            ...venue.destinations,
+            [actor]: {
+              ...venue.destinations?.[actor],
+              home: venue.destinations?.[actor]?.home ?? "common:base",
+              sleep: "private:base",
+            },
           },
-        ]
-      : [],
+        }
+      : {}),
   };
 }
 
 /** Only an explicit replacement creates the simplified starting set. */
-export function separateFoundingTemplates(residentIds: readonly string[], communityId: string): SetupVenueDraft[] {
+export function separateFoundingTemplates(
+  residentIds: readonly string[],
+  communityId: string,
+  reservedIds: readonly string[] = [],
+): SetupVenueDraft[] {
   const secondId = communityId === "founding-garden" ? "founding-community" : "founding-garden";
-  const used = new Set([communityId, secondId]);
+  const used = new Set([communityId, secondId, ...reservedIds]);
   return quickStartTemplates([
     ...["player", ...residentIds].map((actor, index) => {
       let id = `founding-home:${actor}`;

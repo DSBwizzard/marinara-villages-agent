@@ -1,4 +1,5 @@
-import { savedFoundingStep } from "./founding-steps.js";
+import { FOUNDING_STEP, savedFoundingStep } from "./founding-steps.js";
+import { upgradeUntouchedStartingLayout } from "./quick-start-drafts.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 
@@ -192,24 +193,41 @@ export function createFoundingRestoreSetupDraft(ports: {
       (data.workspace.settingBrief != null && typeof data.workspace.settingBrief !== "string") ||
       (data.workspace.settingWorldBrief != null && typeof data.workspace.settingWorldBrief !== "string") ||
       (data.workspace.settingBeat != null &&
-        !["welcome", "world", "lorebooks", "village"].includes(data.workspace.settingBeat)) ||
+        !["welcome", "world-overview", "world", "lorebooks", "village-overview", "village"].includes(
+          data.workspace.settingBeat,
+        )) ||
       !data.zoneDrafts ||
       !Array.isArray(data.venues) ||
+      (data.workspace.unusedHomes !== undefined && !Array.isArray(data.workspace.unusedHomes)) ||
       !Array.isArray(data.roster) ||
       data.roster.length > 3 ||
       data.venues.length > 16 ||
-      data.venues.some(
+      [...data.venues, ...(data.workspace.unusedHomes ?? [])].some(
         (row) =>
           !row?.id ||
           !row.presentation ||
           !row.occupancy ||
           typeof row.name !== "string" ||
           typeof row.description !== "string",
+      ) ||
+      data.workspace.unusedHomes?.some(
+        (row) =>
+          row.classes?.length !== 1 ||
+          row.classes[0] !== "residence" ||
+          data.venues.some((venue) => venue.id === row.id) ||
+          data.workspace.unusedHomes!.filter((venue) => venue.id === row.id).length !== 1 ||
+          Number(row.occupancy.playerHome) + (row.residentIds?.length ?? 0) !== 1,
       )
     ) {
       return false;
     }
-    setSetupStep(savedFoundingStep(data));
+    const step = savedFoundingStep(data);
+    const hasMap =
+      data.mapSource === "existing" ||
+      ((data.mapSource === "generate" || data.mapSource === "upload") &&
+        data.mapImageSource === data.mapSource &&
+        !!data.mapImage);
+    setSetupStep(step > FOUNDING_STEP.Maps && !hasMap ? FOUNDING_STEP.Maps : step);
     setSetupName(data.name);
     setSetupLocationName(data.startingLocationName ?? data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");
@@ -219,12 +237,22 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupContext({
       rules: data.context.rules,
       circumstances: data.context.circumstances,
-      openingVenueId: data.context.openingVenueId,
+      openingVenueId:
+        data.context.openingVenueId ??
+        ("communityVenueId" in data.context && typeof data.context.communityVenueId === "string"
+          ? data.context.communityVenueId
+          : "founding-community"),
       ...((data.workspace.suggestionRequest || data.mapRequest) && Object.hasOwn(data.context, "households")
         ? { households: data.context.households }
         : {}),
     });
-    setSetupVenues(data.venues);
+    const preserveLayout =
+      data.workspace.suggestionRequest ||
+      data.mapRequest ||
+      data.interruptedGeneration ||
+      data.editorOriginal ||
+      Object.keys(data.zoneDrafts).length;
+    setSetupVenues(preserveLayout ? data.venues : data.venues.map(upgradeUntouchedStartingLayout));
     setupZoneDrafts.current = data.zoneDrafts;
     setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);
@@ -252,7 +280,18 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSelectedSetupVenueId(data.selectedVenueId);
     setMovingSetupVenueId(data.movingVenueId);
     setSetupEditorOpen(false);
-    setSetupWorkspace(data.workspace);
+    const shortProblem = (text: string) =>
+      text.startsWith("This Founding draft result is no longer available.")
+        ? "Founding draft result unavailable."
+        : text;
+    const workspace = { ...data.workspace };
+    if (workspace.suggestionRequest?.failure)
+      workspace.suggestionRequest = {
+        ...workspace.suggestionRequest,
+        failure: shortProblem(workspace.suggestionRequest.failure),
+      };
+    if (workspace.settingProblem) workspace.settingProblem = shortProblem(workspace.settingProblem);
+    setSetupWorkspace(workspace);
     setupEditorOriginal.current = data.editorOriginal;
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;

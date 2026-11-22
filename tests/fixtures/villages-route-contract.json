@@ -282,6 +282,10 @@
     },
     {
       "method": "post",
+      "path": "/rooms/:id/operations/:operationId/dismiss"
+    },
+    {
+      "method": "post",
       "path": "/rooms/turn"
     },
     {

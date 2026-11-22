@@ -138,9 +138,8 @@ await withBrowser(browser, async () => {
         await page.addScriptTag({ path: resolve("packages/villages/client.js") });
         await expect(offer).toBeVisible();
         await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
-        await page.getByRole("button", { name: "Venue actions" }).click();
-        await expect(page.getByRole("menuitem", { name: "Move", exact: true })).toBeEnabled();
-        await page.getByRole("menuitem", { name: "Move", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Move", exact: true })).toBeEnabled();
+        await page.getByRole("button", { name: "Move", exact: true }).click();
         await expect(
           page
             .getByRole("dialog", { name: "Move to Zone" })

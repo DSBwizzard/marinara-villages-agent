@@ -178,6 +178,7 @@ export function MapStage({
   exploration = false,
   navigationControlsWhilePlacing = false,
   navigationControlsOnMobile = false,
+  navigationFit = "cover",
   navigationView,
   onNavigationView,
   compactPhotos = false,
@@ -228,6 +229,7 @@ export function MapStage({
   exploration?: boolean;
   navigationControlsWhilePlacing?: boolean;
   navigationControlsOnMobile?: boolean;
+  navigationFit?: "cover" | "contain";
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
@@ -307,8 +309,10 @@ export function MapStage({
       src && failedSrc !== src ? (decoded?.src === src ? decoded : null) : (shape ?? { width: 1280, height: 720 }),
     [src, decoded, shape, failedSrc],
   );
+  const minimumNavigationZoom =
+    navigationFit === "contain" ? 1 : mobileImage && frame ? mobileCoverZoom(mobileImage, frame) : 1;
   const mobileInitial: MobileMapView = {
-    zoom: mobileImage && frame ? mobileCoverZoom(mobileImage, frame) : 1,
+    zoom: minimumNavigationZoom,
     centerX: 0.5,
     centerY: 0.5,
   };
@@ -325,7 +329,7 @@ export function MapStage({
     () =>
       mobile || exploration
         ? mobileImage && frame
-          ? mobileMapBox(mobileImage, frame, mobileCurrent)
+          ? mobileMapBox(mobileImage, frame, mobileCurrent, minimumNavigationZoom)
           : null
         : src
           ? decoded && decoded.src === src && frame
@@ -334,7 +338,7 @@ export function MapStage({
           : frame
             ? { left: 0, top: 0, width: frame.width, height: frame.height }
             : null,
-    [decoded, frame, live, mobile, exploration, mobileImage, mobileCurrent, src],
+    [decoded, frame, live, mobile, exploration, mobileImage, mobileCurrent, src, minimumNavigationZoom],
   );
   useEffect(() => {
     setMobileView(null);
@@ -542,7 +546,18 @@ export function MapStage({
       pointersRef.current.clear();
       suppressTouchClickRef.current = false;
     }
-    if (onMovePin && event.target instanceof Element && event.target.closest("[data-pin-id]")) return;
+    if (
+      onMovePin &&
+      event.pointerType !== "touch" &&
+      event.target instanceof Element &&
+      event.target.closest("[data-pin-id]")
+    )
+      return;
+    if (!event.isPrimary && pinDrag.current) {
+      pinDrag.current = null;
+      setPinOffset(null);
+      suppressPinClick.current = true;
+    }
     if (!frameRef.current) return;
     if (event.target instanceof Element && event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)) return;
     stageRef.current?.setAttribute("data-mobile-gesturing", "true");
@@ -563,6 +578,7 @@ export function MapStage({
       return;
     const rect = frameRef.current.getBoundingClientRect();
     pointersRef.current.set(event.pointerId, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+    if (pinDrag.current) return;
     const points = [...pointersRef.current.values()];
     const first = points[0]!;
     const second = points[1];
@@ -585,6 +601,7 @@ export function MapStage({
       { x: start.x, y: start.y },
       { x, y },
       second && start.distance > 0 ? distance / start.distance : 1,
+      minimumNavigationZoom,
     );
     updateMobileView(next);
   };
@@ -608,7 +625,7 @@ export function MapStage({
       event.currentTarget.releasePointerCapture(event.pointerId);
     if (pointersRef.current.size === 0) stageRef.current?.removeAttribute("data-mobile-gesturing");
     gestureAnchor();
-    if (!tapped || !(event.target instanceof Element)) return;
+    if (pinDrag.current || !tapped || !(event.target instanceof Element)) return;
     const pinId = event.target.closest<HTMLButtonElement>(`.${ELEMENT_TAG}-pin`)?.dataset.pinId;
     const pin = pinId ? pins.find((candidate) => candidate.id === pinId) : null;
     if (pin?.onSelect) {
@@ -645,8 +662,8 @@ export function MapStage({
   const changeNavigationZoom = (factor: number) => {
     if (!mobileImage || !frame) return;
     const center = { x: frame.width / 2, y: frame.height / 2 };
-    const current = { ...mobileCurrent, zoom: Math.max(mobileCurrent.zoom, mobileCoverZoom(mobileImage, frame)) };
-    updateMobileView(mobileMapGesture(mobileImage, frame, current, center, center, factor));
+    const current = { ...mobileCurrent, zoom: Math.max(mobileCurrent.zoom, minimumNavigationZoom) };
+    updateMobileView(mobileMapGesture(mobileImage, frame, current, center, center, factor, minimumNavigationZoom));
   };
   const resetNavigation = () => {
     mobileViewRef.current = null;
@@ -695,7 +712,20 @@ export function MapStage({
       suppressPinClick.current = true;
       const x = drag.x + (event.clientX - drag.startX) / drag.width;
       const y = drag.y + (event.clientY - drag.startY) / drag.height;
-      if (x < 0 || x > 1 || y < 0 || y > 1 || drag.width !== box.width || drag.height !== box.height) {
+      const viewport = frameRef.current?.getBoundingClientRect();
+      if (
+        !viewport ||
+        event.clientX < viewport.left ||
+        event.clientX > viewport.right ||
+        event.clientY < viewport.top ||
+        event.clientY > viewport.bottom ||
+        x < 0 ||
+        x > 1 ||
+        y < 0 ||
+        y > 1 ||
+        drag.width !== box.width ||
+        drag.height !== box.height
+      ) {
         onMoveInvalid?.();
         return;
       }

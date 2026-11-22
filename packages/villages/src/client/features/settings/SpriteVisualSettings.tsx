@@ -1,11 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 
-type VisualSetting = "spriteVariantsEnabled" | "spriteCardFlipEnabled" | "characterSpeechColors";
+type VisualSetting =
+  "spriteVariantsEnabled" | "spriteCardFlipEnabled" | "characterSpeechColors" | "lorebookChipsEnabled";
+type VisualValues = Record<VisualSetting, boolean> & { menuAppearance: "auto" | "day" | "night" };
 const controls: Array<{ key: VisualSetting; label: string; description: string }> = [
+  {
+    key: "lorebookChipsEnabled",
+    label: "Show Lorebook chips",
+    description: "Read the entries used for each model request.",
+  },
   {
     key: "spriteVariantsEnabled",
     label: "Random sprite variants",
@@ -34,10 +41,11 @@ export function useSpriteVisualSettings({
   setBusy: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<Partial<Record<VisualSetting, boolean>>>({});
+  const [draft, setDraft] = useState<Partial<VisualValues>>({});
   const [error, setError] = useState("");
-  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
-  async function save(key: VisualSetting, value: boolean) {
+  const selection = useMemo(() => ({ scope: snapshot?.worldScope }), [snapshot?.worldScope]);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy, selection);
+  async function save<K extends keyof VisualValues>(key: K, value: VisualValues[K]) {
     const claim = lifetime.begin();
     if (!claim) return;
     claim.onRetire = () => {
@@ -78,6 +86,7 @@ export function SpriteVisualSettings({
   if (!snapshot) return null;
   return (
     <section className={`${ELEMENT_TAG}-venue-card`} aria-label="Sprite and dialogue settings">
+      <MenuAppearanceField settings={settings} disabled={disabled} />
       {controls.map(({ key, label, description }) => (
         <div key={key} className={`${ELEMENT_TAG}-visual-setting`}>
           <label className={`${ELEMENT_TAG}-row`}>
@@ -102,5 +111,31 @@ export function SpriteVisualSettings({
         </p>
       ) : null}
     </section>
+  );
+}
+
+export function MenuAppearanceField({
+  settings,
+  disabled,
+}: {
+  settings: ReturnType<typeof useSpriteVisualSettings>;
+  disabled: boolean;
+}) {
+  const { snapshot, saving, draft, save } = settings;
+  if (!snapshot) return null;
+  return (
+    <div className={`${ELEMENT_TAG}-visual-setting`}>
+      <label htmlFor={`${ELEMENT_TAG}-menu-appearance`}>Menu appearance</label>
+      <select
+        id={`${ELEMENT_TAG}-menu-appearance`}
+        value={draft.menuAppearance ?? snapshot.settings.menuAppearance ?? "auto"}
+        disabled={disabled || saving}
+        onChange={(event) => void save("menuAppearance", event.target.value as VisualValues["menuAppearance"])}
+      >
+        <option value="auto">Day &amp; night</option>
+        <option value="day">Day</option>
+        <option value="night">Night</option>
+      </select>
+    </div>
   );
 }

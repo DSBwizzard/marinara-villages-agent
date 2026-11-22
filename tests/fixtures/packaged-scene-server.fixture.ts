@@ -85,16 +85,18 @@ export async function packagedSceneServer(
   ];
   options.configure?.(world, now);
   world.startingHistory.reviewed = Object.fromEntries(world.villagers.map((row) => [row.characterId, row.incarnation]));
+  const freeDay = [
+    { startMinute: 0, endMinute: 1440, venueId: "mill", zoneId: "common", activity: "Free time", flexible: true },
+  ];
   for (const actor of world.villagers)
     actor.agenda ??= agendaFixture({
       generatedAt: now,
+      day: freeDay,
       activeDay: {
         dateKey: now.slice(0, 10),
         weekday: new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(new Date(now)),
         scheduleInformed: false,
-        blocks: [
-          { startMinute: 0, endMinute: 1440, venueId: "mill", zoneId: "common", activity: "Free time", flexible: true },
-        ],
+        blocks: freeDay,
       },
     });
   for (const venue of world.venues)

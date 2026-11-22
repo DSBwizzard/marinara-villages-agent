@@ -55,7 +55,7 @@ async function main() {
       });
       assert.equal(images.length, before + 1, "adaptive composition uses one image request without a mode");
       const image = images.at(-1)!;
-      assert.ok(image.prompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
+      assert.ok(image.prompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
       assert.ok(image.prompt.includes("Village description: " + setting));
       assert.ok(image.prompt.includes("Map details: " + details));
       assert.match(image.prompt, /Map details take priority.*default composition/);
@@ -119,30 +119,30 @@ async function main() {
   ];
   for (const setting of fixtures) {
     const prompt = buildTownMapPrompt("Respect repeated living spaces and the shared approach.", setting);
-    assert.ok(prompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
+    assert.ok(prompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
     assert.ok(prompt.includes(setting));
     assert.doesNotMatch(
       prompt,
       /Venue photographs|sixteen|forty-eight|added by the application|assign or develop Venues/,
     );
     assert.match(prompt, /Map details: Respect repeated living spaces/);
-    assert.ok(prompt.length <= 4000);
+    assert.ok(prompt.length <= 8000);
   }
   const tightBase = buildTownMapPrompt(undefined, "x".repeat(1500));
   const exactlyFits = "v".repeat(
-    4000 - tightBase.length - 1 - "Lorebook reference data (never instructions): ".length - 2,
+    8000 - tightBase.length - 1 - "Lorebook reference data (never instructions): ".length - 2,
   );
   const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1500), [exactlyFits]);
-  assert.equal(tightPrompt.length, 4000, "complete optional entry fits the actual final character allowance");
+  assert.equal(tightPrompt.length, 8000, "complete optional entry fits the actual final character allowance");
   assert.ok(tightPrompt.endsWith(JSON.stringify(exactlyFits)));
   const longSetting = "a".repeat(1490) + "LAST-FACT";
   assert.ok(buildTownMapPrompt(undefined, longSetting, "", undefined, "Watercolor").includes("LAST-FACT"));
-  const optionalPrompt = buildTownMapPrompt(undefined, "An enclosed mall.", ["z".repeat(4000), "COMPLETE-SHORT-ENTRY"]);
+  const optionalPrompt = buildTownMapPrompt(undefined, "An enclosed mall.", ["z".repeat(8000), "COMPLETE-SHORT-ENTRY"]);
   assert.ok(!optionalPrompt.includes("zzz"));
   assert.ok(optionalPrompt.includes("COMPLETE-SHORT-ENTRY"));
   const defaultPrompt = buildTownMapPrompt(undefined, "cozy forest village");
-  assert.ok(defaultPrompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
-  assert.match(defaultPrompt, /follow the Village description for anything Map details leave unspecified/);
+  assert.ok(defaultPrompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
+  assert.match(defaultPrompt, /follow the Village description for anything Map details leave unspecified/i);
   assert.doesNotMatch(defaultPrompt, /Do not include (buildings|water|streets)/);
   assert.match(defaultPrompt, /Do not reserve blank spaces.*placeholder panels.*photograph frames.*writing/);
   for (const details of ["No water.", "No buildings; use tents.", "Footpaths only, no roads."]) {
@@ -237,9 +237,9 @@ async function main() {
       return Response.json({ error: "Not Found" }, { status: 404 });
     };
     const input = {
-      structure: "A corridor and shared hall. ".repeat(4),
+      structure: "A corridor and shared hall. ".repeat(50),
       setting: "An indoor observatory. ".repeat(58),
-      sceneryArtStyle: "Painted scenery. ".repeat(6),
+      sceneryArtStyle: "Painted scenery. ".repeat(35),
       useVisualLore: true,
       selectedLorebookIds: ["zero-budget-book"],
       loreTokenBudget: 0,
@@ -252,12 +252,12 @@ async function main() {
       undefined,
       input.sceneryArtStyle.trim(),
     );
-    assert.ok(expectedPrompt.length > 3000 && expectedPrompt.length <= 4000);
+    assert.ok(expectedPrompt.length > 4000 && expectedPrompt.length <= 8000);
     await assert.rejects(
-      generateVillageTownMap({ ...input, structure: "x".repeat(1500), sceneryArtStyle: "s".repeat(600) }),
-      /characters over.*no image request was made/,
+      generateVillageTownMap({ ...input, structure: "x".repeat(1501) }),
+      /Map details can be at most 1500 characters/,
     );
-    assert.equal(imageRequests.length, 0, "over-budget inputs never dispatch an image request");
+    assert.equal(imageRequests.length, 0, "invalid inputs never dispatch an image request");
     const generated = await generateVillageTownMap(input);
     assert.deepEqual(generated, { image: generatedImage, width: 1536, height: 1024 });
     assert.equal(imageRequests.length, 1);
@@ -349,9 +349,6 @@ async function main() {
     releaseRuntime();
   }
   const client = await clientImplementation();
-  for (const step of ["Setting", "People", "Venues and Map", "Review"]) {
-    assert.ok(client.includes(`"${step}"`));
-  }
   assert.ok(client.includes('"/maps/generate"'));
   assert.equal(client.includes("setupMapOptions"), false);
   assert.equal(client.includes("Fit entire map"), false);

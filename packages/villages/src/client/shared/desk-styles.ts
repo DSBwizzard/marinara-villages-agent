@@ -1,11 +1,16 @@
 import { STORYBOOK_DAY, STORYBOOK_NIGHT } from "./storybook-colors.js";
 const P = "marinara-capability-villages";
 
+export {
+  STORYBOOK_DAY as STORYBOOK_DAY_PALETTE,
+  STORYBOOK_NIGHT as STORYBOOK_NIGHT_PALETTE,
+} from "./storybook-colors.js";
 export const DESK_STYLES = `
 .${P}-desk-container{height:100%;min-height:0;min-width:0;container:village-desk/inline-size}
 .${P}-desk-workspace{height:100%;min-height:0;display:flex;flex-direction:column;position:relative;isolation:isolate}
-.${P}-desk-workspace[data-desk]:not([data-desk="none"]){${STORYBOOK_NIGHT};display:grid;grid-template-columns:var(--menu-rail-width) minmax(0,1fr);color:var(--foreground);background:var(--background) var(--menu-art) var(--menu-art-placement);overflow:hidden;box-sizing:border-box;font:18px/1.45 var(--menu-font)}
-.${P}-desk-workspace[data-theme="day"][data-desk]{${STORYBOOK_DAY}
+.${P}-desk-workspace[data-desk]:not([data-desk="none"]){${STORYBOOK_NIGHT}--menu-font:"village-letter-lora",Georgia,serif;--menu-heading-size:clamp(40px,3.6cqw,76px);--menu-rail-width:clamp(210px,20cqw,260px);--menu-art-placement:center bottom/cover no-repeat;display:grid;grid-template-columns:var(--menu-rail-width) minmax(0,1fr);color:var(--foreground);background:var(--background) var(--menu-art) var(--menu-art-placement);overflow:hidden;box-sizing:border-box;font:18px/1.45 var(--menu-font)}
+.${P}-desk-workspace[data-theme="day"][data-desk]{
+ ${STORYBOOK_DAY}
 }
 .${P}-desk-workspace[data-desk]:not([data-desk="none"])::before{content:"";position:absolute;inset:0 auto 0 0;width:var(--menu-rail-width);z-index:-2;background:var(--menu-rail,#542d43b0);pointer-events:none}
 .${P}-desk-workspace[data-desk]:not([data-desk="none"])::after{content:"";position:absolute;inset:0;z-index:-1;background:var(--menu-art) var(--menu-art-placement);mask:var(--menu-scenery-matte) var(--menu-art-placement);pointer-events:none}

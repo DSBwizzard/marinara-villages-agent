@@ -4,8 +4,10 @@ import { VillageActivity } from "../shared/activity.js";
 import type { useVillageController } from "./useVillageController.js";
 import { ReturnCatchup } from "../features/background/ReturnCatchup.js";
 import { LoreActivity } from "../shared/LoreActivity.js";
+import { useMenuDaylight } from "../shared/useVillageLighting.js";
 type FrameProps = { controller: ReturnType<typeof useVillageController>; children: ReactNode };
 export function VillagesFrame({ controller, children }: FrameProps) {
+  const daylight = useMenuDaylight(controller.snapshot);
   return (
     <VillageActivity
       value={{
@@ -22,7 +24,11 @@ export function VillagesFrame({ controller, children }: FrameProps) {
       }}
     >
       <div style={{ position: "relative", height: "100%" }}>
-        <LoreActivity>
+        <LoreActivity
+          key={controller.snapshot?.worldScope ?? ""}
+          enabled={controller.snapshot?.settings.lorebookChipsEnabled !== false}
+          daylight={daylight}
+        >
           <VillageContent key={controller.snapshot?.worldScope ?? ""} controller={controller}>
             {children}
           </VillageContent>

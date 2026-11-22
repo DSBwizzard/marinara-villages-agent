@@ -1,6 +1,6 @@
 import { FoundingHelp } from "./FoundingField.js";
-import { LoreActivityButton } from "../../shared/LoreActivity.js";
 import { FoundingDialog } from "./FoundingDialog.js";
+import { FoundingPagination } from "./FoundingPagination.js";
 import type {
   CatalogEntry,
   PersonaEntry,
@@ -12,13 +12,12 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { startingZone } from "./founding-template.js";
-import { useId, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it
  * labels cannot drift apart.
  */
-export { SETUP_STEPS } from "./founding-steps.js";
 
 export const SETUP_MIN_VILLAGER_COUNT = 1;
 
@@ -225,12 +224,24 @@ export function FoundingPersonaSelector({
                 action={person.id === draft ? "Selected" : "Select"}
                 onClick={() => {
                   onDraft(person.id);
-                  setOpen(false);
                 }}
               />
             ))}
             {!choices.length ? <p>No Personas match your search.</p> : null}
           </div>
+          <footer>
+            <button type="button" onClick={() => setOpen(false)}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="villages-forging-primary"
+              disabled={disabled || !selected}
+              onClick={() => setOpen(false)}
+            >
+              Next
+            </button>
+          </footer>
         </FoundingDialog>
       ) : null}
     </div>
@@ -238,8 +249,7 @@ export function FoundingPersonaSelector({
 }
 
 export function FoundingVillagerPicker({
-  onEditSprites,
-  activeId,
+  appearance,
   catalog,
   portraits,
   selectedIds,
@@ -251,8 +261,7 @@ export function FoundingVillagerPicker({
   selectedIds: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
-  onEditSprites(id: string): void;
-  activeId?: string | null;
+  appearance?(id: string): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -265,35 +274,31 @@ export function FoundingVillagerPicker({
       },
   );
   const choices = (catalog ?? [])
+    .filter((person) => person.id !== "__professor_mari__")
     .filter((person) =>
       (person.name + " " + person.summary).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
     )
     .sort((a, b) => a.name.localeCompare(b.name));
   const toggle = (id: string) => {
     onChange(selectedIds.includes(id) ? selectedIds.filter((value) => value !== id) : [...selectedIds, id]);
-    if (!selectedIds.includes(id)) setOpen(false);
   };
   return (
     <section className={ELEMENT_TAG + "-founding-roster"} aria-label="Founding villagers">
       <div className="villages-people-selected">
         {selected.map((person) => (
-          <div className="villages-selected-villager" key={person.id} data-selected={activeId === person.id}>
-            <button
-              type="button"
-              className="villages-selected-resident"
-              disabled={disabled}
-              aria-label={person.name}
-              aria-pressed={activeId === person.id}
-              onClick={() => onEditSprites(person.id)}
-            >
+          <div className="villages-selected-villager" key={person.id}>
+            <div className="villages-selected-resident">
               <AvatarFace
                 portrait={portraits[person.id]}
                 name={person.name}
                 className={ELEMENT_TAG + "-identity-card-face"}
                 glyph="person"
               />
-              <strong className="villages-selected-name">{person.name}</strong>
-            </button>
+              <span className="villages-selected-labels">
+                <strong className="villages-selected-name">{person.name}</strong>
+                {appearance?.(person.id)}
+              </span>
+            </div>
             <button
               type="button"
               className="villages-remove-resident"
@@ -326,18 +331,18 @@ export function FoundingVillagerPicker({
       {open ? (
         <FoundingDialog
           title="Choose founding villagers"
+          className="villages-founding-roster-dialog"
+          scrollBody
           onClose={() => setOpen(false)}
-          headerContent={
-            <input
-              autoComplete="off"
-              type="search"
-              aria-label="Search character cards by name"
-              placeholder="Search character cards..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          }
         >
+          <input
+            autoComplete="off"
+            type="search"
+            aria-label="Search character cards by name"
+            placeholder="Search character cards..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
           <div className="villages-people-choices" role="group" aria-label="Choose founding villagers">
             {choices.map((person) => (
               <FoundingIdentityRow
@@ -350,20 +355,14 @@ export function FoundingVillagerPicker({
                 disabled={disabled || (!selectedIds.includes(person.id) && selectedIds.length >= 3)}
                 action={selectedIds.includes(person.id) ? "✓" : "Add"}
                 actionButton
-                onClick={() => {
-                  if (selectedIds.includes(person.id)) toggle(person.id);
-                  else {
-                    setOpen(false);
-                    toggle(person.id);
-                  }
-                }}
+                onClick={() => toggle(person.id)}
               />
             ))}
             {!choices.length ? <p>No character cards match your search.</p> : null}
           </div>
           <footer>
             <button type="button" className="villages-forging-primary" onClick={() => setOpen(false)}>
-              Done
+              Confirm
             </button>
           </footer>
         </FoundingDialog>
@@ -378,20 +377,27 @@ export function VillageLorebookPicker({
   selected,
   onChange,
   disabled,
-  triggerLabel,
-  inline = false,
+  founding,
+  budget,
 }: {
   books: VillageLorebookOption[] | null;
   error: string;
   selected: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
-  triggerLabel?: string;
-  inline?: boolean;
+  founding?: { inline: boolean; onBack(): void };
+  budget?: Parameters<typeof LoreTokenBudgetField>[0];
 }) {
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState<string[]>([]);
-  const [baseSelection, setBaseSelection] = useState<string[]>([]);
+  const inline = founding?.inline ?? false;
+  const [open, setOpen] = useState(!!founding);
+  const [pending, setPending] = useState(selected);
+  const [pendingBudget, setPendingBudget] = useState<number>();
+  const [baseSelection, setBaseSelection] = useState(selected);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const close = () => {
+    setOpen(false);
+    if (inline) requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true }));
+  };
   const active = open ? pending : selected;
   const stale =
     open && (baseSelection.length !== selected.length || baseSelection.some((id, index) => id !== selected[index]));
@@ -403,7 +409,11 @@ export function VillageLorebookPicker({
   const missing = [...new Set([...selected, ...active])].filter((id) => !byId.has(id));
   const options = [...visible, ...missing.map((id) => ({ id, name: id, enabled: false }))];
   const filtered = options.filter((book) => book.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
-  const shown = filtered.slice(0, 50);
+  const [page, setPage] = useState(0);
+  const pageSize = founding && !inline ? 6 : 12;
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageIndex = Math.min(page, pages - 1);
+  const shown = filtered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
   const status = error ? (
     <p role="alert">{error}</p>
   ) : books === null ? (
@@ -413,26 +423,31 @@ export function VillageLorebookPicker({
   ) : null;
   const choices = (
     <>
-      <input
-        autoComplete="off"
-        type="search"
-        className="villages-lorebook-search"
-        value={query}
-        onKeyDown={(event) => {
-          if (inline && event.key === "Enter") event.preventDefault();
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            setOpen(false);
-          }
-        }}
-        aria-label="Search Lorebooks"
-        placeholder="Search Lorebooks"
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      {status}
+      <div className="villages-lorebook-search-row">
+        <input
+          autoComplete="off"
+          autoFocus={inline}
+          type="search"
+          className="villages-lorebook-search"
+          value={query}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!founding) close();
+            }
+          }}
+          aria-label="Search Lorebooks"
+          placeholder="Search Lorebooks"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(0);
+          }}
+        />
+      </div>
       {stale ? <p role="alert">Lorebooks changed. Close and reopen this picker.</p> : null}
       <div className="villages-lorebook-results" role="group" aria-label="Lorebooks">
+        {status}
         {shown.map((book) => {
           const checked = active.includes(book.id);
           const state = missing.includes(book.id)
@@ -445,49 +460,80 @@ export function VillageLorebookPicker({
               ? ""
               : "Disabled";
           return (
-            <label key={book.id} className="villages-lorebook-option" data-selected={checked}>
-              <input
-                autoComplete="off"
-                type="checkbox"
-                checked={checked}
-                disabled={
-                  disabled ||
-                  stale ||
-                  (!book.enabled && !checked && !selected.includes(book.id)) ||
-                  (!checked && active.length >= 24)
-                }
-                onChange={() => {
-                  const next = checked ? active.filter((id) => id !== book.id) : [...active, book.id];
-                  if (inline) onChange(next);
-                  else setPending(next);
-                }}
-              />
-              <span>
-                {book.name}
-                {state ? <small>{state}</small> : null}
+            <label
+              key={book.id}
+              className="villages-lorebook-option"
+              data-selected={checked}
+              title={state ? `${book.name} · ${state}` : book.name}
+            >
+              <span className="villages-lorebook-check" data-unavailable={!!state || undefined}>
+                <input
+                  autoComplete="off"
+                  type="checkbox"
+                  aria-label={state ? `${book.name} · ${state}` : book.name}
+                  checked={checked}
+                  disabled={
+                    disabled ||
+                    stale ||
+                    (!book.enabled && !checked && !selected.includes(book.id)) ||
+                    (!checked && active.length >= 24)
+                  }
+                  onChange={() => setPending(checked ? active.filter((id) => id !== book.id) : [...active, book.id])}
+                />
+                {state ? (
+                  <span className="villages-lorebook-state" aria-hidden="true" title={state}>
+                    ⊘
+                  </span>
+                ) : null}
               </span>
+              <span className="villages-lorebook-name">{book.name}</span>
             </label>
           );
         })}
         {books !== null && options.length > 0 && filtered.length === 0 ? <p>No matches</p> : null}
-        {filtered.length > shown.length ? (
-          <p>
-            {shown.length} of {filtered.length} matches
-          </p>
-        ) : null}
       </div>
     </>
   );
-  if (inline) return choices;
+  const editor = (
+    <>
+      {choices}
+      {budget ? (
+        <LoreTokenBudgetField {...budget} value={pendingBudget ?? budget.value} onChange={setPendingBudget} />
+      ) : null}
+      <footer className="villages-lorebook-footer">
+        <span aria-live="polite">{active.length} selected</span>
+        <FoundingPagination compact page={pageIndex} count={pages} onPage={setPage} label="Lorebooks" />
+        <div className="villages-lorebook-actions">
+          {founding ? (
+            <button type="button" data-reader-direction="back" onClick={founding.onBack}>
+              Back
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="villages-forging-primary"
+            disabled={disabled || stale}
+            onClick={() => {
+              if (disabled || stale) return;
+              if (budget && pendingBudget !== undefined) budget.onChange(pendingBudget);
+              onChange(pending);
+              close();
+            }}
+          >
+            {founding ? "Next" : "Done"}
+          </button>
+        </div>
+      </footer>
+    </>
+  );
   return (
     <section
-      className={
-        triggerLabel ? undefined : ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"
-      }
+      className={founding ? undefined : ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"}
       aria-label="Village Lorebooks"
+      data-picker-open={(!!founding && open) || undefined}
     >
-      <div className="villages-lorebook-header">
-        {triggerLabel ? null : (
+      <div className="villages-lorebook-header" hidden={!!founding && open}>
+        {founding ? null : (
           <>
             <div className="villages-lorebook-heading">
               <h3>Village Lorebooks</h3>
@@ -496,25 +542,28 @@ export function VillageLorebookPicker({
                 generation.
               </FoundingHelp>
             </div>
-            <LoreActivityButton />
           </>
         )}
         <button
           type="button"
-          className="villages-lorebook-action"
-          aria-label={triggerLabel ?? "Choose Village Lorebooks"}
+          ref={trigger}
+          className={founding ? "villages-forging-primary" : "villages-lorebook-action"}
+          data-reader-direction={founding ? "next" : undefined}
+          aria-label={founding ? undefined : "Choose Village Lorebooks"}
           disabled={disabled}
           onClick={() => {
             setQuery("");
+            setPage(0);
+            setPendingBudget(undefined);
             setPending([...selected]);
             setBaseSelection([...selected]);
             setOpen(true);
           }}
         >
-          {triggerLabel ?? "Choose..."}
+          {founding ? "Next" : "Choose..."}
         </button>
       </div>
-      {triggerLabel ? null : (
+      {founding ? null : (
         <div className={ELEMENT_TAG + "-lore-selected"} aria-live="polite">
           {selected.length ? (
             selected.map((id) => (
@@ -544,26 +593,15 @@ export function VillageLorebookPicker({
           )}
         </div>
       )}
-      {!open && !triggerLabel ? status : null}
+      {!open && !founding ? status : null}
       {open ? (
-        <FoundingDialog title="Choose Lorebooks" scrollBody onClose={() => setOpen(false)}>
-          {choices}
-          <footer className="villages-lorebook-footer">
-            <span aria-live="polite">{active.length} / 24</span>
-            <button
-              type="button"
-              className="villages-forging-primary"
-              disabled={disabled || stale}
-              onClick={() => {
-                if (disabled || stale) return;
-                onChange(pending);
-                setOpen(false);
-              }}
-            >
-              Done
-            </button>
-          </footer>
-        </FoundingDialog>
+        inline ? (
+          <div className="villages-lorebook-inline">{editor}</div>
+        ) : (
+          <FoundingDialog title="Choose Lorebooks" className="villages-lorebook-dialog" onClose={close}>
+            {editor}
+          </FoundingDialog>
+        )
       ) : null}
     </section>
   );
@@ -587,32 +625,30 @@ export function LoreTokenBudgetField({
   const invalid = !Number.isInteger(value) || value < min || value > max;
   return (
     <div className="villages-lorebook-budget">
-      <div className="villages-lorebook-budget-heading">
-        <label htmlFor={id}>Lorebook Token Budget</label>
-        <FoundingHelp label="Lorebook Token Budget">
-          Estimated token allowance per prompt. Constant entries need no keyword match but still need space. Current and
-          recent shared dialogue matches take priority. Primary keys, secondary conditions, case, whole-word matching
-          and entry order are supported. Regex keys are unsupported.
-        </FoundingHelp>
+      <label htmlFor={id}>Lorebook Token Budget</label>
+      <div className="villages-lorebook-budget-value">
+        <input
+          id={id}
+          aria-label="Lorebook Token Budget"
+          aria-describedby={`${id}-description`}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
+          placeholder="1600"
+          value={empty && value === 0 ? "" : String(value)}
+          disabled={disabled}
+          aria-invalid={invalid || undefined}
+          onChange={(event) => {
+            const raw = event.target.value.trim();
+            if (!/^\d*$/.test(raw)) return;
+            setEmpty(raw === "");
+            onChange(raw === "" ? 0 : Number(raw));
+          }}
+        />
+        <span>tokens</span>
       </div>
-      <input
-        id={id}
-        aria-label="Lorebook Token Budget"
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        autoComplete="off"
-        placeholder="1600"
-        value={empty && value === 0 ? "" : String(value)}
-        disabled={disabled}
-        aria-invalid={invalid || undefined}
-        onChange={(event) => {
-          const raw = event.target.value.trim();
-          if (!/^\d*$/.test(raw)) return;
-          setEmpty(raw === "");
-          onChange(raw === "" ? 0 : Number(raw));
-        }}
-      />
+      <p id={`${id}-description`}>Maximum lorebook information added to each model request.</p>
     </div>
   );
 }

@@ -7,14 +7,14 @@ export type FoundingWorkspaceState = {
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   settingBrief?: string;
-  settingBeat?: "welcome" | "world" | "lorebooks" | "village";
-  settingManual?: true;
+  settingBeat?: "welcome" | "world-overview" | "world" | "lorebooks" | "village-overview" | "village";
   settingIntroPending?: true | "connections";
   settingWorldBrief?: string;
   settingDraft?: Partial<FoundingSetting>;
   settingEditorOpen?: boolean;
-  mobileMenu?: "people" | "venues" | "review";
+  mobileMenu?: "people" | "maps" | "venues" | "review";
   settingProblem?: string;
+  unusedHomes?: VillageVenue[];
   suggestionRequest?: {
     id: string;
     sourceKey: string;

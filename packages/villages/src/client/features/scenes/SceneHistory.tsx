@@ -7,12 +7,15 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { renderVillagesMarkdown } from "../../shared/presentation.js";
 import { SceneErrorChip } from "./scene-errors.js";
 import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
-import type { PortraitMap } from "../../shared/types.js";
-import { AvatarFace } from "../residents/ResidentPanels.js";
+import { SceneActionIcon } from "./SceneActionIcon.js";
+import { SceneFace } from "./SceneFace.js";
+import { ReaderBook } from "../../shared/DialogueReader.js";
+import type { Portrait, PortraitMap } from "../../shared/types.js";
 
 type MessageStyle = {
   playerName: string;
   portraits?: PortraitMap;
+  playerPortrait?: Portrait;
   nameStyle: (speakerId: string) => CSSProperties | undefined;
   speechStyle: (speakerId: string) => CSSProperties | undefined;
 };
@@ -21,10 +24,11 @@ export function SceneMessage({
   line,
   playerName,
   portraits = {},
+  playerPortrait,
   nameStyle,
   speechStyle,
 }: MessageStyle & { line: RoomLine }) {
-  const narration = line.kind === "narration" || line.speakerId === "__venue_scene__";
+  const narration = line.role !== "user" && (line.kind === "narration" || line.speakerId === "__venue_scene__");
   const name = line.role === "user" ? playerName : narration ? "Narration" : line.name || "Resident";
   return (
     <article
@@ -35,18 +39,14 @@ export function SceneMessage({
     >
       <div className={`${ELEMENT_TAG}-scene-message-face`} aria-hidden="true">
         {narration ? (
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <rect x="4" y="8" width="16" height="13" rx="3" />
-            <path d="M12 8V3h3 M8 13h.01 M16 13h.01 M2 12v5 M22 12v5" />
-          </svg>
-        ) : line.speakerId.startsWith("npc:") ? (
-          <img src="/api/capability-packages/villages/assets/npc-silhouette.webp" alt="" data-npc-sprite="" />
+          <ReaderBook />
         ) : (
-          <AvatarFace
-            className={`${ELEMENT_TAG}-avatar`}
-            portrait={portraits[line.speakerId]}
+          <SceneFace
+            actorId={line.role === "user" ? undefined : line.speakerId}
+            portrait={line.role === "user" ? playerPortrait : portraits[line.speakerId]}
             name={name}
             glyph={line.role === "user" ? "person" : "initial"}
+            className={ELEMENT_TAG + "-chat-vn-portrait"}
           />
         )}
       </div>
@@ -85,17 +85,21 @@ export function SceneHistory({
   sceneId,
   scope,
   playerName,
+  playerPortrait,
+  portraits,
   nameStyle,
   speechStyle,
-  portraits,
+  onClose,
   currentVisitId,
 }: {
   sceneId: string;
   scope: string;
   playerName: string;
+  playerPortrait: Portrait | undefined;
+  portraits: PortraitMap;
   nameStyle: (speakerId: string) => CSSProperties | undefined;
   speechStyle: (speakerId: string) => CSSProperties | undefined;
-  portraits?: PortraitMap;
+  onClose: () => void;
   currentVisitId?: string;
 }) {
   const [page, setPage] = useState<SceneHistoryPage | null>(null),
@@ -122,7 +126,7 @@ export function SceneHistory({
           result.sceneId !== sceneId ||
           (expectedVersion && result.version !== expectedVersion)
         )
-          throw Error("Scene history changed. Refresh it to continue.");
+          throw Error("Scene history changed. Close and reopen Transcript to continue.");
         setPage(result);
       } catch (cause) {
         if (!controller.signal.aborted && currentLane.generation === claim) {
@@ -157,39 +161,39 @@ export function SceneHistory({
     : [{ id: sceneId, name: "Scene", at: "", lineIds: current?.lines.map((line) => line.id ?? "") ?? [] }];
   const lines = new Map(current?.lines.map((line) => [line.id, line]));
   return (
-    <div className={`${ELEMENT_TAG}-scene-transcript-content`} aria-busy={busy}>
+    <div className={ELEMENT_TAG + "-scene-history"} aria-busy={busy}>
       <nav className={ELEMENT_TAG + "-scene-history-pages"} aria-label="Scene history pages">
         <button
           type="button"
           className={ELEMENT_TAG + "-chat-vn-button"}
+          aria-label="Older"
+          title="Older"
           disabled={busy || !current?.olderCursor}
           hidden={!current?.olderCursor}
           onClick={() => void load(current?.olderCursor, current?.version)}
         >
-          Older
+          <SceneActionIcon name="older" />
         </button>
         <button
           type="button"
           className={ELEMENT_TAG + "-chat-vn-button"}
+          aria-label="Newer"
+          title="Newer"
           disabled={busy || !current?.newerCursor}
           hidden={!current?.newerCursor}
           onClick={() => void load(current?.newerCursor, current?.version)}
         >
-          Newer
+          <SceneActionIcon name="newer" />
         </button>
         <button
           type="button"
-          aria-label="Refresh"
-          title="Refresh"
-          className={ELEMENT_TAG + "-chat-vn-button"}
-          disabled={busy}
-          onClick={() => void load()}
+          className={ELEMENT_TAG + "-chat-vn-button " + ELEMENT_TAG + "-scene-history-close"}
+          aria-label="Close Transcript"
+          title="Close Transcript"
+          onClick={onClose}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-            <path d="M20 4v6h-6 M20 10a8 8 0 1 0 0 5" />
-          </svg>
+          <SceneActionIcon name="close" />
         </button>
-        {busy ? <span role="status">Loading…</span> : null}
       </nav>
       {error ? (
         <SceneErrorChip
@@ -206,9 +210,9 @@ export function SceneHistory({
       ) : null}
       <div
         ref={scrollRef}
-        className={`${ELEMENT_TAG}-scene-transcript-body`}
-        role="log"
-        aria-label="Scene history"
+        className={`${ELEMENT_TAG}-scene-history-body`}
+        role="region"
+        aria-label="Transcript messages"
         tabIndex={0}
       >
         {visits.map((visit) => (
@@ -246,6 +250,7 @@ export function SceneHistory({
                     key={id}
                     line={line}
                     playerName={playerName}
+                    playerPortrait={playerPortrait}
                     portraits={portraits}
                     nameStyle={nameStyle}
                     speechStyle={speechStyle}

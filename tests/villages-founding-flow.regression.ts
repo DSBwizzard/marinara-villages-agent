@@ -1,5 +1,11 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
+import {
+  FOUNDING_STEP,
+  savedFoundingStep,
+  SETUP_STEPS,
+} from "../packages/villages/src/client/features/founding/founding-steps.js";
+import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { createFoundingRestoreSetupDraft } from "../packages/villages/src/client/features/founding/draft-controller.js";
 import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
@@ -35,7 +41,7 @@ async function reviewNavigation() {
   const { createFoundingGotoSetupStep } =
     await import("../packages/villages/src/client/features/founding/setup-controller.js");
   let reviewed = false,
-    step = 3,
+    step: number = FOUNDING_STEP.Review,
     problem = "",
     blocked = "Place every starting Venue photograph.";
   const ports = {
@@ -71,78 +77,89 @@ async function reviewNavigation() {
     setupLocationName: "Old Harbour",
     setupPlayerBackground: "I came to help the community.",
     setupSetting: "Coastal rooms",
-    setupStep: 3,
+    setupStep: Number(FOUNDING_STEP.Review),
     setupSuggestionsBusy: false,
     setupVenueBusy: false,
     snapshot: { isFounded: true },
   };
   const goto = createFoundingGotoSetupStep(ports as any);
-  goto(3);
+  goto(FOUNDING_STEP.Review);
   assert.equal(reviewed, false, "re-entering restored Review cannot acknowledge an invalid map");
   assert.match(problem, /Place every/);
   blocked = "";
-  goto(3);
+  goto(FOUNDING_STEP.Review);
   assert.equal(reviewed, true, "successful Review navigation incorporates map acknowledgment");
-  assert.equal(step, 3);
+  assert.equal(step, FOUNDING_STEP.Review);
   assert.equal(problem, "");
-  ports.setupStep = 0;
+  ports.setupStep = FOUNDING_STEP.Setting;
   ports.connectionSetupProblem = "Choose a System connection.";
-  goto(1);
-  assert.equal(step, 0, "Place requires connections before proceeding");
-  assert.equal(problem, ports.connectionSetupProblem);
-  ports.setupStep = 1;
-  goto(2);
-  assert.equal(step, 0, "connection errors return to their first-page controls");
+  goto(FOUNDING_STEP.People);
+  assert.equal(step, FOUNDING_STEP.Setting, "Setting requires connections before proceeding");
   assert.equal(problem, ports.connectionSetupProblem);
   ports.connectionSetupProblem = "";
-  ports.setupStep = 0;
   ports.personaDraft = "";
-  goto(1);
-  assert.equal(step, 1, "Place can advance to People before choosing a Persona");
-  ports.setupStep = 1;
-  goto(2);
-  assert.equal(step, 1, "People validates its own required fields before Map");
-  assert.equal(problem, "Choose an available Persona.");
-  ports.setupName = "";
-  goto(2);
-  assert.equal(step, 0, "missing Place fields return to the first tab");
-  assert.equal(problem, "Give the village a name.");
-  ports.setupName = "Village";
+  ports.setupMapSrc = "";
+  goto(FOUNDING_STEP.People);
+  assert.equal(step, FOUNDING_STEP.People, "Choosing villagers does not require map artwork or a Persona yet");
+  ports.setupStep = FOUNDING_STEP.People;
   ports.setupLocationName = "";
-  goto(2);
-  assert.equal(step, 0);
+  goto(FOUNDING_STEP.Maps);
+  assert.equal(step, FOUNDING_STEP.Setting);
   assert.equal(problem, "Name the starting location.");
   ports.setupLocationName = "Old Harbour";
+  goto(FOUNDING_STEP.Maps);
+  assert.equal(step, FOUNDING_STEP.People, "People requires a Persona before opening Maps");
+  assert.equal(problem, "Choose an available Persona.");
   ports.personaDraft = "player";
+  goto(FOUNDING_STEP.Maps);
+  assert.equal(step, FOUNDING_STEP.Maps, "People opens Maps without requiring artwork first");
+  ports.setupStep = FOUNDING_STEP.Maps;
   reviewed = false;
   ports.setupMapSrc = "";
   ports.snapshot.isFounded = false;
-  goto(3);
+  for (const target of [FOUNDING_STEP.Venues, FOUNDING_STEP.Review]) {
+    goto(target);
+    assert.equal(step, FOUNDING_STEP.Maps, "No later chapter can bypass missing map artwork");
+    assert.match(problem, /Generate or upload map artwork/);
+  }
   assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
-  assert.match(problem, /Generate or upload map artwork/);
+  ports.setupMapSrc = "uploaded-map";
+  ports.setupMapBusy = true;
+  goto(FOUNDING_STEP.Venues);
+  assert.equal(step, FOUNDING_STEP.Maps, "Replacement artwork must finish before Venue placement");
+  assert.match(problem, /Wait for the requested map/);
+  ports.setupMapBusy = false;
+  goto(FOUNDING_STEP.Venues);
+  assert.equal(step, FOUNDING_STEP.Venues, "Completed artwork opens Venue placement directly");
+  ports.setupStep = FOUNDING_STEP.Venues;
+  goto(FOUNDING_STEP.Review);
+  assert.equal(step, FOUNDING_STEP.Review, "Venues advances directly to Review");
   const admissionPorts: any = {
     ...ports,
-    setupStep: 1,
+    setupStep: FOUNDING_STEP.People,
     setupWorldName: "Othiras",
     setupMapSrc: "map",
     setupResidentAdmissions: { resident: { ...EMPTY_RESIDENT_ADMISSION } },
   };
   const continueWithNotes = createFoundingGotoSetupStep(admissionPorts);
-  continueWithNotes(2);
-  assert.equal(step, 2, "blank admission requires no approval");
-  admissionPorts.setupStep = 2;
+  continueWithNotes(FOUNDING_STEP.Maps);
+  assert.equal(step, FOUNDING_STEP.Maps, "blank admission requires no approval");
+  admissionPorts.setupStep = FOUNDING_STEP.Maps;
   admissionPorts.setupSetting = "Changed setting";
-  continueWithNotes(3);
-  assert.equal(step, 3, "no biography reapproval gate");
+  continueWithNotes(FOUNDING_STEP.Venues);
+  assert.equal(step, FOUNDING_STEP.Venues, "no biography reapproval gate");
 }
 
 async function main() {
-  const { savedFoundingStep, SETUP_STEPS } =
-    await import("../packages/villages/src/client/features/founding/founding-steps.js");
-  assert.deepEqual(SETUP_STEPS, ["Setting", "People", "Venues and Map", "Review"]);
-  for (let step = 0; step < 4; step++) assert.equal(savedFoundingStep({ step }), step);
-  assert.equal(savedFoundingStep({ step: NaN }), 0);
-  assert.equal(savedFoundingStep({ step: 8 }), 3);
+  assert.deepEqual(SETUP_STEPS, ["Setting", "People", "Maps", "Venues", "Review"]);
+  for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
+  assert.equal(savedFoundingStep({ step: 2, phase: "People" }), FOUNDING_STEP.People);
+  assert.equal(savedFoundingStep({ step: 1, phase: "Maps" }), FOUNDING_STEP.Maps);
+  assert.equal(savedFoundingStep({ step: 1 }), FOUNDING_STEP.People);
+  assert.equal(savedFoundingStep({ step: 2, phase: "Venues and Map" }), FOUNDING_STEP.Maps);
+  assert.equal(savedFoundingStep({ step: 3 }), FOUNDING_STEP.Review);
+  assert.equal(savedFoundingStep({ step: 4, phase: "Zones" }), FOUNDING_STEP.Venues);
+  assert.equal(savedFoundingStep({ step: NaN }), FOUNDING_STEP.Setting);
   const { readPersona } = await import("../packages/villages/src/server/adapters/engine/catalog.js");
   const { validateFoundingRoster } = await import("../packages/villages/src/server/domain/rules/founding-record.js");
   const { parseFoundingVenueSuggestions } =
@@ -935,6 +952,11 @@ await main()
   assert.equal(restore({ ...draft, workspace: { ...draft.workspace, settingWorldBrief: 42 } }), false);
   assert.deepEqual(values, {}, "Unreadable drafts never populate the editor or enable autosave");
   assert.equal(restore(JSON.parse(JSON.stringify(draft))), true);
+  const legacyContext = { rules: "", circumstances: [], communityVenueId: "authored-meeting-place" };
+  const oldContextBefore = structuredClone(legacyContext);
+  assert.equal(restore({ ...draft, context: legacyContext }), true);
+  assert.equal((values.setSetupContext as any).openingVenueId, "authored-meeting-place");
+  assert.deepEqual(legacyContext, oldContextBefore, "Reading the old opening ID does not rewrite the saved source");
   assert.equal(values.setSetupName, "Willowmere");
   assert.equal(values.setSetupLocationName, "Willowmere", "Older v2 drafts retain their original first-map name");
   for (const startingLocationName of ["Old Harbour", ""]) {
@@ -943,12 +965,52 @@ await main()
     assert.equal(values.setSetupLocationName, startingLocationName, "Authored location names restore without backfill");
   }
   assert.equal(values.setScreen, "setup", "A freshly serialized v2 draft resumes without old-format backfill");
+  restore({ ...draft, step: 2, phase: "People" });
+  assert.equal(values.setSetupStep, FOUNDING_STEP.People, "A saved People chapter needs no map artwork");
+  for (const phase of ["Maps", "Venues", "Zones", "Review"]) {
+    restore({ ...draft, step: 3, phase });
+    assert.equal(
+      values.setSetupStep,
+      FOUNDING_STEP.Maps,
+      "Missing artwork resumes on Maps without discarding the draft",
+    );
+  }
+  restore({
+    ...draft,
+    step: 3,
+    phase: "Review",
+    mapSource: "upload",
+    mapImageSource: "upload",
+    mapImage: "/saved-map.png",
+  });
+  assert.equal(values.setSetupStep, FOUNDING_STEP.Review, "Old Review preserves its chapter once artwork exists");
   assert.deepEqual(values.setSetupWorkspace, draft.workspace);
   assert.equal(
     Object.hasOwn(values.setSetupContext, "households"),
     false,
     "Settled drafts discard retired grouping state",
   );
+  const oldHome = newSetupVenue("founding-home:player", "residence", 0.2, 0.3, true);
+  const legacyDraft = { ...draft, venues: [oldHome] };
+  restore(JSON.parse(JSON.stringify(legacyDraft)));
+  assert.equal(values.setSetupVenues[0].privateSpaces.length, 1);
+  assert.equal(values.setSetupVenues[0].destinations.player.sleep, "private:base");
+  for (const held of [
+    { ...legacyDraft, interruptedGeneration: true },
+    { ...legacyDraft, editorOriginal: oldHome },
+    { ...legacyDraft, zoneDrafts: { [oldHome.id]: {} } },
+    {
+      ...legacyDraft,
+      workspace: { ...draft.workspace, suggestionRequest: { id: "admitted", sourceKey: "source", quickStart: true } },
+    },
+  ]) {
+    restore(JSON.parse(JSON.stringify(held)));
+    assert.deepEqual(
+      values.setSetupVenues,
+      JSON.parse(JSON.stringify(legacyDraft.venues)),
+      "Pending or edited work keeps its exact source layout",
+    );
+  }
   draft.workspace.suggestionRequest = { id: "admitted-source", sourceKey: "exact-source", quickStart: true };
   draft.context.households = { a: "player" };
   createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
@@ -958,4 +1020,20 @@ await main()
     "An admitted request keeps its exact opaque source ingredient until resolved",
   );
   assert.deepEqual(values.setSetupWorkspace.suggestionRequest, draft.workspace.suggestionRequest);
+  const oldProblem =
+    "This Founding draft result is no longer available. Your current setup is kept. Generate again only when you choose.";
+  draft.workspace.suggestionRequest.failure = oldProblem;
+  draft.workspace.settingProblem = oldProblem;
+  const originalRequest = structuredClone(draft.workspace.suggestionRequest);
+  createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
+  assert.deepEqual(values.setSetupWorkspace.suggestionRequest, {
+    ...originalRequest,
+    failure: "Founding draft result unavailable.",
+  });
+  assert.equal(values.setSetupWorkspace.settingProblem, "Founding draft result unavailable.");
+  assert.equal(
+    draft.workspace.suggestionRequest.failure,
+    oldProblem,
+    "Updating displayed copy does not mutate the stored source object",
+  );
 }

@@ -17,6 +17,20 @@ export const engineSpriteUrl = (owner: string, filename: string, version?: strin
   bundledMariSpriteUrl(owner, filename) ??
   `/api/sprites/${encodeURIComponent(owner)}/file/${encodeURIComponent(filename)}${version ? `?v=${version}` : ""}`;
 
+/** Read old paired assignments as one expression without changing saved artwork. */
+export function canonicalSpriteEntries<T extends { expressionId: string; view: "front" | "side" }>(
+  entries: readonly T[],
+  defaultExpressionId?: string,
+  defaultView?: "front" | "side",
+): T[] {
+  const chosen = new Map<string, T>();
+  for (const entry of entries) {
+    const preferred = entry.expressionId === defaultExpressionId ? (defaultView ?? "front") : "front";
+    if (!chosen.has(entry.expressionId) || entry.view === preferred) chosen.set(entry.expressionId, entry);
+  }
+  return [...chosen.values()];
+}
+
 export function spriteLabelKey(value: string) {
   return spriteLabel(value)
     .replace(/_sprite_[a-f0-9]{12}$/iu, "")

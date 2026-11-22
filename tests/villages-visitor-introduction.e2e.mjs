@@ -107,7 +107,7 @@ await withBrowser(browser, async () => {
     });
     await page.goto("http://visitors.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const paragraph = page.getByRole("region", { name: "Latest reply" });
+    const paragraph = page.getByRole("region", { name: "Current paragraph" });
     await expect(paragraph).toContainText("A story can bump into you here.");
     const sprite = page.locator(`img[src="${spriteUrl}"]`).first();
     await expect(sprite).toBeVisible();

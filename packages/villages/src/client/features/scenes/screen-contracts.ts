@@ -8,8 +8,6 @@ import type { ScenesState } from "./useScenesState.js";
 
 import type { useContinueRoomWithoutGreeting } from "./actions.js";
 
-import type { useDiscardRoomDebug } from "./actions.js";
-
 import type { useDismissRoomNotice } from "./actions.js";
 
 import type { useGreetRoom } from "./actions.js";
@@ -32,8 +30,6 @@ export type SceneScreenController = {
   readonly closeRoom: ReturnType<typeof useCloseRoom>;
   readonly composerEditVersionRef: ScenesState["composerEditVersionRef"];
   readonly continueRoomWithoutGreeting: ReturnType<typeof useContinueRoomWithoutGreeting>;
-  readonly debugDiscardEnabled: ScenesState["debugDiscardEnabled"];
-  readonly discardRoomDebug: ReturnType<typeof useDiscardRoomDebug>;
   readonly dismissRoomNotice: ReturnType<typeof useDismissRoomNotice>;
   readonly goHome: () => void;
   readonly greetRoom: ReturnType<typeof useGreetRoom>;

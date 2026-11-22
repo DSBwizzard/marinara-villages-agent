@@ -40,6 +40,9 @@ export async function continueVenueWithoutGreeting(...args: Parameters<SceneComm
 export async function sendVenueTurn(...args: Parameters<SceneCommands["sendVenueTurn"]>) {
   return binding.get().sendVenueTurn(...args);
 }
+export async function dismissFailedTurn(...args: Parameters<SceneCommands["dismissFailedTurn"]>) {
+  return binding.get().dismissFailedTurn(...args);
+}
 export async function leaveVenueSession(...args: Parameters<SceneCommands["leaveVenueSession"]>) {
   return binding.get().leaveVenueSession(...args);
 }

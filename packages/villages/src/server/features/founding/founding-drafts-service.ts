@@ -91,6 +91,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const brief = asTrimmedString(input.brief);
     if (!asTrimmedString(input.actionId) || !brief || brief.length > FOUNDING_SETTING_BRIEF_LIMIT)
       throw badRequest("Tell Mari about your village in up to 4,096 characters.");
+    const villageName = input.villageName === undefined ? undefined : readVillageName(input.villageName);
     const worldBrief = asTrimmedString(input.worldBrief);
     if (
       (input.worldBrief !== undefined && typeof input.worldBrief !== "string") ||
@@ -136,15 +137,18 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       [
         {
           text: [
-            "Draft the opening setting for this player's shared-life village. It can be any kind of community, in any setting.",
-            'Return one JSON object with strings: "name" (community, up to 60 characters), "startingLocationName" (the area the map will cover, up to 80), "description" (a short paragraph describing that area and everyday life there), "worldName" (up to 120) and "rules" (standing facts for the setting).',
-            "The village name identifies the whole community. The first map covers the area where the starting villagers live and meet. When the player names a large city, station, or other expansive home but leaves the first area open, choose one locally meaningful district, deck, or equivalent within it. A city can be the village and its market district the first map. Use a district or local area named in the player's description or relevant lore when it fits. Use the whole place as the first map if it is small or the player explicitly requests it. Describe the first map area and its relationship to the larger place.",
-            "Preserve the player's explicit names and details. Follow any supplied world name and standing world rules. Use the lorebook references for relevant setting facts, and follow the player's description whenever they differ. Treat all source material as context. If a required name is unspecified, suggest one that fits. Use empty strings for worldName and rules unless established by the player or relevant lore. Leave first-day events, the starting cast, living arrangements and map placement for later steps. Write in the language of the player's village description.",
+            "Draft a community's setting and its starting location from the player's description. It can be any kind of community, in any setting.",
+            'Return one JSON object with strings: "name" (community, up to 60 characters), "startingLocationName" (the actual starting locale, up to 80), "description" (a short in-world paragraph about that place and everyday life there) and "worldName" (up to 120).',
+            "The community name identifies the whole community. The starting location is where local daily life is centered. When the player names a large city, station, or other expansive home but leaves the starting location open, choose one locally meaningful district, deck, or equivalent within it. A city can be the community and its market district the starting location. Use a district or local area named in the player's description or relevant lore when it fits. Use the whole place if it is small or the player explicitly requests it. Describe its physical surroundings and relationship to the larger place.",
+            "Write description entirely in-world, using concrete surroundings, structures, landmarks, atmosphere and everyday activity. Describe the place itself, never a map, its coverage, artwork, the setup process, Founding or Villages game mechanics. This applies even if the source uses those terms. With sparse input, add a few plausible local details consistent with the supplied facts instead of explaining the game or repeating how little is known.",
+            "Preserve the player's explicit names and details. Follow any supplied world name and standing world rules. World rules are player-authored constraints: never generate, add or rewrite them. Use the lorebook references for relevant setting facts, and follow the player's description whenever they differ. Treat all source material as context. If a required name is unspecified, suggest one that fits. Use an empty string for worldName unless established by the player or relevant lore. Leave first-day events, the starting cast, living arrangements and map placement for later steps. Write in the language of the player's village description.",
           ].join(" "),
         },
         ...lore.map((text, index) => ({ text, optional: "lore" as const, lore: sources[index] })),
       ],
-      worldBrief || world.worldName || world.worldRules ? JSON.stringify({ ...world, village: brief }) : brief,
+      villageName || worldBrief || world.worldName || world.worldRules
+        ? JSON.stringify({ ...world, villageName, village: brief })
+        : brief,
       requested,
       "System",
     );
@@ -167,14 +171,16 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const reply = extractModelJsonObject(completion);
     if (reply) {
       const worldName = authoredWorldName || readWorldName(reply.worldName ?? "");
-      const rules = world.worldRules ?? reply.rules ?? "";
-      if (worldName !== null && typeof rules === "string" && rules.length <= MAX_SETTING_LENGTH) {
+      if (worldName !== null) {
         try {
-          const name = readVillageName(reply.name);
+          const name = villageName ?? readVillageName(reply.name);
           const startingLocationName = mapName(reply.startingLocationName);
           const description = readVillageSetting(reply.description);
           if (description)
-            return { venues: [], setting: { name, startingLocationName, description, worldName, rules: rules.trim() } };
+            return {
+              venues: [],
+              setting: { name, startingLocationName, description, worldName, rules: authoredRules },
+            };
         } catch {
           // A readable object still needs complete, valid setting fields.
         }
@@ -210,7 +216,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       rows.some((row) => row.residentIds.length + Number(row.playerHome) > 4)
     )
       throw badRequest(
-        "Assign homes for one to three residents and choose an opening gathering Venue before suggestions.",
+        "Assign homes for one to three residents and include a public gathering Venue before suggestions.",
       );
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && !rows.some((row) => row.id === targetId))
@@ -286,7 +292,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. Starting Community Venues default to public Common Space, with distinct uses suited to the setting.",
             ...(quickStart
               ? [
-                  "Quick Start: a single-person Residence uses both Common and Private Space. A shared Residence uses a common sleeping/living space, without a Private Space. Each starting Community Venue has a public Common Space.",
+                  "Quick Start uses fixed starter layouts. Every Residence, including the player's, has Entrance, Common Space and Private Space. Describe each Community Venue's public Gathering Space in the Common fields; a second public Activity Space is supplied by the starter layout. Keep these public spaces unowned.",
                   "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Give each Community Venue a distinct everyday use suited to the Village. These template defaults do not restrict later editing.",
                 ]
               : []),
@@ -370,9 +376,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                     row.venueClass === "community"
                       ? "common"
                       : quickStart && row.venueClass === "residence"
-                        ? row.residentIds.length + Number(row.playerHome) > 1
-                          ? "common"
-                          : "both"
+                        ? "both"
                         : row.venueClass === "residence"
                           ? "common|private|both"
                           : "exterior|common|private|both",

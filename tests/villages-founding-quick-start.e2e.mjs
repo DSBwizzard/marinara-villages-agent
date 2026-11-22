@@ -39,6 +39,7 @@ function Harness(){
  const suggest=createFoundingSuggestSetupVenues({signal,setupWorkspace:workspace,setSetupWorkspace:setWorkspace,setupDraftData:data,persistSetupDraft:persist,personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:[],setupLoreTokenBudgetDraft:1600,setupSetting:'An oceanfront community',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[],openingVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
  useVisibleInterval(signal=>{if(workspace.suggestionRequest&&!workspace.suggestionRequest.failure)return suggest(undefined,signal)},workspace.suggestionRequest&&!workspace.suggestionRequest.failure?2000:null,visible);
  window.setFoundingVisible=setVisible;
+ window.restoreMissingSuggestion=()=>setWorkspace(state=>({...state,suggestionRequest:{id:'absent-draft-result',sourceKey:source,quickStart:true}}));
  const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
  const select=venue=>{setSelected(venue.id);setMoving(null);setWorkspace(state=>({...state,view:'details',paused:true}))};
  const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,pictureReference:image}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,pictureReference:image}:zone)});};
@@ -49,7 +50,7 @@ function Harness(){
  spaces:row.spaces.map(zone=>zone.id!=='common:base'?zone:{...zone,access:{mode:'public',managerIds:null,memberIds:[],memberRoles:[],inviterIds:[],visitorHours:'inherit',accompanied:false}})}));
  window.editDuringRequest=()=>patch('founding-home:player',row=>({...row,form:'A newer manual description'}));
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
- <QuickStartVenues openingVenueId='community' venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
+ <QuickStartVenues venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
  actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure} onGenerate={()=>suggest({quickStart:true,separateHomes:true})}/>}/>
  {problem?<p role='alert'>{problem}</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
 }
@@ -80,11 +81,21 @@ await withBrowser(browser, async () => {
         loseReply = false,
         failReply = false,
         hold = false,
+        unavailable = false,
         release,
         receipt;
       await page.route("**/api/villages**", async (route) => {
         if (route.request().method() === "GET") {
           reads++;
+          if (unavailable)
+            return fulfill(route, {
+              status: 404,
+              contentType: "application/json",
+              body: JSON.stringify({
+                code: "FOUNDING_DRAFT_UNAVAILABLE",
+                error: "Founding draft result unavailable.",
+              }),
+            });
           return fulfill(route, { contentType: "application/json", body: JSON.stringify(receipt) });
         }
         const input = route.request().postDataJSON();
@@ -150,6 +161,12 @@ await withBrowser(browser, async () => {
       await page.goto("http://page-three.test/");
       const sheet = page.locator(".villages-quick-dialog");
       const button = (name) => page.getByRole("button", { name, exact: true });
+      const closeVenue = () => sheet.getByRole("button", { name: "← Venues", exact: true }).click();
+      const manage = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
+      const connections = async () => {
+        await manage();
+        await sheet.getByRole("button", { name: /Zone connections/ }).click();
+      };
       await expect(sheet).toHaveCount(0);
       const first = page.locator('[data-venue-id="founding-home:player"]');
       const engine = page.locator("#engine-controls");
@@ -188,20 +205,18 @@ await withBrowser(browser, async () => {
       await expect(button("Engine navigation")).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(sheet).toBeVisible();
+      await manage();
       await sheet.getByLabel("Venue form", { exact: true }).fill("A timber cottage");
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await closeVenue();
       await expect(sheet).toHaveCount(0);
       await expect(first).toBeFocused();
       await expect(page.locator(".villages-forging-body")).toHaveJSProperty("inert", false);
       await first.click();
-      if (viewport.width > 600) {
-        await page.locator(".villages-founding-overlay").click({ position: { x: 2, y: 2 } });
-        await expect(sheet).toHaveCount(0);
-        await expect(first).toBeFocused();
-        await first.click();
-      }
+      await manage();
       await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveValue("A timber cottage");
       await page.keyboard.press("Escape");
+      await expect(sheet).toBeVisible();
+      await closeVenue();
       await expect(sheet).toHaveCount(0);
       await expect(first).toBeFocused();
       await first.click();
@@ -210,6 +225,10 @@ await withBrowser(browser, async () => {
       await expect(button("+ Add Venue")).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("combobox")).toHaveCount(0);
+      await expect(button("Zones")).toBeVisible();
+      await expect(sheet.getByText("Resident · Fixed for Founding", { exact: true })).toBeVisible();
+      await closeVenue();
+      await first.click();
       await expect(button("Zones")).toBeVisible();
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("switch")).toHaveCount(0);
@@ -220,7 +239,7 @@ await withBrowser(browser, async () => {
       await expect(button("Modify Zone Connections")).toHaveCount(0);
       await expect(sheet.locator(".villages-zone-map")).toHaveCount(0);
       const originalVenues = await page.evaluate(() => window.quickState.venues);
-      await button("Manage").click();
+      await connections();
       await expect(sheet.locator(".villages-zone-map")).toBeVisible();
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues),
@@ -235,6 +254,7 @@ await withBrowser(browser, async () => {
               ? row
               : {
                   ...row,
+                  privateSpaces: [],
                   spaces: Array.from({ length: 6 }, (_, i) => ({
                     ...row.spaces[0],
                     id: i ? "compact:" + i : "common:base",
@@ -334,15 +354,21 @@ await withBrowser(browser, async () => {
       await page.mouse.up();
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["compact:4"].y)).toBe(86);
       await assertGraph();
-      await page.evaluate((rows) => window.replaceQuickVenues(rows), originalVenues);
-      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
+      const sparse = structuredClone(originalVenues);
+      sparse[0].zoneLayout = {
+        exterior: { x: 0, y: 0 },
+        "common:base": { x: 34, y: 42 },
+        "private:base": { x: 68, y: 70 },
+      };
+      await page.evaluate((rows) => window.replaceQuickVenues(rows), sparse);
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
       assert.equal((await canvas.boundingBox()).height, canvasHeight, "Sparse graphs keep the full canvas height");
       await zone("common:base").scrollIntoViewIfNeeded();
       const room = await zone("common:base").boundingBox();
       const entrance = await zone("exterior").boundingBox();
       await page.mouse.move(room.x + room.width / 2, room.y + room.height / 2);
       await page.mouse.down();
-      await page.mouse.move(room.x + room.width * 1.51, entrance.y + entrance.height / 2 - 2, { steps: 1 });
+      await page.mouse.move(entrance.x + entrance.width + room.width / 2 + 1, entrance.y + entrance.height / 2 - 2);
       await page.mouse.up();
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["common:base"].y)).toBe(0);
       const adjacent = await zone("common:base").boundingBox();
@@ -351,17 +377,44 @@ await withBrowser(browser, async () => {
         "Zones can sit immediately beside another visible Zone without an invisible blocked margin",
       );
       await assertGraph();
-      await button("Add Zone").click();
+      await zone("common:base").click();
+      await button("Remove Zone").click();
+      await expect
+        .poll(() => page.evaluate(() => window.quickState.venues[0].destinations.player?.sleep ?? null))
+        .toBe(null);
+      await button("Modify Zone Connections").click();
+      await zone("exterior").click();
+      await zone("private:base").click();
+      await expect
+        .poll(() => page.evaluate(() => window.quickState.venues[0].destinations.player.sleep))
+        .toBe("private:base");
+      await sheet.locator(".villages-zone-map").getByRole("button", { name: "Done", exact: true }).click();
+      await page.evaluate((rows) => window.replaceQuickVenues(rows), sparse);
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
+      await button("Add Zone").click();
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(4);
       const addedZone = await page.evaluate(() => window.quickState.venues[0].spaces.at(-1).id);
       await button("Zones").click();
+      await page.evaluate(() => {
+        window.heldFocus = [];
+        window.nativeFrame = window.requestAnimationFrame;
+        window.requestAnimationFrame = (callback) => {
+          window.heldFocus.push(callback);
+          return 0;
+        };
+      });
       await zone(addedZone).click();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Reading nook");
+      await page.evaluate(() => {
+        window.requestAnimationFrame = window.nativeFrame;
+        for (const callback of window.heldFocus) callback(performance.now());
+      });
+      await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
       await sheet.getByLabel("Zone name", { exact: true }).press("Enter");
       await expect(sheet.getByRole("heading", { name: "Reading nook", exact: true })).toBeVisible();
       await button("Rename Zone").click();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
-      await button("Manage").click();
+      await connections();
       const beforeConnect = await page.evaluate(() => window.quickState.venues);
       await button("Modify Zone Connections").click();
       assert.deepEqual(
@@ -381,7 +434,7 @@ await withBrowser(browser, async () => {
         .toBe(true);
       await sheet.locator(".villages-zone-map").getByRole("button", { name: "Done", exact: true }).click();
       await button("Remove Zone").click();
-      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
       await expect(zone("exterior")).toHaveAttribute("aria-pressed", "true");
       await button("Modify Zone Connections").click();
       await zone("exterior").click();
@@ -419,8 +472,12 @@ await withBrowser(browser, async () => {
       );
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
       expected.spaces[0].name = "Front Office";
-      await button("About").click();
+      await closeVenue();
+      await first.click();
+      await manage();
       await sheet.getByLabel("Venue form", { exact: true }).fill("A converted school bus");
+      await closeVenue();
+      await first.click();
       await button("Zones").click();
       await zone("common:base").click();
       expected.form = "A converted school bus";
@@ -442,11 +499,11 @@ await withBrowser(browser, async () => {
       await expect.poll(() => first.evaluate((node) => node.style.backgroundImage)).not.toContain("data:image");
       await expect(first.locator("img")).toHaveCount(0);
       const confirm = async () => {
-        if (await sheet.count()) await sheet.getByRole("button", { name: "Done", exact: true }).click();
+        if (await sheet.count()) await closeVenue();
         await button(calls && receipt?.status === "failed" ? "Retry" : "Suggest").click();
         await page.getByRole("dialog").getByRole("button", { name: "Replace and suggest", exact: true }).click();
       };
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await closeVenue();
       await button("Suggest").click();
       await page.setViewportSize({ width: viewport.width, height: 260 });
       const confirmation = page.getByRole("dialog", { name: "Suggest", exact: true });
@@ -456,13 +513,31 @@ await withBrowser(browser, async () => {
         shortDialog.y >= shortPane.y && shortDialog.y + shortDialog.height <= shortPane.y + shortPane.height + 1,
         "Compact confirmation fits a short Villages pane",
       );
-      await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+      await confirmation.getByRole("button", { name: "Back", exact: true }).click();
       await page.setViewportSize(viewport);
       assert.equal(calls, 0);
+      await page.evaluate(() =>
+        window.replaceQuickVenues((rows) =>
+          rows.map((row) =>
+            row.id === "founding-home:ada"
+              ? {
+                  ...row,
+                  id: "ada-original-home",
+                  presentation: { ...row.presentation, mapId: "coast", x: 0.12, y: 0.83 },
+                }
+              : row,
+          ),
+        ),
+      );
       loseReply = true;
       await confirm();
       await expect.poll(() => calls).toBe(1);
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].name)).toBe("Drafted 0");
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues.find((row) => row.id === "founding-home:ada").presentation),
+        { mapId: "coast", image: null, x: 0.12, y: 0.83 },
+        "A resident keeps their home pin when the draft uses a different Venue ID",
+      );
       assert.ok(reads > 0, "Lost POST response recovers by reading the same receipt");
       assert.equal(calls, 1, "Recovery never dispatches a second paid attempt");
       assert.ok(
@@ -507,6 +582,41 @@ await withBrowser(browser, async () => {
         "A newer manual description",
         "Newer manual edits survive a stale replacement",
       );
+      const keptVenues = await page.evaluate(() => window.quickState.venues);
+      await page.evaluate(() => {
+        window.setFoundingVisible(false);
+        window.restoreMissingSuggestion();
+      });
+      await button("Save draft").click();
+      const beforeUnavailableReads = reads;
+      unavailable = true;
+      await page.reload();
+      await expect(button("Retry")).toBeEnabled();
+      await expect.poll(() => reads).toBe(beforeUnavailableReads + 1);
+      assert.equal(calls, 4, "An unavailable saved result never generates automatically");
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues),
+        keptVenues,
+        "Recovery retains all Venue edits and map pins",
+      );
+      await first.click();
+      await manage();
+      await sheet.getByLabel("Venue form", { exact: true }).fill("Still editable after an unavailable result");
+      await closeVenue();
+      await page.waitForTimeout(2250);
+      assert.equal(reads, beforeUnavailableReads + 1, "An authoritative missing result stops the recovery interval");
+      await button("Save draft").click();
+      await page.reload();
+      await expect(button("Retry")).toBeEnabled();
+      await expect
+        .poll(() => page.evaluate(() => window.quickState.venues[0].form))
+        .toBe("Still editable after an unavailable result");
+      assert.equal(reads, beforeUnavailableReads + 1, "Reloading the saved failure does not resume polling");
+      assert.equal(calls, 4);
+      await button("Retry").click();
+      await page.getByRole("dialog").getByRole("button", { name: "Replace and suggest", exact: true }).click();
+      await expect.poll(() => calls).toBe(5);
+      await expect(button("Suggest")).toBeEnabled();
       await page.screenshot({ path: ".build-tmp/page-three-" + viewport.width + ".png" });
       await context.close();
     });

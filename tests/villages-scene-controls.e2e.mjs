@@ -97,7 +97,22 @@ await withBrowser(browser, async () => {
         else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
         else if (path.endsWith("/rooms/" + session.id + "/history")) {
           assert.equal(new URL(route.request().url()).searchParams.get("scope"), fixture.worldScope);
-          value = { scope: fixture.worldScope, sceneId: session.id, version: "a".repeat(64), lines: session.lines };
+          value = {
+            scope: fixture.worldScope,
+            sceneId: session.id,
+            version: "a".repeat(64),
+            lines: [
+              ...session.lines,
+              ...Array.from({ length: 30 }, (_, index) => ({
+                id: "history-" + index,
+                role: "assistant",
+                speakerId: "__venue_scene__",
+                kind: "narration",
+                content: `Transcript paragraph ${index + 1}. The room is quiet and the afternoon light fills the window.`,
+                at: now,
+              })),
+            ],
+          };
         } else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (path.endsWith("/rooms/end")) {
           const endBody = route.request().postDataJSON();
@@ -142,13 +157,14 @@ await withBrowser(browser, async () => {
       const composer = page.getByRole("textbox", { name: "Message at The Mill" });
       const send = page.getByRole("button", { name: "Send", exact: true });
       const dock = page.locator(`.${tag}-chat-vn`);
+      const compactDock = await dock.boundingBox();
       const images = page.locator(`.${tag}-chat-cast-person > img`);
       while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
         await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
       await expect(composer).toBeVisible();
-      await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
-      await expect(page.locator(`.${tag}-chat-vn-portrait`).first()).toBeVisible();
-      await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+      await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
+      await expect(page.locator(`.${tag}-chat-vn-portrait`)).toBeVisible();
+      await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
       const buttonBox = await send.boundingBox();
       assert.equal(buttonBox.width, mobile ? 44 : 32);
       assert.equal((await send.locator("svg").boundingBox()).width, 15);
@@ -160,30 +176,62 @@ await withBrowser(browser, async () => {
       const inputAfter = await composer.locator("..").boundingBox();
       assert.equal(inputAfter.width, inputBefore.width, "scrollbars cannot resize the composer");
       await composer.fill("Tea sounds perfect.");
-      await expect(composer).toBeVisible();
-      await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Read transcript", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Previous paragraph" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Transcript", exact: true }).click();
       await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
       await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Rain taps against the window.");
       const historyPages = page.getByRole("navigation", { name: "Scene history pages" });
       assert.equal(
-        (await historyPages.getByRole("button", { name: "Refresh", exact: true }).boundingBox()).height,
+        (await historyPages.getByRole("button", { name: "Close Transcript", exact: true }).boundingBox()).height,
         mobile ? 44 : 32,
       );
-      await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
-      await expect(composer).toBeVisible();
-      await expect(send).toBeVisible();
-      await page.getByRole("button", { name: "Close transcript", exact: true }).click();
+      await expect(historyPages.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(0);
+      const expandedDock = await dock.boundingBox();
+      assert(expandedDock.height > compactDock.height, "Transcript extends the existing dock upwards");
+      await expect(dock).toHaveCSS("box-shadow", "none");
+      const history = page.getByRole("log", { name: "Scene history" });
+      await expect(history).toHaveCSS("position", "static");
+      await expect(history).toHaveCSS("box-shadow", "none");
+      await expect(history.locator(`.${tag}-scene-message .${tag}-chat-vn-portrait`)).toHaveCount(1);
+      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
+      await expect(composer).toBeDisabled();
+      await expect(send).toBeDisabled();
+      const messages = page.getByRole("region", { name: "Transcript messages" });
+      const closeHistory = page.getByRole("button", { name: "Close Transcript", exact: true });
+      const toolbarBefore = await historyPages.boundingBox();
+      assert.equal(await historyPages.innerText(), "", "transcript controls use icons instead of a large text header");
+      const messagesBox = await messages.boundingBox();
+      assert(toolbarBefore.y + toolbarBefore.height <= messagesBox.y + 1, "toolbar stays above the text");
+      for (const fraction of [0, 0.5, 1]) {
+        await messages.evaluate((node, value) => {
+          node.scrollTop = (node.scrollHeight - node.clientHeight) * value;
+        }, fraction);
+        assert.deepEqual(await historyPages.boundingBox(), toolbarBefore, "scrolling cannot move the toolbar");
+        assert(
+          await closeHistory.evaluate((button) => {
+            const box = button.getBoundingClientRect();
+            return (
+              document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest("button") === button
+            );
+          }),
+          "close control remains reachable at every scroll position",
+        );
+      }
+      assert(
+        await messages.evaluate((node) => node.scrollTop > 0),
+        "long transcripts scroll inside their own text area",
+      );
+      if (count === 1) await page.screenshot({ path: `artifacts/transcript-controls-${width}x${height}.png` });
+      await page.getByRole("button", { name: "Close Transcript", exact: true }).click();
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Hide dialogue", exact: true }).click();
-      await expect(composer).toBeHidden();
+      await expect(page.getByRole("menuitem", { name: "Hide dialogue", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "Settings", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Venue actions" }).click();
-      await page.getByRole("menuitem", { name: "Show dialogue", exact: true }).click();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Venue actions" }).click();
-      for (const action of ["Move", "Conclude"])
+      for (const action of ["Retry Turn", "Conclude"])
         await expect(page.getByRole("menuitem", { name: action, exact: true })).toBeVisible();
       await expect(page.getByRole("menuitemradio")).toHaveCount(0);
       await expect(page.getByRole("menuitem", { name: /^(Contact|Fulfill|Knock \/ Call)$/u })).toHaveCount(0);
@@ -191,9 +239,15 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("menuitem", { name: "Proposals", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "View Mailbox" })).toHaveCount(1);
       assert.equal(await dock.getByRole("button", { name: /Mailbox|Projects|Proposals/ }).count(), 0);
-      await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-      await expect(page.getByRole("switch", { name: "Use Decisions" })).toHaveCount(0);
-      await page.getByRole("button", { name: "Close Scene settings" }).click();
+      await expect(page.getByRole("menuitem").first()).toHaveAttribute("aria-label", "Settings");
+      await expect(page.getByRole("menuitem")).toHaveCount(8);
+      await expect(page.getByRole("menuitem", { name: "Scene settings" })).toHaveCount(0);
+      await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
+      await expect(page.locator("." + tag + "-room-screen")).toBeHidden();
+      await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+      await expect(page.getByRole("checkbox", { name: "Send on Enter", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+      await expect(composer).toHaveValue("Tea sounds perfect.");
 
       await page.getByRole("button", { name: "Venue actions" }).click();
       const draftBeforeVenue = await composer.inputValue();
@@ -243,10 +297,11 @@ await withBrowser(browser, async () => {
       }
 
       if (mobile) {
-        // The retained Scene remeasures after returning from a menu.
-        await page.evaluate(
-          () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-        );
+        // Fonts, reading pagination and the retained canvas settle through chained frame callbacks.
+        await page.evaluate(async () => {
+          await document.fonts.ready;
+          for (let frame = 0; frame < 3; frame++) await new Promise((resolve) => requestAnimationFrame(resolve));
+        });
         const baseline = await images.evaluateAll((nodes) =>
           nodes.map((node) => {
             const { x, y, width, height } = node.getBoundingClientRect();
@@ -281,7 +336,8 @@ await withBrowser(browser, async () => {
               );
           assert.ok(
             after.every((box, index) => box.y <= baseline[index].y + 1),
-            "the keyboard may lift the art",
+            "the keyboard may lift the art: " +
+              JSON.stringify({ width, height, count, resizesLayout, baseline, after }),
           );
           keyboardFirstY = Math.round(after[0].y);
           assert.ok((await dock.boundingBox()).y >= 0, "dock stays inside the visible screen");
@@ -299,7 +355,7 @@ await withBrowser(browser, async () => {
           }, height);
           if (resizesLayout) await page.setViewportSize({ width, height });
           await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-          await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+          await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
           await expect(composer).toHaveValue("Keyboard draft");
         }
         // Panning that preserves the visible bottom also preserves the keyboard layout.
@@ -321,7 +377,7 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         }, height);
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
         // iOS-style panning may offset the entire lost height, keeping the bottom unchanged.
         await page.evaluate(
           ({ visible, keyboardHeight }) => {
@@ -335,7 +391,7 @@ await withBrowser(browser, async () => {
           { visible, keyboardHeight },
         );
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
         await expect
           .poll(async () => Math.round((await images.first().boundingBox()).y))
           .toBe(Math.round(baseline[0].y));
@@ -348,7 +404,7 @@ await withBrowser(browser, async () => {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         }, height);
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
-        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
       }
       if (process.env.VILLAGES_VISUAL_OUTPUT && count === 1)
         await page.screenshot({
@@ -357,7 +413,7 @@ await withBrowser(browser, async () => {
       await composer.fill("Ready to send.");
       await send.click();
       await expect.poll(() => turns).toBe(1);
-      await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
 
       while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
         await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
@@ -383,7 +439,8 @@ await withBrowser(browser, async () => {
         await expect(host).not.toHaveAttribute("data-scene-play", "");
         assert.equal(await host.evaluate((el) => el.style.getPropertyValue("--villages-scene-canvas-height")), "");
       }
-      await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
+      if (count === 4) await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
+      else await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
       assert.deepEqual(errors, []);
       await page.close();
     }

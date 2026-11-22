@@ -265,7 +265,7 @@ await withBrowser(browser, async () => {
     // Completion polling intentionally pauses in hidden tabs. Activate the tab
     // whose preserved draft and refreshed transcript this assertion exercises.
     await two.bringToFront();
-    const latest = two.getByRole("region", { name: "Latest reply", exact: true });
+    const latest = two.getByRole("region", { name: "Current paragraph", exact: true });
     await expect(latest).toContainText("I heard your new message.", { timeout: 10000 });
     await expect(one.getByRole("button", { name: "Sending", exact: true })).toHaveCount(0);
     await readToComposer(two);

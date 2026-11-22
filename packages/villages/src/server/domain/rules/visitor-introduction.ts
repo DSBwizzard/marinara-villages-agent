@@ -117,7 +117,7 @@ export function appendVisitorIntroductionTutorial(scene: VenueScene, farewellId?
     if (farewellId && index === 7) continue;
     const id = `${scene.id}-visitors-${index}`;
     if (scene.lines.some((line) => line.id === id)) continue;
-    const expression = resolveSpriteExpression(sprite, mood, false, "front", 0);
+    const expression = resolveSpriteExpression(sprite, mood, false, 0);
     const line: VenueScene["lines"][number] = {
       id,
       role: "assistant",

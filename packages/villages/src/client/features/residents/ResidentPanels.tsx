@@ -191,12 +191,20 @@ export function AvatarFace({
   glyph?: "initial" | "person";
 }) {
   const [failedUrl, setFailedUrl] = useState("");
+  let imageUrl = portrait?.url;
+  if (imageUrl?.startsWith("/api/avatars/file/")) {
+    const thumbnail = new URL(imageUrl, window.location.origin);
+    thumbnail.searchParams.set("w", "320");
+    imageUrl = thumbnail.pathname + thumbnail.search + thumbnail.hash;
+  }
   return (
     <span aria-hidden="true" className={className}>
       {portrait && portrait.url !== failedUrl ? (
         <img
-          src={portrait.url}
+          src={imageUrl}
           alt=""
+          loading="lazy"
+          decoding="async"
           style={avatarCropStyle(portrait.crop)}
           onError={() => setFailedUrl(portrait.url)}
         />

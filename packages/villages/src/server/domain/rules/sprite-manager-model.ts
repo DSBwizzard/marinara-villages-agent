@@ -1,4 +1,5 @@
 import type { SpriteArtwork, SpriteFolders, SpriteManagerState } from "../../../shared/contracts/sprites.js";
+import { canonicalSpriteEntries } from "../../../shared/helpers/sprite-variants.js";
 
 export function readSpriteFolders(value: unknown): SpriteFolders | undefined {
   const folders = value as Partial<SpriteFolders> | null | undefined;
@@ -145,10 +146,16 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       seenAssignments.add(entry.expressionId + ":" + entry.view);
       return true;
     })
-    .map(({ expressionId, view, artworkId, engineFilename, version }) => ({
-      expressionId,
-      view,
-      ...(engineFilename ? { engineFilename, ...(version ? { version } : {}) } : { artworkId: artworkId! }),
+    .map((slot) => ({
+      expressionId: slot.expressionId,
+      view: slot.view,
+      ...(slot.engineFilename
+        ? {
+            engineFilename: slot.engineFilename,
+            ...(slot.version ? { version: slot.version } : {}),
+            ...(slot.view === "front" && slot.automatic === true ? { automatic: true as const } : {}),
+          }
+        : { artworkId: slot.artworkId! }),
     }));
   const framing = state.framing;
   const folders = readSpriteFolders(state.folders);
@@ -181,7 +188,7 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
 }
 export function managerResidentSprite(state: SpriteManagerState | null | undefined, characterId: string) {
   if (!state || state.useSprites === false) return null;
-  const expressions = state.assignments.flatMap((assignment) => {
+  const assigned = state.assignments.flatMap((assignment) => {
     const art = state.artwork.find((item) => item.id === assignment.artworkId);
     const expression = state.expressions.find((item) => item.id === assignment.expressionId);
     if (!expression || (!art && !assignment.engineFilename)) return [];
@@ -200,6 +207,10 @@ export function managerResidentSprite(state: SpriteManagerState | null | undefin
       },
     ];
   });
+  const expressions = canonicalSpriteEntries(assigned, state.defaultExpressionId, state.defaultView).map((entry) => ({
+    ...entry,
+    view: "front" as const,
+  }));
   return expressions.length
     ? {
         assetId: expressions[0]!.assetId,
@@ -208,7 +219,7 @@ export function managerResidentSprite(state: SpriteManagerState | null | undefin
           : {}),
         expressions,
         defaultExpressionId: state.defaultExpressionId,
-        ...(state.defaultView ? { defaultView: state.defaultView } : {}),
+        defaultView: "front" as const,
         framing: state.framing,
       }
     : null;

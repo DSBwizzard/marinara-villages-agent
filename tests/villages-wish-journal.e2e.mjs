@@ -386,13 +386,9 @@ await withBrowser(browser, async () => {
     // Fresh notices open after rendering; clicking during that effect would race and close the panel.
     await expect(notices).toHaveAttribute("aria-expanded", "true");
     await page.getByRole("textbox", { name: "Message at The Mill" }).fill("Unsaved Scene draft");
-
-    const reader = page.getByRole("region", { name: "Latest reply" });
+    const reader = page.getByRole("region", { name: "Current paragraph" });
     const retainedReader = await reader.elementHandle();
     const readingText = await reader.textContent();
-    await reader.evaluate((node) => {
-      node.scrollTop = 20;
-    });
     const readingScroll = await reader.evaluate((node) => node.scrollTop);
     await page.getByRole("button", { name: /View Wish update: Wish shared/ }).click();
     await expect(profile).toBeVisible();
@@ -409,7 +405,7 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true })
       .focus();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsaved Scene draft");
     await expect(reader).toHaveText(readingText);
     assert.equal(await retainedReader.evaluate((node) => node.isConnected), true);
     assert.equal(await reader.evaluate((node) => node.scrollTop), readingScroll);

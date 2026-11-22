@@ -59,6 +59,4 @@ assert.deepEqual(
   Object.values(mobileSceneLayout(["a", "b"], initialStaging(ids), arrivalEvents)).map((slot) => slot.x),
   [0.26, 0.74],
 );
-console.log(
-  "Mobile groups: defaults, explicit movement, attention, departures, depth, counters and immutable state passed",
-);
+console.log("Mobile groups: defaults, explicit movement, attention, departures, depth and immutable state passed");

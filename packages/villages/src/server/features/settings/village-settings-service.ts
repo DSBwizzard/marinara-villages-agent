@@ -98,6 +98,21 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
+  async function setMenuAppearance(value: unknown): Promise<VillageSnapshot> {
+    if (value !== "auto" && value !== "day" && value !== "night") throw badRequest("Choose Day & night, Day or Night.");
+    await mutateVillageState((state) => {
+      state.menuAppearance = value;
+    });
+    return buildVillageSnapshot();
+  }
+  async function setLorebookChipsEnabled(value: unknown): Promise<VillageSnapshot> {
+    if (typeof value !== "boolean") throw badRequest("Lorebook chips must be on or off.");
+    await mutateVillageState((state) => {
+      state.lorebookChipsEnabled = value;
+    });
+    return buildVillageSnapshot();
+  }
+
   /** Rename the village. */
   async function setVillageName(value: unknown): Promise<VillageSnapshot> {
     const name = readVillageName(value);
@@ -195,6 +210,8 @@ export function createVillageSettings({
     setVillageSendOnEnter,
     setSpontaneousEvents,
     setVillageCharacterSpeechColors,
+    setMenuAppearance,
+    setLorebookChipsEnabled,
     setVillageName,
     setVillagePlayer,
     setVillageWorldName,

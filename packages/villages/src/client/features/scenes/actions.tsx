@@ -1,4 +1,3 @@
-import { useConfirmation } from "../../shared/confirmation.js";
 import { useCallback, useRef, type SetStateAction } from "react";
 import type {
   RoomLine,
@@ -266,75 +265,6 @@ export function useCloseRoom(ports: {
     setRoomEnded,
     receiveRoomRecordEvents,
     setLastSceneEnding,
-  ]);
-}
-
-export function useDiscardRoomDebug(ports: {
-  debugDiscardEnabled: boolean;
-  loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
-  room: SceneView;
-  roomBusy: boolean;
-  seenRoomEventIdsRef: React.RefObject<Set<string>>;
-  setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
-  setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
-  setRoomDraft: React.Dispatch<SetStateAction<string>>;
-  setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
-  setRoomNotices: React.Dispatch<SetStateAction<RoomRecordEvent[]>>;
-  setRoomOpen: React.Dispatch<SetStateAction<boolean>>;
-  setScreen: React.Dispatch<SetStateAction<"menu" | "venue" | "home" | "setup" | "preparing" | "room" | "person">>;
-}) {
-  const confirmVillages = useConfirmation(ports.room?.id);
-  const {
-    debugDiscardEnabled,
-    loadSnapshot,
-    room,
-    roomBusy,
-    seenRoomEventIdsRef,
-    setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomError,
-    setRoomNotices,
-    setRoomOpen,
-    setScreen,
-  } = ports;
-  return useCallback(async () => {
-    if (!room?.id || !debugDiscardEnabled || roomBusy) return;
-    if (
-      !(await confirmVillages(
-        "DEBUG: Discard this Scene and its transcript? Completed effects and villager memories remain.",
-      ))
-    )
-      return;
-    setRoomBusy(true);
-    try {
-      await request("/rooms/debug/discard", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
-      setRoom(null);
-      setRoomOpen(false);
-      setRoomNotices([]);
-      seenRoomEventIdsRef.current.clear();
-      setRoomDraft("");
-      setScreen("home");
-      void loadSnapshot();
-    } catch (cause) {
-      setRoomError(sceneFailure(cause, "The debug discard failed.", "discard"));
-    } finally {
-      setRoomBusy(false);
-    }
-  }, [
-    confirmVillages,
-    room?.id,
-    debugDiscardEnabled,
-    roomBusy,
-    setRoomBusy,
-    setRoom,
-    setRoomOpen,
-    setRoomNotices,
-    seenRoomEventIdsRef,
-    setRoomDraft,
-    setScreen,
-    loadSnapshot,
-    setRoomError,
   ]);
 }
 

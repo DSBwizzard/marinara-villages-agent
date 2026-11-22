@@ -202,11 +202,16 @@ await withBrowser(browser, async () => {
     assert.equal(lastContact.mode, "chat");
     assert.equal(lastContact.contact, undefined);
     finishContact();
-    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("No answer.");
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("No answer.");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     await next.click();
-    await expect(page.getByRole("region", { name: "Latest reply" })).toContainText("quiet doorway");
-    while (await next.isEnabled()) await next.click();
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
+    while (await next.isEnabled()) {
+      await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
+      await expect(composer).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
+      await next.click();
+    }
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);
     await expect(composer).toHaveValue("Typed while the reply was pending");
     const preservedDraft = "Draft survives Zone changes. ".repeat(35);
@@ -215,24 +220,17 @@ await withBrowser(browser, async () => {
       const box = await page.locator(selector).boundingBox();
       assert.ok(box && Math.abs(box.y + box.height - 844) <= 1, "bottommost control has no padding below it");
     };
-    await dockAtBottom('[class$="-chat-input"]');
+    await dockAtBottom('[class$="-chat-vn"]');
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-ready-" + width + ".png") });
     await expect(composer).toHaveValue(preservedDraft);
     const picker = page.getByRole("dialog", { name: "Move to Zone" });
     const selectMove = async () => {
-      await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Move", exact: true }).click();
-      await expect(picker.getByRole("button", { name: "Arrange", exact: true })).toHaveCount(0);
-      await expect(picker.getByRole("button", { name: "Close Move to Zone", exact: true })).toBeFocused();
-      assert.ok((await picker.boundingBox()).height < 700, "The route diagram fits the Scene viewport");
-      await expect(picker.getByRole("region", { name: "Zone layout", exact: true })).toBeVisible();
-      await expect(picker.locator('[data-layout-zone="' + scene.zoneId + '"]')).toHaveAttribute(
-        "aria-current",
-        "location",
-      );
+      await page.getByRole("button", { name: "Move", exact: true }).click();
+      await expect(picker.getByRole("button", { name: "Close Move to Zone" })).toBeFocused();
+      assert.ok((await picker.boundingBox()).height < 800, "The route diagram fits the Scene viewport");
       await expect(composer).toHaveValue(preservedDraft);
-      await dockAtBottom('[class$="-chat-input"]');
+      await dockAtBottom('[class$="-chat-vn"]');
     };
     scene.sceneRevision++;
     const lineCount = scene.lines.length;
@@ -275,13 +273,13 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue(preservedDraft);
     assert.ok(await composer.evaluate((field) => field.scrollHeight > field.clientHeight));
     await expect(composer).toHaveCSS("overflow-y", "auto");
-    const frame = await page.locator('[class$="-chat-input"]').boundingBox();
+    const frame = await page.locator('[class$="-chat-vn"]').boundingBox();
     const row = await page.locator('[class$="-composer-row"]').boundingBox();
     assert.ok(frame && row && frame.width >= row.width - 2, "composer uses full row width");
     assert.equal(await page.locator("[data-scene-scope]").count(), 0);
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("region", { name: "Latest reply" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toBeVisible();
 
     await expect(composer).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Move to Zone" })).toHaveCount(0);

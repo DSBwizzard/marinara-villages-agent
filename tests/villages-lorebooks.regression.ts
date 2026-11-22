@@ -218,7 +218,7 @@ async function main() {
       buildTownMapPrompt(undefined, "harbor village", visual).includes(JSON.stringify(visual)),
       "Maps retain the complete selected reference as data",
     );
-    assert.throws(() => buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)), /4,000-character allowance/);
+    assert.ok(buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)).includes("y".repeat(500)));
     globalThis.fetch = async () => new Response(JSON.stringify({ secret: "private-book-title" }), { status: 503 });
     await assert.rejects(readVillageLore(["world"], "harbor"), (error: any) => {
       assert.doesNotMatch(error.message, /private-book-title|503/);
@@ -632,7 +632,18 @@ async function main() {
     placeId: "harbor",
     participants: [],
     activeIds: [],
-    lines: [],
+    lines: [
+      {
+        id: "lore-reply",
+        role: "assistant",
+        kind: "narration",
+        speakerId: "__venue_scene__",
+        name: "Narration",
+        content: "The harbor is quiet.",
+        at,
+        heardBy: ["player"],
+      },
+    ],
     submissions: [
       {
         id: "turn",
@@ -642,6 +653,7 @@ async function main() {
         targetId: "",
         requestFingerprint: memoryHash(["chat", "", null, "Hello"]),
         episodeId: "accepted-lore",
+        replyLineIds: ["lore-reply"],
         progressProcessedAt: at,
         acceptance: { status: "applied", rejected: [] },
         lore: combined,
