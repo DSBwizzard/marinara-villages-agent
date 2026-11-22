@@ -11,13 +11,9 @@ import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnectionsControls, useAgentConnections } from "../settings/AgentConnections.js";
 import { VillageIcon } from "../../shared/VillageIcon.js";
 import { Appearance } from "../residents/Appearance.js";
-import { FoundingPagination } from "./FoundingPagination.js";
+import { FoundingReview, type ReviewEditor } from "./FoundingReview.js";
+import { FoundingReviewSetting, type ReviewSettingSection } from "./FoundingReviewSetting.js";
 import { FoundingDialog } from "./FoundingDialog.js";
-import {
-  FOUNDING_CIRCUMSTANCE_MAX_LENGTH,
-  foundingCircumstanceText,
-  foundingCircumstanceFromText,
-} from "../../../shared/helpers/founding-circumstance.js";
 import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide, foundingMariSprite } from "./FoundingGuide.js";
 import { FoundingHierarchy } from "./FoundingHierarchy.js";
@@ -29,7 +25,7 @@ import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { useFoundingKeyboardOverlay } from "./useFoundingKeyboardOverlay.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
-import { SceneryStyleFields, venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
+import { SceneryStyleFields } from "./villages-founding-editor";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 const PLACE_ERRORS = {
@@ -88,7 +84,7 @@ function FoundingChapter({
             onClose={onCloseMenu}
           >
             {body}
-            <footer className="villages-founding-menu-actions">{mobileReplies}</footer>
+            {mobileReplies ? <footer className="villages-founding-menu-actions">{mobileReplies}</footer> : null}
           </FoundingDialog>
         )
       ) : (
@@ -147,20 +143,17 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     setupEditorOpen,
     setupFocusIssue,
     setupFoundingVillagerIds,
-    setupLorebookDraft,
     setupMapBusy,
     setupMapProblem,
     setupMapPrompt,
     setupMapRequest,
     setupMapShape,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupLocationName,
     setupPlacementError,
     setupPlayerBackground,
     setupProblem: currentSetupProblem,
-    setupWorldName,
     setupSetting,
     setupContext,
     setSetupContext,
@@ -277,10 +270,12 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     [setSetupWorkspace],
   );
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
-  const [reviewPage, setReviewPage] = useState(0);
+  const [reviewEditor, setReviewEditor] = useState<ReviewEditor>();
+  const [reviewSettingSection, setReviewSettingSection] = useState<ReviewSettingSection>("Map");
+  const [reviewVenueFromMap, setReviewVenueFromMap] = useState(false);
+  const [reviewPeopleSection, setReviewPeopleSection] = useState<"you" | "villagers">("you");
   useLetterFont(screen === "setup" ? "lora" : undefined);
   const [openVenueFromMap, setOpenVenueFromMap] = useState<{ id: string }>();
-  const reviewIndex = Math.min(reviewPage, Math.max(0, Math.ceil(setupVenues.length / 3) - 1));
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
   const mariMoveFrom = useRef<{ element: HTMLElement; bounds: DOMRect }[]>([]);
@@ -519,7 +514,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       id,
       name: catalog?.find((person) => person.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
     }));
-    const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);
     const selectedPin = setupVenues.find((venue) => venue.id === selectedSetupVenueId) ?? setupVenues[0];
     const setupIssues = foundingVenueIssues(setupVenues, false);
@@ -566,6 +560,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                       setSelectedSetupVenueId(pin.id);
                       setSetupFocusIssue(null);
                       setOpenVenueFromMap({ id: pin.id });
+                      if (setupStep === FOUNDING_STEP.Review) {
+                        setReviewVenueFromMap(true);
+                        setReviewEditor("venues");
+                      }
                       setMovingSetupVenueId(null);
                       setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
                     }
@@ -674,7 +672,8 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     };
     const chapterDisabled = busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError;
     const advanceDisabled =
-      chapterDisabled || (setupStep === FOUNDING_STEP.Maps && (setupMapBusy || !!setupMapRequest));
+      chapterDisabled ||
+      ((setupStep === FOUNDING_STEP.Maps || setupStep === FOUNDING_STEP.Review) && (setupMapBusy || !!setupMapRequest));
     const validateVillage = () => {
       const problem = !setupName.trim() ? PLACE_ERRORS.name : !villageBrief ? PLACE_ERRORS.brief : "";
       if (!problem) return true;
@@ -722,8 +721,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         openIssue(setupIssues[0]);
         return;
       }
-      if (setupStep === FOUNDING_STEP.Review) void foundVillage();
-      else changeStep(setupStep + 1);
+      if (setupStep === FOUNDING_STEP.Review) {
+        if (!controller.setupMapReviewed) setReviewEditor("map");
+        else void foundVillage();
+      } else changeStep(setupStep + 1);
     };
     const nextReply = (
       <button
@@ -790,6 +791,210 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         </FoundingField>
       </>
     );
+    const personaFields = (
+      <>
+        {" "}
+        <h3 aria-label="You">You</h3>
+        {personaError ? (
+          <p role="alert" data-founding-problem tabIndex={-1}>
+            Choose an available Persona.
+          </p>
+        ) : null}
+        <FoundingPersonaSelector
+          personas={personas}
+          draft={personaDraft}
+          onDraft={(id) => {
+            setPersonaDraft(id);
+            clearFieldValidation("persona");
+          }}
+          disabled={busy}
+        />
+      </>
+    );
+    const villagerFields = (
+      <>
+        {" "}
+        <h3 className="villages-initial-residents" aria-label="Initial residents">
+          Initial residents
+        </h3>
+        {villagersError ? (
+          <p role="alert" data-founding-problem tabIndex={-1}>
+            Choose one to three available founding villagers.
+          </p>
+        ) : null}
+        <FoundingVillagerPicker
+          appearance={(id) =>
+            setupStep === FOUNDING_STEP.People ? (
+              <Appearance
+                key={id}
+                characterId={id}
+                name={wizardVillagers.find((person) => person.id === id)?.name ?? "Resident"}
+              />
+            ) : null
+          }
+          catalog={catalog}
+          portraits={portraits}
+          selectedIds={setupFoundingVillagerIds}
+          onChange={chooseRoster}
+          disabled={busy}
+        />
+      </>
+    );
+    const peoplePanel = (
+      <div className="villages-people-panel">
+        <section className="villages-forging-card">
+          {personaFields}
+          {villagerFields}
+        </section>
+      </div>
+    );
+    const mapArtworkPanel = (
+      <section
+        className="villages-forging-card villages-quick-map-panel villages-founding-map-artwork"
+        aria-label="Map artwork"
+      >
+        <div className="villages-quick-map-toolbar">
+          <h2>{setupLocationName || "Your first Map"}</h2>
+          <>
+            <button
+              type="button"
+              disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
+              onClick={() => {
+                if (setupMapRequest?.phase === "paused") {
+                  setSetupMapProblem("");
+                  setSetupMapBusy(true);
+                  updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
+                } else void generateSetupTownMap();
+              }}
+            >
+              {setupMapBusy
+                ? "Generating map…"
+                : setupMapRequest?.phase === "paused"
+                  ? "Check map status"
+                  : "Generate artwork"}
+            </button>
+            <button
+              type="button"
+              disabled={busy || setupMapBusy || !!setupMapRequest || setupVenueBusy || setupSuggestionsBusy}
+              onClick={() => mapUpload.current?.click()}
+            >
+              Upload image
+            </button>
+            <input
+              ref={mapUpload}
+              autoComplete="off"
+              hidden
+              aria-label="Upload map image"
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void pickSetupTownMap(file);
+              }}
+            />
+          </>
+        </div>
+        {validatedFields.includes("map") && !setupMapSrc ? (
+          <p role="alert" className="villages-forging-map-warning" tabIndex={-1}>
+            Upload or generate a map image before continuing.
+          </p>
+        ) : null}
+        {!setupMapSrc && setupMapProblem ? (
+          <p className={`${ELEMENT_TAG}-error`} role="alert">
+            {setupMapProblem}
+          </p>
+        ) : null}
+        {setupMapSrc ? (
+          <section className="villages-quick-map" aria-label="Map artwork preview">
+            {map(setupStep === FOUNDING_STEP.Review)}
+          </section>
+        ) : (
+          <p>Upload or generate your first Map.</p>
+        )}
+      </section>
+    );
+    const venuesPanel = (
+      <div className="villages-founding-places">
+        <QuickStartVenues
+          daylight={storybookDaylight}
+          mobile={phone}
+          inlineVenue={setupStep !== FOUNDING_STEP.Review && (desktopMap || phone)}
+          onCloseVenue={
+            setupStep === FOUNDING_STEP.Review
+              ? () => setReviewEditor(reviewVenueFromMap ? "map" : undefined)
+              : undefined
+          }
+          backLabel={reviewVenueFromMap ? "← Map" : "← Review"}
+          venues={setupVenues}
+          locationName={setupLocationName}
+          onRetrySaving={() => void retrySetupSaving()}
+          actions={
+            <>
+              {phone ? modelButton : null}
+              <QuickStartButton
+                busy={busy || setupSuggestionsBusy}
+                disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
+                pending={
+                  !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
+                }
+                failed={!!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting}
+                onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
+              />
+            </>
+          }
+          people={wizardVillagers}
+          selectedId={selectedSetupVenueId}
+          busy={setupSuggestionsBusy}
+          imageBusy={setupVenueBusy || setupSuggestionsBusy}
+          focusIssue={setupFocusIssue}
+          saveError={draftSaveError || undefined}
+          problem={setupProblem || venueShapeProblem}
+          problemAction={
+            venueShapeProblem && (missingSharedVenue || !standardHomes) ? (
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  !!draftSaveError ||
+                  setupVenueBusy ||
+                  setupSuggestionsBusy ||
+                  (!!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure)
+                }
+                onClick={() =>
+                  missingSharedVenue ? chooseRoster(setupFoundingVillagerIds) : void replaceLegacyHomes()
+                }
+              >
+                {missingSharedVenue ? "Add shared Venue" : "Use starter homes"}
+              </button>
+            ) : venueConnectionUnavailable ? (
+              <button type="button" onClick={openConnectionPicker}>
+                Check Model Connections
+              </button>
+            ) : undefined
+          }
+          map={
+            setupStep === FOUNDING_STEP.Review ? undefined : (
+              <>
+                {map(true)}
+                {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+              </>
+            )
+          }
+          onSelect={(venue) => {
+            setSelectedSetupVenueId(venue.id);
+            setSetupFocusIssue(null);
+            setMovingSetupVenueId(null);
+            setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
+          }}
+          onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
+          openFromMap={openVenueFromMap}
+          onMapOpened={() => setOpenVenueFromMap(undefined)}
+          onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
+          onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
+        />
+      </div>
+    );
     const closeChapterMenu = () => setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: undefined }));
     const backToChapterGuide = () => {
       rememberMariPosition();
@@ -804,49 +1009,52 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           inactive={phone && !mobileScene}
           lineRef={chapterLine}
           replies={
-            <>
-              <button
-                type="button"
-                data-reader-direction="back"
-                disabled={busy || setupEditorOpen}
-                onClick={() => {
-                  if (setupStep === FOUNDING_STEP.Venues && !explainingStarters) backToChapterGuide();
-                  else changeStep(setupStep - 1, true);
-                }}
-              >
-                Back
-              </button>
-              {phone || explainingStarters ? (
+            setupStep === FOUNDING_STEP.Review && !phone ? null : (
+              <>
                 <button
                   type="button"
-                  className="villages-forging-primary"
-                  data-reader-direction="next"
-                  disabled={chapterDisabled}
+                  data-reader-direction="back"
+                  disabled={busy || setupEditorOpen}
                   onClick={() => {
-                    rememberMariPosition();
-                    setStarterIntro(false);
-                    if (phone) setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }));
+                    if (setupStep === FOUNDING_STEP.Venues && !explainingStarters) backToChapterGuide();
+                    else changeStep(setupStep - 1, true);
                   }}
                 >
-                  Next
+                  Back
                 </button>
-              ) : (
-                nextReply
-              )}
-            </>
+                {phone || explainingStarters ? (
+                  <button
+                    type="button"
+                    className="villages-forging-primary"
+                    data-reader-direction="next"
+                    disabled={chapterDisabled}
+                    onClick={() => {
+                      rememberMariPosition();
+                      setStarterIntro(false);
+                      if (phone) setSetupWorkspace((workspace) => ({ ...workspace, mobileMenu: chapterMenu }));
+                    }}
+                  >
+                    Next
+                  </button>
+                ) : (
+                  nextReply
+                )}
+              </>
+            )
           }
         >
           {setupStep === FOUNDING_STEP.Venues && (phone || explainingStarters)
             ? "A new Village starts with 2 public locations, and each of you gets a home with two rooms to start. Don't worry, you can cram everyone into the same house later if you want to. I won't judge."
-            : [
-                "",
-                "Choose who you’ll play and who lives here. I recommend making sure your Villagers have Sprites assigned to their Character Card, otherwise they’ll spend every Scene doing their best impression of a passport photo.",
-                desktopMap
-                  ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
-                  : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
-                "Here are your starting Venues. You can give them names and place them on the Map.",
-                "One last look. Check the Map and everyone’s bed. For an event on arrival, add it under First day. A quiet morning works too.",
-              ][setupStep]!}
+            : setupStep === FOUNDING_STEP.Review
+              ? "One last look. Shall we found " + setupName + "?"
+              : [
+                  "",
+                  "Choose who you’ll play and who lives here. I recommend making sure your Villagers have Sprites assigned to their Character Card, otherwise they’ll spend every Scene doing their best impression of a passport photo.",
+                  desktopMap
+                    ? "Let’s give our first Map a face. Upload an image you have, or generate one here."
+                    : "Let’s give our first Map a face. Upload an image you have, or generate one here. Then we can put the places on it.",
+                  "Here are your starting Venues. You can give them names and place them on the Map.",
+                ][setupStep]!}
         </FoundingGuide>
       ) : null;
     return (
@@ -854,7 +1062,8 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         data-mobile={phone ? "true" : "false"}
         className={FOUNDING_ROOT}
         data-step={setupStep}
-        data-desktop-map={desktopMap || undefined}
+        data-desktop-map={desktopMap || (!phone && setupStep === FOUNDING_STEP.Review) || undefined}
+        data-review={setupStep === FOUNDING_STEP.Review || undefined}
         data-lighting={storybookDaylight ? "day" : "night"}
         data-scene-arrival={enteringScene || undefined}
         data-title={showTitle || undefined}
@@ -984,6 +1193,113 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </footer>
           </FoundingDialog>
         ) : null}
+        {setupStep === FOUNDING_STEP.Review && reviewEditor === "venues" ? venuesPanel : null}
+        {setupStep === FOUNDING_STEP.Review && reviewEditor && reviewEditor !== "venues" ? (
+          <FoundingDialog
+            title={reviewEditor === "people" ? "People" : reviewEditor === "setting" ? "Setting" : "Review map"}
+            className={"villages-review-editor villages-review-editor-" + reviewEditor}
+            onClose={() => setReviewEditor(undefined)}
+          >
+            {reviewEditor === "people" ? (
+              <div className="villages-review-people-editor">
+                <nav aria-label="People sections">
+                  <button
+                    type="button"
+                    aria-pressed={reviewPeopleSection === "you"}
+                    onClick={() => setReviewPeopleSection("you")}
+                  >
+                    You
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={reviewPeopleSection === "villagers"}
+                    onClick={() => setReviewPeopleSection("villagers")}
+                  >
+                    Villagers
+                  </button>
+                </nav>
+                <fieldset disabled={chapterDisabled}>
+                  {reviewPeopleSection === "you" ? personaFields : villagerFields}
+                </fieldset>
+              </div>
+            ) : reviewEditor === "map" ? (
+              mapArtworkPanel
+            ) : (
+              <FoundingReviewSetting
+                controller={controller}
+                villageName={villageNameField}
+                mapFields={settingFields}
+                disabled={chapterDisabled}
+                section={reviewSettingSection}
+                onSection={setReviewSettingSection}
+                villageBriefError={villageBriefError}
+              />
+            )}
+            <footer>
+              <button type="button" disabled={busy} onClick={() => setReviewEditor(undefined)}>
+                Back
+              </button>
+              <button
+                type="button"
+                className="villages-forging-primary"
+                disabled={
+                  chapterDisabled ||
+                  (reviewEditor === "map" &&
+                    (setupMapBusy ||
+                      !!setupMapRequest ||
+                      !setupMapSrc ||
+                      setupIssues.some((issue) => issue.field === "placement")))
+                }
+                onClick={() => {
+                  if (reviewEditor === "people") {
+                    const missingPersona = !personaDraft || !personas?.some((person) => person.id === personaDraft);
+                    const missingVillagers =
+                      setupFoundingVillagerIds.length < 1 ||
+                      setupFoundingVillagerIds.length > 3 ||
+                      setupFoundingVillagerIds.some((id) => !catalog?.some((person) => person.id === id));
+                    if (missingPersona || missingVillagers) {
+                      setReviewPeopleSection(missingPersona ? "you" : "villagers");
+                      setValidatedFields((fields) => [...new Set([...fields, "persona", "villagers"])]);
+                      setValidationAttempt((attempt) => attempt + 1);
+                      setSetupProblem(
+                        missingPersona
+                          ? "Choose an available Persona."
+                          : "Choose one to three available founding villagers.",
+                      );
+                      return;
+                    }
+                    setSetupProblem("");
+                  }
+                  if (reviewEditor === "setting") {
+                    const problem = !setupName.trim()
+                      ? PLACE_ERRORS.name
+                      : !villageBrief
+                        ? PLACE_ERRORS.brief
+                        : !setupLocationName.trim()
+                          ? PLACE_ERRORS.locationName
+                          : !setupSetting.trim()
+                            ? PLACE_ERRORS.setting
+                            : "";
+                    if (problem) {
+                      setReviewSettingSection(!setupName.trim() || !villageBrief ? "Village" : "Map");
+                      setValidatedFields((fields) => [
+                        ...new Set([...fields, "place-name", "village-brief", "location-name", "place-setting"]),
+                      ]);
+                      setValidationAttempt((attempt) => attempt + 1);
+                      setSetupProblem(problem);
+                      return;
+                    }
+                    setSetupProblem("");
+                  }
+                  if (reviewEditor === "map") setSetupMapReviewed(true);
+                  setReviewEditor(undefined);
+                }}
+              >
+                Done
+              </button>
+            </footer>
+          </FoundingDialog>
+        ) : null}
         <FoundingChapter
           step={setupStep}
           explanation={explainingStarters}
@@ -998,61 +1314,18 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </>
           }
           mobileReplies={
-            <>
-              <button type="button" disabled={!canCloseChapterMenu} onClick={backToChapterGuide}>
-                Back
-              </button>
-              {nextReply}
-            </>
+            setupStep === FOUNDING_STEP.Review ? null : (
+              <>
+                <button type="button" disabled={!canCloseChapterMenu} onClick={backToChapterGuide}>
+                  Back
+                </button>
+                {nextReply}
+              </>
+            )
           }
           onCloseMenu={backToChapterGuide}
         >
-          <div hidden={setupStep !== FOUNDING_STEP.People}>
-            <div className="villages-people-panel">
-              <section className="villages-forging-card">
-                <h3 aria-label="You">You</h3>
-                {personaError ? (
-                  <p role="alert" data-founding-problem tabIndex={-1}>
-                    Choose an available Persona.
-                  </p>
-                ) : null}
-                <FoundingPersonaSelector
-                  personas={personas}
-                  draft={personaDraft}
-                  onDraft={(id) => {
-                    setPersonaDraft(id);
-                    clearFieldValidation("persona");
-                  }}
-                  disabled={busy}
-                />
-
-                <h3 className="villages-initial-residents" aria-label="Initial residents">
-                  Initial residents
-                </h3>
-                {villagersError ? (
-                  <p role="alert" data-founding-problem tabIndex={-1}>
-                    Choose one to three available founding villagers.
-                  </p>
-                ) : null}
-                <FoundingVillagerPicker
-                  appearance={(id) =>
-                    setupStep === FOUNDING_STEP.People ? (
-                      <Appearance
-                        key={id}
-                        characterId={id}
-                        name={wizardVillagers.find((person) => person.id === id)?.name ?? "Resident"}
-                      />
-                    ) : null
-                  }
-                  catalog={catalog}
-                  portraits={portraits}
-                  selectedIds={setupFoundingVillagerIds}
-                  onChange={chooseRoster}
-                  disabled={busy}
-                />
-              </section>
-            </div>
-          </div>
+          {setupStep === FOUNDING_STEP.People ? peoplePanel : null}
           <div hidden={setupStep !== FOUNDING_STEP.Setting} className="villages-place-panels">
             {setupStep === FOUNDING_STEP.Setting ? (
               <FoundingSettingScene
@@ -1083,289 +1356,40 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               />
             ) : null}
           </div>
-          {setupStep === FOUNDING_STEP.Maps ? (
-            <section
-              className="villages-forging-card villages-quick-map-panel villages-founding-map-artwork"
-              aria-label="Map artwork"
-            >
-              <div className="villages-quick-map-toolbar">
-                <h2>{setupLocationName || "Your first Map"}</h2>
-                <>
-                  <button
-                    type="button"
-                    disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
-                    onClick={() => {
-                      if (setupMapRequest?.phase === "paused") {
-                        setSetupMapProblem("");
-                        setSetupMapBusy(true);
-                        updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
-                      } else void generateSetupTownMap();
-                    }}
-                  >
-                    {setupMapBusy
-                      ? "Generating map…"
-                      : setupMapRequest?.phase === "paused"
-                        ? "Check map status"
-                        : "Generate artwork"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy || setupMapBusy || !!setupMapRequest || setupVenueBusy || setupSuggestionsBusy}
-                    onClick={() => mapUpload.current?.click()}
-                  >
-                    Upload image
-                  </button>
-                  <input
-                    ref={mapUpload}
-                    autoComplete="off"
-                    hidden
-                    aria-label="Upload map image"
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      if (file) void pickSetupTownMap(file);
-                    }}
-                  />
-                </>
-              </div>
-              {validatedFields.includes("map") && !setupMapSrc ? (
-                <p role="alert" className="villages-forging-map-warning" tabIndex={-1}>
-                  Upload or generate a map image before continuing.
-                </p>
-              ) : null}
-              {!setupMapSrc && setupMapProblem ? (
-                <p className={`${ELEMENT_TAG}-error`} role="alert">
-                  {setupMapProblem}
-                </p>
-              ) : null}
-              {setupMapSrc ? (
-                <section className="villages-quick-map" aria-label="Map artwork preview">
-                  {map(false)}
-                </section>
-              ) : (
-                <p>Upload or generate your first Map.</p>
-              )}
-            </section>
-          ) : null}
-          {setupStep === FOUNDING_STEP.Venues ? (
-            <div className="villages-founding-places">
-              <QuickStartVenues
-                daylight={storybookDaylight}
-                mobile={phone}
-                inlineVenue={desktopMap || phone}
-                venues={setupVenues}
-                locationName={setupLocationName}
-                onRetrySaving={() => void retrySetupSaving()}
-                actions={
-                  <>
-                    {phone ? modelButton : null}
-                    <QuickStartButton
-                      busy={busy || setupSuggestionsBusy}
-                      disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
-                      pending={
-                        !!setupWorkspace.suggestionRequest &&
-                        !pendingSetting &&
-                        !setupWorkspace.suggestionRequest.failure
-                      }
-                      failed={
-                        !!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting
-                      }
-                      onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
-                    />
-                  </>
-                }
-                people={wizardVillagers}
-                selectedId={selectedSetupVenueId}
-                busy={setupSuggestionsBusy}
-                imageBusy={setupVenueBusy || setupSuggestionsBusy}
-                focusIssue={setupFocusIssue}
-                saveError={draftSaveError || undefined}
-                problem={setupProblem || venueShapeProblem}
-                problemAction={
-                  venueShapeProblem && (missingSharedVenue || !standardHomes) ? (
-                    <button
-                      type="button"
-                      disabled={
-                        busy ||
-                        !!draftSaveError ||
-                        setupVenueBusy ||
-                        setupSuggestionsBusy ||
-                        (!!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure)
-                      }
-                      onClick={() =>
-                        missingSharedVenue ? chooseRoster(setupFoundingVillagerIds) : void replaceLegacyHomes()
-                      }
-                    >
-                      {missingSharedVenue ? "Add shared Venue" : "Use starter homes"}
-                    </button>
-                  ) : venueConnectionUnavailable ? (
-                    <button type="button" onClick={openConnectionPicker}>
-                      Check Model Connections
-                    </button>
-                  ) : undefined
-                }
-                map={
-                  <>
-                    {map(true)}
-                    {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
-                  </>
-                }
-                onSelect={(venue) => {
+          {setupStep === FOUNDING_STEP.Maps ? mapArtworkPanel : null}
+          {setupStep === FOUNDING_STEP.Venues ? venuesPanel : null}
+          {setupStep === FOUNDING_STEP.Review ? (
+            <FoundingReview
+              controller={controller}
+              disabled={chapterDisabled}
+              onEdit={(section, venueId) => {
+                if (section === "venues") {
+                  setReviewVenueFromMap(false);
+                  const venue = setupVenues.find((row) => row.id === venueId) ?? setupVenues[0];
+                  if (!venue) return;
                   setSelectedSetupVenueId(venue.id);
                   setSetupFocusIssue(null);
                   setMovingSetupVenueId(null);
-                  setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
-                }}
-                onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
-                openFromMap={openVenueFromMap}
-                onMapOpened={() => setOpenVenueFromMap(undefined)}
-                onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
-                onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
-              />
-            </div>
-          ) : null}
-          {setupStep === FOUNDING_STEP.Review ? (
-            <>
-              {!phone ? <h2>Review {setupName}</h2> : null}
-              <div className="villages-forging-columns">
-                <div>
-                  <section className="villages-forging-card">
-                    <div className="villages-forging-card-heading">
-                      <h3>People</h3>
-                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.People, true)}>
-                        Change people
-                      </button>
-                    </div>
-                    {[
-                      {
-                        id: "player",
-                        name:
-                          (personas?.find((person) => person.id === personaDraft)?.name ?? "Your Persona") + " (you)",
-                      },
-                      ...wizardVillagers,
-                    ].map((person) => {
-                      const home = setupVenues.find((venue) => foundingHomeMembers(venue).includes(person.id));
-                      const sleep = [...(home?.spaces ?? []), ...(home?.privateSpaces ?? [])].find(
-                        (zone) => zone.id === home?.destinations?.[person.id]?.sleep,
-                      );
-                      return (
-                        <p key={person.id}>
-                          <strong>{person.name}</strong> · {home?.name || "Choose a home"}
-                          {sleep ? ` · Sleeps in ${sleep.name || "Zone"}` : ""}
-                        </p>
-                      );
-                    })}
-                  </section>
-                  <section className="villages-forging-card">
-                    <div className="villages-forging-card-heading">
-                      <h3>Setting</h3>
-                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.Setting, true)}>
-                        Change setting
-                      </button>
-                    </div>
-                    <p>{setupSetting}</p>
-                    {setupContext.rules ? <p>World rules: {setupContext.rules}</p> : null}
-                    {setupWorldName ? <p>World: {setupWorldName}</p> : null}
-                    <p>{setupLorebookDraft.length} lorebooks selected</p>
-                  </section>
-                  <section className="villages-forging-card">
-                    <div className="villages-forging-card-heading">
-                      <h3>First map · {setupLocationName}</h3>
-                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.Maps, true)}>
-                        Change map
-                      </button>
-                    </div>
-                    <p>{setupMapSource === "upload" ? "Uploaded artwork" : "Chosen artwork"}</p>
-                    {setupMapPrompt && setupMapPrompt !== snapshot?.settings.townMapLayoutPrompt ? (
-                      <p>Map Details: {setupMapPrompt}</p>
-                    ) : null}
-                  </section>
-                  <section className="villages-forging-card">
-                    <div className="villages-forging-card-heading">
-                      <h3>Starting Venues</h3>
-                      <button type="button" onClick={() => changeStep(FOUNDING_STEP.Venues, true)}>
-                        Change starting Venues
-                      </button>
-                    </div>
-                    {setupVenues.slice(reviewIndex * 3, reviewIndex * 3 + 3).map((venue, index) => (
-                      <details key={venue.id}>
-                        <summary>
-                          {index + 1}. {venue.name} · {venue.form} · Exterior
-                          {venueHasCommon(venue) ? " / Common" : ""}
-                          {venueHasPrivate(venue) ? " / Private" : ""}
-                        </summary>
-                        <p>{venue.description}</p>
-                        {venue.residentIds?.length || venue.occupancy.playerHome ? (
-                          <p>
-                            Household:{" "}
-                            {[
-                              ...(venue.occupancy.playerHome ? ["You"] : []),
-                              ...(venue.residentIds ?? []).map(
-                                (id) => wizardVillagers.find((person) => person.id === id)?.name ?? id,
-                              ),
-                            ].join(", ")}
-                          </p>
-                        ) : (
-                          <p>No assigned household</p>
-                        )}
-                        {venue.spaces?.map((space) => (
-                          <p key={space.id}>
-                            {space.name}: {space.description}
-                          </p>
-                        ))}
-                        {venue.privateSpaces?.map((room) => (
-                          <p key={room.id}>
-                            {room.name} · {room.purpose} · {room.description}
-                            {room.roomSpecification ? <> Room specification: {room.roomSpecification}</> : null}
-                          </p>
-                        ))}
-                      </details>
-                    ))}
-                    <FoundingPagination
-                      page={reviewIndex}
-                      count={Math.ceil(setupVenues.length / 3)}
-                      onPage={setReviewPage}
-                      label="Review Venues"
-                    />
-                  </section>
-                </div>
-                <section className="villages-forging-card">
-                  {map(false)}
-                  <p>
-                    {placed} of {setupVenues.length} Venues placed
-                  </p>
-                  <FoundingField title="First day" optional>
-                    <textarea
-                      autoComplete="off"
-                      aria-label="First day"
-                      placeholder="What’s happening when the village begins?"
-                      maxLength={FOUNDING_CIRCUMSTANCE_MAX_LENGTH}
-                      rows={4}
-                      value={foundingCircumstanceText(
-                        setupContext.circumstances.filter((row) => row.scope === "village"),
-                      )}
-                      disabled={busy}
-                      onChange={(event) =>
-                        setSetupContext((context) => ({
-                          ...context,
-                          circumstances: [
-                            ...foundingCircumstanceFromText(event.target.value),
-                            ...context.circumstances.filter((row) => row.scope === "zone"),
-                          ],
-                        }))
-                      }
-                    />
-                  </FoundingField>
-                  <h3>After founding</h3>
-                  <p>Prepare local routines and optional initial Wishes, then meet in one of your public locations.</p>
-                </section>
-              </div>
-            </>
+                  setOpenVenueFromMap({ id: venue.id });
+                }
+                setReviewEditor(section);
+              }}
+              actions={
+                <>
+                  <button
+                    type="button"
+                    disabled={chapterDisabled}
+                    onClick={() => (phone ? backToChapterGuide() : changeStep(FOUNDING_STEP.Venues, true))}
+                  >
+                    Back
+                  </button>
+                  {nextReply}
+                </>
+              }
+            />
           ) : null}
           {setupProblem &&
-          !inlineProblem &&
+          (!inlineProblem || setupStep === FOUNDING_STEP.Review) &&
           !venueConnectionUnavailable &&
           !(setupStep === FOUNDING_STEP.Venues && setupWorkspace.view === "details") ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">

@@ -37,6 +37,8 @@ export function QuickStartVenues({
   onUploadImage,
   actions,
   onRetrySaving,
+  onCloseVenue,
+  backLabel,
 }: {
   inlineVenue?: boolean;
   mobile?: boolean;
@@ -60,6 +62,8 @@ export function QuickStartVenues({
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   actions?: ReactNode;
   onRetrySaving?(): void;
+  onCloseVenue?(): void;
+  backLabel?: string;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [section, setSection] = useState<VenueSection>("about");
@@ -87,6 +91,7 @@ export function QuickStartVenues({
   const inlineOpen = inlineVenue && open;
   const closeVenue = () => {
     setEditorOpen(false);
+    onCloseVenue?.();
     if (!inlineOpen || !selected) return;
     const id = CSS.escape(selected.id);
     requestAnimationFrame(() => {
@@ -282,7 +287,7 @@ export function QuickStartVenues({
             roomBackdrop={section === "zones" && zoneDetails && !!image}
             navigation={
               <button ref={venueBack} className={P + "-venue-back"} type="button" onClick={closeVenue}>
-                {inlineVenue ? "← Map" : "← Venues"}
+                {onCloseVenue ? backLabel || "← Review" : inlineVenue ? "← Map" : "← Venues"}
               </button>
             }
             tabs={{ section, onSelect: selectSection }}
@@ -580,7 +585,7 @@ export function QuickStartVenues({
           ) : null}
         </section>
       ) : null}
-      {!mobile ? (
+      {!mobile && !onCloseVenue ? (
         <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
           <header className="villages-venue-heading">
             <h2>Starting Venues</h2>

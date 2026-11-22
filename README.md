@@ -36,7 +36,7 @@ Model requests use your configured providers and may cost money, including durin
 1. Open **Home → Villages** after your test installation has restarted.
 2. In **Setting**, describe the local area, optional standing rules. Select lorebooks for world history and references, and choose **System**, **GM**, and any **Images** connection.
 3. Choose your Persona and starting residents in **People**.
-4. In **Venues and Map**, open a Venue from the map and use its Zones to set up the starting homes. In Review, check everyone’s sleeping place and optionally describe the first day, then found the Village.
+4. In **Venues and Map**, open a Venue from the map and use its Zones to set up the starting homes. In Review, check the map and everyone’s sleeping place, then found the Village.
 5. Open a Venue from the map, choose **Visit**, and use **Say / Do** to begin interacting.
 
 The [player guide](packages/villages/README.md) walks through setup, Scenes, relationships, Projects, artwork, and recovery.

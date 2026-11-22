@@ -24,23 +24,25 @@ export function FoundingReader({
       data-reader-next-page={pages.index < pages.count - 1 || undefined}
       speaker="Professor Mari"
       footer={
-        <>
-          {pages.index > 0 ? (
-            <button className="villages-reader-page-back" type="button" data-reader-direction="back">
-              Back
-            </button>
-          ) : null}
-          {pages.index < pages.count - 1 ? (
-            <button
-              className="villages-reader-page-next villages-forging-primary"
-              type="button"
-              data-reader-direction="next"
-            >
-              Next
-            </button>
-          ) : null}
-          {children}
-        </>
+        pages.index > 0 || pages.index < pages.count - 1 || children ? (
+          <>
+            {pages.index > 0 ? (
+              <button className="villages-reader-page-back" type="button" data-reader-direction="back">
+                Back
+              </button>
+            ) : null}
+            {pages.index < pages.count - 1 ? (
+              <button
+                className="villages-reader-page-next villages-forging-primary"
+                type="button"
+                data-reader-direction="next"
+              >
+                Next
+              </button>
+            ) : null}
+            {children}
+          </>
+        ) : undefined
       }
       onClickCapture={(event) => {
         const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-reader-direction]");
