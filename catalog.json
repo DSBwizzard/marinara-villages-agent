@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-18T20:50:12.625Z",
+  "generatedAt": "2026-11-22T01:09:31.874Z",
   "packages": [
     {
       "manifest": {
@@ -15,7 +15,7 @@
         },
         "id": "villages",
         "name": "Villages",
-        "version": "0.8.6",
+        "version": "0.8.7",
         "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
         "engine": {
           "min": "2.5.2",
@@ -65,7 +65,24 @@
               "mari-founding-happy.webp",
               "mari-founding-looking-up.webp",
               "mari-founding-playful.webp",
-              "npc-silhouette.webp"
+              "mari-founding-presenting.webp",
+              "mari-founding-wave.webp",
+              "mari-founding-thoughtful.webp",
+              "mari-founding-happy-side.webp",
+              "mari-founding-proud.webp",
+              "npc-silhouette.webp",
+              "mari-visitor-sprites/Happy.png",
+              "mari-visitor-sprites/Happy_2.png",
+              "mari-visitor-sprites/Neutral.png",
+              "mari-visitor-sprites/Neutral_2.png",
+              "mari-visitor-sprites/Neutral_3.png",
+              "mari-visitor-sprites/Playful.png",
+              "mari-visitor-sprites/Thinking.png",
+              "mari-visitor-sprites/Thinking_2.png",
+              "mari-visitor-sprites/Wave.png",
+              "mari-visitor-sprites/Angry.png",
+              "mari-visitor-sprites/Sad.png",
+              "mari-visitor-sprites/Surprised.png"
             ]
           }
         },
@@ -77,13 +94,13 @@
           },
           {
             "path": "server.mjs",
-            "sha256": "942ab51f481bcabd2e4a263c278a78682ba170987e6722e798df328ea8fda188",
-            "bytes": 1849894
+            "sha256": "e3e119acd8cd57612c37866a8bcd6006e5554d6ba11efcdcf24fea04700943fb",
+            "bytes": 1946455
           },
           {
             "path": "client.js",
-            "sha256": "89d0374fdd440ad8a3342074aad344dd81d10de08dcad467465bd9bccff33183",
-            "bytes": 1816758
+            "sha256": "d816fe2a547048b3b8954ab3ee87104c813f721f68ff7bbbe8d567aa96301ae2",
+            "bytes": 1894044
           },
           {
             "path": "letter-fonts/PROVENANCE.txt",
@@ -276,9 +293,94 @@
             "bytes": 30924
           },
           {
+            "path": "mari-founding-presenting.webp",
+            "sha256": "68174df4b445bb573ae6abe26850a3442828bafd790b35b17f5f80354766dd70",
+            "bytes": 58610
+          },
+          {
+            "path": "mari-founding-wave.webp",
+            "sha256": "fde433f99996781d753819558e7b7cbba60158ca612f9d590f9403e52b1054a4",
+            "bytes": 48248
+          },
+          {
+            "path": "mari-founding-thoughtful.webp",
+            "sha256": "6fc1c8a37cdc279100685ca81fce7d528f8a019409251338591e7a5f530c30db",
+            "bytes": 49084
+          },
+          {
+            "path": "mari-founding-happy-side.webp",
+            "sha256": "8059ee2ca279fffd5682808ad81528de0a05598b0815bdbc4f7a5f5353b47a2d",
+            "bytes": 46790
+          },
+          {
+            "path": "mari-founding-proud.webp",
+            "sha256": "b42fcd4fdeb4d494d51e19600a92826cb2f24055a32513564747108aac5daddf",
+            "bytes": 160368
+          },
+          {
             "path": "npc-silhouette.webp",
             "sha256": "e792d4161b840bffb26e78c9675f0436a0aae0d872ff50cf9c5fc50af356ebfa",
             "bytes": 25102
+          },
+          {
+            "path": "mari-visitor-sprites/Happy.png",
+            "sha256": "4a64d4f36c00169357674b0efcd28e8930acd6a19d69550ebcd698a722c5c58a",
+            "bytes": 1999298
+          },
+          {
+            "path": "mari-visitor-sprites/Happy_2.png",
+            "sha256": "244253838c81557b6d7ca8d11a949a1fdad062657ba396551b099c77f3dc469e",
+            "bytes": 2092016
+          },
+          {
+            "path": "mari-visitor-sprites/Neutral.png",
+            "sha256": "19318dac988cfc99377da4a7c39d344f55961e0885860123f617d6ec4df6f5a6",
+            "bytes": 2049936
+          },
+          {
+            "path": "mari-visitor-sprites/Neutral_2.png",
+            "sha256": "98769a3fc15f2a00f10cbec610c7d0a8907aabaab5bf617bed02cbd21603cdc2",
+            "bytes": 2147946
+          },
+          {
+            "path": "mari-visitor-sprites/Neutral_3.png",
+            "sha256": "14b142fd160f13f31b88e3709d9ffaff6a7cd03867e3e6bf2d38fa02cfa7b44f",
+            "bytes": 2060749
+          },
+          {
+            "path": "mari-visitor-sprites/Playful.png",
+            "sha256": "27dab4ce9577c4b0e8dc1153d776c815ceab23ea5e941e2d31198f86656e022d",
+            "bytes": 1238977
+          },
+          {
+            "path": "mari-visitor-sprites/Thinking.png",
+            "sha256": "437b8ca24de0c367d6f8586cabf932d9ecf895464ed9bf359f62e0313b96d348",
+            "bytes": 2024919
+          },
+          {
+            "path": "mari-visitor-sprites/Thinking_2.png",
+            "sha256": "5bd63c60f1e8d4ce2d50460707b15e939c3e70a29d2284c913d4c5bb1e137187",
+            "bytes": 2109108
+          },
+          {
+            "path": "mari-visitor-sprites/Wave.png",
+            "sha256": "4ad1e99686e9423a38fe300fad6b0b4a8694e2ec19608fcf7fca47df8a27d215",
+            "bytes": 2038130
+          },
+          {
+            "path": "mari-visitor-sprites/Angry.png",
+            "sha256": "6b64c3170a226679c7846102841eef784e2d14b56c1040f2a3c24ca020327801",
+            "bytes": 2193472
+          },
+          {
+            "path": "mari-visitor-sprites/Sad.png",
+            "sha256": "bde477094e8a24e9d78e16a1e38516ef13a2b6f4238d9d8fc35cf018b645bd8f",
+            "bytes": 2109261
+          },
+          {
+            "path": "mari-visitor-sprites/Surprised.png",
+            "sha256": "8dddf5d2322c6bff05344aa2ab7835c7bdcfeb213d46659b5d1928931cd7519a",
+            "bytes": 2122765
           }
         ],
         "permissions": [
@@ -291,14 +393,14 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-4a18c666dcd175e1/villages-0.8.6-4a18c666dcd175e1.zip",
-        "sha256": "4a18c666dcd175e15ed19834041fca823f706b0c559d767ff5dc952b7048dc04",
-        "bytes": 2441843
+        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-19a3c01c4a50e66a/villages-0.8.7-19a3c01c4a50e66a.zip",
+        "sha256": "19a3c01c4a50e66a8354ff077ed40a0c2043f0bef3d817b0343efdcde6481235",
+        "bytes": 26904995
       }
     }
   ],
   "provenance": {
     "kind": "custom",
-    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/44393233769"
+    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/44967807659"
   }
 }
