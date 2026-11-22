@@ -2410,6 +2410,26 @@ export async function verifyFoundingLayout(group) {
           });
         await enterChapter();
         const overview = root.locator(".villages-founding-review");
+        if (phone) {
+          await expect(overview).toHaveAttribute("data-page", "People");
+          assert.equal(
+            await overview
+              .locator(".villages-review-people")
+              .evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+            true,
+            "People names fit without scrolling or truncation",
+          );
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-people-${view.width}-${view.height}.png`),
+            });
+          await expect(overview.getByRole("button", { name: "Found village", exact: true })).toHaveCount(0);
+          await overview.getByRole("button", { name: "Next: Setting", exact: true }).click();
+          await expect(overview).toHaveAttribute("data-page", "Setting");
+          await overview.getByRole("button", { name: "Back", exact: true }).click();
+          await expect(overview).toHaveAttribute("data-page", "People");
+          await overview.getByRole("button", { name: "Next: Setting", exact: true }).click();
+        }
         if (view.width === 1366)
           await page.evaluate(() =>
             window.featureController.setSetupContext((context) => ({
@@ -2445,6 +2465,7 @@ export async function verifyFoundingLayout(group) {
         await expect(loreDialog.locator(".villages-lorebook-footer>span")).toHaveCount(0);
         await loreDialog.getByRole("button", { name: "Next", exact: true }).click();
         await reviewDialog.getByRole("button", { name: "Done", exact: true }).click();
+        if (phone) await overview.getByRole("button", { name: "Back", exact: true }).click();
         await overview.getByRole("button", { name: "Edit People", exact: true }).click();
         const peopleEditor = page.getByRole("dialog", { name: "People", exact: true });
         await expect(peopleEditor).toBeVisible();
@@ -2470,11 +2491,83 @@ export async function verifyFoundingLayout(group) {
           "The People editor fits without a scrolling body",
         );
         await peopleEditor.getByRole("button", { name: "Done", exact: true }).click();
+        if (phone) {
+          await overview.getByRole("button", { name: "Next: Setting", exact: true }).click();
+          await overview.getByRole("button", { name: "Next: Map", exact: true }).click();
+          await expect(overview).toHaveAttribute("data-page", "Map");
+        }
+        const positions = await page.evaluate(() =>
+          window.featureController.setupVenues.map((venue) => [venue.id, venue.presentation.x, venue.presentation.y]),
+        );
+        const reviewPins = overview.locator(".villages-numbered-map-pin");
+        await expect(reviewPins).toHaveCount(positions.length);
+        assert.equal(
+          await overview.locator(".villages-review-map").evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+          true,
+          "The map and its paginated key fit without scrolling",
+        );
+        await expect(reviewPins.first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+        for (const [id, x, y] of positions) {
+          const marker = overview.locator(`[data-pin-id="${id}"]`);
+          await expect
+            .poll(
+              async () =>
+                marker.evaluate(
+                  (node, expected) => {
+                    const holder = node.parentElement;
+                    const stage = node.closest(".marinara-capability-villages-stage");
+                    const frame = stage.querySelector(".marinara-capability-villages-canvas");
+                    const frameBox = frame.getBoundingClientRect();
+                    const width = Number(stage.dataset.pictureWidth),
+                      height = Number(stage.dataset.pictureHeight);
+                    const position = [
+                      (parseFloat(holder.style.left) - (frameBox.width - width) / 2) / width,
+                      (parseFloat(holder.style.top) - (frameBox.height - height) / 2) / height,
+                    ];
+                    return Math.max(Math.abs(position[0] - expected[0]), Math.abs(position[1] - expected[1]));
+                  },
+                  [x, y],
+                ),
+              { message: `Review marker ${id} uses saved artwork coordinates` },
+            )
+            .toBeLessThan(0.001);
+        }
+        await reviewPins.last().click({ force: true });
+        const selectedNumber = await reviewPins.last().textContent();
+        await expect(
+          overview.locator(".villages-review-map-key button[aria-pressed=true] .villages-review-place-number"),
+        ).toHaveText(selectedNumber);
+        await expect(overview.locator(".villages-review-map-key button[aria-pressed=true]")).toBeInViewport();
+        const keyChoice = overview.locator(".villages-review-map-key button").first();
+        const keyNumber = await keyChoice.locator(".villages-review-place-number").textContent();
+        await keyChoice.click();
+        await expect(overview.locator(".villages-numbered-map-pin[aria-pressed=true]")).toHaveText(keyNumber);
+        assert.ok(
+          (await overview.locator(".villages-review-map-preview").boundingBox()).height >= 90,
+          "The review keeps usable map space",
+        );
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-map-${view.width}-${view.height}.png`),
+          });
+        assert.deepEqual(
+          await page.evaluate(() =>
+            window.featureController.setupVenues.map((venue) => [venue.id, venue.presentation.x, venue.presentation.y]),
+          ),
+          positions,
+          "Inspecting review pins never moves a Venue",
+        );
+        await overview.getByRole("button", { name: "Expand map", exact: true }).click();
+        const expandedMap = page.getByRole("dialog", { name: "Map placements", exact: true });
+        await expect(expandedMap.locator(".villages-numbered-map-pin")).toHaveCount(positions.length);
+        await expandedMap.getByRole("button", { name: "Back", exact: true }).click();
+        if (phone) await overview.getByRole("button", { name: "Next: Places", exact: true }).click();
         await overview.getByRole("button", { name: "Edit Community Courtyard", exact: true }).click();
         await expect(sheet).toBeVisible();
         await sheet.getByRole("button", { name: "← Review", exact: true }).click();
         await expect(root).toHaveAttribute("data-step", "4");
-        await overview.getByRole("button", { name: "Review map", exact: true }).click();
+        if (phone) await overview.getByRole("button", { name: "Back", exact: true }).click();
+        await overview.locator(".villages-review-map>header>button").click();
         const mapEditor = page.getByRole("dialog", { name: "Review map", exact: true });
         await expect(mapEditor.getByRole("region", { name: "Map artwork preview", exact: true })).toBeVisible();
         if (view.width === 320 || view.width === 1366) {
@@ -2485,6 +2578,7 @@ export async function verifyFoundingLayout(group) {
           await expect(mapEditor).toBeVisible();
         }
         await mapEditor.getByRole("button", { name: "Done", exact: true }).click();
+        if (phone) await overview.getByRole("button", { name: "Next: Places", exact: true }).click();
         if (view.width === 320 || view.width === 1366) {
           await page.evaluate(() =>
             window.featureController.updateSetupMapRequest({

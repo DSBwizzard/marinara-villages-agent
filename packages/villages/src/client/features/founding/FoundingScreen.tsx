@@ -1309,7 +1309,15 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           mobileTitle={phone && chapterMenu ? SETUP_STEPS[setupStep] : undefined}
           mobileHeader={
             <>
-              <h3>{SETUP_STEPS[setupStep]}</h3>
+              {setupStep === FOUNDING_STEP.Review ? (
+                <span className="villages-review-mari">
+                  <img src={foundingMariSprite("proud")} alt="Professor Mari" />
+                </span>
+              ) : null}
+              <h3>
+                {SETUP_STEPS[setupStep]}
+                {setupStep === FOUNDING_STEP.Review ? " " + setupName : ""}
+              </h3>
               {modelButton}
             </>
           }
@@ -1361,6 +1369,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           {setupStep === FOUNDING_STEP.Review ? (
             <FoundingReview
               controller={controller}
+              phone={phone}
               disabled={chapterDisabled}
               onEdit={(section, venueId) => {
                 if (section === "venues") {
@@ -1374,18 +1383,8 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 }
                 setReviewEditor(section);
               }}
-              actions={
-                <>
-                  <button
-                    type="button"
-                    disabled={chapterDisabled}
-                    onClick={() => (phone ? backToChapterGuide() : changeStep(FOUNDING_STEP.Venues, true))}
-                  >
-                    Back
-                  </button>
-                  {nextReply}
-                </>
-              }
+              onBack={() => (phone ? backToChapterGuide() : changeStep(FOUNDING_STEP.Venues, true))}
+              foundAction={nextReply}
             />
           ) : null}
           {setupProblem &&
