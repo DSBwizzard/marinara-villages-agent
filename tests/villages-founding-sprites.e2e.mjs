@@ -244,7 +244,8 @@ await withBrowser(browser, async () => {
       await page.screenshot({ path: ".build-tmp/founding-sprites/compact-" + viewport.width + ".png" });
       await advance();
       await expect(phase).toHaveAttribute("aria-label", "Maps");
-      await expect(root.getByText(/^A new Village starts/)).toBeVisible();
+      await expect(root.getByText(/^A new Village starts/)).toHaveCount(0);
+      if (!phone) await expect(root.getByRole("region", { name: "Map artwork", exact: true })).toBeVisible();
       assert.deepEqual([...opened].sort(), ["aqua", "rosa"]);
       assert.equal(writes.length, 0, "Counts never save or require an appearance editor");
       await root.getByRole("button", { name: "Back", exact: true }).click();
