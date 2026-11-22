@@ -46,6 +46,7 @@ export function FoundingReviewSetting({
             </FoundingField>
             <FoundingField title="World description" optional>
               <textarea
+                autoComplete="off"
                 rows={2}
                 maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
                 value={controller.setupWorkspace.settingWorldBrief || ""}
@@ -57,6 +58,7 @@ export function FoundingReviewSetting({
             </FoundingField>
             <FoundingField title="World rules" optional>
               <textarea
+                autoComplete="off"
                 rows={2}
                 maxLength={4096}
                 aria-label="World rules"
@@ -73,6 +75,7 @@ export function FoundingReviewSetting({
             {villageName}
             <FoundingField title="What is the village like?" error={villageBriefError}>
               <textarea
+                autoComplete="off"
                 rows={3}
                 maxLength={FOUNDING_SETTING_BRIEF_LIMIT}
                 value={controller.setupWorkspace.settingBrief || ""}
