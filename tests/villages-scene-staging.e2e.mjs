@@ -440,6 +440,62 @@ await withBrowser(browser, async () => {
         await expect(img).toHaveAttribute("src", thoughts);
         await expect(img).toHaveAttribute("data-flipping", "false");
         assert.equal(await page.evaluate(() => window.spriteFlips.length), 2, "artwork-only changes flip once");
+        await sendExpression("neutral");
+        await expect(img).toHaveAttribute("src", initialArtwork);
+        await page.evaluate(() => {
+          window.holdSpriteFlips = true;
+        });
+        await sendExpression("e-thinking");
+        await expect.poll(() => page.evaluate(() => window.spriteFlips.length)).toBeGreaterThan(2);
+        await expect(img).toHaveAttribute("data-flipping", "out");
+        await sendExpression("neutral");
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        assert.equal(
+          await img.evaluate((node) => node.getAnimations().length),
+          0,
+          "rapid navigation cancels pending rotation",
+        );
+        await sendExpression("e-thinking");
+        await expect(img).toHaveAttribute("data-flipping", "out");
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        assert.equal(
+          await img.evaluate((node) => node.getAnimations().length),
+          0,
+          "reduced motion cancels an active flip",
+        );
+        await page.evaluate(() => {
+          window.holdSpriteFlips = false;
+        });
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+        await expect(img).toHaveAttribute("src", thoughts);
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        await sendExpression("neutral");
+        await expect(img).toHaveAttribute("src", initialArtwork);
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        await page.evaluate(() => {
+          window.holdSpriteFlips = true;
+        });
+        await sendExpression("e-thinking");
+        await expect(img).toHaveAttribute("data-flipping", "out");
+        fixture.settings.spriteCardFlipEnabled = false;
+        await page.evaluate(() => window.featureController.loadSnapshot());
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        await expect(img).toHaveAttribute("src", thoughts);
+        assert.equal(
+          await img.evaluate((node) => node.getAnimations().length),
+          0,
+          "disabling the shared toggle cancels an active flip",
+        );
+        fixture.settings.spriteCardFlipEnabled = true;
+        await page.evaluate(() => window.featureController.loadSnapshot());
+        await page.evaluate(() => {
+          window.holdSpriteFlips = false;
+        });
+        // Reload the saved enabled setting before testing a new artwork request.
+        await page.reload();
+        await page.addScriptTag({ content: sceneBundle });
+        await expect(img).toHaveAttribute("src", thoughts);
         let releaseArtwork;
         const artworkReady = new Promise((resolve) => {
           releaseArtwork = resolve;

@@ -1483,7 +1483,7 @@ await runCase("repair/http", async () => {
             .json()
             .directory.slice(0, 2)
             .map((item: { title: string }) => item.title),
-          ["Places", "Venues"],
+          ["Locations", "Venues"],
         );
         assert.deepEqual(places.json().records, []);
         assert.ok(index.json().people.some((person: any) => person.id === "aqua"));
@@ -1616,7 +1616,7 @@ await runCase("repair/places", async () => {
     { memories: true },
   );
   const browse = await f.api.list("places", "", 0, undefined, "memories", true);
-  const cafe = browse.directory?.find((item) => item.title === "Places")?.children?.[0];
+  const cafe = browse.directory?.find((item) => item.title === "Locations")?.children?.[0];
   assert.equal(cafe?.title, "Cafe");
   assert.ok(cafe?.children?.some((item) => item.id === repairId("place", "place:cafe")));
   assert.ok(cafe?.children?.some((item) => item.title === "Room" && item.icon === "zone"));

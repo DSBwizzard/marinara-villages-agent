@@ -1,4 +1,5 @@
-// Test cases: narration-place/discovery, narration-place/npc-association, narration-place/existing, narration-place/evidence, narration-place/limits, narration-place/objective, narration-place/replay, narration-place/complete-witness
+// Test cases: narration-place/discovery, narration-place/npc-association, narration-place/existing, narration-place/evidence, narration-place/limits, narration-place/replay, narration-place/complete-witness
+
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
@@ -13,7 +14,6 @@ import { acceptNarration } from "../packages/villages/src/server/domain/rules/na
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { establishPlace, projectPlace } from "./helpers/places.fixture.js";
 import { readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
-import { draftEstablishmentProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
 import { continuityViews } from "../packages/villages/src/server/domain/rules/continuity.js";
 import { currentRoomViews } from "../packages/villages/src/server/domain/rules/continuity-retrieval.js";
 import { readContinuity } from "../packages/villages/src/server/domain/decoding/continuity-codec.js";
@@ -65,10 +65,7 @@ function fixture() {
     venue,
   );
   function prepare(command: Record<string, unknown>, operation = "discovery") {
-    const input =
-      command.type === "place.establish"
-        ? "Tell me about the establishment project " + command.project + "."
-        : "Tell me about the nearby orchard.";
+    const input = "Tell me about the nearby orchard.";
     const context = narrationContinuityContext(state, scene, venue, operation, input, at),
       readset = fittedNarrationReadset(
         state,
@@ -232,57 +229,6 @@ await runCase("narration-place/limits", () => {
     assert.equal(result.held, !independent);
     assert.equal(Object.keys(f.state.worldPlaces.places).length, independent ? 2 : 0);
     if (independent) assert.equal(result.episode!.commandReceipts.length, 2);
-  }
-});
-await runCase("narration-place/objective", () => {
-  function ready() {
-    const f = fixture(),
-      place = f.existing();
-    place.location.presentation.x = 0.7;
-    place.location.presentation.y = 0.7;
-    const project = draftEstablishmentProject(
-      f.state,
-      place.id,
-      {
-        classes: ["community"],
-        establishment: {
-          goal: "Share the orchard with the village",
-          physical: false,
-          zoneIds: ["garden"],
-          objectives: ["The host welcomes visitors to the orchard."],
-        },
-      },
-      "orchard-project",
-    );
-    const turn = f.prepare({
-      type: "place.establish",
-      project: project.id,
-      objective: "objective:0",
-      quote: "The host welcomes visitors.",
-      met: true,
-    });
-    turn.raw.segments[0].text = "The host welcomes visitors.";
-    return { ...f, ...turn, project };
-  }
-  const f = ready(),
-    result = f.accept();
-  assert.equal(result.held, false);
-  const project = f.state.projects[0];
-  assert.equal(project.establishment!.objectives[0].met, true);
-  assert.equal(f.accept().held, false);
-  assert.equal(f.state.projects[0].establishment!.objectives[0].evidence.length, 1);
-  assert.equal(project.status, "planning");
-  assert.equal(project.lifecycle!.workOrder, null, "objective evidence never starts or completes the Project");
-  assert.equal(f.state.venues.length, 3);
-  for (const kind of ["stale", "quote", "private", "empty"]) {
-    const g = ready();
-    if (kind === "stale") g.project.lifecycle!.revision++;
-    if (kind === "quote") g.raw.commands[0].quote = "A future promise that did not occur.";
-    if (kind === "empty") g.raw.commands[0].quote = " \n ";
-    if (kind === "private") g.raw.commands[0].source = [{ input: g.readset.source.input, ground: { kind: "private" } }];
-    const before = memoryHash(g.state);
-    assert.equal(g.accept().held, true, kind);
-    assert.equal(memoryHash(g.state), before);
   }
 });
 await runCase("narration-place/replay", () => {

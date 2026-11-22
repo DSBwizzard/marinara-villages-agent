@@ -1,4 +1,4 @@
-// Test cases: project-room-edits/scoped-completion, project-room-edits/stale-and-reapproval, project-room-edits/preflight, project-room-edits/physical-establishment
+// Test cases: project-room-edits/scoped-completion, project-room-edits/stale-and-reapproval, project-room-edits/preflight, project-room-edits/admitted-renovation
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture, renovation, seedObservedProjectRoom } from "./fixtures/villages-projects.fixture.js";
@@ -10,7 +10,9 @@ import { retainNativeFact } from "../packages/villages/src/server/domain/rules/n
 import { projectRoomEntries } from "../packages/villages/src/server/domain/rules/project-room-edits.js";
 import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
+import { admitLocation } from "../packages/villages/src/server/domain/rules/place-admission.js";
 import { establishPlace } from "./helpers/places.fixture.js";
+
 import { projectDesignKey } from "../packages/villages/src/server/domain/rules/project-terms.js";
 import {
   PROJECT_DURATION_MS,
@@ -164,7 +166,7 @@ await runCase("project-room-edits/preflight", async () => {
   );
 });
 
-await runCase("project-room-edits/physical-establishment", async () => {
+await runCase("project-room-edits/admitted-renovation", async () => {
   const f = fixture();
   const placeId = "place:shed";
   await f.mutate((state) => {
@@ -173,6 +175,7 @@ await runCase("project-room-edits/physical-establishment", async () => {
       {
         name: "Shed",
         description: "A bare approach.",
+        classes: ["community"],
         zones: [{ id: "room", name: "Room", kind: "public", description: "A bare floor." }],
       },
       placeId,
@@ -184,15 +187,16 @@ await runCase("project-room-edits/physical-establishment", async () => {
     place.location.presentation.x = 0.7;
     place.location.presentation.y = 0.7;
     seedObservedProjectRoom(state, place.location, "room", "A bare floor.\n\nA lattice window.");
+    place.visited = true;
+    admitLocation(state, placeId);
   });
-  const venue = f.state().worldPlaces.places[placeId].location;
+  const venue = f.state().venues.find((row) => row.id === placeId)!;
   const [floor] = projectRoomEntries(f.state(), venue, "room", at)!;
-  await f.service.createEstablishmentProject(placeId, {
+  await f.service.createRenovationProject(placeId, {
     requestId: "repair-shed",
     classes: ["community"],
     detail: "Prepare a workshop",
     roomEdits: [{ zoneId: "room", entryId: floor.id, version: floor.version, text: "A level plank floor." }],
-    establishment: { goal: "Shared workshop", physical: true, zoneIds: ["exterior", "room"], objectives: [] },
   });
   const id = f.state().projects[0].id;
   await f.mutate((state) => {

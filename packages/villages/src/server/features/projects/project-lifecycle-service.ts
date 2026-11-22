@@ -16,10 +16,7 @@ import { projectAgendaReservations, trimProjectFocus } from "../../domain/rules/
 import { approvalScope, matchesProjectDesign, projectAgreementCurrent } from "../../domain/rules/project-terms.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
-import { draftEstablishmentProject } from "./project-drafts.js";
-import { establishmentDraft, establishmentScope, establishmentChange } from "../../domain/rules/establishment.js";
 import { findLocation } from "../../domain/rules/places.js";
-import { completeProject } from "../../domain/rules/project-completion.js";
 import { removeNativeRoom } from "../../domain/rules/native-continuity.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 
@@ -80,10 +77,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
         (row) =>
           flow.affectedIds.includes(row.residentId) &&
           projectAgreementCurrent(state, row) &&
-          row.scope ===
-            (project.kind === "establishment"
-              ? establishmentScope(project)
-              : approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds, flow.roomBasis)),
+          row.scope === approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds, flow.roomBasis),
       );
     }
     flow.candidates = flow.candidates.filter(
@@ -117,23 +111,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           return;
         }
         const project = draftRenovationProject(state, venueId, row, projectId);
-        project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
-      },
-      { memories: true },
-    );
-  }
-  async function createEstablishmentProject(venueId: string, value: unknown) {
-    const { row, requestId, projectId } = projectDraftRequest(value);
-    await mutateVillageState(
-      (state) => {
-        const fingerprint = JSON.stringify(["create-establishment", venueId, row]);
-        const prior = state.projects.find((project) => project.id === projectId);
-        if (prior) {
-          if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
-            throw conflict("This request ID was already used.");
-          return;
-        }
-        const project = draftEstablishmentProject(state, venueId, row, projectId);
         project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
       },
       { memories: true },
@@ -193,19 +170,9 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       planning(project);
       const venue = findLocation(state, project.venueId);
       if (project.kind === "new-venue" || !venue) throw conflict("Choose an existing location.");
-      if (project.kind === "establishment") {
-        project.establishment = establishmentDraft(row.establishment);
-        if (!project.establishment.physical) {
-          row = { classes: row.classes ?? venue.classes, detail: project.establishment.goal };
-        }
-      }
-      const design =
-        project.kind === "establishment"
-          ? establishmentChange(state, venue, row, project.establishment!, villageNow(), project.lifecycle)
-          : readRenovationChange(state, venue, row, villageNow(), project.lifecycle);
+      const design = readRenovationChange(state, venue, row, villageNow(), project.lifecycle);
       Object.assign(project.lifecycle, design);
-      project.lifecycle.changedZoneIds =
-        project.establishment && !project.establishment.physical ? [] : changedZoneIds(venue, project.lifecycle.change);
+      project.lifecycle.changedZoneIds = changedZoneIds(venue, project.lifecycle.change);
       project.lifecycle.baseDesignHash = venueDesignHash(
         venue,
         project.lifecycle.changedZoneIds,
@@ -256,13 +223,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       projectAgendaReservations(state);
     });
   }
-  async function completeEstablishmentProject(id: string, value: unknown) {
-    await command(id, value, "complete", (state, project) => {
-      if (project.kind !== "establishment" || project.establishment?.physical || project.status !== "working")
-        throw conflict("Start the social establishment Project before completing it.");
-      completeProject(state, project, villageNow().toISOString());
-    });
-  }
   async function debugCompleteProjectConstruction(id: string, value: unknown) {
     if (!ports.villagesDebugAgentsEnabled()) throw conflict("Project debug actions are unavailable.");
     await command(id, value, "debug-complete", (state, project) => {
@@ -278,8 +238,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     });
   }
   return {
-    createEstablishmentProject,
-    completeEstablishmentProject,
     createNewVenueProject,
     createRenovationProject,
     saveProjectPlan,

@@ -8,7 +8,6 @@ import { establishPlace } from "./place-discovery.js";
 import { findLocation } from "./places.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { initializeRoomContinuity } from "./native-continuity.js";
-import { projectSpeechTerms } from "./project-interpretation.js";
 
 export function narrationPlaceContext(state: VillageState, actors: string[]) {
   return Object.values(state.worldPlaces.places)
@@ -26,9 +25,7 @@ export function narrationPlacePrompt(places: ReturnType<typeof narrationPlaceCon
         JSON.stringify(places.map(({ id, name }) => ({ id, name })))
     : "";
 }
-type Request =
-  | { type: "place.discover"; existingId?: string; place?: unknown }
-  | { type: "place.establish"; project: string; objective: string; quote: string; met: true };
+type Request = { type: "place.discover"; existingId?: string; place?: unknown };
 export function applyNarrationPlace(
   state: VillageState,
   command: Request,
@@ -49,46 +46,6 @@ export function applyNarrationPlace(
     "a Place outcome needs an actual current Player-witnessed source",
   );
   const witnesses = narrationWitnesses(sources);
-  if (command.type === "place.establish") {
-    const project = state.projects.find((project) => project.id === command.project),
-      captured = readset.projects.find((project) => project.projectId === command.project);
-    const objective = project?.establishment?.objectives.find((objective) => objective.id === command.objective);
-    memoryRequire(
-      project &&
-        captured &&
-        objective &&
-        project.lifecycle?.revision === captured.revision &&
-        memoryHash(projectSpeechTerms(state, project)) === memoryHash(captured.terms) &&
-        ["planning", "working", "paused"].includes(project.status),
-      "the current establishment objective was not supplied",
-    );
-    memoryRequire(
-      sources.some((source) =>
-        context.lines.some(
-          (line) =>
-            line.id === source.unitId &&
-            line.role === "assistant" &&
-            line.content.includes(command.quote) &&
-            !line.contactHidden &&
-            !line.contactReport &&
-            !line.soundOnly?.player &&
-            (line.kind !== "whisper" || line.targetId === "player"),
-        ),
-      ),
-      "the establishment outcome needs its exact current witnessed quote",
-    );
-    objective.met = true;
-    objective.evidence = [...objective.evidence, { source: receiptId, quote: command.quote }].slice(-8);
-    project.updatedAt = at;
-    return {
-      id: receiptId,
-      kind: "establishment",
-      targetId: project.id,
-      revision: project.lifecycle.revision,
-      text: "Established objective: " + objective.text,
-      witnesses,
-    };
-  }
   memoryRequire(
     Boolean(command.existingId) !== Boolean(command.place),
     "discover an existing Place or one new draft, never both",

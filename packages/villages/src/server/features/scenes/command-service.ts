@@ -73,6 +73,7 @@ function visitEventHere(state: VillageState, placeId: string, zoneId: string, oc
 }
 
 export interface SceneCommandPorts {
+  preparePlace: typeof import("../places/services.js").generatePlace;
   rollVisitEvent?: () => "local" | "place" | "quiet";
   retry?: ReturnType<typeof import("./retry-service.js").createSceneRetry>;
   generate: typeof import("./writing.js").generate;
@@ -134,6 +135,7 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  preparePlace,
   rollVisitEvent = () => {
     const roll = randomInt(9);
     return roll === 0 ? "place" : roll < 3 ? "local" : "quiet";
@@ -672,6 +674,10 @@ export function createSceneCommands({
         const offer = sceneTravelOffer(current);
         if (!offer?.travel || offer.id !== offerId) throw conflict("That invitation is no longer offered here.");
         const { venueId, zoneId, grantId } = offer.travel;
+        const destination = (await readVillageState()).worldPlaces.places[venueId];
+        if (destination && !destination.prepared)
+          throw conflict("Conclude this Scene, then Visit the Place from Places.");
+        if (venueId !== current.placeId) await prepareVisit(venueId);
         const session = await withVillageSceneAcceptance(
           (village) =>
             enterVenueOnce(venueId, zoneId, undefined, {
@@ -690,6 +696,23 @@ export function createSceneCommands({
     });
   }
 
+  async function prepareVisit(placeId: string): Promise<void> {
+    const world = await readVillageState({ memories: true });
+    const discovery = world.worldPlaces.places[placeId];
+    if (!discovery || (discovery.prepared && discovery.classified)) return;
+    const result = await preparePlace(
+      {
+        worldScope: villageWorldScope(world),
+        requestId: "visit:" + randomUUID(),
+        mapId: discovery.location.presentation.mapId,
+        expectedRevision: discovery.revision,
+        intent: "Visit this Place",
+      },
+      placeId,
+    );
+    if (result.status !== "ready") throw conflict("Could not enter this Place. Its discovery is retained.");
+  }
+
   async function enterVenueOnce(
     placeId: string,
     requestedZoneId?: string,
@@ -703,6 +726,9 @@ export function createSceneCommands({
     const existing = travel ? null : await activeVenueSession();
     if (!existing && !travel) {
       await rollActiveAgendas();
+    }
+    if (!existing && !travel) {
+      await prepareVisit(placeId);
     }
     const source = travel?.village ?? (await readVillageState());
     const now = villageNow();

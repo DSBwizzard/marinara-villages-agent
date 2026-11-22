@@ -12,7 +12,6 @@ import { sceneFailure } from "./scene-error-report.js";
 import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
-import { ModalDialog } from "../../shared/ModalDialog.js";
 import { groupSceneMoments } from "../../../shared/helpers/scene-speech.js";
 import { zoneAccessLabel } from "../../shared/zone-access.js";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
@@ -23,7 +22,6 @@ const requestErrorIds = new Set(["room", "operation", "greeting"]);
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
   const daylight = useMenuDaylight(controller.snapshot);
   const lighting = useVillageLighting(controller.snapshot?.village, "storybook");
-  const [showPlace, setShowPlace] = useState(false);
   const displayedSubmissionId = controller.room?.latestTurn?.published ? controller.room.latestTurn.id : undefined;
   useEffect(() => {
     if (displayedSubmissionId && controller.room?.id)
@@ -416,9 +414,21 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onRetryReply={() => void changeReply()}
           retryPending={retryPending}
           onViewVenue={() => {
-            const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
+            const place =
+              snapshot?.settings.venues.find((place) => place.id === room.placeId) ??
+              sceneVenues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);
-            else setShowPlace(true);
+            else
+              void request<PlaceDetail | { promoted: true; id: string }>("/places/" + encodeURIComponent(room.placeId))
+                .then((detail) => {
+                  if (sceneLifetime.current !== room.id) return;
+                  if ("promoted" in detail) throw new Error("This location changed. Open it from Locations.");
+                  openVenue(detail.location);
+                })
+                .catch((cause) => {
+                  if (sceneLifetime.current === room.id)
+                    setRoomError(sceneFailure(cause, "Could not read this location.", "open"));
+                });
             void loadSnapshot();
           }}
           onEnd={() => void closeRoom()}
@@ -444,7 +454,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                   .then((detail) => {
                     if (sceneLifetime.current === room.id) void openRoom(detail.location);
                   })
-                  .catch((cause) => setRoomError(sceneFailure(cause, "Could not reopen this Place.", "open")));
+                  .catch((cause) => setRoomError(sceneFailure(cause, "Could not reopen this location.", "open")));
             }
           }}
           onContinueWithoutGreeting={() => {
@@ -463,32 +473,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           Back to village
         </button>
       )}
-      {showPlace && room ? (
-        <ModalDialog title={room.placeName} onClose={() => setShowPlace(false)} scrollBody>
-          <div className="villages-founding-editor-body villages-places-directory">
-            <p>{sceneVenues.find((place) => place.id === room.placeId)?.description}</p>
-            <ul>
-              {sceneVenues
-                .find((place) => place.id === room.placeId)
-                ?.zones?.map((zone) => (
-                  <li key={zone.id}>
-                    {zone.name}
-                    {zone.seen ? <p>{zone.description}</p> : null}
-                  </li>
-                ))}
-            </ul>
-            <button
-              type="button"
-              onClick={() => {
-                setShowPlace(false);
-                goHome();
-              }}
-            >
-              Map
-            </button>
-          </div>
-        </ModalDialog>
-      ) : null}
     </div>
   );
 }

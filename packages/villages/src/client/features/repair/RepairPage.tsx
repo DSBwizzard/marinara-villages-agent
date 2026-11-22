@@ -9,7 +9,7 @@ import { REPAIR_STYLES } from "./repair-styles.js";
 const topics = {
   memories: "Memories",
   people: "People",
-  places: "Places & venues",
+  places: "Locations & venues",
   world: "World & history",
   progress: "Recover work",
   restore: "Checkpoints",

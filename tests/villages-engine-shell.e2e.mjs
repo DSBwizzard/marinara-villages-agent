@@ -1,3 +1,4 @@
+import { placesPage } from "./fixtures/villages-places.fixture.mjs";
 import { fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -40,6 +41,10 @@ await withBrowser(browser, async () => {
       }
       if (path.startsWith("/api/villages")) {
         let value = snapshot;
+        if (path.endsWith("/places"))
+          return fulfill(route, {
+            json: placesPage(snapshot, new URL(route.request().url()).searchParams.get("query") ?? ""),
+          });
         if (path.endsWith("/town-map")) value = { image: mapImage };
         else if (path.endsWith("/rooms/active")) value = { session: null };
         else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
@@ -115,9 +120,9 @@ await withBrowser(browser, async () => {
     await page.screenshot({ path: resolve(output, `warm-engine-map-${viewport.width}.png`) });
     await home
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
+      .getByRole("button", { name: "Locations", exact: true })
       .click();
-    const panel = page.getByRole("complementary", { name: "Places navigator", exact: true });
+    const panel = page.getByRole("region", { name: "Locations directory", exact: true });
     await expect(panel).toBeVisible();
     const bounds = await panel.boundingBox();
     const host = await home.boundingBox();

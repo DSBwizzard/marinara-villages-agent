@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 export const VILLAGE_DESTINATIONS = ["people", "projects", "places", "mailbox", "settings"] as const;
 export type VillageDestination = (typeof VILLAGE_DESTINATIONS)[number];
 export type VillageIconName =
-  VillageDestination | "memory" | "world" | "venue" | "zone" | "details" | "access" | "calendar";
+  VillageDestination | "memory" | "world" | "venue" | "zone" | "details" | "access" | "calendar" | "compass";
 // Curved silhouettes follow the reference without tracing its raster pixel edges.
 const glyphs: Record<VillageIconName, ReactNode> = {
   people: (
@@ -20,6 +20,12 @@ const glyphs: Record<VillageIconName, ReactNode> = {
     </g>
   ),
   places: <path d="M1.5 15 15 3c.6-.5 1.4-.5 2 0l13.5 12-2.5 2.5-3-2.6V29h-7v-9h-4v9H7V14.9l-3 2.6Z" />,
+  compass: (
+    <>
+      <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="m23 9-4 10-10 4 4-10Zm-9 5 4 4 2-6Z" fillRule="evenodd" />
+    </>
+  ),
   mailbox: (
     <path
       fillRule="evenodd"

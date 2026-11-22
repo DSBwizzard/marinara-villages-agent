@@ -10,12 +10,16 @@ export type ExplorationScreenController = {
   readonly selectedMap: import("../../../shared/contracts/village.js").VillageMap | null;
   readonly setSelectedMapId: (id: string) => void;
   readonly showAllMaps: boolean;
+  readonly placingPlace: import("../../../shared/contracts/places.js").PlaceSummary | null;
+  readonly setPlacingPlace: React.Dispatch<
+    React.SetStateAction<import("../../../shared/contracts/places.js").PlaceSummary | null>
+  >;
   readonly setShowAllMaps: React.Dispatch<React.SetStateAction<boolean>>;
   readonly room: { status: string } | null;
   readonly returnToScene: () => void;
   readonly openPlace: (place: VillageVenue) => void;
   readonly busy: boolean;
-  readonly closeExploration: () => void;
+  readonly closeExploration: () => void | Promise<void>;
   readonly error: string;
   readonly explorationOrigin: React.RefObject<HTMLElement | null>;
   readonly explorationReturnTab: React.RefObject<ExplorationTab>;
@@ -44,5 +48,4 @@ export type ExplorationScreenController = {
   readonly settingsError: string;
   readonly snapshot: VillageSnapshot;
   readonly townMapImage: string;
-  readonly venueExplorationActions: (place: VillageVenue) => { label: string; onSelect: () => void }[];
 };

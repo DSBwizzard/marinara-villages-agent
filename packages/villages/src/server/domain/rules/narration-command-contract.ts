@@ -89,20 +89,6 @@ export const nativeCommand = z.discriminatedUnion("type", [
       place: placeDraftSchema.optional(),
     })
     .strict(),
-  z
-    .object({
-      ...base,
-      type: z.literal("place.establish"),
-      project: id,
-      objective: id,
-      quote: z
-        .string()
-        .min(1)
-        .max(1200)
-        .refine((value) => value.trim().length > 0),
-      met: z.literal(true),
-    })
-    .strict(),
   z.object({ ...base, type: z.literal("residence.request"), by: id, venue: id }).strict(),
   z
     .object({ ...base, type: z.literal("residence.decide"), by: id, person: id, venue: id, approved: z.boolean() })
@@ -187,7 +173,7 @@ export const NARRATION_HOUSING_COMMANDS =
   "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the request or current decision about its exact terms.";
 
 export const NARRATION_PROJECT_COMMANDS =
-  'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words. place.establish {project,objective,quote,met:true} records a Player-witnessed objective.';
+  'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words.';
 
 export const NARRATION_CIRCUMSTANCE_COMMANDS =
   'circumstance with a supplied grant: {severity?:"gentle|moderate|dramatic",occurrence?,situation:{id?,title,summary,status?:"active|resolved"},conditions?:[{id?,observation?,restriction?:"none|ordinary-use",remedy?,durationMinutes?,clear?}]}. Cite Player-seen narration of the occurrence. A completed repair can use conditions:[{id,clear:true}] without a grant. It requires same-reply Room keeps for every linked entry citing the same completed repair.';

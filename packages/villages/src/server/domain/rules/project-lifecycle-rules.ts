@@ -5,8 +5,7 @@ import { assertCanAddVillageVenue } from "./venue-capacity.js";
 import { villageMap } from "./village-maps.js";
 import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
-import { establishmentControllers, establishmentScope } from "./establishment.js";
-import { findLocation, placeRegistry } from "./places.js";
+import { findLocation } from "./places.js";
 import { completeProject, readProjectPlan } from "./project-completion.js";
 import {
   allocateProjectFocus,
@@ -63,16 +62,6 @@ export function lifecycle(
 }
 export function missingProjectAgreements(state: VillageState, project: VillageProject): string[] {
   const flow = project.lifecycle!;
-  if (project.kind === "establishment") {
-    flow.affectedIds = establishmentControllers(state, project);
-    return flow.affectedIds.filter(
-      (id) =>
-        !flow.approvals.some(
-          (row) =>
-            row.residentId === id && projectAgreementCurrent(state, row) && row.scope === establishmentScope(project),
-        ),
-    );
-  }
   if (project.kind !== "renovation") return [];
   const venue = state.venues.find((venue) => venue.id === project.venueId);
   if (!venue) throw conflict("The Project Venue is missing.");
@@ -94,7 +83,6 @@ export function refreshProjectAgreements(state: VillageState): void {
     if (!flow || !["planning", "working", "paused"].includes(project.status)) continue;
     flow.candidates = flow.candidates.filter((row) => projectAgreementCurrent(state, row));
     if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
-    if (project.kind === "establishment" && !placeRegistry(state)) continue;
     const venue = findLocation(state, project.venueId);
     if (project.kind === "new-venue" || !venue || !flow.change) continue;
     missingProjectAgreements(state, project);
@@ -102,10 +90,7 @@ export function refreshProjectAgreements(state: VillageState): void {
       (approval) =>
         flow.affectedIds.includes(approval.residentId) &&
         projectAgreementCurrent(state, approval) &&
-        approval.scope ===
-          (project.kind === "establishment"
-            ? establishmentScope(project)
-            : approvalScope(venue, flow.change!, approval.residentId, flow.changedZoneIds, flow.roomBasis)),
+        approval.scope === approvalScope(venue, flow.change!, approval.residentId, flow.changedZoneIds, flow.roomBasis),
     );
   }
 }
@@ -146,8 +131,6 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
   for (const id of state.projects.filter((project) => project.status === "working").map((project) => project.id)) {
     const project = projectFor(state, id),
       flow = project.lifecycle;
-    if (project.kind === "establishment" && !placeRegistry(state)) continue;
-    if (project.kind === "establishment" && !project.establishment?.physical) continue;
     if (
       !state.villagers.some((resident) => resident.characterId === flow.builderId) ||
       !flow.candidates.some(
@@ -194,42 +177,25 @@ export function beginProject(
   if (project.status !== (resume ? "paused" : "planning"))
     throw conflict(resume ? "This Project is not paused." : "This Project has already started.");
   const lead = asTrimmedString(row.residentId) || flow.builderId;
-  const social = project.kind === "establishment" && !project.establishment?.physical;
   if (
-    !social &&
-    (!state.villagers.some((resident) => resident.characterId === lead) ||
-      !flow.candidates.some(
-        (candidate) =>
-          candidate.residentId === lead &&
-          projectAgreementCurrent(state, candidate) &&
-          matchesProjectDesign(candidate.scope, project),
-      ))
+    !state.villagers.some((resident) => resident.characterId === lead) ||
+    !flow.candidates.some(
+      (candidate) =>
+        candidate.residentId === lead &&
+        projectAgreementCurrent(state, candidate) &&
+        matchesProjectDesign(candidate.scope, project),
+    )
   )
     throw conflict("Choose a willing resident lead for this design.");
   const others = state.projects.filter(
     (other) => other.id !== project.id && ["working", "paused"].includes(other.status),
   );
   if (!resume && others.length >= 2) throw conflict("Two Projects are already active.");
-  if (!social && others.some((other) => other.lifecycle?.builderId === lead))
+  if (others.some((other) => other.lifecycle?.builderId === lead))
     throw conflict("This resident already leads an active Project.");
   if (others.some((other) => other.venueId && other.venueId === project.venueId))
     throw conflict("This Venue already has an active Project.");
   if (missingProjectAgreements(state, project).length) throw conflict("Obtain the necessary agreements first.");
-  if (project.kind === "establishment") {
-    const place = state.worldPlaces.places[project.venueId];
-    if (!place || place.disabled || !place.prepared || place.report)
-      throw conflict("Visit and verify this Place first.");
-    if (place.location.presentation.x === null || place.location.presentation.y === null)
-      throw conflict("Choose a map position first.");
-    if (!resume) assertCanAddVillageVenue(state, flow.change?.classes, project.id);
-    if (social) {
-      project.status = flow.phase = "working";
-      project.updatedAt = now.toISOString();
-      return;
-    }
-    if (project.establishment!.objectives.some((row) => !row.met))
-      throw conflict("Resolve the establishment objectives before physical work.");
-  }
   if (project.kind !== "new-venue") {
     const venue = findLocation(state, project.venueId)!;
     if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))

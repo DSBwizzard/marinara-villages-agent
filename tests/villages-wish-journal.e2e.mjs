@@ -1,3 +1,4 @@
+import { placesPage } from "./fixtures/villages-places.fixture.mjs";
 import { clickCharacterTool } from "./fixtures/browser-diagnostics.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
@@ -72,6 +73,10 @@ await withBrowser(browser, async () => {
       const url = new URL(route.request().url());
       const path = url.pathname;
       let value = village;
+      if (path.endsWith("/places"))
+        return fulfill(route, {
+          json: placesPage(village, new URL(route.request().url()).searchParams.get("query") ?? ""),
+        });
       if (path.endsWith("/relationships")) value = { profiles, starting: { pending: false } };
       else if (path.endsWith("/agendas") && url.searchParams.has("characterId"))
         value = emptyAgendaWeek(url.searchParams.get("inspect") === "true");
@@ -367,11 +372,10 @@ await withBrowser(browser, async () => {
     await page.keyboard.press("Escape");
     await page
       .getByRole("navigation", { name: "Village exploration" })
-      .getByRole("button", { name: "Places", exact: true })
+      .getByRole("button", { name: "Locations", exact: true })
       .click();
-    const places = page.getByRole("complementary", { name: "Places navigator" });
+    const places = page.getByRole("region", { name: "Locations directory" });
     await places.getByRole("button", { name: /^The Mill/ }).click();
-    await places.getByRole("button", { name: "View venue", exact: true }).click();
     await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     await expect(next).toBeEnabled();

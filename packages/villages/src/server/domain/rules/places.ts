@@ -7,9 +7,17 @@ import type { VillageState, VillageVenue } from "../models/world.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { badRequest } from "./errors.js";
 import { readVenueAccess, readZonePolicy } from "./venue-access.js";
+import { validVenueClasses } from "./venue-model.js";
 import { selectNpcCandidates } from "./npc-index.js";
 
 export const NPC_PREFIX = "npc:";
+
+export function findNamedLocation(state: VillageState, mapId: string, name: string): VillageVenue | undefined {
+  const key = (value: string) => value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLowerCase();
+  return [...state.venues, ...Object.values(state.worldPlaces.places).map((place) => place.location)].find(
+    (location) => location.presentation.mapId === mapId && key(location.name) === key(name),
+  );
+}
 const npcSchema = z
   .object({
     id: z.string().startsWith(NPC_PREFIX).max(200),
@@ -60,6 +68,8 @@ const savedPlace = z
     knownBy: z.array(z.string().max(200)),
     report: z.boolean(),
     prepared: z.boolean(),
+    classified: z.boolean().optional(),
+    visited: z.boolean(),
     disabled: z.boolean(),
     location: z
       .object({
@@ -143,6 +153,7 @@ export function readPlaceRegistry(value: unknown): PlaceRegistry {
       const parsed = savedPlace.safeParse(row);
       if (!parsed.success) throw badRequest("Invalid saved Place.");
       const place = parsed.data as WorldPlace;
+      if (place.classified && !validVenueClasses(place.location.classes)) throw badRequest("Invalid Place Classes.");
       place.location.access = readVenueAccess(place.location.access);
       if (!place.location.access) throw badRequest("Saved Place has no access record.");
       for (const zone of place.location.zones ?? []) {
@@ -198,17 +209,24 @@ export function sceneActorIds(state: VillageState): string[] {
   ];
 }
 
+export function locationSummary(location: VillageVenue) {
+  return {
+    id: location.id,
+    name: location.name,
+    description: location.zones?.find((zone) => zone.id === "exterior")?.observed?.description ?? "",
+    mapId: location.presentation.mapId,
+    x: location.presentation.x,
+    y: location.presentation.y,
+  };
+}
+
 export function placeSummary(place: WorldPlace): PlaceSummary {
   return {
-    id: place.id,
+    ...locationSummary(place.location),
     revision: place.revision,
-    name: place.location.name,
-    description: place.location.zones?.find((zone) => zone.id === "exterior")?.observed?.description ?? "",
-    mapId: place.location.presentation.mapId,
-    x: place.location.presentation.x,
-    y: place.location.presentation.y,
     report: place.report,
-    prepared: place.prepared,
+    visited: place.visited,
+    venue: false,
   };
 }
 

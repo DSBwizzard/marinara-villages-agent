@@ -13,7 +13,6 @@ import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import { cloneReturnCapture } from "../rules/world-context-copy.js";
-import { readEstablishment } from "../rules/establishment.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -106,7 +105,7 @@ function readVisitorIntroduction(value: unknown): NonNullable<VillageState["visi
 export function defaultVillageState(): VillageState {
   return {
     worldPlaces: emptyPlaceRegistry(),
-    version: 19,
+    version: 20,
     continuity: emptyContinuity(),
     episodes: emptyEpisodes(),
     mailbox: emptyMailbox(),
@@ -944,7 +943,7 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (
       !asTrimmedString(raw.id) ||
       !asTrimmedString(raw.title) ||
-      !["new-venue", "renovation", "establishment"].includes(String(raw.kind)) ||
+      !["new-venue", "renovation"].includes(String(raw.kind)) ||
       !["planning", "working", "paused", "complete", "cancelled"].includes(String(raw.status)) ||
       flow.phase !== raw.status ||
       !Number.isInteger(flow.revision) ||
@@ -992,12 +991,7 @@ function coerceProjects(value: unknown): VillageProject[] {
         Number(order.remainingMs) < 0)
     )
       throw new Error("Invalid Project deadline.");
-    if (
-      ["working", "paused"].includes(String(raw.status)) &&
-      !order &&
-      !(raw.kind === "establishment" && asRecord(raw.establishment).physical === false)
-    )
-      throw new Error("Missing Project deadline.");
+    if (["working", "paused"].includes(String(raw.status)) && !order) throw new Error("Missing Project deadline.");
     const position = asRecord(draft.position);
     if (raw.kind === "new-venue" && (!validVenueClasses(draft.classes) || !asTrimmedString(draft.name)))
       throw new Error("Invalid Project Venue.");
@@ -1018,12 +1012,11 @@ function coerceProjects(value: unknown): VillageProject[] {
           (zoneId !== "exterior" && !zones?.some((zone) => zone.id === zoneId)) ||
           (!entryId && text === null),
       ) ||
-      (roomEdits.length &&
-        (raw.kind === "new-venue" || (raw.kind === "establishment" && asRecord(raw.establishment).physical !== true)))
+      (roomEdits.length && raw.kind === "new-venue")
     )
       throw new Error("Invalid Project Room basis.");
     if (
-      ["renovation", "establishment"].includes(String(raw.kind)) &&
+      raw.kind === "renovation" &&
       (!validVenueClasses(change.classes) ||
         (change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
         !Number.isInteger(change.capacity) ||
@@ -1043,7 +1036,6 @@ function coerceProjects(value: unknown): VillageProject[] {
       id: String(raw.id),
       title: String(raw.title),
       kind: raw.kind as VillageProject["kind"],
-      ...(raw.kind === "establishment" ? { establishment: readEstablishment(raw.establishment) } : {}),
       venueId: asTrimmedString(raw.venueId),
       participantIds: asStringArray(raw.participantIds),
       status: raw.status as VillageProject["status"],
@@ -1450,7 +1442,7 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
 
 export function coerceVillageState(value: unknown, { applySpriteDefaults = true } = {}): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 19) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 20) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null)
     memoryRequire(
       raw.continuity && raw.episodes && raw.startingHistory && raw.mailbox && raw.residentPlans,
@@ -1470,7 +1462,7 @@ export function coerceVillageState(value: unknown, { applySpriteDefaults = true 
   const episodes = readEpisodes(raw.episodes ?? fallback.episodes, asString(raw.seed));
   const state: VillageState = {
     worldPlaces: readPlaceRegistry(raw.worldPlaces),
-    version: 19,
+    version: 20,
     continuity,
     episodes,
     mailbox: value == null ? fallback.mailbox : readMailboxState(raw.mailbox, asString(raw.seed)),

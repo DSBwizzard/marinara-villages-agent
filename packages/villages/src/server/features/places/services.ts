@@ -1,3 +1,4 @@
+import { admitLocation } from "../../domain/rules/place-admission.js";
 import { randomUUID } from "node:crypto";
 import { initializeRoomContinuity } from "../../domain/rules/native-continuity.js";
 import type { CapabilityLanguageModelCompletion } from "@marinara-engine/shared";
@@ -16,46 +17,68 @@ import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { badRequest, conflict, notFound, safeFailureMessage } from "../../domain/rules/errors.js";
 import {
   establishPlace,
+  classifyPlace,
+  placeClassesSchema,
+  PLACE_CLASSIFICATION_INSTRUCTION,
   PLACE_GENERATION_INSTRUCTION,
   placeDraftSchema,
   projectPlace,
 } from "../../domain/rules/place-discovery.js";
-import { placeSummary } from "../../domain/rules/places.js";
+import { findNamedLocation, locationSummary, placeSummary } from "../../domain/rules/places.js";
 import { worldCharacterReferences } from "../../domain/rules/npc-cast.js";
+
 import type { PlaceDirectory } from "../../../shared/contracts/places.js";
 import type { PlaceOperation } from "../../domain/models/places.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
+import { sceneQueries } from "../scenes/services.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 
 export async function listPlaces(query: Record<string, unknown>): Promise<PlaceDirectory> {
+  const input = z
+    .object({
+      query: z.string().trim().max(200).default(""),
+      mapId: z.string().max(200).default(""),
+      kind: z.enum(["all", "venues", "other"]).default("all"),
+      cursor: z.coerce.number().int().nonnegative().default(0),
+      limit: z.coerce.number().int().min(1).max(100).default(50),
+    })
+    .safeParse(query);
+  if (!input.success) throw badRequest("Invalid Locations page.");
+  const { mapId, kind, cursor, limit } = input.data;
   const state = await readVillageState({ memories: true });
-  const search = String(query.query ?? "")
-    .toLocaleLowerCase()
-    .slice(0, 200);
-  const start = Number(query.cursor ?? 0),
-    limit = Math.min(100, Number(query.limit ?? 50));
-  if (!Number.isSafeInteger(start) || start < 0 || !Number.isSafeInteger(limit) || limit < 1)
-    throw badRequest("Invalid Places page.");
+  const search = input.data.query.toLocaleLowerCase();
   // shortcut: directory search scans private records; add a storage index if measured library size needs it.
-  const rows = Object.values(state.worldPlaces.places).filter(
-    (place) =>
-      !place.disabled &&
-      place.knownBy.includes("player") &&
-      (!query.mapId || place.location.presentation.mapId === query.mapId) &&
-      (!search || `${place.location.name} ${placeSummary(place).description}`.toLocaleLowerCase().includes(search)),
+  const rows = [
+    ...state.venues.map((venue) => ({
+      ...locationSummary(venue),
+      revision: 0,
+      report: false,
+      visited: true,
+      venue: true,
+    })),
+    ...Object.values(state.worldPlaces.places)
+      .filter((place) => !place.disabled && place.knownBy.includes("player"))
+      .map(placeSummary),
+  ].filter(
+    (place) => (!mapId || place.mapId === mapId) && (!search || place.name.toLocaleLowerCase().includes(search)),
   );
-  const bounds = query.bounds === undefined ? undefined : String(query.bounds).split(",").map(Number);
-  if (bounds && (bounds.length !== 4 || bounds.some((n) => !Number.isFinite(n) || n < 0 || n > 1)))
-    throw badRequest("Invalid map bounds.");
-  const selected = bounds
-    ? rows.filter(
-        ({ location: { presentation: p } }) =>
-          p.x !== null && p.y !== null && p.x >= bounds[0] && p.y >= bounds[1] && p.x <= bounds[2] && p.y <= bounds[3],
-      )
-    : rows;
+  const venues = rows.filter((place) => place.venue).length;
+  const filtered = rows
+    .filter((place) => kind === "all" || (kind === "venues" ? place.venue : !place.venue))
+    .sort(
+      (a, b) =>
+        (kind === "all" && a.venue !== b.venue ? Number(b.venue) - Number(a.venue) : 0) ||
+        a.name.localeCompare(b.name, "en", { sensitivity: "base" }) ||
+        a.id.localeCompare(b.id, "en"),
+    );
+  const start = filtered.length ? Math.min(cursor, Math.floor((filtered.length - 1) / limit) * limit) : 0;
   return {
-    items: selected.slice(start, start + limit).map(placeSummary),
-    nextCursor: start + limit < selected.length ? String(start + limit) : null,
+    items: filtered.slice(start, start + limit),
+    nextCursor: start + limit < filtered.length ? String(start + limit) : null,
+    previousCursor: start > 0 ? String(Math.max(0, start - limit)) : null,
+    offset: start,
+    total: filtered.length,
+    counts: { all: rows.length, venues, other: rows.length - venues },
   };
 }
 
@@ -65,57 +88,64 @@ export async function readPlace(id: string) {
   if (venue) return { promoted: true, id };
   const place = state.worldPlaces.places[id];
   if (!place || place.disabled || !place.knownBy.includes("player")) throw notFound("That Place is not known.");
-  return { ...placeSummary(place), location: projectPlace(state, place) };
+  return { ...placeSummary(place), classified: place.classified === true, location: projectPlace(state, place) };
 }
 
-export async function placePosition(id: string, value: unknown) {
-  const input = z
-    .object({
-      requestId: z.string().min(1).max(100),
-      expectedRevision: z.number().int().positive(),
-      expectedMapRevision: z.number().int().nonnegative(),
-      mapId: z.string().min(1).max(200),
-      x: z.number().min(0.03).max(0.97),
-      y: z.number().min(0.03).max(0.97),
-    })
-    .strict()
-    .safeParse(value);
-  if (!input.success) throw badRequest("Choose a map position.");
-  const row = input.data;
-  await mutateVillageState(
-    (state) => {
-      const place = state.worldPlaces.places[id],
-        key = `place-position:${row.requestId}`,
-        fingerprint = JSON.stringify([id, row]);
-      if (state.worldPlaces.receipts[key]) {
-        if (state.worldPlaces.receipts[key] !== fingerprint) throw conflict("This request ID was already used.");
-        return;
-      }
-      if (!place || place.disabled || !place.knownBy.includes("player")) throw notFound("That Place is not known.");
-      if (place.revision !== row.expectedRevision) throw conflict("The Place changed. Refresh it.");
-      const map = villageMap(state, row.mapId);
-      assertMapRevision(map, row.expectedMapRevision);
-      if (place.location.presentation.mapId !== map.id) throw conflict("Use this Place's known map.");
-      if (
-        state.venues.some(
-          (venue) =>
-            venue.presentation.mapId === map.id &&
-            venue.presentation.x !== null &&
-            venue.presentation.y !== null &&
-            Math.abs(venue.presentation.x - row.x) < 0.055 &&
-            Math.abs(venue.presentation.y - row.y) < 0.055,
+export async function admitPlace(id: string, value: unknown) {
+  return sceneQueries().withSceneNavigation(async () => {
+    const input = z
+      .object({
+        worldScope: z.string().min(1).max(100),
+        requestId: z.string().min(1).max(100),
+        expectedRevision: z.number().int().positive(),
+        expectedMapRevision: z.number().int().nonnegative(),
+        mapId: z.string().min(1).max(200),
+        x: z.number().min(0.03).max(0.97),
+        y: z.number().min(0.03).max(0.97),
+      })
+      .strict()
+      .safeParse(value);
+    if (!input.success) throw badRequest("Choose a map position.");
+    const row = input.data;
+    const active = await sceneQueries().activeVenueSession();
+    if (active && active.status !== "closed") throw conflict("Conclude the Scene before adding a Venue.");
+    await mutateVillageState(
+      (state) => {
+        const place = state.worldPlaces.places[id],
+          key = `place-admission:${row.requestId}`,
+          fingerprint = JSON.stringify([id, row]);
+        if (row.worldScope !== villageWorldScope(state)) throw conflict("The Village changed. Refresh Places.");
+        if (state.worldPlaces.receipts[key]) {
+          if (state.worldPlaces.receipts[key] !== fingerprint) throw conflict("This request ID was already used.");
+          return;
+        }
+        if (!place || place.disabled || !place.knownBy.includes("player")) throw notFound("That Place is not known.");
+        if (place.revision !== row.expectedRevision) throw conflict("The Place changed. Refresh it.");
+        if (!place.visited || !place.prepared || place.report)
+          throw conflict("Visit and verify this Place before adding it as a Venue.");
+        const map = villageMap(state, row.mapId);
+        assertMapRevision(map, row.expectedMapRevision);
+        if (place.location.presentation.mapId !== map.id) throw conflict("Use this Place's known map.");
+        if (
+          state.venues.some(
+            (venue) =>
+              venue.presentation.mapId === map.id &&
+              venue.presentation.x !== null &&
+              venue.presentation.y !== null &&
+              Math.abs(venue.presentation.x - row.x) < 0.055 &&
+              Math.abs(venue.presentation.y - row.y) < 0.055,
+          )
         )
-      )
-        throw conflict("That spot overlaps a Venue.");
-      Object.assign(place.location.presentation, { x: row.x, y: row.y });
-      place.revision++;
-      map.revision++;
-      state.worldPlaces.revision++;
-      state.worldPlaces.receipts[key] = fingerprint;
-    },
-    { memories: true },
-  );
-  return readPlace(id);
+          throw conflict("That spot overlaps a Venue.");
+        admitLocation(state, id);
+        Object.assign(place.location.presentation, { x: row.x, y: row.y });
+        map.revision++;
+        state.worldPlaces.revision++;
+        state.worldPlaces.receipts[key] = fingerprint;
+      },
+      { memories: true },
+    );
+  });
 }
 
 const requestSchema = z
@@ -147,7 +177,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
   const priorPlace = placeId ? world.worldPlaces.places[placeId] : undefined;
   if (placeId && (!priorPlace || priorPlace.disabled || !priorPlace.knownBy.includes("player")))
     throw notFound("That Place is not known.");
-  if (priorPlace?.prepared) return { placeId: priorPlace.id, status: "ready" };
+  if (priorPlace?.prepared && priorPlace.classified) return { placeId: priorPlace.id, status: "ready" };
   if (priorPlace && input.expectedRevision !== priorPlace.revision)
     throw conflict("The Place changed. Refresh it first.");
   const fingerprint = JSON.stringify([kind, placeId ?? "", input.mapId, input.intent, input.expectedRevision]);
@@ -155,6 +185,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
   if (operation && operation.fingerprint !== fingerprint) throw conflict("This request ID was already used.");
   if (operation && operation.status !== "started") return publicOperation(operation);
   if (!operation) {
+    const classifyOnly = kind === "prepare" && priorPlace?.prepared === true;
     let inspection: LoreInspection | undefined;
     const lore = await readVillageLore(
       world.selectedLorebookIds,
@@ -168,11 +199,16 @@ export async function generatePlace(value: unknown, placeId?: string) {
       },
     );
     const messages = [
-      { role: "system" as const, content: PLACE_GENERATION_INSTRUCTION },
+      {
+        role: "system" as const,
+        content: classifyOnly ? PLACE_CLASSIFICATION_INSTRUCTION : PLACE_GENERATION_INSTRUCTION,
+      },
       {
         role: "user" as const,
         content: JSON.stringify({
           task: kind,
+          classifyOnly,
+          decideClasses: kind === "prepare",
           intent: input.intent,
           setting: villageCurrentSetting(world),
           rules: world.worldRules,
@@ -184,7 +220,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
           relatedPlaces: Object.values(world.worldPlaces.places)
             .filter((row) => !row.disabled && row.location.presentation.mapId === input.mapId)
             .slice(-8)
-            .map(placeSummary),
+            .map((place) => ({ ...placeSummary(place), knownToPlayer: place.knownBy.includes("player") })),
           knownPeople: worldCharacterReferences(world, { placeId, mapId: input.mapId, query: input.intent }),
         }),
       },
@@ -218,6 +254,8 @@ export async function generatePlace(value: unknown, placeId?: string) {
   }
   let admitted = operation!;
   const packet = JSON.parse(admitted.messages[1].content) as {
+    classifyOnly?: boolean;
+    decideClasses?: boolean;
     relatedPlaces: { id: string }[];
     knownPeople: { id: string }[];
     nativeVenues: { id: string }[];
@@ -225,9 +263,12 @@ export async function generatePlace(value: unknown, placeId?: string) {
   };
   const candidateIds = new Set([...packet.relatedPlaces, ...packet.nativeVenues].map((row) => row.id));
   const npcIds = new Set(packet.knownPeople.map((row) => row.id));
+  const classificationSchema = z.object({ classes: placeClassesSchema }).strict();
   const validateDraft = (value: unknown) => {
-    const draft = placeDraftSchema.parse(value),
-      refs = new Set(draft.people.map((person) => person.ref));
+    const draft = placeDraftSchema.parse(value);
+    if (packet.decideClasses) placeClassesSchema.parse(draft.classes);
+    else delete draft.classes;
+    const refs = new Set(draft.people.map((person) => person.ref));
     if (
       draft.people.some((person) => person.existingId && !npcIds.has(person.existingId)) ||
       [...draft.controllers, ...draft.zones.flatMap((zone) => zone.controllers)].some(
@@ -240,12 +281,18 @@ export async function generatePlace(value: unknown, placeId?: string) {
   const valid = (answer: CapabilityLanguageModelCompletion) => {
     const raw = extractModelJsonObject(answer);
     if (answer.finishReason === "length" || !raw) return false;
+    if (packet.classifyOnly) {
+      classifyPlace(world, structuredClone(priorPlace!), classificationSchema.parse(raw).classes);
+      return true;
+    }
     if (raw.existingId !== undefined)
       return kind === "explore" && typeof raw.existingId === "string" && candidateIds.has(raw.existingId);
     if (raw.place === null) return kind === "explore";
+    const draft = validateDraft(raw.place);
+    if (kind === "explore" && findNamedLocation(world, admitted.input.mapId, draft.name)) return true;
     establishPlace(
       { ...world, worldPlaces: structuredClone(world.worldPlaces) },
-      validateDraft(raw.place),
+      draft,
       admitted.placeId,
       admitted.input.mapId,
       `request:${admitted.id}`,
@@ -305,27 +352,35 @@ export async function generatePlace(value: unknown, placeId?: string) {
         const prior = placeId ? state.worldPlaces.places[placeId] : undefined;
         if (placeId && (!prior || prior.revision !== admitted.input.placeRevision))
           throw conflict("The Place changed during preparation.");
-        if (typeof raw.existingId === "string") {
-          const existing = state.worldPlaces.places[raw.existingId];
-          if (
-            kind !== "explore" ||
-            !candidateIds.has(raw.existingId) ||
-            (!existing && !state.venues.some((venue) => venue.id === raw.existingId)) ||
-            existing?.disabled
-          )
+        const draft = raw.place ? validateDraft(raw.place) : undefined;
+        const duplicate =
+          kind === "explore" && draft ? findNamedLocation(state, admitted.input.mapId, draft.name) : undefined;
+        const selectedId = typeof raw.existingId === "string" ? raw.existingId : duplicate?.id;
+        if (packet.classifyOnly) {
+          classifyPlace(state, prior!, classificationSchema.parse(raw).classes);
+          prior!.revision++;
+        } else if (selectedId !== undefined) {
+          if (kind !== "explore" || (raw.existingId !== undefined && !candidateIds.has(selectedId)))
             throw conflict("The selected Place is unavailable.");
-          if (existing) {
-            existing.knownBy = [...new Set([...existing.knownBy, "player"])];
+          const existing = candidateIds.has(selectedId) ? state.worldPlaces.places[selectedId] : undefined;
+          saved.placeId = "";
+          if (
+            existing &&
+            !existing.disabled &&
+            !existing.knownBy.includes("player") &&
+            existing.location.presentation.mapId === admitted.input.mapId
+          ) {
+            existing.knownBy.push("player");
             existing.revision++;
+            saved.placeId = existing.id;
           }
-          saved.placeId = raw.existingId;
         } else if (raw.place === null) {
           if (placeId) throw badRequest("The known Place could not be prepared. Its discovery is retained.");
           saved.placeId = "";
         } else {
           const created = establishPlace(
             state,
-            validateDraft(raw.place),
+            draft!,
             admitted.placeId,
             input.mapId,
             `request:${admitted.id}`,

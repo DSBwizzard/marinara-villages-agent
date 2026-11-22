@@ -11,7 +11,6 @@ const nativeNotices: Partial<
   Record<AcceptedEpisode["commandReceipts"][number]["kind"], Pick<VenueRecordEvent, "kind" | "text">>
 > = {
   project: { kind: "project", text: "Project updated" },
-  establishment: { kind: "project", text: "Establishment updated" },
   residence: { kind: "request", text: "Residence updated" },
   "venue-request": { kind: "request", text: "Venue request updated" },
   appointment: { kind: "memory", text: "Appointment recorded" },

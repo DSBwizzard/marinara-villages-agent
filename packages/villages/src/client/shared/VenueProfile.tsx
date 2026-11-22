@@ -10,6 +10,7 @@ export function VenueProfile({
   profileRef,
   headingRef,
   name,
+  location = false,
   type,
   mapName,
   status,
@@ -26,6 +27,7 @@ export function VenueProfile({
   profileRef?: Ref<HTMLElement>;
   headingRef?: Ref<HTMLHeadingElement>;
   name: string;
+  location?: boolean;
   type?: string;
   mapName?: string;
   status?: string;
@@ -43,7 +45,7 @@ export function VenueProfile({
     <section
       ref={profileRef}
       className={P + "-venue-profile"}
-      aria-label="Venue"
+      aria-label={location ? "Location" : "Venue"}
       data-room-backdrop={roomBackdrop || undefined}
       data-storybook-backdrop={!!fallback || undefined}
       data-storybook-daylight={daylight || undefined}
@@ -68,7 +70,7 @@ export function VenueProfile({
         <StorybookHeading ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
           {name}
         </StorybookHeading>
-        <dl className={P + "-venue-metadata"} aria-label="Venue details">
+        <dl className={P + "-venue-metadata"} aria-label={location ? "Location details" : "Venue details"}>
           {type ? (
             <div>
               <dt>Type</dt>

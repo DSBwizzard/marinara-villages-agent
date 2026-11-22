@@ -198,7 +198,7 @@ await runCase("continuity-storage/cold-history", async () => {
   await f.seed();
   const root = f.rows.get("villages-village"),
     head = structuredClone(root.data.memoryHead);
-  assert.equal(root.data.version, 19);
+  assert.equal(root.data.version, 20);
   for (const key of ["continuity", "episodes", "worldPlaces", "mailbox", "memories", "memoryScenes", "memoryReceipts"])
     assert.equal(Object.hasOwn(root.data, key), false, "history stays outside the authority root");
   const cold = await f.repository().readAuthority({ memories: true });
@@ -245,7 +245,7 @@ await runCase("continuity-storage/current-only", async () => {
   );
   assert.equal(f.writes, writes);
   assert.deepEqual([...f.rows], before, "rejecting an older world leaves every saved byte untouched");
-  root.data.version = 19;
+  root.data.version = 20;
   const payload = f.rows.get(root.data.memoryHead.id);
   payload.data.format = 2;
   await assert.rejects(f.repository().readAuthority({ memories: true }), /payload changed/);

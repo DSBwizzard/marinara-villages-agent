@@ -1,5 +1,8 @@
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
-import { useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import { useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
+import type { PlaceDetail } from "../../../shared/contracts/places.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { useVillageActivity } from "../../shared/activity.js";
 import { VenueAccessPanel } from "./VenueAccessPanel.js";
 import { invitationLabel } from "../../shared/zone-access.js";
 import { useConfirmation } from "../../shared/confirmation.js";
@@ -177,8 +180,10 @@ function ZoneArtwork({
   zone,
   controller,
   artworkUrl,
+  editable = true,
 }: {
   artworkUrl?: string;
+  editable?: boolean;
   place: VillageVenue;
   zone: VenueDisplayZone;
   controller: VenueScreenController;
@@ -202,7 +207,7 @@ function ZoneArtwork({
             <span aria-hidden="true">⤢</span> View full image
           </button>
         ) : null}
-        {zone.pictureRetryAvailable ? (
+        {editable && zone.pictureRetryAvailable ? (
           <button
             type="button"
             className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
@@ -213,81 +218,87 @@ function ZoneArtwork({
             Retry
           </button>
         ) : null}
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-button`}
-          aria-label="Generate artwork"
-          disabled={disabled || zone.pictureGenerateAvailable === false}
-          onClick={() => void drawPlaceImage(place.id, zone.id)}
-        >
-          Generate
-        </button>
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-button`}
-          aria-label="Upload reference"
-          disabled={disabled}
-          onClick={() => upload.current?.click()}
-        >
-          Upload
-        </button>
-        <input
-          autoComplete="off"
-          ref={upload}
-          hidden
-          type="file"
-          accept="image/*"
-          aria-label={`Upload ${zone.name} reference`}
-          disabled={disabled}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            void keepPlaceImage(place.id, zone.id, file);
-          }}
-        />
-        {zone.image || zone.pictureReference ? (
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-button`}
-            aria-label="Remove artwork"
-            disabled={disabled}
-            onClick={() => void dropPlaceImage(place.id, zone.id)}
-          >
-            Remove
-          </button>
+        {editable ? (
+          <>
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              aria-label="Generate artwork"
+              disabled={disabled || zone.pictureGenerateAvailable === false}
+              onClick={() => void drawPlaceImage(place.id, zone.id)}
+            >
+              Generate
+            </button>
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              aria-label="Upload reference"
+              disabled={disabled}
+              onClick={() => upload.current?.click()}
+            >
+              Upload
+            </button>
+            <input
+              autoComplete="off"
+              ref={upload}
+              hidden
+              type="file"
+              accept="image/*"
+              aria-label={`Upload ${zone.name} reference`}
+              disabled={disabled}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                void keepPlaceImage(place.id, zone.id, file);
+              }}
+            />
+            {zone.image || zone.pictureReference ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                aria-label="Remove artwork"
+                disabled={disabled}
+                onClick={() => void dropPlaceImage(place.id, zone.id)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </>
         ) : null}
       </div>
-      <div className={`${ELEMENT_TAG}-zone-artwork-footer`}>
-        <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
-          <input
-            autoComplete="off"
-            type="checkbox"
-            role="switch"
-            checked={zone.freezePicture !== true}
-            disabled={busy}
-            onChange={(event) => void controller.setZonePictureFrozen(place, zone.id, !event.target.checked)}
-          />
-          Automatic artwork updates
-        </label>
-        {zone.pictureProblem ||
-        zone.pictureUpdating ||
-        zone.nightPending ||
-        zone.referencePending ||
-        zone.pictureOutdated ? (
-          <p role="status">
-            {zone.pictureProblem ||
-              (zone.pictureUpdating
-                ? "Artwork pending"
-                : zone.referencePending
-                  ? "Reference saved for your next visit."
-                  : zone.pictureOutdated
-                    ? "Artwork is out of date."
-                    : "Artwork pending")}
-          </p>
-        ) : !artworkUrl ? (
-          <p>No artwork yet</p>
-        ) : null}
-      </div>
+      {editable ? (
+        <div className={`${ELEMENT_TAG}-zone-artwork-footer`}>
+          <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
+            <input
+              autoComplete="off"
+              type="checkbox"
+              role="switch"
+              checked={zone.freezePicture !== true}
+              disabled={busy}
+              onChange={(event) => void controller.setZonePictureFrozen(place, zone.id, !event.target.checked)}
+            />
+            Automatic artwork updates
+          </label>
+          {zone.pictureProblem ||
+          zone.pictureUpdating ||
+          zone.nightPending ||
+          zone.referencePending ||
+          zone.pictureOutdated ? (
+            <p role="status">
+              {zone.pictureProblem ||
+                (zone.pictureUpdating
+                  ? "Artwork pending"
+                  : zone.referencePending
+                    ? "Reference saved for your next visit."
+                    : zone.pictureOutdated
+                      ? "Artwork is out of date."
+                      : "Artwork pending")}
+            </p>
+          ) : !artworkUrl ? (
+            <p>No artwork yet</p>
+          ) : null}
+        </div>
+      ) : null}
       {fullImage ? (
         <ModalDialog
           title={zone.name}
@@ -313,6 +324,7 @@ export function VenueScreen({
   storybookDaylight?: boolean;
 }) {
   const confirmVillages = useConfirmation();
+  const { viewing = true, visible } = useVillageActivity();
   const [editingConnections, setEditingConnections] = useState(false);
   const [editingAccess, setEditingAccess] = useState(false);
   const [venueHoursScope, setVenueHoursScope] = useState(false);
@@ -325,13 +337,15 @@ export function VenueScreen({
   const connectionsButton = useRef<HTMLButtonElement>(null);
   const subpageBack = useRef<HTMLButtonElement>(null);
   const zoneReturn = useRef<{ row: HTMLButtonElement; scrollArea: HTMLElement | null; scrollTop: number }>(null);
+  const [narrative, setNarrative] = useState<{ worldScope: string; detail: PlaceDetail } | null>(null);
+  const [locationError, setLocationError] = useState("");
   useLetterFont(fromMap ? "lora" : undefined);
   const {
     snapshot,
     mobile,
     venueId,
     leaveVenue,
-    venueSection,
+    venueSection: savedSection,
     setVenueSection,
     venueZoneKey,
     setVenueZoneKey,
@@ -344,9 +358,37 @@ export function VenueScreen({
     venueEditError,
     venueEditNotice,
     planVenueRenovation,
+    loadSnapshot,
   } = controller;
   const lighting = useVillageLighting(snapshot?.village);
-  const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
+  const venue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
+  const detail =
+    narrative?.worldScope === snapshot?.worldScope && narrative?.detail.id === venueId ? narrative.detail : null;
+  const place = venue ?? detail?.location;
+  const venueSection = !venue && savedSection === "manage" ? "about" : savedSection;
+  useEffect(() => {
+    if (venue || !venueId || !snapshot || !viewing || !visible) return;
+    let current = true;
+    setLocationError("");
+    void request<PlaceDetail | { promoted: true; id: string }>("/places/" + encodeURIComponent(venueId))
+      .then(async (value) => {
+        if (!current) return;
+        if ("promoted" in value) {
+          setNarrative(null);
+          setLocationError("This location is now a Venue. Refresh the Village.");
+          await loadSnapshot();
+        } else setNarrative({ worldScope: snapshot.worldScope, detail: value });
+      })
+      .catch((cause) => {
+        if (current) {
+          setNarrative(null);
+          setLocationError(messageFrom(cause, "Could not read this location."));
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [venue, venueId, snapshot, viewing, visible, loadSnapshot]);
   useLayoutEffect(() => {
     if (fromMap) heading.current?.focus({ preventScroll: true });
   }, [fromMap, place?.id]);
@@ -414,7 +456,7 @@ export function VenueScreen({
   if (!place || !snapshot)
     return (
       <div className={`${ELEMENT_TAG}-root`}>
-        <h1>Venue unavailable</h1>
+        <h1>{locationError || "Loading location…"}</h1>
         <button type="button" onClick={back}>
           {room && room.status !== "closed" ? "Back to Scene" : "Back"}
         </button>
@@ -473,9 +515,14 @@ export function VenueScreen({
         profileRef={profile}
         headingRef={fromMap ? heading : undefined}
         name={place.name}
-        type={!fromMap ? place.venueType || venueClassesFor(place).join(" · ") || "Venue" : undefined}
+        location={!venue}
+        type={
+          !fromMap && (venue || detail?.classified)
+            ? place.venueType || venueClassesFor(place).join(" · ") || "Venue"
+            : undefined
+        }
         mapName={map?.name}
-        status={place.constructionStatus === "worksite" ? "Worksite" : undefined}
+        status={place.constructionStatus === "worksite" ? "Worksite" : !venue ? "Location" : undefined}
         entranceImage={entranceArt?.url}
         zoneImage={zoneBackdrop ? { url: zoneBackdrop.url, name: selected.name } : undefined}
         fallback={storybookBackdrop ? (daylightBackdrop ? "day" : "night") : undefined}
@@ -503,7 +550,7 @@ export function VenueScreen({
               disabled={navigationBusy}
               onClick={returnToMap}
             >
-              {fromMap ? "← Map" : "← Back to map"}
+              {fromMap ? "← Map" : "← Locations"}
             </button>
             {activeScene ? (
               <button type="button" className={`${ELEMENT_TAG}-venue-back`} disabled={navigationBusy} onClick={back}>
@@ -514,6 +561,7 @@ export function VenueScreen({
         }
         tabs={{
           section: venueSection,
+          manage: !!venue,
           disabled: navigationBusy,
           onSelect: async (section) => {
             if (section === venueSection) {
@@ -533,14 +581,20 @@ export function VenueScreen({
       >
         {navigationBusy ? <p role="status">Saving…</p> : null}
         {about ? (
-          <section className={`${ELEMENT_TAG}-workspace-about`} aria-label="About this venue">
+          <section
+            className={`${ELEMENT_TAG}-workspace-about`}
+            aria-label={venue ? "About this venue" : "About this location"}
+          >
             <div className={`${ELEMENT_TAG}-venue-summary`}>
-              <AssignedVillagers
-                place={place}
-                nameOfCharacter={(id) =>
-                  id === "player" ? playerDisplayName(snapshot) : controller.nameOfCharacter(id)
-                }
-              />
+              {detail?.description || place.description ? <p>{detail?.description || place.description}</p> : null}
+              {venue ? (
+                <AssignedVillagers
+                  place={place}
+                  nameOfCharacter={(id) =>
+                    id === "player" ? playerDisplayName(snapshot) : controller.nameOfCharacter(id)
+                  }
+                />
+              ) : null}
               {(place.constructionStatus === "worksite" || activeProject?.kind === "new-venue") && activeProject ? (
                 <button
                   type="button"
@@ -553,7 +607,13 @@ export function VenueScreen({
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-venue-primary`}
-                  aria-label={!roomBusy && (!activeScene || room.placeId !== place.id) ? "Visit venue" : undefined}
+                  aria-label={
+                    !roomBusy && (!activeScene || room.placeId !== place.id)
+                      ? venue
+                        ? "Visit venue"
+                        : "Visit location"
+                      : undefined
+                  }
                   disabled={
                     roomBusy || (!!activeScene && room.placeId !== place.id) || place.constructionStatus === "worksite"
                   }
@@ -562,6 +622,16 @@ export function VenueScreen({
                   {roomBusy ? "Opening Scene…" : activeScene && room.placeId === place.id ? "Return to Scene" : "Visit"}
                 </button>
               )}
+              {!venue && detail?.visited && detail.classified ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  disabled={roomBusy || activeScene || detail.report}
+                  onClick={() => controller.beginPlaceAdmission(detail)}
+                >
+                  Add as Venue
+                </button>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -600,7 +670,7 @@ export function VenueScreen({
                     >
                       ← Zones
                     </button>
-                    {selected.kind !== "exterior" ? (
+                    {venue && selected.kind !== "exterior" ? (
                       <ZoneName
                         key={place.id + selected.id}
                         place={place}
@@ -613,6 +683,11 @@ export function VenueScreen({
                       <h2>{selected.name}</h2>
                     )}
                   </div>
+                  {selected.seen &&
+                  selected.description &&
+                  selected.description.trim() !== (detail?.description || place.description)?.trim() ? (
+                    <p>{selected.description}</p>
+                  ) : null}
                   {selected.accessView?.invitation && (
                     <small>
                       {[
@@ -631,8 +706,9 @@ export function VenueScreen({
                     zone={selected}
                     controller={controller}
                     artworkUrl={zoneArt?.url}
+                    editable={!!venue}
                   />
-                  {selected.preparation?.status === "failed" ? (
+                  {venue && selected.preparation?.status === "failed" ? (
                     <button
                       type="button"
                       className={`${ELEMENT_TAG}-button`}

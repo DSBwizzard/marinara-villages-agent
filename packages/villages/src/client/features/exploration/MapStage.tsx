@@ -181,7 +181,6 @@ export function MapStage({
   navigationFit = "cover",
   navigationView,
   onNavigationView,
-  onViewportBounds,
   compactPhotos = false,
   onMovePin,
   onMoveInvalid,
@@ -233,7 +232,6 @@ export function MapStage({
   navigationFit?: "cover" | "contain";
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
-  onViewportBounds?(bounds: string): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
   compactPhotos?: boolean;
@@ -342,19 +340,6 @@ export function MapStage({
             : null,
     [decoded, frame, live, mobile, exploration, mobileImage, mobileCurrent, src, minimumNavigationZoom],
   );
-  useEffect(() => {
-    if (picture && frame && onViewportBounds)
-      onViewportBounds(
-        [
-          clamp(-picture.left / picture.width, 0, 1),
-          clamp(-picture.top / picture.height, 0, 1),
-          clamp((frame.width - picture.left) / picture.width, 0, 1),
-          clamp((frame.height - picture.top) / picture.height, 0, 1),
-        ]
-          .map((value) => Math.round(value * 10000) / 10000)
-          .join(","),
-      );
-  }, [picture, frame, onViewportBounds]);
   useEffect(() => {
     setMobileView(null);
     mobileViewRef.current = null;

@@ -43,7 +43,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   const decoded = coerceVillageState(
     {
       ...facts,
-      version: 19,
+      version: 20,
       setupAt: raw.setupAt,
       continuity: emptyContinuity(),
       episodes: emptyEpisodes(),

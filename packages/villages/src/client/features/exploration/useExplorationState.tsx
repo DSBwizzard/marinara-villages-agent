@@ -1,4 +1,5 @@
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
+import type { PlaceSummary } from "../../../shared/contracts/places.js";
 import type { ExplorationSheet, ExplorationTab } from "./villages-exploration.js";
 import type { MobileMapView } from "./villages-mobile-map.js";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -12,6 +13,8 @@ export function useExplorationState(snapshot: VillageSnapshot | null) {
   const explorationOrigin = useRef<HTMLElement | null>(null);
   const [selectedId, selectId] = useState("");
   const [showAllMaps, setShowAllMaps] = useState(false);
+  const [placingPlace, setPlacingPlace] = useState<PlaceSummary | null>(null);
+  useEffect(() => setPlacingPlace(null), [snapshot?.worldScope]);
   const [cameras, setCameras] = useState<Record<string, MobileMapView | null>>({});
   const maps = snapshot?.settings.maps ?? [];
   const selectedMap = maps.find((map) => map.id === selectedId) ?? maps[0] ?? null;
@@ -65,6 +68,8 @@ export function useExplorationState(snapshot: VillageSnapshot | null) {
     setSelectedMapId,
     showAllMaps,
     setShowAllMaps,
+    placingPlace,
+    setPlacingPlace,
   };
 }
 export type ExplorationState = ReturnType<typeof useExplorationState>;

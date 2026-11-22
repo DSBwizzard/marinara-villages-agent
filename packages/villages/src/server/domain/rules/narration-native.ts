@@ -396,8 +396,8 @@ export function prepareNarrationNative(
     }
     if (command.type === "scene.end" || command.type === "contact.end")
       return applyNarrationScene(candidate, command, readset, context, sources, receiptId, row.segment);
-    if (command.type === "place.discover" || command.type === "place.establish") {
-      const kind = command.type === "place.discover" ? "discovery" : "establishment",
+    if (command.type === "place.discover") {
+      const kind = "discovery",
         limit = kind === "discovery" ? 2 : 8;
       memoryRequire(
         Object.values(native.receipts).filter((receipt) => receipt.kind === kind).length < limit,

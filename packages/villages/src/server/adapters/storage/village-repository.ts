@@ -35,7 +35,7 @@ export function readVillageRoot(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 19) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 20) throw new Error("Unsupported Village format. Start a fresh Village.");
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
   readMemoryHead(raw.memoryHead);
   if (raw.sceneRetry !== undefined) {
@@ -137,7 +137,7 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 19, "invalid Village mutation format");
+            memoryRequire(state.version === 20, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
