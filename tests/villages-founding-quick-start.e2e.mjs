@@ -179,6 +179,32 @@ await withBrowser(browser, async () => {
       const engineBefore = await engine.screenshot();
       await first.click();
       await expect(sheet).toBeVisible();
+      const geometry = (row) =>
+        row.evaluate((node) => {
+          const box = node.getBoundingClientRect(),
+            style = getComputedStyle(node);
+          return {
+            width: box.width,
+            height: box.height,
+            font: style.fontSize,
+            fade: getComputedStyle(node.closest(".marinara-capability-villages-venue-profile"), "::before")
+              .backgroundImage,
+          };
+        });
+      await sheet.getByRole("button", { name: "Zones", exact: true }).click();
+      const zoneGeometry = await geometry(sheet.getByRole("button", { name: /^Entrance/ }));
+      await sheet.getByRole("button", { name: "Manage", exact: true }).click();
+      const manageGeometry = await geometry(sheet.getByRole("button", { name: "Home", exact: true }));
+      assert.deepEqual(
+        { width: manageGeometry.width, font: manageGeometry.font, fade: manageGeometry.fade },
+        { width: zoneGeometry.width, font: zoneGeometry.font, fade: zoneGeometry.fade },
+        "Manage reuses the Zone row width, font and backdrop fade",
+      );
+      assert.ok(
+        manageGeometry.height >= 44 && manageGeometry.height <= zoneGeometry.height + 1,
+        "Manage keeps the Zone touch target without taller rows",
+      );
+      await sheet.getByRole("button", { name: "About", exact: true }).click();
       await expect(sheet).toHaveAttribute("open", "");
       assert.equal(
         await sheet.evaluate((node) => node.matches(":modal")),

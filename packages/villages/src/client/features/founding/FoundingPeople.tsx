@@ -228,15 +228,21 @@ export function FoundingPeople({
           </>
         ) : (
           <>
-            <VenueManageHeading
-              title={
-                section === "home" ? "Home" : section === "work" ? "Work" : section === "access" ? "Access" : "Building"
-              }
-              onBack={root}
-            />
+            {section !== "home" && section !== "work" && (
+              <VenueManageHeading
+                title={section === "access" ? (managers ? "Managers" : "Access") : "Building"}
+                back={managers ? "Access" : "Manage"}
+                onBack={managers ? () => setManagers(false) : root}
+              />
+            )}
             {(section === "home" || section === "work") && (
               <VenuePeoplePicker
                 key={`${section}-${adding}`}
+                heading={
+                  adding ? (section === "home" ? "Add resident" : "Add worker") : section === "home" ? "Home" : "Work"
+                }
+                back={adding ? (section === "home" ? "Residents" : "Workers") : "Manage"}
+                onBack={adding ? list : root}
                 title={
                   adding
                     ? section === "home"
@@ -267,9 +273,6 @@ export function FoundingPeople({
                   </div>
                 ) : (
                   <>
-                    <button type="button" className={`${P}-venue-back`} onClick={() => setManagers(false)}>
-                      ← Access
-                    </button>
                     <div className="villages-manage-form">
                       {people.map((row) => (
                         <label className="villages-manage-check" key={row.id}>

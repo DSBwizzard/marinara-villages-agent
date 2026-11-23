@@ -275,8 +275,6 @@ export function QuickStartVenues({
           <VenueProfile
             daylight={daylight}
             name={selected.name || "Venue"}
-            type={selected.venueType || "Venue"}
-            mapName={locationName}
             entranceImage={selected.presentation.image?.url}
             zoneImage={
               section === "zones" && zoneDetails && zone && image ? { url: image.url, name: artworkName } : undefined

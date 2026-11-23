@@ -1939,6 +1939,16 @@ export async function verifyFoundingLayout(group) {
         }
         await editVenue("founding-home:player");
         await expect(sheet.getByRole("navigation", { name: "Venue sections" })).toBeVisible();
+        await expect(sheet.locator(".marinara-capability-villages-venue-metadata")).toHaveCount(0);
+        await expect(sheet.locator(".marinara-capability-villages-workspace-venue-header svg")).toHaveCount(0);
+        const headerGap = await sheet.evaluate((node) => {
+          const navigation = node
+            .querySelector(".marinara-capability-villages-venue-navigation")
+            .getBoundingClientRect();
+          const heading = node.querySelector("h1").getBoundingClientRect();
+          return heading.top - navigation.bottom;
+        });
+        assert.ok(headerGap >= 0 && headerGap <= 24, "The Venue title follows Map without an oversized spacer");
         await expect(sheet.getByText("Resident", { exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
         await expect(sheet.getByRole("group", { name: "Who lives here?" })).toHaveCount(0);
@@ -2328,9 +2338,27 @@ export async function verifyFoundingLayout(group) {
               }),
             )
             .toBe(true);
+          const readsBeforeVenueReload = portraitReads;
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await expect(root).toHaveAttribute("data-step", "3");
+          await expect.poll(() => portraitReads).toBeGreaterThan(readsBeforeVenueReload);
+          const founderHome = await page.evaluate(
+            () =>
+              window.featureController.setupVenues.find((row) =>
+                row.residentIds?.includes(window.featureController.setupFoundingVillagerIds[0]),
+              ).id,
+          );
+          await editVenue(founderHome);
+          await sheet.getByRole("button", { name: "Manage", exact: true }).click();
+          await sheet.getByRole("button", { name: "Home", exact: true }).click();
+          const residentCard = sheet.locator(".marinara-capability-villages-directory-card").first();
+          await expect(residentCard.locator("img")).toBeVisible();
+          assert.ok(
+            (await residentCard.boundingBox()).width <= 146,
+            "Home cards keep a compact portrait width after reload",
+          );
+          await closeVenue();
           await expect
             .poll(() =>
               page.evaluate(() => [

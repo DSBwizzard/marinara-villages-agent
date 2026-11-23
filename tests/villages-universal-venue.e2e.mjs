@@ -249,16 +249,8 @@ await withBrowser(browser, async () => {
     await openProfile();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
-    const typeLines = await profile
-      .locator(`.${prefix}-venue-metadata dd`)
-      .first()
-      .evaluate((entry) => {
-        const range = document.createRange();
-        range.setStart(entry.firstChild, 0);
-        range.setEnd(entry.firstChild, "Converted".length);
-        return range.getClientRects().length;
-      });
-    assert.equal(typeLines, 1, "Venue type words remain readable without splitting across lines");
+    await expect(profile.locator(`.${prefix}-venue-metadata`)).toHaveCount(0);
+    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true }).locator("svg")).toHaveCount(0);
     const desk = page.locator(`.${prefix}-desk-workspace`);
     const checkArtworkBottom = async () => {
       const margin = await desk.evaluate((root) => {

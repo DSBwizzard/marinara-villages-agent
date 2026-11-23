@@ -487,7 +487,6 @@ export function VenueScreen({
   const zoneBackdrop = browsing && (!mobile || zoneDetailsOpen) && zoneArt?.url !== entranceArt?.url ? zoneArt : null;
   const storybookBackdrop = (zoneDetailsOpen && !zoneArt) || (!entranceArt && !zoneBackdrop);
   const daylightBackdrop = !fromMap && storybookBackdrop && (storybookDaylight ?? lighting !== "night");
-  const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
   const about = venueSection === "about";
@@ -519,9 +518,6 @@ export function VenueScreen({
         headingRef={fromMap ? heading : undefined}
         name={place.name}
         location={!venue}
-        type={!fromMap && (venue || detail?.prepared) ? place.venueType || "Venue" : undefined}
-        mapName={map?.name}
-        status={place.constructionStatus === "worksite" ? "Worksite" : !venue ? "Location" : undefined}
         entranceImage={entranceArt?.url}
         zoneImage={zoneBackdrop ? { url: zoneBackdrop.url, name: selected.name } : undefined}
         fallback={storybookBackdrop ? (daylightBackdrop ? "day" : "night") : undefined}

@@ -1,27 +1,21 @@
 import { ELEMENT_TAG as P } from "./constants.js";
 
 export const VENUE_MANAGE_STYLES = `
-.${P}-venue-profile[data-manage] .${P}-venue-profile-body{width:min(59%,40rem)}
-.${P}-venue-profile[data-manage][data-storybook-daylight]::before{content:"";background:linear-gradient(90deg,#e3eee4fa 0%,#d4e7dff2 42%,#d4e7dfc4 58%,transparent 85%)}
-.${P}-venue-profile .villages-manage{display:block;width:100%;max-width:none;min-width:0;font:inherit;line-height:1.5}
+.${P}-venue-profile .villages-manage{display:block;width:100%;max-width:none;min-width:0;font:inherit}
 .villages-manage h2{font:500 clamp(22px,2cqw,28px)/1.3 var(--menu-font);margin:0 0 16px}
-.villages-manage .villages-manage-menu{max-width:none;display:flex;flex-direction:column;gap:0}
-.villages-manage-menu>button{width:100%;min-height:74px!important;padding-block:16px!important}
-.villages-manage-menu .${P}-venue-zone-thumb{display:none!important}
-.villages-manage-menu .${P}-venue-zone-caption{font-size:23px}
-.villages-manage-heading{gap:20px;margin-bottom:22px}.villages-manage-heading h2{margin:0;font-size:24px}
+.villages-manage-heading{gap:8px;margin-bottom:18px}.villages-manage-heading h2{margin:0;font-size:24px}
+.villages-manage-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.villages-manage-title-row>button{font-size:17px!important;min-height:44px!important;padding:6px 12px!important}
 .villages-manage-heading .${P}-venue-back{font-size:18px}
 .villages-manage .villages-manage-people{height:auto;container-type:normal;font:inherit;overflow:visible}
-.villages-manage-list-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 20px}
-.villages-manage-list-heading h2{margin:0}.villages-manage-list-heading>button{font-size:17px!important;min-height:44px!important;padding:6px 12px!important}
-.villages-manage .${P}-directory-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto;gap:16px}
-.villages-manage .${P}-directory-card{min-height:142px!important;padding:12px!important;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px}
-.villages-manage .${P}-avatar{width:76px;height:76px;flex:none;font-size:34px;border-radius:5px}
-.villages-manage .${P}-directory-card strong{font-size:21px;line-height:1.35;overflow-wrap:anywhere}
+.villages-manage .${P}-directory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,144px));grid-template-rows:auto;justify-content:start;gap:12px}
+.villages-manage .${P}-directory-card{min-height:156px!important;padding:10px!important;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px}
+.villages-manage .${P}-avatar{width:88px;height:88px;flex:none;font-size:34px;border-radius:5px}
+.villages-manage .${P}-directory-card strong{font-size:18px;line-height:1.35;overflow-wrap:anywhere}
 .villages-manage .${P}-directory-pagination{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:15px;font-size:17px}
 .villages-manage .${P}-directory-pagination button{min-height:44px}
 .villages-manage :is(button,input,select,textarea){color:var(--venue-ink,var(--foreground));font:inherit}
-.villages-manage button{background:var(--menu-field,var(--secondary));border-color:var(--menu-control-border,var(--border));min-height:44px}
+.villages-manage :is(.villages-manage-actions button,.villages-manage-title-row>button,.villages-work-fields button){background:var(--menu-field,var(--secondary));border-color:var(--menu-control-border,var(--border));min-height:44px}
 .villages-manage label{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:6px;text-align:left}
 .villages-manage label>span{align-self:flex-start}
 .villages-manage :is(input:not([type=checkbox]),select,textarea){width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:8px 10px;background:var(--menu-field);border:1px solid var(--menu-control-border,var(--border));border-radius:4px}
@@ -42,10 +36,8 @@ export const VENUE_MANAGE_STYLES = `
 .villages-work-offer{padding:16px 0;border-top:1px solid var(--border)}.villages-work-offer h3{font-size:22px;margin:0 0 12px}
 .villages-manage .villages-access-panel{width:100%;max-width:none}.villages-manage .villages-access-panel>fieldset{margin-top:18px}
 @container village-desk (max-width:700px){
- .${P}-venue-profile[data-manage] .${P}-venue-profile-body{width:min(100%,36rem)}
- .villages-manage-menu>button{min-height:64px!important}.villages-manage-menu .${P}-venue-zone-caption{font-size:20px}
- .villages-manage-heading{gap:14px}.villages-manage-heading h2{font-size:22px}.villages-manage-list-heading>button{font-size:15px!important}
- .villages-manage .${P}-directory-card{min-height:130px!important}.villages-manage .${P}-avatar{width:64px;height:64px}
+ .villages-manage-heading h2{font-size:22px}.villages-manage-title-row>button{font-size:15px!important}
+ .villages-manage .${P}-avatar{width:80px;height:80px}
  .villages-work-fields{grid-template-columns:minmax(0,1fr)}.villages-work-fields>.villages-work-days{grid-column:auto}.villages-work-fields .villages-work-day-buttons button{font-size:11px}
  .villages-work-times{gap:14px}.villages-manage label{font-size:16px}.villages-manage .${P}-directory-card strong{font-size:18px}
 }

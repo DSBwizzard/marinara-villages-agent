@@ -1205,11 +1205,16 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * do that the player would never see the result of.
    */
   const portraitWanted = calculatePortraitWanted({
-    catalog,
+    catalog:
+      screen === "setup" && founding.setupStep === FOUNDING_STEP.Venues
+        ? (catalog ?? []).filter((person) => founding.setupFoundingVillagerIds.includes(person.id))
+        : catalog,
     snapshot,
     includeCatalog:
       screen === "setup" &&
-      (founding.setupStep === FOUNDING_STEP.People || founding.setupStep === FOUNDING_STEP.Review),
+      (founding.setupStep === FOUNDING_STEP.People ||
+        founding.setupStep === FOUNDING_STEP.Venues ||
+        founding.setupStep === FOUNDING_STEP.Review),
   });
 
   /**

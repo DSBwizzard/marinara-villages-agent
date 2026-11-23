@@ -77,7 +77,7 @@ export function VenueWorkPanel({
       };
       if (await controller.changeVenueAccess(place.id, command)) {
         setWork(null);
-        setNotice("Proposal saved.");
+        setNotice("Saved proposal.");
       }
     } catch (cause) {
       setError(messageFrom(cause, "Could not save work."));
@@ -87,16 +87,14 @@ export function VenueWorkPanel({
   };
   return (
     <section className="villages-manage" aria-label="Work arrangements">
-      <VenueManageHeading
-        title={person ? name(person) : "Work"}
-        back={person || adding ? "Workers" : "Manage"}
-        onBack={person || adding ? list : onBack}
-        disabled={busy}
-      />
+      {person && <VenueManageHeading title={name(person)} back="Workers" onBack={list} disabled={busy} />}
       {!person ? (
         <VenuePeoplePicker
           key={String(adding)}
           title={adding ? "Add worker" : "Workers"}
+          heading={adding ? "Add worker" : "Work"}
+          back={adding ? "Workers" : "Manage"}
+          onBack={adding ? list : onBack}
           people={people.filter((row) => adding !== workerIds.has(row.id))}
           disabled={busy}
           onSelect={(id) => {

@@ -33,19 +33,24 @@ export function VenueManageHeading({
   onBack,
   disabled = false,
   backRef,
+  children,
 }: {
   title: string;
   back?: string;
   onBack(): void;
   disabled?: boolean;
   backRef?: Ref<HTMLButtonElement>;
+  children?: ReactNode;
 }) {
   return (
     <div className={`${P}-venue-zone-toolbar villages-manage-heading`}>
       <button ref={backRef} type="button" className={`${P}-venue-back`} disabled={disabled} onClick={onBack}>
         ← {back}
       </button>
-      <h2>{title}</h2>
+      <div className="villages-manage-title-row">
+        <h2>{title}</h2>
+        {children}
+      </div>
     </div>
   );
 }
@@ -54,35 +59,37 @@ export type VenuePerson = { id: string; name: string; portrait?: Portrait };
 
 export function VenuePeoplePicker({
   title,
+  heading,
+  back,
+  onBack,
   people,
   onSelect,
   onAdd,
   addLabel,
   disabled = false,
-  children,
 }: {
   title: string;
+  heading: string;
+  back?: string;
+  onBack(): void;
   people: readonly VenuePerson[];
   onSelect(id: string): void;
   onAdd?: () => void;
   addLabel?: string;
   disabled?: boolean;
-  children?: ReactNode;
 }) {
   const [page, setPage] = useState(0);
   const count = Math.max(1, Math.ceil(people.length / 4));
   const current = Math.min(page, count - 1);
   return (
     <section className={`${P}-directory-root villages-manage-people`} aria-label={title}>
-      <div className="villages-manage-list-heading">
-        <h2>{title}</h2>
+      <VenueManageHeading title={heading} back={back} onBack={onBack} disabled={disabled}>
         {onAdd && (
           <button type="button" disabled={disabled} onClick={onAdd}>
             {addLabel}
           </button>
         )}
-      </div>
-      {children}
+      </VenueManageHeading>
       {people.length ? (
         <div className={`${P}-directory-grid`}>
           {people.slice(current * 4, current * 4 + 4).map((person) => (

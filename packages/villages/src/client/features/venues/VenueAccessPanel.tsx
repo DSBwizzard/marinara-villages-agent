@@ -6,6 +6,7 @@ import { messageFrom } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VenueScreenController } from "./screen-contracts.js";
+import { VenueManageHeading } from "./VenueManage.js";
 
 const week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 type Zone = NonNullable<VillageVenue["zones"]>[number];
@@ -65,13 +66,8 @@ export function VenueAccessPanel({
   const availableZones =
     place.zones?.filter((row) => row.accessView?.decision.canManage || row.accessView?.decision.canInvite) ?? [];
   return (
-    <section className={`${ELEMENT_TAG}-venue-manage villages-access-panel`} aria-label="Venue access">
-      <div className={`${ELEMENT_TAG}-venue-manage-heading`}>
-        <h2>Access</h2>
-        <button type="button" disabled={busy} className={`${ELEMENT_TAG}-venue-back`} onClick={onClose}>
-          ← Manage
-        </button>
-      </div>
+    <section className={`${ELEMENT_TAG}-venue-manage villages-manage villages-access-panel`} aria-label="Venue access">
+      <VenueManageHeading title="Access" disabled={busy} onBack={onClose} />
       <label>
         Scope{" "}
         <select

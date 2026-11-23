@@ -146,6 +146,13 @@ await withBrowser(browser, async () => {
       });
       await f.page.getByRole("button", { name: /^Work/ }).click();
       const people = f.page.getByRole("region", { name: "Workers", exact: true });
+      await expect(people.getByRole("heading", { name: "Work", exact: true })).toBeVisible();
+      await expect(people.getByRole("heading", { name: "Workers", exact: true })).toHaveCount(0);
+      const card = people.locator(".marinara-capability-villages-directory-card").first();
+      assert.ok((await card.boundingBox()).width <= 146, "Worker cards do not stretch to fill the content column");
+      const back = await people.getByRole("button", { name: "← Manage", exact: true }).boundingBox();
+      const heading = await people.getByRole("heading", { name: "Work", exact: true }).boundingBox();
+      assert.ok(heading.y >= back.y + back.height, "The page heading follows the Back row");
       assert.deepEqual(
         await people.locator(".marinara-capability-villages-directory-card strong").allTextContents(),
         f.seed.villagers.slice(0, 4).map((row) => row.name),

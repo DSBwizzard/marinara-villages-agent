@@ -57,16 +57,14 @@ export function VenueHomePanel({
   };
   return (
     <section className="villages-manage" aria-label="Home arrangements">
-      <VenueManageHeading
-        title={person ? name : "Home"}
-        back={person || adding ? "Residents" : "Manage"}
-        onBack={person || adding ? list : onBack}
-        disabled={busy}
-      />
+      {person && <VenueManageHeading title={name} back="Residents" onBack={list} disabled={busy} />}
       {!person ? (
         <VenuePeoplePicker
           key={String(adding)}
           title={adding ? "Add resident" : "Residents"}
+          heading={adding ? "Add resident" : "Home"}
+          back={adding ? "Residents" : "Manage"}
+          onBack={adding ? list : onBack}
           people={people.filter((row) => adding !== ids.has(row.id))}
           onAdd={!adding ? () => setAdding(true) : undefined}
           addLabel="Add resident"
