@@ -358,11 +358,18 @@ function UndertakingForm({ snapshot, controller: c, project, beforeLeave }: Prop
         <fieldset disabled={busy}>
           <label>
             Name
-            <input value={title} maxLength={100} required onChange={(event) => setTitle(event.target.value)} />
+            <input
+              autoComplete="off"
+              value={title}
+              maxLength={100}
+              required
+              onChange={(event) => setTitle(event.target.value)}
+            />
           </label>
           <label>
             What we're making
             <textarea
+              autoComplete="off"
               aria-label="What we're making"
               value={goal}
               maxLength={2000}
@@ -412,6 +419,7 @@ function UndertakingForm({ snapshot, controller: c, project, beforeLeave }: Prop
               <div key={person.characterId}>
                 <label>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     checked={!!role}
                     disabled={!role && roles.length >= 3}
@@ -429,6 +437,7 @@ function UndertakingForm({ snapshot, controller: c, project, beforeLeave }: Prop
                   <label>
                     Role
                     <input
+                      autoComplete="off"
                       value={role.role}
                       maxLength={240}
                       required
@@ -447,25 +456,48 @@ function UndertakingForm({ snapshot, controller: c, project, beforeLeave }: Prop
           })}
           <label>
             Milestones · last is first use
-            <textarea value={milestones} required onChange={(event) => setMilestones(event.target.value)} />
+            <textarea
+              autoComplete="off"
+              value={milestones}
+              required
+              onChange={(event) => setMilestones(event.target.value)}
+            />
           </label>
           <label>
-            <input type="checkbox" checked={scheduled} onChange={(event) => setScheduled(event.target.checked)} />
+            <input
+              autoComplete="off"
+              type="checkbox"
+              checked={scheduled}
+              onChange={(event) => setScheduled(event.target.checked)}
+            />
             Arrange shared time
           </label>
           {scheduled ? (
             <>
               <label>
                 First date
-                <input type="date" value={firstDate} required onChange={(event) => setFirstDate(event.target.value)} />
+                <input
+                  autoComplete="off"
+                  type="date"
+                  value={firstDate}
+                  required
+                  onChange={(event) => setFirstDate(event.target.value)}
+                />
               </label>
               <label>
                 Time
-                <input type="time" value={time} required onChange={(event) => setTime(event.target.value)} />
+                <input
+                  autoComplete="off"
+                  type="time"
+                  value={time}
+                  required
+                  onChange={(event) => setTime(event.target.value)}
+                />
               </label>
               <label>
                 Minutes
                 <input
+                  autoComplete="off"
                   type="number"
                   min={15}
                   max={180}
@@ -475,7 +507,12 @@ function UndertakingForm({ snapshot, controller: c, project, beforeLeave }: Prop
                 />
               </label>
               <label>
-                <input type="checkbox" checked={weekly} onChange={(event) => setWeekly(event.target.checked)} />
+                <input
+                  autoComplete="off"
+                  type="checkbox"
+                  checked={weekly}
+                  onChange={(event) => setWeekly(event.target.checked)}
+                />
                 Continue weekly
               </label>
             </>
