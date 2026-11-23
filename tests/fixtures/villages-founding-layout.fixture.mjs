@@ -537,12 +537,16 @@ export async function verifyFoundingLayout(group) {
         const frame = await root.boundingBox();
         const sheet = page.locator(".villages-quick-dialog");
         const parentVenue = async () => {
-          for (
-            let step = 0;
-            step < 6 && !(await sheet.getByRole("navigation", { name: "Venue sections" }).count());
-            step++
-          )
-            await sheet.locator(".marinara-capability-villages-venue-navigation button").click();
+          const back = sheet.locator(".marinara-capability-villages-venue-navigation button");
+          for (let step = 0; step < 6; step++) {
+            await expect(back).toBeVisible();
+            if (
+              (await sheet.getByRole("navigation", { name: "Venue sections" }).count()) ||
+              /^← (Map|Venues)$/.test(await back.innerText())
+            )
+              return;
+            await back.click();
+          }
         };
         const closeVenue = async () => {
           await parentVenue();
