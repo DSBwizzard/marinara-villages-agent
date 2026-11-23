@@ -211,10 +211,21 @@ await withBrowser(browser, async () => {
       await sheet.getByRole("button", { name: "About", exact: true }).click();
       const manageGeometry = await geometry(sheet.getByRole("button", { name: /^Residents/ }));
       assert.deepEqual(
-        { width: manageGeometry.width, font: manageGeometry.font, fade: manageGeometry.fade },
-        { width: zoneGeometry.width, font: zoneGeometry.font, fade: zoneGeometry.fade },
-        "Arrangements reuse the Zone row width, font and backdrop fade",
+        { font: manageGeometry.font, fade: manageGeometry.fade },
+        { font: zoneGeometry.font, fade: zoneGeometry.fade },
+        "Arrangements reuse the Zone font and backdrop fade",
       );
+      if (viewport.width > 700)
+        assert.equal(
+          manageGeometry.width,
+          zoneGeometry.width,
+          "Desktop arrangements retain the compact Zone row width",
+        );
+      else
+        assert.ok(
+          manageGeometry.width >= zoneGeometry.width,
+          "Phone arrangement rows keep their labels and counts readable",
+        );
       assert.ok(
         manageGeometry.height >= 44 && manageGeometry.height <= zoneGeometry.height + 1,
         "Arrangements keep the Zone touch target without taller rows",
