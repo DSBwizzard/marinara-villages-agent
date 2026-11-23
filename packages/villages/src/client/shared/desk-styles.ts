@@ -275,6 +275,7 @@ export const DESK_STYLES = `
  .${P}-venue-manage-heading h2{font-size:19px}
  .${P}-workspace-content .${P}-venue-manage-heading .${P}-venue-back{font-size:16px}
  .${P}-workspace-content .${P}-venue-zone-toolbar .${P}-venue-back{font-size:16px}
+ .${P}-venue-zone-toolbar{gap:0}
  .${P}-venue-zone-details{gap:6px}
  .${P}-zone-artwork-actions{gap:4px}
  .${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{flex:1 1 0;padding-inline:2px;font-size:clamp(12px,3.4cqw,15px)}

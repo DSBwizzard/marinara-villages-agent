@@ -66,7 +66,7 @@ export function VenueAccessPanel({
   const availableZones =
     place.zones?.filter((row) => row.accessView?.decision.canManage || row.accessView?.decision.canInvite) ?? [];
   return (
-    <section className={`${ELEMENT_TAG}-venue-manage villages-manage villages-access-panel`} aria-label="Venue access">
+    <section className={`${ELEMENT_TAG}-venue-manage villages-access-panel`} aria-label="Venue access">
       <VenueManageHeading title="Access" disabled={busy} onBack={onClose} />
       <label>
         Scope{" "}
