@@ -103,14 +103,14 @@ function HomeEditor({
         </label>
       </div>
       {problem && <p role="alert">{problem}</p>}
-      <footer className="villages-manage-actions">
+      <div className="villages-manage-actions">
         <button type="button" onClick={onBack}>
           Cancel
         </button>
         <button type="button" className="villages-manage-primary" onClick={save}>
           Save home
         </button>
-      </footer>
+      </div>
     </>
   );
 }
@@ -193,7 +193,7 @@ export function FoundingPeople({
               zones={zones.filter((zone) => !zone.ownerId || zone.ownerId === work.characterId)}
               onChange={setWork}
             />
-            <footer className="villages-manage-actions">
+            <div className="villages-manage-actions">
               <button type="button" onClick={list}>
                 Cancel
               </button>
@@ -205,7 +205,7 @@ export function FoundingPeople({
               >
                 Save work
               </button>
-            </footer>
+            </div>
             {access.work?.some((row) => row.characterId === work.characterId) && (
               <button
                 type="button"

@@ -164,7 +164,7 @@ export function VenueWorkPanel({
           {work ? (
             <>
               <WorkFields value={work} zones={zones} onChange={setWork} />
-              <footer className="villages-manage-actions">
+              <div className="villages-manage-actions">
                 <button type="button" onClick={list}>
                   Cancel
                 </button>
@@ -176,7 +176,7 @@ export function VenueWorkPanel({
                 >
                   Propose work
                 </button>
-              </footer>
+              </div>
               {records.some((row) => row.characterId === person) && (
                 <button
                   type="button"

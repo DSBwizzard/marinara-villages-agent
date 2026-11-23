@@ -74,14 +74,14 @@ export function VenuePeoplePicker({
   const current = Math.min(page, count - 1);
   return (
     <section className={`${P}-directory-root villages-manage-people`} aria-label={title}>
-      <header className="villages-manage-list-heading">
+      <div className="villages-manage-list-heading">
         <h2>{title}</h2>
         {onAdd && (
           <button type="button" disabled={disabled} onClick={onAdd}>
             {addLabel}
           </button>
         )}
-      </header>
+      </div>
       {children}
       {people.length ? (
         <div className={`${P}-directory-grid`}>
