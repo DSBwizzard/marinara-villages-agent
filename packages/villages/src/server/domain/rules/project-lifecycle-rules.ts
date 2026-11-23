@@ -204,7 +204,7 @@ export function beginProject(
           ? "The Venue design changed. Cancel this Project and plan the current layout."
           : "The Venue design changed. Revise the draft.",
       );
-    if (!flow.changedZoneIds.length && flow.change!.capacity === (venue.residenceCapacity ?? 1))
+    if (!flow.changedZoneIds.length && flow.change!.capacity === (venue.residenceCapacity ?? 0))
       throw conflict("Choose a physical change before Start.");
     validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds), now);
     stageProjectRoomEdits(state, venue, flow, project.id, at);

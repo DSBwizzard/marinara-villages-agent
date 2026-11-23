@@ -424,6 +424,11 @@ export function applyNarrationAccess(
       "invalid access management",
     );
     const raw = decision.management as Record<string, unknown>;
+    if (raw.action === "work-propose" || raw.action === "work-decide")
+      memoryRequire(
+        state.venues.some((row) => row.id === venue.id),
+        "Work arrangements need an admitted Venue.",
+      );
     memoryRequire(
       !["operationId", "expectedRevision", "zoneId", "sceneId"].some((key) => Object.hasOwn(raw, key)) &&
         [

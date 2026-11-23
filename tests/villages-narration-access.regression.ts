@@ -657,8 +657,36 @@ await runCase("narration-access/overnight-agreement", () => {
 });
 
 await runCase("narration-access/work-consent", () => {
+  const unadmitted = fixture(true);
+  const negative = unadmitted.publication(
+    [
+      {
+        id: "unadmitted-work",
+        type: "access.decide",
+        by: unadmitted.actorId,
+        venue: unadmitted.home.id,
+        zone: null,
+        at: "grant",
+        decision: {
+          outcome: "access-management",
+          management: { action: "work-propose", characterId: unadmitted.actorId, terms: null },
+        },
+        source: [{ segment: "grant" }],
+      },
+    ],
+    [],
+    ["unadmitted-work"],
+  );
+  assert.equal(
+    acceptNarration(unadmitted.state, negative, "unadmitted-work", at).held,
+    true,
+    "Employment needs an admitted Venue",
+  );
+  assert.equal(unadmitted.home.location.access!.workOffers?.length ?? 0, 0);
   const f = fixture(true),
     venue = f.home.location;
+  f.state.venues.push(venue);
+  delete f.state.worldPlaces.places[venue.id];
   const terms = {
     characterId: f.actorId,
     activity: "Keeping the library",
@@ -713,6 +741,6 @@ await runCase("narration-access/work-consent", () => {
   publication.responseDigest = memoryHash(publication.raw);
   const accepted = acceptNarration(f.state, publication, "actual-work", at);
   assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
-  assert.deepEqual(f.state.worldPlaces.places[venue.id].location.access!.work, [terms]);
+  assert.deepEqual(f.state.venues.find((row) => row.id === venue.id)!.access!.work, [terms]);
   assert(acceptNarration(f.state, publication, "actual-work", at).replayed);
 });

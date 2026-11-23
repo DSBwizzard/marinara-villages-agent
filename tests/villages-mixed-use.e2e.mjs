@@ -7,7 +7,8 @@ import { resolve } from "node:path";
 
 const styles = await build({
   stdin: {
-    contents: "import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';import {DESK_STYLES} from './packages/villages/src/client/shared/desk-styles.js';syncVillagesStyles();const style=document.createElement('style');style.textContent=DESK_STYLES;document.head.append(style);",
+    contents:
+      "import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';import {DESK_STYLES} from './packages/villages/src/client/shared/desk-styles.js';syncVillagesStyles();const style=document.createElement('style');style.textContent=DESK_STYLES;document.head.append(style);",
     resolveDir: process.cwd(),
   },
   bundle: true,
@@ -22,9 +23,10 @@ await withBrowser(browser, async () => {
     const f = await mount(false, width, { page: "edit", cleanName: true });
     const page = f.page;
     await page.evaluate(() => {
-      const host=document.createElement("marinara-capability-villages");
-      host.className="marinara-capability-villages-desk-container";
-      document.body.append(host);host.append(document.getElementById("root"));
+      const host = document.createElement("marinara-capability-villages");
+      host.className = "marinara-capability-villages-desk-container";
+      document.body.append(host);
+      host.append(document.getElementById("root"));
     });
     await page.addStyleTag({
       content:
@@ -74,8 +76,18 @@ await withBrowser(browser, async () => {
       await mkdir(process.env.VILLAGES_SCREENSHOT_DIR, { recursive: true });
       await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `work-proposal-${width}.png`) });
     }
-    const overflow=await page.evaluate(()=>[...document.querySelectorAll("body *")].filter((node)=>node.getBoundingClientRect().right>innerWidth+1).slice(-6).map((node)=>({tag:node.tagName,class:node.className,width:node.getBoundingClientRect().width,right:node.getBoundingClientRect().right})));
-    assert.equal(overflow.length,0,"Work controls fit desktop and phone: "+JSON.stringify(overflow));
+    const overflow = await page.evaluate(() =>
+      [...document.querySelectorAll("body *")]
+        .filter((node) => node.getBoundingClientRect().right > innerWidth + 1)
+        .slice(-6)
+        .map((node) => ({
+          tag: node.tagName,
+          class: node.className,
+          width: node.getBoundingClientRect().width,
+          right: node.getBoundingClientRect().right,
+        })),
+    );
+    assert.equal(overflow.length, 0, "Work controls fit desktop and phone: " + JSON.stringify(overflow));
     await panel.getByRole("button", { name: "Withdraw", exact: true }).click();
     await expect.poll(() => f.requests.length).toBe(2);
     assert.equal(f.requests[1].body.action, "work-decide");

@@ -1,3 +1,4 @@
+import { sameReturnResident } from "../packages/villages/src/server/domain/rules/return-catchup-authority.js";
 import assert from "node:assert/strict";
 import { venueFixture, sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
@@ -227,3 +228,17 @@ founders.forEach((row, index) => {
 const founded = parsePlaces(founders, new Set(["a"]), true, new Date(at));
 assert.deepEqual(founded.find((row) => row.id === home.id)!.workerIds, ["a"]);
 assert.equal(Object.hasOwn(founded[0]!, "classes"), false);
+
+const departure = structuredClone(state);
+const returned = new ZonedDate("2027-01-04T12:00:00-08:00", state.timeZone);
+planRoutineDays(state, returned);
+assert(
+  sameReturnResident(departure.villagers[1]!, state.villagers[1]!, returned, departure, state),
+  "A changed derived work window must not invalidate unchanged historical work",
+);
+state.venues[0]!.access!.work![0]!.startMinute++;
+assert.equal(
+  sameReturnResident(departure.villagers[1]!, state.villagers[1]!, returned, departure, state),
+  false,
+  "Changed accepted work invalidates historical acceptance",
+);

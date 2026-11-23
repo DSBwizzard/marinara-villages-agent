@@ -199,7 +199,8 @@ await runCase("narration-place/evidence", () => {
       turn.raw.commands[0].existingId = "missing";
     }
     if (kind === "both") turn.raw.commands[0].existingId = "orchard";
-    if (kind === "service") const before = memoryHash(f.state);
+    if (kind === "service") turn.raw.commands[0].place.classes = ["workplace"];
+    const before = memoryHash(f.state);
     assert.equal(turn.accept().held, true, kind);
     assert.equal(memoryHash(f.state), before);
   }

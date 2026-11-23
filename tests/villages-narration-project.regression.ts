@@ -400,10 +400,11 @@ await runCase("narration-project/new-venue-terms", () => {
   assert.deepEqual(context.terms.proposal, { draft: project.venueDraft, plan: project.plan });
   const prompt = projectSpeechPrompt(f.state, [context]);
   assert(prompt.includes(JSON.stringify(project.venueDraft)) && prompt.includes(JSON.stringify(project.plan)));
+  project.plan.capacity = 3;
   assert.notDeepEqual(
     projectSpeechContext(f.state, project, ["a"]).terms,
     context.terms,
-    "a saved plan cannot hide a later change in official classes or site terms",
+    "a saved plan cannot hide a later change in home capacity or site terms",
   );
 });
 

@@ -32,7 +32,7 @@ export function narrationResidenceContext(state: VillageState, actors: string[])
         householdIds: householdIds(venue),
         managerIds: [...(venue.access?.managerIds ?? [])],
         sleepZones: venueZones(venue)
-          .filter((zone) => zone.kind === "public" && !zoneClosed(state, venue, zone))
+          .filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal" && !zoneClosed(state, venue, zone))
           .map((zone) => ({ id: zone.id, name: zone.name, kind: zone.kind, managerIds: zone.access?.managerIds })),
         fingerprint: memoryHash([venue, state.residences.filter((move) => move.proposedVenueId === venue.id)]),
       })),
@@ -65,7 +65,9 @@ export function narrationResidenceContext(state: VillageState, actors: string[])
 const id = z.string().min(1).max(200),
   ids = z.array(id).max(100),
   digest = z.string().regex(/^[a-f0-9]{64}$/);
-const sleepZoneSchema = z.object({ id, name: z.string().max(200), kind: z.enum(["public", "personal"]) }).strict();
+const sleepZoneSchema = z
+  .object({ id, name: z.string().max(200), kind: z.enum(["public", "personal", "restricted"]) })
+  .strict();
 export const narrationResidenceContextSchema = z
   .object({
     homes: z

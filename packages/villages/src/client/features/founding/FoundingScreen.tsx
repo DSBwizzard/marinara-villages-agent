@@ -554,7 +554,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     const mapReady = !setupMapBusy;
     const venueShapeProblem = foundingVenueShapeProblem(setupVenues);
     const standardHomes = setupVenues.every(
-      (venue) => foundingHomeMembers(venue).length <= (venue.residenceCapacity ?? 1),
+      (venue) => foundingHomeMembers(venue).length <= (venue.residenceCapacity ?? 0),
     );
     const missingSharedVenue =
       standardHomes && setupVenues.filter((venue) => !foundingHomeMembers(venue).length).length < 2;

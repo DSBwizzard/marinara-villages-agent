@@ -48,7 +48,7 @@ export function FoundingPeople({
               checked={members.includes(person.id)}
               onChange={(e) => {
                 const next = e.target.checked ? [...members, person.id] : members.filter((id) => id !== person.id);
-                if (next.length > (venue.residenceCapacity ?? 1)) {
+                if (next.length > (venue.residenceCapacity ?? 0)) {
                   setProblem("Increase Home places first.");
                   return;
                 }
@@ -63,7 +63,7 @@ export function FoundingPeople({
           Home places
           <select
             aria-label="Home places"
-            value={venue.residenceCapacity ?? 1}
+            value={venue.residenceCapacity ?? 0}
             onChange={(e) =>
               onPatch({ ...venue, residenceCapacity: Number(e.target.value), foundingCapacity: Number(e.target.value) })
             }

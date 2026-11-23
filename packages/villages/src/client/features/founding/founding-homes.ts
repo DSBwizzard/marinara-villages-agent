@@ -60,7 +60,7 @@ export function reconcileFoundingHome(venue: SetupVenueDraft, members = founding
     residenceCapacity:
       venue.foundingCapacity === null
         ? Math.max(0, members.length)
-        : (venue.foundingCapacity ?? venue.residenceCapacity ?? 1),
+        : (venue.foundingCapacity ?? venue.residenceCapacity ?? 0),
     spaces: venue.spaces?.map((zone) => ({
       ...zone,
       access: occupied
@@ -129,7 +129,7 @@ export function assignFoundingHome(
     else if (!assigned && venue.id !== venueId) return venue;
     if (JSON.stringify(members) === JSON.stringify(next)) return venue;
     const updated = reconcileFoundingHome(venue, next);
-    if (next.length > (updated.residenceCapacity ?? 1))
+    if (next.length > (updated.residenceCapacity ?? 0))
       throw new Error("This home is full. Increase its capacity or choose Automatic.");
     return updated;
   });
@@ -160,7 +160,7 @@ export function reconcileFoundingRoster(
     const existing = next.find((venue) => venue.id === id);
     if (existing) {
       const capacity =
-        existing.foundingCapacity === null ? 4 : (existing.foundingCapacity ?? existing.residenceCapacity ?? 1);
+        existing.foundingCapacity === null ? 4 : (existing.foundingCapacity ?? existing.residenceCapacity ?? 0);
       if (foundingHomeMembers(existing).length >= capacity) continue;
       const updated = assignFoundingHome(next, id, actor.id, true);
       next.splice(0, next.length, ...updated);

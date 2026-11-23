@@ -146,7 +146,7 @@ export function readProjectPlan(value: unknown, _venue: VillageVenue): NonNullab
   const exteriorDescription = readPlaceDescription(row.exteriorDescription).trim();
   if (!form || !exteriorDescription || row.layoutVersion !== 1)
     throw badRequest("Define the Physical design, layout and Entrance before work starts.");
-  const capacity = Number(row.capacity ?? 1);
+  const capacity = Number(row.capacity ?? 0);
   if (!Number.isInteger(capacity) || capacity < 0 || capacity > 4)
     throw badRequest("Residence capacity must be from zero to four.");
   const zones = readBaseVenueLayout(
@@ -155,7 +155,7 @@ export function readProjectPlan(value: unknown, _venue: VillageVenue): NonNullab
     validImage,
   );
   return {
-    capacity: Number(row.capacity ?? 1),
+    capacity: Number(row.capacity ?? 0),
     imageContext: readVenueImageContext(row.imageContext),
     form,
     venueType: boundText(row.venueType, 100),

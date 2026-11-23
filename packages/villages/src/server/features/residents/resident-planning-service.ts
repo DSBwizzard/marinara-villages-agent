@@ -181,7 +181,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         opportunity.actorIds.every((id) => {
           const old = historical.villagers.find((row) => row.characterId === id),
             live = state.villagers.find((row) => row.characterId === id);
-          return old && live && sameReturnResident(old, live, at, historical);
+          return old && live && sameReturnResident(old, live, at, historical, state);
         }),
         "historical resident changed",
       );

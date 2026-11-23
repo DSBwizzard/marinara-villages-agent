@@ -53,12 +53,7 @@ function drafts(assignments: Record<string, string> = {}) {
   for (const [actor, home] of Object.entries(assignments))
     rows = assignFoundingHome(rows, `founding-home:${home}`, actor, true);
   return rows
-    .filter(
-      (venue) =>
-        !(venue.occupancy.playerHome || !!venue.residentIds?.length) ||
-        venue.occupancy.playerHome ||
-        venue.residentIds?.length,
-    )
+    .filter((venue) => venue.category === "public-center" || venue.occupancy.playerHome || venue.residentIds?.length)
     .map((venue, index) => ({
       ...venue,
       ...(venue.occupancy.playerHome || !!venue.residentIds?.length
@@ -154,9 +149,9 @@ for (const [groups, count] of [
   );
   assert.equal(retained.find((row) => row.id === fresh.id)!.name, "Empty cottage");
   assert.deepEqual(
-    assignFoundingHome(retained, "community", "a", true),
-    retained,
-    "A Venue without Residence class cannot become a home through assignment",
+    assignFoundingHome(retained, "community", "a", true).find((row) => row.id === "community")!.residentIds,
+    ["a"],
+    "Any Venue can be given an explicit home assignment in Founding",
   );
 }
 

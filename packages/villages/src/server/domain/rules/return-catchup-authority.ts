@@ -13,7 +13,17 @@ export function sameReturnResident(
   live: VillageState["villagers"][number],
   at: Date,
   historical: VillageState,
+  current: VillageState,
 ): boolean {
+  const work = (world: VillageState) =>
+    world.venues
+      .flatMap((venue) =>
+        (venue.access?.work ?? [])
+          .filter((row) => row.characterId === before.characterId)
+          .map((terms) => ({ venueId: venue.id, terms })),
+      )
+      .sort((a, b) => a.venueId.localeCompare(b.venueId));
+  if (JSON.stringify(work(historical)) !== JSON.stringify(work(current))) return false;
   const date = localDateKey(at);
   const { agenda: oldAgenda, ...oldResident } = before;
   const { agenda: newAgenda, ...newResident } = live;
@@ -21,7 +31,12 @@ export function sameReturnResident(
   if (!oldAgenda || !newAgenda) return oldAgenda === newAgenda;
   const { activeDay: oldDay, plannedDays: oldPlans, repairedDays: _oldRepairs, ...oldRoutine } = oldAgenda;
   const { activeDay: newDay, plannedDays: newPlans, repairedDays: _newRepairs, ...newRoutine } = newAgenda;
-  if (JSON.stringify(oldRoutine) !== JSON.stringify(newRoutine)) return false;
+  // Work dates are a derived query window; compare their accepted terms above instead.
+  const withoutWork = (routine: typeof oldRoutine) => ({
+    ...routine,
+    reservations: routine.reservations?.filter((row) => row.source !== "work"),
+  });
+  if (JSON.stringify(withoutWork(oldRoutine)) !== JSON.stringify(withoutWork(newRoutine))) return false;
   if (oldDay?.dateKey === newDay?.dateKey && JSON.stringify(oldDay) !== JSON.stringify(newDay)) return false;
   if (newPlans?.[date]) {
     let expected = oldPlans?.[date] ?? (oldDay?.dateKey === date ? oldDay.blocks : undefined);

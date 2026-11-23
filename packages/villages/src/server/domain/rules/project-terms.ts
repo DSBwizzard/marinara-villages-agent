@@ -25,7 +25,7 @@ export function validImage(value: unknown): VillageVenueImage | null {
   return /^global-gallery:[^\\s]{1,200}$/u.test(ref) && url.startsWith("/") && id ? { ref, url, id } : null;
 }
 function globalChange(venue: VillageVenue, change: VillageProjectChange) {
-  const capacity = change.capacity !== undefined && change.capacity !== (venue.residenceCapacity ?? 1);
+  const capacity = change.capacity !== undefined && change.capacity !== (venue.residenceCapacity ?? 0);
   return {
     capacity: capacity ? change.capacity : undefined,
     ...(change.form !== undefined ? { form: change.form } : {}),

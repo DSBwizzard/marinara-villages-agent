@@ -476,7 +476,7 @@ export function useFoundingSetupBlocker(ports: {
       if (setupVenues.length > 16) return "A Village supports at most 16 Venues.";
       if (
         residences.some(
-          (home) => (home.residentIds?.length ?? 0) + Number(home.occupancy.playerHome) > (home.residenceCapacity ?? 1),
+          (home) => (home.residentIds?.length ?? 0) + Number(home.occupancy.playerHome) > (home.residenceCapacity ?? 0),
         )
       )
         return "Household assignments exceed a Residence’s capacity.";
