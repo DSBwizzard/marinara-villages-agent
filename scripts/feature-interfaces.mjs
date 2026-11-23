@@ -138,6 +138,7 @@ export const serverFeatureInterfaces = Object.freeze({
 
 /** Named client presentation contracts; entry and shell assemble private feature implementations. */
 export const clientFeatureInterfaces = Object.freeze({
+  "venues/VenueManage.tsx": ["VenueManageMenu", "VenueManageHeading", "VenuePeoplePicker", "VenueManageSection"],
   "venues/layout-draft.tsx": ["VenueLayoutDraft"],
   "projects/ProjectDesign.tsx": ["ClassChoices"],
   "background/BackgroundPanel.tsx": ["BackgroundWorkPanel"],

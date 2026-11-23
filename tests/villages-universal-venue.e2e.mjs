@@ -322,6 +322,7 @@ await withBrowser(browser, async () => {
     await expect(profile.locator(".villages-zone-map")).toHaveCount(0);
     assert.equal(writes.length, 0, "browsing known Zone art never starts a Scene or saves a change");
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
+    await profile.getByRole("button", { name: /^Building/ }).click();
     await profile.getByRole("button", { name: "Zone connections", exact: true }).click();
     const layout = profile.locator(".villages-zone-map");
     await expect(layout.locator("[data-layout-zone]")).toHaveCount(4);
@@ -511,6 +512,7 @@ await withBrowser(browser, async () => {
     await expect(roomName).toHaveValue("Harbour Lounge");
     await expect(detail.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
+    await profile.getByRole("button", { name: /^Building/ }).click();
     await expect(profile.getByRole("heading", { name: "Assigned villagers", exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "View housing requests" })).toHaveCount(0);
     await expect(profile.getByLabel("Physical form", { exact: true })).toHaveCount(0);

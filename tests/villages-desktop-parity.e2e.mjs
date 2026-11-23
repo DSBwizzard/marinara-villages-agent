@@ -380,6 +380,7 @@ await withBrowser(browser, async () => {
     await expect(doors.getByRole("switch", { name: "Automatic artwork updates" })).toBeVisible();
     await doors.getByRole("button", { name: "← Zones", exact: true }).click();
     await sections.getByRole("button", { name: "Manage", exact: true }).click();
+    await doors.getByRole("button", { name: /^Building/ }).click();
     await expect(doors.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
     await sections.getByRole("button", { name: "About", exact: true }).click();
     if (process.env.VILLAGES_VISUAL_OUTPUT)
@@ -577,6 +578,7 @@ await withBrowser(browser, async () => {
         .getByRole("navigation", { name: "Venue sections" })
         .getByRole("button", { name: "Manage", exact: true })
         .click();
+      await page.getByRole("button", { name: /^Building/ }).click();
       await expect(page.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Move here" })).toHaveCount(0);
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);

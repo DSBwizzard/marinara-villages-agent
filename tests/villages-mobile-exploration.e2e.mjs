@@ -437,6 +437,7 @@ await withBrowser(browser, async () => {
         else await expect(thumb).toBeHidden();
       }
       if (section === "Manage") {
+        await venue.getByRole("button", { name: /^Building/ }).click();
         await expect(venue.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
         await venue.getByRole("button", { name: "Zone connections", exact: true }).click();
         if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);

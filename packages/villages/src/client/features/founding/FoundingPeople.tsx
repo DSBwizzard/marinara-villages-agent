@@ -1,8 +1,16 @@
-import { useState } from "react";
-import type { SetupVenueDraft } from "../../shared/types.js";
+import { useState, type ReactNode } from "react";
+import type { SetupVenueDraft, Portrait } from "../../shared/types.js";
 import type { VenueAccessState } from "../../../shared/helpers/venue-access.js";
-import { venueWorkSchema, workTime, type VenueWork } from "../../../shared/helpers/venue-work.js";
-import { WorkFields } from "../../shared/WorkFields.js";
+import { venueWorkSchema, type VenueWork } from "../../../shared/helpers/venue-work.js";
+import { WorkFields, initialVenueWork } from "../../shared/WorkFields.js";
+import {
+  VenueManageMenu,
+  VenueManageHeading,
+  VenuePeoplePicker,
+  type VenueManageSection,
+} from "../venues/VenueManage.js";
+import { VenueZoneRow } from "../../shared/VenueNavigation.js";
+import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { foundingHomeMembers, foundingSleepZones, reconcileFoundingHome } from "./founding-homes.js";
 
 export function foundingAccess(venue: SetupVenueDraft): VenueAccessState {
@@ -21,197 +29,278 @@ export function foundingAccess(venue: SetupVenueDraft): VenueAccessState {
     }
   );
 }
-export function FoundingPeople({
+
+function HomeEditor({
   venue,
-  people,
+  id,
+  name,
   onPatch,
+  onBack,
 }: {
   venue: SetupVenueDraft;
-  people: { id: string; name: string }[];
+  id: string;
+  name: string;
   onPatch(venue: SetupVenueDraft): void;
+  onBack(): void;
 }) {
-  const [work, setWork] = useState<VenueWork | null>(null);
+  const [lives, setLives] = useState(true);
+  const [capacity, setCapacity] = useState(
+    Math.max(
+      venue.residenceCapacity ?? 0,
+      foundingHomeMembers(venue).length + Number(!foundingHomeMembers(venue).includes(id)),
+    ),
+  );
+  const [sleep, setSleep] = useState(venue.destinations?.[id]?.sleep ?? "");
   const [problem, setProblem] = useState("");
-  const members = foundingHomeMembers(venue);
-  const access = foundingAccess(venue);
-  const name = (id: string) => people.find((row) => row.id === id)?.name ?? "Villager";
-  const zones = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])];
+  const members = [...foundingHomeMembers(venue).filter((member) => member !== id), ...(lives ? [id] : [])];
+  const draft = reconcileFoundingHome({ ...venue, residenceCapacity: capacity, foundingCapacity: capacity }, members);
+  const choices = foundingSleepZones(draft, id);
+  const sleeping = choices.some((zone) => zone.id === sleep) ? sleep : (draft.destinations?.[id]?.sleep ?? "");
+  const save = () => {
+    if (capacity < members.length) {
+      setProblem("Choose enough home places.");
+      return;
+    }
+    if (lives && !choices.some((zone) => zone.id === sleeping)) {
+      setProblem("Choose a sleeping Zone.");
+      return;
+    }
+    onPatch(
+      lives
+        ? { ...draft, destinations: { ...draft.destinations, [id]: { ...draft.destinations?.[id], sleep: sleeping } } }
+        : draft,
+    );
+    onBack();
+  };
   return (
-    <section className="villages-access-panel" aria-label="People at this Venue">
-      <fieldset>
-        <legend>Lives here</legend>
-        {people.map((person) => (
-          <label key={person.id}>
-            <input
-              autoComplete="off"
-              type="checkbox"
-              checked={members.includes(person.id)}
-              onChange={(e) => {
-                const next = e.target.checked ? [...members, person.id] : members.filter((id) => id !== person.id);
-                if (next.length > (venue.residenceCapacity ?? 0)) {
-                  setProblem("Increase Home places first.");
-                  return;
-                }
-                setProblem("");
-                onPatch(reconcileFoundingHome(venue, next));
-              }}
-            />
-            {person.name}
-          </label>
-        ))}
-        <label>
-          Home places
-          <select
-            aria-label="Home places"
-            value={venue.residenceCapacity ?? 0}
-            onChange={(e) =>
-              onPatch({ ...venue, residenceCapacity: Number(e.target.value), foundingCapacity: Number(e.target.value) })
-            }
-          >
-            {[0, 1, 2, 3, 4].map((n) => (
-              <option key={n} value={n} disabled={n < members.length}>
-                {n}
-              </option>
-            ))}
-          </select>
+    <>
+      <VenueManageHeading title={name} back="Residents" onBack={onBack} />
+      <div className="villages-manage-form">
+        <label className="villages-manage-check">
+          <input autoComplete="off" type="checkbox" checked={lives} onChange={(e) => setLives(e.target.checked)} />
+          Lives here
         </label>
-        {members.map((id) => (
-          <label key={id}>
-            {name(id)} sleeps in
-            <select
-              aria-label={`${name(id)} sleeps in`}
-              value={venue.destinations?.[id]?.sleep ?? ""}
-              onChange={(e) =>
-                onPatch({
-                  ...venue,
-                  destinations: { ...venue.destinations, [id]: { ...venue.destinations?.[id], sleep: e.target.value } },
-                })
-              }
-            >
+        {lives && (
+          <label>
+            Sleeps in
+            <select aria-label="Sleeps in" value={sleeping} onChange={(e) => setSleep(e.target.value)}>
               <option value="">Choose a Zone</option>
-              {foundingSleepZones(venue, id).map((zone) => (
+              {choices.map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zone.name || "Zone"}
                 </option>
               ))}
             </select>
           </label>
-        ))}
-      </fieldset>
-      <fieldset>
-        <legend>Manages this place</legend>
-        {people.map((person) => (
-          <label key={person.id}>
-            <input
-              autoComplete="off"
-              type="checkbox"
-              checked={access.managerIds.includes(person.id)}
-              onChange={(e) =>
-                onPatch({
-                  ...venue,
-                  access: {
-                    ...access,
-                    managerIds: e.target.checked
-                      ? [...access.managerIds, person.id]
-                      : access.managerIds.filter((id) => id !== person.id),
-                  },
-                })
-              }
-            />
-            {person.name}
-          </label>
-        ))}
-      </fieldset>
-      <fieldset>
-        <legend>Works here</legend>
-        {(access.work ?? []).map((row) => (
-          <div key={row.characterId}>
-            <strong>{name(row.characterId)}</strong>
-            <p>
-              {row.activity} · {row.days.map((day) => day.slice(0, 3)).join(", ")} · {workTime(row.startMinute)}–
-              {workTime(row.endMinute)}
-            </p>
-            <button type="button" onClick={() => setWork(structuredClone(row))}>
-              Edit work
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                onPatch({
-                  ...venue,
-                  workerIds: venue.workerIds?.filter((id) => id !== row.characterId),
-                  access: { ...access, work: access.work!.filter((other) => other !== row) },
-                })
-              }
-            >
-              Remove work
-            </button>
-          </div>
-        ))}
+        )}
         <label>
-          Add worker
-          <select
-            aria-label="Add worker"
-            value=""
-            onChange={(e) => {
-              if (e.target.value)
-                setWork({
-                  characterId: e.target.value,
-                  activity: "Working",
-                  zoneId: zones[0]?.id ?? "",
-                  accessZoneIds: zones[0] ? [zones[0].id] : [],
-                  days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-                  startMinute: 540,
-                  endMinute: 1020,
-                });
-            }}
-          >
-            <option value="">Choose a Villager</option>
-            {people
-              .filter((person) => person.id !== "player" && !access.work?.some((row) => row.characterId === person.id))
-              .map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
+          Home places
+          <select aria-label="Home places" value={capacity} onChange={(e) => setCapacity(Number(e.target.value))}>
+            {[0, 1, 2, 3, 4].map((n) => (
+              <option key={n}>{n}</option>
+            ))}
           </select>
         </label>
-        {work && (
-          <fieldset>
-            <legend>{name(work.characterId)}’s work</legend>
+      </div>
+      {problem && <p role="alert">{problem}</p>}
+      <footer className="villages-manage-actions">
+        <button type="button" onClick={onBack}>
+          Cancel
+        </button>
+        <button type="button" className="villages-manage-primary" onClick={save}>
+          Save home
+        </button>
+      </footer>
+    </>
+  );
+}
+
+export function FoundingPeople({
+  venue,
+  people,
+  onPatch,
+  onZone,
+  initialSection = null,
+  disabled = false,
+  children,
+}: {
+  venue: SetupVenueDraft;
+  people: { id: string; name: string; portrait?: Portrait }[];
+  onPatch(venue: SetupVenueDraft): void;
+  onZone(id: string): void;
+  initialSection?: VenueManageSection | null;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  const [section, setSection] = useState<VenueManageSection | null>(initialSection);
+  const [person, setPerson] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [managers, setManagers] = useState(false);
+  const [work, setWork] = useState<VenueWork | null>(null);
+  const access = foundingAccess(venue);
+  const members = foundingHomeMembers(venue);
+  const name = (id: string) => people.find((row) => row.id === id)?.name ?? "Villager";
+  const zones = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])];
+  const root = () => {
+    setSection(null);
+    setPerson(null);
+    setWork(null);
+    setAdding(false);
+    setManagers(false);
+  };
+  const list = () => {
+    setPerson(null);
+    setWork(null);
+    setAdding(false);
+  };
+  const openWork = (id: string) => {
+    setWork(
+      structuredClone(
+        access.work?.find((row) => row.characterId === id) ??
+          initialVenueWork(
+            id,
+            zones.filter((zone) => !zone.ownerId || zone.ownerId === id),
+          ),
+      ),
+    );
+    setPerson(id);
+  };
+  const saveWork = () => {
+    if (!work) return;
+    onPatch({
+      ...venue,
+      workerIds: [...new Set([...(venue.workerIds ?? []), work.characterId])],
+      access: { ...access, work: [...(access.work ?? []).filter((row) => row.characterId !== work.characterId), work] },
+      destinations: {
+        ...venue.destinations,
+        [work.characterId]: { ...venue.destinations?.[work.characterId], work: work.zoneId },
+      },
+    });
+    list();
+  };
+  return (
+    <section className="villages-manage" aria-label="Manage this venue">
+      <fieldset disabled={disabled}>
+        {!section ? (
+          <VenueManageMenu onSelect={setSection} />
+        ) : section === "home" && person ? (
+          <HomeEditor key={person} venue={venue} id={person} name={name(person)} onPatch={onPatch} onBack={list} />
+        ) : section === "work" && work ? (
+          <>
+            <VenueManageHeading title={name(work.characterId)} back="Workers" onBack={list} />
             <WorkFields
               value={work}
               zones={zones.filter((zone) => !zone.ownerId || zone.ownerId === work.characterId)}
               onChange={setWork}
             />
-            <button
-              type="button"
-              disabled={!venueWorkSchema.safeParse(work).success || !work.accessZoneIds.includes(work.zoneId)}
-              onClick={() => {
-                onPatch({
-                  ...venue,
-                  workerIds: [...new Set([...(venue.workerIds ?? []), work.characterId])],
-                  access: {
-                    ...access,
-                    work: [...(access.work ?? []).filter((row) => row.characterId !== work.characterId), work],
-                  },
-                  destinations: {
-                    ...venue.destinations,
-                    [work.characterId]: { ...venue.destinations?.[work.characterId], work: work.zoneId },
-                  },
-                });
-                setWork(null);
-              }}
-            >
-              Save work
-            </button>
-            <button type="button" onClick={() => setWork(null)}>
-              Cancel
-            </button>
-          </fieldset>
+            <footer className="villages-manage-actions">
+              <button type="button" onClick={list}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="villages-manage-primary"
+                disabled={!venueWorkSchema.safeParse(work).success || !work.accessZoneIds.includes(work.zoneId)}
+                onClick={saveWork}
+              >
+                Save work
+              </button>
+            </footer>
+            {access.work?.some((row) => row.characterId === work.characterId) && (
+              <button
+                type="button"
+                onClick={() => {
+                  const destinations = { ...venue.destinations };
+                  if (destinations[work.characterId])
+                    destinations[work.characterId] = { ...destinations[work.characterId], work: undefined };
+                  onPatch({
+                    ...venue,
+                    destinations,
+                    workerIds: venue.workerIds?.filter((id) => id !== work.characterId),
+                    access: { ...access, work: access.work!.filter((row) => row.characterId !== work.characterId) },
+                  });
+                  list();
+                }}
+              >
+                Remove work
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <VenueManageHeading
+              title={
+                section === "home" ? "Home" : section === "work" ? "Work" : section === "access" ? "Access" : "Building"
+              }
+              onBack={root}
+            />
+            {(section === "home" || section === "work") && (
+              <VenuePeoplePicker
+                key={`${section}-${adding}`}
+                title={
+                  adding
+                    ? section === "home"
+                      ? "Add resident"
+                      : "Add worker"
+                    : section === "home"
+                      ? "Residents"
+                      : "Workers"
+                }
+                people={people.filter((row) =>
+                  section === "home"
+                    ? adding !== members.includes(row.id)
+                    : row.id !== "player" && adding !== !!access.work?.some((work) => work.characterId === row.id),
+                )}
+                onAdd={!adding ? () => setAdding(true) : undefined}
+                addLabel={section === "home" ? "Add resident" : "Add worker"}
+                onSelect={(id) => (section === "home" ? setPerson(id) : openWork(id))}
+              />
+            )}
+            {section === "access" && (
+              <>
+                {!managers ? (
+                  <div className={`${P}-venue-zone-picker`}>
+                    <VenueZoneRow name="Managers" onOpen={() => setManagers(true)} />
+                    {zones.map((zone) => (
+                      <VenueZoneRow key={zone.id} name={zone.name || "Zone"} onOpen={() => onZone(zone.id)} />
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    <button type="button" className={`${P}-venue-back`} onClick={() => setManagers(false)}>
+                      ← Access
+                    </button>
+                    <div className="villages-manage-form">
+                      {people.map((row) => (
+                        <label className="villages-manage-check" key={row.id}>
+                          <input
+                            autoComplete="off"
+                            type="checkbox"
+                            checked={access.managerIds.includes(row.id)}
+                            onChange={(e) =>
+                              onPatch({
+                                ...venue,
+                                access: {
+                                  ...access,
+                                  managerIds: e.target.checked
+                                    ? [...access.managerIds, row.id]
+                                    : access.managerIds.filter((id) => id !== row.id),
+                                },
+                              })
+                            }
+                          />
+                          {row.name}
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+            {section === "building" && <div className="villages-manage-form">{children}</div>}
+          </>
         )}
       </fieldset>
-      {problem && <p role="alert">{problem}</p>}
     </section>
   );
 }

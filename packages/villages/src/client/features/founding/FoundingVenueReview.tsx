@@ -24,17 +24,17 @@ export function FoundingVenueReview({
       <FoundingArrangements venues={review.venues} people={people} />
       {review.venues.map((venue) => (
         <details key={venue.id}>
-          <summary>{venue.name} · Zones</summary>
+          <summary>{venue.name} , Zones</summary>
           <p>{venue.form}</p>
           {[...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].map((zone) => (
             <div key={zone.id}>
               <strong>{zone.name}</strong>
               <p>{zone.description}</p>
               <p>
-                {zone.ownerId ? "Personal room" : "Shared Zone"} ·{" "}
+                {zone.ownerId ? "Personal room" : "Shared Zone"} ,{" "}
                 {zone.access?.mode === "permission-required" ? "Permission required" : "Public"}
                 {Array.isArray(zone.access?.visitorHours)
-                  ? " · " +
+                  ? " , " +
                     zone.access.visitorHours
                       .map((row) => row.days.map((day) => day.slice(0, 3)).join(", ") + " " + row.start + "–" + row.end)
                       .join("; ")

@@ -1,4 +1,6 @@
 import { VenueWorkPanel } from "./VenueWorkPanel.js";
+import { VenueHomePanel } from "./VenueHomePanel.js";
+import { VenueManageMenu, VenueManageHeading, type VenueManageSection } from "./VenueManage.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
@@ -327,6 +329,7 @@ export function VenueScreen({
   const { viewing = true, visible } = useVillageActivity();
   const [editingConnections, setEditingConnections] = useState(false);
   const [editingAccess, setEditingAccess] = useState(false);
+  const [managePage, setManagePage] = useState<VenueManageSection | null>(null);
   const [venueHoursScope, setVenueHoursScope] = useState(false);
   const [zoneDetails, setZoneDetails] = useState<"open" | "closed" | null>(null);
   const zoneDetailsOpen = zoneDetails === "open";
@@ -568,6 +571,7 @@ export function VenueScreen({
             if (!(await canLeave())) return;
             setEditingConnections(false);
             setEditingAccess(false);
+            setManagePage(null);
             setZoneDetails(null);
             zoneReturn.current = null;
             setZoneNameDirty(false);
@@ -751,7 +755,10 @@ export function VenueScreen({
             place={place}
             zone={venueHoursScope ? undefined : selected}
             controller={controller}
-            onClose={() => setEditingAccess(false)}
+            onClose={() => {
+              setEditingAccess(false);
+              setManagePage(null);
+            }}
             onSelect={(id) => {
               setVenueHoursScope(!id);
               if (id) void selectRoom(id);
@@ -759,55 +766,83 @@ export function VenueScreen({
           />
         ) : null}
         {venueSection === "manage" && !editingConnections && !editingAccess ? (
-          <section className={ELEMENT_TAG + "-venue-manage"} aria-label="Manage this venue">
-            <VenueName place={place} controller={controller} />
-            <VenueWorkPanel key={place.id} place={place} controller={controller} />
-            {(place.accessView?.canManage || zones.some((zone) => zone.accessView?.decision.canInvite)) && (
-              <button
-                type="button"
-                className={ELEMENT_TAG + "-button"}
+          <section className="villages-manage" aria-label="Manage this venue">
+            {!managePage && (
+              <VenueManageMenu
                 disabled={navigationBusy}
-                onClick={async () => {
-                  if (!(await canLeave())) return;
-                  const accessZone =
-                    zones.find((zone) => zone.id === selected?.id && zone.accessView?.decision.canInvite) ??
-                    zones.find((zone) => zone.accessView?.decision.canInvite);
-                  setVenueHoursScope(!accessZone);
-                  if (accessZone) await selectRoom(accessZone.id);
-                  setEditingAccess(true);
+                onSelect={async (page) => {
+                  if (!(await canLeave(true))) return;
+                  setManagePage(page);
+                  if (
+                    page === "access" &&
+                    (place.accessView?.canManage || zones.some((zone) => zone.accessView?.decision.canInvite))
+                  ) {
+                    const accessZone =
+                      zones.find((zone) => zone.id === selected?.id && zone.accessView?.decision.canInvite) ??
+                      zones.find((zone) => zone.accessView?.decision.canInvite);
+                    setVenueHoursScope(!accessZone);
+                    if (accessZone) await selectRoom(accessZone.id);
+                    setEditingAccess(true);
+                  }
                 }}
-              >
-                Access <span aria-hidden="true">›</span>
-              </button>
+              />
             )}
-            <button
-              type="button"
-              className={ELEMENT_TAG + "-button"}
-              disabled={navigationBusy}
-              onClick={async () => {
-                if (await canLeave()) planVenueRenovation(place);
-              }}
-            >
-              Plan a renovation <span aria-hidden="true">›</span>
-            </button>
-            {selected ? (
-              <button
-                ref={connectionsButton}
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={navigationBusy}
-                onClick={async () => {
-                  if (await canLeave(true)) setEditingConnections(true);
-                }}
-              >
-                Zone connections <span aria-hidden="true">›</span>
-              </button>
-            ) : null}
+            {managePage === "home" && (
+              <VenueHomePanel key={place.id} place={place} controller={controller} onBack={() => setManagePage(null)} />
+            )}
+            {managePage === "work" && (
+              <VenueWorkPanel key={place.id} place={place} controller={controller} onBack={() => setManagePage(null)} />
+            )}
+            {managePage === "access" && (
+              <>
+                <VenueManageHeading title="Access" onBack={() => setManagePage(null)} />
+                <button type="button" onClick={() => setVenueSection("zones")}>
+                  View Zones
+                </button>
+              </>
+            )}
+            {managePage === "building" && (
+              <>
+                <VenueManageHeading
+                  title="Building"
+                  disabled={navigationBusy}
+                  onBack={async () => {
+                    if (await canLeave()) setManagePage(null);
+                  }}
+                />
+                <div className="villages-manage-form">
+                  <VenueName place={place} controller={controller} />
+                  <button
+                    type="button"
+                    className={ELEMENT_TAG + "-button"}
+                    disabled={navigationBusy}
+                    onClick={async () => {
+                      if (await canLeave()) planVenueRenovation(place);
+                    }}
+                  >
+                    Plan a renovation <span aria-hidden="true">›</span>
+                  </button>
+                  {selected ? (
+                    <button
+                      ref={connectionsButton}
+                      type="button"
+                      className={`${ELEMENT_TAG}-button`}
+                      disabled={navigationBusy}
+                      onClick={async () => {
+                        if (await canLeave(true)) setEditingConnections(true);
+                      }}
+                    >
+                      Zone connections <span aria-hidden="true">›</span>
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            )}
           </section>
         ) : null}
         {placeBusyId === place.id ? <p role="status">Drawing or saving artwork…</p> : null}
         {placeProblem?.id === place.id ? <p role="alert">{placeProblem.text}</p> : null}
-        {venueEditError && (venueSection !== "manage" || editingConnections) ? (
+        {venueEditError && (venueSection !== "manage" || editingConnections || managePage !== "building") ? (
           <p role="alert">{venueEditError}</p>
         ) : null}
         {venueEditNotice ? <p role="status">{venueEditNotice}</p> : null}

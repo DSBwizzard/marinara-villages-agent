@@ -404,11 +404,17 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.finish();
       }
       for (const kind of ["name", "proposal"]) {
-        const f = await mount(strict, width);
+        const f = await mount(strict, width, { cleanName: kind === "name" });
+        if (kind === "name") {
+          await f.page.getByRole("button", { name: /^Building/ }).click();
+          await f.page.evaluate(() => window.h.edit({ name: " Draft A " }));
+        }
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
         if (kind === "proposal") await f.page.evaluate(() => window.h.proposal({ description: "Newer proposal" }));
-        else await f.page.getByRole("textbox", { name: "Venue name", exact: true }).fill(" Newer name ");
+        else {
+          await f.page.getByRole("textbox", { name: "Venue name", exact: true }).fill(" Newer name ");
+        }
         const before = await f.read();
         await f.reply(0);
         await settled(f, 0);

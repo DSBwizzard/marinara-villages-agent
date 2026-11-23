@@ -530,6 +530,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     };
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
       id,
+      portrait: controller.portraits[id],
       name: catalog?.find((person) => person.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
     }));
     const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);

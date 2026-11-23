@@ -117,6 +117,8 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     const save = page.getByRole("button", { name: "Save layout", exact: true });
     const openEditor = async () => {
       if ((await manage.getAttribute("aria-pressed")) !== "true") await manage.click();
+      const building = page.getByRole("button", { name: /^Building/ });
+      if (await building.count()) await building.click();
       await page.getByRole("button", { name: "Zone connections", exact: true }).click();
     };
     const back = async () => {

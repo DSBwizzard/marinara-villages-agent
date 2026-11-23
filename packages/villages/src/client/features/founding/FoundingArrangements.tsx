@@ -25,7 +25,7 @@ export function FoundingArrangements({
                   <dt>Lives here</dt>
                   <dd>
                     {members
-                      .map((id) => `${name(id)} · sleeps in ${zoneName(venue.destinations?.[id]?.sleep)}`)
+                      .map((id) => `${name(id)} , sleeps in ${zoneName(venue.destinations?.[id]?.sleep)}`)
                       .join("; ")}
                   </dd>
                 </>
@@ -40,7 +40,7 @@ export function FoundingArrangements({
                 <div key={work.characterId}>
                   <dt>{name(work.characterId)} works here</dt>
                   <dd>
-                    {work.activity} · {zoneName(work.zoneId)} · {work.days.map((day) => day.slice(0, 3)).join(", ")} ·{" "}
+                    {work.activity} , {zoneName(work.zoneId)} , {work.days.map((day) => day.slice(0, 3)).join(", ")} ,{" "}
                     {workTime(work.startMinute)}–{workTime(work.endMinute)}
                     <br />
                     Access: {work.accessZoneIds.map(zoneName).join(", ")}

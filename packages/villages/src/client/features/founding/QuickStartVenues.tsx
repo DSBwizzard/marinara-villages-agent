@@ -3,7 +3,7 @@ import { HoursEditor } from "../../shared/HoursEditor.js";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
-import type { SetupVenueDraft } from "../../shared/types.js";
+import type { SetupVenueDraft, Portrait } from "../../shared/types.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { addFoundingZone } from "./founding-template.js";
 import { foundingHomeMembers, foundingSleepZones, reconcileFoundingHome } from "./founding-homes.js";
@@ -48,7 +48,7 @@ export function QuickStartVenues({
   daylight?: boolean;
   venues: SetupVenueDraft[];
   locationName: string;
-  people: { id: string; name: string }[];
+  people: { id: string; name: string; portrait?: Portrait }[];
   selectedId: string | null;
   busy: boolean;
   imageBusy: boolean;
@@ -306,7 +306,18 @@ export function QuickStartVenues({
               </>
             ) : null}
             {section === "manage" && !connectionsOpen ? (
-              <section className={P + "-venue-manage"} aria-label="Manage this venue">
+              <FoundingPeople
+                key={selected.id}
+                venue={selected}
+                people={actors}
+                onPatch={patch}
+                disabled={busy || imageBusy}
+                initialSection={fieldIssue("name") || fieldIssue("form") ? "building" : null}
+                onZone={(id) => {
+                  setSection("zones");
+                  selectZone(id);
+                }}
+              >
                 <fieldset className="villages-quick-venue-header" disabled={busy || imageBusy}>
                   <label>
                     Venue name
@@ -336,13 +347,10 @@ export function QuickStartVenues({
                     {fieldError("form")}
                   </label>
                 </fieldset>
-                <fieldset disabled={busy || imageBusy}>
-                  <FoundingPeople key={selected.id} venue={selected} people={actors} onPatch={patch} />
-                </fieldset>
                 <button type="button" className={P + "-button"} onClick={() => setConnectionsOpen(true)}>
                   Zone connections <span aria-hidden="true">›</span>
                 </button>
-              </section>
+              </FoundingPeople>
             ) : null}
             {section === "manage" && connectionsOpen ? (
               <>

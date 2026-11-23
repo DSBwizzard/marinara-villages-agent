@@ -7,6 +7,7 @@ import type { VenuesState } from "./useVenuesState.js";
 
 /** Values and actions used by VenueScreen; independent of shell implementation. */
 export type VenueScreenController = {
+  readonly portraits: import("../../shared/types.js").PortraitMap;
   readonly loadSnapshot: () => Promise<unknown>;
   readonly beginPlaceAdmission: (place: import("../../../shared/contracts/places.js").PlaceSummary) => void;
   readonly goHome: () => void;

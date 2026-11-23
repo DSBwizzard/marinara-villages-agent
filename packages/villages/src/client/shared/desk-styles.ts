@@ -1,4 +1,5 @@
 import { STORYBOOK_DAY, STORYBOOK_NIGHT } from "./storybook-colors.js";
+import { VENUE_MANAGE_STYLES } from "./venue-manage-styles.js";
 const P = "marinara-capability-villages";
 
 export {
@@ -97,7 +98,7 @@ export const DESK_STYLES = `
 .${P}-workspace-venue-header .${P}-directory-flourish{flex:none;width:.85em;height:auto}
 .${P}-venue-profile:focus-within :is(button,a):focus-visible{outline:2px solid #f0dfbc;outline-offset:2px}
 .${P}-venue-metadata{display:flex;flex-wrap:wrap;gap:4px 10px;margin:8px 0 0;color:#d0c1b3;font-size:17px}
-.${P}-venue-metadata>div{display:flex;min-width:0;max-width:100%}.${P}-venue-metadata>div+div::before{content:"·";margin-right:10px}
+.${P}-venue-metadata>div{display:flex;min-width:0;max-width:100%}
 .${P}-venue-metadata dt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.${P}-venue-metadata dd{margin:0;overflow-wrap:anywhere}
 .${P}-workspace-content .${P}-venue-back{flex:none;min-height:44px;padding:4px 0;border:0;background:transparent;color:#f0dfbc;font:400 20px/1.3 var(--menu-font);cursor:pointer}
 .${P}-workspace-content .${P}-venue-back:is(:hover,:focus,:active){background:transparent;color:#fff0d5}
@@ -312,4 +313,5 @@ export const DESK_STYLES = `
  .${P}-desk-nav svg{width:20px;height:20px}
  .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding-top:10px;padding-bottom:0;margin-bottom:calc(38px + var(--villages-exploration-inset,0px))}
 }}
+${VENUE_MANAGE_STYLES}
 `;

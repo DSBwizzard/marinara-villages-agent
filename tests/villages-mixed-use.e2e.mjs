@@ -34,9 +34,13 @@ await withBrowser(browser, async () => {
     });
     await page.addScriptTag({ content: styles.outputFiles[0].text });
     await page.getByRole("button", { name: "Manage", exact: true }).click();
+    const menu = page.getByRole("navigation", { name: "Manage sections" });
+    assert.deepEqual(await menu.getByRole("button").allTextContents(), ["Home›", "Work›", "Access›", "Building›"]);
+    await menu.getByRole("button", { name: "Work", exact: false }).click();
     const panel = page.getByRole("region", { name: "Work arrangements" });
     const worker = f.seed.villagers[0];
-    await panel.getByLabel("Propose work for", { exact: true }).selectOption(worker.characterId);
+    await panel.getByRole("button", { name: "Add worker", exact: true }).click();
+    await panel.getByRole("button", { name: worker.name, exact: true }).click();
     await panel.getByLabel("Work activity", { exact: true }).fill("Serving coffee");
     await panel.getByLabel("Ends", { exact: true }).fill("15:00");
     await panel.getByRole("button", { name: "Propose work", exact: true }).click();
@@ -70,7 +74,7 @@ await withBrowser(browser, async () => {
       body: JSON.stringify(snapshot),
     });
     await expect(panel.getByText(/Pending/)).toBeVisible();
-    await expect(panel.getByText(/Work access:/)).toBeVisible();
+    await expect(panel.getByText("Work access", { exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Agree to these terms", exact: true })).toHaveCount(0);
     if (process.env.VILLAGES_SCREENSHOT_DIR) {
       await mkdir(process.env.VILLAGES_SCREENSHOT_DIR, { recursive: true });
@@ -94,5 +98,68 @@ await withBrowser(browser, async () => {
     assert.equal(f.requests[1].body.accept, false);
     await f.reply(1);
     await f.finish();
+  }
+  for (const width of [1366, 390]) {
+    const home = await mount(false, width, {
+      cleanName: true,
+      prepareSeed(seed) {
+        seed.settings.venues[1].residenceCapacity = 3;
+      },
+    });
+    await home.page.getByRole("button", { name: "Home", exact: true }).click();
+    await home.page.getByRole("button", { name: home.seed.villagers[0].name, exact: true }).click();
+    await expect(home.page.getByText("Sleeps in", { exact: true })).toHaveCount(0);
+    await home.page.getByLabel("Move to", { exact: true }).selectOption("B / venue");
+    await home.page.getByLabel("Sleeping Zone", { exact: true }).selectOption("zone / same");
+    await home.page.getByRole("button", { name: "Propose move", exact: true }).click();
+    await expect.poll(() => home.requests.length).toBe(1);
+    assert.equal(home.requests[0].path, "/api/villages/residences/proposals");
+    assert.deepEqual(home.requests[0].body, {
+      characterId: home.seed.villagers[0].characterId,
+      venueId: "B / venue",
+      privateZoneId: "zone / same",
+    });
+    await home.reply(0);
+    await home.finish();
+    for (const count of [3, 8]) {
+      const f = await mount(false, width, {
+        page: "edit",
+        cleanName: true,
+        prepareSeed(seed) {
+          seed.villagers = Array.from({ length: count }, (_, index) => ({
+            ...seed.villagers[0],
+            characterId: `worker-${index}`,
+            name: `Worker ${index + 1}`,
+          }));
+          const place = seed.settings.venues[0];
+          place.workerIds = seed.villagers.map((row) => row.characterId);
+          place.accessView.work = seed.villagers.map((row) => ({
+            characterId: row.characterId,
+            activity: "Serving coffee",
+            zoneId: "zone / same",
+            accessZoneIds: ["zone / same"],
+            days: ["Monday"],
+            startMinute: 540,
+            endMinute: 1020,
+          }));
+        },
+      });
+      await f.page.getByRole("button", { name: /^Work/ }).click();
+      const people = f.page.getByRole("region", { name: "Workers", exact: true });
+      assert.deepEqual(
+        await people.locator(".marinara-capability-villages-directory-card strong").allTextContents(),
+        f.seed.villagers.slice(0, 4).map((row) => row.name),
+      );
+      if (count > 4) {
+        await people.getByRole("button", { name: "Next workers page", exact: true }).click();
+        await expect(people.getByRole("button", { name: "Worker 8", exact: true })).toBeVisible();
+        await people.getByRole("button", { name: "Worker 8", exact: true }).click();
+      } else await people.getByRole("button", { name: "Worker 3", exact: true }).click();
+      await expect(f.page.getByLabel("Work activity", { exact: true })).toHaveValue("Serving coffee");
+      await f.page.getByLabel("Work activity", { exact: true }).fill("A cancelled change");
+      await f.page.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(f.requests.length, 0, "Browsing pages and cancelling never sends a work proposal");
+      await f.finish();
+    }
   }
 });

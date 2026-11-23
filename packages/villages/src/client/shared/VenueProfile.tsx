@@ -47,6 +47,7 @@ export function VenueProfile({
       className={P + "-venue-profile"}
       aria-label={location ? "Location" : "Venue"}
       data-room-backdrop={roomBackdrop || undefined}
+      data-manage={tabs.section === "manage" || undefined}
       data-storybook-backdrop={!!fallback || undefined}
       data-storybook-daylight={daylight || undefined}
       onKeyDown={onKeyDown}
@@ -122,7 +123,7 @@ export function AssignedVillagers({
           {assignments.map(({ id, role }) => (
             <li key={role + id}>
               <span>{nameOfCharacter(id)}</span>
-              <small>{locked && role === "Resident" ? "Resident · Fixed for Founding" : role}</small>
+              <small>{role}</small>
             </li>
           ))}
         </ul>

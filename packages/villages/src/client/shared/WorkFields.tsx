@@ -1,5 +1,16 @@
-import type { VenueWork } from "../../shared/helpers/venue-work.js";
-import { WORK_DAYS, workTime } from "../../shared/helpers/venue-work.js";
+import { WORK_DAYS, workTime, type VenueWork } from "../../shared/helpers/venue-work.js";
+
+export function initialVenueWork(characterId: string, zones: { id: string }[]): VenueWork {
+  return {
+    characterId,
+    activity: "Working",
+    zoneId: zones[0]?.id ?? "",
+    accessZoneIds: zones[0] ? [zones[0].id] : [],
+    days: WORK_DAYS.slice(0, 5),
+    startMinute: 540,
+    endMinute: 1020,
+  };
+}
 
 export function WorkFields({
   value,
@@ -12,10 +23,11 @@ export function WorkFields({
 }) {
   const minute = (text: string) => Number(text.slice(0, 2)) * 60 + Number(text.slice(3));
   return (
-    <>
+    <div className="villages-work-fields">
       <label>
-        Work activity
+        Activity
         <input
+          aria-label="Work activity"
           autoComplete="off"
           maxLength={240}
           value={value.activity}
@@ -23,7 +35,7 @@ export function WorkFields({
         />
       </label>
       <label>
-        Usual work Zone
+        Usual Zone
         <select
           aria-label="Usual work Zone"
           value={value.zoneId}
@@ -43,14 +55,60 @@ export function WorkFields({
           ))}
         </select>
       </label>
-      <fieldset>
+      <fieldset className="villages-work-days">
+        <legend>Days</legend>
+        <div className="villages-work-day-buttons">
+          {WORK_DAYS.map((day) => (
+            <button
+              type="button"
+              key={day}
+              aria-label={day}
+              aria-pressed={value.days.includes(day)}
+              onClick={() =>
+                onChange({
+                  ...value,
+                  days: value.days.includes(day) ? value.days.filter((row) => row !== day) : [...value.days, day],
+                })
+              }
+            >
+              {day.slice(0, 3)}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <div className="villages-work-times">
+        <label>
+          Starts
+          <input
+            autoComplete="off"
+            type="time"
+            value={workTime(value.startMinute)}
+            onChange={(e) => {
+              if (e.target.value) onChange({ ...value, startMinute: minute(e.target.value) });
+            }}
+          />
+        </label>
+        <label>
+          Ends
+          <input
+            autoComplete="off"
+            type="time"
+            value={value.endMinute === 1440 ? "00:00" : workTime(value.endMinute)}
+            onChange={(e) => {
+              if (e.target.value) onChange({ ...value, endMinute: minute(e.target.value) || 1440 });
+            }}
+          />
+        </label>
+      </div>
+      <fieldset className="villages-work-access">
         <legend>Work access</legend>
         {zones.map((zone) => (
-          <label key={zone.id}>
+          <label className="villages-manage-check" key={zone.id}>
             <input
               autoComplete="off"
               type="checkbox"
               checked={value.accessZoneIds.includes(zone.id)}
+              disabled={zone.id === value.zoneId}
               onChange={(e) =>
                 onChange({
                   ...value,
@@ -64,45 +122,6 @@ export function WorkFields({
           </label>
         ))}
       </fieldset>
-      <fieldset>
-        <legend>Workdays</legend>
-        <div className="villages-access-days">
-          {WORK_DAYS.map((day) => (
-            <label key={day}>
-              <input
-                autoComplete="off"
-                type="checkbox"
-                checked={value.days.includes(day)}
-                onChange={(e) =>
-                  onChange({
-                    ...value,
-                    days: e.target.checked ? [...value.days, day] : value.days.filter((row) => row !== day),
-                  })
-                }
-              />
-              {day.slice(0, 3)}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <label>
-        Starts
-        <input
-          autoComplete="off"
-          type="time"
-          value={workTime(value.startMinute)}
-          onChange={(e) => onChange({ ...value, startMinute: minute(e.target.value) })}
-        />
-      </label>
-      <label>
-        Ends
-        <input
-          autoComplete="off"
-          type="time"
-          value={workTime(value.endMinute)}
-          onChange={(e) => onChange({ ...value, endMinute: minute(e.target.value) })}
-        />
-      </label>
-    </>
+    </div>
   );
 }

@@ -164,7 +164,11 @@ await withBrowser(browser, async () => {
       const sheet = page.locator(".villages-quick-dialog");
       const button = (name) => page.getByRole("button", { name, exact: true });
       const closeVenue = () => sheet.getByRole("button", { name: "← Venues", exact: true }).click();
-      const manage = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
+      const manage = async () => {
+        await sheet.getByRole("button", { name: "Manage", exact: true }).click();
+        const building = sheet.getByRole("button", { name: /^Building/ });
+        if (await building.count()) await building.click();
+      };
       const connections = async () => {
         await manage();
         await sheet.getByRole("button", { name: /Zone connections/ }).click();
@@ -228,7 +232,7 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("combobox")).toHaveCount(0);
       await expect(button("Zones")).toBeVisible();
-      await expect(sheet.getByText("Resident · Fixed for Founding", { exact: true })).toBeVisible();
+      await expect(sheet.getByText("Resident", { exact: true })).toBeVisible();
       await closeVenue();
       await first.click();
       await expect(button("Zones")).toBeVisible();
@@ -509,8 +513,36 @@ await withBrowser(browser, async () => {
       await page.locator('[data-venue-id="founding-home:ada"]').click();
       await manage();
       await sheet.getByLabel("Venue Name", { exact: true }).fill("Ada’s café");
+      await sheet.getByRole("button", { name: "← Manage", exact: true }).click();
+      await sheet.getByRole("button", { name: /^Home/ }).click();
+      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
       await sheet.getByLabel("Home places", { exact: true }).selectOption("2");
-      await sheet.getByLabel("Add worker", { exact: true }).selectOption("ada");
+      await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(
+        await page.evaluate(
+          () => window.quickState.venues.find((row) => row.id === "founding-home:ada").residenceCapacity,
+        ),
+        1,
+        "Cancel leaves the saved home unchanged",
+      );
+      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
+      await sheet.getByLabel("Home places", { exact: true }).selectOption("2");
+      await sheet.getByRole("button", { name: "Save home", exact: true }).click();
+      await sheet.getByRole("button", { name: "← Manage", exact: true }).click();
+      await sheet.getByRole("button", { name: /^Work/ }).click();
+      await sheet.getByRole("button", { name: "Add worker", exact: true }).click();
+      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
+      await sheet.getByLabel("Work activity", { exact: true }).fill("Serving coffee");
+      await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(
+        await page.evaluate(
+          () => window.quickState.venues.find((row) => row.id === "founding-home:ada").access?.work?.length ?? 0,
+        ),
+        0,
+        "Cancel does not add work",
+      );
+      await sheet.getByRole("button", { name: "Add worker", exact: true }).click();
+      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
       await sheet.getByLabel("Work activity", { exact: true }).fill("Serving coffee");
       await sheet.getByLabel("Usual work Zone", { exact: true }).selectOption("common:base");
       await sheet.getByRole("button", { name: "Save work", exact: true }).click();

@@ -565,7 +565,11 @@ export async function verifyFoundingLayout(group) {
           await showVenuePin(id);
           await root.locator(`[${phone ? "data-pin-id" : "data-venue-id"}="${id}"]`).click();
         };
-        const manageVenue = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
+        const manageVenue = async () => {
+          await sheet.getByRole("button", { name: "Manage", exact: true }).click();
+          const building = sheet.getByRole("button", { name: /^Building/ });
+          if (await building.count()) await building.click();
+        };
 
         const bounds = async (phase) => {
           await checkPalette();
@@ -1935,7 +1939,7 @@ export async function verifyFoundingLayout(group) {
         }
         await editVenue("founding-home:player");
         await expect(sheet.getByRole("navigation", { name: "Venue sections" })).toBeVisible();
-        await expect(sheet.getByText("Resident · Fixed for Founding", { exact: true })).toBeVisible();
+        await expect(sheet.getByText("Resident", { exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
         await expect(sheet.getByRole("group", { name: "Who lives here?" })).toHaveCount(0);
         const venuePage = await sheet.boundingBox();
