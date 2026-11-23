@@ -47,7 +47,7 @@ import { villageSettings } from "../packages/villages/src/server/domain/rules/wo
 import { generateFirstZoneImage } from "../packages/villages/src/server/features/media/location-image.js";
 import type { VillageVenue, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 const stamp = new Date().toISOString();
-function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): VillageVenue {
+function venue(id: string, classes: string[]): VillageVenue {
   return venueFixture({
     id,
     name: id,
@@ -94,9 +94,11 @@ state.startingHistory.reviewed = Object.fromEntries(
 );
 const home = venue("home", ["residence"]);
 home.residentIds = ["a"];
+home.residenceCapacity = 1;
 home.occupancy.residentCharacterId = "a";
 const own = venue("own", ["residence"]);
 own.occupancy.playerHome = true;
+own.residenceCapacity = 1;
 own.privateSpaces = [
   {
     ...defaultVenueSpace("residence", "My journal and hammock"),
@@ -110,6 +112,7 @@ work.workerIds = ["a", "b"];
 work.access = undefined;
 const combined = venue("combined", ["residence", "workplace"]);
 combined.residentIds = ["b"];
+combined.residenceCapacity = 1;
 const park = venue("park", ["community"]);
 park.zones!.push({
   ...defaultVenueSpace("community", "A greenhouse"),
@@ -137,6 +140,15 @@ const staffRoom = () => ({
   name: "Staff room",
   purpose: "Work",
   kind: "restricted" as const,
+  access: {
+    mode: "permission-required" as const,
+    managerIds: null,
+    memberIds: [],
+    memberRoles: ["workers" as const],
+    inviterIds: [],
+    visitorHours: "always" as const,
+    accompanied: false,
+  },
   connectedTo: ["exterior"],
   preparation: { status: "pending" as const },
 });

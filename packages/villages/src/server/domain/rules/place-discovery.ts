@@ -180,7 +180,7 @@ export function projectPlace(state: VillageState, place: WorldPlace): VillageVen
     access: undefined,
     accessView: projectVenueAccess(location, "player"),
     zones,
-    spaces: zones.filter((zone) => zone.kind === "public"),
+    spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal"),
     privateSpaces: [],
     archivedZones: [],
     archivedPrivateSpaces: [],

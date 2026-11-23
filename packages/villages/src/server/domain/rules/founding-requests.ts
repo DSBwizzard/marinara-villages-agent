@@ -52,9 +52,7 @@ export function foundingRequestMessages(
       id: venue.id,
       name: venue.name,
       form: venue.form,
-      zones: venue.zones
-        ?.filter((zone) => zone.kind === "exterior" || zone.kind === "public")
-        .map((zone) => ({ id: zone.id, name: zone.name })),
+      zones: venue.zones?.filter((zone) => zone.kind !== "personal").map((zone) => ({ id: zone.id, name: zone.name })),
     })),
     lore: context.lore,
     protections: context.continuity.protections,

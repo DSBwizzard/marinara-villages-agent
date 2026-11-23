@@ -1,3 +1,4 @@
+import { approvalScope, renovationAffectedIds } from "../packages/villages/src/server/domain/rules/project-terms.js";
 import { sameReturnResident } from "../packages/villages/src/server/domain/rules/return-catchup-authority.js";
 import assert from "node:assert/strict";
 import { venueFixture, sharedVenuesFixture } from "./helpers/venues.fixture.js";
@@ -242,3 +243,19 @@ assert.equal(
   false,
   "Changed accepted work invalidates historical acceptance",
 );
+
+const projectVenue = structuredClone(cafe);
+projectVenue.residentIds = ["c"];
+projectVenue.access!.work![0]!.accessZoneIds.push("store");
+const store = projectVenue.zones!.find((zone) => zone.id === "store")!;
+const firstDesign = { zones: [{ ...store, name: "Stock room" }] };
+const nextDesign = { zones: [{ ...store, name: "A different stock room" }] };
+const affected = renovationAffectedIds(projectVenue, firstDesign, ["store"]);
+for (const actor of ["b", "c"]) {
+  assert(affected.includes(actor), "Affected worker and household member must approve a restricted shared room");
+  assert.notEqual(
+    approvalScope(projectVenue, firstDesign, actor, ["store"]),
+    approvalScope(projectVenue, nextDesign, actor, ["store"]),
+    "Changing their room terms invalidates the approval",
+  );
+}

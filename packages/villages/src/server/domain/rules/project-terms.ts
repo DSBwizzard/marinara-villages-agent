@@ -43,10 +43,18 @@ export function renovationAffectedIds(
   const global = globalChange(venue, change);
   const building = global.form !== undefined || !!change.roomEdits?.some(({ zoneId }) => zoneId === "exterior");
   const residence =
-    building || global.capacity !== undefined || [...touched, ...added].some((zone) => zone.kind === "public");
+    building ||
+    global.capacity !== undefined ||
+    [...touched, ...added].some((zone) => zone.kind !== "exterior" && zone.kind !== "personal");
   const workplace =
     building ||
-    [...touched, ...added].some((zone) => venue.workerIds?.some((id) => venue.destinations?.[id]?.work === zone.id));
+    [...touched, ...added].some((zone) =>
+      venue.workerIds?.some(
+        (id) =>
+          venue.destinations?.[id]?.work === zone.id ||
+          venue.access?.work?.some((work) => work.characterId === id && work.accessZoneIds.includes(zone.id)),
+      ),
+    );
   if (!ids.length && !building && global.capacity === undefined) return [];
   return [
     ...new Set([
@@ -85,8 +93,12 @@ export function approvalScope(
           zone &&
           (zone.ownerId === actorId ||
             zone.controllerIds?.includes(actorId) ||
-            (resident && zone.kind === "public") ||
-            (worker && venue.destinations?.[actorId]?.work === zone.id) ||
+            (resident && zone.kind !== "exterior" && zone.kind !== "personal") ||
+            (worker &&
+              (venue.destinations?.[actorId]?.work === zone.id ||
+                venue.access?.work?.some(
+                  (work) => work.characterId === actorId && work.accessZoneIds.includes(zone.id),
+                ))) ||
             (old && zoneControllerIds(venue, old).includes(actorId))),
       )
     );

@@ -56,7 +56,8 @@ export function visitorIntroductionVenue(
           accepting: false,
           environment: state.narrative,
         }).allowed,
-    ) && venue.zones!.some((zone) => zone.kind === "public" && zone.access?.mode === "public")
+    ) &&
+    venue.zones!.some((zone) => zone.kind !== "exterior" && zone.kind !== "personal" && zone.access?.mode === "public")
   );
 }
 

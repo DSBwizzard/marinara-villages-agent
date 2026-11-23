@@ -1,5 +1,7 @@
 function initialContactNeighborIds(zones: readonly { id: string; kind: string }[], zoneId: string): string[] {
-  const hubs = zones.filter((zone) => zone.kind === "public").sort((a, b) => a.id.localeCompare(b.id));
+  const hubs = zones
+    .filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal")
+    .sort((a, b) => a.id.localeCompare(b.id));
   const edges: [string, string][] = hubs.map((zone) => ["exterior", zone.id]);
   for (const zone of zones) {
     if (zone.kind === "exterior" || hubs.includes(zone)) continue;

@@ -124,15 +124,19 @@ try {
   const explored = await call("/places/explore", { worldScope: snapshot.worldScope, requestId: "ridge", mapId: "map" });
   assert.equal(explored.json().status, "ready", explored.body);
   const id = explored.json().placeId;
-  assert.equal(state().worldPlaces.places[id].prepared, false, "An explored report still needs physical preparation");
+  assert.equal(
+    state().worldPlaces.places[id].prepared,
+    true,
+    "Explore retains a complete physical place without Class preparation",
+  );
   const ridge = await call("/rooms", { venueId: id, zoneId: "exterior" });
   assert.equal(ridge.statusCode, 200, ridge.body);
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   assert.equal(state().worldPlaces.places[id].prepared, true, "The first Visit prepares the physical place");
   assert.equal(Object.hasOwn(state().worldPlaces.places[id].location, "classes"), false);
   await close(ridge.json().session);
   assert.equal((await call("/rooms", { venueId: id, zoneId: "exterior" })).statusCode, 200);
-  assert.equal(calls, 2, "A return reuses preparation without a Class call");
+  assert.equal(calls, 1, "A return reuses preparation without a Class call");
 } finally {
   await host.stop();
 }

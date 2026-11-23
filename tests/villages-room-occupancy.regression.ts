@@ -34,7 +34,22 @@ async function main() {
       state: { revision: 0, recent: null, updatedAt: stamp },
       zones: [
         { ...defaultVenueSpace("community"), id: "exterior", name: "Entrance", kind: "exterior", seen: true },
-        { ...defaultVenueSpace("community"), id: "common", name: "Common Space", kind: "public", seen: true },
+        {
+          ...defaultVenueSpace("community"),
+          id: "common",
+          name: "Common Space",
+          kind: "public",
+          access: {
+            mode: "public",
+            managerIds: null,
+            memberIds: [],
+            memberRoles: [],
+            inviterIds: [],
+            visitorHours: "always",
+            accompanied: false,
+          },
+          seen: true,
+        },
         {
           ...defaultVenueSpace("residence"),
           id: "private:hidden",

@@ -138,8 +138,10 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
   venue.privateSpaces = zones
     .filter((zone) => zone.kind === "personal")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
-  venue.playerSeenShared = zones.some((zone) => zone.kind === "public" && zone.seen);
-  venue.playerSeenPublic = zones.some((zone) => zone.kind === "public" && zone.seen);
+  venue.playerSeenShared = zones.some((zone) => zone.kind !== "exterior" && zone.kind !== "personal" && zone.seen);
+  venue.playerSeenPublic = zones.some(
+    (zone) => zone.kind !== "exterior" && zone.kind !== "personal" && zone.access?.mode === "public" && zone.seen,
+  );
   venue.playerSeenPrivateIds = zones
     .filter((zone) => zone.kind === "personal" && zone.seen)
     .map((zone) => zone.ownerId!);

@@ -43,7 +43,7 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
       ? venue.spaces
       : ["private", "exterior"].includes(String((venue as any).layout))
         ? []
-        : [defaultVenueSpace("common", venue.description)]
+        : [defaultVenueSpace("other", venue.description)]
   ).map((space) => ({
     ...space,
     name: "Common Space",
@@ -76,7 +76,12 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
     if (zone.kind !== "exterior")
       zone.access ??=
         zone.kind === "restricted"
-          ? { ...draftZonePolicy(venue, zone), mode: "permission-required", memberRoles: ["workers"] }
+          ? {
+              ...draftZonePolicy(venue, zone),
+              mode: "permission-required",
+              managerIds: zone.controllerIds?.length ? zone.controllerIds : null,
+              memberRoles: ["workers"],
+            }
           : draftZonePolicy(venue, zone, zone.kind === "personal");
   initializeVenueAccess(venue);
   return venue;

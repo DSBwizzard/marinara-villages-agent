@@ -78,7 +78,9 @@ export function captureResidenceAgreement(
   at: string,
 ): NonNullable<VillageResidence["agreement"]> {
   const zones = venueZones(venue);
-  const shared = zones.filter((zone) => zone.kind === "public" && !zoneClosed(state, venue, zone));
+  const shared = zones.filter(
+    (zone) => zone.kind !== "exterior" && zone.kind !== "personal" && !zoneClosed(state, venue, zone),
+  );
   const sleep = zones.find((zone) => zone.id === (sleepZoneId || (shared.length === 1 ? shared[0].id : "")));
   if (
     venue.constructionStatus === "worksite" ||

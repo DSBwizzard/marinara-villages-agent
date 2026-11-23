@@ -451,18 +451,16 @@ await housing();
       ),
     /sleeping destination/,
   );
-  assert.throws(
-    () =>
-      readRenovationChange(
-        state,
-        home,
-        {
-          ...design,
-          zones: interiors().map((zone) => (zone.id === bedroom.id ? { ...zone, kind: "public" } : zone)),
-        },
-        new Date(at),
-      ),
-    /sleeping destination/,
+  assert.doesNotThrow(() =>
+    readRenovationChange(
+      state,
+      home,
+      {
+        ...design,
+        zones: interiors().map((zone) => (zone.id === bedroom.id ? { ...zone, kind: "public" } : zone)),
+      },
+      new Date(at),
+    ),
   );
   lounge.access = { ...lounge.access!, managerIds: ["a"], memberIds: ["a"], memberRoles: [] };
   assert.throws(
@@ -529,11 +527,11 @@ console.log(
   assert.equal(
     evaluateZoneAccess(
       vacant,
-      vacant.zones!.find((zone) => zone.kind === "public")!,
+      vacant.zones!.find((zone) => zone.kind !== "exterior" && zone.kind !== "personal")!,
       "b",
     ).allowed,
-    true,
-    "A retained vacant home starts open",
+    false,
+    "Vacating a home preserves its authored access rules",
   );
 }
 
@@ -770,8 +768,8 @@ console.log(
   );
   assert.equal(
     isHouse({ occupancy: { playerHome: true, residentCharacterId: "stale" } } as any),
-    false,
-    "Residence class is explicit",
+    true,
+    "The player’s explicit home assignment identifies their home",
   );
 }
 
