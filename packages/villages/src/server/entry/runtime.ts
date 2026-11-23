@@ -113,7 +113,7 @@ import { createVillageBootstrap } from "../features/founding/village-bootstrap-s
 import { configureVillageBootstrap, draftVillageVenueDescriptions } from "../features/founding/village-bootstrap.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
 import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
-import { createImageGeneration } from "../features/media/image-generation-service.js";
+import { AutomaticArtworkPaused, createImageGeneration } from "../features/media/image-generation-service.js";
 import {
   configureImageGeneration,
   generateVillageImage,
@@ -409,6 +409,13 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesImageConnectionChoice,
       decodeVillageImageDataUrl,
       readLoreImageReferences,
+      dispatchAutomaticArtwork: async (start) => {
+        const { pending } = await villageRepository.withAuthorityLock(async () => {
+          if ((await villageRepository.readAuthority()).backgroundPace === "off") throw new AutomaticArtworkPaused();
+          return { pending: start() };
+        });
+        return pending;
+      },
     }),
   );
   const releaseMapImages = configureTownMapImage(
