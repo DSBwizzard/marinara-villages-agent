@@ -205,12 +205,43 @@ export function selectFoundingHomes(
   unusedHomes: SetupVenueDraft[],
   actors: { id: string; name: string }[],
   openingVenueId: string,
+  removedIds: string[] = [],
 ) {
   const chosen = new Set(actors.map((actor) => actor.id));
   const active = venues.filter(
-    (venue) => !venue.classes?.includes("residence") || foundingHomeMembers(venue).some((id) => chosen.has(id)),
+    (venue) =>
+      venue.classes?.length !== 1 ||
+      venue.classes[0] !== "residence" ||
+      foundingHomeMembers(venue).length !== 1 ||
+      !!venue.workerIds?.length ||
+      foundingHomeMembers(venue).some((id) => chosen.has(id)),
   );
   const unused = [...unusedHomes, ...venues.filter((venue) => !active.includes(venue))];
+  const removed = new Set([
+    ...removedIds,
+    ...[...venues, ...unusedHomes].flatMap(foundingHomeMembers).filter((id) => !chosen.has(id)),
+  ]);
+  const keep = (id: string) => !removed.has(id);
+  const cleanZone = <T extends NonNullable<SetupVenueDraft["spaces"]>[number]>(zone: T): T => ({
+    ...zone,
+    ...(zone.ownerId && removed.has(zone.ownerId) ? { ownerId: "" } : {}),
+    ...(zone.controllerIds ? { controllerIds: zone.controllerIds.filter(keep) } : {}),
+    ...(zone.access
+      ? {
+          access: {
+            ...zone.access,
+            managerIds: zone.access.managerIds?.some((id) => !keep(id))
+              ? zone.access.managerIds.filter(keep).length
+                ? zone.access.managerIds.filter(keep)
+                : null
+              : zone.access.managerIds,
+            memberIds: zone.access.memberIds.filter(keep),
+            inviterIds: zone.access.inviterIds.filter(keep),
+          },
+        }
+      : {}),
+    ...(zone.ownerId && removed.has(zone.ownerId) ? { access: undefined, controllerIds: undefined } : {}),
+  });
   const templates = separateFoundingTemplates(
     actors.filter((actor) => actor.id !== "player").map((actor) => actor.id),
     openingVenueId,
@@ -230,7 +261,29 @@ export function selectFoundingHomes(
           });
     active.push(home);
   }
-  return { venues: reconcileFoundingRoster(active, actors, [], openingVenueId), unusedHomes: unused };
+  // Dormant homes retain their authored assignments; only active places lose departed founders.
+  const reconciled = active.map((venue) =>
+    removed.size
+      ? reconcileFoundingHome({
+          ...venue,
+          ...(venue.residentIds ? { residentIds: venue.residentIds.filter(keep) } : {}),
+          ...(venue.workerIds ? { workerIds: venue.workerIds.filter(keep) } : {}),
+          occupancy: {
+            ...venue.occupancy,
+            ...(venue.occupancy.residentCharacterId && removed.has(venue.occupancy.residentCharacterId)
+              ? { residentCharacterId: null }
+              : {}),
+          },
+          ...(venue.destinations
+            ? { destinations: Object.fromEntries(Object.entries(venue.destinations).filter(([id]) => keep(id))) }
+            : {}),
+          ...(venue.spaces ? { spaces: venue.spaces.map(cleanZone) } : {}),
+          ...(venue.privateSpaces ? { privateSpaces: venue.privateSpaces.map(cleanZone) } : {}),
+          ...(venue.zones ? { zones: venue.zones.map(cleanZone) } : {}),
+        })
+      : venue,
+  );
+  return { venues: reconcileFoundingRoster(reconciled, actors, [], openingVenueId), unusedHomes: unused };
 }
 
 export function changeFoundingZoneOwner(venue: SetupVenueDraft, zoneId: string, ownerId: string): SetupVenueDraft {

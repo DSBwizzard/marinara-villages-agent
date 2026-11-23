@@ -83,6 +83,16 @@ export async function verifyFoundingLayout(group) {
         const draftWithLore = view.width === 1280 || view.width === 390;
         const worldBrief = "The Relay Belt is a chain of settlements on old cargo routes.";
         await mockEngineLookups(context);
+        let portraitReads = 0;
+        await context.route("**/api/characters/summaries", (route) => {
+          portraitReads++;
+          return fulfill(route, {
+            json: characters.slice(0, 2).map((person) => ({
+              id: person.id,
+              avatarUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+            })),
+          });
+        });
         const page = await context.newPage();
         if (view.width === 390 && view.height === 844)
           await page.addInitScript(() => {
@@ -2418,27 +2428,6 @@ export async function verifyFoundingLayout(group) {
           });
         await enterChapter();
         const overview = root.locator(".villages-founding-review");
-        await bounds("review");
-        if (phone) {
-          await expect(overview).toHaveAttribute("data-page", "people");
-          assert.equal(
-            await overview
-              .locator(".villages-review-people")
-              .evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-            true,
-            "People names fit without scrolling or truncation",
-          );
-          if (process.env.VILLAGES_SCREENSHOT_DIR)
-            await page.screenshot({
-              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-people-${view.width}-${view.height}.png`),
-            });
-          await expect(overview.getByRole("button", { name: "Found village", exact: true })).toHaveCount(0);
-          await overview.getByRole("button", { name: "Next", exact: true }).click();
-          await expect(overview).toHaveAttribute("data-page", "setting");
-          await overview.getByRole("button", { name: "Back", exact: true }).click();
-          await expect(overview).toHaveAttribute("data-page", "people");
-          await overview.getByRole("button", { name: "Next", exact: true }).click();
-        }
         if (view.width === 1366)
           await page.evaluate(() =>
             window.featureController.setSetupContext((context) => ({
@@ -2448,59 +2437,95 @@ export async function verifyFoundingLayout(group) {
               ],
             })),
           );
-        if (process.env.VILLAGES_SCREENSHOT_DIR)
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-initial-${view.width}.png`),
-          });
-        const reviewDialog = page.getByRole("dialog", { name: "Setting", exact: true });
-        await overview.getByRole("button", { name: "Edit Setting", exact: true }).click();
-        await expect(root).toHaveAttribute("data-step", "4");
-        await expect(reviewDialog.getByLabel("Location description", { exact: true })).toHaveValue(
-          await page.evaluate(() => window.featureController.setupSetting),
-        );
-        if (view.width === 320 || view.width === 1366) {
-          const description = reviewDialog.getByLabel("Location description", { exact: true });
-          const original = await description.inputValue();
-          await description.fill("");
-          await reviewDialog.getByRole("button", { name: "Done", exact: true }).click();
-          await expect(reviewDialog).toBeVisible();
-          await expect(description).toHaveAttribute("aria-invalid", "true");
-          await description.fill(original);
+        await bounds("review");
+        await expect(overview).toHaveAttribute("data-page", "people");
+        if (view.width === 390 && view.height === 844) {
+          const originalHome = await page.evaluate(() =>
+            window.featureController.setupVenues.find((venue) => venue.residentIds?.includes("finn")),
+          );
+          await overview.getByRole("button", { name: "Finn · Remove", exact: true }).click();
+          await expect
+            .poll(() => page.evaluate(() => window.featureController.setupWorkspace.unusedHomes?.length))
+            .toBe(1);
+          assert.equal(
+            await page.evaluate(() =>
+              window.featureController.setupVenues.some((venue) => venue.residentIds?.includes("finn")),
+            ),
+            false,
+          );
+          await expect
+            .poll(() =>
+              page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.unusedHomes?.length),
+            )
+            .toBe(1);
+          await page.reload();
+          const readsBeforeReview = portraitReads;
+          await page.addScriptTag({ content: foundingBundle });
+          await expect(overview).toHaveAttribute("data-page", "people");
+          await expect.poll(() => portraitReads).toBeGreaterThan(readsBeforeReview);
+          await expect(overview.locator(".villages-selected-villager img")).toHaveCount(1);
+          await overview.getByRole("button", { name: "+ Add villager", exact: true }).click();
+          const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
+          await picker.getByRole("button", { name: "Finn · Add", exact: true }).click();
+          await picker.getByRole("button", { name: "Confirm", exact: true }).click();
+          assert.deepEqual(
+            await page.evaluate(() =>
+              window.featureController.setupVenues.find((venue) => venue.residentIds?.includes("finn")),
+            ),
+            originalHome,
+            "Removing, saving, reloading and re-adding a founder restores their edited home and pin",
+          );
+          await expect(overview.locator(".villages-selected-villager img")).toHaveCount(2);
         }
-        await reviewDialog.getByRole("button", { name: "World", exact: true }).click();
-        await expect(reviewDialog.getByLabel("World rules", { exact: true })).toHaveValue("The sun never sets.");
-        await reviewDialog.getByRole("button", { name: "Lorebooks", exact: true }).click();
-        await expect(loreDialog).toBeVisible();
-        await expect(loreDialog.locator(".villages-lorebook-footer>span")).toHaveCount(0);
-        await loreDialog.getByRole("button", { name: "Next", exact: true }).click();
-        await reviewDialog.getByRole("button", { name: "Done", exact: true }).click();
-        if (phone) await overview.getByRole("button", { name: "Back", exact: true }).click();
-        await overview.getByRole("button", { name: "Edit People", exact: true }).click();
-        const peopleEditor = page.getByRole("dialog", { name: "People", exact: true });
-        await expect(peopleEditor).toBeVisible();
+        await expect(overview.getByRole("heading", { name: "You", exact: true })).toBeVisible();
+        await expect(overview.getByRole("heading", { name: "Initial residents", exact: true })).toBeVisible();
+        await expect(overview.getByRole("button", { name: / · Change$/ })).toBeVisible();
+        await expect(overview.getByRole("button", { name: "Edit People", exact: true })).toHaveCount(0);
+        await expect(overview.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 1 });
+        for (const row of await overview.locator(".villages-selected-villager").all()) {
+          await expect(row).toBeInViewport({ ratio: 1 });
+          assert.equal(await row.evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
+        }
         if (view.width === 320 || view.width === 1366) {
           const residentIds = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
           await page.evaluate(() => window.featureController.setSetupFoundingVillagerIds([]));
-          await peopleEditor.getByRole("button", { name: "Done", exact: true }).click();
-          await expect(peopleEditor).toBeVisible();
-          await expect(peopleEditor.getByRole("button", { name: "Villagers", exact: true })).toHaveAttribute(
-            "aria-pressed",
-            "true",
-          );
-          await expect(peopleEditor.getByRole("alert")).toContainText(
+          await overview.getByRole("button", { name: "Next", exact: true }).click();
+          await expect(overview).toHaveAttribute("data-page", "people");
+          await expect(overview.locator("[data-founding-problem]")).toContainText(
             "Choose one to three available founding villagers.",
           );
           await page.evaluate((ids) => window.featureController.setSetupFoundingVillagerIds(ids), residentIds);
         }
-        await peopleEditor.getByRole("button", { name: "Villagers", exact: true }).click();
-        await expect(peopleEditor.getByRole("button", { name: "Done", exact: true })).toBeInViewport({ ratio: 1 });
-        assert.equal(
-          await peopleEditor.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-          true,
-          "The People editor fits without a scrolling body",
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-people-${view.width}-${view.height}.png`),
+          });
+        await overview.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(overview).toHaveAttribute("data-page", "setting");
+        await overview.getByRole("button", { name: "Back", exact: true }).click();
+        await expect(overview).toHaveAttribute("data-page", "people");
+        await overview.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(overview.getByLabel("Location description", { exact: true })).toHaveValue(
+          await page.evaluate(() => window.featureController.setupSetting),
         );
-        await peopleEditor.getByRole("button", { name: "Done", exact: true }).click();
-        if (phone) await advance();
+        if (view.width === 320 || view.width === 1366) {
+          const description = overview.getByLabel("Location description", { exact: true });
+          const original = await description.inputValue();
+          await description.fill("");
+          await overview.getByRole("button", { name: "Next", exact: true }).click();
+          await expect(overview).toHaveAttribute("data-page", "setting");
+          await expect(description).toHaveAttribute("aria-invalid", "true");
+          await description.fill(original);
+        }
+        await overview.getByRole("button", { name: "World", exact: true }).click();
+        await expect(overview.getByLabel("World rules", { exact: true })).toHaveValue("The sun never sets.");
+        await overview.getByRole("button", { name: "Lorebooks", exact: true }).click();
+        await expect(loreDialog).toBeVisible();
+        await loreDialog.getByRole("button", { name: "Next", exact: true }).click();
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-setting-${view.width}-${view.height}.png`),
+          });
         await advance();
         await expect(root).toHaveAttribute("data-review-stage", "map");
         await expect(overview).toHaveCount(0);
@@ -2510,7 +2535,7 @@ export async function verifyFoundingLayout(group) {
         const reviewMap = root.getByRole("group", { name: "Map navigation", exact: true });
         const mapStage = root.locator(".marinara-capability-villages-stage");
         await expect(root.locator("[data-pin-id]").first()).toBeVisible();
-        await expect(mapStage).not.toHaveAttribute("data-pin-movable", "true");
+        await expect(mapStage).toHaveAttribute("data-pin-movable", "true");
         await expect(button("Reset map view")).toBeVisible();
         if (phone) {
           const box = await reviewMap.boundingBox();
@@ -2546,23 +2571,12 @@ export async function verifyFoundingLayout(group) {
               window.featureController.setupVenues.find((venue) => venue.id === "founding-home:player").presentation.x,
           );
         await homeMarker.press("ArrowRight");
-        assert.equal(await currentHomeX(), homeX, "Inspecting a marker cannot move it");
-        const options = root.getByRole("button", { name: "Map options", exact: true });
-        await options.click();
-        if (process.env.VILLAGES_SCREENSHOT_DIR)
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-options-${view.width}-${view.height}.png`),
-          });
-        await button("Move markers").click();
-        await expect(mapStage).toHaveAttribute("data-pin-movable", "true");
-        await homeMarker.press("ArrowRight");
         await expect.poll(currentHomeX).not.toBe(homeX);
         await homeMarker.press("ArrowLeft");
         await expect.poll(currentHomeX).toBe(homeX);
+        const options = root.getByRole("button", { name: "Map options", exact: true });
         await options.click();
-        await button("Done moving").click();
-        await expect(mapStage).not.toHaveAttribute("data-pin-movable", "true");
-        await options.click();
+        await expect(button("Move markers")).toHaveCount(0);
         await button("Map artwork").click();
         const mapEditor = page.getByRole("dialog", { name: "Review map", exact: true });
         await expect(mapEditor.getByRole("region", { name: "Map artwork preview", exact: true })).toBeVisible();

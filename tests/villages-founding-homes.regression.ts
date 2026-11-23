@@ -198,6 +198,9 @@ assert.deepEqual(
 const authored = starting.venues.find((venue) => venue.id === "founding-home:a")!;
 authored.name = "Ada's canal loft";
 authored.privateSpaces![0].description = "Ada's blue quilt.";
+authored.presentation = { ...authored.presentation, x: 0.37, y: 0.62 };
+authored.description = "A carefully furnished home.";
+authored.privateSpaces![0].purpose = "Rest and quilting";
 const replacementActors = [actors[0]!, actors[2]!, { id: "c", name: "Cleo" }];
 const replacement = selectFoundingHomes(starting.venues, starting.unusedHomes, replacementActors, "community");
 assert.deepEqual(
@@ -215,7 +218,98 @@ assert.deepEqual(
   authored,
 );
 assert.equal(returned.venues.find((venue) => venue.id === authored.id)!.destinations!.a.sleep, "private:base");
+let cycled = returned;
+for (let i = 0; i < 3; i++) {
+  cycled = selectFoundingHomes(cycled.venues, cycled.unusedHomes, replacementActors, "community", ["a"]);
+  const saved = JSON.parse(JSON.stringify(cycled));
+  assert.equal(saved.unusedHomes.filter((venue: { id: string }) => venue.id === authored.id).length, 1);
+  cycled = selectFoundingHomes(saved.venues, saved.unusedHomes, actors, "community", ["c"]);
+  assert.deepEqual(
+    cycled.venues.find((venue) => venue.id === authored.id),
+    authored,
+  );
+  assert.equal(
+    new Set([...cycled.venues, ...cycled.unusedHomes].map((venue) => venue.id)).size,
+    cycled.venues.length + cycled.unusedHomes.length,
+  );
+}
+const mixed = structuredClone(authored);
+mixed.id = "canal-workshop";
+mixed.classes = ["residence", "workplace"];
+mixed.workerIds = ["a"];
+mixed.spaces![0].controllerIds = ["a", "b"];
+mixed.spaces![0].access = {
+  mode: "permission-required",
+  managerIds: ["a", "b"],
+  memberIds: ["a", "visitor"],
+  memberRoles: [],
+  inviterIds: ["a", "b"],
+  visitorHours: "inherit",
+  accompanied: false,
+};
+mixed.destinations = { ...mixed.destinations, a: { ...mixed.destinations!.a, work: mixed.spaces![0].id } };
+const sharedHome = reconcileFoundingHome({ ...structuredClone(authored), id: "shared-loft", foundingCapacity: null }, [
+  "a",
+  "b",
+]);
+const legacy = selectFoundingHomes(
+  [...starting.venues.filter((venue) => venue.id !== authored.id), mixed, sharedHome],
+  [],
+  replacementActors,
+  "community",
+  ["a"],
+);
+assert.equal(legacy.unusedHomes.length, 0, "Mixed-use and shared places never enter the single-owner home cache");
+const workshop = legacy.venues.find((venue) => venue.id === mixed.id)!;
+assert.equal(workshop.name, mixed.name);
+assert.equal(workshop.description, mixed.description);
+assert.deepEqual(workshop.presentation, mixed.presentation);
+assert.deepEqual(workshop.residentIds, []);
+assert.deepEqual(workshop.workerIds, []);
+assert.equal(workshop.destinations!.a, undefined);
+assert.deepEqual(workshop.spaces![0].controllerIds, ["b"]);
+assert.deepEqual(workshop.spaces![0].access!.managerIds, ["b"]);
+assert.deepEqual(workshop.spaces![0].access!.memberIds, ["visitor"]);
+assert.deepEqual(workshop.spaces![0].access!.inviterIds, ["b"]);
+assert.equal(workshop.privateSpaces![0].ownerId, "");
+assert.equal(workshop.privateSpaces![0].access, undefined);
+assert.deepEqual(legacy.venues.find((venue) => venue.id === sharedHome.id)!.residentIds, ["b"]);
+assert.ok(
+  legacy.venues.some((venue) => venue.residentIds?.includes("c")),
+  "New founders still receive a home in legacy drafts",
+);
 const legacyArchive = { ...authored, id: "founding-home:c" };
+const invitedHome = structuredClone(authored);
+invitedHome.spaces![0].controllerIds = ["a", "b"];
+invitedHome.spaces![0].access = {
+  mode: "permission-required",
+  managerIds: ["a", "b"],
+  memberIds: ["b", "visitor"],
+  memberRoles: [],
+  inviterIds: ["b"],
+  visitorHours: "inherit",
+  accompanied: false,
+};
+const archivedInvitation = selectFoundingHomes(
+  starting.venues.map((venue) => (venue.id === authored.id ? invitedHome : venue)),
+  [],
+  replacementActors,
+  "community",
+  ["a"],
+);
+assert.deepEqual(archivedInvitation.unusedHomes, [invitedHome]);
+const restoredInvitation = selectFoundingHomes(
+  archivedInvitation.venues,
+  archivedInvitation.unusedHomes,
+  [actors[0]!, actors[1]!, { id: "c", name: "Cleo" }],
+  "community",
+  ["b"],
+);
+const restoredZone = restoredInvitation.venues.find((venue) => venue.id === authored.id)!.spaces![0];
+assert.deepEqual(restoredZone.controllerIds, ["a"]);
+assert.deepEqual(restoredZone.access!.managerIds, ["a"]);
+assert.deepEqual(restoredZone.access!.memberIds, ["visitor"]);
+assert.deepEqual(restoredZone.access!.inviterIds, []);
 const withoutAda = starting.venues.filter((venue) => venue !== authored);
 const withCleo = selectFoundingHomes(withoutAda, [legacyArchive], replacementActors, "community");
 assert.notEqual(withCleo.venues.find((venue) => venue.residentIds?.includes("c"))!.id, legacyArchive.id);
