@@ -1,3 +1,4 @@
+import { PersonArrangements } from "../venues/PersonArrangements.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -428,6 +429,15 @@ export function ResidentsScreen({
                     element.querySelector<HTMLElement>("[data-dossier-sprites]")?.focus({ preventScroll: true });
                   });
                 }}
+              />
+            ) : undefined
+          }
+          arrangements={
+            !visitor ? (
+              <PersonArrangements
+                key={snapshot.worldScope + personProfile.actorId}
+                person={personProfile.actorId}
+                controller={controller}
               />
             ) : undefined
           }

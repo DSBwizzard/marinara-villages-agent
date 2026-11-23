@@ -2,7 +2,6 @@ import { useState, type ReactNode, type Ref } from "react";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { Portrait } from "../../shared/types.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
-import { VenueZoneRow } from "../../shared/VenueNavigation.js";
 
 export function VenueManageHeading({
   title,
@@ -124,111 +123,5 @@ export function VenuePeoplePicker({
         </nav>
       )}
     </section>
-  );
-}
-
-export type VenueArrangement = "home" | "work" | "management";
-const arrangements = ["home", "work", "management"] as const;
-export function VenuePeopleFlow({
-  people,
-  assignedIds,
-  roles,
-  renderEditor,
-  disabled = false,
-  overview,
-}: {
-  overview?: ReactNode;
-  people: readonly VenuePerson[];
-  assignedIds: readonly string[];
-  roles(id: string): readonly VenueArrangement[];
-  renderEditor(
-    person: VenuePerson,
-    arrangement: VenueArrangement,
-    onBack: () => void,
-    onBusyChange: (busy: boolean) => void,
-  ): ReactNode;
-  disabled?: boolean;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [personId, setPersonId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [addingArrangement, setAddingArrangement] = useState(false);
-  const [arrangement, setArrangement] = useState<VenueArrangement | null>(null);
-  const person = people.find((row) => row.id === personId);
-  const back = () => {
-    setArrangement(null);
-    setAddingArrangement(false);
-  };
-  if (person && arrangement)
-    return (
-      <>
-        <VenueManageHeading
-          title={arrangement[0]!.toUpperCase() + arrangement.slice(1)}
-          back={person.name}
-          onBack={back}
-          disabled={disabled || busy}
-        />
-        {renderEditor(person, arrangement, back, setBusy)}
-      </>
-    );
-  if (person)
-    return (
-      <>
-        <button
-          type="button"
-          className={P + "-venue-back"}
-          disabled={disabled}
-          onClick={() => {
-            setPersonId(null);
-            setAdding(false);
-            back();
-          }}
-        >
-          ← People
-        </button>
-        <div className="villages-person-heading">
-          <AvatarFace name={person.name} portrait={person.portrait} className={P + "-avatar"} />
-          <h2>{person.name}</h2>
-          <button
-            type="button"
-            disabled={disabled || arrangements.every((role) => roles(person.id).includes(role))}
-            onClick={() => setAddingArrangement(true)}
-          >
-            Add arrangement
-          </button>
-        </div>
-        <nav className={P + "-venue-zone-picker"} aria-label={addingArrangement ? "Add arrangement" : "Arrangements"}>
-          {arrangements
-            .filter((role) => (addingArrangement ? !roles(person.id).includes(role) : roles(person.id).includes(role)))
-            .map((role) => (
-              <VenueZoneRow
-                key={role}
-                name={role[0]!.toUpperCase() + role.slice(1)}
-                disabled={disabled || (person.id === "player" && role === "work")}
-                onOpen={() => setArrangement(role)}
-              />
-            ))}
-        </nav>
-      </>
-    );
-  return (
-    <>
-      {!adding && overview}
-      <VenuePeoplePicker
-        key={String(adding)}
-        title={adding ? "Add person" : "People"}
-        heading={adding ? "Add person" : undefined}
-        back="People"
-        onBack={adding ? () => setAdding(false) : undefined}
-        people={people.filter((row) => adding !== assignedIds.includes(row.id))}
-        onSelect={(id) => {
-          setPersonId(id);
-          setAddingArrangement(false);
-        }}
-        onAdd={!adding ? () => setAdding(true) : undefined}
-        addLabel="Add person"
-        disabled={disabled}
-      />
-    </>
   );
 }

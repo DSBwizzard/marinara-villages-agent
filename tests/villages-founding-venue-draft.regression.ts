@@ -21,7 +21,6 @@ import {
 } from "../packages/villages/src/shared/helpers/founding-venue-draft.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import {
-  assignFoundingPrivateZone,
   assignFoundingHome,
   reconcileFoundingRoster,
 } from "../packages/villages/src/client/features/founding/founding-homes.js";
@@ -37,7 +36,11 @@ let homes = reconcileFoundingRoster(
 );
 homes = assignFoundingHome(homes, "founding-home:player", "ada", true);
 let home = homes.find((row) => row.id === "founding-home:player")!;
-home = assignFoundingPrivateZone(addFoundingZone(home, true, "ada-room"), "ada-room", "ada");
+home = addFoundingZone(home, true, "ada-room");
+home.privateSpaces!.find((row) => row.id === "ada-room")!.ownerId = "ada";
+home.privateSpaces!.find((row) => row.id === "ada-room")!.access!.managerIds = ["ada"];
+home.privateSpaces!.find((row) => row.id === "ada-room")!.access!.memberIds = ["ada"];
+home.destinations!.ada.sleep = "ada-room";
 home.spaces![0].image = { id: "kept", ref: "global-gallery:kept", url: "/kept.webp" };
 home.spaces![0].state = { revision: 5, updatedAt: "2026-11-03T12:00:00.000Z", recent: null };
 const now = new Date("2026-11-03T14:00:00.000Z");

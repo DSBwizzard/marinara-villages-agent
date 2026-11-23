@@ -7,6 +7,11 @@ export function venueResidentIds(venue: Pick<VillageVenue, "residentIds" | "occu
 export function venueCapacity(venue: Pick<VillageVenue, "residenceCapacity">): number {
   return Math.min(MAX_VENUE_RESIDENTS, venue.residenceCapacity ?? 0);
 }
+export function venueSleepers(venue: VillageVenue, zoneId: string): string[] {
+  return [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])].filter(
+    (id) => venue.destinations?.[id]?.sleep === zoneId,
+  );
+}
 export function venueAssignedCount(venue: Pick<VillageVenue, "residentIds" | "occupancy">): number {
   return venueResidentIds(venue).length + Number(venue.occupancy.playerHome);
 }

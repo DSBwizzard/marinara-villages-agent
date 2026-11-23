@@ -1,7 +1,7 @@
 import { changedZoneIds, shape } from "./project-structure.js";
 export { changedZoneIds } from "./project-structure.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { venueResidentIds } from "./venue-model.js";
+import { venueResidentIds, venueSleepers } from "./venue-model.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import type {
   VillageVenue,
@@ -59,6 +59,7 @@ export function renovationAffectedIds(
   return [
     ...new Set([
       ...(venue.access?.managerIds ?? []),
+      ...ids.flatMap((id) => venueSleepers(venue, id)),
       ...(residence ? venueResidentIds(venue) : []),
       ...(workplace ? (venue.workerIds ?? []) : []),
       ...(building
@@ -88,6 +89,7 @@ export function approvalScope(
     const next = change.zones?.find((zone) => zone.id === id);
     return (
       manager ||
+      venueSleepers(venue, id).includes(actorId) ||
       [old, next].some(
         (zone) =>
           zone &&
@@ -141,10 +143,12 @@ export function matchesProjectDesign(scope: string, project: VillageProject): bo
   try {
     // Saved decoding changes object field order without changing the agreed design.
     const canonical = (value: unknown) =>
-      JSON.stringify(value, (_key, entry: unknown) =>
-        entry && typeof entry === "object" && !Array.isArray(entry)
-          ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b)))
-          : entry,
+      JSON.stringify(value, (key, entry: unknown) =>
+        key === "controllerIds" && Array.isArray(entry) && entry.length === 0
+          ? undefined
+          : entry && typeof entry === "object" && !Array.isArray(entry)
+            ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b)))
+            : entry,
       );
     return canonical(JSON.parse(scope)) === canonical(JSON.parse(projectDesignKey(project)));
   } catch {

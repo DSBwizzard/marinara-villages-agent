@@ -181,7 +181,7 @@ export function validateRenovationDesign(
       if (
         !zone ||
         zone.kind === "exterior" ||
-        (zone.ownerId && zone.ownerId !== actor) ||
+        (zone.ownerId && zone.ownerId !== actor && venue.destinations?.[actor]?.sleep !== zone.id) ||
         !accessibleVenueRoute({ projects: [] }, proposed, actor, zone.id, new ZonedDate(at, state.timeZone), true)
       )
         throw conflict(

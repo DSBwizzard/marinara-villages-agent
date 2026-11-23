@@ -3,12 +3,9 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom } from "../../shared/api.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { VenueManageHeading, VenuePeopleFlow, type VenueArrangement } from "./VenueManage.js";
+import { ArrangementRoster, type ArrangementPage } from "./ArrangementNavigation.js";
 import { VenueHomePanel } from "./VenueHomePanel.js";
 import { VenueWorkPanel } from "./VenueWorkPanel.js";
-import { VenueZoneRow } from "../../shared/VenueNavigation.js";
-import { ELEMENT_TAG as P } from "../../shared/constants.js";
-import { planZoneRenovation } from "./ZoneAbout.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 
 type Zone = NonNullable<VillageVenue["zones"]>[number];
@@ -93,16 +90,17 @@ export function VenuePeoplePanel({
   place,
   zone,
   controller,
+  page,
+  onPage,
+  onBusyChange,
 }: {
   place: VillageVenue;
   zone?: Zone;
   controller: VenueScreenController;
+  page: ArrangementPage;
+  onPage(page: ArrangementPage): void;
+  onBusyChange(busy: boolean): void;
 }) {
-  const [assignment, setAssignment] = useState(false);
-  const [move, setMove] = useState(false);
-  const [moveBusy, setMoveBusy] = useState(false);
-  const currentAssignment = zone?.kind === "personal" ? zone.ownerId || "vacant" : "";
-  const [draftAssignment, setDraftAssignment] = useState(currentAssignment);
   const people = [
     { id: "player", name: playerDisplayName(controller.snapshot) },
     ...controller.snapshot.villagers.map((row) => ({
@@ -111,150 +109,36 @@ export function VenuePeoplePanel({
       portrait: controller.portraits?.[row.characterId],
     })),
   ];
-  const members = new Set([
-    ...(place.residentIds ?? []),
-    ...(place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []),
-    ...(place.occupancy.playerHome ? ["player"] : []),
-  ]);
-  const managers = zone
-    ? zone.accessView?.policy
-      ? (zone.accessView.policy.managerIds ?? place.accessView?.managerIds ?? [])
-      : []
-    : (place.accessView?.managerIds ?? []);
-  const roles = (id: string): VenueArrangement[] => [
-    ...(members.has(id) && (!zone || place.destinations?.[id]?.sleep === zone.id) ? ["home" as const] : []),
-    ...(place.accessView?.work?.some(
-      (row) => row.characterId === id && (!zone || row.zoneId === zone.id || row.accessZoneIds.includes(zone.id)),
-    ) ||
-    (!zone && place.workerIds?.includes(id)) ||
-    place.accessView?.workOffers?.some(
-      (row) =>
-        row.characterId === id &&
-        (!zone || row.terms?.zoneId === zone.id || row.terms?.accessZoneIds.includes(zone.id)),
-    )
-      ? ["work" as const]
-      : []),
-    ...(managers.includes(id) || zone?.ownerId === id ? ["management" as const] : []),
-  ];
-  return (
-    <section className="villages-manage" aria-label="Venue people">
-      {assignment && zone ? (
-        <>
-          <VenueManageHeading
-            title={move ? "Home" : "Room assignment"}
-            back="People"
-            disabled={moveBusy}
-            onBack={() => {
-              setAssignment(false);
-              setMove(false);
-            }}
-          />
-          {move && zone.ownerId ? (
-            <VenueHomePanel
-              place={place}
-              person={zone.ownerId}
-              controller={controller}
-              onBack={() => setMove(false)}
-              onBusyChange={setMoveBusy}
-            />
-          ) : (
-            <>
-              <label>
-                Room assignment
-                <select
-                  aria-label="Room assignment"
-                  value={zone.ownerId ? currentAssignment : draftAssignment}
-                  disabled={!!zone.ownerId}
-                  onChange={(e) => setDraftAssignment(e.target.value)}
-                >
-                  <option value="">Shared space</option>
-                  <option value="vacant">Unassigned personal space</option>
-                  {people
-                    .filter((row) => members.has(row.id))
-                    .map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {row.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              {zone.ownerId ? (
-                <button
-                  type="button"
-                  className="villages-manage-remove"
-                  disabled={!members.has(zone.ownerId)}
-                  onClick={() => setMove(true)}
-                >
-                  Propose move
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="villages-manage-remove"
-                  disabled={draftAssignment === currentAssignment}
-                  onClick={() => planZoneRenovation(place, zone, controller, { assignment: draftAssignment })}
-                >
-                  Plan a renovation
-                </button>
-              )}
-            </>
-          )}
-        </>
-      ) : (
-        <VenuePeopleFlow
-          overview={
-            zone && zone.kind !== "exterior" ? (
-              <nav className={P + "-venue-zone-picker villages-room-assignment"}>
-                <VenueZoneRow
-                  name="Room assignment"
-                  accessLabel={
-                    zone.ownerId
-                      ? (people.find((row) => row.id === zone.ownerId)?.name ?? "Resident")
-                      : zone.kind === "personal"
-                        ? "Unassigned personal space"
-                        : "Shared space"
-                  }
-                  onOpen={() => setAssignment(true)}
-                />
-              </nav>
-            ) : undefined
-          }
-          people={people}
-          assignedIds={people.filter((row) => roles(row.id).length).map((row) => row.id)}
-          roles={roles}
-          renderEditor={(person, arrangement, onBack, onBusyChange) =>
-            arrangement === "home" ? (
-              <VenueHomePanel
-                key={person.id}
-                place={place}
-                person={person.id}
-                controller={controller}
-                onBack={onBack}
-                onBusyChange={onBusyChange}
-              />
-            ) : arrangement === "work" ? (
-              <VenueWorkPanel
-                key={person.id}
-                place={place}
-                person={person.id}
-                controller={controller}
-                onBack={onBack}
-                onBusyChange={onBusyChange}
-              />
-            ) : (
-              <Management
-                key={person.id + String(place.accessView?.revision)}
-                place={place}
-                zone={zone}
-                person={person.id}
-                controller={controller}
-                onBack={onBack}
-                onBusyChange={onBusyChange}
-              />
-            )
-          }
-        />
-      )}
-    </section>
+  const person = people.find((row) => row.id === page.personId);
+  const back = () => onPage({ kind: page.kind });
+  if (!person) return <ArrangementRoster place={place} zoneId={zone?.id} people={people} page={page} onPage={onPage} />;
+  return page.kind === "home" ? (
+    <VenueHomePanel
+      place={place}
+      zoneId={zone?.id}
+      person={person.id}
+      controller={controller}
+      onBack={back}
+      onBusyChange={onBusyChange}
+    />
+  ) : page.kind === "work" ? (
+    <VenueWorkPanel
+      place={place}
+      zoneId={zone?.id}
+      person={person.id}
+      controller={controller}
+      onBack={back}
+      onBusyChange={onBusyChange}
+    />
+  ) : (
+    <Management
+      key={person.id + String(place.accessView?.revision)}
+      place={place}
+      zone={zone}
+      person={person.id}
+      controller={controller}
+      onBack={back}
+      onBusyChange={onBusyChange}
+    />
   );
 }

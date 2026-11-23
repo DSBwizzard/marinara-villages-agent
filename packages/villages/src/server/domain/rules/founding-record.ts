@@ -131,13 +131,16 @@ export function parsePlace(value: unknown): VillageVenue {
         !zone ||
         zone.kind === "exterior" ||
         !(role === "work" ? workerIds.includes(actor) : household.includes(actor)) ||
-        (zone.ownerId && zone.ownerId !== actor)
+        (role === "work" && zone.ownerId && zone.ownerId !== actor)
       )
         throw badRequest("Choose a suitable Zone for each destination.");
       result.destinations![actor][role] = target;
     }
   }
   for (const work of result.access?.work ?? []) validateVenueWork(result, work);
+  result.knownSleepDestinations = Object.fromEntries(
+    household.flatMap((id) => (result.destinations?.[id]?.sleep ? [[id, result.destinations[id].sleep!]] : [])),
+  );
   for (const zone of zones) zone.observed = captureZoneObservation(result, zone, zone.description);
   return result;
 }
@@ -188,6 +191,9 @@ export function parsePlaces(
       throw badRequest("Choose founding residents as workers and controllers.");
     for (const actor of [...venue.residentIds!, ...(venue.occupancy.playerHome ? ["player"] : [])]) {
       const sleep = venue.zones!.find((zone) => zone.id === venue.destinations?.[actor]?.sleep);
+      const home = venue.destinations?.[actor]?.home;
+      if (home && !accessibleVenueRoute({ projects: [] }, venue, actor, home, at, true))
+        throw badRequest("Every household member needs an accessible home destination.");
       if (!sleep || !accessibleVenueRoute({ projects: [] }, venue, actor, sleep.id, at, true))
         throw badRequest("Every household member needs an accessible sleeping destination and a route from Entrance.");
     }

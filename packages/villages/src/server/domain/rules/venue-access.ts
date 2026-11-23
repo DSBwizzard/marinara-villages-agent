@@ -1,5 +1,6 @@
 import { venueWorkSchema, workOfferSchema } from "../../../shared/helpers/venue-work.js";
 import { validateVenueWork } from "./venue-work.js";
+import { venueSleepers } from "./venue-model.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   AccessCommand,
@@ -247,6 +248,7 @@ export function mayHostLodging(venue: VillageVenue, zone: VillageVenueZone, acto
 function members(venue: VillageVenue, zone: VillageVenueZone): string[] {
   const policy = zone.access;
   return [
+    ...venueSleepers(venue, zone.id),
     ...(venue.access?.work ?? [])
       .filter((work) => work.accessZoneIds.includes(zone.id))
       .map((work) => work.characterId),
@@ -565,6 +567,9 @@ export function applyAccessCommand(
     case "destinations": {
       if (command.zoneId !== null || (!manager && command.visitorId !== actor)) forbidden();
       assertIds([command.visitorId]);
+      const currentSleep = venue.destinations?.[command.visitorId]?.sleep;
+      if (command.sleep !== undefined && command.sleep !== currentSleep)
+        throw conflict("Propose sleeping arrangements through Home.");
       const resident = [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])].includes(
         command.visitorId,
       );
@@ -578,13 +583,13 @@ export function applyAccessCommand(
         if (
           !target ||
           target.kind === "exterior" ||
-          (target.ownerId && target.ownerId !== command.visitorId) ||
+          (role !== "sleep" && target.ownerId && target.ownerId !== command.visitorId) ||
           (role === "work" ? !venue.workerIds?.includes(command.visitorId) : !resident)
         )
           throw badRequest("Choose a suitable Zone in this person's assigned home or workplace.");
       }
       venue.destinations ??= {};
-      venue.destinations[command.visitorId] = { home: command.home, sleep: command.sleep, work: command.work };
+      venue.destinations[command.visitorId] = { home: command.home, sleep: currentSleep, work: command.work };
       break;
     }
     case "refuse-entry":

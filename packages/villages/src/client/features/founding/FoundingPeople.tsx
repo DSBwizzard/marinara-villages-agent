@@ -3,9 +3,9 @@ import type { SetupVenueDraft } from "../../shared/types.js";
 import type { VenueAccessState } from "../../../shared/helpers/venue-access.js";
 import { venueWorkSchema, type VenueWork } from "../../../shared/helpers/venue-work.js";
 import { WorkFields, initialVenueWork } from "../../shared/WorkFields.js";
-import { VenuePeopleFlow, type VenuePerson, type VenueArrangement } from "../venues/VenueManage.js";
-import { VenueZoneRow } from "../../shared/VenueNavigation.js";
-import { ELEMENT_TAG as P } from "../../shared/constants.js";
+import { type VenuePerson } from "../venues/VenueManage.js";
+import { HomeFields } from "../../shared/HomeFields.js";
+import { ArrangementRoster, type ArrangementPage } from "../venues/ArrangementNavigation.js";
 import { draftZonePolicy } from "./villages-founding-zones.js";
 import { foundingHomeMembers, foundingSleepZones, reconcileFoundingHome } from "./founding-homes.js";
 
@@ -32,14 +32,18 @@ function HomeEditor({
   onPatch,
   onBack,
   zoneId,
+  venues,
 }: {
+  venues: SetupVenueDraft[];
   zoneId?: string;
   venue: SetupVenueDraft;
   id: string;
   onPatch(venue: SetupVenueDraft): void;
   onBack(): void;
 }) {
-  const [sleep, setSleep] = useState(venue.destinations?.[id]?.sleep ?? zoneId ?? "");
+  const [targetId, setTargetId] = useState(venue.id);
+  venue = venues.find((row) => row.id === targetId) ?? venue;
+  const [sleep, setSleep] = useState(zoneId ?? venue.destinations?.[id]?.sleep ?? "");
   const [problem, setProblem] = useState("");
   const existing = foundingHomeMembers(venue);
   const members = [...existing.filter((member) => member !== id), id];
@@ -65,17 +69,17 @@ function HomeEditor({
   return (
     <>
       <div className="villages-manage-form">
-        <label>
-          Sleeps in
-          <select aria-label="Sleeps in" value={sleeping} onChange={(e) => setSleep(e.target.value)}>
-            <option value="">Choose a Zone</option>
-            {choices.map((zone) => (
-              <option key={zone.id} value={zone.id}>
-                {zone.name || "Zone"}
-              </option>
-            ))}
-          </select>
-        </label>
+        <HomeFields
+          venues={venues}
+          venueId={venue.id}
+          zoneId={sleeping}
+          zones={choices.map((zone) => ({ id: zone.id, name: zone.name || "Zone" }))}
+          onVenue={(id) => {
+            setTargetId(id);
+            setSleep("");
+          }}
+          onZone={setSleep}
+        />
       </div>
       {problem && <p role="alert">{problem}</p>}
       <div className="villages-manage-actions">
@@ -109,24 +113,65 @@ function HomeEditor({
 
 function WorkEditor({
   venue,
+  venues,
+  zoneId,
   id,
   onPatch,
   onBack,
 }: {
   venue: SetupVenueDraft;
+  venues: SetupVenueDraft[];
+  zoneId?: string;
   id: string;
   onPatch(venue: SetupVenueDraft): void;
   onBack(): void;
 }) {
+  const [targetId, setTargetId] = useState(venue.id);
+  venue = venues.find((row) => row.id === targetId) ?? venue;
   const access = foundingAccess(venue);
   const zones = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].filter(
     (zone) => !zone.ownerId || zone.ownerId === id,
   );
   const [work, setWork] = useState<VenueWork>(() =>
-    structuredClone(access.work?.find((row) => row.characterId === id) ?? initialVenueWork(id, zones)),
+    structuredClone(
+      access.work?.find((row) => row.characterId === id) ??
+        initialVenueWork(
+          id,
+          zoneId ? [...zones.filter((row) => row.id === zoneId), ...zones.filter((row) => row.id !== zoneId)] : zones,
+        ),
+    ),
   );
   return (
     <>
+      <label>
+        Venue
+        <select
+          aria-label="Venue"
+          value={venue.id}
+          onChange={(e) => {
+            const target = venues.find((row) => row.id === e.target.value);
+            if (!target) return;
+            setTargetId(target.id);
+            setWork(
+              structuredClone(
+                target.access?.work?.find((row) => row.characterId === id) ??
+                  initialVenueWork(
+                    id,
+                    [...(target.spaces ?? []), ...(target.privateSpaces ?? [])].filter(
+                      (row) => !row.ownerId || row.ownerId === id,
+                    ),
+                  ),
+              ),
+            );
+          }}
+        >
+          {venues.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </select>
+      </label>
       <WorkFields value={work} zones={zones} onChange={setWork} />
       <div className="villages-manage-actions">
         <button type="button" onClick={onBack}>
@@ -218,130 +263,89 @@ function ManagementEditor({
 
 export function FoundingPeople({
   venue,
+  venues,
   people,
   onPatch,
   zoneId,
   disabled = false,
+  page,
+  onPage,
 }: {
   venue: SetupVenueDraft;
+  venues: SetupVenueDraft[];
   people: VenuePerson[];
   onPatch(venue: SetupVenueDraft): void;
   zoneId?: string;
   disabled?: boolean;
+  page: ArrangementPage;
+  onPage(page: ArrangementPage): void;
 }) {
-  const [assignment, setAssignment] = useState(false);
+  const person = people.find((row) => row.id === page.personId);
+  const back = () => onPage({ kind: page.kind });
   const access = foundingAccess(venue);
-  const members = foundingHomeMembers(venue);
+  const personal = !!venue.privateSpaces?.some((row) => row.id === zoneId);
   const zone = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find((row) => row.id === zoneId);
-  const policy = zone
-    ? (zone.access ?? draftZonePolicy(venue, zone, !!venue.privateSpaces?.some((row) => row.id === zone.id)))
-    : undefined;
-  const managers = zoneId ? (policy?.managerIds ?? access.managerIds) : access.managerIds;
-  const roles = (id: string): VenueArrangement[] => [
-    ...(members.includes(id) && (!zoneId || venue.destinations?.[id]?.sleep === zoneId) ? ["home" as const] : []),
-    ...(access.work?.some(
-      (row) => row.characterId === id && (!zoneId || row.zoneId === zoneId || row.accessZoneIds.includes(zoneId)),
-    )
-      ? ["work" as const]
-      : []),
-    ...(managers.includes(id) || zone?.ownerId === id ? ["management" as const] : []),
-  ];
+  const policy = zone ? (zone.access ?? draftZonePolicy(venue, zone, personal)) : undefined;
+  const managers = policy ? (policy.managerIds ?? access.managerIds) : access.managerIds;
   return (
-    <section className="villages-manage" aria-label="Venue people">
+    <section className="villages-manage" aria-label="Arrangements">
       <fieldset disabled={disabled}>
-        {assignment && zone ? (
+        {person ? (
           <>
-            <button type="button" className={P + "-venue-back"} onClick={() => setAssignment(false)}>
-              ← People
-            </button>
-            <label>
-              Room assignment
-              <select
-                aria-label="Room assignment"
-                value={venue.privateSpaces?.some((row) => row.id === zone.id) ? zone.ownerId || "vacant" : ""}
-                onChange={(e) => {
-                  const ownerId = e.target.value;
-                  const room = { ...zone, ownerId: ownerId === "vacant" ? "" : ownerId, access: undefined };
-                  onPatch({
-                    ...venue,
-                    spaces: [...(venue.spaces ?? []).filter((row) => row.id !== zone.id), ...(!ownerId ? [room] : [])],
-                    privateSpaces: [
-                      ...(venue.privateSpaces ?? []).filter((row) => row.id !== zone.id),
-                      ...(ownerId ? [room] : []),
-                    ],
-                  });
+            <h2 className="villages-arrangement-kind">
+              {page.kind === "home" ? "Home" : page.kind === "work" ? "Work" : "Management"}
+            </h2>
+            {page.kind === "home" ? (
+              <HomeEditor
+                key={person.id}
+                venue={venue}
+                venues={venues}
+                id={person.id}
+                zoneId={zoneId}
+                onPatch={onPatch}
+                onBack={back}
+              />
+            ) : page.kind === "work" ? (
+              <WorkEditor
+                key={person.id}
+                venue={venue}
+                venues={venues}
+                zoneId={zoneId}
+                id={person.id}
+                onPatch={onPatch}
+                onBack={back}
+              />
+            ) : (
+              <ManagementEditor
+                key={person.id}
+                active={managers.includes(person.id)}
+                readOnly={!!zone?.ownerId}
+                onBack={back}
+                onSave={(active) => {
+                  const managerIds = active
+                    ? [...new Set([...managers, person.id])]
+                    : managers.filter((id) => id !== person.id);
+                  if (zone && policy) {
+                    const key = personal ? "privateSpaces" : "spaces";
+                    onPatch({
+                      ...venue,
+                      [key]: venue[key]?.map((row) =>
+                        row.id === zone.id ? { ...row, access: { ...policy, managerIds } } : row,
+                      ),
+                    });
+                  } else onPatch({ ...venue, access: { ...access, managerIds } });
                 }}
-              >
-                <option value="">Shared space</option>
-                <option value="vacant">Unassigned personal space</option>
-                {people
-                  .filter((row) => members.includes(row.id))
-                  .map((row) => (
-                    <option key={row.id} value={row.id}>
-                      {row.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
+              />
+            )}
           </>
         ) : (
-          <VenuePeopleFlow
-            overview={
-              zone ? (
-                <nav className={P + "-venue-zone-picker villages-room-assignment"}>
-                  <VenueZoneRow
-                    name="Room assignment"
-                    accessLabel={
-                      zone.ownerId
-                        ? (people.find((row) => row.id === zone.ownerId)?.name ?? "Resident")
-                        : venue.privateSpaces?.some((row) => row.id === zone.id)
-                          ? "Unassigned personal space"
-                          : "Shared space"
-                    }
-                    onOpen={() => setAssignment(true)}
-                  />
-                </nav>
-              ) : undefined
-            }
+          <ArrangementRoster
+            place={venue}
+            zoneId={zoneId}
             people={people}
-            assignedIds={people.filter((row) => roles(row.id).length).map((row) => row.id)}
-            roles={roles}
+            page={page}
+            onPage={onPage}
             disabled={disabled}
-            renderEditor={(person, arrangement, back) =>
-              arrangement === "home" ? (
-                <HomeEditor
-                  key={person.id}
-                  venue={venue}
-                  id={person.id}
-                  zoneId={zoneId}
-                  onPatch={onPatch}
-                  onBack={back}
-                />
-              ) : arrangement === "work" ? (
-                <WorkEditor key={person.id} venue={venue} id={person.id} onPatch={onPatch} onBack={back} />
-              ) : (
-                <ManagementEditor
-                  key={person.id}
-                  active={managers.includes(person.id)}
-                  readOnly={!!zone?.ownerId}
-                  onBack={back}
-                  onSave={(active) => {
-                    const managerIds = active
-                      ? [...new Set([...managers, person.id])]
-                      : managers.filter((id) => id !== person.id);
-                    if (zone && policy) {
-                      const key = venue.privateSpaces?.some((row) => row.id === zone.id) ? "privateSpaces" : "spaces";
-                      onPatch({
-                        ...venue,
-                        [key]: venue[key]?.map((row) =>
-                          row.id === zone.id ? { ...row, access: { ...policy, managerIds } } : row,
-                        ),
-                      });
-                    } else onPatch({ ...venue, access: { ...access, managerIds } });
-                  }}
-                />
-              )
-            }
           />
         )}
       </fieldset>

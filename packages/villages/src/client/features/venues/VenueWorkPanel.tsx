@@ -1,22 +1,24 @@
-import { useState, useLayoutEffect } from "react";
+import { useState, useLayoutEffect, useCallback } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { venueWorkSchema, workTime, type VenueWork } from "../../../shared/helpers/venue-work.js";
 import { WorkFields, initialVenueWork } from "../../shared/WorkFields.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { messageFrom } from "../../shared/api.js";
 import type { AccessCommand } from "../../../shared/helpers/venue-access.js";
-import type { VenueScreenController } from "./screen-contracts.js";
+import { useArrangementRequest, type ArrangementController } from "./arrangement-request.js";
 
-export function VenueWorkPanel({
+function WorkEditor({
   place,
   person,
   controller,
   onBack,
   onBusyChange,
+  zoneId,
 }: {
   place: VillageVenue;
   person: string;
-  controller: VenueScreenController;
+  zoneId?: string;
+  controller: ArrangementController;
   onBack(): void;
   onBusyChange(busy: boolean): void;
 }) {
@@ -30,17 +32,26 @@ export function VenueWorkPanel({
   const people = controller.snapshot.villagers.map((row) => ({
     id: row.characterId,
     name: row.name,
-    portrait: controller.portraits?.[row.characterId],
+    portrait: undefined,
   }));
   const name = (id: string) => (id === "player" ? "You" : (people.find((row) => row.id === id)?.name ?? "Villager"));
   const zones =
     place.zones?.filter((zone) => zone.kind !== "exterior" && (!zone.ownerId || zone.ownerId === person)) ?? [];
+  const submit = useArrangementRequest(controller, person, place.id);
   const records = place.accessView?.work ?? [];
   const offers = place.accessView?.workOffers ?? [];
   const [work, setWork] = useState<VenueWork | null>(() =>
     offers.some((row) => row.characterId === person)
       ? null
-      : structuredClone(records.find((row) => row.characterId === person) ?? initialVenueWork(person, zones)),
+      : structuredClone(
+          records.find((row) => row.characterId === person) ??
+            initialVenueWork(
+              person,
+              zoneId
+                ? [...zones.filter((row) => row.id === zoneId), ...zones.filter((row) => row.id !== zoneId)]
+                : zones,
+            ),
+        ),
   );
   const edit = (id: string) => {
     setWork(structuredClone(records.find((row) => row.characterId === id) ?? initialVenueWork(id, zones)));
@@ -63,7 +74,7 @@ export function VenueWorkPanel({
         expectedRevision: place.accessView.revision,
         zoneId: null,
       };
-      if (await controller.changeVenueAccess(place.id, command)) {
+      if (await submit("/venues/" + encodeURIComponent(place.id) + "/access", command)) {
         setWork(null);
         setNotice("Saved proposal.");
       }
@@ -160,6 +171,49 @@ export function VenueWorkPanel({
       </fieldset>
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
+    </section>
+  );
+}
+
+export function VenueWorkPanel(props: {
+  place: VillageVenue;
+  person: string;
+  zoneId?: string;
+  controller: ArrangementController;
+  onBack(): void;
+  onBusyChange(busy: boolean): void;
+}) {
+  const { onBusyChange } = props;
+  const [targetId, setTargetId] = useState(props.place.id);
+  const [busy, setBusy] = useState(false);
+  const changeBusy = useCallback(
+    (busy: boolean) => {
+      setBusy(busy);
+      onBusyChange(busy);
+    },
+    [onBusyChange],
+  );
+  const place = props.controller.snapshot.settings.venues.find((row) => row.id === targetId) ?? props.place;
+  return (
+    <section className="villages-manage" aria-label="Work arrangements">
+      <h2>Work</h2>
+      <label>
+        Venue
+        <select aria-label="Venue" value={place.id} disabled={busy} onChange={(e) => setTargetId(e.target.value)}>
+          {props.controller.snapshot.settings.venues.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <WorkEditor
+        key={place.id}
+        {...props}
+        place={place}
+        zoneId={place.id === props.place.id ? props.zoneId : undefined}
+        onBusyChange={changeBusy}
+      />
     </section>
   );
 }

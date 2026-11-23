@@ -3,7 +3,7 @@ import { ArtworkImage } from "./ArtworkImage.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 import { VillageIcon } from "./VillageIcon.js";
 
-const SECTIONS = ["about", "zones", "people", "access"] as const;
+const SECTIONS = ["about", "zones", "access"] as const;
 export type VenueSection = (typeof SECTIONS)[number];
 
 export function VenueSections({
@@ -11,14 +11,17 @@ export function VenueSections({
   disabled,
   onSelect,
   manage = true,
+  hidden = false,
   zone = false,
 }: {
   section: VenueSection;
   disabled?: boolean;
   manage?: boolean;
+  hidden?: boolean;
   zone?: boolean;
   onSelect(section: VenueSection): void;
 }) {
+  if (hidden) return null;
   return (
     <nav className={`${P}-venue-sections`} aria-label={zone ? "Zone sections" : "Venue sections"}>
       {SECTIONS.filter(

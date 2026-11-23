@@ -456,7 +456,15 @@ export function villageSettings(
         form: authoring ? venue.form : venue.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
         presentation: { ...venue.presentation, image: entrance?.image ?? null },
         access: undefined,
-        destinations: venue.destinations?.player ? { player: venue.destinations.player } : {},
+        knownSleepDestinations: undefined,
+        destinations: authoring
+          ? structuredClone(venue.destinations ?? {})
+          : {
+              ...Object.fromEntries(
+                Object.entries(venue.knownSleepDestinations ?? {}).map(([id, sleep]) => [id, { sleep }]),
+              ),
+              ...(venue.destinations?.player ? { player: venue.destinations.player } : {}),
+            },
         accessView: projectVenueAccess(venue, "player"),
         zones,
         archivedZones: [],

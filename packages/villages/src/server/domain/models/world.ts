@@ -302,6 +302,7 @@ export type VillageVenue = {
   access?: import("../../../shared/helpers/venue-access.js").VenueAccessState;
   accessView?: import("../../../shared/helpers/venue-access.js").VenueAccessView;
   destinations?: Record<string, { home?: string; sleep?: string; work?: string }>;
+  knownSleepDestinations?: Record<string, string>;
   /** Explicit layouts never synthesize absent interiors. */
   layoutVersion?: 1;
   imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };

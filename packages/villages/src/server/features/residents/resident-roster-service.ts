@@ -238,14 +238,18 @@ export function createResidentRoster({
           for (const zone of venue.zones.filter((zone) => zone.ownerId === characterId)) {
             zone.ownerId = undefined;
             if (zone.access) {
-              zone.access.managerIds = null;
-              zone.access.inviterIds = [];
-              zone.access.memberIds = [];
+              zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== characterId) ?? null;
+              zone.access.inviterIds = zone.access.inviterIds.filter((id) => id !== characterId);
+              zone.access.memberIds = zone.access.memberIds.filter((id) => id !== characterId);
             }
           }
           venue.residentIds = venueResidentIds(venue).filter((id) => id !== characterId);
           venue.occupancy.residentCharacterId = venue.residentIds[0] ?? null;
         }
+        if (venue.destinations) delete venue.destinations[characterId];
+        if (venue.knownSleepDestinations) delete venue.knownSleepDestinations[characterId];
+        if (venue.destinations) delete venue.destinations[characterId];
+        if (venue.knownSleepDestinations) delete venue.knownSleepDestinations[characterId];
         venue.workerIds = venue.workerIds?.filter((id) => id !== characterId);
         if (venue.access) {
           venue.access.work = venue.access.work?.filter((row) => row.characterId !== characterId);

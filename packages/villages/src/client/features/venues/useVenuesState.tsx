@@ -15,7 +15,7 @@ export function useVenuesState() {
   const [venueId, setVenueId] = useState<string | null>(null);
 
   const [venuePage, setVenuePage] = useState<"view" | "edit" | "proposal">("view");
-  const [venueSection, setVenueSection] = useState<"about" | "zones" | "people" | "access">("about");
+  const [venueSection, setVenueSection] = useState<"about" | "zones" | "access">("about");
   const [venueReturnTo, setVenueReturnTo] = useState<"home" | "menu" | "room" | "person">("home");
   const [housingVenueId, setHousingVenueId] = useState("");
 

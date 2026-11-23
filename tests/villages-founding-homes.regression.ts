@@ -3,8 +3,6 @@ import { newSetupVenue } from "../packages/villages/src/client/features/founding
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import {
   assignFoundingHome,
-  assignFoundingPrivateZone,
-  changeFoundingZoneOwner,
   foundingSleepZones,
   reconcileFoundingHome,
   reconcileFoundingRoster,
@@ -93,11 +91,15 @@ assert.throws(() => assignFoundingHome(rows, rows[0].id, "a", true), /full/);
 assert.equal(JSON.stringify(rows), before, "A full fixed home does not evict or partly move anyone");
 rows[0] = reconcileFoundingHome({ ...rows[0], foundingCapacity: null });
 rows = assignFoundingHome(rows, rows[0].id, "a", true);
-rows[0] = assignFoundingPrivateZone(addFoundingZone(rows[0], true, "ada-room"), "ada-room", "a");
+rows[0] = addFoundingZone(rows[0], true, "ada-room");
+rows[0].privateSpaces![0].ownerId = "a";
+rows[0].privateSpaces![0].access!.managerIds = ["a"];
+rows[0].privateSpaces![0].access!.memberIds = ["a"];
+rows[0].destinations!.a.sleep = "ada-room";
 assert.equal(rows[0].destinations!.a.sleep, "ada-room");
 assert.ok(
-  !foundingSleepZones(rows[0], "player").some((row) => row.id === "ada-room"),
-  "Another person's room cannot be a sleeping choice",
+  foundingSleepZones(rows[0], "player").some((row) => row.id === "ada-room"),
+  "Founding permits people to share a bedroom",
 );
 assert.equal(rows[0].privateSpaces![0].access!.managerIds![0], "a");
 rows[0].privateSpaces![0].description = "Ada's blue quilt";
@@ -105,12 +107,22 @@ rows = assignFoundingHome(rows, "founding-home:a", "a", true);
 assert.equal(rows[0].privateSpaces![0].description, "Ada's blue quilt");
 assert.equal(rows[0].privateSpaces![0].ownerId, "");
 assert.ok(
-  !foundingSleepZones(rows[0], "player").some((row) => row.id === "ada-room"),
-  "A vacated private room is not silently reassigned",
+  foundingSleepZones(rows[0], "player").some((row) => row.id === "ada-room"),
+  "A vacated bedroom remains an explicit sleeping choice",
 );
 rows = assignFoundingHome(rows, rows[0].id, "a", true);
 assert.equal(rows[0].destinations!.a.sleep, "common:base");
-rows[0] = assignFoundingPrivateZone(rows[0], "ada-room", "a");
+rows[0].privateSpaces![0].ownerId = "a";
+rows[0].privateSpaces![0].access = {
+  mode: "permission-required",
+  managerIds: ["a"],
+  memberIds: ["a"],
+  memberRoles: [],
+  inviterIds: [],
+  visitorHours: "always",
+  accompanied: false,
+};
+rows[0].destinations!.a.sleep = "ada-room";
 assert.equal(rows[0].destinations!.a.sleep, "ada-room");
 const restored = JSON.parse(JSON.stringify(rows));
 assert.equal(restored[0].foundingCapacity, null);
@@ -125,21 +137,18 @@ assert.doesNotThrow(
   () => parsePlaces(placed, new Set(["a", "b"]), true),
   "Shared homes are valid Founding arrangements",
 );
-const shared = changeFoundingZoneOwner(restored[0], "ada-room", "");
-assert.equal(shared.destinations!.a.sleep, "ada-room");
-assert.equal(shared.spaces!.find((zone) => zone.id === "ada-room")!.access!.mode, "permission-required");
-assert.throws(() => changeFoundingZoneOwner(shared, "ada-room", "player"), /another sleeping Zone/);
-const personal = changeFoundingZoneOwner(shared, "ada-room", "a");
-assert.equal(personal.destinations!.player.sleep, "common:base");
-assert.equal(personal.destinations!.a.sleep, "ada-room");
-assert.deepEqual(personal.privateSpaces![0].access!.managerIds, ["a"]);
+const personal = restored[0];
 const throughCabin = {
   ...personal,
   presentation: placed[0].presentation,
   spaces: personal.spaces!.map((zone) => ({ ...zone, connectedTo: ["ada-room"] })),
   privateSpaces: personal.privateSpaces!.map((zone) => ({ ...zone, connectedTo: ["exterior", "common:base"] })),
 };
-assert.equal(foundingSleepZones(throughCabin, "player").length, 0, "A private passage can block a shared room");
+assert.deepEqual(
+  foundingSleepZones(throughCabin, "player").map((row) => row.id),
+  ["ada-room"],
+  "An inaccessible intermediate passage still blocks the common room",
+);
 const saved = restored.map((row: any, index: number) =>
   parsePlace({
     ...row,

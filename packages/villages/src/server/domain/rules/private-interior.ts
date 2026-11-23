@@ -8,6 +8,7 @@ import { initializePreparedRoomContinuity, retainNativeFact } from "./native-con
 import { renderResidentAdmission } from "./resident-admission.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { findLocation } from "./places.js";
+import { venueSleepers } from "./venue-model.js";
 
 export function isPrivateInterior(zone: Pick<VillageVenueZone, "kind">): boolean {
   return ["personal", "restricted"].includes(zone.kind);
@@ -57,7 +58,12 @@ export function capturePrivateInterior(state: VillageState, venue: VillageVenue,
   const entries = currentRoomViews(state.continuity, state.episodes, room, at).filter(
     ({ version }) => version.room?.visibility === "observable" && !version.room.expiresAt,
   );
-  const owners = zone.kind === "personal" ? [zone.ownerId] : zoneControllerIds(venue, zone);
+  const owners = [
+    ...new Set([
+      ...(zone.kind === "personal" ? [zone.ownerId] : zoneControllerIds(venue, zone)),
+      ...venueSleepers(venue, zone.id),
+    ]),
+  ];
   const occupants = state.villagers.filter((person) => owners.includes(person.characterId));
   const characters = occupants.map(({ cardSnapshot: card, admission }) => ({
     admissionContext: renderResidentAdmission(card.name, admission),

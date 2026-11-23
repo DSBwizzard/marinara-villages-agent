@@ -1,3 +1,4 @@
+import { venueSleepers } from "./venue-model.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type { VillageState, VillageVenue, VillageVenueZone, VillageZoneKind } from "../models/world.js";
 import { conflict } from "./errors.js";
@@ -108,10 +109,10 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
     for (const zone of venue.zones ?? [])
       if (zone.access) {
         const old = previous.zones?.find((row) => row.id === zone.id);
-        if (old?.ownerId && !zone.ownerId) {
-          zone.access.managerIds = null;
-          zone.access.memberIds = [];
-          zone.access.inviterIds = [];
+        if (old?.ownerId && !zone.ownerId && !venueSleepers(venue, zone.id).length) {
+          zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== old.ownerId) ?? null;
+          zone.access.memberIds = zone.access.memberIds.filter((id) => id !== old.ownerId);
+          zone.access.inviterIds = zone.access.inviterIds.filter((id) => id !== old.ownerId);
         }
         if (zone.ownerId && old?.ownerId !== zone.ownerId) {
           zone.access.managerIds = [zone.ownerId];

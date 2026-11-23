@@ -563,6 +563,11 @@ function coerceVenue(value: unknown): VillageVenue | null {
     return null;
   }
   const venue: VillageVenue = {
+    knownSleepDestinations: Object.fromEntries(
+      Object.entries(asRecord(raw.knownSleepDestinations)).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string" && !!entry[1],
+      ),
+    ),
     access: readVenueAccess(raw.access),
     venueType: boundText(raw.venueType, 100),
     destinations: Object.fromEntries(

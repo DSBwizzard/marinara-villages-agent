@@ -910,9 +910,9 @@ async function main() {
       kept
         .json()
         .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
-        .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").pictureReference ?? null),
+        .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").image ?? null),
       [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
-      "the picture is kept as a reference and no other place is touched",
+      "the upload replaces the Zone image and leaves the other place untouched",
     );
     assert.equal(draws().length, 0, "choosing a picture the player already has never asks the Engine to draw");
 
@@ -937,7 +937,7 @@ async function main() {
       second
         .json()
         .settings.venues.find((venue: any) => venue.id === "ridge")
-        .zones.find((zone: any) => zone.id === "exterior").pictureReference.ref,
+        .zones.find((zone: any) => zone.id === "exterior").image.ref,
       "global-gallery:gallery-3",
     );
     assert.deepEqual(
@@ -1131,7 +1131,7 @@ async function main() {
       removed
         .json()
         .settings.venues.find((venue: any) => venue.id === "ridge")
-        .zones.find((zone: any) => zone.id === "exterior").pictureReference,
+        .zones.find((zone: any) => zone.id === "exterior").image,
       "and the other place keeps its own",
     );
     assert.equal(
@@ -1234,10 +1234,6 @@ async function main() {
       client.split('"/locations/venue/image"').length - 1,
       3,
       "the tab reaches the three picture routes and nothing else",
-    );
-    assert.ok(
-      /onClick=\{\(\) => void drawPlaceImage\(place\.id, zone\.id\)\}/.test(client),
-      "and wired to a click on the screen that stands in a place",
     );
 
     const foundingVenue = {
@@ -1731,12 +1727,9 @@ async function mediaConnectionOwnership() {
         );
       if (operation === "store" && !["failure", "disposed"].includes(variant)) {
         b.scope.run(() =>
-          assert.equal(
-            a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.picture?.reference?.id,
-            "A-image",
-          ),
+          assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image"),
         );
-        b.scope.run(() => assert.equal(a.world().venues[0]!.presentation.image, null));
+        b.scope.run(() => assert.equal(a.world().venues[0]!.presentation.image?.id, "A-image"));
       }
       if (variant === "cas")
         b.scope.run(() =>

@@ -1,3 +1,4 @@
+import { ArrangementSummary, arrangementLabel, type ArrangementPage } from "./ArrangementNavigation.js";
 import { VenuePeoplePanel } from "./VenuePeoplePanel.js";
 import type { VenueSection } from "../../shared/VenueNavigation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
@@ -244,6 +245,8 @@ export function VenueScreen({
 }) {
   const confirmVillages = useConfirmation();
   const { viewing = true, visible } = useVillageActivity();
+  const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
+  const [arrangementBusy, setArrangementBusy] = useState(false);
   const [editingConnections, setEditingConnections] = useState(false);
   const [editingAbout, setEditingAbout] = useState(false);
   const [zoneSection, setZoneSection] = useState<VenueSection>("about");
@@ -288,7 +291,7 @@ export function VenueScreen({
   const detail =
     narrative?.worldScope === snapshot?.worldScope && narrative?.detail.id === venueId ? narrative.detail : null;
   const place = venue ?? detail?.location;
-  const venueSection = !venue && (savedSection === "people" || savedSection === "access") ? "about" : savedSection;
+  const venueSection = !venue && savedSection === "access" ? "about" : savedSection;
   useEffect(() => {
     if (venue || !venueId || !snapshot || !viewing || !visible) return;
     let current = true;
@@ -327,8 +330,9 @@ export function VenueScreen({
     [venueId, venueZoneKey, venueSection],
   );
   const navigation = useVillageMutationLifetime(snapshot?.isFounded, undefined, navigationSelection);
-  const navigationBusy = controller.venueEditBusy;
+  const navigationBusy = controller.venueEditBusy || arrangementBusy;
   const canLeave = async (keepLayout = false) => {
+    if (arrangementBusy) return false;
     if (navigationBusy) return false;
     const draft = controller.venueEditDraft;
     const venueNameDirty = !!draft && draft.id === place?.id && draft.name !== place.name;
@@ -440,9 +444,23 @@ export function VenueScreen({
       <VenueProfile
         profileRef={profile}
         headingRef={fromMap ? heading : undefined}
-        name={zoneDetailsOpen ? selected.name : place.name}
+        name={
+          arrangementPage
+            ? arrangementPage.personId
+              ? controller.nameOfCharacter(arrangementPage.personId)
+              : arrangementPage.adding
+                ? arrangementPage.kind === "home"
+                  ? "Add resident"
+                  : arrangementPage.kind === "work"
+                    ? "Add worker"
+                    : "Add manager"
+                : arrangementLabel(arrangementPage.kind, zoneDetailsOpen)
+            : zoneDetailsOpen
+              ? selected.name
+              : place.name
+        }
         heading={
-          zoneDetailsOpen && venue ? (
+          !arrangementPage && zoneDetailsOpen && venue ? (
             <ZoneName
               key={place.id + selected.id}
               place={place}
@@ -468,7 +486,12 @@ export function VenueScreen({
             return;
           event.preventDefault();
           event.stopPropagation();
-          if (zoneDetailsOpen) void closeZoneDetails();
+          if (arrangementPage) {
+            if (!arrangementBusy)
+              setArrangementPage(
+                arrangementPage.personId || arrangementPage.adding ? { kind: arrangementPage.kind } : null,
+              );
+          } else if (zoneDetailsOpen) void closeZoneDetails();
           else if (editingConnections) void closeConnections();
           else void returnToMap();
         }}
@@ -480,11 +503,28 @@ export function VenueScreen({
               ref={zoneDetailsOpen ? subpageBack : undefined}
               aria-label={zoneDetailsOpen ? undefined : fromMap ? "Back to map" : undefined}
               disabled={navigationBusy}
-              onClick={zoneDetailsOpen ? closeZoneDetails : returnToMap}
+              onClick={
+                arrangementPage
+                  ? () => {
+                      if (!arrangementBusy)
+                        setArrangementPage(
+                          arrangementPage.personId || arrangementPage.adding ? { kind: arrangementPage.kind } : null,
+                        );
+                    }
+                  : zoneDetailsOpen
+                    ? closeZoneDetails
+                    : returnToMap
+              }
             >
-              {zoneDetailsOpen ? `← ${place.name}` : fromMap ? "← Map" : "← Locations"}
+              {arrangementPage
+                ? `← ${arrangementPage.personId || arrangementPage.adding ? arrangementLabel(arrangementPage.kind, zoneDetailsOpen) : zoneDetailsOpen ? selected.name : place.name}`
+                : zoneDetailsOpen
+                  ? `← ${place.name}`
+                  : fromMap
+                    ? "← Map"
+                    : "← Locations"}
             </button>
-            {activeScene ? (
+            {activeScene && !arrangementPage ? (
               <button type="button" className={`${ELEMENT_TAG}-venue-back`} disabled={navigationBusy} onClick={back}>
                 Back to Scene
               </button>
@@ -492,6 +532,7 @@ export function VenueScreen({
           </>
         }
         tabs={{
+          hidden: !!arrangementPage,
           section: zoneDetailsOpen ? zoneSection : venueSection,
           zone: zoneDetailsOpen,
           manage: !!venue,
@@ -520,7 +561,7 @@ export function VenueScreen({
         }}
       >
         {navigationBusy ? <p role="status">Saving…</p> : null}
-        {about ? (
+        {about && !arrangementPage ? (
           <section
             className={`${ELEMENT_TAG}-workspace-about`}
             aria-label={venue ? "About this venue" : "About this location"}
@@ -560,6 +601,13 @@ export function VenueScreen({
                       <dd>{place.residenceCapacity ?? 0}</dd>
                     </dl>
                   )}
+                  <ArrangementSummary
+                    place={place}
+                    disabled={navigationBusy}
+                    onOpen={async (kind) => {
+                      if (await canLeave(true)) setArrangementPage({ kind });
+                    }}
+                  />
                 </section>
               ) : null}
               {(place.constructionStatus === "worksite" || activeProject?.kind === "new-venue") && activeProject ? (
@@ -602,7 +650,7 @@ export function VenueScreen({
             </div>
           </section>
         ) : null}
-        {browsing && !editingConnections ? (
+        {!arrangementPage && browsing && !editingConnections ? (
           <div className={`${ELEMENT_TAG}-venue-zone-navigation`}>
             <section className={`${ELEMENT_TAG}-venue-zone-list`} inert={zoneDetailsOpen}>
               {venue && (
@@ -657,6 +705,14 @@ export function VenueScreen({
                       ) : selected.seen && selected.description ? (
                         <p>{selected.description}</p>
                       ) : null}
+                      {venue && (
+                        <ArrangementSummary
+                          place={place}
+                          zoneId={selected.id}
+                          disabled={navigationBusy}
+                          onOpen={(kind) => setArrangementPage({ kind })}
+                        />
+                      )}
                       {selected.accessView?.invitation && (
                         <small>
                           {[
@@ -692,28 +748,26 @@ export function VenueScreen({
                         </>
                       }
                     </>
-                  ) : zoneSection === "people" && venue ? (
-                    <VenuePeoplePanel
-                      key={place.id + selected.id}
-                      place={place}
-                      zone={selected}
-                      controller={controller}
-                    />
                   ) : zoneSection === "access" && venue ? (
-                    <VenueAccessPanel
-                      key={place.id + selected.id + place.accessView?.revision}
-                      place={place}
-                      zone={selected}
-                      controller={controller}
-                      onClose={() => {}}
-                    />
+                    <>
+                      <nav className={ELEMENT_TAG + "-venue-zone-picker"}>
+                        <VenueZoneRow name="Managers" onOpen={() => setArrangementPage({ kind: "management" })} />
+                      </nav>
+                      <VenueAccessPanel
+                        key={place.id + selected.id + place.accessView?.revision}
+                        place={place}
+                        zone={selected}
+                        controller={controller}
+                        onClose={() => {}}
+                      />
+                    </>
                   ) : null}
                 </section>
               ) : null}
             </section>
           </div>
         ) : null}
-        {venueSection === "zones" && editingConnections && selected ? (
+        {!arrangementPage && venueSection === "zones" && editingConnections && selected ? (
           <section className={`${ELEMENT_TAG}-venue-connections`} aria-label="Zone connections">
             <div className={`${ELEMENT_TAG}-venue-manage-heading`}>
               <h2>Zone connections</h2>
@@ -739,10 +793,23 @@ export function VenueScreen({
             </div>
           </section>
         ) : null}
-        {!zoneDetailsOpen && venueSection === "people" && venue ? (
-          <VenuePeoplePanel key={place.id} place={place} controller={controller} />
+        {arrangementPage && venue ? (
+          <VenuePeoplePanel
+            key={
+              place.id +
+              (zoneDetailsOpen ? selected.id : "venue") +
+              arrangementPage.kind +
+              (arrangementPage.personId ?? "")
+            }
+            place={place}
+            zone={zoneDetailsOpen ? selected : undefined}
+            controller={controller}
+            page={arrangementPage}
+            onPage={setArrangementPage}
+            onBusyChange={setArrangementBusy}
+          />
         ) : null}
-        {!zoneDetailsOpen && venueSection === "access" && venue && !place.accessView?.canManage ? (
+        {!arrangementPage && !zoneDetailsOpen && venueSection === "access" && venue && !place.accessView?.canManage ? (
           <section className={ELEMENT_TAG + "-venue-zone-picker"} aria-label="Zone access">
             {zones.map((zone) => (
               <VenueZoneRow
@@ -758,14 +825,19 @@ export function VenueScreen({
             ))}
           </section>
         ) : null}
-        {!zoneDetailsOpen && venueSection === "access" && venue && place.accessView?.canManage ? (
-          <VenueAccessPanel
-            key={place.id + String(place.accessView?.revision)}
-            place={place}
-            zone={undefined}
-            controller={controller}
-            onClose={() => {}}
-          />
+        {!arrangementPage && !zoneDetailsOpen && venueSection === "access" && venue && place.accessView?.canManage ? (
+          <>
+            <nav className={ELEMENT_TAG + "-venue-zone-picker"}>
+              <VenueZoneRow name="Managers" onOpen={() => setArrangementPage({ kind: "management" })} />
+            </nav>
+            <VenueAccessPanel
+              key={place.id + String(place.accessView?.revision)}
+              place={place}
+              zone={undefined}
+              controller={controller}
+              onClose={() => {}}
+            />
+          </>
         ) : null}
         {placeBusyId === place.id ? <p role="status">Drawing or saving artwork…</p> : null}
         {placeProblem?.id === place.id ? <p role="alert">{placeProblem.text}</p> : null}

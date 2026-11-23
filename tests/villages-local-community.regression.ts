@@ -703,7 +703,12 @@ console.log(
   await service.movePlayerToResidence(target.id, "guest-room");
   let move = state.residences.find((row) => row.characterId === "player")!;
   const scope = move.agreement!.scope;
-  await assert.rejects(service.proposeVillageResidence("c", target.id, "player", "", "guest-room"), /reserved/);
+  await service.proposeVillageResidence("c", target.id, "player", "", "guest-room");
+  assert.equal(
+    state.residences.find((row) => row.characterId === "c")!.status,
+    "pending",
+    "Two people can propose sharing a bedroom within household capacity",
+  );
   for (const id of ["a", "b"]) decideResidenceMove(state, "player", true, "villager", id, scope, new Date());
   assert.equal(
     state.venues.find((v) => v.id === target.id)!.occupancy.playerHome,
@@ -716,11 +721,10 @@ console.log(
     false,
     "Withdrawal cancels the reservation",
   );
-  await service.proposeVillageResidence("c", target.id, "player", "", "guest-room");
   assert.equal(
     state.residences.find((row) => row.characterId === "c")!.status,
     "pending",
-    "Cancellation releases the exact room for another proposed move",
+    "Cancellation leaves the other person’s shared-bedroom proposal intact",
   );
   assert.equal(
     state.venues.find((v) => v.id === target.id)!.zones!.find((z) => z.id === "guest-room")!.ownerId,
