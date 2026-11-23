@@ -455,13 +455,14 @@ export function villageSettings(
         form: authoring ? venue.form : venue.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
         presentation: { ...venue.presentation, image: entrance?.image ?? null },
         access: undefined,
+        destinations: venue.destinations?.player ? { player: venue.destinations.player } : {},
         accessView: projectVenueAccess(venue, "player"),
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],
-        spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
+        spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal"),
         privateSpaces: zones
-          .filter((zone) => zone.kind === "private-residence")
+          .filter((zone) => zone.kind === "personal")
           .map((zone) => ({ ...zone, ownerId: zone.ownerId! })),
       };
     }),

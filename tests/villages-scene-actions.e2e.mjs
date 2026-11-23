@@ -19,8 +19,8 @@ await withBrowser(browser, async () => {
     const snapshot = structuredClone(fixture);
     snapshot.villagers = residents.slice(0, 1);
     snapshot.settings.venues[0].zones = [
-      { id: "exterior", name: "Entrance", kind: "exterior", venueClass: "workplace", state: {}, seen: true },
-      { id: "hall", name: "Common Space", kind: "public", venueClass: "community", state: {}, seen: true },
+      { id: "exterior", name: "Entrance", kind: "exterior", state: {}, seen: true },
+      { id: "hall", name: "Common Space", kind: "public", state: {}, seen: true },
     ];
     snapshot.settings.venues[0] = venueSnapshotFixture(snapshot.settings.venues[0]);
     let scene = {

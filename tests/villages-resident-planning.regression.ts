@@ -731,7 +731,7 @@ await runCase("resident-planning/strict-input", async () => {
   const f = fixture(),
     home = homeFixture("home", "residence"),
     secret = "REMOTE_ROOM_SENTINEL_774";
-  home.zones!.find((zone) => zone.kind === "shared-residence")!.description = secret;
+  home.zones!.find((zone) => zone.kind === "public")!.description = secret;
   home.residentIds = ["mara"];
   home.occupancy.residentCharacterId = "mara";
   home.access!.managerIds = ["mara"];

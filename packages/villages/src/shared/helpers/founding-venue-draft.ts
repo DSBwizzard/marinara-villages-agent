@@ -1,3 +1,4 @@
+import { applyFoundingPeople } from "./founding-people.js";
 import { zoneDayNightDefault } from "./zone-day-night.js";
 import type { VillageVenue } from "../contracts/village.js";
 import type { FoundingVenueSuggestion } from "../contracts/founding.js";
@@ -10,20 +11,23 @@ export function foundingVenueDraftSource(venue: VillageVenue): VillageVenue {
 
 export function applyFoundingVenueDraft(venue: VillageVenue, plan: FoundingVenueSuggestion): VillageVenue {
   if (!plan.zones) throw new Error("The Venue draft has no Zone plan.");
+  venue = applyFoundingPeople(venue, plan.people);
   const existing = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])];
   const zones = plan.zones.map((zone) => {
     const prior = existing.find((old) => old.id === zone.id);
-    const venueClass = zone.private ? "residence" : (venue.classes?.[0] ?? "other");
     const base = prior ?? {
       id: zone.id,
       ownerId: zone.ownerId,
-      venueClass,
       image: null,
       description: "",
-      access: draftZonePolicy(venue, { ownerId: zone.ownerId, venueClass }, zone.private),
+      access: draftZonePolicy(venue, { ownerId: zone.ownerId }, zone.private),
     };
     return {
       ...base,
+      ownerId: zone.ownerId,
+      access:
+        zone.access ??
+        (zone.ownerId !== (base.ownerId ?? "") ? draftZonePolicy(venue, zone, zone.private) : base.access),
       ...(zone.description !== base.description ? zoneDayNightDefault(zone.dayNight) : {}),
       name: zone.name,
       purpose: zone.purpose,

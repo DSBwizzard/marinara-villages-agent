@@ -2,7 +2,7 @@ import type { VillageState } from "../models/world.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { personalDestinationSpace } from "./venue-authoring.js";
-import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
+import { venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { assertResidenceAgreement, residenceProposal } from "./residence-agreement.js";
 import { initializeVenueAccess } from "./venue-access.js";
@@ -22,11 +22,7 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
     return false;
   }
   const destination = state.venues.find((venue) => venue.id === residence.proposedVenueId);
-  if (
-    !destination ||
-    !hasVenueClass(destination, "residence") ||
-    venueAssignedCount(destination) >= venueCapacity(destination)
-  )
+  if (!destination || venueAssignedCount(destination) >= venueCapacity(destination))
     throw conflict("The new venue is no longer available for this move.");
   const old = state.venues.find((venue) =>
     characterId === "player" ? venue.occupancy.playerHome : venueResidentIds(venue).includes(characterId),
@@ -82,7 +78,7 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
   } else destination.residentIds = [...venueResidentIds(destination), characterId];
   destination.playerSeenPrivateIds = (destination.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
   const zone = destination.zones!.find((zone) => zone.id === residence.agreement!.sleepZoneId)!;
-  if (zone.kind === "private-residence") {
+  if (zone.kind === "personal") {
     if (zone.image || zone.seen)
       destination.archivedZones = [
         ...(destination.archivedZones ?? []),
@@ -142,7 +138,6 @@ export function requestResidenceMove(
   }
   const destination = state.venues.find((venue) => venue.id === proposedVenueId);
   if (!destination) throw notFound("That place is no longer in the village.");
-  if (!hasVenueClass(destination, "residence")) throw badRequest("Choose a Residence for this move.");
   if (destination.constructionStatus === "worksite") throw conflict("This Residence is still under construction.");
   const current = state.residences.find((residence) => residence.characterId === characterId);
   const currentVenueId =

@@ -1,3 +1,7 @@
+import { FoundingVenueReview } from "./FoundingVenueReview.js";
+import { FoundingArrangements } from "./FoundingArrangements.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
+import { newSetupVenue } from "./FoundingPanels.js";
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { simpleFoundingMap } from "./simple-map.js";
 import { foundingHomeMembers, selectFoundingHomes } from "./founding-homes.js";
@@ -550,10 +554,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     const mapReady = !setupMapBusy;
     const venueShapeProblem = foundingVenueShapeProblem(setupVenues);
     const standardHomes = setupVenues.every(
-      (venue) => !venue.classes?.includes("residence") || foundingHomeMembers(venue).length === 1,
+      (venue) => foundingHomeMembers(venue).length <= (venue.residenceCapacity ?? 1),
     );
     const missingSharedVenue =
-      standardHomes && setupVenues.filter((venue) => !venue.classes?.includes("residence")).length < 2;
+      standardHomes && setupVenues.filter((venue) => !foundingHomeMembers(venue).length).length < 2;
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
         {setupMapProblem ? (
@@ -661,7 +665,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     };
     const replaceLegacyHomes = async () => {
       const id = setupContext.openingVenueId;
-      const retained = setupVenues.filter((venue) => !venue.classes?.includes("residence"));
+      const retained = setupVenues.filter((venue) => !foundingHomeMembers(venue).length);
       if (
         !(await confirmStarterHomes(
           "Replace the old Residences and their room details and artwork with one starter home per resident?",
@@ -978,6 +982,16 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     );
     const venuesPanel = (
       <div className="villages-founding-places">
+        {setupWorkspace.venueReview && (
+          <FoundingVenueReview
+            review={setupWorkspace.venueReview}
+            current={setupVenues}
+            people={wizardVillagers}
+            onUse={setSetupVenues}
+            onDismiss={() => setSetupWorkspace((state) => ({ ...state, venueReview: undefined }))}
+            onProblem={setSetupProblem}
+          />
+        )}
         <QuickStartVenues
           daylight={storybookDaylight}
           mobile={phone}
@@ -988,6 +1002,45 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           onRetrySaving={() => void retrySetupSaving()}
           actions={
             <>
+              {!reviewingMap && (
+                <label>
+                  Venue ideas
+                  <textarea
+                    autoComplete="off"
+                    maxLength={4096}
+                    rows={2}
+                    value={setupWorkspace.venueBrief ?? ""}
+                    placeholder="A café with Rowan living upstairs and working weekdays…"
+                    onChange={(e) => setSetupWorkspace((state) => ({ ...state, venueBrief: e.target.value }))}
+                  />
+                </label>
+              )}
+              {!reviewingMap && (
+                <button
+                  type="button"
+                  disabled={chapterDisabled || setupVenues.length >= 16}
+                  onClick={() => {
+                    const id = "venue:" + createVillagesClientId();
+                    const row = newSetupVenue(id, 0.5, 0.5);
+                    setSetupVenues((rows) => [
+                      ...rows,
+                      { ...row, presentation: { ...row.presentation, x: null, y: null } },
+                    ]);
+                    setSelectedSetupVenueId(id);
+                  }}
+                >
+                  Add Venue
+                </button>
+              )}
+              {!reviewingMap && selectedSetupVenueId && (
+                <button
+                  type="button"
+                  disabled={chapterDisabled}
+                  onClick={() => void suggestSetupVenues({ venueId: selectedSetupVenueId, fullVenue: true })}
+                >
+                  Suggest this Venue
+                </button>
+              )}
               {phone ? modelButton : null}
               {reviewingMap ? (
                 <details
@@ -1161,7 +1214,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           }
         >
           {setupStep === FOUNDING_STEP.Venues && (phone || explainingStarters)
-            ? "A new Village starts with 2 public locations, and each of you gets a home with two rooms to start. Don't worry, you can cram everyone into the same house later if you want to. I won't judge."
+            ? "Start with homes and two public places. A Venue can be someone’s home, workplace and a public destination. Open Manage to choose who lives and works there."
             : setupStep === FOUNDING_STEP.Review
               ? reviewStage === "confirm"
                 ? "Ready to found " + setupName + "?"
@@ -1428,7 +1481,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           {setupStep === FOUNDING_STEP.Review && (reviewStage === "people" || reviewStage === "setting") ? (
             <FoundingReview section={reviewStage} actions={reviewReplies}>
               {reviewStage === "people" ? (
-                peoplePanel
+                <>
+                  {peoplePanel}
+                  <FoundingArrangements venues={setupVenues} people={wizardVillagers} />
+                </>
               ) : (
                 <FoundingReviewSetting
                   controller={controller}

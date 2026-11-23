@@ -20,7 +20,7 @@ export type PlaceDirectory = {
   total: number;
   counts: Record<PlaceKind, number>;
 };
-export type PlaceDetail = PlaceSummary & { classified: boolean; location: import("./village.js").VillageVenue };
+export type PlaceDetail = PlaceSummary & { prepared: boolean; location: import("./village.js").VillageVenue };
 export type PlaceRequest = {
   worldScope: string;
   requestId: string;

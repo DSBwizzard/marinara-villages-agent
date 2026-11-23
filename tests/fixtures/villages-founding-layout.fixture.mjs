@@ -239,7 +239,7 @@ export async function verifyFoundingLayout(group) {
                 .filter((row) => !body.targetVenueId || row.id === body.targetVenueId)
                 .map((row) => {
                   const shared = row.residentIds.length + Number(row.playerHome) > 1;
-                  const layout = row.venueClass === "residence" && !shared ? "both" : "common";
+                  const layout = (row.playerHome || !!row.residentIds?.length) && !shared ? "both" : "common";
                   return {
                     ...(body.mode === "draft-venue"
                       ? {
@@ -258,7 +258,7 @@ export async function verifyFoundingLayout(group) {
                       : {}),
                     id: row.id,
                     name:
-                      row.venueClass === "residence"
+                      row.playerHome || !!row.residentIds?.length
                         ? shared
                           ? "Household home"
                           : row.playerHome
@@ -267,7 +267,7 @@ export async function verifyFoundingLayout(group) {
                         : row.id === "founding-garden"
                           ? "Community Garden"
                           : "Community Courtyard",
-                    form: row.venueClass === "residence" ? "A coastal home" : "An open courtyard",
+                    form: row.playerHome || !!row.residentIds?.length ? "A coastal home" : "An open courtyard",
                     description: "A sheltered approach beside the coast.",
                     layout,
                     commonName: "Common room",
@@ -424,7 +424,7 @@ export async function verifyFoundingLayout(group) {
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
-            const introduction = guide.getByText(/^A new Village starts with 2 public locations/);
+            const introduction = guide.getByText(/^Start with homes and two public places/);
             await expect(introduction).toBeVisible();
             await expect(work).toHaveCount(0);
             await layer("Venue");
@@ -1705,7 +1705,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("people");
         await advance();
         await expect(root).toHaveAttribute("data-step", "2");
-        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toHaveCount(0);
+        await expect(root.getByText(/^Start with homes and two public places/)).toHaveCount(0);
         await enterChapter();
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
@@ -1848,7 +1848,7 @@ export async function verifyFoundingLayout(group) {
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.locator("[data-explanation]")).toHaveCount(1);
-        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toBeVisible();
+        await expect(root.getByText(/^Start with homes and two public places/)).toBeVisible();
         await expect(work).toHaveCount(0);
         await enterChapter();
         await retreat();
@@ -1857,7 +1857,7 @@ export async function verifyFoundingLayout(group) {
         if (phone)
           await expect(root.locator(".villages-setting-dialogue:visible")).not.toHaveAttribute("data-reader-next-page");
         await finishPassage(root, -1);
-        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toBeVisible();
+        await expect(root.getByText(/^Start with homes and two public places/)).toBeVisible();
         await expect(work).toHaveCount(0);
         await retreat();
         await expect(root).toHaveAttribute("data-step", "2");
@@ -2123,7 +2123,7 @@ export async function verifyFoundingLayout(group) {
           });
         const prepared = await page.evaluate(() => window.featureController.setupVenues);
         for (const venue of prepared) {
-          const community = venue.classes.includes("community");
+          const community = !(venue.occupancy.playerHome || !!venue.residentIds?.length);
           assert.equal(venue.spaces.length, community ? 2 : 1);
           assert.equal(venue.privateSpaces.length, community ? 0 : 1);
           if (!community) {
@@ -2363,6 +2363,7 @@ export async function verifyFoundingLayout(group) {
           .getByRole("button", { name: "Replace and suggest", exact: true })
           .click();
         await expect.poll(() => suggestions).toBe(2);
+        await root.getByRole("button", { name: "Use changes", exact: true }).click();
         await expect
           .poll(() =>
             page.evaluate(
@@ -2374,7 +2375,7 @@ export async function verifyFoundingLayout(group) {
         assert.ok(
           await page.evaluate(() =>
             window.featureController.setupVenues
-              .filter((row) => row.classes.includes("residence"))
+              .filter((row) => row.occupancy.playerHome || !!row.residentIds?.length)
               .every((row) => row.residentIds.length + Number(row.occupancy.playerHome) === 1),
           ),
         );

@@ -52,7 +52,6 @@ function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): Villa
     id,
     name: id,
     form: "A bank built inside a tent",
-    classes,
     description: "Canvas and a bank sign",
     presentation: { image: null, x: 0.2, y: 0.3 },
     category: "",
@@ -127,17 +126,17 @@ const personal = (ownerId: string) => ({
   id: "private:" + ownerId,
   name: "Bedroom",
   purpose: "Rest",
-  kind: "private-residence" as const,
+  kind: "personal" as const,
   ownerId,
   connectedTo: ["exterior"],
   preparation: { status: "pending" as const },
 });
 const staffRoom = () => ({
   ...defaultVenueSpace("workplace", "An existing staff room"),
-  id: "staff",
+  id: "restricted",
   name: "Staff room",
   purpose: "Work",
-  kind: "staff" as const,
+  kind: "restricted" as const,
   connectedTo: ["exterior"],
   preparation: { status: "pending" as const },
 });
@@ -163,14 +162,14 @@ for (const place of authored.venues)
     }
 assert.equal(resolveVenueZone(authored.venues[1]!, "private:player")!.description, "My journal and hammock");
 assert.equal(resolveVenueZone(authored.venues[1]!, "private:player")!.image!.id, "art");
-assert.equal(authored.venues[2]!.zones!.filter((z) => z.kind === "staff").length, 1);
-assert.equal(authored.venues[3]!.zones!.filter((z) => z.kind === "private-residence").length, 1);
-assert.equal(authored.venues[3]!.zones!.filter((z) => z.kind === "staff").length, 1);
+assert.equal(authored.venues[2]!.zones!.filter((z) => z.kind === "restricted").length, 1);
+assert.equal(authored.venues[3]!.zones!.filter((z) => z.kind === "personal").length, 1);
+assert.equal(authored.venues[3]!.zones!.filter((z) => z.kind === "restricted").length, 1);
 assert.equal(
-  authored.venues[5]!.zones!.filter((z) => ["staff", "restricted", "private-residence"].includes(z.kind)).length,
+  authored.venues[5]!.zones!.filter((z) => ["restricted", "restricted", "personal"].includes(z.kind)).length,
   0,
 );
-const staff = resolveVenueZone(authored.venues[2]!, "staff")!;
+const staff = resolveVenueZone(authored.venues[2]!, "restricted")!;
 assert.equal(zoneClosed(authored, authored.venues[2]!, staff), true);
 assert.deepEqual(zoneControllerIds(authored.venues[2]!, staff), ["a", "b"]);
 assert.equal(canOccupyZone(authored.venues[2]!, staff, "a"), true);
@@ -273,7 +272,7 @@ const restore = configureVillagesRuntime({
               rooms: lastInput.rooms.map((r: any) => ({
                 venueId: r.venueId,
                 id: r.id,
-                name: r.id === "staff" ? "Bank vault" : r.name,
+                name: r.id === "restricted" ? "Bank vault" : r.name,
                 description: "Secret shell collection in a canvas corner",
               })),
             }),
@@ -315,7 +314,7 @@ async function main() {
     let saved = await readVillageState({ memories: true });
     assert.ok(saved.venues.every((v) => v.zones!.every((z) => !z.preparation || z.preparation.status === "ready")));
     assert.equal(
-      resolveVenueZone(saved.venues[2]!, "staff")!.name,
+      resolveVenueZone(saved.venues[2]!, "restricted")!.name,
       "Staff room",
       "Preparation preserves the authored Zone name",
     );
@@ -330,7 +329,7 @@ async function main() {
         .characters.some((c: any) => c.personality.includes("Careful")),
     );
     const view = villageSettings(saved, { name: "Player", description: "", personaId: "" } as any);
-    const hidden = view.venues.find((v) => v.id === "bank")!.zones!.find((z) => z.id === "staff")!;
+    const hidden = view.venues.find((v) => v.id === "bank")!.zones!.find((z) => z.id === "restricted")!;
     assert.equal(hidden.description, "");
     assert.equal(hidden.observed, undefined);
     assert.equal(hidden.image, null);
@@ -384,7 +383,7 @@ async function main() {
             action: "invite",
             operationId: "visit-vault",
             expectedRevision: place.access!.revision,
-            zoneId: "staff",
+            zoneId: "restricted",
             visitorId: "player",
             duration: "visit",
             accompanied: false,
@@ -397,21 +396,21 @@ async function main() {
       });
       const { enterVenue } = await import("../packages/villages/src/server/features/scenes/venue-session.js");
       const { activeVenueSession } = await import("../packages/villages/src/server/features/scenes/live-session.js");
-      const visit = await enterVenue("bank", "staff");
-      assert.equal(visit.zoneId, "staff");
+      const visit = await enterVenue("bank", "restricted");
+      assert.equal(visit.zoneId, "restricted");
       assert.equal(visit.pendingAccessClaim, undefined);
       assert.equal(
         visit.continuity!.facts.venues.find((place) => place.id === "bank")!.access!.permissions[0].sceneId,
         visit.id,
       );
-      await Promise.all([generateFirstZoneImage("bank", "staff"), generateFirstZoneImage("bank", "staff")]);
+      await Promise.all([generateFirstZoneImage("bank", "restricted"), generateFirstZoneImage("bank", "restricted")]);
       saved = await readVillageState({ memories: true });
       assert.equal(saved.venues[2].access!.permissions[0].sceneId, visit.id);
-      assert.ok(resolveVenueZone(saved.venues[2]!, "staff")!.initialImageAttemptedAt);
+      assert.ok(resolveVenueZone(saved.venues[2]!, "restricted")!.initialImageAttemptedAt);
       for (let retry = 0; draws === 0 && retry < 100; retry++) await new Promise((resolve) => setTimeout(resolve, 10));
       assert.ok(draws > 0, "first invited entry reaches the image service");
       const attempted = draws;
-      await generateFirstZoneImage("bank", "staff");
+      await generateFirstZoneImage("bank", "restricted");
       assert.equal(draws, attempted, "failed first image is never retried");
       await mutateVillageState((current) => {
         current.venues[2].workerIds = [];
@@ -422,9 +421,9 @@ async function main() {
         "exterior",
         "live access follows current worker authority while preserving safe egress",
       );
-      await assertVenueImageAccess("bank", "staff");
+      await assertVenueImageAccess("bank", "restricted");
       assert.equal(
-        resolveVenueZone((await readVillageState({ memories: true })).venues[2], "staff").seen,
+        resolveVenueZone((await readVillageState({ memories: true })).venues[2], "restricted").seen,
         true,
         "previous discovery remains known",
       );
@@ -453,12 +452,10 @@ async function privateInteriorLifecycle() {
           id: "bedroom",
           name: "Bedroom",
           purpose: "Sleeping",
-          venueClass: "residence",
           roomSpecification: "A small room with a garden-facing window",
         },
       ],
     },
-    ["residence"],
     "",
     () => null,
   );

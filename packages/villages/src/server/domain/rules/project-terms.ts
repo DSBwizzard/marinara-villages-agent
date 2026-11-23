@@ -25,11 +25,8 @@ export function validImage(value: unknown): VillageVenueImage | null {
   return /^global-gallery:[^\\s]{1,200}$/u.test(ref) && url.startsWith("/") && id ? { ref, url, id } : null;
 }
 function globalChange(venue: VillageVenue, change: VillageProjectChange) {
-  const classes =
-    change.classes && JSON.stringify([...change.classes].sort()) !== JSON.stringify([...(venue.classes ?? [])].sort());
   const capacity = change.capacity !== undefined && change.capacity !== (venue.residenceCapacity ?? 1);
   return {
-    classes: classes ? change.classes : undefined,
     capacity: capacity ? change.capacity : undefined,
     ...(change.form !== undefined ? { form: change.form } : {}),
   };
@@ -46,13 +43,11 @@ export function renovationAffectedIds(
   const global = globalChange(venue, change);
   const building = global.form !== undefined || !!change.roomEdits?.some(({ zoneId }) => zoneId === "exterior");
   const residence =
-    building ||
-    global.classes ||
-    global.capacity !== undefined ||
-    [...touched, ...added].some((zone) => zone.kind === "shared-residence");
+    building || global.capacity !== undefined || [...touched, ...added].some((zone) => zone.kind === "public");
   const workplace =
-    building || global.classes || [...touched, ...added].some((zone) => zone.venueClass === "workplace");
-  if (!ids.length && !building && !global.classes && global.capacity === undefined) return [];
+    building ||
+    [...touched, ...added].some((zone) => venue.workerIds?.some((id) => venue.destinations?.[id]?.work === zone.id));
+  if (!ids.length && !building && global.capacity === undefined) return [];
   return [
     ...new Set([
       ...(venue.access?.managerIds ?? []),
@@ -90,8 +85,8 @@ export function approvalScope(
           zone &&
           (zone.ownerId === actorId ||
             zone.controllerIds?.includes(actorId) ||
-            (resident && zone.kind === "shared-residence") ||
-            (worker && zone.venueClass === "workplace") ||
+            (resident && zone.kind === "public") ||
+            (worker && venue.destinations?.[actorId]?.work === zone.id) ||
             (old && zoneControllerIds(venue, old).includes(actorId))),
       )
     );
@@ -114,7 +109,6 @@ export function projectDesignKey(project: VillageProject): string {
   return JSON.stringify([
     project.kind,
     project.kind !== "new-venue" ? project.venueId : "",
-    project.venueDraft?.classes,
     project.venueDraft?.description,
     project.venueDraft?.position,
     plan

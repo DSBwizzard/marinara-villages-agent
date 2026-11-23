@@ -344,7 +344,6 @@ async function foundingConnectionOwnership() {
   const draftRows = [
     {
       id: "equal-venue",
-      venueClass: "residence",
       residentCharacterId: "equal-resident",
       residentIds: ["equal-resident"],
       playerHome: false,
@@ -357,7 +356,6 @@ async function foundingConnectionOwnership() {
       id: "player-room",
       residentIds: [],
       playerHome: true,
-      venueClass: "residence",
       residentCharacterId: "",
       name: "Your room",
       form: "Room",
@@ -368,7 +366,6 @@ async function foundingConnectionOwnership() {
       id: "community",
       residentIds: [],
       playerHome: false,
-      venueClass: "community",
       residentCharacterId: "",
       name: "Hall",
       form: "Hall",
@@ -407,11 +404,11 @@ async function foundingConnectionOwnership() {
         venues: [
           ...[
             venueFixture({
+              spaces: [{ id: "residence", description: "Blue door", image: null }],
               id: "equal-venue",
               name: label + " room",
               form: "Room",
               description: "Blue door",
-              classes: ["residence"],
               residentIds: ["equal-resident"],
               presentation: { mapId: "", image: null, x: null, y: null },
               occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
@@ -659,9 +656,7 @@ async function foundingConnectionOwnership() {
                 ? generateFoundingVenueImage({ ...scenarioInput, venue: draftRows[0] })
                 : operation === "upload"
                   ? uploadFoundingVenueImage({ image: png, name: "Uploaded room" })
-                  : draftVillageVenueDescriptions("Quiet harbor", [
-                      { id: "equal-venue", name: "Room", classes: ["residence"] },
-                    ]),
+                  : draftVillageVenueDescriptions("Quiet harbor", [{ id: "equal-venue", name: "Room" }]),
       );
       const outcome = a.scope.run(() =>
         work.then(
@@ -819,7 +814,6 @@ async function foundingArchitecturePrompts() {
   const venue = {
     id: "bungalow",
     name: "Professor Mari's Bungalow",
-    venueClass: "residence",
     residentIds: ["resident"],
     playerHome: true,
     form: "A pleasant resort bungalow",
@@ -990,11 +984,10 @@ await main()
     false,
     "Settled drafts discard retired grouping state",
   );
-  const oldHome = newSetupVenue("founding-home:player", "residence", 0.2, 0.3, true);
+  const oldHome = newSetupVenue("founding-home:player", 0.2, 0.3, true);
   const legacyDraft = { ...draft, venues: [oldHome] };
   restore(JSON.parse(JSON.stringify(legacyDraft)));
-  assert.equal(values.setSetupVenues[0].privateSpaces.length, 1);
-  assert.equal(values.setSetupVenues[0].destinations.player.sleep, "private:base");
+  assert.deepEqual(values.setSetupVenues[0], oldHome, "Restoring a draft preserves its authored layout");
   for (const held of [
     { ...legacyDraft, interruptedGeneration: true },
     { ...legacyDraft, editorOriginal: oldHome },

@@ -32,9 +32,9 @@ const cards = ["outgoing", "reserved", "absent"].map((id) =>
   } as any),
 );
 const venue = venueFixture({
+  spaces: [{ id: "community", description: "A clearing with a bench.", image: null }],
   id: "camp",
   name: "Camp",
-  classes: ["community"],
   description: "A clearing with a bench.",
 });
 const state = coerceVillageState({

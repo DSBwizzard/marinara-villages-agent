@@ -233,7 +233,7 @@ export type VenueRequest = {
   requestQuote?: string;
   source?: "chat" | "background";
   proposedAt: string;
-  venueDraft?: { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string };
+  venueDraft?: { name: string; description: string };
 };
 
 export type ProjectRoomEdit = { zoneId: string; entryId?: string; text: string | null };
@@ -254,7 +254,6 @@ export type BuildProject = {
   venueDraft?: {
     name: string;
     description: string;
-    classes: VenueClass[];
     position?: { mapId?: string; x: number | null; y: number | null };
   };
   plan?: {
@@ -277,7 +276,6 @@ export type BuildProject = {
     change: {
       form?: string;
       roomEdits?: ProjectRoomEdit[];
-      classes?: VenueClass[];
       capacity?: number;
       zones?: VillageZoneDraft[];
       detail: string;
@@ -354,6 +352,8 @@ export type VillageVenueImage = {
  * somewhere somebody lives.
  */
 export type VillageVenue = {
+  /** Founding draft input only; live snapshots use accessView. */
+  access?: import("../helpers/venue-access.js").VenueAccessState;
   pictureReference?: VillageVenueImage;
   referenceAppliedId?: string;
   pictureContext?: string;
@@ -371,11 +371,10 @@ export type VillageVenue = {
   buildProjectId?: string;
   name: string;
   form?: string;
-  classes?: Array<"residence" | "workplace" | "community" | "other">;
   zones?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       name: string;
-      kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
+      kind: "exterior" | "public" | "personal" | "restricted";
       closed?: boolean;
       ownerId?: string;
       purpose?: string;
@@ -396,7 +395,6 @@ export type VillageVenue = {
     access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
     accessView?: import("../helpers/venue-access.js").ZoneAccessView;
     controllerIds?: string[];
-    venueClass: "residence" | "workplace" | "community" | "other";
     description: string;
     dayNight?: boolean;
     daylightReady?: boolean;
@@ -457,16 +455,7 @@ export type TownMapFit = "cover" | "stretch" | "contain";
 /** Reviewed zone terms; artwork and discovered state are not part of a layout draft. */
 export type VillageZoneDraft = Pick<
   NonNullable<VillageVenue["zones"]>[number],
-  | "id"
-  | "name"
-  | "kind"
-  | "description"
-  | "roomSpecification"
-  | "venueClass"
-  | "purpose"
-  | "controllerIds"
-  | "ownerId"
-  | "connectedTo"
+  "id" | "name" | "kind" | "description" | "roomSpecification" | "purpose" | "controllerIds" | "ownerId" | "connectedTo"
 >;
 
 /**
@@ -762,7 +751,6 @@ export type SceneView = {
   placeId: string;
   /** The name that place had when the room opened, for the plate. */
   placeName: string;
-  spaceClass?: VenueClass;
   zoneId?: string;
   trespassing?: true;
   /** Latest player-visible arrival; earlier dialogue remains in History. */
@@ -957,8 +945,6 @@ export type VillageConnectionSettings = {
   narrationConnectionId: string;
   imageConnectionId: string;
 };
-
-export type VenueClass = NonNullable<VillageVenue["classes"]>[number];
 
 export type SetupMapRequest = {
   id: string;

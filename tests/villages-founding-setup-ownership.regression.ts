@@ -45,7 +45,6 @@ function input(name: string) {
         form: "A room",
         description: "A welcoming doorway",
         category: ["hall", "garden"].includes(id) ? "public-center" : "house",
-        classes: [["hall", "garden"].includes(id) ? "community" : "residence"],
         layoutVersion: 1,
         layout: id === "same" ? "both" : "common",
         spaces: [
@@ -54,7 +53,6 @@ function input(name: string) {
             name: "Shared room",
             purpose: "Conversation",
             description: "A table",
-            venueClass: ["hall", "garden"].includes(id) ? "community" : "residence",
           },
         ],
         privateSpaces:
@@ -65,7 +63,6 @@ function input(name: string) {
                   name: "Private room",
                   purpose: "Rest",
                   description: "A narrow oak bed",
-                  venueClass: "residence",
                   ownerId: "same",
                 },
               ]
@@ -423,7 +420,7 @@ assert.deepEqual(
   await suggestions.service.draftVenueDescriptions({
     setting: "Observatory",
     selectedLorebookIds: ["book"],
-    venues: [{ id: "hall", name: "Hall", classes: ["community"] }],
+    venues: [{ id: "hall", name: "Hall" }],
   }),
   { descriptions: { hall: "Suggestions description" } },
 );
@@ -474,7 +471,7 @@ await b.run(async () =>
   assert.deepEqual(
     await draftVenueDescriptions({
       setting: "Observatory",
-      venues: [{ id: "hall", name: "Hall", classes: ["community"] }],
+      venues: [{ id: "hall", name: "Hall" }],
     }),
     { descriptions: { hall: "Current description" } },
   ),
@@ -490,9 +487,7 @@ b.run(() => b.run(releaseB));
 b.dispose();
 
 await assert.rejects(
-  b.run(() =>
-    draftVenueDescriptions({ setting: "Observatory", venues: [{ id: "hall", name: "Hall", classes: ["community"] }] }),
-  ),
+  b.run(() => draftVenueDescriptions({ setting: "Observatory", venues: [{ id: "hall", name: "Hall" }] })),
   /not configured/,
 );
 console.log(

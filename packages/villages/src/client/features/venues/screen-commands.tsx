@@ -8,7 +8,7 @@ import { useVenueLayoutDraft } from "./layout-draft.js";
 import type { VenuesState } from "./useVenuesState.js";
 
 function proposalDraftKey(draft: NonNullable<VenuesState["venueProposalDraft"]>) {
-  return JSON.stringify([draft.classes, draft.capacity, draft.title, draft.description]);
+  return JSON.stringify([draft.capacity, draft.title, draft.description]);
 }
 
 /** Always mounted by the shell; the Venue screen supplies explicit current inputs. */
@@ -262,7 +262,6 @@ export function useVenueScreenCommands(ports: {
         method: "POST",
         body: JSON.stringify({
           requestId: createVillagesClientId(),
-          classes: venueProposalDraft.classes,
           capacity: venueProposalDraft.capacity,
           title: venueProposalDraft.title || `Change ${place.name}`,
           detail: venueProposalDraft.description || `Change Venue Classes or capacity at ${place.name}.`,

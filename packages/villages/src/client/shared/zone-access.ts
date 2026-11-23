@@ -26,11 +26,11 @@ export function zoneAccessLabel(zone: Zone, venue: VillageVenue, inScene = false
     case "refused":
       return "Entry refused for this visit";
     case "permission-required":
-      return zone.kind === "staff" ? "Staff only" : "Permission required";
+      return zone.kind === "restricted" ? "Staff only" : "Permission required";
     case "invitation":
       return access.invitation ? invitationLabel(access.invitation) : "Invited";
     case "member":
-      return zone.kind === "staff" ? "Staff access" : "Open to you";
+      return zone.kind === "restricted" ? "Staff access" : "Open to you";
     case "entrance":
     case "public":
       return "Open";

@@ -1,3 +1,4 @@
+import { foundingPeopleSchema } from "../../../shared/helpers/founding-people.js";
 import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { asTrimmedString } from "./coerce.js";
@@ -48,7 +49,6 @@ export function parseFoundingVenueSuggestions(
   ids: readonly string[],
   template?: readonly {
     id: string;
-    venueClass: string;
     residentIds?: string[];
     playerHome?: boolean;
   }[],
@@ -75,7 +75,7 @@ export function parseFoundingVenueSuggestions(
     };
     const layout = row.layout;
     const venue = template?.find((venue) => venue.id === id);
-    if (venue && venue.venueClass === "residence" && layout === "exterior")
+    if (venue && (venue.playerHome || !!venue.residentIds?.length) && layout === "exterior")
       throw badRequest("Residences require Common or Private Space.");
     if (!["exterior", "common", "private", "both"].includes(String(layout)))
       throw badRequest("Choose a valid suggested Zone layout.");
@@ -114,8 +114,18 @@ export function parseFoundingVenueSuggestions(
     for (const key of ["dayNight", "commonDayNight", "privateDayNight"] as const)
       if (row[key] !== undefined && typeof row[key] !== "boolean")
         throw badRequest("The Zone daylight decision must be on or off.");
+    const people = row.people === undefined ? undefined : foundingPeopleSchema.parse(row.people);
+    const actors = new Set(["player", ...(template ?? []).flatMap((row) => row.residentIds ?? [])]);
+    if (
+      people &&
+      [...people.residentIds, ...people.managerIds, ...people.work.map((work) => work.characterId)].some(
+        (id) => !actors.has(id),
+      )
+    )
+      throw badRequest("Use only the chosen founding people.");
     return {
       id,
+      ...(people ? { people } : {}),
       ...(typeof row.dayNight === "boolean" ? { dayNight: row.dayNight } : {}),
       ...(typeof row.commonDayNight === "boolean" ? { commonDayNight: row.commonDayNight } : {}),
       ...(typeof row.privateDayNight === "boolean" ? { privateDayNight: row.privateDayNight } : {}),
@@ -145,7 +155,6 @@ export type DraftRow = {
   form: string;
   description: string;
   spaceDescription: string;
-  venueClass: "residence" | "community" | "workplace" | "other";
   residentIds: string[];
   playerHome: boolean;
   layout?: string;
@@ -161,9 +170,6 @@ export function rowsOf(value: unknown): DraftRow[] {
     throw badRequest("Choose one to sixteen founding Venues.");
   return value.map((raw) => {
     const row = record(raw);
-    const venueClass = row.venueClass;
-    if (!["residence", "community", "workplace", "other"].includes(String(venueClass)))
-      throw badRequest("Choose a founding Venue Class.");
     const id = asTrimmedString(row.id).slice(0, 100);
     if (!id) throw badRequest("A founding venue needs an id.");
     if ([row.description, row.spaceDescription].some((value) => typeof value === "string" && value.length > 4000))
@@ -175,7 +181,6 @@ export function rowsOf(value: unknown): DraftRow[] {
       form: asTrimmedString(row.form).slice(0, 2000),
       description: asTrimmedString(row.description),
       spaceDescription: asTrimmedString(row.spaceDescription),
-      venueClass: venueClass as DraftRow["venueClass"],
       residentIds:
         Array.isArray(row.residentIds) && row.residentIds.every((id) => typeof id === "string" && id.trim())
           ? (row.residentIds as string[])

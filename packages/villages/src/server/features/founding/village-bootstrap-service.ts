@@ -21,7 +21,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
 
   async function draftVillageVenueDescriptions(
     setting: string,
-    venues: readonly { id: string; name: string; classes: readonly string[]; homeKind?: string | null }[],
+    venues: readonly { id: string; name: string; homeKind?: string | null }[],
     lore: readonly string[] = [],
     loreUse: readonly LoreUse[] = [],
   ): Promise<Record<string, string>> {
@@ -30,7 +30,6 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     const rows = venues.map((venue) => ({
       id: boundText(venue.id, 100),
       name: boundText(venue.name, MAX_VENUE_NAME_LENGTH),
-      classes: venue.classes,
       homeKind: boundText(venue.homeKind, 60),
     }));
     if (rows.some((row) => !row.id || !row.name)) throw badRequest("Each place needs a name before describing it.");

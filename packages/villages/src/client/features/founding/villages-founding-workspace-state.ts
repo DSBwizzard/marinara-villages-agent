@@ -4,6 +4,8 @@ import { foundingHomeMembers, foundingSleepZones } from "./founding-homes.js";
 import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
+  venueBrief?: string;
+  venueReview?: { baseline: string; venues: VillageVenue[] };
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   settingBrief?: string;
@@ -91,14 +93,9 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
         if (!zone.name?.trim()) add("zone-name", "Give the Zone a name.", zone.id);
         if (!zone.purpose?.trim()) add("zone-purpose", "Describe what the Zone is used for.", zone.id);
       }
-      if ((!existing || !privateZone || zone.venueClass !== "residence") && !zone.description.trim())
+      if ((!existing || !privateZone) && !zone.description.trim())
         add("zone-appearance", "Describe the Zone appearance.", zone.id);
-      if (
-        privateZone &&
-        !zone.access &&
-        !["residence", "workplace"].includes(zone.venueClass) &&
-        !zone.controllerIds?.length
-      )
+      if (privateZone && !zone.access && !zone.ownerId && !zone.controllerIds?.length)
         add("controller", "Choose a controller for this Zone.", zone.id);
     }
     return issues;

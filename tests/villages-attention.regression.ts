@@ -6,7 +6,6 @@ const stamp = "2026-10-18T12:00:00.000Z";
 const house: any = venueFixture({
   id: "house",
   name: "House",
-  classes: ["community", "workplace"],
   description: "The outside.",
   category: "",
   spaces: [defaultVenueSpace("community"), defaultVenueSpace("workplace")],
@@ -27,7 +26,12 @@ const house: any = venueFixture({
     { ...defaultVenueSpace("other"), id: "exterior", name: "Exterior", kind: "exterior", seen: true },
     { ...defaultVenueSpace("community"), id: "common", name: "Common Space", kind: "public", seen: true },
     { ...defaultVenueSpace("workplace"), id: "workshop", name: "Workshop", kind: "public", seen: true },
-    { ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"), id: "office", name: "Secret Office", kind: "staff" },
+    {
+      ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"),
+      id: "office",
+      name: "Secret Office",
+      kind: "restricted",
+    },
   ],
 });
 

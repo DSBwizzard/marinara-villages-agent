@@ -17,9 +17,6 @@ import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { badRequest, conflict, notFound, safeFailureMessage } from "../../domain/rules/errors.js";
 import {
   establishPlace,
-  classifyPlace,
-  placeClassesSchema,
-  PLACE_CLASSIFICATION_INSTRUCTION,
   PLACE_GENERATION_INSTRUCTION,
   placeDraftSchema,
   projectPlace,
@@ -88,7 +85,7 @@ export async function readPlace(id: string) {
   if (venue) return { promoted: true, id };
   const place = state.worldPlaces.places[id];
   if (!place || place.disabled || !place.knownBy.includes("player")) throw notFound("That Place is not known.");
-  return { ...placeSummary(place), classified: place.classified === true, location: projectPlace(state, place) };
+  return { ...placeSummary(place), prepared: place.prepared === true, location: projectPlace(state, place) };
 }
 
 export async function admitPlace(id: string, value: unknown) {
@@ -177,7 +174,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
   const priorPlace = placeId ? world.worldPlaces.places[placeId] : undefined;
   if (placeId && (!priorPlace || priorPlace.disabled || !priorPlace.knownBy.includes("player")))
     throw notFound("That Place is not known.");
-  if (priorPlace?.prepared && priorPlace.classified) return { placeId: priorPlace.id, status: "ready" };
+  if (priorPlace?.prepared) return { placeId: priorPlace.id, status: "ready" };
   if (priorPlace && input.expectedRevision !== priorPlace.revision)
     throw conflict("The Place changed. Refresh it first.");
   const fingerprint = JSON.stringify([kind, placeId ?? "", input.mapId, input.intent, input.expectedRevision]);
@@ -185,7 +182,6 @@ export async function generatePlace(value: unknown, placeId?: string) {
   if (operation && operation.fingerprint !== fingerprint) throw conflict("This request ID was already used.");
   if (operation && operation.status !== "started") return publicOperation(operation);
   if (!operation) {
-    const classifyOnly = kind === "prepare" && priorPlace?.prepared === true;
     let inspection: LoreInspection | undefined;
     const lore = await readVillageLore(
       world.selectedLorebookIds,
@@ -201,14 +197,12 @@ export async function generatePlace(value: unknown, placeId?: string) {
     const messages = [
       {
         role: "system" as const,
-        content: classifyOnly ? PLACE_CLASSIFICATION_INSTRUCTION : PLACE_GENERATION_INSTRUCTION,
+        content: PLACE_GENERATION_INSTRUCTION,
       },
       {
         role: "user" as const,
         content: JSON.stringify({
           task: kind,
-          classifyOnly,
-          decideClasses: kind === "prepare",
           intent: input.intent,
           setting: villageCurrentSetting(world),
           rules: world.worldRules,
@@ -254,8 +248,6 @@ export async function generatePlace(value: unknown, placeId?: string) {
   }
   let admitted = operation!;
   const packet = JSON.parse(admitted.messages[1].content) as {
-    classifyOnly?: boolean;
-    decideClasses?: boolean;
     relatedPlaces: { id: string }[];
     knownPeople: { id: string }[];
     nativeVenues: { id: string }[];
@@ -263,11 +255,8 @@ export async function generatePlace(value: unknown, placeId?: string) {
   };
   const candidateIds = new Set([...packet.relatedPlaces, ...packet.nativeVenues].map((row) => row.id));
   const npcIds = new Set(packet.knownPeople.map((row) => row.id));
-  const classificationSchema = z.object({ classes: placeClassesSchema }).strict();
   const validateDraft = (value: unknown) => {
     const draft = placeDraftSchema.parse(value);
-    if (packet.decideClasses) placeClassesSchema.parse(draft.classes);
-    else delete draft.classes;
     const refs = new Set(draft.people.map((person) => person.ref));
     if (
       draft.people.some((person) => person.existingId && !npcIds.has(person.existingId)) ||
@@ -281,10 +270,6 @@ export async function generatePlace(value: unknown, placeId?: string) {
   const valid = (answer: CapabilityLanguageModelCompletion) => {
     const raw = extractModelJsonObject(answer);
     if (answer.finishReason === "length" || !raw) return false;
-    if (packet.classifyOnly) {
-      classifyPlace(world, structuredClone(priorPlace!), classificationSchema.parse(raw).classes);
-      return true;
-    }
     if (raw.existingId !== undefined)
       return kind === "explore" && typeof raw.existingId === "string" && candidateIds.has(raw.existingId);
     if (raw.place === null) return kind === "explore";
@@ -356,10 +341,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
         const duplicate =
           kind === "explore" && draft ? findNamedLocation(state, admitted.input.mapId, draft.name) : undefined;
         const selectedId = typeof raw.existingId === "string" ? raw.existingId : duplicate?.id;
-        if (packet.classifyOnly) {
-          classifyPlace(state, prior!, classificationSchema.parse(raw).classes);
-          prior!.revision++;
-        } else if (selectedId !== undefined) {
+        if (selectedId !== undefined) {
           if (kind !== "explore" || (raw.existingId !== undefined && !candidateIds.has(selectedId)))
             throw conflict("The selected Place is unavailable.");
           const existing = candidateIds.has(selectedId) ? state.worldPlaces.places[selectedId] : undefined;

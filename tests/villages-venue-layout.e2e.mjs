@@ -24,7 +24,6 @@ await withBrowser(browser, async () => {
         ...snapshot.settings.venues[0],
         id: "tent",
         name: "Canvas Tent",
-        classes: ["residence", "workplace"],
         constructionStatus: "worksite",
         residentIds: [],
         spaces: [],
@@ -44,7 +43,6 @@ await withBrowser(browser, async () => {
           updatedAt: new Date().toISOString(),
           venueDraft: {
             name: "Canvas Tent",
-            classes: site.classes,
             description: "A canvas shelter",
             position: { x: null, y: null },
           },
@@ -111,10 +109,6 @@ await withBrowser(browser, async () => {
         if (width < 700) await editor.getByRole("button", { name: "Long-term details", exact: true }).click();
         await editor.getByLabel("Long-term details", { exact: true }).first().fill("A canvas workshop.");
         if (width < 700) await editor.getByRole("button", { name: "Options", exact: true }).click();
-        await editor
-          .getByRole("group", { name: "Zone Class" })
-          .getByRole("button", { name: "Workplace", exact: true })
-          .click();
       }
       if (layout === "private" || layout === "both") {
         if (width < 700 && layout === "both")
@@ -134,7 +128,7 @@ await withBrowser(browser, async () => {
       assert.equal(submitted.privateSpaces.length, Number(layout === "private" || layout === "both"));
       if (submitted.privateSpaces.length)
         assert.equal(submitted.privateSpaces[0].description, "A quiet canvas sleeping alcove.");
-      if (submitted.spaces.length) assert.equal(submitted.spaces[0].venueClass, "workplace");
+      if (submitted.spaces.length) assert.equal(Object.hasOwn(submitted.spaces[0], "venueClass"), false);
       else {
         assert.equal(submitted.interiorDescription, undefined);
         assert.equal(submitted.interiorImage, undefined);

@@ -34,7 +34,7 @@ const guestZone = (venueClass: "other" | "residence") => ({
   ...defaultVenueSpace(venueClass),
   id: "guest",
   name: "Guest Room",
-  kind: venueClass === "residence" ? ("shared-residence" as const) : ("public" as const),
+  kind: venueClass === "residence" ? ("public" as const) : ("public" as const),
   purpose: "Guest lodging",
   seen: true,
 });
@@ -74,7 +74,6 @@ assert.equal(visitingCharacter(world, firstMorning)?.trip.arrivedAt, arrival.toI
 const home = venueFixture({
   id: "player-home",
   name: "My House",
-  classes: ["residence"],
   occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
   zones: [guestZone("residence")],
 });
@@ -137,7 +136,6 @@ assert.equal(visitorPosition(world, firstMorning, new Map())?.venueId, world.ven
 const host = venueFixture({
   id: "friend-home",
   name: "Ada's House",
-  classes: ["residence"],
   residentIds: ["a"],
   zones: [guestZone("residence")],
 });

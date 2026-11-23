@@ -76,15 +76,13 @@ console.log(
 const m = fixture();
 await m.mutate((state) => {
   const venue = state.venues[0];
-  venue.classes = ["residence"];
   venue.residentIds = ["a"];
   venue.destinations = { a: { home: venue.zones![1].id, sleep: "private" } };
-  venue.zones![1].kind = "shared-residence";
-  venue.zones![1].venueClass = "residence";
+  venue.zones![1].kind = "public";
   venue.zones!.push({
     ...defaultVenueSpace("residence"),
     id: "private",
-    kind: "private-residence",
+    kind: "personal",
     name: "Private room",
     purpose: "Sleeping",
     connectedTo: ["exterior"],

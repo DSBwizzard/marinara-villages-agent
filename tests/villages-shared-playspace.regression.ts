@@ -32,7 +32,13 @@ function world(count = 3) {
     cardSnapshot: { id: `resident-${i}`, name: `Resident ${i}`, capturedAt: at.toISOString() },
     agenda: null,
   })) as VillageState["villagers"];
-  state.venues = ["square", "garden", "hall"].map((id) => venueFixture({ id, name: id, classes: ["community"] }));
+  state.venues = ["square", "garden", "hall"].map((id) =>
+    venueFixture({
+      spaces: [{ id: "community", description: "A place in the community.", image: null }],
+      id,
+      name: id,
+    }),
+  );
   return state;
 }
 const common = (state: VillageState, index = 0) => state.venues[index]!.zones!.find((zone) => zone.kind === "public")!;
@@ -99,11 +105,10 @@ for (const restrict of [
   const state = world();
   state.venues[0]!.access!.managerIds = ["player", "resident-0"];
   state.venues[0]!.workerIds = ["resident-0"];
-  state.venues[0]!.classes = ["community", "workplace"];
   state.venues[0]!.zones!.push({
     ...structuredClone(common(state)),
     id: "office",
-    kind: "staff",
+    kind: "restricted",
     access: { ...common(state).access!, mode: "permission-required" },
   });
   assert.equal(

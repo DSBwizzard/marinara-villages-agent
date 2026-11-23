@@ -434,7 +434,7 @@ export function useFoundingSetupBlocker(ports: {
 
       const shapeProblem = foundingVenueShapeProblem(setupVenues);
       if (!snapshot?.isFounded && shapeProblem) return shapeProblem;
-      const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
+      const residences = setupVenues.filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length);
       const villagerHomes = residences;
       if (
         setupFoundingVillagerIds.length < SETUP_MIN_VILLAGER_COUNT ||
@@ -466,9 +466,7 @@ export function useFoundingSetupBlocker(ports: {
           venue.privateSpaces?.some(
             (room) =>
               !room.access &&
-              (!room.name?.trim() ||
-                !room.purpose?.trim() ||
-                (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
+              (!room.name?.trim() || !room.purpose?.trim() || (!room.ownerId && !room.controllerIds?.length)),
           ),
         )
       )

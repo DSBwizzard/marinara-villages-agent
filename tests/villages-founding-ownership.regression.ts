@@ -56,11 +56,11 @@ function fixture(name: string) {
     })),
     venues: [
       venueFixture({
+        spaces: [{ id: "community", description: name, image: null }],
         id: "same-venue",
         name: "Hall",
         form: "Station",
         description: name,
-        classes: ["community"],
         presentation: { mapId: "", image: null, x: null, y: null },
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       }),

@@ -17,7 +17,6 @@ function venue(id: string, classes: VillageVenue["classes"] = ["community"]): Vi
   return venueFixture({
     id,
     name: id,
-    classes,
     spaces: classes!.map((role) => defaultVenueSpace(role, "The " + role + " interior.")),
     description: "The outside of " + id,
     category: "",
@@ -88,14 +87,14 @@ house.workerIds = ["alex"];
 house.layoutVersion = 1;
 house.zones = [
   { ...defaultVenueSpace("other"), id: "exterior", name: "Exterior", kind: "exterior", seen: true },
-  { ...defaultVenueSpace("residence"), id: "common", name: "Common Space", kind: "shared-residence" },
+  { ...defaultVenueSpace("residence"), id: "common", name: "Common Space", kind: "public" },
   { ...defaultVenueSpace("workplace"), id: "public", name: "Workshop", kind: "public" },
-  { ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"), id: "office", name: "Office", kind: "staff" },
+  { ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"), id: "office", name: "Office", kind: "restricted" },
   {
     ...defaultVenueSpace("residence", "SECRET BEDROOM"),
     id: "private:alex",
     name: "Bedroom",
-    kind: "private-residence",
+    kind: "personal",
     ownerId: "alex",
   },
 ];

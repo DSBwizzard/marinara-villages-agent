@@ -72,10 +72,10 @@ function fixture(name: string) {
       ],
       venues: [
         venueFixture({
+          spaces: [{ id: "community", description: name, image: null }],
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
           id: "venue",
           name,
-          classes: ["community"],
           description: name,
         }),
       ],

@@ -44,17 +44,17 @@ function fixture(initializeCharacterSprites?: Parameters<typeof createLiveScenes
     timeZone: "UTC",
     venues: [
       venueFixture({
+        spaces: [{ id: "community", description: "Garden benches", image: null }],
         residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "garden",
         name: "Garden",
-        classes: ["community"],
         description: "Garden benches",
       }),
       venueFixture({
+        spaces: [{ id: "workplace", description: "A café", image: null }],
         residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "work",
         name: "Café",
-        classes: ["workplace"],
         description: "A café",
       }),
     ],

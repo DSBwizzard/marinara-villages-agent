@@ -20,7 +20,6 @@ world.venues = [
   venueFixture({
     id: "house",
     name: "House",
-    classes: ["other"],
     zones: [
       { ...defaultVenueSpace("other"), id: "exterior", kind: "exterior", name: "Exterior", connectedTo: ["hall"] },
       { ...defaultVenueSpace("other"), id: "hall", kind: "public", name: "Hall", connectedTo: ["exterior", "bedroom"] },

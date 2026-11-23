@@ -1,3 +1,5 @@
+import { venueWorkSchema, workOfferSchema } from "../../../shared/helpers/venue-work.js";
+import { validateVenueWork } from "./venue-work.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   AccessCommand,
@@ -58,6 +60,8 @@ export const banSchema = z.object({
   sourceLineIds: ids,
 });
 const stateSchema = z.object({
+  work: z.array(venueWorkSchema).max(100).optional(),
+  workOffers: z.array(workOfferSchema).max(100).optional(),
   version: z.literal(1),
   revision: z.number().int().nonnegative(),
   managerIds: ids,
@@ -90,6 +94,8 @@ const stateSchema = z.object({
 });
 const base = { operationId: id, expectedRevision: z.number().int().nonnegative(), zoneId: id.nullable() };
 const commandSchema = z.discriminatedUnion("action", [
+  z.object({ ...base, action: z.literal("work-propose"), characterId: id, terms: venueWorkSchema.nullable() }).strict(),
+  z.object({ ...base, action: z.literal("work-decide"), offerId: id, accept: z.boolean() }).strict(),
   z.object({ ...base, action: z.literal("recover-managers"), managerIds: ids }).strict(),
   z
     .object({
@@ -144,20 +150,12 @@ export function readVenueAccess(value: unknown): VenueAccessState | undefined {
 export function defaultZonePolicy(venue: VillageVenue, zone: VillageVenueZone): ZoneAccessPolicy {
   const personal = zone.ownerId ? [zone.ownerId] : null;
   const managerIds = personal ?? (zone.controllerIds?.length ? zone.controllerIds : null);
-  const mode =
-    zone.venueClass === "residence" || ["staff", "restricted"].includes(zone.kind) ? "permission-required" : "public";
+  const mode = zone.kind === "personal" || zone.kind === "restricted" ? "permission-required" : "public";
   return {
     mode,
     managerIds,
     memberIds: personal ?? [],
-    memberRoles:
-      zone.ownerId || zone.kind === "private-residence"
-        ? []
-        : zone.venueClass === "residence"
-          ? ["residents"]
-          : zone.kind === "staff"
-            ? ["workers"]
-            : [],
+    memberRoles: [],
     inviterIds: [],
     visitorHours: mode === "public" ? "inherit" : "always",
     accompanied: false,
@@ -196,16 +194,17 @@ export function initializeVenueAccess(venue: VillageVenue): void {
     const suitable = (venue.zones ?? []).filter(
       (zone) => zone.kind !== "exterior" && (!zone.ownerId || zone.ownerId === actor),
     );
-    const home = suitable.filter((zone) => zone.venueClass === "residence");
+    const home = suitable;
     const owned = home.filter((zone) => zone.ownerId === actor),
       shared = home.filter((zone) => !zone.ownerId);
     const homeChoices = shared.length ? shared : home,
       sleepChoices = owned.length ? owned : home;
-    const work = suitable.filter((zone) => zone.venueClass === "workplace");
+    const work = suitable.filter((zone) => zone.kind !== "personal");
     venue.destinations[actor] ??= {};
-    if (homeChoices.length === 1) venue.destinations[actor].home ??= homeChoices[0].id;
-    if (sleepChoices.length === 1) venue.destinations[actor].sleep ??= sleepChoices[0].id;
-    if (work.length === 1) venue.destinations[actor].work ??= work[0].id;
+    const resident = venue.residentIds?.includes(actor) || (actor === "player" && venue.occupancy.playerHome);
+    if (resident && homeChoices.length === 1) venue.destinations[actor].home ??= homeChoices[0].id;
+    if (resident && sleepChoices.length === 1) venue.destinations[actor].sleep ??= sleepChoices[0].id;
+    if (venue.workerIds?.includes(actor) && work.length === 1) venue.destinations[actor].work ??= work[0].id;
   }
 }
 export function zoneManagers(venue: VillageVenue, zone: VillageVenueZone): string[] {
@@ -238,7 +237,6 @@ export function mayHostLodging(venue: VillageVenue, zone: VillageVenueZone, acto
   return (
     household.length === 1 &&
     household[0] === actor &&
-    zone.venueClass === "residence" &&
     (!zone.ownerId || zone.ownerId === actor) &&
     venue.destinations?.[actor]?.sleep !== zone.id &&
     !zone.access?.accompanied &&
@@ -249,6 +247,9 @@ export function mayHostLodging(venue: VillageVenue, zone: VillageVenueZone, acto
 function members(venue: VillageVenue, zone: VillageVenueZone): string[] {
   const policy = zone.access;
   return [
+    ...(venue.access?.work ?? [])
+      .filter((work) => work.accessZoneIds.includes(zone.id))
+      .map((work) => work.characterId),
     ...zoneManagers(venue, zone),
     ...(policy?.memberIds ?? []),
     ...(policy?.memberRoles.includes("residents")
@@ -458,6 +459,7 @@ export function applyAccessCommand(
   at: string,
   knownActors: string[],
   sourceLineIds: string[] = [],
+  eligibleWorkers = knownActors.filter((id) => id !== "player"),
 ): void {
   const ledger = venue.access;
   if (!ledger) throw conflict("This Venue has no native access record.");
@@ -484,7 +486,69 @@ export function applyAccessCommand(
     if (values.some((value) => !knownActors.includes(value)))
       throw badRequest("Choose people who belong to this Village.");
   };
+  const workRequirements = (
+    characterId: string,
+    terms: import("../../../shared/helpers/venue-work.js").VenueWork | null,
+  ) => {
+    const previous = ledger.work?.find((row) => row.characterId === characterId);
+    const scopes = [...new Set([...(terms?.accessZoneIds ?? []), ...(previous?.accessZoneIds ?? [])])];
+    return [
+      ...new Set([
+        characterId,
+        ...ledger.managerIds,
+        ...scopes.flatMap((id) => {
+          const target = venue.zones?.find((row) => row.id === id);
+          return target ? zoneManagers(venue, target) : [];
+        }),
+      ]),
+    ].sort();
+  };
   switch (command.action) {
+    case "work-propose": {
+      if (command.zoneId !== null || (!manager && command.characterId !== actor && actor !== "player")) forbidden();
+      assertIds([command.characterId]);
+      if (!eligibleWorkers.includes(command.characterId)) throw badRequest("Choose a current Villager as the worker.");
+      if (command.terms) {
+        if (command.terms.characterId !== command.characterId)
+          throw badRequest("The worker must match the arrangement.");
+        validateVenueWork(venue, command.terms);
+      }
+      const requiredIds = workRequirements(command.characterId, command.terms);
+      if (!ledger.managerIds.length) throw badRequest("Choose a Venue manager first.");
+      ledger.workOffers = (ledger.workOffers ?? []).filter((row) => row.characterId !== command.characterId);
+      ledger.workOffers.push({
+        id: command.operationId,
+        proposerId: actor,
+        characterId: command.characterId,
+        terms: command.terms,
+        previous: ledger.work?.find((row) => row.characterId === command.characterId) ?? null,
+        requiredIds,
+        approvedIds: requiredIds.includes(actor) ? [actor] : [],
+      });
+      break;
+    }
+    case "work-decide": {
+      const offer = ledger.workOffers?.find((row) => row.id === command.offerId);
+      if (
+        command.zoneId !== null ||
+        !offer ||
+        (!offer.requiredIds.includes(actor) && !(offer.proposerId === actor && !command.accept))
+      )
+        forbidden();
+      if (!command.accept) {
+        ledger.workOffers = ledger.workOffers!.filter((row) => row !== offer);
+        break;
+      }
+      if (
+        JSON.stringify(offer!.previous) !==
+          JSON.stringify(ledger.work?.find((row) => row.characterId === offer!.characterId) ?? null) ||
+        JSON.stringify(offer!.requiredIds) !== JSON.stringify(workRequirements(offer!.characterId, offer!.terms))
+      )
+        throw conflict("Work or its managers changed. Propose the current terms again.");
+      if (offer!.terms) validateVenueWork(venue, offer!.terms);
+      offer!.approvedIds = [...new Set([...offer!.approvedIds, actor])];
+      break;
+    }
     case "recover-managers": {
       const currentManagers = zone ? zoneManagers(venue, zone) : ledger.managerIds;
       if (
@@ -514,7 +578,6 @@ export function applyAccessCommand(
         if (
           !target ||
           target.kind === "exterior" ||
-          target.venueClass !== (role === "work" ? "workplace" : "residence") ||
           (target.ownerId && target.ownerId !== command.visitorId) ||
           (role === "work" ? !venue.workerIds?.includes(command.visitorId) : !resident)
         )
@@ -628,6 +691,18 @@ export function applyAccessCommand(
       break;
     }
   }
+  for (const offer of ledger.workOffers ?? []) {
+    if (!offer.requiredIds.every((id) => offer.approvedIds.includes(id))) continue;
+    ledger.work = (ledger.work ?? []).filter((row) => row.characterId !== offer.characterId);
+    venue.workerIds = (venue.workerIds ?? []).filter((id) => id !== offer.characterId);
+    if (offer.terms) {
+      ledger.work.push(offer.terms);
+      venue.workerIds.push(offer.characterId);
+      venue.destinations ??= {};
+      venue.destinations[offer.characterId] = { ...venue.destinations[offer.characterId], work: offer.terms.zoneId };
+    } else if (venue.destinations?.[offer.characterId]) delete venue.destinations[offer.characterId].work;
+    ledger.workOffers = ledger.workOffers!.filter((row) => row !== offer);
+  }
   reconcileVenueAccess(venue);
   ledger.revision++;
   ledger.changes.push({
@@ -655,6 +730,10 @@ export function projectVenueAccess(venue: VillageVenue, actor: string) {
   return {
     revision: venue.access.revision,
     canManage,
+    work: (venue.access.work ?? []).filter((row) => canManage || row.characterId === actor),
+    workOffers: (venue.access.workOffers ?? [])
+      .filter((row) => canManage || row.requiredIds.includes(actor) || row.proposerId === actor)
+      .map(({ previous: _previous, ...row }) => row),
     canRecover: actor === "player" && !venue.access.managerIds.length,
     ...(canManage
       ? {

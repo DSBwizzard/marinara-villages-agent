@@ -19,9 +19,9 @@ export function foundingSleepZones(venue: SetupVenueDraft, actor: string) {
         const area = zone as NonNullable<SetupVenueDraft["spaces"]>[number];
         const access =
           area.access ??
-          (zone.kind === "private-residence" && !area.ownerId
+          (zone.kind === "personal" && !area.ownerId
             ? { ...draftZonePolicy(venue, area, true), managerIds: null, memberIds: [] }
-            : draftZonePolicy(venue, area, zone.kind === "private-residence"));
+            : draftZonePolicy(venue, area, zone.kind === "personal"));
         return (
           access.mode === "public" ||
           area.ownerId === actor ||
@@ -40,7 +40,6 @@ export function foundingSleepZones(venue: SetupVenueDraft, actor: string) {
   }
   return [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].filter(
     (zone) =>
-      zone.venueClass === "residence" &&
       (!zone.ownerId || zone.ownerId === actor) &&
       (!venue.privateSpaces?.some((room) => room.id === zone.id) || zone.ownerId === actor) &&
       path.includes(zone.id),
@@ -48,9 +47,7 @@ export function foundingSleepZones(venue: SetupVenueDraft, actor: string) {
 }
 
 export function reconcileFoundingHome(venue: SetupVenueDraft, members = foundingHomeMembers(venue)): SetupVenueDraft {
-  if (!venue.classes?.includes("residence")) return venue;
   const occupied = members.length > 0 || !!venue.workerIds?.length;
-  const vacated = !occupied && foundingHomeMembers(venue).length > 0;
   const household = {
     ...venue,
     residentIds: members.filter((id) => id !== "player"),
@@ -62,15 +59,21 @@ export function reconcileFoundingHome(venue: SetupVenueDraft, members = founding
     occupancy: { ...venue.occupancy, playerHome: members.includes("player"), residentCharacterId: null },
     residenceCapacity:
       venue.foundingCapacity === null
-        ? Math.max(1, members.length)
+        ? Math.max(0, members.length)
         : (venue.foundingCapacity ?? venue.residenceCapacity ?? 1),
-    ...(vacated ? { access: undefined } : {}),
     spaces: venue.spaces?.map((zone) => ({
       ...zone,
-      access: vacated ? undefined : occupied ? (zone.access ?? draftZonePolicy(household, zone)) : zone.access,
+      access: occupied
+        ? (() => {
+            const policy = zone.access ?? draftZonePolicy(household, zone);
+            return members.length && policy.mode === "public"
+              ? { ...policy, memberRoles: [...new Set([...policy.memberRoles, "residents" as const])] }
+              : policy;
+          })()
+        : zone.access,
     })),
     privateSpaces: venue.privateSpaces?.map((zone) =>
-      zone.venueClass === "residence" && zone.ownerId && !members.includes(zone.ownerId)
+      zone.ownerId && !members.includes(zone.ownerId)
         ? { ...zone, ownerId: "", access: undefined, controllerIds: undefined }
         : zone,
     ),
@@ -100,6 +103,13 @@ export function reconcileFoundingHome(venue: SetupVenueDraft, members = founding
   }
   return {
     ...updated,
+    layout: updated.spaces?.length
+      ? updated.privateSpaces?.length
+        ? "both"
+        : "common"
+      : updated.privateSpaces?.length
+        ? "private"
+        : "exterior",
     destinations,
   };
 }
@@ -111,7 +121,7 @@ export function assignFoundingHome(
   actorId: string,
   assigned: boolean,
 ): SetupVenueDraft[] {
-  if (!rows.some((venue) => venue.id === venueId && venue.classes?.includes("residence"))) return rows;
+  if (!rows.some((venue) => venue.id === venueId)) return rows;
   return rows.map((venue) => {
     const members = [...(venue.occupancy.playerHome ? ["player"] : []), ...(venue.residentIds ?? [])];
     const next = members.filter((id) => id !== actorId);
@@ -155,10 +165,9 @@ export function reconcileFoundingRoster(
       const updated = assignFoundingHome(next, id, actor.id, true);
       next.splice(0, next.length, ...updated);
     } else {
-      if (next.filter((venue) => venue.classes?.includes("residence")).length >= 4) {
+      if (next.filter((venue) => foundingHomeMembers(venue).length > 0).length >= 4) {
         const vacant = next.find(
           (venue) =>
-            venue.classes?.includes("residence") &&
             !foundingHomeMembers(venue).length &&
             foundingSleepZones(reconcileFoundingHome(venue, [actor.id]), actor.id).length,
         );
@@ -168,7 +177,7 @@ export function reconcileFoundingRoster(
         }
         continue;
       }
-      const venue = newSetupVenue(id, "residence", 0.5, 0.5, actor.id === "player");
+      const venue = newSetupVenue(id, 0.5, 0.5, actor.id === "player");
       venue.name = `${actor.name} home`;
       venue.residentIds = actor.id === "player" ? [] : [actor.id];
       venue.presentation = { ...venue.presentation, x: null, y: null };
@@ -188,9 +197,9 @@ export function reconcileFoundingRoster(
     ["founding-garden", "Shared space"],
     ["founding-community", "Meeting place"],
   ]) {
-    if (next.filter((venue) => venue.classes?.some((kind) => kind !== "residence")).length >= 2) break;
+    if (next.filter((venue) => venue.spaces?.some((zone) => zone.access?.mode === "public")).length >= 2) break;
     if (next.some((venue) => venue.id === id) || next.length >= 16) continue;
-    const venue = quickStartTemplates([newSetupVenue(id!, "community", 0.5, 0.5)])[0]!;
+    const venue = quickStartTemplates([{ ...newSetupVenue(id!, 0.5, 0.5), category: "public-center" }])[0]!;
     venue.name = name!;
     while (next.some((row) => row.name === venue.name)) venue.name += " 2";
     venue.presentation = { ...venue.presentation, x: null, y: null };
@@ -210,10 +219,8 @@ export function selectFoundingHomes(
   const chosen = new Set(actors.map((actor) => actor.id));
   const active = venues.filter(
     (venue) =>
-      venue.classes?.length !== 1 ||
-      venue.classes[0] !== "residence" ||
-      foundingHomeMembers(venue).length !== 1 ||
       !!venue.workerIds?.length ||
+      foundingHomeMembers(venue).length !== 1 ||
       foundingHomeMembers(venue).some((id) => chosen.has(id)),
   );
   const unused = [...unusedHomes, ...venues.filter((venue) => !active.includes(venue))];
@@ -263,9 +270,32 @@ export function selectFoundingHomes(
   }
   // Dormant homes retain their authored assignments; only active places lose departed founders.
   const reconciled = active.map((venue) =>
-    removed.size
+    removed.size &&
+    [
+      ...foundingHomeMembers(venue),
+      ...(venue.workerIds ?? []),
+      ...(venue.access?.managerIds ?? []),
+      ...(venue.access?.work?.map((row) => row.characterId) ?? []),
+      ...[...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].flatMap((zone) => [
+        zone.ownerId ?? "",
+        ...(zone.controllerIds ?? []),
+        ...(zone.access?.managerIds ?? []),
+        ...(zone.access?.memberIds ?? []),
+        ...(zone.access?.inviterIds ?? []),
+      ]),
+    ].some((id) => removed.has(id))
       ? reconcileFoundingHome({
           ...venue,
+          ...(venue.access
+            ? {
+                access: {
+                  ...venue.access,
+                  managerIds: venue.access.managerIds.filter(keep),
+                  work: venue.access.work?.filter((row) => keep(row.characterId)),
+                  workOffers: [],
+                },
+              }
+            : {}),
           ...(venue.residentIds ? { residentIds: venue.residentIds.filter(keep) } : {}),
           ...(venue.workerIds ? { workerIds: venue.workerIds.filter(keep) } : {}),
           occupancy: {
@@ -291,8 +321,7 @@ export function changeFoundingZoneOwner(venue: SetupVenueDraft, zoneId: string, 
     privateSpaces = venue.privateSpaces ?? [];
   const zone = [...spaces, ...privateSpaces].find((row) => row.id === zoneId);
   const personal = privateSpaces.some((row) => row.id === zoneId);
-  if (!zone || zone.venueClass !== "residence" || (personal === !!ownerId && (zone.ownerId || "") === ownerId))
-    return venue;
+  if (!zone || (personal === !!ownerId && (zone.ownerId || "") === ownerId)) return venue;
   const members = foundingHomeMembers(venue);
   if (ownerId && !members.includes(ownerId)) throw new Error("Choose someone who lives here.");
   if (ownerId && members.some((id) => id !== ownerId && venue.destinations?.[id]?.sleep === zoneId))

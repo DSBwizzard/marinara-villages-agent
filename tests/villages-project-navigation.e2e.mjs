@@ -175,7 +175,6 @@ await withBrowser(browser, async () => {
         const project = currentProject("created");
         project.title = body.name;
         project.venueDraft.name = body.name;
-        project.venueDraft.classes = body.classes;
         project.venueDraft.description = body.description;
         project.plan = null;
         project.lifecycle.builderId = "";
@@ -190,7 +189,6 @@ await withBrowser(browser, async () => {
       assert.equal(body.expectedRevision, project.lifecycle.revision);
       if (action === "plan") {
         project.plan = body;
-        project.venueDraft.classes = body.classes;
         project.lifecycle.revision++;
       }
       if (action === "revise") {
@@ -267,9 +265,7 @@ await withBrowser(browser, async () => {
     await back();
     await select(/Workshop/);
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
-    await expect(
-      page.getByRole("group", { name: "Classes", exact: true }).getByRole("button", { name: "Community", exact: true }),
-    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("group", { name: "Classes", exact: true })).toHaveCount(0);
     await page.getByLabel("Physical design", { exact: true }).fill("A revised workshop");
     await back();
     await select(/Canvas Tent/);
@@ -302,11 +298,7 @@ await withBrowser(browser, async () => {
     await select(/Workshop/);
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A revised workshop");
     await page.getByRole("button", { name: "Save design", exact: true }).click();
-    assert.deepEqual(
-      f.calls.at(-1).body.classes,
-      ["community", "workplace"],
-      "saved Classes do not reset to the live target",
-    );
+    assert.equal(Object.hasOwn(f.calls.at(-1).body, "classes"), false);
     // All sections fit on desktop and phone, with a single visible section.
     for (const name of ["Overview & Progress", "Design & Spaces", "People", "Location"]) {
       await page.getByRole("tab", { name, exact: true }).click();
@@ -321,14 +313,11 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "New Venue", exact: true }).click();
     await page.getByLabel("Name", { exact: true }).fill("New Garden");
     await page.getByLabel("Physical design", { exact: true }).fill("A shared garden.");
-    await page
-      .getByRole("group", { name: "Classes", exact: true })
-      .getByRole("button", { name: "Workplace", exact: true })
-      .click();
+
     await page.getByRole("button", { name: "Create draft", exact: true }).click();
     await expect(page.getByRole("heading", { name: "New Garden", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
-    assert.deepEqual(f.calls.find((call) => call.path === "/projects").body.classes, ["community", "workplace"]);
+    assert.equal(Object.hasOwn(f.calls.find((call) => call.path === "/projects").body, "classes"), false);
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A shared garden.");
     const longDesign = "A shared garden with sheltered work tables, winding paths and open planting beds. ".repeat(24);
@@ -401,12 +390,7 @@ await withBrowser(browser, async () => {
     assert.equal(limit.calls[0].body.privateSpaces[0].description, "A quiet canvas alcove.");
     assert.deepEqual(limit.calls[0].body.privateSpaces[0].connectedTo, ["exterior"]);
     const payload = limit.calls[0].body;
-    const decoded = readBaseVenueLayout(
-      { ...payload, description: payload.exteriorDescription },
-      payload.classes,
-      "",
-      () => null,
-    );
+    const decoded = readBaseVenueLayout({ ...payload, description: payload.exteriorDescription }, "", () => null);
     assert.equal(decoded.length, 7, "the actual production decoder admits the authored six-Zone design");
     assert.equal(decoded.at(-1).access.mode, "permission-required");
     await limit.page.close();
@@ -430,7 +414,7 @@ await withBrowser(browser, async () => {
     await restricted.page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect.poll(() => restricted.calls.length).toBe(1);
     const terms = restricted.calls[0].body;
-    validateLayoutZones(restricted.snapshot.settings.venues[0], terms.zones, terms.classes, {
+    validateLayoutZones(restricted.snapshot.settings.venues[0], terms.zones, {
       villagers: restricted.snapshot.villagers,
     });
     assert.deepEqual(terms.zones.at(-1).controllerIds, ["player"], "new restricted authority is an explicit choice");

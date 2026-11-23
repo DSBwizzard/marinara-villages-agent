@@ -10,7 +10,7 @@ import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { findLocation } from "./places.js";
 
 export function isPrivateInterior(zone: Pick<VillageVenueZone, "kind">): boolean {
-  return ["private-residence", "staff", "restricted"].includes(zone.kind);
+  return ["personal", "restricted"].includes(zone.kind);
 }
 
 export function retryPrivateInterior(zone: VillageVenueZone) {
@@ -22,11 +22,7 @@ export function retryPrivateInterior(zone: VillageVenueZone) {
 /** Finishing changes constraints; preparation reconciles the saved interior once. */
 export function prepareRenovatedPrivateInterior(zone: VillageVenueZone, previous?: VillageVenueZone): void {
   if (!isPrivateInterior(zone)) return;
-  if (
-    previous &&
-    zone.ownerId !== previous.ownerId &&
-    (zone.kind === "private-residence" || previous.kind === "private-residence")
-  )
+  if (previous && zone.ownerId !== previous.ownerId && (zone.kind === "personal" || previous.kind === "personal"))
     throw conflict("Resident moves assign Private Spaces; Renovations cannot transfer occupied rooms.");
   if (zone.ownerId === "player") return;
   if (!previous) {
@@ -57,7 +53,7 @@ export function capturePrivateInterior(state: VillageState, venue: VillageVenue,
   const entries = currentRoomViews(state.continuity, state.episodes, room, at).filter(
     ({ version }) => version.room?.visibility === "observable" && !version.room.expiresAt,
   );
-  const owners = zone.kind === "private-residence" ? [zone.ownerId] : zoneControllerIds(venue, zone);
+  const owners = zone.kind === "personal" ? [zone.ownerId] : zoneControllerIds(venue, zone);
   const occupants = state.villagers.filter((person) => owners.includes(person.characterId));
   const characters = occupants.map(({ cardSnapshot: card, admission }) => ({
     admissionContext: renderResidentAdmission(card.name, admission),
@@ -66,7 +62,7 @@ export function capturePrivateInterior(state: VillageState, venue: VillageVenue,
     summary: card.summary.slice(0, 200),
     backstory: card.backstory.slice(0, 300),
   }));
-  const layout = venueZones(venue).map((area) => [area.id, area.kind, area.venueClass]);
+  const layout = venueZones(venue).map((area) => [area.id, area.kind, area.id]);
   const packet = {
     venueId: venue.id,
     id: zone.id,
@@ -98,7 +94,6 @@ export function capturePrivateInterior(state: VillageState, venue: VillageVenue,
     venue.constructionStatus,
     layout,
     zone.kind,
-    zone.venueClass,
     zone.ownerId,
     owners,
     occupants.map(({ characterId, incarnation, admission }) => [characterId, incarnation, admission]),

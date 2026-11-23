@@ -1184,7 +1184,7 @@ await runCase("repair/domain-editors", async () => {
       ...defaultVenueSpace("residence"),
       id: "bedroom",
       name: "Bedroom",
-      kind: "private-residence",
+      kind: "personal",
       connectedTo: ["common"],
       ownerId,
       access: {

@@ -57,7 +57,6 @@ const world = coerceVillageState({
     venueFixture({
       id: "nook",
       name: "Booth Nook",
-      classes: ["residence"],
       residentIds: ["mari"],
       zones: [
         {
@@ -72,7 +71,7 @@ const world = coerceVillageState({
           ...defaultVenueSpace("residence"),
           id: "bar",
           name: "Prompt Bar",
-          kind: "shared-residence",
+          kind: "public",
           seen: true,
           connectedTo: ["exterior", "secret-room"],
         },
@@ -80,7 +79,7 @@ const world = coerceVillageState({
           ...defaultVenueSpace("residence"),
           id: "secret-room",
           name: "HIDDEN ROOM NAME",
-          kind: "private-residence",
+          kind: "personal",
           ownerId: "mari",
           seen: false,
           connectedTo: ["bar"],
@@ -133,7 +132,7 @@ scene.contactGeneration = {
 };
 const before = structuredClone(scene);
 const remote = sceneLocationContext(scene, venue, ["mari"]);
-assert.deepEqual(remote.player.zone, { id: "bar", name: "Prompt Bar", kind: "shared-residence" });
+assert.deepEqual(remote.player.zone, { id: "bar", name: "Prompt Bar", kind: "public" });
 assert.deepEqual(remote.residents, [
   {
     characterId: "mari",

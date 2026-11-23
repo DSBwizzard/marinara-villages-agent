@@ -44,7 +44,6 @@ await withBrowser(browser, async () => {
       placeId: "mill",
       placeName: "The Mill",
       zoneId: "exterior",
-      spaceClass: "workplace",
       area: "public",
       startedAt: now,
       lastActivityAt: now,

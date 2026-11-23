@@ -141,9 +141,7 @@ export function createFoundingSetupDraftRow() {
         id: area.id,
         name: "name" in area ? area.name : "Common Space",
         purpose: "purpose" in area ? area.purpose : "",
-        venueClass: area.venueClass,
       })),
-      venueClass: venue.classes?.[0] ?? "other",
       residentIds: venue.residentIds ?? [],
       playerHome: venue.occupancy.playerHome,
     };

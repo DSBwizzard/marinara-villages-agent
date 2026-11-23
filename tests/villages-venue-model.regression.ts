@@ -4,11 +4,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  defaultVenueSpace,
-  venueCapacity,
-  validVenueClasses,
-} from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { venueInZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
@@ -27,9 +23,6 @@ import {
   readPrompt,
 } from "../packages/villages/src/server/domain/rules/image-generation-rules.js";
 import { MAX_VENUE_DESCRIPTION_LENGTH } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-assert.equal(validVenueClasses(["residence", "workplace"]), true);
-assert.equal(validVenueClasses(["residence", "workplace", "community"]), false);
-assert.equal(validVenueClasses(["residence", "residence"]), false);
 const residence = defaultVenueSpace("residence", "A curtained sleeping alcove with a bed.");
 const workplace = defaultVenueSpace("workplace", "An oil-stained repair bench with a lathe.");
 workplace.image = { id: "work-image", ref: "global-gallery:work-image", url: "/work.webp" };
@@ -58,7 +51,6 @@ const state = coerceVillageState({
     venueFixture({
       id: "shop",
       name: "The Rolling Workshop",
-      classes: ["residence", "workplace"],
       layoutVersion: 1,
       zones: [
         {
@@ -68,13 +60,13 @@ const state = coerceVillageState({
           name: "Exterior",
           seen: true,
         },
-        { ...residence, id: "residence", kind: "shared-residence", name: "Room", seen: true },
+        { ...residence, id: "residence", kind: "public", name: "Room", seen: true },
         { ...workplace, id: "workplace", kind: "public", name: "Workshop", seen: true },
         {
           ...defaultVenueSpace("residence", "Bob's private nook. A letter on the desk."),
           id: "private:bob",
           ownerId: "bob",
-          kind: "private-residence",
+          kind: "personal",
           name: "Nook",
           seen: true,
         },
@@ -143,7 +135,7 @@ assert.deepEqual(
   "an exterior change preserves every interior",
 );
 const decoded = coerceVillageState(JSON.parse(JSON.stringify(state)));
-assert.deepEqual(decoded.venues[0].classes, ["residence", "workplace"]);
+assert.equal(Object.hasOwn(decoded.venues[0], "classes"), false);
 assert.equal(venueCapacity(decoded.venues[0]), 2);
 assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(decoded))), decoded);
 assert.equal(appearance("exterior", decoded), appearance("exterior"));

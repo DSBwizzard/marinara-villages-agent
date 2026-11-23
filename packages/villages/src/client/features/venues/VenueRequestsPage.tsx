@@ -67,7 +67,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                         {` · ${entry.source === "chat" ? "Conversation" : "Village life"}`}
                       </span>
                       <p>
-                        <strong>{entry.venueDraft.name}</strong> · {entry.venueDraft.classes.join(" / ")}
+                        <strong>{entry.venueDraft.name}</strong>
                       </p>
                       <textarea
                         autoComplete="off"
@@ -89,9 +89,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                         <button
                           type="button"
                           className={`${ELEMENT_TAG}-button`}
-                          disabled={
-                            busy || !draft.name.trim() || draft.classes.length === 0 || !draft.description?.trim()
-                          }
+                          disabled={busy || !draft.name.trim() || !draft.description?.trim()}
                           onClick={() => void decideVenueRequest(entry, true)}
                         >
                           Start planning project

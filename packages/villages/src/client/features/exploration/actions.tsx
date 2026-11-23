@@ -1,4 +1,4 @@
-import type { VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
 
@@ -43,7 +43,6 @@ export function useOpenPlace(ports: {
   setVenuePage: React.Dispatch<SetStateAction<"view" | "edit" | "proposal">>;
   setVenueProposalDraft: React.Dispatch<
     SetStateAction<{
-      classes: VenueClass[];
       capacity: number;
 
       title: string;

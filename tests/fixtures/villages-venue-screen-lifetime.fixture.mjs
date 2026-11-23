@@ -95,14 +95,13 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       ...seed.settings.venues[0],
       id,
       name: id,
-      classes: ["residence", "community"],
       form: "A building",
       venueType: "Home",
       layoutVersion: 1,
       workerIds: [],
       residentIds: ["mara"],
       state: { ...seed.settings.venues[0].state },
-      spaces: [{ id: "common", venueClass: "residence", description: "Common description", state, image: null }],
+      spaces: [{ id: "common", description: "Common description", state, image: null }],
       privateSpaces: [{ ownerId: "mara", description: "Private description", state, image: null }],
       accessView: { revision: 1, canManage: true, managerIds: ["player"], visitorHours: null, bans: [], changes: [] },
       zones: ["zone / same", "zone / other"].map((zoneId) => ({
@@ -110,7 +109,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         kind: "public",
         name: (index ? "B" : "A") + " Zone",
         purpose: "Community",
-        venueClass: "community",
         description: (index ? "B" : "A") + " Zone description",
         seen: true,
         state,
@@ -128,7 +126,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     const draft = structuredClone(seed.settings.venues[0]);
     if (!options.cleanName) draft.name = " Draft A ";
     const proposal = {
-      classes: ["residence", "community"],
       capacity: 2,
       title: " Improvement ",
       description: " Raw proposed detail ",
@@ -236,7 +233,6 @@ export async function verifyVenueScreenLifetimes(browser) {
     residence: { characterId: "resident / A", venueId: "target / B", privateZoneId: " private / target " },
     proposal: {
       requestId: f.requests[0].body?.requestId,
-      classes: f.proposal.classes,
       capacity: 2,
       title: f.proposal.title,
       detail: f.proposal.description,

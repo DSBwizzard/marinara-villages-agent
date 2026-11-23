@@ -86,7 +86,7 @@ const committed = record.data.projects.find((project) => project.status === "wor
 const retry = commands.find((command) => command.id === committed.id)!;
 await service.startProjectConstruction(retry.id, retry.body, now);
 assert.equal(record.data.venues.length, 5, "lost acknowledgement retry creates no second site");
-const create = { requestId: "create", name: "Current", description: "A future room.", classes: ["community"] };
+const create = { requestId: "create", name: "Current", description: "A future room." };
 await service.createNewVenueProject(create);
 await service.createNewVenueProject(create);
 await assert.rejects(service.createNewVenueProject({ ...create, name: "Other" }), /already used/);

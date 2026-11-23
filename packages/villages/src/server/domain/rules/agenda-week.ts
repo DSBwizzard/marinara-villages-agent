@@ -3,8 +3,8 @@ import { composeAgenda } from "./agenda-composition.js";
 import { routineDay } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
-export const agendaDateKey = (at: Date): string =>
-  `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+export { agendaDateKey } from "../../../shared/helpers/calendar-day.js";
+import { agendaDateKey } from "../../../shared/helpers/calendar-day.js";
 
 const block = (startMinute: number, endMinute: number, venueId: string, activity: string): VillageAgendaBlock => ({
   startMinute,

@@ -80,7 +80,6 @@ function fixture(speakerId = "a", whisper = false) {
   const venue = venueFixture({
     id: "house",
     name: "House",
-    classes: ["residence"],
     residentIds: ["a"],
     residenceCapacity: 2,
     zones: [
@@ -96,7 +95,7 @@ function fixture(speakerId = "a", whisper = false) {
         ...defaultVenueSpace("residence"),
         id: "common",
         name: "Common room",
-        kind: "shared-residence",
+        kind: "public",
         seen: true,
         connectedTo: ["exterior"],
       },
@@ -381,7 +380,7 @@ await runCase("narration-project/new-venue-terms", () => {
   const f = fixture();
   const project = draftNewVenueProject(
     f.state,
-    { name: "Orchard", classes: ["workplace"], description: "An apple orchard beside the river." },
+    { name: "Orchard", description: "An apple orchard beside the river." },
     "a",
     "orchard",
   );
@@ -401,7 +400,6 @@ await runCase("narration-project/new-venue-terms", () => {
   assert.deepEqual(context.terms.proposal, { draft: project.venueDraft, plan: project.plan });
   const prompt = projectSpeechPrompt(f.state, [context]);
   assert(prompt.includes(JSON.stringify(project.venueDraft)) && prompt.includes(JSON.stringify(project.plan)));
-  project.venueDraft!.classes = ["leisure"];
   assert.notDeepEqual(
     projectSpeechContext(f.state, project, ["a"]).terms,
     context.terms,

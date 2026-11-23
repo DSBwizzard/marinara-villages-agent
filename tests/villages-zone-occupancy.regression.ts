@@ -37,12 +37,11 @@ function fixture(count: number) {
   const ids = Array.from({ length: count }, (_, i) => "resident" + String(i).padStart(2, "0"));
   const zone = (
     id: string,
-    kind: "exterior" | "public" | "shared-residence" | "private-residence",
+    kind: "exterior" | "public" | "public" | "personal",
     links: string[],
     ownerId?: string,
   ) => ({
     ...defaultVenueSpace("residence"),
-    venueClass: kind === "public" ? ("community" as const) : ("residence" as const),
     id,
     name: id,
     kind,
@@ -61,7 +60,6 @@ function fixture(count: number) {
         id: "hall",
         layoutVersion: 1,
         name: "Hall",
-        classes: ["community"],
         zones: [
           zone("exterior", "exterior", ["a"]),
           zone("a", "public", ["exterior", "b"]),
@@ -74,15 +72,14 @@ function fixture(count: number) {
           layoutVersion: 1,
           residenceCapacity: 4,
           name: "Home " + i,
-          classes: ["residence"],
           occupancy: { playerHome: i === 0, homeKind: "house", residentCharacterId: null },
           residentIds: ids.filter((_, index) => Math.floor((index + 1) / 4) === i),
           zones: [
             zone("exterior", "exterior", ["common"]),
-            zone("common", "shared-residence", ["exterior", "private"]),
+            zone("common", "public", ["exterior", "private"]),
             zone(
               "private",
-              "private-residence",
+              "personal",
               ["common"],
               ids.find((_, index) => Math.floor((index + 1) / 4) === i),
             ),

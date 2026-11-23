@@ -37,13 +37,12 @@ export function sceneLayoutVenue(venue: VillageVenue, scene?: VenueScene): Villa
     zones: layout.map((saved) => {
       const live = current.find((zone) => zone.id === saved.id);
       return {
-        ...defaultVenueSpace(saved.venueClass),
+        ...defaultVenueSpace(saved.id),
         ...saved,
         ...(live ?? {}),
         id: saved.id,
         kind: saved.kind,
         name: saved.name,
-        venueClass: saved.venueClass,
         connectedTo: saved.connectedTo,
         ...(!live ? { closed: true } : {}),
       };
@@ -59,7 +58,6 @@ export function captureSceneLayout(venue: VillageVenue) {
       id: zone.id,
       kind: zone.kind,
       name: zone.name,
-      venueClass: zone.venueClass,
       connectedTo: zone.connectedTo,
     })),
   );
@@ -77,16 +75,13 @@ export function readSceneLayout(value: unknown): NonNullable<VenueScene["sceneAt
       row.id.length > 200 ||
       typeof row.name !== "string" ||
       row.name.length > 100 ||
-      !["exterior", "public", "shared-residence", "private-residence", "staff", "restricted"].includes(
-        String(row.kind),
-      ) ||
-      !["residence", "workplace", "community", "other"].includes(String(row.venueClass)) ||
+      !["exterior", "public", "personal", "restricted"].includes(String(row.kind)) ||
       !Array.isArray(row.connectedTo) ||
       row.connectedTo.length > 64 ||
       row.connectedTo.some((id) => typeof id !== "string")
     )
       throw fail();
-    return { id: row.id, name: row.name, kind: row.kind, venueClass: row.venueClass, connectedTo: row.connectedTo };
+    return { id: row.id, name: row.name, kind: row.kind, connectedTo: row.connectedTo };
   }) as NonNullable<NonNullable<VenueScene["sceneAttendance"]>["layout"]>;
   if (connectionProblem(rows)) throw fail();
   return rows;

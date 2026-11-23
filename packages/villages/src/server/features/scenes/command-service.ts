@@ -53,7 +53,7 @@ import {
   actorTrespassReason,
   type ContactIntent,
 } from "../../domain/rules/venue-contact.js";
-import { MAX_ZONE_VILLAGERS, venueClasses } from "../../domain/rules/venue-model.js";
+import { MAX_ZONE_VILLAGERS } from "../../domain/rules/venue-model.js";
 import { defaultVenueZoneId, resolveVenueZone, zoneArea, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { metadataFailure } from "../../domain/rules/work-failure.js";
 import { narrationBlocker } from "../../domain/rules/scene-submissions.js";
@@ -579,7 +579,6 @@ export function createSceneCommands({
       state.visitEvent = visitEvent;
       if (visitEvent === "opening") state.status = "opening";
       queueTrespassReaction(state, reactionsEnabled);
-      state.spaceClass = zone.venueClass;
       state.area = zoneArea(zone);
       state.privateOwnerId = zone.ownerId ?? "";
       state.lastActivityAt = at;
@@ -699,7 +698,7 @@ export function createSceneCommands({
   async function prepareVisit(placeId: string): Promise<void> {
     const world = await readVillageState({ memories: true });
     const discovery = world.worldPlaces.places[placeId];
-    if (!discovery || (discovery.prepared && discovery.classified)) return;
+    if (!discovery || discovery.prepared) return;
     const result = await preparePlace(
       {
         worldScope: villageWorldScope(world),
@@ -746,8 +745,6 @@ export function createSceneCommands({
       throw conflict(
         "Starting relationship history is not ready. Open Inspect → Relationships to check preparation, retry failed work, or clarify history before opening a Scene.",
       );
-    const classes = venueClasses(place),
-      spaceClass = classes.find((entry) => entry !== "residence") ?? classes[0]!;
     const gathering =
       !existing && !travel && village.opening?.stage === "gathering" && village.opening.openingVenueId === placeId;
     const gatheringZones = gathering
@@ -755,10 +752,7 @@ export function createSceneCommands({
       : undefined;
     if (gathering && (!gatheringZones?.length || (requestedZoneId && !gatheringZones.includes(requestedZoneId))))
       throw conflict("Start the opening gathering in an available public shared Zone.");
-    const requested =
-      requestedZoneId ??
-      gatheringZones?.[0] ??
-      defaultVenueZoneId(place, spaceClass === "residence" ? "shared" : "public", spaceClass);
+    const requested = requestedZoneId ?? gatheringZones?.[0] ?? defaultVenueZoneId(place, "public");
     let zone = resolveVenueZone(place, requested);
     if (!zone) throw notFound("That zone is not in this Venue.");
     if (zoneClosed(village, place, zone)) {
@@ -1031,7 +1025,6 @@ export function createSceneCommands({
       zoneId: zone.id,
       accompanying,
       departedIds: [],
-      spaceClass: zone.venueClass,
       area: zoneArea(zone),
       privateOwnerId: zone.ownerId ?? "",
       privateAccessOwnerId: "",

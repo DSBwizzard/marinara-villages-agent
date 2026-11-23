@@ -22,7 +22,7 @@ export function venueStringList(value: unknown, fallback: string[]): string[] {
     .slice(0, 24);
 }
 export function personalDestinationSpace(venue: VillageVenue, characterId: string) {
-  const id = defaultVenueZoneId(venue, "private", "residence", characterId);
+  const id = defaultVenueZoneId(venue, "private", characterId);
   return venue.privateSpaces?.find((space) => space.id === id);
 }
 /** Where a place stands, or a refusal — see `parsePlace` for why the two are exclusive. */

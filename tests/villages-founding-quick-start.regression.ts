@@ -9,7 +9,6 @@ import {
   quickStartTemplates,
   separateFoundingTemplates,
   replaceQuickStartVenue,
-  upgradeUntouchedStartingLayout,
 } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingZoneProblem } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
@@ -22,7 +21,6 @@ const rows = [
     id: "player",
     residentIds: [],
     playerHome: true,
-    venueClass: "residence",
     residentCharacterId: "",
     form: "Stolen hearse",
   },
@@ -30,7 +28,6 @@ const rows = [
     id: "buster",
     residentIds: ["buster"],
     playerHome: false,
-    venueClass: "residence",
     residentCharacterId: "buster",
     form: "Dumpster",
   },
@@ -38,7 +35,6 @@ const rows = [
     id: "community",
     residentIds: [],
     playerHome: false,
-    venueClass: "community",
     residentCharacterId: "",
     form: "Covered market",
   },
@@ -46,22 +42,21 @@ const rows = [
 const suggestions = rows.map((row) => ({
   id: row.id,
   name: `${row.id} refuge`,
-  venueType: row.venueClass,
+  venueType: row.playerHome || row.residentIds?.length ? "Home" : "Gathering place",
   form: row.form,
   description: "A sheltered entrance off the dock.",
-  layout: row.venueClass === "community" ? "common" : "both",
-  connections:
-    row.venueClass === "community"
-      ? [["exterior", "common:base"]]
-      : [
-          ["exterior", "common:base"],
-          ["common:base", "private:base"],
-        ],
+  layout: !(row.playerHome || !!row.residentIds?.length) ? "common" : "both",
+  connections: !(row.playerHome || !!row.residentIds?.length)
+    ? [["exterior", "common:base"]]
+    : [
+        ["exterior", "common:base"],
+        ["common:base", "private:base"],
+      ],
   commonName: "Meeting nook",
   commonPurpose: "Welcoming company",
   commonDescription: "A bench beside the opening.",
-  privateName: row.venueClass === "community" ? "" : "Resting nook",
-  privatePurpose: row.venueClass === "community" ? "" : "Resting and storing belongings",
+  privateName: !(row.playerHome || !!row.residentIds?.length) ? "" : "Resting nook",
+  privatePurpose: !(row.playerHome || !!row.residentIds?.length) ? "" : "Resting and storing belongings",
   privateDescription: row.id === "player" ? "A berth behind a curtain." : "A resident berth with a blue blanket.",
 }));
 const parsed = parseFoundingVenueSuggestions(
@@ -71,7 +66,7 @@ const parsed = parseFoundingVenueSuggestions(
   true,
 );
 assert.equal(parsed[0].privateDescription, "A berth behind a curtain.");
-const draft = newSetupVenue("player", "residence", 0.2, 0.3, true);
+const draft = newSetupVenue("player", 0.2, 0.3, true);
 draft.name = "Authored name";
 draft.form = "Authored form";
 draft.spaces![0].name = "My authored cabin";
@@ -116,7 +111,7 @@ const templates = quickStartTemplates([
     residentIds: ["buster"],
     occupancy: { ...draft.occupancy, playerHome: false, residentCharacterId: "buster" },
   },
-  newSetupVenue("community", "community", 0.5, 0.5),
+  { ...newSetupVenue("community", 0.5, 0.5), category: "public-center" },
 ]);
 assert.deepEqual(
   templates.map((row) => [row.spaces!.length, row.privateSpaces!.length]),
@@ -143,35 +138,6 @@ assert.ok(standardCommunity.spaces!.every((zone) => zone.access?.mode === "publi
 assert.equal(standardCommunity.privateSpaces!.length, 0);
 assert.deepEqual(foundingVenueIssues([standardCommunity]), []);
 assert.doesNotThrow(() => parsePlace(standardCommunity, true));
-for (const owner of ["player", "buster"]) {
-  const legacy = newSetupVenue("old:" + owner, "residence", 0.3, 0.6, owner === "player");
-  legacy.residentIds = owner === "player" ? [] : [owner];
-  legacy.name = "Keep this Venue name";
-  legacy.form = "Keep this structure";
-  legacy.destinations = { [owner]: { home: "common:base", sleep: "common:base" } };
-  const source = JSON.parse(JSON.stringify(legacy));
-  const upgraded = upgradeUntouchedStartingLayout(source);
-  assert.equal(upgraded.privateSpaces!.length, 1);
-  assert.equal(upgraded.privateSpaces![0].ownerId, owner);
-  assert.deepEqual(upgraded.privateSpaces![0].access!.memberIds, [owner]);
-  assert.equal(upgraded.destinations![owner].sleep, "private:base");
-  assert.equal(upgraded.name, source.name);
-  assert.equal(upgraded.form, source.form);
-  assert.deepEqual(upgraded.presentation, source.presentation);
-  assert.equal(source.privateSpaces!.length, 0, "Upgrading does not mutate retained source data");
-  assert.equal(upgradeUntouchedStartingLayout(upgraded), upgraded, "The upgrade is idempotent");
-  for (const edit of [
-    { name: "Authored room" },
-    { description: "Authored room description" },
-    { image: { id: "saved", ref: "global-gallery:saved", url: "/saved.png" } },
-    { connectedTo: ["exterior"] },
-  ]) {
-    const edited = { ...source, spaces: [{ ...source.spaces[0], ...edit }] };
-    assert.equal(upgradeUntouchedStartingLayout(edited), edited, "Customized rooms stay unchanged");
-  }
-}
-const legacyCommunity = newSetupVenue("old-community", "community", 0.4, 0.5);
-assert.equal(upgradeUntouchedStartingLayout(legacyCommunity).spaces!.length, 2);
 for (const layout of ["common", "private"]) {
   const suggestion = {
     ...suggestions[0],
@@ -348,7 +314,8 @@ assert.equal(calls, beforeInvalidModel + 1, "invalid model output is rejected wi
   replyState.override = undefined;
   const selectedPlace = {
     ...request,
-    venues: rows.map((row) => (row.id === "community" ? { ...row, venueClass: "other" } : row)),
+    mode: undefined,
+    venues: rows.map((row) => (row.id === "community" ? { ...row } : row)),
   };
   await service.suggestStartingVenues(selectedPlace);
   assert.equal(input.openingVenueId, "community");
@@ -404,7 +371,7 @@ assert.equal(calls, beforeInvalidModel + 1, "invalid model output is rejected wi
   const moved = {
     ...request,
     openingVenueId: "courtyard",
-    venues: [...rows, { ...rows.find((row) => row.id === "community")!, id: "courtyard", venueClass: "other" }],
+    venues: [...rows, { ...rows.find((row) => row.id === "community")!, id: "courtyard" }],
   };
   const result = await service.suggestStartingVenues(moved);
   assert.equal(
@@ -506,7 +473,7 @@ delete replyState.finishReason;
 
 for (const count of [3, 4, 5, 16]) {
   const venues = Array.from({ length: count }, (_, index) => {
-    const venue = newSetupVenue(String(index), index === count - 1 ? "community" : "residence", 0.2, 0.3, index === 0);
+    const venue = newSetupVenue(String(index), 0.2, 0.3, index === 0);
     venue.presentation.x = index === 0 ? 0.22 : null;
     venue.presentation.y = index === 0 ? 0.28 : null;
     return venue;
@@ -564,7 +531,7 @@ console.log(
   const separate = arrangeQuickStartVenues(
     separateFoundingTemplates(["a", "b", "c"], "community").map((row) => ({
       ...row,
-      layout: row.classes?.includes("residence") ? "both" : "common",
+      layout: row.occupancy.playerHome || !!row.residentIds?.length ? "both" : "common",
     })),
   );
   const collision = separateFoundingTemplates(["a"], "founding-home:a");
@@ -573,13 +540,8 @@ console.log(
   const stored = parsePlaces(separate, new Set(["a", "b", "c"]), true);
   assert.ok(
     stored
-      .filter((row) => row.classes?.includes("residence"))
-      .every(
-        (row) =>
-          row.classes!.length === 1 &&
-          row.classes![0] === "residence" &&
-          row.residentIds!.length + Number(row.occupancy.playerHome) === 1,
-      ),
+      .filter((row) => row.occupancy.playerHome || !!row.residentIds?.length)
+      .every((row) => row.residentIds!.length + Number(row.occupancy.playerHome) === 1),
   );
   assert.throws(() =>
     parsePlaces(
@@ -591,21 +553,17 @@ console.log(
     ),
   );
   for (const ordinary of [
-    [...separate, newSetupVenue("extra", "other", 0.5, 0.5)],
+    [...separate, newSetupVenue("extra", 0.5, 0.5)],
+    separate.map((row) => (row.id === "founding-home:a" ? { ...row, workerIds: ["a"] } : row)),
     separate.map((row) =>
-      row.id === "founding-home:a" ? { ...row, classes: ["residence", "workplace"], workerIds: ["a"] } : row,
-    ),
-    separate.map((row) =>
-      row.id === "community"
-        ? { ...row, classes: ["other"], spaces: row.spaces?.map((zone) => ({ ...zone, venueClass: "other" })) }
-        : row,
+      row.id === "community" ? { ...row, spaces: row.spaces?.map((zone) => ({ ...zone })) } : row,
     ),
   ])
     assert.doesNotThrow(() => parsePlaces(ordinary, new Set(["a", "b", "c"]), true));
   for (const opening of ["founding-garden", "founding-home:a"]) {
     const replacement = separateFoundingTemplates(["a"], opening);
     assert.equal(new Set(replacement.map((row) => row.id)).size, replacement.length);
-    assert.equal(replacement.filter((row) => row.classes?.includes("community")).length, 2);
+    assert.equal(replacement.filter((row) => !(row.occupancy.playerHome || !!row.residentIds?.length)).length, 2);
   }
   const { calculateSetupMapSrc } = await import("../packages/villages/src/client/features/founding/calculations.js");
   assert.equal(

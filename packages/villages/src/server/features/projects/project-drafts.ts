@@ -3,7 +3,6 @@ import type { VillageProject, VillageState } from "../../domain/models/world.js"
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { boundText } from "../../domain/rules/prompt-preset.js";
-import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { lifecycle } from "../../domain/rules/project-lifecycle-rules.js";
 import { readRenovationChange } from "../../domain/rules/project-design.js";
 import { venueDesignHash, changedZoneIds } from "../../domain/rules/project-structure.js";
@@ -33,9 +32,7 @@ export function draftNewVenueProject(
   const row = asRecord(value),
     name = boundText(row.name, 100).trim(),
     description = boundText(row.description, 2000).trim();
-  const classes = row.classes ?? [row.venueClass];
-  if (!name || !description || !validVenueClasses(classes))
-    throw badRequest("Choose one or two Classes, a name and a description.");
+  if (!name || !description) throw badRequest("Give the Venue a name and physical description.");
   if (!state.setupAt) throw conflict("Found the Village before planning a Project.");
   const requester = requesterCharacterId ? continuityActor(state, requesterCharacterId) : undefined;
   if (requesterCharacterId && !requester) throw conflict("The Project requester is unavailable.");
@@ -50,7 +47,7 @@ export function draftNewVenueProject(
     progress: 0,
     status: "planning",
     updatedAt: villageNow().toISOString(),
-    venueDraft: { name, classes, description, position: { x: null, y: null } },
+    venueDraft: { name, description, position: { x: null, y: null } },
     lifecycle: lifecycle(),
   };
   state.projects.push(project);

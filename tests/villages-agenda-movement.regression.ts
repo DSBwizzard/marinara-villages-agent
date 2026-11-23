@@ -25,7 +25,6 @@ import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/
 function place(id: string, residentCharacterId: string | null = null): VillageVenue {
   return venueFixture({
     residentIds: [residentCharacterId].filter((id) => typeof id === "string" && !!id),
-    classes: false || residentCharacterId ? ["residence"] : ["other"],
     id,
     name: id,
     category: "",

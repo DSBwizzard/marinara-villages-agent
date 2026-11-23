@@ -64,7 +64,7 @@ function fixture(): VillageVenue {
     id,
     name: id,
     purpose: id === "bedroom" ? "Sleeping" : "Everyday activities",
-    kind: ownerId ? "private-residence" : "shared-residence",
+    kind: ownerId ? "personal" : "public",
     ownerId,
     seen: false,
   });
@@ -73,7 +73,6 @@ function fixture(): VillageVenue {
     name: "Jim's home",
     venueType: "Home",
     form: "Converted cottage",
-    classes: ["residence"],
     baseClasses: ["residence"],
     layoutVersion: 1,
     description: "The approach",

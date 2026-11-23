@@ -155,7 +155,6 @@ export function createFoundingSuggestSetupVenues(ports: {
       setSetupProblem,
       setSetupSuggestionsBusy,
       setSetupSuggestionsKey,
-      setSetupVenues,
       setupAuthoredFieldsRef,
       setupBeginningSourceKey,
       setupBeginningSourceKeyRef,
@@ -199,7 +198,6 @@ export function createFoundingSuggestSetupVenues(ports: {
           form: replacing ? "" : row.form,
           description: replacing ? "" : row.description,
           spaceDescription: replacing ? "" : (row.spaces?.[0]?.description ?? ""),
-          venueClass: row.classes?.[0] ?? "other",
           residentIds: row.residentIds ?? [],
           playerHome: row.occupancy.playerHome,
         }));
@@ -216,6 +214,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         : undefined;
       const input = {
         setting: setupSetting,
+        venueBrief: ports.setupWorkspace.venueBrief ?? "",
         worldName: ports.setupWorldName,
         ...(options.quickStart ? { mode: "quick-start" } : {}),
         ...(options.fullVenue
@@ -271,19 +270,23 @@ export function createFoundingSuggestSetupVenues(ports: {
           if (!proposal) throw new Error("Suggestions did not return every template Venue. Your draft is unchanged.");
           const drafted = replaceQuickStartVenue(row, proposal);
           const resident =
-            options.separateHomes && row.classes?.includes("residence") ? foundingHomeMembers(row)[0] : undefined;
+            options.separateHomes && foundingHomeMembers(row).length > 0 ? foundingHomeMembers(row)[0] : undefined;
           const placed = setupVenuesRef.current.find((venue) => {
             if (!resident) return venue.id === row.id;
-            if (!venue.classes?.includes("residence")) return false;
+            if (!foundingHomeMembers(venue).length) return false;
             const members = foundingHomeMembers(venue);
             return members.length === 1 && members[0] === resident;
           });
           const { mapId = "", x = null, y = null } = placed?.presentation ?? {};
           return { ...drafted, presentation: { ...drafted.presentation, mapId, x, y } };
         });
-        setSetupVenues(
-          arrangeQuickStartVenues(options.separateHomes ? next.map((row) => reconcileFoundingHome(row)) : next),
-        );
+        ports.setSetupWorkspace((state) => ({
+          ...state,
+          venueReview: {
+            baseline: JSON.stringify(setupVenuesRef.current),
+            venues: arrangeQuickStartVenues(next.map((row) => reconcileFoundingHome(row))),
+          },
+        }));
         ports.onQuickStartApplied?.();
         ports.setSetupWorkspace((state) => ({
           ...state,
@@ -300,33 +303,46 @@ export function createFoundingSuggestSetupVenues(ports: {
       ports.setSetupWorkspace((state) => ({ ...state, lore: result.lore }));
       if (options.fullVenue && !result.venues.find((row) => row.id === options.venueId)?.zones)
         throw new Error("The Venue draft has no complete Zone plan.");
-      setSetupVenues((currentRows) =>
-        currentRows.map((row) => {
-          if (options.venueId && row.id !== options.venueId) return row;
-          const proposal = result.venues.find((item) => item.id === row.id);
-          const before = rows.find((item) => item.id === row.id);
-          if (
-            !proposal ||
-            !before ||
-            setupImageTargetRef.current?.venueId === row.id ||
-            quickStartIdentity([row]) !== quickStartIdentity([before])
-          )
-            return row;
-          if (options.fullVenue) {
-            const next = applyFoundingVenueDraft(row, proposal);
-            return result.entranceImage
-              ? { ...next, presentation: { ...next.presentation, image: result.entranceImage } }
-              : next;
-          }
-          const changed: SetupVenueDraft = { ...row };
-          // Explicit selected-Venue suggestions change text only; room and access records remain authoritative.
-          for (const key of ["name", "venueType", "form", "description"] as const)
-            if ((options.venueId || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
-              changed[key] = proposal[key] ?? row[key];
-          if (changed.description !== row.description) Object.assign(changed, zoneDayNightDefault(proposal.dayNight));
-          return changed;
-        }),
-      );
+      let reviewed = setupVenuesRef.current.map((row) => {
+        if (options.venueId && row.id !== options.venueId) return row;
+        const proposal = result.venues.find((item) => item.id === row.id);
+        const before = rows.find((item) => item.id === row.id);
+        if (
+          !proposal ||
+          !before ||
+          setupImageTargetRef.current?.venueId === row.id ||
+          quickStartIdentity([row]) !== quickStartIdentity([before])
+        )
+          return row;
+        if (options.fullVenue) {
+          const next = applyFoundingVenueDraft(row, proposal);
+          return result.entranceImage
+            ? { ...next, presentation: { ...next.presentation, image: result.entranceImage } }
+            : next;
+        }
+        const changed: SetupVenueDraft = { ...row };
+        // Explicit selected-Venue suggestions change text only; room and access records remain authoritative.
+        for (const key of ["name", "venueType", "form", "description"] as const)
+          if ((options.venueId || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
+            changed[key] = proposal[key] ?? row[key];
+        if (changed.description !== row.description) Object.assign(changed, zoneDayNightDefault(proposal.dayNight));
+        return changed;
+      });
+      if (options.fullVenue && options.venueId) {
+        const claimed = foundingHomeMembers(reviewed.find((row) => row.id === options.venueId)!);
+        reviewed = reviewed.map((row) =>
+          row.id === options.venueId
+            ? reconcileFoundingHome(row)
+            : reconcileFoundingHome(
+                row,
+                foundingHomeMembers(row).filter((id) => !claimed.includes(id)),
+              ),
+        );
+      }
+      ports.setSetupWorkspace((state) => ({
+        ...state,
+        venueReview: { baseline: JSON.stringify(setupVenuesRef.current), venues: reviewed },
+      }));
       if (result.imageError) setSetupProblem(result.imageError);
       if (!options?.venueId) setSetupSuggestionsKey(source);
     } catch (cause) {

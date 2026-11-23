@@ -42,7 +42,7 @@ export function queueVillageVenueRequest(
     id: randomVillageSeed(),
     kind: "venue",
     title: core.name,
-    detail: core.classes.join(" / "),
+    detail: core.name,
     proposedAt: at,
     sourceOpportunityId: source === "background" ? sourceKey : "",
     status: "pending",

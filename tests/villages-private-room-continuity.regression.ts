@@ -47,7 +47,7 @@ async function setup() {
   venue.zones!.push({
     ...defaultVenueSpace("community"),
     id: zoneId,
-    kind: "staff",
+    kind: "restricted",
     name: "Private work area",
     purpose: "Repair tools",
     connectedTo: [exterior.id],

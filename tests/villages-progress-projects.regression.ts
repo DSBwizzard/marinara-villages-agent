@@ -59,12 +59,10 @@ assert.deepEqual(coerceVillageState(fresh).projects, []);
 const exterior = fixture();
 await exterior.mutate((state) => {
   const site = state.venues[0];
-  site.classes = ["residence", "workplace"];
   site.residentIds = ["b"];
   site.destinations = { b: { home: "common", sleep: "common" } };
   site.workerIds = ["c"];
-  site.zones![1].kind = "shared-residence";
-  site.zones![1].venueClass = "residence";
+  site.zones![1].kind = "public";
   seedObservedProjectRoom(state, site, "exterior", "A stone arch.");
 });
 const repairs = [{ zoneId: "exterior", text: "A repaired entrance with clean glass doors." }];

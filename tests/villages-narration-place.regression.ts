@@ -111,7 +111,7 @@ await runCase("narration-place/discovery", () => {
   assert.equal(receipt.kind, "discovery");
   assert.deepEqual(place.knownBy, ["player", "a"]);
   assert.equal(place.prepared, false);
-  assert.deepEqual(place.location.classes, ["other"]);
+  assert.equal(Object.hasOwn(place.location, "classes"), false);
   assert.equal(f.state.venues.length, 3);
   assert.equal(memoryHash(f.state.venues[0]), before, "discovery never constructs or edits the current Venue");
   for (const zone of place.location.zones!) {
@@ -199,8 +199,7 @@ await runCase("narration-place/evidence", () => {
       turn.raw.commands[0].existingId = "missing";
     }
     if (kind === "both") turn.raw.commands[0].existingId = "orchard";
-    if (kind === "service") turn.raw.commands[0].place.classes = ["workplace"];
-    const before = memoryHash(f.state);
+    if (kind === "service") const before = memoryHash(f.state);
     assert.equal(turn.accept().held, true, kind);
     assert.equal(memoryHash(f.state), before);
   }

@@ -175,7 +175,6 @@ await runCase("project-room-edits/admitted-renovation", async () => {
       {
         name: "Shed",
         description: "A bare approach.",
-        classes: ["community"],
         zones: [{ id: "room", name: "Room", kind: "public", description: "A bare floor." }],
       },
       placeId,
@@ -194,7 +193,6 @@ await runCase("project-room-edits/admitted-renovation", async () => {
   const [floor] = projectRoomEntries(f.state(), venue, "room", at)!;
   await f.service.createRenovationProject(placeId, {
     requestId: "repair-shed",
-    classes: ["community"],
     detail: "Prepare a workshop",
     roomEdits: [{ zoneId: "room", entryId: floor.id, version: floor.version, text: "A level plank floor." }],
   });

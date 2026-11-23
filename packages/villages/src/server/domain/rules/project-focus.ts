@@ -1,3 +1,4 @@
+import { refreshWorkReservations, workClock } from "./venue-work.js";
 import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { findLocation } from "./places.js";
 import type { ProjectFocus } from "../models/agenda-reservation.js";
@@ -135,6 +136,7 @@ export function projectAgendaReservations(state: VillageState): void {
       replaces: "flexible",
     });
   }
+  refreshWorkReservations(state, workClock(state));
 }
 
 /** Consume completed planned minutes, then release the allocation. No historical periods are retained. */

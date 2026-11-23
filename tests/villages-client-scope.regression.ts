@@ -14,7 +14,6 @@ for (const playerPersonaName of [undefined, null, 1, "", "   ", " Robin "]) {
 
 const validVenue = venueFixture({
   residentIds: [null].filter((id) => typeof id === "string" && !!id),
-  classes: false || null ? ["residence"] : ["other"],
   id: "library",
   name: "Library",
   category: "destination",

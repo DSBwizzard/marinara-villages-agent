@@ -1,4 +1,4 @@
-// Test cases: narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep, narration-access/overnight-agreement
+// Test cases: narration-access/work-consent, narration-access/away-home, narration-access/stale-authority, narration-access/communication, narration-access/standing-withdrawal, narration-access/native-management, narration-access/empty-withdrawal, narration-access/current-outside-hours, narration-native/atomic, narration-native/held-rollback, narration-native/independent-subset, narration-native/replay, narration-native/disjoint-scopes, narration-native/decision-order, narration-native/closed-project, narration-native/provisional-authority, narration-access/book-without-keep, narration-access/overnight-agreement
 import assert from "node:assert/strict";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
@@ -19,7 +19,7 @@ import {
   bindNarrationSource,
   narrationCommunication,
 } from "../packages/villages/src/server/domain/rules/narration-sources.js";
-import { evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { applyAccessCommand, evaluateZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
@@ -561,14 +561,13 @@ await runCase("narration-access/overnight-agreement", () => {
   const home = venueFixture({
     id: "host-home",
     name: "Mara's home",
-    classes: ["residence"],
     residentIds: [actorId],
     zones: [
       {
         ...defaultVenueSpace("residence"),
         id: "guest",
         name: "Guest Room",
-        kind: "shared-residence",
+        kind: "public",
         purpose: "Overnight lodging",
         seen: true,
       },
@@ -576,7 +575,7 @@ await runCase("narration-access/overnight-agreement", () => {
         ...defaultVenueSpace("residence"),
         id: "guest-east",
         name: "East Guest Room",
-        kind: "shared-residence",
+        kind: "public",
         purpose: "Overnight lodging",
         seen: true,
       },
@@ -655,4 +654,65 @@ await runCase("narration-access/overnight-agreement", () => {
   assert.equal(state.visitors[0].trip.lodging, undefined);
   const guestHome = state.venues.find((venue) => venue.id === home.id)!;
   assert.equal(guestHome.access!.permissions.length, 0);
+});
+
+await runCase("narration-access/work-consent", () => {
+  const f = fixture(true),
+    venue = f.home.location;
+  const terms = {
+    characterId: f.actorId,
+    activity: "Keeping the library",
+    zoneId: "library",
+    accessZoneIds: ["library"],
+    days: ["Monday"],
+    startMinute: 540,
+    endMinute: 1020,
+  };
+  applyAccessCommand(
+    venue,
+    {
+      action: "work-propose",
+      zoneId: null,
+      operationId: "library-offer",
+      expectedRevision: venue.access!.revision,
+      characterId: f.actorId,
+      terms,
+    },
+    "player",
+    at,
+    ["player", f.actorId],
+    [],
+    [f.actorId],
+  );
+  f.readset.access = narrationAccessScopes(f.state, ["player", f.actorId]);
+  const command = {
+    id: "accept-work",
+    type: "access.decide",
+    by: f.actorId,
+    venue: venue.id,
+    zone: null,
+    at: "grant",
+    decision: {
+      outcome: "access-management",
+      management: { action: "work-decide", offerId: "library-offer", accept: true },
+    },
+    source: [{ segment: "grant" }],
+  };
+  const publication = f.publication([command], [], ["accept-work"]);
+  publication.raw.segments[0].text =
+    "I agree to keep the library on Mondays, nine to five, with access only to the library.";
+  const fake = structuredClone(publication);
+  fake.raw.commands[0].by = "player";
+  fake.responseDigest = memoryHash(fake.raw);
+  assert.equal(
+    acceptNarration(f.state, fake, "impostor-work", at).held,
+    true,
+    "Another speaker cannot approve the worker’s offer",
+  );
+  assert.equal(venue.access!.work?.length ?? 0, 0);
+  publication.responseDigest = memoryHash(publication.raw);
+  const accepted = acceptNarration(f.state, publication, "actual-work", at);
+  assert.equal(accepted.held, false, JSON.stringify(accepted.rejected));
+  assert.deepEqual(f.state.worldPlaces.places[venue.id].location.access!.work, [terms]);
+  assert(acceptNarration(f.state, publication, "actual-work", at).replayed);
 });

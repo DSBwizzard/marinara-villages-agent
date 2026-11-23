@@ -55,14 +55,12 @@ export async function packagedSceneServer(
       {
         id: "mill",
         name: "The Mill",
-        classes: ["other"],
         layoutVersion: 1,
         zones: [
           {
             ...defaultVenueSpace("other"),
             id: "exterior",
             name: "Exterior",
-            venueClass: "other",
             kind: "exterior",
             description: "A stone threshold outside the mill.",
             connectedTo: ["common"],
@@ -72,7 +70,6 @@ export async function packagedSceneServer(
             ...defaultVenueSpace("other"),
             id: "common",
             name: "Common",
-            venueClass: "other",
             kind: "public",
             description: "A wooden bench stands against a plaster wall.",
             connectedTo: ["exterior"],

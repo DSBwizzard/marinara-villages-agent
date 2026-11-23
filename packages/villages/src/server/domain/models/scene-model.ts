@@ -3,7 +3,6 @@ import type { StagingCue } from "../../../shared/helpers/scene-staging.js";
 import type { ResponseDiagnostics } from "../rules/response-diagnostics.js";
 import type { DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueOperation, VenueRequestMetrics } from "./operation-model.js";
-import type { VillageVenueClass } from "./world.js";
 
 export type VenueLine = {
   id: string;
@@ -34,7 +33,7 @@ export type VenueLine = {
 };
 export type VenueParticipant = { characterId: string; name: string; doing: string };
 export type SceneAttendance = {
-  layout?: Pick<import("./world.js").VillageVenueZone, "id" | "kind" | "name" | "venueClass" | "connectedTo">[];
+  layout?: Pick<import("./world.js").VillageVenueZone, "id" | "kind" | "name" | "connectedTo">[];
   capturedAt: string;
   occupants: (VenueParticipant & { zoneId: string })[];
 };
@@ -109,7 +108,6 @@ export type VenueScene = {
   id: string;
   placeId: string;
   placeName: string;
-  spaceClass?: VillageVenueClass;
   zoneId?: string;
   enteredFromZoneId?: string;
   trespass?: { zoneId: string; reason: import("../../../shared/helpers/venue-access.js").TrespassReason };

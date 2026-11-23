@@ -53,7 +53,13 @@ const world = coerceVillageState({
   seed: "sprite-system",
   setupAt: at,
   foundedAt: at,
-  venues: [venueFixture({ id: "studio", name: "Studio", classes: ["community"] })],
+  venues: [
+    venueFixture({
+      spaces: [{ id: "community", description: "A place in the community.", image: null }],
+      id: "studio",
+      name: "Studio",
+    }),
+  ],
   villagers: participants.map(({ characterId, name }) => ({
     characterId,
     incarnation: "resident-" + characterId,

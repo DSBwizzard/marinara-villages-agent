@@ -190,7 +190,6 @@ const home = coerceVillageState({
         layout: "private",
         name: "Home",
         form: "Cabin",
-        classes: ["residence"],
         description: "A cabin",
         occupancy: { playerHome: false, residentCharacterId: "same", homeKind: null },
         residentIds: ["same"],

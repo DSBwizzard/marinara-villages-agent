@@ -23,7 +23,6 @@ const publicZones = Array.from({ length: 3 }, (_, i) => ({
   id: "garden-" + i,
   name: "Garden " + i,
   purpose: "Open air gathering",
-  venueClass: "community",
   description: "An outdoor meeting space.",
   connectedTo: ["exterior"],
 }));
@@ -31,7 +30,6 @@ const privateZones = Array.from({ length: 3 }, (_, i) => ({
   id: "quiet-" + i,
   name: "Quiet room " + i,
   purpose: "Private reflection",
-  venueClass: "community",
   description: "A private interior.",
   controllerIds: ["a"],
   connectedTo: ["exterior"],
@@ -54,7 +52,6 @@ const founding = venueFixture({
   residentIds: [null].filter((id) => typeof id === "string" && !!id),
   id: "founding",
   name: "Garden Pavilion",
-  classes: ["community"],
   category: "public-center",
   description: "The garden gate.",
   presentation: { image: null, x: 0.5, y: 0.5 },

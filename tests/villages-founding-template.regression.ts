@@ -12,7 +12,7 @@ import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/d
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 
-const residence = newSetupVenue("home", "residence", 0.2, 0.3, true);
+const residence = newSetupVenue("home", 0.2, 0.3, true);
 residence.layout = "both";
 residence.privateSpaces = [startingZone(residence, true)];
 residence.form = "Cottage";
@@ -75,7 +75,7 @@ assert.throws(
   () => parsePlace({ ...residence, privateSpaces: [{ ...residence.privateSpaces![0], description: "" }] }, true),
   /visible Zone/,
 );
-const community = newSetupVenue("park", "community", 0.7, 0.6);
+const community = { ...newSetupVenue("park", 0.7, 0.6), category: "public-center" };
 community.form = "Park";
 community.description = "Approach path";
 community.spaces![0] = {
@@ -112,7 +112,6 @@ const restricted = parsePlace(
 assert.deepEqual(restricted.zones?.find((zone) => zone.id === "common:base")?.access?.managerIds, ["player"]);
 const genericPrivate = {
   ...residence.privateSpaces![0],
-  venueClass: "community",
   ownerId: "",
   access: { ...residence.privateSpaces![0].access!, managerIds: ["player"], memberIds: ["player"] },
 };
@@ -122,7 +121,6 @@ const projectZones = readBaseVenueLayout(
     layout: "both",
     privateSpaces: [{ ...genericPrivate, description: "", roomSpecification: "A staff quiet room" }],
   },
-  ["community"],
   "",
   () => null,
 );
@@ -148,7 +146,7 @@ const suggestion = {
   privatePurpose: "Rest",
   privateDescription: "Hammock",
 };
-const template = [{ id: "home", venueClass: "residence", residentCharacterId: "" }];
+const template = [{ id: "home", residentIds: ["npc"] }];
 assert.equal(
   parseFoundingVenueSuggestions({ venues: [suggestion] }, ["home"], template)[0].privateDescription,
   "Hammock",
@@ -160,11 +158,7 @@ assert.throws(() =>
   parseFoundingVenueSuggestions({ venues: [{ ...suggestion, commonPurpose: "" }] }, ["home"], template),
 );
 assert.doesNotThrow(() =>
-  parseFoundingVenueSuggestions(
-    { venues: [{ ...suggestion, layout: "both" }] },
-    ["home"],
-    [{ id: "home", venueClass: "community" }],
-  ),
+  parseFoundingVenueSuggestions({ venues: [{ ...suggestion, layout: "both" }] }, ["home"], [{ id: "home" }]),
 );
 assert.equal(
   parseFoundingVenueSuggestions({ venues: [suggestion] }, ["home"], [{ ...template[0], residentCharacterId: "npc" }])[0]
@@ -185,7 +179,7 @@ const settings = villageSettings(
   null,
 );
 assert.ok(settings.venues[0].privateSpaces?.every((zone) => zone.description === "A hammock"));
-const privateZone = npc.zones!.find((zone) => zone.kind === "private-residence")!;
+const privateZone = npc.zones!.find((zone) => zone.kind === "personal")!;
 assert.equal(privateZone.seen, false, "Founding artwork knowledge is separate from a visit");
 privateZone.description = "SECRET new furnishings";
 privateZone.purpose = "SECRET purpose";

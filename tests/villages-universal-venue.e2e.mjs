@@ -41,7 +41,6 @@ await withBrowser(browser, async () => {
       heldVenueSave;
     place.name = "Warehouse home";
     place.venueType = "Converted office residence";
-    place.classes = ["residence"];
     place.residentIds = ["mara"];
     place.workerIds = ["eli"];
     place.occupancy = { playerHome: false, residentCharacterId: null, homeKind: null };
@@ -64,7 +63,6 @@ await withBrowser(browser, async () => {
         id: "exterior",
         name: "Entrance",
         kind: "exterior",
-        venueClass: "residence",
         connectedTo: ["bay"],
         seen: true,
         description: "A sheltered approach.",
@@ -73,8 +71,7 @@ await withBrowser(browser, async () => {
       {
         id: "bay",
         name: "Main Bay",
-        kind: "shared-residence",
-        venueClass: "residence",
+        kind: "public",
         connectedTo: ["exterior", "alcove", "workshop"],
         seen: true,
         pictureGenerateAvailable: true,
@@ -85,8 +82,7 @@ await withBrowser(browser, async () => {
       {
         id: "alcove",
         name: "Sleeping Alcove",
-        kind: "private-residence",
-        venueClass: "residence",
+        kind: "personal",
         connectedTo: ["bay"],
         seen: false,
         pictureGenerateAvailable: false,
@@ -98,7 +94,6 @@ await withBrowser(browser, async () => {
         id: "workshop",
         name: "Workshop",
         kind: "public",
-        venueClass: "residence",
         connectedTo: ["bay"],
         seen: true,
         description: "A bright bench.",
@@ -139,7 +134,6 @@ await withBrowser(browser, async () => {
           placeName: place.name,
           zoneId: "exterior",
           area: "outside",
-          spaceClass: "residence",
           privateOwnerId: "",
           startedAt: new Date().toISOString(),
           lastActivityAt: new Date().toISOString(),

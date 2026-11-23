@@ -1,15 +1,14 @@
 import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
-import type { VillageSnapshot, VillageVenue, VenueClass } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { useEffect, useRef, useState } from "react";
 import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useProjectWorkspaces } from "./useProjectWorkspaces.js";
 
-function draftVenue(name: string, classes: VenueClass[], physicalDesign: string): VillageVenue {
+function draftVenue(name: string, physicalDesign: string): VillageVenue {
   return {
     id: "draft",
     name,
-    classes,
     form: physicalDesign,
     description: "",
     category: "",
@@ -18,7 +17,7 @@ function draftVenue(name: string, classes: VenueClass[], physicalDesign: string)
     presentation: { mapId: "", image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    residenceCapacity: 1,
+    residenceCapacity: 0,
     spaces: [],
     privateSpaces: [],
   };
@@ -38,7 +37,6 @@ export function useProjectsController({
     [draftType, setDraftType] = useState<"new-venue" | "renovation" | "">("");
   const [name, setName] = useState(""),
     [description, setDescription] = useState(""),
-    [classes, setClasses] = useState<VenueClass[]>(["community"]),
     [venueId, setVenueId] = useState("");
   const selected = useRef(selectedId);
   selected.current = selectedId;
@@ -54,7 +52,7 @@ export function useProjectsController({
   const initial =
     project?.kind === "new-venue"
       ? {
-          ...draftVenue(project.title, project.venueDraft?.classes ?? ["other"], projectPhysicalDesign(project)),
+          ...draftVenue(project.title, projectPhysicalDesign(project)),
           ...(project.plan
             ? {
                 form: project.plan.form,
@@ -71,7 +69,6 @@ export function useProjectsController({
       : target
         ? {
             ...target,
-            classes: project?.lifecycle?.change?.classes ?? target.classes,
             form: project?.lifecycle?.change?.form ?? target.form,
           }
         : null;
@@ -84,7 +81,7 @@ export function useProjectsController({
       detail: project?.lifecycle?.change?.detail ?? description,
       zones: project?.lifecycle?.change?.zones ?? target?.zones?.filter((zone) => zone.kind !== "exterior") ?? [],
       roomEdits: project?.lifecycle?.change?.roomEdits ?? [],
-      capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 1,
+      capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 0,
     },
     String(snapshot?.isFounded ?? ""),
   );
@@ -121,11 +118,10 @@ export function useProjectsController({
     const next = await run(
       draftType === "new-venue" ? "/projects" : "/projects/renovations/" + encodeURIComponent(venueId),
       draftType === "new-venue"
-        ? { name, description, classes }
+        ? { name, description }
         : {
             title: name,
             detail: description,
-            classes: workspace.draft.venue?.classes,
             capacity: workspace.draft.capacity,
             form: workspace.draft.venue?.form,
             zones: workspace.draft.zones,
@@ -147,7 +143,6 @@ export function useProjectsController({
     const next = await (project.kind === "new-venue"
       ? action("plan", {
           expectedRevision: draft.revision,
-          classes: venue.classes,
           form: venue.form,
           venueType: venue.venueType,
           exteriorDescription: venue.description,
@@ -163,7 +158,6 @@ export function useProjectsController({
           title: draft.title,
           detail: draft.detail,
           form: venue.form,
-          classes: venue.classes,
           capacity: draft.capacity,
           zones: draft.zones,
           roomEdits: draft.roomEdits,
@@ -180,8 +174,6 @@ export function useProjectsController({
     setName,
     description,
     setDescription,
-    classes,
-    setClasses,
     venueId,
     setVenueId,
     project,

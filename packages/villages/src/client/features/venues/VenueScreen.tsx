@@ -1,3 +1,4 @@
+import { VenueWorkPanel } from "./VenueWorkPanel.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
@@ -12,7 +13,6 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
-import { venueClassesFor } from "../../shared/venue.js";
 import { WorkspaceShell } from "../../shared/WorkspaceShell.js";
 import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { VenueScreenController } from "./screen-contracts.js";
@@ -516,11 +516,7 @@ export function VenueScreen({
         headingRef={fromMap ? heading : undefined}
         name={place.name}
         location={!venue}
-        type={
-          !fromMap && (venue || detail?.classified)
-            ? place.venueType || venueClassesFor(place).join(" · ") || "Venue"
-            : undefined
-        }
+        type={!fromMap && (venue || detail?.prepared) ? place.venueType || "Venue" : undefined}
         mapName={map?.name}
         status={place.constructionStatus === "worksite" ? "Worksite" : !venue ? "Location" : undefined}
         entranceImage={entranceArt?.url}
@@ -622,7 +618,7 @@ export function VenueScreen({
                   {roomBusy ? "Opening Scene…" : activeScene && room.placeId === place.id ? "Return to Scene" : "Visit"}
                 </button>
               )}
-              {!venue && detail?.visited && detail.classified ? (
+              {!venue && detail?.visited && detail.prepared ? (
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
@@ -765,6 +761,7 @@ export function VenueScreen({
         {venueSection === "manage" && !editingConnections && !editingAccess ? (
           <section className={ELEMENT_TAG + "-venue-manage"} aria-label="Manage this venue">
             <VenueName place={place} controller={controller} />
+            <VenueWorkPanel key={place.id} place={place} controller={controller} />
             {(place.accessView?.canManage || zones.some((zone) => zone.accessView?.decision.canInvite)) && (
               <button
                 type="button"

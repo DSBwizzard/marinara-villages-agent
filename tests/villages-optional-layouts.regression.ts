@@ -56,7 +56,6 @@ function draft(layout: string, role = "residence", owner = "a") {
     layout,
     name: "Venue " + layout,
     form: "A tent or sleeping mat under a tree",
-    classes: [role],
     description: "An approachable spot under a tree.",
     presentation: { image: null, x: 0.2, y: 0.3 },
     occupancy: {
@@ -92,7 +91,7 @@ function draft(layout: string, role = "residence", owner = "a") {
 }
 function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const source = draft(layout, role, owner);
-  const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
+  const zones = readBaseVenueLayout(source, owner, () => null);
   const parsed = { ...parsePlace(source, false), zones };
   initializeVenueAccess(parsed);
   return coerceVillageState({ ...defaultVillageState(), venues: [...[parsed], ...sharedVenuesFixture()] }).venues[0]!;
@@ -137,25 +136,25 @@ assert.throws(
 );
 const privateOnly = place("private");
 assert.equal(chooseAgendaZone(privateOnly, "a", "Sleep").id, "personal");
-assert.equal(defaultVenueZoneId(privateOnly, "private", "residence", "a"), "personal");
+assert.equal(defaultVenueZoneId(privateOnly, "private", "a"), "personal");
 const selectionDraft = structuredClone(privateOnly);
 delete selectionDraft.access;
 const personal = selectionDraft.zones!.find((zone) => zone.id === "personal")!;
 selectionDraft.zones!.push({ ...structuredClone(personal), id: "a" }, { ...structuredClone(personal), id: "assigned" });
 selectionDraft.destinations = { a: { sleep: "assigned" } };
 assert.equal(
-  defaultVenueZoneId(selectionDraft, "private", "residence", "a"),
+  defaultVenueZoneId(selectionDraft, "private", "a"),
   "assigned",
   "Draft selection follows its assigned Zone, never an owner-ID alias",
 );
 selectionDraft.destinations = {};
 assert.equal(
-  defaultVenueZoneId(selectionDraft, "private", "residence", "a"),
+  defaultVenueZoneId(selectionDraft, "private", "a"),
   "",
   "Ambiguous personal destinations never guess a Zone",
 );
 assert.equal(
-  defaultVenueZoneId(place("exterior"), "shared", "residence"),
+  defaultVenueZoneId(place("exterior"), "shared"),
   "exterior",
   "A Visit without an interior uses the Entrance",
 );
@@ -168,10 +167,10 @@ assert.equal(
   false,
 );
 assert.equal(chooseAgendaZone(place("exterior"), "a", "Sleep").id, "exterior");
-assert.equal(chooseAgendaZone(place("common"), "a", "Sleep").kind, "shared-residence");
+assert.equal(chooseAgendaZone(place("common"), "a", "Sleep").kind, "public");
 const vacant = place("private", "residence", "");
 assert.equal(
-  vacant.zones!.find((zone) => zone.kind === "private-residence")!.preparation?.status,
+  vacant.zones!.find((zone) => zone.kind === "personal")!.preparation?.status,
   "pending",
   "vacant rooms prepare neutral interiors",
 );
@@ -395,8 +394,7 @@ async function main() {
           id: "common:shelter",
           connectedTo: ["exterior"],
           name: "Common Space",
-          kind: "shared-residence",
-          venueClass: "residence",
+          kind: "public",
           description: "A shared canvas shelter",
         },
       ],
@@ -450,8 +448,7 @@ async function main() {
           id: "private:nook",
           connectedTo: ["exterior"],
           name: "Sleeping nook",
-          kind: "private-residence",
-          venueClass: "residence",
+          kind: "personal",
           ownerId: "",
           description: "",
           purpose: "A partitioned sleeping area",
@@ -522,8 +519,7 @@ async function main() {
           connectedTo: ["exterior"],
           description: "",
           purpose: "Sleeping chamber",
-          kind: "private-residence",
-          venueClass: "residence",
+          kind: "personal",
         },
       ],
     });
@@ -534,7 +530,7 @@ async function main() {
     await finish(project.id);
     current = await readVillageState({ memories: true });
     const expanded = current.venues.find((venue) => venue.id === outside.id)!;
-    const chamber = expanded.zones!.find((zone) => zone.kind === "private-residence")!;
+    const chamber = expanded.zones!.find((zone) => zone.kind === "personal")!;
     assert.equal(chamber.ownerId, undefined);
     assert.equal(chamber.preparation?.status, "pending");
     assert.equal(venueCapacity(expanded), 2);
@@ -609,7 +605,6 @@ async function main() {
     for (const layout of ["exterior", "common", "private", "both"]) {
       await createNewVenueProject({
         name: "New " + layout,
-        venueClass: "residence",
         description: "A small camping place",
       });
       current = await readVillageState({ memories: true });

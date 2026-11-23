@@ -67,14 +67,13 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     seed.settings.setting = "A";
     seed.settings.venues[0].id = "venue / A";
     const draft = structuredClone(seed.settings.venues[0]);
-    if (options.create) Object.assign(draft, { id: "new draft", name: " New Café ", classes: ["community"] });
+    if (options.create) Object.assign(draft, { id: "new draft", name: " New Café " });
     const entry = {
       id: "request / A",
-      venueDraft: { name: "Fallback name", classes: ["community"], description: "Fallback description" },
+      venueDraft: { name: "Fallback name", description: "Fallback description" },
     };
-    const overrides = { unrelated: { name: "Keep", classes: ["other"], description: "Keep" } };
-    if (!options.fallback)
-      overrides[entry.id] = { name: "Counteroffer", classes: ["workplace"], description: "Edited description" };
+    const overrides = { unrelated: { name: "Keep", description: "Keep" } };
+    if (!options.fallback) overrides[entry.id] = { name: "Counteroffer", description: "Edited description" };
     // The local suggestion exists only in the editable rows, not the saved snapshot.
     const initialRows = options.local ? [...seed.settings.venues, { ...draft, id: "local" }] : seed.settings.venues;
     page.on("pageerror", (cause) => errors.push(cause.message));
@@ -181,7 +180,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
           assert.equal(f.requests[0].method, create ? "POST" : "PUT");
           assert.deepEqual(f.requests[0].body, {
             name: f.draft.name,
-            ...(create ? { classes: ["community"] } : {}),
+            ...(create ? {} : {}),
             description: f.draft.description,
           });
           await f.reply(0, { fail });

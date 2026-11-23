@@ -86,7 +86,6 @@ world.venues = [
     id: "house",
     name: "House",
     layoutVersion: 1,
-    classes: ["other"],
     description: "Outside",
     form: "A building",
     category: "",
@@ -189,7 +188,6 @@ const privateLayout = readBaseVenueLayout(
       {
         id: "a",
         name: "A",
-        venueClass: "other",
         description: "A",
         controllerIds: ["player"],
         connectedTo: ["exterior"],
@@ -197,14 +195,12 @@ const privateLayout = readBaseVenueLayout(
       {
         id: "b",
         name: "B",
-        venueClass: "other",
         description: "B",
         controllerIds: ["player"],
         connectedTo: ["exterior"],
       },
     ],
   },
-  ["other"],
   "",
   () => null,
 );

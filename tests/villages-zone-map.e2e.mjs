@@ -200,7 +200,7 @@ installFeature(controller=><SceneScreen controller={controller}/>);
           { id: "walkway", name: "Walkway", kind: "public", connectedTo: ["exterior", "garden"] },
           { id: "garden", name: "Garden", kind: "public", connectedTo: ["walkway"] },
           { id: "airstrip", name: "Airstrip", kind: "restricted", connectedTo: ["exterior", "hangar"] },
-          { id: "hangar", name: "Hangar", kind: "staff", connectedTo: ["airstrip"] },
+          { id: "hangar", name: "Hangar", kind: "restricted", connectedTo: ["airstrip"] },
         ],
       });
       for (const zone of venue.zones) {

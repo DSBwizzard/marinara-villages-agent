@@ -1,11 +1,10 @@
 import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
-import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import type { VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { destinationPlaces } from "../../shared/presentation.js";
 import type { MenuPage } from "../../shared/types.js";
-import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
 
 export function useOpenVenue(ports: {
@@ -66,7 +65,6 @@ export function useLeaveVenue(ports: {
   setVenuePage: React.Dispatch<SetStateAction<"view" | "edit" | "proposal">>;
   setVenueProposalDraft: React.Dispatch<
     SetStateAction<{
-      classes: VenueClass[];
       capacity: number;
 
       title: string;
@@ -152,7 +150,7 @@ export function useSaveVenue(ports: {
       setSettingsError("");
       try {
         const existing = snapshot?.settings.venues.some((venue) => venue.id === draft.id) ?? false;
-        const spaces = venueClassesFor(draft).map((item) => venueSpaceFor(draft, item));
+        const spaces = draft.spaces ?? [];
         const next = await request<VillageSnapshot>(
           existing ? `/locations/venue/${encodeURIComponent(draft.id)}` : "/projects",
           {
@@ -162,7 +160,6 @@ export function useSaveVenue(ports: {
                 ? { name: draft.name, description: spaces[0]?.description ?? draft.description }
                 : {
                     name: draft.name,
-                    classes: draft.classes,
                     description: spaces[0]?.description ?? draft.description,
                   },
             ),
@@ -259,19 +256,9 @@ export function useRemoveVenue(ports: {
 
 export function useDecideVenueRequest(ports: {
   snapshot: VillageSnapshot;
-  requestEdits: Record<
-    string,
-    { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string }
-  >;
+  requestEdits: Record<string, { name: string; description: string }>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setRequestEdits: React.Dispatch<
-    SetStateAction<
-      Record<
-        string,
-        { name: string; classes: Array<"residence" | "workplace" | "community" | "other">; description: string }
-      >
-    >
-  >;
+  setRequestEdits: React.Dispatch<SetStateAction<Record<string, { name: string; description: string }>>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   setVenuesDraft: React.Dispatch<SetStateAction<VillageVenue[]>>;

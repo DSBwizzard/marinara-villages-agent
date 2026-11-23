@@ -4,9 +4,6 @@ import { conflict } from "./errors.js";
 export function villageVenueLimit(_state?: unknown): number {
   return 16;
 }
-function nonResidential(venue: Pick<VillageVenue, "classes" | "occupancy">): boolean {
-  return venue.classes?.length ? venue.classes.some((kind) => kind !== "residence") : true;
-}
 /** Count each existing Venue or outstanding creation exactly once, including worksites. */
 export function villageVenueUsage(state: VillageState, venues = state.venues, exceptProjectId = "") {
   const pending = state.projects.filter(
@@ -18,12 +15,6 @@ export function villageVenueUsage(state: VillageState, venues = state.venues, ex
   );
   return {
     total: venues.length + pending.length,
-    nonResidential:
-      venues.filter(nonResidential).length +
-      pending.filter(
-        (project) =>
-          !project.venueDraft?.classes?.length || project.venueDraft.classes.some((kind) => kind !== "residence"),
-      ).length,
   };
 }
 export function assertVillageVenueCapacity(state: VillageState, venues = state.venues, exceptProjectId = ""): void {
@@ -36,18 +27,13 @@ export function assertVillageVenueCapacity(state: VillageState, venues = state.v
         " total, including living Venues and reserved worksites).",
     );
 }
-export function assertCanAddVillageVenue(
-  state: VillageState,
-  classes: VillageVenue["classes"] = ["other"],
-  exceptProjectId = "",
-): void {
+export function assertCanAddVillageVenue(state: VillageState, exceptProjectId = ""): void {
   assertVillageVenueCapacity(
     state,
     [
       ...state.venues,
       {
         id: "__capacity_candidate__",
-        classes,
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       } as VillageVenue,
     ],

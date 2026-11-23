@@ -67,8 +67,8 @@ function deferred() {
       capturedAt: at,
       occupants: [],
       layout: [
-        { id: "exterior", name: "Entrance", kind: "exterior", venueClass: "workplace", connectedTo: ["workshop"] },
-        { id: "workshop", name: "Workshop", kind: "public", venueClass: "workplace", connectedTo: ["exterior"] },
+        { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: ["workshop"] },
+        { id: "workshop", name: "Workshop", kind: "public", connectedTo: ["exterior"] },
       ],
     };
     scene.lines = [

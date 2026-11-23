@@ -14,7 +14,6 @@ import {
 import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
 import { projectAgendaReservations, trimProjectFocus } from "../../domain/rules/project-focus.js";
 import { approvalScope, matchesProjectDesign, projectAgreementCurrent } from "../../domain/rules/project-terms.js";
-import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { removeNativeRoom } from "../../domain/rules/native-continuity.js";
@@ -120,10 +119,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     await command(id, value, "plan", (state, project, row) => {
       planning(project);
       if (project.kind !== "new-venue") throw conflict("Use the Renovation design.");
-      if (row.classes !== undefined) {
-        if (!validVenueClasses(row.classes)) throw badRequest("Choose one or two Classes.");
-        project.venueDraft!.classes = row.classes;
-      }
       project.plan = readProjectPlan(row, plannedVenue(project));
       project.lifecycle.revision++;
       project.updatedAt = villageNow().toISOString();

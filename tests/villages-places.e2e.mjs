@@ -72,7 +72,7 @@ await withBrowser(browser, async () => {
         y: null,
         report: false,
         visited: false,
-        classified: false,
+        prepared: false,
         venue: false,
         location: {
           ...snapshot.settings.venues[0],
@@ -187,7 +187,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
       assert(!paths.some((path) => path.endsWith("/prepare")), "Visit delegates first arrival to ordinary Scene entry");
       place.visited = true;
-      place.classified = true;
+      place.prepared = true;
       await page.evaluate(() => window.reopen());
       await expect(profile.getByRole("button", { name: "Add as Venue", exact: true })).toBeVisible();
       assert(detailReads() > hiddenReads, "Reopening the retained page reads current admission eligibility");

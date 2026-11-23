@@ -74,9 +74,9 @@ export async function prepareScenePrompt(
   let venue = findLocation(world, placeId);
   if (!venue && !overrides.placeId) {
     venue = venueFixture({
+      spaces: [{ id: "community", description: "A familiar gathering place.", image: null }],
       id: placeId,
       name: "Common room",
-      classes: ["community"],
       description: "A familiar gathering place.",
     });
     world.venues.push(venue);

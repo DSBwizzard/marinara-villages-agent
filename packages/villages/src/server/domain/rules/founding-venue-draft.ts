@@ -1,3 +1,6 @@
+import { foundingPeopleSchema } from "../../../shared/helpers/founding-people.js";
+import { applyFoundingPeople } from "../../../shared/helpers/founding-people.js";
+import { readZonePolicy } from "./venue-access.js";
 import type { FoundingVenueSuggestion } from "../../../shared/contracts/founding.js";
 import { applyFoundingVenueDraft } from "../../../shared/helpers/founding-venue-draft.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
@@ -36,7 +39,7 @@ export function readFoundingVenueDraftSource(value: unknown) {
     privateSpaces: areas(row.privateSpaces ?? []),
   });
   parsed.privateSpaces = parsed
-    .zones!.filter((zone) => !["exterior", "public", "shared-residence"].includes(zone.kind))
+    .zones!.filter((zone) => zone.kind === "personal")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
   return parsed;
 }
@@ -58,6 +61,7 @@ export function parseFoundingVenueDraft(
   source: ReturnType<typeof readFoundingVenueDraftSource>,
   newIds: string[],
   at: Date,
+  allowedActors = [...(source.residentIds ?? []), ...(source.workerIds ?? []), "player"],
 ): FoundingVenueSuggestion {
   const payload = asRecord(value),
     rows = payload.venues;
@@ -70,6 +74,15 @@ export function parseFoundingVenueDraft(
     return value;
   };
   if (!Array.isArray(row.zones) || row.zones.length > 6) throw badRequest("The Venue draft has at most six Zones.");
+  const people = row.people === undefined ? undefined : foundingPeopleSchema.parse(row.people);
+  if (
+    people &&
+    [...people.residentIds, ...people.managerIds, ...people.work.map((work) => work.characterId)].some(
+      (id) => !allowedActors.includes(id),
+    )
+  )
+    throw badRequest("Use only the chosen founding people.");
+  source = applyFoundingPeople(source, people) as typeof source;
   const existing = source.zones!.filter((zone) => zone.kind !== "exterior");
   const actors = [...(source.residentIds ?? []), ...(source.occupancy.playerHome ? ["player"] : [])];
   const zones = row.zones.map((value) => {
@@ -82,9 +95,10 @@ export function parseFoundingVenueDraft(
       typeof zone.private !== "boolean" ||
       (!prior && !newIds.includes(id)) ||
       (prior &&
+        !people &&
         (personal !== (source.privateSpaces ?? []).some((zone) => zone.id === id) ||
           ownerId !== (prior.ownerId ?? ""))) ||
-      (!prior && (personal ? !source.classes?.includes("residence") || !actors.includes(ownerId) : !!ownerId))
+      (personal ? ownerId && !actors.includes(ownerId) : !!ownerId)
     )
       throw badRequest("Preserve existing Zone use and ownership; assign new private Zones only to this household.");
     if (!Array.isArray(zone.connectedTo) || zone.connectedTo.some((id) => typeof id !== "string"))
@@ -98,6 +112,7 @@ export function parseFoundingVenueDraft(
       private: personal,
       ownerId,
       connectedTo: zone.connectedTo as string[],
+      ...(zone.access === undefined ? {} : { access: readZonePolicy(zone.access) }),
     };
   });
   if (
@@ -109,6 +124,7 @@ export function parseFoundingVenueDraft(
   if (problem) throw badRequest(problem);
   const plan: FoundingVenueSuggestion = {
     id: source.id,
+    ...(people ? { people } : {}),
     name: text(row, "name", 60),
     form: text(row, "form", 2000),
     venueType: asTrimmedString(row.venueType).slice(0, 100),

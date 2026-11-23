@@ -58,7 +58,6 @@ function fixture(seed = "pictures") {
         residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "home",
         name: "Hall",
-        classes: ["community"],
         layoutVersion: 1,
         zones: [
           {
@@ -216,7 +215,7 @@ const connection = (imageService: string, model = "") => ({
 });
 {
   const f = fixture();
-  f.zone().kind = "private-residence";
+  f.zone().kind = "personal";
   f.zone().ownerId = "resident";
   let admissions = 0;
   f.ports.canGenerateZonePicture = async () => {

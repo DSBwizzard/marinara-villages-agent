@@ -174,7 +174,7 @@ for (const scenario of [
     host.model.chatComplete = async (messages) => {
       if (messages[0].content.startsWith('Return only {"classes"')) {
         classifications++;
-        return { content: JSON.stringify({ classes: ["other"] }), finishReason: "stop" };
+        return { content: JSON.stringify({}), finishReason: "stop" };
       }
       calls++;
       if (calls === 1) {
@@ -641,8 +641,8 @@ for (const scenario of [
       assert.equal((await travel()).json().session.id, arrived.id);
       const world = await repository.readAuthority({ memories: true });
       assert.equal(findLocation(world, "hotel")!.access!.permissions[0].sceneId, arrived.id);
-      assert.equal(classifications, scenario === "prepared-place" ? 1 : 0);
-      if (scenario === "prepared-place") assert.equal(world.worldPlaces.places.hotel.classified, true);
+      assert.equal(classifications, 0, "A prepared Place needs no Class generation");
+      if (scenario === "prepared-place") assert.equal(world.worldPlaces.places.hotel.prepared, true);
       assert.equal(world.recentVisitRolls?.hotel, undefined, "Invited Visit skips the spontaneous opening roll");
       const next = await turn(arrived.id, arrived.sceneRevision, "arrived", "Thanks for bringing me up.");
       assert.equal(next.statusCode, 200, next.body);

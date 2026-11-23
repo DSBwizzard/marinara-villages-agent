@@ -114,7 +114,7 @@ assert.doesNotThrow(
   () => parseFoundingVenueDraft({ venues: [raw] }, readFoundingVenueDraftSource(disconnected), ["new-kitchen"], now),
   "Drafting repairs a disconnected source",
 );
-const mixed = { ...home, classes: ["workplace", "residence"] as ("workplace" | "residence")[] };
+const mixed = { ...home };
 const mixedReply = structuredClone(raw);
 mixedReply.zones.push({
   id: "new-bedroom",
@@ -132,8 +132,8 @@ const mixedPlan = parseFoundingVenueDraft(
   now,
 );
 assert.equal(
-  applyFoundingVenueDraft(mixed, mixedPlan).privateSpaces!.find((zone) => zone.id === "new-bedroom")!.venueClass,
-  "residence",
+  applyFoundingVenueDraft(mixed, mixedPlan).privateSpaces!.find((zone) => zone.id === "new-bedroom")!.ownerId,
+  "player",
 );
 assert.deepEqual(
   foundingVenueDraftSource({ ...home, presentation: { ...home.presentation, x: 0.9, y: 0.8 } }),
@@ -202,7 +202,6 @@ const input = {
       name: home.name,
       form: home.form,
       description: home.description,
-      venueClass: "residence",
       residentIds: ["ada"],
       playerHome: true,
     },
@@ -211,7 +210,6 @@ const input = {
       name: "Meeting place",
       form: "Courtyard",
       description: "A public courtyard",
-      venueClass: "other",
       residentIds: [],
       playerHome: false,
     },
@@ -471,8 +469,12 @@ try {
     assert.deepEqual([posts, gets], [1, 1], "Reload recovery only reads the original attempt");
     if (edit === "map") {
       assert.equal(venues[0].presentation.x, 0.87);
-      assert.equal(venues[0].presentation.image!.id, "saved-image");
-      assert.equal(venues[0].spaces!.find((zone) => zone.id === admitted.newZoneIds[0])!.name, "Kitchen");
+      assert.equal(workspace.venueReview!.venues[0].presentation.image!.id, "saved-image");
+      assert.deepEqual(venues, before, "A saved result waits for explicit Use changes");
+      assert.equal(
+        workspace.venueReview!.venues[0].spaces!.find((zone) => zone.id === admitted.newZoneIds[0])!.name,
+        "Kitchen",
+      );
       assert.equal(problem, "");
     } else {
       assert.deepEqual(venues, before);

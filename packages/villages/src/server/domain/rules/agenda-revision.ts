@@ -14,6 +14,7 @@ export function agendaRevision(village: VillageState, characterId: string): stri
       venue.form,
       venue.residentIds,
       venue.workerIds,
+      venue.access?.work,
       venue.zones?.map((zone) => [zone.id, zone.name, zone.kind, zone.ownerId]),
     ]),
     resident?.agendaGeneration,

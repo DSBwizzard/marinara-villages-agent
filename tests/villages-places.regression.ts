@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { establishPlace, projectPlace } from "./helpers/places.fixture.js";
-import { classifyPlace } from "../packages/villages/src/server/domain/rules/place-discovery.js";
 
 import { findLocation, findNpc, readPlaceRegistry } from "../packages/villages/src/server/domain/rules/places.js";
 import {
@@ -21,7 +20,7 @@ const place = establishPlace(
     people: [{ ref: "jo", name: "Jo", characterization: "A reserved, attentive host.", role: "Proprietor" }],
     zones: [
       { id: "dining", name: "Dining room", kind: "public", description: "Wooden tables beside the windows." },
-      { id: "kitchen", name: "Kitchen", kind: "staff", description: "The private kitchen.", controllers: ["jo"] },
+      { id: "kitchen", name: "Kitchen", kind: "restricted", description: "The private kitchen.", controllers: ["jo"] },
     ],
   },
   "place:lantern",
@@ -107,12 +106,16 @@ state.setupAt = "2026-11-03T12:00:00.000Z";
 assert.throws(() => admitLocation(state, place.id), /Visit/);
 assert.equal(villageVenueUsage(state).total, 0);
 place.visited = true;
-assert.throws(() => classifyPlace(state, place, ["community"]), /supported by its Venue Class/);
 const sameZone = place.location.zones![1],
   sameNpc = state.worldPlaces.npcs["npc:place:lantern:jo"];
-classifyPlace(state, place, ["community", "workplace"]);
 admitLocation(state, place.id);
-assert.equal(place.location.zones!.find((zone) => zone.kind === "staff")!.venueClass, "workplace");
+assert.equal(
+  Object.hasOwn(
+    place.location.zones!.find((zone) => zone.kind === "restricted")!,
+    "venueClass",
+  ),
+  false,
+);
 assert.equal(state.venues[0], place.location);
 assert.equal(state.venues[0].zones![1], sameZone);
 assert.equal(state.worldPlaces.npcs[sameNpc.id], sameNpc);
@@ -137,7 +140,6 @@ const waiting = establishPlace(
   true,
 );
 waiting.visited = true;
-classifyPlace(full, waiting, ["community"]);
 assert.throws(() => admitLocation(full, waiting.id), /no room/);
 assert.equal(full.worldPlaces.places[waiting.id], waiting, "Rejected admission preserves the location");
 const { applyAccessCommand } = await import("../packages/villages/src/server/domain/rules/venue-access.js");

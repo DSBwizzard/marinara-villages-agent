@@ -120,7 +120,6 @@ function nativeFingerprint(state: VillageState, opportunity: ResidentPlanningOpp
     }),
     venue: venue && {
       id: venue.id,
-      classes: venue.classes,
       form: venue.form,
       zones: venue.zones?.map(structuralShape),
       access: venue.access,

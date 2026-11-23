@@ -111,7 +111,6 @@ export function residentEncounterPlace(
         venueId: venue.id,
         name: venue.name,
         category: venue.category,
-        classes: venue.classes,
         zone: {
           id: zone.id,
           name: zone.name,

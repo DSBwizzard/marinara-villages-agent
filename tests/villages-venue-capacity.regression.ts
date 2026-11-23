@@ -25,14 +25,13 @@ async function main() {
   fresh.venues = Array.from({ length: 15 }, (_, i) => venue(i));
   const draft = draftNewVenueProject(fresh, {
     name: "Workshop",
-    classes: ["workplace"],
     description: "A shared room.",
   });
   assert.equal(villageVenueUsage(fresh).total, 15, "drafts reserve nothing");
-  assert.doesNotThrow(() => assertCanAddVillageVenue(fresh, ["community"]));
+  assert.doesNotThrow(() => assertCanAddVillageVenue(fresh));
   assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(fresh))).projects, fresh.projects);
   fresh.venues.push(venue(15));
-  assert.throws(() => assertCanAddVillageVenue(fresh, ["residence"]), /maximum 16 total/);
+  assert.throws(() => assertCanAddVillageVenue(fresh), /maximum 16 total/);
   assert.throws(() => assertVillageVenueCapacity(fresh, [...fresh.venues, venue(16)]), /maximum 16/);
   assert.equal(draft.status, "planning");
   for (const incompatible of [0, 1, 2, 3, 17, undefined])

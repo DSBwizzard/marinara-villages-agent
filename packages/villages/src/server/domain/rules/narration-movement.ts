@@ -201,7 +201,6 @@ export function applyNarrationMove(
       zoneId: zone.id,
       segment,
       path,
-      spaceClass: zone.venueClass,
       area: zoneArea(zone),
       privateOwnerId: zone.ownerId ?? "",
       ...(trespass ? { trespass } : {}),

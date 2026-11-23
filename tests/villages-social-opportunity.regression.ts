@@ -23,7 +23,7 @@ import {
 
 const state = defaultVillageState();
 state.seed = "social-opportunity";
-state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
+state.venues = [{ id: "commons", occupancy: {} }] as any;
 state.villagers = ["ada", "ben"].map((characterId) => ({
   letterFontId: "caveat",
   characterId,
@@ -42,7 +42,7 @@ state.eventAttempts = {
 };
 assert.equal(opportunity(), null, "An elapsed review interval does not create a social opportunity");
 state.villagers = [];
-state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
+state.venues = [{ id: "commons", occupancy: {} }] as any;
 assert.equal(opportunity(), null, "Weather alone does not admit paid resident activity");
 const capture = defaultVillageState();
 capture.seed = "captured";

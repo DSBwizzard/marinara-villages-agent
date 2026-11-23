@@ -58,7 +58,6 @@ const place = (id, x, y) =>
     residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id,
     name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-    classes: id === "mill" ? ["workplace", "community"] : ["other"],
     category: "destination",
     description: "A village place.",
     capabilities: [],

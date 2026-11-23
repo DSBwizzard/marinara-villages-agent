@@ -38,7 +38,6 @@ fixture.model.chatComplete = async () => {
       place: {
         name: "Boathouse",
         description: "An old riverside boathouse.",
-        classes: ["community", "workplace"],
         zones: [{ id: "landing", name: "Landing", kind: "public", description: "A weathered wooden landing." }],
       },
     }),
@@ -81,7 +80,7 @@ try {
   assert.equal(entered.statusCode, 500, entered.body);
   assert(failedProof);
   assert.equal(world().worldPlaces.places.boathouse.prepared, true);
-  assert.equal(world().worldPlaces.places.boathouse.classified, true);
+  assert.equal(world().worldPlaces.places.boathouse.prepared, true);
   assert.equal(world().worldPlaces.places.boathouse.visited, false);
   const recovered = await call("/rooms/active");
   assert.equal(recovered.statusCode, 200, recovered.body);
@@ -125,7 +124,13 @@ try {
   const admitted = await call("/places/boathouse/admit", admission);
   assert.equal(admitted.statusCode, 200, admitted.body);
   assert(admitted.json().settings.venues.some((row: any) => row.id === "boathouse"));
-  assert.deepEqual(world().venues.find((row) => row.id === "boathouse")!.classes, ["community", "workplace"]);
+  assert.equal(
+    Object.hasOwn(
+      world().venues.find((row) => row.id === "boathouse")!,
+      "classes",
+    ),
+    false,
+  );
   assert.equal(world().projects.length, 0);
   assert.equal(world().worldPlaces.places.boathouse, undefined);
   assert.equal(
@@ -165,7 +170,7 @@ const full = await packagedSceneServer({
     for (const id of ["one", "two"]) {
       const place = establishPlace(
         world,
-        { name: id, description: "An existing garden.", classes: ["community"] },
+        { name: id, description: "An existing garden." },
         id,
         "map",
         "witnessed",

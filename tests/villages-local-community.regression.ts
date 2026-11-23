@@ -53,10 +53,17 @@ function drafts(assignments: Record<string, string> = {}) {
   for (const [actor, home] of Object.entries(assignments))
     rows = assignFoundingHome(rows, `founding-home:${home}`, actor, true);
   return rows
-    .filter((venue) => !venue.classes?.includes("residence") || venue.occupancy.playerHome || venue.residentIds?.length)
+    .filter(
+      (venue) =>
+        !(venue.occupancy.playerHome || !!venue.residentIds?.length) ||
+        venue.occupancy.playerHome ||
+        venue.residentIds?.length,
+    )
     .map((venue, index) => ({
       ...venue,
-      ...(venue.classes?.includes("residence") ? { layout: "both", privateSpaces: [startingZone(venue, true)] } : {}),
+      ...(venue.occupancy.playerHome || !!venue.residentIds?.length
+        ? { layout: "both", privateSpaces: [startingZone(venue, true)] }
+        : {}),
       presentation: { ...venue.presentation, x: 0.1 + index * 0.15, y: 0.5 },
     }));
 }
@@ -97,7 +104,7 @@ for (const [groups, count] of [
   assert.deepEqual(community.access!.managerIds, []);
   const common = community.zones!.find((zone) => zone.kind === "public")!;
   for (const actor of actors) assert.equal(evaluateZoneAccess(community, common, actor.id).allowed, true);
-  for (const home of state.venues.filter((venue) => venue.classes!.includes("residence")))
+  for (const home of state.venues.filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length))
     for (const actor of [...home.residentIds!, ...(home.occupancy.playerHome ? ["player"] : [])])
       assert.ok(home.destinations![actor].sleep);
 }
@@ -132,7 +139,7 @@ for (const [groups, count] of [
     "common:base",
     "Reoccupying a vacated home establishes an explicit accessible sleeping destination",
   );
-  const fresh = newSetupVenue("empty-home", "residence", 0.2, 0.7);
+  const fresh = newSetupVenue("empty-home", 0.2, 0.7);
   fresh.name = "Empty cottage";
   rows = assignFoundingHome([...rows, fresh], fresh.id, "a", true);
   const founded = restorePlaces(
@@ -155,7 +162,7 @@ for (const [groups, count] of [
 
 {
   const state = world();
-  const mall = newSetupVenue("mall-one", "other", 0.4, 0.4);
+  const mall = newSetupVenue("mall-one", 0.4, 0.4);
   mall.name = "Abandoned mall";
   mall.description = "A derelict mall with a boarded entrance.";
   mall.spaces![0].description = "A damaged public atrium with a sound roof.";
@@ -432,7 +439,7 @@ await housing();
   const lounge = { ...structuredClone(bedroom), id: "lounge", name: "Lounge", connectedTo: ["exterior"] };
   home.zones!.push(lounge);
   home.zones![0].connectedTo!.push(lounge.id);
-  const design = { detail: "Rework the home.", classes: home.classes, capacity: home.residenceCapacity };
+  const design = { detail: "Rework the home.", capacity: home.residenceCapacity };
   const interiors = () => home.zones!.filter((zone) => zone.kind !== "exterior");
   assert.throws(
     () =>
@@ -456,10 +463,7 @@ await housing();
         home,
         {
           ...design,
-          classes: ["residence", "community"],
-          zones: interiors().map((zone) =>
-            zone.id === bedroom.id ? { ...zone, kind: "public", venueClass: "community" } : zone,
-          ),
+          zones: interiors().map((zone) => (zone.id === bedroom.id ? { ...zone, kind: "public" } : zone)),
         },
         new Date(at),
       ),
@@ -530,7 +534,7 @@ console.log(
   assert.equal(
     evaluateZoneAccess(
       vacant,
-      vacant.zones!.find((zone) => zone.kind === "shared-residence")!,
+      vacant.zones!.find((zone) => zone.kind === "public")!,
       "b",
     ).allowed,
     true,
@@ -642,7 +646,7 @@ console.log(
     state.maps = maps;
     state.villagers = villagers;
   });
-  const replacement = newSetupVenue("replacement-common", "other", 0.3, 0.6);
+  const replacement = newSetupVenue("replacement-common", 0.3, 0.6);
   replacement.name = "Replacement square";
   const parsed = restorePlaces([...drafts(), replacement]).find((row) => row.id === replacement.id)!;
   await f.mutate((state) => {
@@ -653,11 +657,8 @@ console.log(
     requestId: "repurpose-community",
     title: "A new use",
     detail: "Convert this gathering room into an unused residence",
-    classes: ["residence"],
     capacity: 2,
-    zones: target
-      .zones!.filter((z) => z.kind !== "exterior")
-      .map((z) => ({ ...z, venueClass: "residence", kind: "shared-residence" })),
+    zones: target.zones!.filter((z) => z.kind !== "exterior").map((z) => ({ ...z, kind: "public" })),
   });
   const id = f
     .state()
@@ -667,8 +668,11 @@ console.log(
   await f.service.debugCompleteProjectConstruction(id, f.body(id));
   const loaded = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
   assert.deepEqual(
-    loaded.venues.find((v) => v.id === target.id)!.classes,
-    ["residence"],
+    Object.hasOwn(
+      loaded.venues.find((v) => v.id === target.id)!,
+      "classes",
+    ),
+    false,
     "A Community Venue can be repurposed without a designation",
   );
 }
@@ -680,7 +684,7 @@ console.log(
   target.zones!.push({
     ...structuredClone(source),
     id: "guest-room",
-    kind: "private-residence",
+    kind: "personal",
     name: "Guest room",
     ownerId: undefined,
     connectedTo: ["exterior"],
@@ -770,7 +774,7 @@ console.log(
     "A singular stale field cannot invent a household member",
   );
   assert.equal(
-    isHouse({ classes: ["other"], occupancy: { playerHome: true, residentCharacterId: "stale" } } as any),
+    isHouse({ occupancy: { playerHome: true, residentCharacterId: "stale" } } as any),
     false,
     "Residence class is explicit",
   );

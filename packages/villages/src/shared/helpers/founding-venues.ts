@@ -1,28 +1,45 @@
 import type { VillageVenue } from "../contracts/village.js";
-
+import { alwaysOpenVisitorHours } from "./venue-access.js";
+import { contactNeighborIds, materializeConnections } from "./zone-contact.js";
 export function foundingVenueShapeProblem(venues: readonly VillageVenue[]): string {
   if (!venues.length || venues.length > 16) return "Provide between one and sixteen starting Venues.";
-  if (venues.filter((venue) => venue.classes?.includes("residence")).length > 4)
-    return "Founding supports at most four Residences.";
-  if (venues.some((venue) => !venue.classes?.length || venue.classes.length > 2))
-    return "Choose one or two Venue Classes.";
-  if (
-    venues.filter((venue) =>
-      venue.spaces?.some(
-        (zone) =>
-          zone.venueClass !== "residence" &&
-          (!zone.access || (zone.access.mode === "public" && !zone.access.accompanied)),
-      ),
-    ).length < 2
-  )
-    return "Provide public shared Zones in at least two Venues.";
   if (
     venues.some(
-      (venue) =>
-        venue.classes?.includes("residence") &&
-        Number(venue.occupancy.playerHome) + (venue.residentIds?.length ?? 0) !== 1,
+      (venue) => (venue.residentIds?.length ?? 0) + Number(venue.occupancy.playerHome) > (venue.residenceCapacity ?? 0),
     )
   )
-    return "Each starting Residence needs one assigned resident.";
+    return "Keep enough home places for everyone assigned here.";
+  if (
+    venues.filter((venue) => {
+      const zones = materializeConnections([
+        { id: "exterior", kind: "exterior" },
+        ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
+        ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "personal" })),
+      ]);
+      const open = new Set(
+        zones
+          .filter(
+            (zone) =>
+              zone.id === "exterior" ||
+              (zone.kind === "public" &&
+                !("ownerId" in zone && zone.ownerId) &&
+                (!("access" in zone) ||
+                  !zone.access ||
+                  (zone.access.mode === "public" &&
+                    !zone.access.accompanied &&
+                    alwaysOpenVisitorHours(
+                      zone.access.visitorHours === "always"
+                        ? null
+                        : zone.access.visitorHours === "inherit"
+                          ? (venue.access?.visitorHours ?? null)
+                          : zone.access.visitorHours,
+                    )))),
+          )
+          .map((zone) => zone.id),
+      );
+      return contactNeighborIds(zones, "exterior").some((id) => open.has(id));
+    }).length < 2
+  )
+    return "Keep shared Zones open around the clock in at least two Venues.";
   return "";
 }

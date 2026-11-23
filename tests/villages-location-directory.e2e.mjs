@@ -114,7 +114,7 @@ await withBrowser(browser, async () => {
           assert(row);
           value = {
             ...row,
-            classified: true,
+            prepared: true,
             location: { ...snapshot.settings.venues[0], id: row.id, name: row.name },
           };
         } else throw Error("Unexpected directory route " + path);

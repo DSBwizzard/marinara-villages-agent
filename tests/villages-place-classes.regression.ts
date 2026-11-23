@@ -26,7 +26,13 @@ const host = await packagedSceneServer({
         controllers: ["jo"],
         people: [{ ref: "jo", name: "Jo", characterization: "A careful keeper.", role: "Keeper" }],
         zones: [
-          { id: "workroom", name: "Workroom", kind: "staff", description: "Old workbenches.", controllers: ["jo"] },
+          {
+            id: "workroom",
+            name: "Workroom",
+            kind: "restricted",
+            description: "Old workbenches.",
+            controllers: ["jo"],
+          },
         ],
       },
       "old",
@@ -35,7 +41,6 @@ const host = await packagedSceneServer({
       now,
       true,
     );
-    delete place.classified;
     for (const zone of place.location.zones!)
       initializeRoomContinuity(world, place.id, zone.id, zone.description, "saved-preview", now);
     assert.deepEqual(
@@ -49,42 +54,29 @@ const state = () => fixtureVillageState(host.records.get("villages-village").dat
 const call = (path: string, payload?: unknown) =>
   host.app.inject({ method: payload ? "POST" : "GET", url: "/api/villages" + path, ...(payload ? { payload } : {}) });
 let calls = 0;
-let invalid = true;
-let classification = ["community", "workplace"];
-host.model.chatComplete = async (messages: any[]) => {
+host.model.chatComplete = async () => {
   calls++;
-  const input = JSON.parse(messages[1].content);
-  assert.match(messages[0].content, /JSON/i);
-  if (input.task === "explore") {
-    assert.equal(input.decideClasses, false);
-    return {
-      content: JSON.stringify({ place: { name: "Ridge", description: "A bare rocky ridge.", classes: ["residence"] } }),
-      finishReason: "stop",
-    } as any;
-  }
-  assert.equal(input.classifyOnly, true);
-  assert.equal(input.decideClasses, true);
-  const classes = invalid ? ["community"] : classification;
-  invalid = false;
-  return { content: JSON.stringify({ classes }), finishReason: "stop" } as any;
+  return {
+    content: JSON.stringify({ place: { name: "Ridge", description: "A bare rocky ridge." } }),
+    finishReason: "stop",
+  } as any;
 };
+
 try {
   host.records.get("villages-active-venue").data = { sessionId: "", placeId: "" };
   const snapshot = (await call("/")).json();
   const listed = await call("/places/old");
-  assert.equal(listed.json().classified, false);
+  assert.equal(listed.json().prepared, true);
   assert.equal(calls, 0);
   const before = state(),
     location = structuredClone(before.worldPlaces.places.old.location);
   const entered = await call("/rooms", { venueId: "old", zoneId: "exterior" });
   assert.equal(entered.statusCode, 200, entered.body);
-  assert.equal(calls, 2, "Unsupported staff classification gets just one automatic retry");
+  assert.equal(calls, 0, "Prepared places need no separate Class request");
   const old = state().worldPlaces.places.old;
-  assert.equal(old.classified, true);
+  assert.equal(old.prepared, true);
   assert.equal(old.visited, true);
-  location.classes = ["community", "workplace"];
-  for (const zone of location.zones!) zone.venueClass = zone.kind === "staff" ? "workplace" : "community";
-  assert.deepEqual(old.location, location, "Classification changes only Classes and their Zone associations");
+  assert.deepEqual(old.location, location, "A Visit preserves the authored layout");
   assert.deepEqual(
     state().worldPlaces.npcs,
     before.worldPlaces.npcs,
@@ -102,11 +94,11 @@ try {
   await close(entered.json().session);
   const returned = await call("/rooms", { venueId: "old", zoneId: "exterior" });
   assert.equal(returned.statusCode, 200, returned.body);
-  assert.equal(calls, 2, "A return reuses the completed Class decision");
+  assert.equal(calls, 0, "Returning to a prepared place makes no classification request");
   await close(returned.json().session);
   const body = {
     worldScope: snapshot.worldScope,
-    requestId: "fixed-classes",
+    requestId: "admit-existing",
     expectedRevision: state().worldPlaces.places.old.revision,
     expectedMapRevision: 0,
     mapId: "map",
@@ -114,28 +106,33 @@ try {
     y: 0.83,
   };
   assert.equal(
-    (await call("/places/old/admit", { ...body, classes: ["residence"] })).statusCode,
+    (await call("/places/old/admit", { ...body, classes: ["community"] })).statusCode,
     400,
-    "Admission cannot override or select a subset of Classes",
+    "Admission rejects removed Class fields",
   );
   const admitted = await call("/places/old/admit", body);
   assert.equal(admitted.statusCode, 200, admitted.body);
-  assert.deepEqual(state().venues.find((row) => row.id === "old")!.classes, ["community", "workplace"]);
+  assert.equal(
+    Object.hasOwn(
+      state().venues.find((row) => row.id === "old")!,
+      "classes",
+    ),
+    false,
+  );
   assert.deepEqual(state().worldPlaces.npcs, before.worldPlaces.npcs);
 
   const explored = await call("/places/explore", { worldScope: snapshot.worldScope, requestId: "ridge", mapId: "map" });
   assert.equal(explored.json().status, "ready", explored.body);
   const id = explored.json().placeId;
-  assert.equal(state().worldPlaces.places[id].classified, false, "Explore cannot decide Classes before a Visit");
-  classification = ["other"];
+  assert.equal(state().worldPlaces.places[id].prepared, false, "An explored report still needs physical preparation");
   const ridge = await call("/rooms", { venueId: id, zoneId: "exterior" });
   assert.equal(ridge.statusCode, 200, ridge.body);
-  assert.equal(calls, 4);
-  assert.equal(state().worldPlaces.places[id].classified, true, "Other is an intentional completed decision");
-  assert.deepEqual(state().worldPlaces.places[id].location.classes, ["other"]);
+  assert.equal(calls, 2);
+  assert.equal(state().worldPlaces.places[id].prepared, true, "The first Visit prepares the physical place");
+  assert.equal(Object.hasOwn(state().worldPlaces.places[id].location, "classes"), false);
   await close(ridge.json().session);
   assert.equal((await call("/rooms", { venueId: id, zoneId: "exterior" })).statusCode, 200);
-  assert.equal(calls, 4, "An intentional Other classification never repeats on return");
+  assert.equal(calls, 2, "A return reuses preparation without a Class call");
 } finally {
   await host.stop();
 }

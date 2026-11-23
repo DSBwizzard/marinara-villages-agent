@@ -18,7 +18,7 @@ import { venueZones } from "../packages/villages/src/server/domain/rules/venue-z
 // Synthetic independent stores; no Engine runtime, host bindings or providers.
 function fixture(name: string) {
   const state = defaultVillageState();
-  const venue = venueDraft({ name, description: "A quiet meeting place.", classes: ["community"] }, null);
+  const venue = venueDraft({ name, description: "A quiet meeting place." }, null);
   venue.id = "venue";
   initializeVenueAccess(venue);
   state.venues = [venue];
@@ -203,8 +203,8 @@ async function main() {
   editVenue.zones = [
     {
       ...defaultVenueSpace("community", "Original workspace."),
-      id: "staff",
-      kind: "staff",
+      id: "restricted",
+      kind: "restricted",
       name: "Workroom",
       controllerIds: ["resident"],
       seen: true,
@@ -214,15 +214,17 @@ async function main() {
   const commands = createVenueCommands(edits.ports);
   const beforeRename = structuredClone(editVenue.zones[0]);
   editVenue.zones[0].seen = false;
-  await commands.renameVillageZone("venue", "staff", { name: " Studio " });
+  await commands.renameVillageZone("venue", "restricted", { name: " Studio " });
   assert.equal(editVenue.zones[0].name, "Studio");
   assert.equal(editVenue.zones[0].seen, false, "renaming does not discover an interior");
   assert.deepEqual(editVenue.zones[0].state, beforeRename.state);
   assert.deepEqual(editVenue.zones[0].image, beforeRename.image);
   assert.equal(editVenue.zones[0].description, beforeRename.description);
-  await assert.rejects(() => commands.renameVillageZone("venue", "staff", { name: "", description: "replacement" }));
   await assert.rejects(() =>
-    commands.renameVillageZone("venue", "staff", { name: "Studio", description: "replacement" }),
+    commands.renameVillageZone("venue", "restricted", { name: "", description: "replacement" }),
+  );
+  await assert.rejects(() =>
+    commands.renameVillageZone("venue", "restricted", { name: "Studio", description: "replacement" }),
   );
   await assert.rejects(() => commands.updateVillageVenue("venue", { description: "replacement" }), /Project/);
   editVenue.zones.push({ ...structuredClone(beforeRename), id: "exterior", kind: "exterior", name: "Exterior" });

@@ -1,3 +1,5 @@
+import { FoundingPeople } from "./FoundingPeople.js";
+import { HoursEditor } from "../../shared/HoursEditor.js";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -84,8 +86,8 @@ export function QuickStartVenues({
   const [zoneId, setZoneId] = useState("exterior");
   const selected = venues.find((venue) => venue.id === selectedId) ?? venues[0];
   const ordered = [
-    ...venues.filter((venue) => venue.classes?.includes("residence")),
-    ...venues.filter((venue) => !venue.classes?.includes("residence")),
+    ...venues.filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length),
+    ...venues.filter((venue) => !(venue.occupancy.playerHome || !!venue.residentIds?.length)),
   ];
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
@@ -224,7 +226,7 @@ export function QuickStartVenues({
     }
   };
   const cards = ordered.map((venue) => {
-    const home = venue.classes?.includes("residence");
+    const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
     return (
       <button
         key={venue.id}
@@ -252,9 +254,9 @@ export function QuickStartVenues({
               ? foundingHomeMembers(venue)
                   .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
                   .join(", ")
-              : venue.classes?.includes("community")
+              : venue.category === "public-center"
                 ? "Community Venue"
-                : venue.venueType || venue.classes?.join(" · ") || "Venue"}
+                : venue.venueType || "Venue"}
           </small>
         </span>
         <span aria-hidden="true">›</span>
@@ -273,7 +275,7 @@ export function QuickStartVenues({
           <VenueProfile
             daylight={daylight}
             name={selected.name || "Venue"}
-            type={selected.venueType || selected.classes?.join(" · ") || "Venue"}
+            type={selected.venueType || "Venue"}
             mapName={locationName}
             entranceImage={selected.presentation.image?.url}
             zoneImage={
@@ -333,6 +335,9 @@ export function QuickStartVenues({
                     />
                     {fieldError("form")}
                   </label>
+                </fieldset>
+                <fieldset disabled={busy || imageBusy}>
+                  <FoundingPeople key={selected.id} venue={selected} people={actors} onPatch={patch} />
                 </fieldset>
                 <button type="button" className={P + "-button"} onClick={() => setConnectionsOpen(true)}>
                   Zone connections <span aria-hidden="true">›</span>
@@ -479,6 +484,38 @@ export function QuickStartVenues({
                     ) : null}
                   </div>
                   <div className="villages-founding-zone-use">
+                    {zone && (
+                      <label>
+                        Personal room
+                        <select
+                          aria-label="Personal room"
+                          value={personal ? zone.ownerId || "vacant" : ""}
+                          onChange={(e) => {
+                            const ownerId = e.target.value;
+                            const room = { ...zone, ownerId: ownerId === "vacant" ? "" : ownerId, access: undefined };
+                            patch({
+                              ...selected,
+                              spaces: [
+                                ...(selected.spaces ?? []).filter((row) => row.id !== zone.id),
+                                ...(!ownerId ? [room] : []),
+                              ],
+                              privateSpaces: [
+                                ...(selected.privateSpaces ?? []).filter((row) => row.id !== zone.id),
+                                ...(ownerId ? [room] : []),
+                              ],
+                            });
+                          }}
+                        >
+                          <option value="">Shared Zone</option>
+                          <option value="vacant">Unassigned personal room</option>
+                          {members.map((id) => (
+                            <option key={id} value={id}>
+                              {actors.find((actor) => actor.id === id)?.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     {zone && zoneAccess ? (
                       <fieldset className="villages-founding-venue-choices">
                         <legend>Visitor access</legend>
@@ -517,6 +554,44 @@ export function QuickStartVenues({
                         ))}
                       </fieldset>
                     ) : null}
+                    {zone && zoneAccess && (
+                      <label>
+                        Visitor hours
+                        <select
+                          aria-label="Visitor hours"
+                          value={Array.isArray(zoneAccess.visitorHours) ? "schedule" : zoneAccess.visitorHours}
+                          onChange={(e) =>
+                            patchZone({
+                              access: {
+                                ...zoneAccess,
+                                visitorHours:
+                                  e.target.value === "schedule"
+                                    ? [
+                                        {
+                                          days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+                                          start: "09:00",
+                                          end: "17:00",
+                                        },
+                                      ]
+                                    : e.target.value === "inherit"
+                                      ? "inherit"
+                                      : "always",
+                              },
+                            })
+                          }
+                        >
+                          <option value="always">Any time</option>
+                          <option value="inherit">Use Venue hours</option>
+                          <option value="schedule">Set hours</option>
+                        </select>
+                      </label>
+                    )}
+                    {zone && zoneAccess && Array.isArray(zoneAccess.visitorHours) && (
+                      <HoursEditor
+                        hours={zoneAccess.visitorHours}
+                        change={(visitorHours) => patchZone({ access: { ...zoneAccess, visitorHours } })}
+                      />
+                    )}
                   </div>
                 </div>
                 <div className="villages-founding-zone-artwork">

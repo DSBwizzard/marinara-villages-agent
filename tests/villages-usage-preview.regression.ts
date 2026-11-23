@@ -125,10 +125,10 @@ const state = coerceVillageState({
   setting: "Village",
   venues: [
     venueFixture({
+      spaces: [{ id: "community", description: "A place in the community.", image: null }],
       residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id: "park",
       name: "Park",
-      classes: ["community"],
       form: "Park",
     }),
   ],

@@ -32,7 +32,7 @@ import { initialIdentityDescription } from "../../domain/rules/resident-descript
 import { readFoundingCircumstances, seedFoundingCircumstances } from "../../domain/rules/founding-circumstances.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
-import { validVenueClasses, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { readBool } from "../../domain/rules/village-projections.js";
 import { loreText } from "../../domain/rules/lore-context.js";
 import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
@@ -198,7 +198,6 @@ export function createFoundingSetup({
         ...place,
         layoutVersion: prior?.layoutVersion ?? place.layoutVersion,
         zoneLayout: place.zoneLayout,
-        classes: prior?.classes ?? place.classes,
         spaces: place.spaces,
         residenceCapacity: prior?.residenceCapacity ?? place.residenceCapacity,
         residentIds: prior ? venueResidentIds(prior) : place.residentIds,
@@ -208,7 +207,7 @@ export function createFoundingSetup({
         imageContext: prior?.imageContext ?? place.imageContext,
 
         capabilities: prior?.capabilities ?? place.capabilities,
-        workerIds: prior?.workerIds ?? [],
+        workerIds: prior?.workerIds ?? place.workerIds,
         playerSeenPublic: prior?.playerSeenPublic,
         playerSeenShared: prior?.playerSeenShared,
         presentation: {
@@ -333,7 +332,6 @@ export function createFoundingSetup({
       return {
         id: asTrimmedString(raw.id),
         name: asTrimmedString(raw.name),
-        classes: validVenueClasses(raw.classes) ? raw.classes : ["other"],
         homeKind: asTrimmedString(raw.homeKind),
       };
     });

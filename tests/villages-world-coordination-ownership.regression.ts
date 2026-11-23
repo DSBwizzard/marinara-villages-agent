@@ -176,7 +176,13 @@ for (const status of ["pending", "failed"] as const) {
     () =>
       (local.state.venues = [
         venueDraft(
-          { id: "commons", name: "Square", form: "Square", description: "A paved square", classes: ["community"] },
+          {
+            spaces: [{ id: "community", description: "A paved square", image: null }],
+            id: "commons",
+            name: "Square",
+            form: "Square",
+            description: "A paved square",
+          },
           null,
         ),
       ]),
@@ -198,7 +204,7 @@ const weatherOnly = fixture("Weather-only"),
   weatherOwner = A.scope.run(() => install(weatherOnly));
 weatherOnly.state.setupAt = weatherOnly.state.foundedAt = weatherOnly.state.simulatedThrough = stamp;
 weatherOnly.state.backgroundPace = "balanced";
-weatherOnly.state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any;
+weatherOnly.state.venues = [{ id: "commons", occupancy: {} }] as any;
 await A.scope.run(() => weatherOwner.scope.run(() => reconcileVillage({ now })));
 assert.equal(weatherOnly.state.eventAttempts?.attempts.length ?? 0, 0, "Skipped weather consumes no Events allowance");
 A.scope.run(() => weatherOwner.release());

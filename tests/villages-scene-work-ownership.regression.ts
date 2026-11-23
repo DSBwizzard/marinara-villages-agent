@@ -267,7 +267,7 @@ for (const canonical of [false, true]) {
   const world = defaultVillageState();
   world.seed = "shared-world";
   world.setupAt = world.foundedAt = new Date().toISOString();
-  const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
+  const venue = venueDraft({ name: "Shared hall", description: "A public hall" }, null);
   world.venues = [...[venue], ...sharedVenuesFixture()];
   world.backgroundPace = "off";
   shared.rows.set("villages-village", {

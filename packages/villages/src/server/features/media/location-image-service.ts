@@ -106,11 +106,7 @@ export function createLocationImages(ports: LocationImagePorts) {
         : observableRoomDescription(village, venueId, zoneId, at),
     };
     const character = onlyIfEmpty
-      ? sceneryCharacterContext(
-          village,
-          found.venue,
-          targetZone?.kind === "private-residence" ? targetZone.ownerId : "",
-        )
+      ? sceneryCharacterContext(village, found.venue, targetZone?.kind === "personal" ? targetZone.ownerId : "")
       : "";
     const expectedContext = fromObservation
       ? observedPictureKey(village, targetZone)

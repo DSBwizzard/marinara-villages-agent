@@ -35,7 +35,6 @@ export function currentProject(id, kind = "new-venue") {
           venueDraft: {
             name: "Canvas Tent",
             description: "A shared art pavilion.",
-            classes: ["community"],
             position: { x: 0.7, y: 0.7 },
           },
           plan: {
@@ -50,7 +49,6 @@ export function currentProject(id, kind = "new-venue") {
                 id: "art",
                 name: "Art room",
                 description: "A bright shared room.",
-                venueClass: "community",
                 connectedTo: ["exterior"],
               },
             ],
@@ -65,7 +63,6 @@ export function currentProject(id, kind = "new-venue") {
       change:
         kind === "renovation"
           ? {
-              classes: ["community", "workplace"],
               capacity: 3,
               detail: "Create a bright workshop.",
               zones: [
@@ -73,7 +70,6 @@ export function currentProject(id, kind = "new-venue") {
                   id: "work",
                   name: "Work room",
                   kind: "public",
-                  venueClass: "workplace",
                   description: "A new workbench room.",
                   connectedTo: ["exterior"],
                 },
@@ -95,7 +91,6 @@ export function projectSnapshot() {
   delete snapshot.opening;
   snapshot.projects = [currentProject("canvas"), currentProject("workshop", "renovation")];
   const venue = snapshot.settings.venues[0];
-  venue.classes = ["workplace"];
   venue.residenceCapacity = 2;
   venue.layoutVersion = 1;
   venue.zones = [
@@ -103,7 +98,6 @@ export function projectSnapshot() {
       id: "exterior",
       name: "Entrance",
       kind: "exterior",
-      venueClass: "workplace",
       description: "An approach.",
       seen: true,
       connectedTo: ["work"],
@@ -112,7 +106,6 @@ export function projectSnapshot() {
       id: "work",
       name: "Work room",
       kind: "public",
-      venueClass: "workplace",
       description: "A workbench room.",
       seen: true,
       connectedTo: ["exterior"],

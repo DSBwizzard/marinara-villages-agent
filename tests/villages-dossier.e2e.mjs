@@ -121,7 +121,7 @@ await withBrowser(browser, async () => {
       id: "secret-place",
       name: "Unseen private place",
       workerIds: [],
-      zones: [{ id: "secret-zone", name: "Secret", kind: "private-residence", seen: false, ownerId: "mara" }],
+      zones: [{ id: "secret-zone", name: "Secret", kind: "personal", seen: false, ownerId: "mara" }],
     });
     village.projects = [
       {
@@ -144,7 +144,6 @@ await withBrowser(browser, async () => {
         proposedAt: now,
         venueDraft: {
           name: "Mara's workshop",
-          classes: ["workplace"],
           category: "destination",
           description: "A workshop",
         },
@@ -156,7 +155,6 @@ await withBrowser(browser, async () => {
         proposedAt: now,
         venueDraft: {
           name: "Other person's request",
-          classes: ["other"],
           category: "destination",
           description: "A different request",
         },

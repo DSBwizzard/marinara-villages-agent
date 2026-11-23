@@ -309,7 +309,6 @@ export function createLiveScenes({
               state.zoneId = exit.to;
               delete state.trespass;
               state.area = zoneArea(destination);
-              state.spaceClass = destination.venueClass;
               state.privateOwnerId = destination.ownerId ?? "";
               state.recap = "";
               state.doorwayContacts = [];
@@ -430,7 +429,6 @@ export function createLiveScenes({
         saved.zoneId = entrance.id;
         delete saved.trespass;
         saved.area = zoneArea(entrance);
-        saved.spaceClass = entrance.venueClass;
         saved.privateOwnerId = "";
         saved.privateAccessOwnerId = "";
         if (saved.arrival) saved.accompanying = [];

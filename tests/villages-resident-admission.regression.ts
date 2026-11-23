@@ -141,10 +141,10 @@ state.villagers[0].admission.startingSituation = "Settled here.";
 assert.notEqual(agendaRevision(state, "buster"), contextBefore);
 const venue = parsePlace(
   venueFixture({
+    spaces: [{ id: "residence", description: "A doorway", image: null }],
     residentIds: ["buster"].filter((id) => typeof id === "string" && !!id),
     id: "home",
     name: "Home",
-    classes: ["residence"],
     form: "Apartment",
     description: "A doorway",
     layoutVersion: 1,
@@ -158,7 +158,7 @@ const zone = {
   id: "room",
   name: "Private room",
   purpose: "Rest",
-  kind: "private-residence",
+  kind: "personal",
   ownerId: "buster",
   controllerIds: ["felix"],
   state: { updatedAt: "now" },

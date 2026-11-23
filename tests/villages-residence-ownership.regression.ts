@@ -38,11 +38,11 @@ function fixture(name: string) {
   ];
   const destination = venueDraft(
     venueFixture({
+      spaces: [{ id: "residence", description: "A small home", image: null }],
       residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id: "destination",
       name: `${name} home`,
       description: "A small home",
-      classes: ["residence"],
     }),
     null,
   );
@@ -186,7 +186,7 @@ const neutralRoom = {
   ...defaultVenueSpace("residence", "Neutral room"),
   id: "vacant",
   name: "Bedroom",
-  kind: "private-residence" as const,
+  kind: "personal" as const,
   roomSpecification: "A garden-facing window",
   preparation: { status: "ready" as const },
   seen: true,

@@ -247,6 +247,10 @@ export function createResidentRoster({
           venue.occupancy.residentCharacterId = venue.residentIds[0] ?? null;
         }
         venue.workerIds = venue.workerIds?.filter((id) => id !== characterId);
+        if (venue.access) {
+          venue.access.work = venue.access.work?.filter((row) => row.characterId !== characterId);
+          venue.access.workOffers = venue.access.workOffers?.filter((row) => !row.requiredIds.includes(characterId));
+        }
         for (const zone of venue.zones ?? [])
           zone.controllerIds = zone.controllerIds?.filter((id) => id !== characterId);
       }

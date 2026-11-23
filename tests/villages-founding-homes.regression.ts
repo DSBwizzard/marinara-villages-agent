@@ -48,7 +48,7 @@ let rows = reconcileFoundingRoster(
   actors.map((row) => row.id),
   "community",
 );
-for (const home of rows.filter((row) => row.classes?.includes("residence"))) {
+for (const home of rows.filter((row) => row.occupancy.playerHome || !!row.residentIds?.length)) {
   const owner = home.occupancy.playerHome ? "player" : home.residentIds![0]!;
   assert.equal(home.spaces?.length, 1);
   assert.equal(home.privateSpaces?.length, 1);
@@ -75,7 +75,7 @@ rows[0] = reconcileFoundingHome({
 });
 assert.ok(
   rows
-    .filter((row) => row.classes?.includes("residence"))
+    .filter((row) => row.occupancy.playerHome || !!row.residentIds?.length)
     .every((row) => row.destinations && Object.keys(row.destinations).length === 1),
 );
 rows = assignFoundingHome(rows, "founding-home:player", "a", true);
@@ -121,7 +121,10 @@ const placed = restored.map((row: any, index: number) => ({
 const establishedHome = parsePlace(placed[0]);
 assert.equal(establishedHome.destinations!.a.sleep, "ada-room");
 assert.equal(establishedHome.destinations!.player.sleep, "common:base");
-assert.throws(() => parsePlaces(placed, new Set(["a", "b"]), true), /one assigned resident/);
+assert.doesNotThrow(
+  () => parsePlaces(placed, new Set(["a", "b"]), true),
+  "Shared homes are valid Founding arrangements",
+);
 const shared = changeFoundingZoneOwner(restored[0], "ada-room", "");
 assert.equal(shared.destinations!.a.sleep, "ada-room");
 assert.equal(shared.spaces!.find((zone) => zone.id === "ada-room")!.access!.mode, "permission-required");
@@ -158,8 +161,8 @@ const illustrated = parsePlace({
   spaces: restored[0].spaces.map((zone: any) => ({ ...zone, image: foundingImage })),
 });
 assert.equal(illustrated.zones!.find((zone) => zone.image)?.observed?.image?.id, "founding");
-const retained = { ...newSetupVenue("existing", "residence", 0.1, 0.1, true), residenceCapacity: 3 };
-const vacant = newSetupVenue("vacant", "residence", 0.4, 0.4);
+const retained = { ...newSetupVenue("existing", 0.1, 0.1, true), residenceCapacity: 3 };
+const vacant = newSetupVenue("vacant", 0.4, 0.4);
 const { draftZonePolicy } =
   await import("../packages/villages/src/client/features/founding/villages-founding-zones.js");
 vacant.spaces![0].access = { ...draftZonePolicy(vacant, vacant.spaces![0]), mode: "permission-required" };
@@ -189,7 +192,10 @@ sharedVenue.presentation = { ...sharedVenue.presentation, x: 0.18, y: 0.72 };
 const sharedBefore = structuredClone(sharedVenue);
 const singleSharedDraft = starting.venues.filter((venue) => venue !== sharedVenue);
 const completedShared = selectFoundingHomes(singleSharedDraft, [], actors, "community");
-assert.equal(completedShared.venues.filter((venue) => !venue.classes?.includes("residence")).length, 2);
+assert.equal(
+  completedShared.venues.filter((venue) => !(venue.occupancy.playerHome || !!venue.residentIds?.length)).length,
+  2,
+);
 assert.deepEqual(
   completedShared.venues.filter((venue) => singleSharedDraft.some((prior) => prior.id === venue.id)),
   singleSharedDraft,
@@ -235,7 +241,6 @@ for (let i = 0; i < 3; i++) {
 }
 const mixed = structuredClone(authored);
 mixed.id = "canal-workshop";
-mixed.classes = ["residence", "workplace"];
 mixed.workerIds = ["a"];
 mixed.spaces![0].controllerIds = ["a", "b"];
 mixed.spaces![0].access = {
@@ -330,7 +335,7 @@ assert.deepEqual(activeFoundingCircumstances([fact], withCleo.venues), []);
 assert.deepEqual(activeFoundingCircumstances([fact], restoredHome.venues), [fact]);
 assert.ok(
   returned.venues
-    .filter((venue) => venue.classes?.includes("residence"))
+    .filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length)
     .every((venue) => Number(venue.occupancy.playerHome) + venue.residentIds!.length === 1),
 );
 assert.doesNotThrow(() =>

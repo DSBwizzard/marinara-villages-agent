@@ -13,9 +13,9 @@ scene.sceneAttendance = {
   capturedAt: at,
   occupants: [],
   layout: [
-    { id: "entrance", name: "Entrance", kind: "exterior", venueClass: "workplace" },
-    { id: "airstrip", name: "Airstrip", kind: "restricted", venueClass: "workplace" },
-    { id: "secret", name: "UNSEEN LOCATION", kind: "restricted", venueClass: "workplace" },
+    { id: "entrance", name: "Entrance", kind: "exterior" },
+    { id: "airstrip", name: "Airstrip", kind: "restricted" },
+    { id: "secret", name: "UNSEEN LOCATION", kind: "restricted" },
   ],
 };
 const line = (id: string, content: string, zoneId = "entrance") => ({

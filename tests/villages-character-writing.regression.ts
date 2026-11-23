@@ -39,7 +39,12 @@ const source = {
   extensions: { appearance: "Feathered arms; no wings", backstory: "BACKSTORY TAIL" },
 };
 const card = readVillagerCard({ id: "resident", data: source } as any);
-const venue = venueFixture({ id: "camp", name: "Camp", classes: ["community"], description: "A clearing." });
+const venue = venueFixture({
+  spaces: [{ id: "community", description: "A clearing.", image: null }],
+  id: "camp",
+  name: "Camp",
+  description: "A clearing.",
+});
 const state = coerceVillageState({
   ...defaultVillageState(),
   seed: "character-writing",

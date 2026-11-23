@@ -1,32 +1,10 @@
 import type { VillageState } from "../models/world.js";
-import type { VisitorHours } from "../../../shared/helpers/venue-access.js";
+import { alwaysOpenVisitorHours } from "../../../shared/helpers/venue-access.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import { zoneClosed } from "./venue-zones.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 import { conflict } from "./errors.js";
-
-/** Explicit schedules count only when their combined intervals cover every day. */
-function alwaysOpen(hours: VisitorHours | null): boolean {
-  if (hours === null) return true;
-  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const minute = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3));
-  return days.every((day, index) => {
-    const intervals: number[][] = [];
-    for (const row of hours) {
-      const start = minute(row.start),
-        end = minute(row.end);
-      if (row.days.includes(day)) intervals.push(start === end ? [0, 1440] : [start, start < end ? end : 1440]);
-      if (start > end && row.days.includes(days[(index + 6) % 7]!)) intervals.push([0, end]);
-    }
-    let through = 0;
-    for (const [start, end] of intervals.sort((a, b) => a[0]! - b[0]!)) {
-      if (start! > through) return false;
-      through = Math.max(through, end!);
-    }
-    return through === 1440;
-  });
-}
 
 /** Ongoing public access is independent of membership, invitations and a particular visit. */
 export function sharedPlayspace(
@@ -45,11 +23,11 @@ export function sharedPlayspace(
           if (zone.kind === "exterior") return true;
           const policy = zone.access;
           return (
-            zone.kind === "public" &&
+            zone.kind !== "personal" &&
             !zone.ownerId &&
             policy?.mode === "public" &&
             !policy.accompanied &&
-            alwaysOpen(
+            alwaysOpenVisitorHours(
               policy.visitorHours === "always"
                 ? null
                 : policy.visitorHours === "inherit"

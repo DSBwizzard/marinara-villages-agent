@@ -40,7 +40,6 @@ const place = (id, x, y) =>
     residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id,
     name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-    classes: id === "mill" ? ["workplace", "community"] : ["other"],
     category: "destination",
     description: "A village place.",
     capabilities: [],
@@ -140,7 +139,6 @@ await withBrowser(browser, async () => {
                   {
                     ...place("home", 0.76, 0.23),
                     name: "Mara's home",
-                    classes: ["residence"],
                     residentIds: ["mara"],
                     residenceCapacity: 1,
                     occupancy: { playerHome: false, residentCharacterId: "mara", homeKind: null },
@@ -229,7 +227,6 @@ await withBrowser(browser, async () => {
           ...session,
           placeId: visited.id,
           placeName: visited.name,
-          spaceClass: lastEntry.spaceClass ?? visited.classes[0],
           area: lastEntry.entryArea ?? "public",
         };
         value = { session };

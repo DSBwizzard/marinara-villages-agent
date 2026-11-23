@@ -38,7 +38,6 @@ export function applyAcceptedSceneDelta(scene: VenueScene, episode: AcceptedEpis
       scene.enteredFromZoneId = move.from;
       scene.zoneId = move.zoneId;
       delete scene.trespass;
-      scene.spaceClass = move.spaceClass;
       scene.area = move.area;
       scene.privateOwnerId = move.privateOwnerId;
       scene.privateAccessOwnerId = "";

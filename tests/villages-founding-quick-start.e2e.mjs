@@ -12,6 +12,7 @@ const bundle = await build({
 import {createRoot} from 'react-dom/client';
 import {useState,useRef,useEffect} from 'react';
 import {QuickStartButton} from './packages/villages/src/client/features/founding/QuickStartButton.js';
+import {FoundingVenueReview} from './packages/villages/src/client/features/founding/FoundingVenueReview.js';
 import {QuickStartVenues} from './packages/villages/src/client/features/founding/QuickStartVenues.js';
 import {VILLAGES_FORGING_STYLES} from './packages/villages/src/client/features/founding/villages-forging-styles.js';
 import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
@@ -50,6 +51,7 @@ function Harness(){
  spaces:row.spaces.map(zone=>zone.id!=='common:base'?zone:{...zone,access:{mode:'public',managerIds:null,memberIds:[],memberRoles:[],inviterIds:[],visitorHours:'inherit',accompanied:false}})}));
  window.editDuringRequest=()=>patch('founding-home:player',row=>({...row,form:'A newer manual description'}));
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
+ {workspace.venueReview && <FoundingVenueReview review={workspace.venueReview} current={venues} people={people} onUse={setVenues} onDismiss={()=>setWorkspace(state=>({...state,venueReview:undefined}))} onProblem={setProblem}/>}
  <QuickStartVenues venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
  actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure} onGenerate={()=>suggest({quickStart:true,separateHomes:true})}/>}/>
  {problem?<p role='alert'>{problem}</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
@@ -104,7 +106,8 @@ await withBrowser(browser, async () => {
         assert.equal(input.venues.length, 5);
         assert.ok(
           input.venues.every(
-            (row) => row.venueClass === "community" || row.residentIds.length + Number(row.playerHome) === 1,
+            (row) =>
+              !(row.playerHome || !!row.residentIds?.length) || row.residentIds.length + Number(row.playerHome) === 1,
           ),
         );
         receipt = {
@@ -118,20 +121,19 @@ await withBrowser(browser, async () => {
               name: "Drafted " + index,
               form: "A coastal shelter",
               description: "A weathered door faces the sea.",
-              layout: row.venueClass === "community" ? "common" : "both",
+              layout: !(row.playerHome || !!row.residentIds?.length) ? "common" : "both",
               commonName: "Living space",
               commonPurpose: "Daily life",
               commonDescription: "A warm living space.",
-              privateName: row.venueClass === "community" ? "" : "Bedroom",
+              privateName: !(row.playerHome || !!row.residentIds?.length) ? "" : "Bedroom",
               privatePurpose: "Rest",
               privateDescription: "A quiet room.",
-              connections:
-                row.venueClass === "community"
-                  ? [["exterior", "common:base"]]
-                  : [
-                      ["exterior", "common:base"],
-                      ["common:base", "private:base"],
-                    ],
+              connections: !(row.playerHome || !!row.residentIds?.length)
+                ? [["exterior", "common:base"]]
+                : [
+                    ["exterior", "common:base"],
+                    ["common:base", "private:base"],
+                  ],
             })),
           },
         };
@@ -504,6 +506,24 @@ await withBrowser(browser, async () => {
         await page.getByRole("dialog").getByRole("button", { name: "Replace and suggest", exact: true }).click();
       };
       await closeVenue();
+      await page.locator('[data-venue-id="founding-home:ada"]').click();
+      await manage();
+      await sheet.getByLabel("Venue Name", { exact: true }).fill("Ada’s café");
+      await sheet.getByLabel("Home places", { exact: true }).selectOption("2");
+      await sheet.getByLabel("Add worker", { exact: true }).selectOption("ada");
+      await sheet.getByLabel("Work activity", { exact: true }).fill("Serving coffee");
+      await sheet.getByLabel("Usual work Zone", { exact: true }).selectOption("common:base");
+      await sheet.getByRole("button", { name: "Save work", exact: true }).click();
+      const cafe = await page.evaluate(() => window.quickState.venues.find((row) => row.id === "founding-home:ada"));
+      assert.equal(cafe.residenceCapacity, 2);
+      assert.equal(cafe.access.work[0].activity, "Serving coffee");
+      assert.deepEqual(cafe.access.work[0].accessZoneIds, ["common:base"]);
+      assert.equal(cafe.privateSpaces[0].ownerId, "ada");
+      assert(
+        await sheet.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+        "Mixed-use Manage fits the Venue sheet",
+      );
+      await closeVenue();
       await button("Suggest").click();
       await page.setViewportSize({ width: viewport.width, height: 260 });
       const confirmation = page.getByRole("dialog", { name: "Suggest", exact: true });
@@ -532,6 +552,7 @@ await withBrowser(browser, async () => {
       loseReply = true;
       await confirm();
       await expect.poll(() => calls).toBe(1);
+      await page.getByRole("button", { name: "Use changes", exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].name)).toBe("Drafted 0");
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues.find((row) => row.id === "founding-home:ada").presentation),
@@ -543,7 +564,7 @@ await withBrowser(browser, async () => {
       assert.ok(
         await page.evaluate(() =>
           window.quickState.venues
-            .filter((row) => row.classes.includes("residence"))
+            .filter((row) => row.occupancy.playerHome || !!row.residentIds?.length)
             .every((row) => row.privateSpaces.length === 1 && Object.keys(row.destinations).length === 1),
         ),
       );

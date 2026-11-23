@@ -1,3 +1,4 @@
+import { foundingHomeMembers, reconcileFoundingHome } from "./founding-homes.js";
 import { FOUNDING_STEP } from "./founding-steps.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
@@ -173,10 +174,18 @@ export function usePatchSetupVenue(ports: {
   const { setSetupAuthoredFields, setSetupVenues } = ports;
   return useCallback(
     (id: string, next: (venue: SetupVenueDraft) => SetupVenueDraft) => {
-      setSetupVenues((rows) =>
-        rows.map((row) => {
-          if (row.id !== id) return row;
-          const changed = next(row);
+      setSetupVenues((rows) => {
+        const target = rows.find((row) => row.id === id);
+        if (!target) return rows;
+        const updated = next(target);
+        const claimed = foundingHomeMembers(updated);
+        return rows.map((row) => {
+          if (row.id !== id)
+            return reconcileFoundingHome(
+              row,
+              foundingHomeMembers(row).filter((actor) => !claimed.includes(actor)),
+            );
+          const changed = updated;
           const fields = ["name", "venueType", "form", "description"] as const;
           const edited = fields.filter((field) => row[field] !== changed[field]);
           if (edited.length)
@@ -185,8 +194,8 @@ export function usePatchSetupVenue(ports: {
               [id]: [...new Set([...(current[id] ?? []), ...edited])],
             }));
           return changed;
-        }),
-      );
+        });
+      });
     },
     [setSetupAuthoredFields, setSetupVenues],
   );
@@ -315,7 +324,8 @@ export function useOpenSetup(ports: {
         fresh || !village
           ? []
           : village.settings.venues.filter(
-              (venue) => venue.classes?.includes("residence") || venue.category === "public-center",
+              (venue) =>
+                venue.occupancy.playerHome || !!venue.residentIds?.length || venue.category === "public-center",
             );
       setSetupVenues(foundingPlaces);
       setSetupFoundingVillagerIds(foundingPlaces.flatMap((venue) => venue.residentIds ?? []));

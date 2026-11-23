@@ -1,3 +1,4 @@
+import { refreshWorkReservations } from "./venue-work.js";
 import { calendarDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageState, VillageVillager } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
@@ -6,6 +7,7 @@ import { routineVenues } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 export function planRoutineDays(state: VillageState, now: Date): void {
+  refreshWorkReservations(state, now);
   for (const resident of [...state.villagers].sort((a, b) => a.characterId.localeCompare(b.characterId))) {
     const agenda = resident.agenda;
     if (!agenda?.routineProfile) continue;

@@ -24,19 +24,18 @@ export function useVenueRequestCommands(ports: {
       setBusy(true);
       setSettingsError("");
       try {
-        const submitted = JSON.stringify([draft.name, draft.classes, draft.description]);
+        const submitted = JSON.stringify([draft.name, draft.description]);
         const result = await request<{ descriptions: Record<string, string> }>("/locations/venue/descriptions/draft", {
           method: "POST",
           body: JSON.stringify({
-            venues: [{ id: entry.id, name: draft.name, classes: draft.classes }],
+            venues: [{ id: entry.id, name: draft.name }],
           }),
         });
         if (!lifetime.owns(claim)) return;
         setRequestEdits((current) => {
           const source = requestSources.current.find((request) => request.id === entry.id);
           const latest = current[entry.id] ?? source?.venueDraft;
-          if (!source || !latest || JSON.stringify([latest.name, latest.classes, latest.description]) !== submitted)
-            return current;
+          if (!source || !latest || JSON.stringify([latest.name, latest.description]) !== submitted) return current;
           return { ...current, [entry.id]: { ...latest, description: result.descriptions[entry.id] ?? "" } };
         });
       } catch (cause) {

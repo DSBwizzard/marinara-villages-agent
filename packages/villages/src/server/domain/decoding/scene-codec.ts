@@ -227,19 +227,10 @@ export function coerceSession(value: unknown): VenueScene {
     departedIds: Array.isArray(raw.departedIds)
       ? raw.departedIds.filter((id): id is string => typeof id === "string")
       : [],
-    spaceClass:
-      raw.spaceClass === "residence" ||
-      raw.spaceClass === "workplace" ||
-      raw.spaceClass === "community" ||
-      raw.spaceClass === "other"
-        ? raw.spaceClass
-        : undefined,
     area:
       raw.area === "outside" || raw.area === "shared" || raw.area === "private" || raw.area === "public"
         ? raw.area
-        : raw.spaceClass === "residence"
-          ? "shared"
-          : "public",
+        : "public",
     privateOwnerId: asTrimmedString(raw.privateOwnerId),
     privateAccessOwnerId: asTrimmedString(raw.privateAccessOwnerId),
     startedAt: asString(raw.startedAt),

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { VillageResidence, VillageState, VillageVenue } from "../models/world.js";
 import { conflict, badGateway } from "./errors.js";
-import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
+import { venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -21,7 +21,7 @@ export function accessibleSleepingRoute(
   }
   const zones = venueZones(provisional);
   const sleeping = zones.find((zone) => zone.id === sleepZoneId);
-  if (sleeping?.kind === "private-residence" && !sleeping.ownerId) {
+  if (sleeping?.kind === "personal" && !sleeping.ownerId) {
     sleeping.ownerId = actor;
     sleeping.access = {
       mode: "permission-required",
@@ -78,14 +78,12 @@ export function captureResidenceAgreement(
   at: string,
 ): NonNullable<VillageResidence["agreement"]> {
   const zones = venueZones(venue);
-  const shared = zones.filter((zone) => zone.kind === "shared-residence" && !zoneClosed(state, venue, zone));
+  const shared = zones.filter((zone) => zone.kind === "public" && !zoneClosed(state, venue, zone));
   const sleep = zones.find((zone) => zone.id === (sleepZoneId || (shared.length === 1 ? shared[0].id : "")));
   if (
-    !hasVenueClass(venue, "residence") ||
     venue.constructionStatus === "worksite" ||
     !sleep ||
     sleep.kind === "exterior" ||
-    sleep.venueClass !== "residence" ||
     zoneClosed(state, venue, sleep) ||
     (sleep.ownerId && sleep.ownerId !== actor)
   )
@@ -95,7 +93,7 @@ export function captureResidenceAgreement(
     !sleep.access.memberRoles.includes("residents") &&
     !sleep.access.memberIds.includes(actor) &&
     sleep.ownerId !== actor &&
-    sleep.kind !== "private-residence"
+    sleep.kind !== "personal"
   )
     throw conflict("The sleeping Zone must admit its resident.");
   if (
@@ -107,7 +105,7 @@ export function captureResidenceAgreement(
   );
   if (venueAssignedCount(venue) + reservations.length >= venueCapacity(venue))
     throw conflict("This Residence has no unreserved resident place.");
-  if (sleep.kind === "private-residence" && reservations.some((move) => move.agreement?.sleepZoneId === sleep.id))
+  if (sleep.kind === "personal" && reservations.some((move) => move.agreement?.sleepZoneId === sleep.id))
     throw conflict("That private room is reserved for another move.");
   const members = householdIds(venue);
   if (!accessibleSleepingRoute(state, venue, actor, sleep.id, new ZonedDate(at, state.timeZone || "UTC")))

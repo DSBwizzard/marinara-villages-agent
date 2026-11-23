@@ -51,7 +51,11 @@ assert.throws(
   () => coerceVillageState({ ...state, visitorIntroduction: { completedAt: "bad", sceneId: "" } }),
   /Visitor introduction/,
 );
-const venue = venueFixture({ id: "garden", name: "Garden", classes: ["community"] });
+const venue = venueFixture({
+  spaces: [{ id: "community", description: "A place in the community.", image: null }],
+  id: "garden",
+  name: "Garden",
+});
 state.venues.push(venue);
 const attendance = captureSceneAttendance(state, venue.id, due);
 assert(visitorIntroductionVenue(state, venue, attendance, due));

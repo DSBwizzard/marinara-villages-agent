@@ -1,25 +1,16 @@
 import type { VillageVenue } from "../contracts/village.js";
 import type { ZoneAccessPolicy } from "./venue-access.js";
-export function draftZonePolicy(
-  venue: VillageVenue,
-  area: { ownerId?: string; venueClass: string },
-  personal = false,
-): ZoneAccessPolicy {
-  const owner = area.ownerId || (venue.occupancy.playerHome ? "player" : venue.residentIds?.[0] || "");
-  const occupied = venue.occupancy.playerHome || !!venue.residentIds?.length || !!venue.workerIds?.length;
-  const mode = occupied && (area.venueClass === "residence" || personal) ? "permission-required" : "public";
+export function draftZonePolicy(venue: VillageVenue, area: { ownerId?: string }, personal = false): ZoneAccessPolicy {
+  const owner = area.ownerId || "";
+  const household = venue.occupancy.playerHome || !!venue.residentIds?.length;
+  const restricted = personal || (household && venue.category !== "public-center");
   return {
-    mode,
+    mode: restricted ? "permission-required" : "public",
     managerIds: personal && owner ? [owner] : null,
     memberIds: personal && owner ? [owner] : [],
-    memberRoles:
-      !personal && area.venueClass === "residence"
-        ? ["residents"]
-        : personal && area.venueClass === "workplace"
-          ? ["workers"]
-          : [],
+    memberRoles: !personal && household ? ["residents"] : [],
     inviterIds: [],
-    visitorHours: mode === "public" ? "inherit" : "always",
+    visitorHours: restricted ? "always" : "inherit",
     accompanied: false,
   };
 }
