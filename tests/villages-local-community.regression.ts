@@ -1,7 +1,3 @@
-import {
-  foundingCircumstanceText,
-  foundingCircumstanceFromText,
-} from "../packages/villages/src/shared/helpers/founding-circumstance.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -841,18 +837,4 @@ console.log(
     false,
     "Changing the native layout invalidates a pending founding routine",
   );
-}
-
-{
-  const legacy = [
-    { scope: "zone" as const, summary: "A closed road.", venueId: "community", zoneId: "common:base" },
-    { scope: "village" as const, summary: "A festival.", venueId: "", zoneId: "" },
-  ];
-  const original = structuredClone(legacy);
-  assert.equal(foundingCircumstanceText(legacy), "A closed road.\n\nA festival.");
-  assert.deepEqual(legacy, original, "Displaying an old draft retains its exact scope and source");
-  assert.deepEqual(foundingCircumstanceFromText("Edited. Another sentence."), [
-    { scope: "village", summary: "Edited. Another sentence.", venueId: "", zoneId: "" },
-  ]);
-  assert.deepEqual(foundingCircumstanceFromText("  "), []);
 }

@@ -19,7 +19,11 @@ export function FoundingHierarchy({ current }: { current: (typeof levels)[number
         const y = 16 + 30 * index;
         const stars = index < 3 ? [116] : index === 3 ? [88, 144] : [70, 99, 133, 162];
         return (
-          <g key={level} data-active={level === current || undefined}>
+          <g
+            key={level}
+            data-active={level === current || undefined}
+            data-complete={index < levels.indexOf(current) || undefined}
+          >
             <text x="9" y={y} dominantBaseline="central">
               {level}
             </text>

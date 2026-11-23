@@ -36,7 +36,10 @@ export function QuickStartVenues({
   onGenerateImage,
   onUploadImage,
   actions,
+  actionsOnMap = false,
   onRetrySaving,
+  onCloseVenue,
+  backLabel,
 }: {
   inlineVenue?: boolean;
   mobile?: boolean;
@@ -59,7 +62,10 @@ export function QuickStartVenues({
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   actions?: ReactNode;
+  actionsOnMap?: boolean;
   onRetrySaving?(): void;
+  onCloseVenue?(): void;
+  backLabel?: string;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [section, setSection] = useState<VenueSection>("about");
@@ -87,6 +93,7 @@ export function QuickStartVenues({
   const inlineOpen = inlineVenue && open;
   const closeVenue = () => {
     setEditorOpen(false);
+    onCloseVenue?.();
     if (!inlineOpen || !selected) return;
     const id = CSS.escape(selected.id);
     requestAnimationFrame(() => {
@@ -282,7 +289,7 @@ export function QuickStartVenues({
             roomBackdrop={section === "zones" && zoneDetails && !!image}
             navigation={
               <button ref={venueBack} className={P + "-venue-back"} type="button" onClick={closeVenue}>
-                {inlineVenue ? "← Map" : "← Venues"}
+                {onCloseVenue ? backLabel || "← Review" : inlineVenue ? "← Map" : "← Venues"}
               </button>
             }
             tabs={{ section, onSelect: selectSection }}
@@ -562,7 +569,7 @@ export function QuickStartVenues({
         <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
           <div className="villages-quick-map-toolbar" hidden={mobile && inlineOpen}>
             <h2 title={locationName || "Starting location"}>{locationName || "Starting location"}</h2>
-            {mobile ? (
+            {mobile || actionsOnMap ? (
               actions
             ) : (
               <button type="button" className="villages-quick-open-map" onClick={() => setMapOpen(false)}>
@@ -580,7 +587,7 @@ export function QuickStartVenues({
           ) : null}
         </section>
       ) : null}
-      {!mobile ? (
+      {!mobile && !onCloseVenue ? (
         <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
           <header className="villages-venue-heading">
             <h2>Starting Venues</h2>
@@ -590,7 +597,7 @@ export function QuickStartVenues({
                   Map
                 </button>
               ) : null}
-              {actions}
+              {actionsOnMap ? null : actions}
             </div>
           </header>
           <div className="villages-quick-zone-list">{cards}</div>

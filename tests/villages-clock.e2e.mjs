@@ -123,6 +123,10 @@ await withBrowser(browser, async () => {
       await expect(phases).toHaveCount(0);
       await expect(mari).toHaveCount(0);
       await models.getByRole("button", { name: "Next", exact: true }).click();
+      await page
+        .getByRole("dialog", { name: "Image connection", exact: true })
+        .getByRole("button", { name: "Continue without images", exact: true })
+        .click();
       await expect(scene).toHaveAttribute("data-mari-turning", "true");
       await page.clock.fastForward(500);
       await expect(scene.locator(".villages-founding-title")).toHaveCount(0);

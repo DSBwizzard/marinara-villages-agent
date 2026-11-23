@@ -14,4 +14,5 @@ export const CONNECTION_SETUP_PROBLEMS = {
   failed: "Check connections before continuing.",
   required: "Choose both System and GM connections before continuing.",
   missing: "Choose available language connections for System and GM.",
+  review: "Review the System and GM connections in Engine before continuing.",
 };

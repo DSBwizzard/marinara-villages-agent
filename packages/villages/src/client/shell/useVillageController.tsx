@@ -1207,7 +1207,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const portraitWanted = calculatePortraitWanted({
     catalog,
     snapshot,
-    includeCatalog: screen === "setup" && founding.setupStep === FOUNDING_STEP.People,
+    includeCatalog:
+      screen === "setup" &&
+      (founding.setupStep === FOUNDING_STEP.People || founding.setupStep === FOUNDING_STEP.Review),
   });
 
   /**

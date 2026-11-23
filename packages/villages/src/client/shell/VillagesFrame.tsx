@@ -26,7 +26,11 @@ export function VillagesFrame({ controller, children }: FrameProps) {
       <div style={{ position: "relative", height: "100%" }}>
         <LoreActivity
           key={controller.snapshot?.worldScope ?? ""}
-          enabled={controller.snapshot?.settings.lorebookChipsEnabled !== false}
+          enabled={
+            controller.screen !== "setup" &&
+            controller.screen !== "preparing" &&
+            controller.snapshot?.settings.lorebookChipsEnabled !== false
+          }
           daylight={daylight}
         >
           <VillageContent key={controller.snapshot?.worldScope ?? ""} controller={controller}>
