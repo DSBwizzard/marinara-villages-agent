@@ -721,10 +721,9 @@ await withBrowser(browser, async () => {
         ),
       );
       await first.click();
-      await openZones();
-      await zone("private:base").click();
       await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
       await sheet.getByRole("button", { name: /^Visitors/ }).click();
+      await sheet.getByLabel("Visitor Zone", { exact: true }).selectOption("private:base");
       await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("permission-required");
       await sheet.getByRole("button", { name: /^Change visitor rules/ }).click();
       await sheet.getByRole("button", { name: "You", exact: true }).click();
