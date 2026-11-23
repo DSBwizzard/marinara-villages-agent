@@ -242,7 +242,11 @@ for (const scenario of scenarios)
           draftRenovationProject(
             world,
             "mill",
-            { title: "Larger Common room", detail: "Capacity three." },
+            {
+              title: "Larger Common room",
+              detail: "Enlarge the shared room.",
+              form: "A larger building with a shared room.",
+            },
             "project:common",
           );
         }
