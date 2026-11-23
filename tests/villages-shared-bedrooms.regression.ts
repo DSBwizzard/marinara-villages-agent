@@ -143,6 +143,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
   const { state, home, inn } = fixture();
   home.residenceCapacity = 3;
   home.destinations!.b.sleep = "bed";
+  home.access!.managerIds = ["c"];
   requestResidenceMove(state, "a", inn.id, "player", "room", "leave", at);
   approve(state, "a");
   assert.equal(completeResidenceMove(state, "a", true, at), true);
@@ -150,6 +151,12 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
   const bed = home.zones!.find((row) => row.id === "bed")!;
   assert.equal(bed.ownerId, undefined);
   assert.equal(evaluateZoneAccess(home, bed, "b", { at }).allowed, true);
+  assert.equal(
+    managesAccess(home, bed.id, "c"),
+    false,
+    "A departing room manager does not automatically hand private control to a Venue manager",
+  );
+  assert.equal(evaluateZoneAccess(home, bed, "c", { at }).allowed, false);
   assert.deepEqual(bed.access!.memberIds, ["guest"]);
   assert.deepEqual(bed.access!.inviterIds, ["guest"]);
   assert.equal(home.archivedPrivateSpaces?.length ?? 0, 0, "Keep an occupied room live");
@@ -219,6 +226,15 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
   draft.destinations = { a: { sleep: "bed" }, b: { sleep: "bed" } };
   const next = reconcileFoundingHome(draft);
   assert.equal(next.destinations!.b.sleep, "bed", "Explicit shared bedroom survives every Founding patch");
+  const remaining = reconcileFoundingHome(next, ["b"]);
+  assert.equal(remaining.destinations!.b.sleep, "bed");
+  assert.deepEqual(
+    remaining.privateSpaces![0].access!.managerIds,
+    [],
+    "Removing the room steward grants no new authority",
+  );
+  assert.deepEqual(remaining.privateSpaces![0].access!.memberIds, ["guest"]);
+  assert.deepEqual(remaining.privateSpaces![0].access!.inviterIds, ["guest"]);
   const moved = reconcileFoundingHome({
     ...next,
     spaces: [{ id: "new-bedroom", description: "A room", image: null, connectedTo: ["exterior"] }],

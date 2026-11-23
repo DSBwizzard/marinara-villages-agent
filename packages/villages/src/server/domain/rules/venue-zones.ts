@@ -110,8 +110,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
       if (zone.access) {
         const old = previous.zones?.find((row) => row.id === zone.id);
         if (old?.ownerId && !zone.ownerId && !venueSleepers(venue, zone.id).length) {
-          zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== old.ownerId);
-          if (!zone.access.managerIds?.length) zone.access.managerIds = null;
+          zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== old.ownerId) ?? null;
           zone.access.memberIds = zone.access.memberIds.filter((id) => id !== old.ownerId);
           zone.access.inviterIds = zone.access.inviterIds.filter((id) => id !== old.ownerId);
         }
