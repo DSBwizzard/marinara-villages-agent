@@ -115,6 +115,7 @@ const saved = z
           }
           return (
             row.format === 1 &&
+            (row.manualProjectCreation === undefined || row.manualProjectCreation === true) &&
             (row.visitorIntroductionFarewell === undefined || row.visitorIntroductionFarewell === true) &&
             typeof row.setupAt === "string" &&
             Number.isFinite(Date.parse(row.capturedAt)) &&

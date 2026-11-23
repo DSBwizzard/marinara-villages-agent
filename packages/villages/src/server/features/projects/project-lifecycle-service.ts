@@ -99,6 +99,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
         return;
       }
       const project = draftNewVenueProject(state, row, "", projectId);
+      if (row.firstUse === true) project.firstUse = { goal: "Enjoy the first visit together" };
       project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
     });
   }
@@ -123,7 +124,14 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           throw conflict("Six Project drafts maximum.");
         const title = asTrimmedString(row.title);
         if (!title || title.length > 100) throw badRequest("Give the Project a name of at most 100 characters.");
-        const plan = undertakingPlanSchema.parse(row.plan);
+        const plan = undertakingPlanSchema.parse(
+          row.plan ?? {
+            goal: asTrimmedString(row.description).slice(0, 2000) || title,
+            zoneId: "",
+            roles: [],
+            milestones: [{ id: "first-use", title: "Get together for the first time", kind: "first-use" }],
+          },
+        );
         const project: VillageProject = {
           id: projectId,
           kind: "undertaking",
@@ -174,6 +182,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           return;
         }
         const project = draftRenovationProject(state, venueId, row, projectId);
+        if (row.firstUse === true) project.firstUse = { goal: "Try the improved place together" };
         project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
       },
       { memories: true },

@@ -12,6 +12,7 @@ import { ProjectZones } from "./ProjectZones.js";
 import { projectStyles } from "./project-styles.js";
 import type { ProjectsController } from "./useProjectsController.js";
 import { UndertakingPanel } from "./UndertakingPanel.js";
+import { physicalProjectNext } from "./project-guidance.js";
 
 const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as const;
 type Tab = (typeof tabs)[number];
@@ -124,6 +125,11 @@ export function ProjectsPanel({
                   ? "This Venue already has active work."
                   : "";
   const allProjects = () => {
+    const parent = snapshot.projects.find((entry) => entry.undertaking?.plan.constructionId === project?.id);
+    if (parent) {
+      c.setSelectedId(parent.id);
+      return;
+    }
     c.setSelectedId("");
     c.setDraftType("");
   };
@@ -178,7 +184,25 @@ export function ProjectsPanel({
       ? (venue?.spaces?.length ?? 0) + (venue?.privateSpaces?.length ?? 0)
       : draft.zones.length;
   const detailPageSize = mobile ? (boardHeight && boardHeight < 650 ? 1 : 2) : 4;
-  if (project?.kind === "undertaking" || c.draftType === "undertaking" || (!project && !c.draftType)) {
+  const next = project && project.kind !== "undertaking" ? physicalProjectNext(project) : null;
+  const followNext = () => {
+    if (!project || !next) return;
+    if (next.action === "site") onPlaceOnMap(project.id);
+    if (next.action === "design") {
+      selectTab("Design & Spaces");
+      setDetailPages((current) => ({ ...current, [workspace.key + ":Design & Spaces"]: "Design" }));
+    }
+    if (next.action === "people") {
+      if (!flow?.candidates.length && !missing.length) onPeople();
+      else {
+        selectTab("People");
+        setPeopleSection(missing.length ? "agreements" : "lead");
+      }
+    }
+    if (next.action === "start" || next.action === "resume") void start();
+    if (next.action === "visit") onVenue(project.venueId);
+  };
+  if (project?.kind === "undertaking" || !project) {
     return <UndertakingPanel snapshot={snapshot} controller={c} onVenue={onVenue} onPeople={onPeople} />;
   }
   return (
@@ -189,83 +213,21 @@ export function ProjectsPanel({
           <StorybookHeading>Projects</StorybookHeading>
           <div className="vp-actions">
             <button type="button" className="vp-subtle" onClick={allProjects}>
-              ‹ All Projects
+              {snapshot.projects.some((entry) => entry.undertaking?.plan.constructionId === project?.id)
+                ? "‹ Back to Project"
+                : "‹ All Projects"}
             </button>
           </div>
         </header>
-        {c.draftType ? (
-          <form
-            autoComplete="off"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void c.create();
-            }}
-          >
-            <div className="vp-project-heading">
-              <h2>{kindName(c.draftType)}</h2>
-              <span>Planning</span>
-            </div>
-            <div className="vp-columns">
-              <section className="vp-panel">
-                <h3>{c.draftType === "new-venue" ? "New Venue" : "Renovation"} specification</h3>
-                <fieldset disabled={draft.busy}>
-                  {c.draftType === "renovation" ? (
-                    <label>
-                      Venue
-                      <select value={c.venueId} onChange={(event) => c.setVenueId(event.target.value)}>
-                        <option value="">Choose a Venue</option>
-                        {snapshot.settings.venues
-                          .filter((venue) => venue.constructionStatus !== "worksite")
-                          .map((venue) => (
-                            <option key={venue.id} value={venue.id}>
-                              {venue.name}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
-                  ) : null}
-                  <label>
-                    Name
-                    <input
-                      autoComplete="off"
-                      value={c.name}
-                      required
-                      maxLength={100}
-                      onChange={(event) => c.setName(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Physical design
-                    <textarea
-                      aria-label="Physical design"
-                      autoComplete="off"
-                      value={c.description}
-                      required
-                      rows={3}
-                      maxLength={MAX_PHYSICAL_DESIGN_LENGTH}
-                      onChange={(event) => c.setDescription(event.target.value)}
-                    />
-                  </label>
-                  {c.draftType === "new-venue" ? (
-                    <>
-                      <span className="vp-label">Classes · up to two</span>
-                      <ClassChoices value={c.classes} onChange={c.setClasses} />
-                    </>
-                  ) : null}
-                  <button className="vp-primary" disabled={draft.busy || (c.draftType === "renovation" && !c.venueId)}>
-                    Create draft
-                  </button>
-                </fieldset>
-              </section>
-            </div>
-          </form>
-        ) : null}
         {project && flow ? (
           <article>
             <div className="vp-project-heading">
               <h2 title={project.title}>{project.title}</h2>
               <span>
-                {kindName(project.kind)} · {titleCase(project.status)}
+                {kindName(project.kind)} ·{" "}
+                {project.status === "complete" && project.firstUse && !project.firstUse.completedAt
+                  ? "Ready to open"
+                  : titleCase(project.status)}
               </span>
             </div>
             {stale ? (
@@ -343,7 +305,34 @@ export function ProjectsPanel({
                 <div className="vp-columns">
                   {!mobile ? <ProjectDrawing image={venue?.presentation.image} caption={project.title} /> : null}
                   <section className="vp-panel">
-                    <h3>Project overview</h3>
+                    {next && next.action !== "done" ? (
+                      <div className="vp-panel-heading">
+                        <h3>Next · {next.title}</h3>
+                        {next.action !== "wait" ? (
+                          <button
+                            disabled={
+                              draft.busy ||
+                              draft.dirty ||
+                              ((next.action === "start" || next.action === "resume") && !!unavailable)
+                            }
+                            onClick={followNext}
+                          >
+                            {
+                              {
+                                site: "Choose on map",
+                                design: "Open design",
+                                people: flow?.candidates.length || missing.length ? "Review people" : "Find people",
+                                start: "Begin work",
+                                resume: "Resume work",
+                                visit: "Visit " + project.title,
+                                wait: "",
+                                done: "",
+                              }[next.action]
+                            }
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="vp-panel-heading">
                       <span className="vp-label">Physical design</span>
                       {intended.length > overviewLimit ? (
@@ -766,14 +755,6 @@ export function ProjectsPanel({
                       Save design
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="vp-primary"
-                    disabled={draft.busy || !!unavailable}
-                    onClick={() => void start()}
-                  >
-                    {resumable ? "Resume" : "Start · 24 hours"}
-                  </button>
                 </div>
               </footer>
             ) : null}

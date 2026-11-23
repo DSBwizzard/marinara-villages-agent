@@ -23,6 +23,7 @@ export function proposeNarratedUndertaking(
   receiptId: string,
   at: string,
 ): AcceptedEpisode["commandReceipts"][number] {
+  memoryRequire(!readset.manualProjectCreation, "Create Projects through New Project.");
   assertNarrationPlayerIntent(context, sources);
   memoryRequire(
     state.seed === readset.source.seed && context.episodeId === readset.source.episodeId,
@@ -87,6 +88,72 @@ export function advanceNarratedUndertaking(
   const project = state.projects.find((row) => row.id === command.project);
   const admitted = admissionState.projects.find((row) => row.id === command.project);
   const captured = readset.projects.find((row) => row.projectId === command.project);
+  if (project?.kind !== "undertaking" && project?.firstUse) {
+    memoryRequire(
+      project.lifecycle && project.status === "complete" && !project.firstUse.completed && command.step === "first-use",
+      "finish construction before the first shared use",
+    );
+    memoryRequire(
+      captured?.phase === "ready-to-open" &&
+        Date.parse(readset.capturedAt) >= Date.parse(project.lifecycle.completedAt),
+      "first use must be witnessed after construction completion",
+    );
+    memoryRequire(
+      state.seed === readset.source.seed &&
+        context.episodeId === readset.source.episodeId &&
+        captured &&
+        admitted?.lifecycle &&
+        captured.revision === admitted.lifecycle.revision &&
+        memoryHash(captured.terms) === memoryHash(projectSpeechTerms(admissionState, admitted)),
+      "the Project changed since this exchange was admitted",
+    );
+    memoryRequire(context.scene.placeId === project.venueId, "first use must happen at this Project's Venue");
+    const venue = state.venues.find((row) => row.id === project.venueId);
+    const observed = sources.find((source) => {
+      if (source.kind !== "observation" || source.episodeId !== context.episodeId) return false;
+      const witnesses = narrationWitnesses([source], ["sight"]),
+        zoneId = source.positions?.player;
+      const zone = venue?.zones?.find((row) => row.id === zoneId);
+      return (
+        zone &&
+        (zone.kind !== "exterior" || venue?.zones?.every((row) => row.kind === "exterior")) &&
+        witnesses.includes("player") &&
+        witnesses.some(
+          (id) =>
+            id !== "player" &&
+            source.positions?.[id] === zoneId &&
+            state.villagers.some(
+              (person) =>
+                person.characterId === id &&
+                person.incarnation === context.actors.find((actor) => actor.id === id)?.incarnation,
+            ),
+        ) &&
+        (project.kind === "new-venue" ||
+          !project.lifecycle!.changedZoneIds.some((id) => id !== "exterior") ||
+          project.lifecycle!.changedZoneIds.includes(zoneId!))
+      );
+    });
+    memoryRequire(
+      observed,
+      "first use needs a current shared deed seen by the player and a local Villager in the finished space",
+    );
+    project.firstUse.completed = {
+      at,
+      episodeId: context.episodeId,
+      evidenceId: receiptId,
+      zoneId: observed.positions!.player,
+    };
+    project.lifecycle.revision++;
+    project.updatedAt = at;
+    return {
+      id: receiptId,
+      kind: "project",
+      targetId: project.id,
+      revision: project.lifecycle.revision,
+      text: project.title + " · first shared use",
+      witnesses: narrationWitnesses([observed]),
+    };
+  }
   memoryRequire(
     project?.kind === "undertaking" && project.undertaking && project.lifecycle && project.status === "working",
     "the shared Project is not active",

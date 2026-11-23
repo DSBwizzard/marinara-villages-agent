@@ -13,7 +13,7 @@ import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import { cloneReturnCapture } from "../rules/world-context-copy.js";
-import { undertakingSchema } from "./undertaking-codec.js";
+import { undertakingSchema, projectFirstUseSchema } from "./undertaking-codec.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -989,7 +989,8 @@ function coerceProjects(value: unknown): VillageProject[] {
       if (
         flow.workOrder !== null ||
         flow.change !== null ||
-        !asTrimmedString(raw.venueId) ||
+        (!["planning", "cancelled"].includes(String(raw.status)) &&
+          (!asTrimmedString(raw.venueId) || !undertaking.plan.zoneId || !undertaking.plan.roles.length)) ||
         (raw.status === "complete" && undertaking.completed.length !== undertaking.plan.milestones.length) ||
         (raw.status !== "complete" && undertaking.completed.length === undertaking.plan.milestones.length)
       )
@@ -1080,6 +1081,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       throw new Error("Invalid Renovation design.");
     const opening = asRecord(raw.opening);
     const project: VillageProject = {
+      ...(raw.firstUse === undefined ? {} : { firstUse: projectFirstUseSchema.parse(raw.firstUse) }),
       id: String(raw.id),
       title: String(raw.title),
       kind: raw.kind as VillageProject["kind"],

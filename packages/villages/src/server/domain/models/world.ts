@@ -475,6 +475,10 @@ export type VillageProjectLifecycle = {
 };
 
 export type VillageProject = {
+  firstUse?: {
+    goal: string;
+    completed?: { at: string; episodeId: string; evidenceId: string; zoneId: string };
+  };
   place?: VillageVenue;
   plan?: {
     capacity: number;

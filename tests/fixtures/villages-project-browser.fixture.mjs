@@ -14,7 +14,7 @@ function Harness(){
  const [snapshot,setSnapshot]=useState(window.initialSnapshot);
  const controller=useProjectsController({snapshot,onSnapshot:setSnapshot,focusProjectId:"",focusProjectRequest:0});
  window.projectVenuePins=calculateSavedPins({mapId:snapshot.settings.venues[0]?.presentation.mapId,mobile:false,snapshot,openPlaceId:"",nameOfCharacter:()=>"",openVenue:place=>window.lastVisit=place.id});
- window.projectsHarness={replace:setSnapshot,unmount:()=>root.unmount()};
+ window.projectsHarness={replace:setSnapshot,unmount:()=>root.unmount(),beginIdea:controller.beginIdea};
  return <div className="marinara-capability-villages-root marinara-capability-villages-project-root"><ProjectsPanel snapshot={snapshot} controller={controller} room={null} mobile={innerWidth<700} siteProjectId=""
   debugEnabled onReturn={()=>{}} onVenue={id=>window.lastVisit=id}
   onPeople={()=>window.peopleOpened=true} onPlaceOnMap={id=>window.lastPlacement=id}/></div>;

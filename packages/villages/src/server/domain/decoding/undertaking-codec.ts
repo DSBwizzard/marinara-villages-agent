@@ -11,10 +11,10 @@ const date = z
 export const undertakingPlanSchema = z
   .object({
     goal: z.string().trim().min(1).max(2000),
-    zoneId: id,
+    zoneId: z.string().trim().max(160),
     roles: z
       .array(z.object({ actorId: id, role: z.string().trim().min(1).max(240) }).strict())
-      .min(1)
+      .min(0)
       .max(3),
     milestones: z
       .array(
@@ -52,3 +52,18 @@ export const undertakingSchema = z
   })
   .strict()
   .refine((value) => value.completed.every((step, index) => step.milestoneId === value.plan.milestones[index]?.id));
+
+export const projectFirstUseSchema = z
+  .object({
+    goal: z.string().trim().min(1).max(240),
+    completed: z
+      .object({
+        at: z.iso.datetime(),
+        episodeId: z.string().min(1).max(400),
+        evidenceId: z.string().min(1).max(400),
+        zoneId: id,
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();

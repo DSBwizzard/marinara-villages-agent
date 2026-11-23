@@ -34,6 +34,18 @@ function globalChange(venue: VillageVenue, change: VillageProjectChange) {
     ...(change.form !== undefined ? { form: change.form } : {}),
   };
 }
+/** The same physical-change requirement drives Start and the player's next action. */
+export function renovationHasChanges(
+  venue: VillageVenue | null | undefined,
+  change: VillageProjectChange | null | undefined,
+  ids: string[],
+) {
+  return (
+    !!venue &&
+    !!change &&
+    (!!ids.length || Object.values(globalChange(venue, change)).some((value) => value !== undefined))
+  );
+}
 export function renovationAffectedIds(
   venue: VillageVenue,
   change?: VillageProjectChange | null,

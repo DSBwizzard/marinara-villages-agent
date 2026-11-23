@@ -39,14 +39,17 @@ export function undertakingAgreed(state: VillageState, project: VillageProject, 
   );
 }
 
-export function validateUndertaking(state: VillageState, project: VillageProject): void {
+export function validateUndertaking(state: VillageState, project: VillageProject, ready = false): void {
   const plan = undertakingPlanSchema.parse(project.undertaking?.plan);
+  if (!state.setupAt) throw conflict("Found the Village before planning a Project.");
+  if (plan.roles.some((role) => !state.villagers.some((resident) => resident.characterId === role.actorId)))
+    throw conflict("Choose current Villagers to invite.");
+  if (ready && !plan.roles.length) throw conflict("Choose someone to invite, then ask them to join.");
+  if (!project.venueId && !plan.zoneId && !ready && !plan.constructionId) return;
   const venue = state.venues.find((row) => row.id === project.venueId && row.constructionStatus !== "worksite");
   const zone = venue && resolveVenueZone(venue, plan.zoneId);
   if (!state.setupAt || !venue || !zone || !zone.seen || zone.kind === "exterior")
     throw conflict("Choose a finished Venue and an activity Zone.");
-  if (plan.roles.some((role) => !state.villagers.some((resident) => resident.characterId === role.actorId)))
-    throw conflict("Choose current Villagers for the shared roles.");
   if (
     plan.constructionId &&
     !state.projects.some(
@@ -73,7 +76,7 @@ export function validateUndertaking(state: VillageState, project: VillageProject
 
 export function beginUndertaking(state: VillageState, project: VillageProject, resume: boolean, now: Date): void {
   if (project.status !== (resume ? "paused" : "planning")) throw conflict("This Project cannot start now.");
-  validateUndertaking(state, project);
+  validateUndertaking(state, project, true);
   if (undertakingApprovers(state, project).some((id) => !undertakingAgreed(state, project, id)))
     throw conflict("Ask the people involved to agree to this plan.");
   if (

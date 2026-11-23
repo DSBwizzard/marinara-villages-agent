@@ -25,6 +25,7 @@ import type { VenueLayoutDraft } from "../venues/layout-draft.js";
 
 /** Values and actions used by SceneScreen; independent of shell implementation. */
 export type SceneScreenController = {
+  readonly planProject: (text: string) => void;
   readonly openVenue: (place: VillageVenue) => void;
   readonly sceneReading: ScenesState["sceneReading"];
   readonly closeRoom: ReturnType<typeof useCloseRoom>;

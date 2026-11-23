@@ -25,6 +25,9 @@ export function projectSpeechTerms(state: VillageState, project: VillageProject)
         : [];
   return {
     kind: project.kind,
+    ...(project.firstUse
+      ? { firstUse: { goal: project.firstUse.goal, completed: !!project.firstUse.completed, step: "first-use" } }
+      : {}),
     venueId: project.venueId,
     proposal: structuredClone(
       project.kind === "undertaking"
@@ -49,7 +52,8 @@ export function projectSpeechContext(
   return {
     projectId: project.id,
     revision: flow.revision,
-    phase: flow.phase,
+    phase:
+      project.status === "complete" && project.firstUse && !project.firstUse.completed ? "ready-to-open" : flow.phase,
     terms,
     agreements: Object.fromEntries(
       [...new Set([...actorIds, ...terms.requiredApprovers, flow.builderId].filter(Boolean))].map((id) => [
@@ -79,6 +83,7 @@ export function projectSpeechContexts(
   return state.projects.flatMap((project) =>
     project.lifecycle &&
     (["planning", "paused", "working"].includes(project.status) ||
+      (project.status === "complete" && project.firstUse && !project.firstUse.completed) ||
       (project.kind === "undertaking" &&
         project.status === "complete" &&
         project.undertaking?.plan.schedule?.weekly)) &&

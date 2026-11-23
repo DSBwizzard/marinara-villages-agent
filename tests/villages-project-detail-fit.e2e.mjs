@@ -96,13 +96,17 @@ await withBrowser(browser, async () => {
       await fits(name);
     }
     await page.getByRole("button", { name: "‹ All Projects" }).click();
-    await page.getByRole("button", { name: "New Venue", exact: true }).first().click();
+    await page.getByRole("button", { name: "New Project", exact: true }).click();
+    await page.getByRole("button", { name: "Build a place", exact: true }).click();
     await fits("new draft");
     await page.getByRole("button", { name: "‹ All Projects" }).click();
-    await page.getByRole("button", { name: "Renovation", exact: true }).first().click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "New Project", exact: true }).click();
+    await page.getByRole("button", { name: "Improve a place", exact: true }).click();
     await fits("renovation draft");
+    await page.getByRole("button", { name: "‹ All Projects" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
     if (width < 700) {
-      await page.getByRole("button", { name: "‹ All Projects" }).click();
       await page
         .getByRole("navigation", { name: "Projects", exact: true })
         .getByRole("button", { name: /Workshop/ })
@@ -130,7 +134,6 @@ await withBrowser(browser, async () => {
       assert.deepEqual(calls.at(-1).body.zones.at(-1).controllerIds, ["player", secondId]);
     }
     if (width >= 700) {
-      await page.getByRole("button", { name: "‹ All Projects" }).click();
       await page
         .getByRole("navigation", { name: "Projects", exact: true })
         .getByRole("button", { name: /Workshop/ })

@@ -1138,7 +1138,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // and a destination has a name and Class. Each row saves by its
   // own id, so an older panel cannot replace a newly approved destination.
   const addVenue = () => {
-    projectsController.setSelectedId("");
+    projectsController.beginIdea();
     projectsController.setDraftType("new-venue");
     openMenu("projects");
   };
@@ -1378,6 +1378,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     navigationView,
     openMenu,
     openPerson,
+    planProject: (text: string) => {
+      projectsController.beginIdea(text);
+      openMenu("projects");
+    },
     openPlace,
     openPlaceId,
     placingPlace,

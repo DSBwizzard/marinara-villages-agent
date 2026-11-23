@@ -1,4 +1,4 @@
-// Test cases: undertakings/round-trip, undertakings/agreements, undertakings/reservations, undertakings/protected-time, undertakings/rollover, undertakings/identity, undertakings/native-life, undertakings/claims, undertakings/stale-progress, undertakings/withdrawal, undertakings/ordered-batch, undertakings/proposal-privacy, undertakings/controller-change, undertakings/physical-work, undertakings/parent-cancel
+// Test cases: undertakings/manual-draft, undertakings/opening, undertakings/round-trip, undertakings/agreements, undertakings/reservations, undertakings/protected-time, undertakings/rollover, undertakings/identity, undertakings/native-life, undertakings/claims, undertakings/stale-progress, undertakings/withdrawal, undertakings/ordered-batch, undertakings/proposal-privacy, undertakings/controller-change, undertakings/physical-work, undertakings/parent-cancel
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { fixture } from "./fixtures/villages-projects.fixture.js";
@@ -6,6 +6,7 @@ import { coerceVillageState } from "../packages/villages/src/server/domain/decod
 import {
   lifecycle,
   beginProject,
+  finishConstruction,
   projectFor,
   reconcileProjectLifecycles,
 } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
@@ -23,11 +24,22 @@ import {
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import type { VillageProject, VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
 import { refreshProjectAgreements } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import { renovation } from "./fixtures/villages-projects.fixture.js";
 import { draftRenovationProject } from "../packages/villages/src/server/features/projects/project-drafts.js";
 
 const now = new ZonedDate("2026-11-23T02:00:00Z", "America/Los_Angeles");
+async function snapshotOf(state: VillageState) {
+  return createVillageSnapshot({
+    readVillageState: async () => state,
+    listVillagerCards: async () => [],
+    rollActiveAgendas: async () => false,
+    sceneQueries: () => ({ activeVenueSession: async () => null }),
+    backgroundWorkSummaries: async () => [],
+    privatePreparationRooms: () => [],
+  } as any).buildVillageSnapshot(now);
+}
 function shared(agreed = true) {
   const state = fixture().state();
   state.timeZone = "America/Los_Angeles";
@@ -73,8 +85,15 @@ function shared(agreed = true) {
       });
   return { state, project };
 }
-function publication(state: VillageState, raw: unknown, input = "Let's work on Sunday supper.", operation = "turn") {
-  const venue = state.venues[0];
+function publication(
+  state: VillageState,
+  raw: unknown,
+  input = "Let's work on Sunday supper.",
+  operation = "turn",
+  placeId = state.venues[0].id,
+  zoneId = "common",
+) {
+  const venue = state.venues.find((v) => v.id === placeId)!;
   const participants = ["a", "b"].map((characterId) => ({ characterId, name: characterId, doing: "Taking part" }));
   const scene = zoneEventScene(
     coerceSession({
@@ -84,7 +103,7 @@ function publication(state: VillageState, raw: unknown, input = "Let's work on S
       villageSeed: state.seed,
       placeId: venue.id,
       placeName: venue.name,
-      zoneId: "common",
+      zoneId,
       activeIds: ["a", "b"],
       participants,
       startedAt: now.toISOString(),
@@ -93,7 +112,7 @@ function publication(state: VillageState, raw: unknown, input = "Let's work on S
       sceneAttendance: {
         capturedAt: now.toISOString(),
         layout: captureSceneLayout(venue),
-        occupants: participants.map((actor) => ({ ...actor, zoneId: "common" })),
+        occupants: participants.map((actor) => ({ ...actor, zoneId })),
       },
     }),
     venue,
@@ -245,6 +264,22 @@ await runCase("undertakings/native-life", () => {
     ],
   };
   const proposal = publication(state, raw, input, "proposal-operation");
+  assert.equal(
+    acceptNarration(structuredClone(state), proposal, "new-manual", now.toISOString()).held,
+    true,
+    "New requests cannot create Projects from dialogue",
+  );
+  delete proposal.readset.manualProjectCreation;
+  for (const partial of [{ roles: [] }, { zoneId: "" }]) {
+    const invalid = structuredClone(proposal);
+    Object.assign((invalid.raw as typeof raw).commands[0].plan, partial);
+    invalid.responseDigest = memoryHash(invalid.raw);
+    assert.equal(
+      acceptNarration(structuredClone(state), invalid, "incomplete-old", now.toISOString()).held,
+      true,
+      "Retained proposals keep their original complete-plan contract",
+    );
+  }
   const result = acceptNarration(state, proposal, "proposal-turn", now.toISOString());
   assert.equal(result.held, false, JSON.stringify(result));
   assert.equal(state.projects.length, 1);
@@ -409,7 +444,9 @@ await runCase("undertakings/proposal-privacy", () => {
         },
       ],
     };
-    assert.equal(acceptNarration(state, publication(state, raw, input), "privacy", now.toISOString()).held, true);
+    const retained = publication(state, raw, input);
+    delete retained.readset.manualProjectCreation;
+    assert.equal(acceptNarration(state, retained, "privacy", now.toISOString()).held, true);
     assert.equal(state.projects.length, 0);
   }
 });
@@ -472,5 +509,146 @@ await runCase("undertakings/parent-cancel", async () => {
   assert.equal(f.get("supper").status, "cancelled");
   assert.equal(f.get(workId).status, "cancelled");
   assert.deepEqual(f.get(workId).lifecycle!.workOrder?.focus?.periods, []);
+});
+await runCase("undertakings/manual-draft", async () => {
+  const f = fixture(),
+    request = { requestId: "manual-gathering", title: "Story night" };
+  await f.service.createUndertaking(request);
+  await f.service.createUndertaking(request);
+  assert.equal(f.state().projects.length, 1, "Saving the same idea twice replays its request");
+  const p = f.state().projects[0];
+  assert.equal(p.venueId, "");
+  assert.deepEqual(p.undertaking!.plan.roles, []);
+  assert.deepEqual(coerceVillageState(f.state()).projects[0].undertaking, p.undertaking);
+  await assert.rejects(() => f.service.startProjectConstruction(p.id, f.body(p.id), now), /invite|place|Venue/i);
+  await f.service.reviseUndertaking(
+    p.id,
+    f.body(p.id, {
+      title: p.title,
+      venueId: "cafe",
+      plan: { ...p.undertaking!.plan, zoneId: "common", roles: [{ actorId: "a", role: "Taking part" }] },
+    }),
+  );
+  await assert.rejects(() => f.service.startProjectConstruction(p.id, f.body(p.id), now), /agree/i);
+  assert.equal(f.get(p.id).lifecycle!.approvals.length, 0, "Choosing someone to ask is not agreement");
+  await f.service.createNewVenueProject({
+    requestId: "manual-place",
+    name: "Arcade",
+    description: "Somewhere to play",
+    classes: ["community"],
+    firstUse: true,
+  });
+  assert.equal(f.state().projects.at(-1)!.firstUse?.goal, "Enjoy the first visit together");
+  const improvement = await renovation(f, { firstUse: true });
+  assert.equal(f.get(improvement).firstUse?.goal, "Try the improved place together");
+  assert.deepEqual(f.get(improvement).lifecycle!.changedZoneIds, []);
+  await f.agree(improvement);
+  const view = await snapshotOf(f.state());
+  assert.equal(
+    view.projects.find((row) => row.id === improvement)!.lifecycle!.designReady,
+    true,
+    "A capacity-only improvement is ready to start",
+  );
+  await f.service.startProjectConstruction(improvement, f.body(improvement), now);
+  assert.equal(f.get(improvement).status, "working");
+});
+await runCase("undertakings/opening", async () => {
+  const f = fixture(),
+    id = await f.newProject("Arcade");
+  await f.mutate((state) => {
+    state.projects.find((p) => p.id === id)!.firstUse = { goal: "Enjoy the first visit together" };
+  });
+  await f.service.startProjectConstruction(id, f.body(id), now);
+  const state = f.state();
+  assert.equal(
+    acceptNarration(state, publication(state, deed(id, "first-use"), "Try Arcade"), "too-early", now.toISOString())
+      .held,
+    true,
+  );
+  const unfinished = publication(
+    state,
+    deed(id, "first-use"),
+    "Try Arcade",
+    "unfinished",
+    state.projects.find((p) => p.id === id)!.venueId,
+    "exterior",
+  );
+  finishConstruction(state, projectFor(state, id), now.toISOString());
+  const p = state.projects.find((row) => row.id === id)!;
+  assert.equal(p.status, "complete");
+  assert(!p.firstUse!.completed);
+  assert.equal(
+    acceptNarration(structuredClone(state), unfinished, "delayed", new Date(now.getTime() + 3600000).toISOString())
+      .held,
+    true,
+    "A delayed reply admitted during construction cannot open the completed place",
+  );
+  const raw = deed(id, "first-use");
+  raw.segments[0].text = "You and a try the first arcade game together.";
+  const exchange = publication(state, raw, "Enjoy Arcade together", "opening", p.venueId, "work");
+  assert(
+    exchange.readset.projects.some((row) => row.projectId === id),
+    "The opening is supplied after construction finishes",
+  );
+  const earlier = structuredClone(exchange);
+  earlier.readset.capturedAt = new Date(now.getTime() - 1).toISOString();
+  assert.equal(
+    acceptNarration(structuredClone(state), earlier, "earlier", now.toISOString()).held,
+    true,
+    "Admission must follow structural completion",
+  );
+  const stale = structuredClone(state);
+  stale.projects.find((row) => row.id === id)!.lifecycle!.revision++;
+  assert.equal(acceptNarration(stale, exchange, "stale-opening", now.toISOString()).held, true);
+  const claim = publication(state, deed(id, "first-use", true), "Enjoy Arcade together", "claim", p.venueId, "work");
+  assert.equal(
+    acceptNarration(structuredClone(state), claim, "claim", now.toISOString()).held,
+    true,
+    "A claim cannot open the place",
+  );
+  const alone = structuredClone(raw);
+  alone.commands[0].source[0].perceive.by = ["player"];
+  assert.equal(
+    acceptNarration(
+      structuredClone(state),
+      publication(state, alone, "Try Arcade", "alone", p.venueId, "work"),
+      "alone",
+      now.toISOString(),
+    ).held,
+    true,
+    "A resident must witness the shared use",
+  );
+  assert.equal(
+    acceptNarration(
+      structuredClone(state),
+      publication(state, raw, "Try Arcade", "outside", p.venueId, "exterior"),
+      "outside",
+      now.toISOString(),
+    ).held,
+    true,
+    "Standing outside an interior place is not first use",
+  );
+  const replaced = structuredClone(state);
+  replaced.villagers.find((v) => v.characterId === "a")!.incarnation = "later-incarnation";
+  replaced.villagers.find((v) => v.characterId === "b")!.incarnation = "later-incarnation";
+  assert.throws(
+    () => acceptNarration(replaced, exchange, "replaced", now.toISOString()),
+    /incarnation changed/,
+    "Later incarnations cannot inherit the old witnesses",
+  );
+  assert.equal(acceptNarration(state, exchange, "opening", now.toISOString()).held, false);
+  assert.equal(acceptNarration(state, exchange, "opening", now.toISOString()).held, false);
+  assert.equal(p.lifecycle!.completedAt, now.toISOString(), "Structural completion keeps its own timestamp");
+  assert.equal(state.projects.find((row) => row.id === id)!.firstUse?.completed?.zoneId, "work");
+  assert.equal(
+    coerceVillageState(state).projects.find((row) => row.id === id)!.firstUse?.completed?.episodeId,
+    exchange.readset.source.episodeId,
+  );
+  const visible = (await snapshotOf(state)).projects.find((row) => row.id === id)!.firstUse!;
+  assert.deepEqual(
+    Object.keys(visible).sort(),
+    ["completedAt", "goal"],
+    "Private first-use evidence is excluded from the snapshot",
+  );
 });
 console.log("Shared Project creation, witnessed life, recurrence, privacy and saved-state checks passed.");

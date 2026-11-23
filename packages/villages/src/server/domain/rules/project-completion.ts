@@ -137,7 +137,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
       kind: "project",
       targetId: project.id,
       revision: 1,
-      text: project.title + " was completed.",
+      text: project.title + (project.firstUse ? " construction was completed." : " was completed."),
       witnesses: flow.builderId && continuityActor(state, flow.builderId) ? [flow.builderId] : [],
     },
     at,

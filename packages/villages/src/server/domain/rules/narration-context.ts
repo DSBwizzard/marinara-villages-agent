@@ -711,6 +711,12 @@ export function narrationContinuityContext(
       !opening &&
       !named(projectQuery) &&
       !localCue(projectQuery) &&
+      !(
+        record.firstUse &&
+        !record.firstUse.completed &&
+        record.status === "complete" &&
+        record.venueId === scene.placeId
+      ) &&
       !(record.kind === "undertaking" && record.status === "working" && record.venueId === scene.placeId)
     )
       continue;
@@ -903,6 +909,7 @@ export function fittedNarrationReadset(
   const candidates = context.npcCandidates.filter((row) => evidenceIds.includes("npc-candidate:" + row.npc.id));
   return {
     format: 1,
+    manualProjectCreation: true,
     setupAt: state.setupAt,
     capturedAt: context.at,
     calendar: context.calendar,
