@@ -7,7 +7,6 @@ import {
   type ArrangementPage,
 } from "./ArrangementNavigation.js";
 import { VenuePeoplePanel } from "./VenuePeoplePanel.js";
-import type { VenueSection } from "../../shared/VenueNavigation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import {
   useCallback,
@@ -255,7 +254,6 @@ export function VenueScreen({
   const [arrangementBusy, setArrangementBusy] = useState(false);
   const [editingConnections, setEditingConnections] = useState(false);
   const [editingAbout, setEditingAbout] = useState(false);
-  const [zoneSection, setZoneSection] = useState<VenueSection>("about");
   const [zoneDetails, setZoneDetails] = useState<"open" | "closed" | null>(null);
   const zoneDetailsOpen = zoneDetails === "open";
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
@@ -431,7 +429,6 @@ export function VenueScreen({
       mobile && !fromMap ? row.closest<HTMLElement>(`.${ELEMENT_TAG}-desk-stage`) : profile.current?.parentElement;
     zoneReturn.current = { row, scrollArea: scrollArea ?? null, scrollTop: scrollArea?.scrollTop ?? 0 };
     setVenueZoneKey(id);
-    setZoneSection("about");
     setEditingAbout(false);
     setZoneDetails("open");
   };
@@ -544,18 +541,11 @@ export function VenueScreen({
         }
         tabs={{
           hidden: !!arrangementPage,
-          section: zoneDetailsOpen ? zoneSection : venueSection,
+          section: venueSection,
           zone: zoneDetailsOpen,
           manage: !!venue,
           disabled: navigationBusy,
           onSelect: async (section) => {
-            if (zoneDetailsOpen) {
-              if (await canLeave(true)) {
-                setZoneSection(section);
-                setEditingAbout(false);
-              }
-              return;
-            }
             if (section === venueSection) {
               if (zoneDetailsOpen) await closeZoneDetails();
               else if (editingConnections) await closeConnections();
@@ -691,64 +681,53 @@ export function VenueScreen({
             >
               {zoneDetails && selected ? (
                 <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
-                  {zoneSection === "about" ? (
-                    <>
-                      {venue ? (
-                        <ZoneAbout
-                          key={place.id + selected.id}
+                  <>
+                    {venue ? (
+                      <ZoneAbout
+                        key={place.id + selected.id}
+                        place={place}
+                        zone={selected}
+                        controller={controller}
+                        onDirtyChange={setZoneAboutDirty}
+                      />
+                    ) : selected.seen && selected.description ? (
+                      <p>{selected.description}</p>
+                    ) : null}
+                    {selected.accessView?.invitation && (
+                      <small>
+                        {[
+                          invitationLabel(selected.accessView.invitation),
+                          controller.nameOfCharacter(selected.accessView.invitation.issuerId),
+                          selected.accessView.invitation.accompanied && "Escort required",
+                          selected.accessView.invitation.outsideHours && "After hours allowed",
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </small>
+                    )}
+                    {
+                      <>
+                        <ZoneArtwork
+                          key={selected.id}
                           place={place}
                           zone={selected}
                           controller={controller}
-                          onDirtyChange={setZoneAboutDirty}
+                          artworkUrl={zoneArt?.url}
+                          editable={!!venue}
                         />
-                      ) : selected.seen && selected.description ? (
-                        <p>{selected.description}</p>
-                      ) : null}
-                      {selected.accessView?.invitation && (
-                        <small>
-                          {[
-                            invitationLabel(selected.accessView.invitation),
-                            controller.nameOfCharacter(selected.accessView.invitation.issuerId),
-                            selected.accessView.invitation.accompanied && "Escort required",
-                            selected.accessView.invitation.outsideHours && "After hours allowed",
-                          ]
-                            .filter(Boolean)
-                            .join(", ")}
-                        </small>
-                      )}
-                      {
-                        <>
-                          <ZoneArtwork
-                            key={selected.id}
-                            place={place}
-                            zone={selected}
-                            controller={controller}
-                            artworkUrl={zoneArt?.url}
-                            editable={!!venue}
-                          />
-                          {venue && selected.preparation?.status === "failed" ? (
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              disabled={controller.busy}
-                              onClick={() => void controller.retryPrivateSpacePreparation()}
-                            >
-                              Retry private-space preparation
-                            </button>
-                          ) : null}
-                        </>
-                      }
-                    </>
-                  ) : zoneSection === "arrangements" && venue ? (
-                    <ArrangementSummary
-                      place={place}
-                      zoneId={selected.id}
-                      disabled={navigationBusy}
-                      onOpen={(kind) => {
-                        setArrangementPage({ kind, ...(kind === "visitors" ? { zoneId: selected.id } : {}) });
-                      }}
-                    />
-                  ) : null}
+                        {venue && selected.preparation?.status === "failed" ? (
+                          <button
+                            type="button"
+                            className={`${ELEMENT_TAG}-button`}
+                            disabled={controller.busy}
+                            onClick={() => void controller.retryPrivateSpacePreparation()}
+                          >
+                            Retry private-space preparation
+                          </button>
+                        ) : null}
+                      </>
+                    }
+                  </>
                 </section>
               ) : null}
             </section>
@@ -789,7 +768,6 @@ export function VenueScreen({
               (arrangementPage.personId ?? "")
             }
             place={place}
-            zone={zoneDetailsOpen ? selected : undefined}
             controller={controller}
             page={arrangementPage}
             onPage={(page) => {

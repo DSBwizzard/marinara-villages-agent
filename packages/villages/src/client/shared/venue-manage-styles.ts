@@ -37,12 +37,13 @@ export const VENUE_MANAGE_STYLES = `
 .villages-manage .villages-manage-check{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:32px}
 .villages-manage input[type=checkbox]{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-color:var(--primary)}
 .villages-manage-empty{margin:14px 0}.villages-manage-details{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px;margin:16px 0}.villages-manage-details dd{margin:0;overflow-wrap:anywhere}
-.villages-work-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
-.villages-work-fields>.villages-work-days{grid-column:1/-1}.villages-work-fields .villages-work-day-buttons{display:flex;gap:4px;margin-top:6px}
+.villages-work-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:14px 18px}
+.villages-manage .villages-work-fields label{flex-wrap:nowrap;margin:0}
+.villages-work-fields>:is(.villages-work-days,.villages-work-times,.villages-work-access){grid-column:1/-1}.villages-work-fields .villages-work-day-buttons{display:flex;gap:4px;margin-top:6px}
 .villages-work-fields .villages-work-day-buttons button{flex:1;min-width:0;min-height:44px;padding:5px 2px;font-size:14px}
 .villages-work-fields .villages-work-day-buttons button[aria-pressed=true]{background:var(--menu-selected);border-color:var(--menu-selected-border);color:var(--venue-ink,var(--foreground))}
-.villages-work-times{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-self:start}
-.villages-work-access legend{margin-bottom:7px}.villages-work-access .villages-manage-check{font-size:15px;min-height:28px;margin:4px 0}
+.villages-work-times{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));gap:10px;align-self:start}
+.villages-work-access legend{margin-bottom:7px}.villages-manage .villages-work-access .villages-manage-check{flex-direction:row;align-items:flex-start;font-size:15px;min-height:28px;margin:4px 0}.villages-work-access .villages-manage-check>span{flex:1;min-width:0;overflow-wrap:anywhere}.villages-work-access input[type=checkbox]{margin-top:2px}
 .villages-work-offer{padding:16px 0;border-top:1px solid var(--border)}.villages-work-offer h3{font-size:22px;margin:0 0 12px}
 .villages-manage .villages-access-panel{width:100%;max-width:none}.villages-manage .villages-access-panel>fieldset{margin-top:18px}
 .villages-access-hours{display:grid;gap:12px}.villages-access-hours>fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}.villages-access-days{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px}.villages-manage .villages-access-days label{display:flex;flex-direction:row;align-items:center;gap:4px;font-size:15px}.villages-access-hours legend{margin:8px 0}.villages-access-hours>fieldset>button{justify-self:start}.villages-manage.villages-access-panel>fieldset{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;border:0;padding:0}.villages-manage.villages-access-panel label{display:flex;flex-direction:column;align-items:stretch}.villages-manage.villages-access-panel label:has(input[type=checkbox]){flex-direction:row;align-items:center}.villages-manage.villages-access-panel :is(select,input[type=time]){background:var(--menu-field);color:var(--venue-ink);min-height:44px}.villages-access-panel>nav{margin-top:22px}
@@ -52,7 +53,7 @@ export const VENUE_MANAGE_STYLES = `
 @container village-desk (max-width:700px){
  .villages-manage-heading h2{font-size:22px}.villages-manage-title-row>button{font-size:15px!important}
  .villages-manage .${P}-avatar{width:80px;height:80px}
- .villages-work-fields{grid-template-columns:minmax(0,1fr)}.villages-work-fields>.villages-work-days{grid-column:auto}.villages-work-fields .villages-work-day-buttons button{font-size:11px}
+ .villages-work-fields .villages-work-day-buttons button{font-size:11px}
  .villages-work-times{gap:14px}.villages-manage label{font-size:16px}.villages-manage .${P}-directory-card strong{font-size:18px}
 }
 `;

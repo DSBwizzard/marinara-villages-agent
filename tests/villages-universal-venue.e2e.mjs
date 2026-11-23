@@ -343,7 +343,7 @@ await withBrowser(browser, async () => {
     const zoneBack = profile.locator(`.${prefix}-venue-navigation button`).first();
     const roomName = profile.getByLabel("Zone name", { exact: true });
     const chooseRoom = async (name) => {
-      if (await profile.getByRole("navigation", { name: "Zone sections", exact: true }).count()) await zoneBack.click();
+      if ((await profile.getAttribute("aria-label")) === "Zone") await zoneBack.click();
       await roomButton(name).click();
       await expect(profile.getByRole("heading", { name, exact: true, level: 1 })).toBeVisible();
       if (name !== "Entrance") await expect(roomName).toHaveValue(name);
@@ -622,7 +622,7 @@ await withBrowser(browser, async () => {
       await openProfile();
     }
     await expect(profile).toBeVisible();
-    if (await profile.getByRole("navigation", { name: "Zone sections", exact: true }).count()) await zoneBack.click();
+    if ((await profile.getAttribute("aria-label")) === "Zone") await zoneBack.click();
     for (const section of ["About", "Zones", "Arrangements"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       const bounds = await profile.boundingBox();

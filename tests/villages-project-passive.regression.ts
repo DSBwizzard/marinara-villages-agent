@@ -93,7 +93,14 @@ await m.mutate((state) => {
     },
   });
 });
-const capacity = await renovation(m, {});
+const capacity = await renovation(m, {
+  zones: m
+    .state()
+    .venues[0].zones!.filter((zone) => zone.kind !== "exterior")
+    .map((zone) =>
+      zone.id === m.state().venues[0].zones![1].id ? { ...zone, roomSpecification: "Enlarge the shared room." } : zone,
+    ),
+});
 await m.agree(capacity);
 await m.service.startProjectConstruction(capacity, m.body(capacity), now);
 await m.mutate((state) => {

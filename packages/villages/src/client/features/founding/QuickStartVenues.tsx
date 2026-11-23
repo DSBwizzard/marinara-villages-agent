@@ -79,7 +79,6 @@ export function QuickStartVenues({
   const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [section, setSection] = useState<VenueSection>("about");
-  const [zoneSection, setZoneSection] = useState<VenueSection>("about");
   const [editingAbout, setEditingAbout] = useState(false);
   const [zoneDetails, setZoneDetails] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
@@ -129,7 +128,6 @@ export function QuickStartVenues({
     const opener = document.activeElement;
     setArrangementPage(null);
     setZoneId(id);
-    setZoneSection("about");
     setEditingAbout(false);
     setZoneDetails(true);
     setChoiceError("");
@@ -172,7 +170,6 @@ export function QuickStartVenues({
     setArrangementPage(field === "assignment" ? { kind: "home" } : null);
     setZoneDetails(field !== "sleep" && !!focusIssue.zoneId);
     setEditingAbout(true);
-    setZoneSection("about");
     setEditorOpen(true);
   }, [focusIssue, inlineVenue]);
   useEffect(() => {
@@ -399,14 +396,9 @@ export function QuickStartVenues({
             }
             tabs={{
               hidden: !!arrangementPage,
-              section: zoneDetails ? zoneSection : section,
+              section,
               zone: zoneDetails,
-              onSelect: zoneDetails
-                ? (next) => {
-                    setZoneSection(next);
-                    setEditingAbout(false);
-                  }
-                : selectSection,
+              onSelect: selectSection,
             }}
           >
             {!arrangementPage && !zoneDetails && section === "about" ? (
@@ -458,21 +450,19 @@ export function QuickStartVenues({
                 venues={venues}
                 people={actors}
                 onPatch={patch}
-                zoneId={zoneDetails ? zoneId : undefined}
                 disabled={busy || imageBusy}
                 page={arrangementPage}
                 onPage={setArrangementPage}
               />
             ) : null}
-            {!arrangementPage && (zoneDetails ? zoneSection : section) === "arrangements" ? (
+            {!arrangementPage && !zoneDetails && section === "arrangements" ? (
               <ArrangementSummary
                 place={selected}
-                zoneId={zoneDetails ? zoneId : undefined}
                 disabled={busy || imageBusy}
                 onOpen={(kind) =>
                   setArrangementPage({
                     kind,
-                    ...(kind === "visitors" ? { zoneId: zoneDetails ? zoneId : visitorDefault(selected) } : {}),
+                    ...(kind === "visitors" ? { zoneId: visitorDefault(selected) } : {}),
                   })
                 }
               />
@@ -525,7 +515,7 @@ export function QuickStartVenues({
                 </section>
               </>
             ) : null}
-            {!arrangementPage && zoneDetails && zoneSection === "about" ? (
+            {!arrangementPage && zoneDetails ? (
               <fieldset
                 className="villages-quick-selected-zone villages-manage"
                 aria-label="Selected Zone"
@@ -609,6 +599,7 @@ export function QuickStartVenues({
       ref={venuesRoot}
       aria-label="Venues"
       data-map-open={(!mobile && mapOpen) || undefined}
+      data-venue-open={inlineOpen || undefined}
     >
       {map ? (
         <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
@@ -633,7 +624,7 @@ export function QuickStartVenues({
         </section>
       ) : null}
       {!mobile && !onCloseVenue ? (
-        <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
+        <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues" hidden={open}>
           <header className="villages-venue-heading">
             <h2>Starting Venues</h2>
             <div className="villages-quick-venue-actions">

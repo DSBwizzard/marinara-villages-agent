@@ -122,7 +122,7 @@ export function WorkFields({
                 })
               }
             />
-            {zone.name || "Zone"}
+            <span>{zone.name || "Zone"}</span>
           </label>
         ))}
       </fieldset>

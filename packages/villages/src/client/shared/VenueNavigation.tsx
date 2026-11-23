@@ -21,12 +21,10 @@ export function VenueSections({
   zone?: boolean;
   onSelect(section: VenueSection): void;
 }) {
-  if (hidden) return null;
+  if (hidden || zone) return null;
   return (
-    <nav className={`${P}-venue-sections`} aria-label={zone ? "Zone sections" : "Venue sections"}>
-      {SECTIONS.filter(
-        (entry) => (entry !== "zones" || !zone) && (manage || entry === "about" || entry === "zones"),
-      ).map((entry) => (
+    <nav className={`${P}-venue-sections`} aria-label="Venue sections">
+      {SECTIONS.filter((entry) => manage || entry !== "arrangements").map((entry) => (
         <button
           type="button"
           key={entry}

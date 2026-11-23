@@ -544,6 +544,8 @@ await withBrowser(browser, async () => {
 
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
+      await expect(sheet.getByRole("button", { name: "Arrangements", exact: true })).toHaveCount(0);
+      await parentVenue();
       await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
       await sheet.getByRole("button", { name: /^Visitors/ }).click();
       const access = sheet.getByRole("region", { name: "Visitors", exact: true });
@@ -558,9 +560,8 @@ await withBrowser(browser, async () => {
         expected,
         "Access preserves unrelated fields",
       );
-      await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
-      await sheet.getByRole("button", { name: "About", exact: true }).click();
-      await edit();
+      await openZones();
+      await zone("common:base").click();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
       expected.spaces[0].name = "Front Office";
       await closeVenue();

@@ -1941,7 +1941,7 @@ export async function verifyFoundingLayout(group) {
           await expect(
             root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
           ).toBeVisible();
-        const placementPane = root.getByRole("region", { name: "Venue placement", exact: true });
+        const placementPane = root.getByRole("region", { name: "Venue placement", exact: true, includeHidden: true });
         const mobileWorkspaceBounds = phone
           ? await root.locator(".villages-chapter-map>.villages-forging-body").boundingBox()
           : null;
@@ -1983,24 +1983,70 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("button", { name: "Remove resident", exact: true })).toBeVisible();
         await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
         await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
+        await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+        await sheet.getByRole("button", { name: /^Workers/ }).click();
+        await sheet.getByRole("button", { name: "Add worker", exact: true }).click();
+        await sheet.locator(".marinara-capability-villages-directory-card").first().click();
+        const host = page.locator("marinara-capability-villages");
+        if (view.width === 2550)
+          await host.evaluate((node) => {
+            node.style.width = "calc(100% - 600px)";
+          });
+        await expect
+          .poll(() =>
+            sheet
+              .locator(".villages-work-times input")
+              .first()
+              .evaluate((node) => node.getBoundingClientRect().width),
+          )
+          .toBeGreaterThanOrEqual(144);
+        assert.ok(
+          await sheet.locator(".villages-work-access label").evaluateAll((labels) =>
+            labels.every((label) => {
+              const check = label.querySelector("input").getBoundingClientRect(),
+                text = label.querySelector("span").getBoundingClientRect();
+              return text.x >= check.right && text.right <= label.getBoundingClientRect().right + 1;
+            }),
+          ),
+          "Work access keeps each label beside its checkbox",
+        );
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "work-editor-" + view.width + ".png"),
+          });
+        if (view.width === 2550)
+          await host.evaluate((node) => {
+            node.style.width = "";
+          });
+        await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+        await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
         await sheet.getByRole("button", { name: "About", exact: true }).click();
         const venuePage = await sheet.boundingBox();
         assert.deepEqual(
           venuePage,
-          placementBounds ?? mobileWorkspaceBounds,
+          placementBounds ? await placementPane.boundingBox() : mobileWorkspaceBounds,
           "The Venue fills the workspace above the fixed actions",
         );
         const homeRow = root.locator('[data-venue-id="founding-home:player"]');
         if (placementBounds) {
           await expect(root.getByRole("dialog")).toHaveCount(0);
           await expect(placementPane).toBeHidden();
+          await expect(
+            root.getByRole("region", { name: "Starting Venues", exact: true, includeHidden: true }),
+          ).toBeHidden();
           await expect(root.getByRole("complementary", { name: "Professor Mari" })).toBeVisible();
           await expect(homeRow).toHaveAttribute("aria-expanded", "true");
+          await expect(
+            root.getByRole("region", { name: "Starting Venues", exact: true, includeHidden: true }),
+          ).toBeHidden();
           const community = root.locator('[data-venue-id="founding-community"]');
+          await closeVenue();
+          await expect(root.getByRole("region", { name: "Starting Venues", exact: true })).toBeVisible();
           await community.click();
           await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
           await sheet.getByRole("button", { name: /^Residents/ }).click();
           await expect(sheet.locator(".marinara-capability-villages-directory-card")).toHaveCount(0);
+          await closeVenue();
           await homeRow.click();
           await expect(sheet.getByRole("button", { name: "← Map", exact: true })).toBeFocused();
         }
@@ -2013,7 +2059,10 @@ export async function verifyFoundingLayout(group) {
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "venue-profile-" + view.width + ".png"),
           });
         await closeVenue();
-        if (placementBounds) await expect(homeRow).toBeFocused();
+        if (placementBounds) {
+          await expect(homeRow).toBeFocused();
+          await expect(root.getByRole("region", { name: "Starting Venues", exact: true })).toBeVisible();
+        }
         await editVenue("founding-garden");
         const openingGathering = sheet.getByRole("button", { name: "Opening gathering", exact: true });
         await expect(openingGathering).toHaveCount(0);
@@ -2211,7 +2260,8 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(sheet.getByRole("group", { name: "Who sleeps here?" })).toHaveCount(0);
         await expect(sheet.getByRole("group", { name: "Whose space is it?" })).toHaveCount(0);
-        await expect(sheet.getByRole("navigation", { name: "Zone sections" })).toBeVisible();
+        await expect(sheet.getByRole("navigation", { name: "Zone sections" })).toHaveCount(0);
+        await expect(sheet.getByRole("button", { name: "Arrangements", exact: true })).toHaveCount(0);
         await editProfile();
         await expect(sheet.getByRole("button", { name: "← Your home", exact: true })).toBeVisible();
         await expect(sheet.locator(".villages-zone-map-canvas")).toHaveCount(0);
