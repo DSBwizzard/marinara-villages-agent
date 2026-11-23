@@ -238,7 +238,8 @@ export function createResidentRoster({
           for (const zone of venue.zones.filter((zone) => zone.ownerId === characterId)) {
             zone.ownerId = undefined;
             if (zone.access) {
-              zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== characterId) ?? null;
+              zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== characterId);
+              if (!zone.access.managerIds?.length) zone.access.managerIds = null;
               zone.access.inviterIds = zone.access.inviterIds.filter((id) => id !== characterId);
               zone.access.memberIds = zone.access.memberIds.filter((id) => id !== characterId);
             }

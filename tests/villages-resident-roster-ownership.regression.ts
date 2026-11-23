@@ -245,7 +245,7 @@ assert.equal(vacant.description, "Secret writing", "vacancy preserves establishe
 assert.equal(vacant.image, null);
 assert.deepEqual(vacant.access!.managerIds, null);
 assert.deepEqual(vacant.access!.inviterIds, []);
-assert.deepEqual(vacant.access!.memberIds, []);
+assert.deepEqual(vacant.access!.memberIds, ["guest"], "Departure preserves other people’s explicit room access");
 assert.deepEqual(vacant.controllerIds, ["other"]);
 assert.deepEqual(emptied.workerIds, ["other"]);
 assert(

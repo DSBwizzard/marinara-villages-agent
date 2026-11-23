@@ -165,7 +165,8 @@ function changeRoomOwner(
   const roommates = venueSleepers(venue, zone.id).filter((id) => id !== previousOwner);
   if (!ownerId && roommates.length) {
     if (zone.access) {
-      zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== previousOwner) ?? null;
+      zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== previousOwner);
+      if (!zone.access.managerIds?.length) zone.access.managerIds = null;
       zone.access.memberIds = zone.access.memberIds.filter((id) => id !== previousOwner);
       zone.access.inviterIds = zone.access.inviterIds.filter((id) => id !== previousOwner);
     }
