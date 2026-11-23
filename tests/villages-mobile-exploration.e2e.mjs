@@ -268,7 +268,7 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator("." + P + "-home-full");
-    const venue = home.getByRole("region", { name: "Venue", exact: true });
+    const venue = home.locator(".marinara-capability-villages-venue-profile");
     const nav = page.getByRole("navigation", { name: "Village exploration" });
     const navigator = page.getByRole("region", { name: "Locations directory" });
     const canvas = home.getByRole("group", { name: "Map navigation" });
@@ -424,7 +424,7 @@ await withBrowser(browser, async () => {
       (await Promise.all([heading.boundingBox(), tabs.boundingBox()])).map(({ x, y }) => [x, y]);
     await page.evaluate(() => document.fonts.ready);
     const aboutPosition = await headerPosition();
-    for (const section of ["Zones", "Manage", "About"]) {
+    for (const section of ["Zones", "People", "Access", "About"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       if (mobile) {
         assert.deepEqual(await headerPosition(), aboutPosition);
@@ -436,24 +436,16 @@ await withBrowser(browser, async () => {
         if (mobile) await expect(thumb.locator("img")).toBeVisible();
         else await expect(thumb).toBeHidden();
       }
-      if (section === "Manage") {
-        await venue.getByRole("button", { name: /^Building/ }).click();
-        await expect(venue.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
-        await venue.getByRole("button", { name: "Zone connections", exact: true }).click();
-        if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
-        await venue.getByRole("button", { name: "← Manage", exact: true }).click();
-        if (mobile) assert.deepEqual(await headerPosition(), aboutPosition);
-      }
     }
     if (mobile && height === 580) {
       await tabs.getByRole("button", { name: "Zones", exact: true }).click();
       const list = venue.getByRole("region", { name: "Zones", exact: true });
       const editor = venue.getByRole("region", { name: "Edit room details", exact: true });
-      const backToZones = editor.getByRole("button", { name: "← Zones", exact: true });
+      const backToZones = venue.locator("." + P + "-venue-navigation button").first();
       const arrival = home.locator("[data-arrival]");
       const scroller = arrival.locator("." + P + "-workspace-content");
-      await expect(list.getByRole("button")).toHaveCount(6);
-      const cards = list.getByRole("button");
+      await expect(list.locator("." + P + "-venue-zone-caption")).toHaveCount(6);
+      const cards = list.getByRole("button").filter({ has: page.locator("." + P + "-venue-zone-caption") });
       const [first, second, third] = await Promise.all([0, 1, 2].map((index) => cards.nth(index).boundingBox()));
       assert(first.y === second.y && first.x < second.x && third.x === first.x && third.y > first.y);
       await expect
@@ -464,14 +456,21 @@ await withBrowser(browser, async () => {
       await expect(venue.locator("." + P + "-venue-zone-editor")).toHaveCSS("translate", "100%");
       await roomWithArtwork.click();
       await expect(backToZones).toBeFocused();
+      await expect(venue.getByRole("heading", { name: "Room 1", exact: true, level: 1 })).toBeVisible();
+      await expect
+        .poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight))
+        .toBeLessThanOrEqual(1);
+      await editor.getByRole("button", { name: "Edit", exact: true }).click();
       await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 1");
       await expect(editor.getByText("Room name", { exact: true })).toHaveCount(0);
       await expect(editor.getByRole("heading", { name: "Room 1", exact: true })).toHaveCount(0);
       await expect(editor.getByRole("status")).toHaveText("Artwork pending");
+      await editor.getByRole("switch", { name: "Automatic artwork updates" }).scrollIntoViewIfNeeded();
       await expect(editor.getByRole("switch", { name: "Automatic artwork updates" })).toBeInViewport({ ratio: 1 });
-      await expect
-        .poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight))
-        .toBeLessThanOrEqual(1);
+      assert(
+        await scroller.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+        "Zone editing stays inside the phone",
+      );
       const roomBackdrop = venue.locator("." + P + "-venue-zone-photo");
       await expect(roomBackdrop).toHaveAttribute("src", roomImage.url);
       await expect(editor.locator("img")).toHaveCount(0);
@@ -502,7 +501,8 @@ await withBrowser(browser, async () => {
       await lastZone.click();
       await expect(backToZones).toBeFocused();
       await expect(list).toHaveCount(0);
-      await expect(venue.locator("." + P + "-venue-zone-picker")).toHaveCSS("translate", "-100%");
+      await expect(venue.locator("." + P + "-venue-zone-list")).toHaveCSS("translate", "-100%");
+      await editor.getByRole("button", { name: "Edit", exact: true }).click();
       await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 5");
       await expect(storybook).toHaveAttribute("src", /\/venue-fallback(?:-day)?\.webp$/);
       await expect(viewFullImage).toHaveCount(0);

@@ -127,7 +127,7 @@ export const DESK_STYLES = `
 .${P}-venue-zone-navigation{display:grid;grid-template-columns:minmax(0,1fr);overflow:clip;overflow-clip-margin:4px}
 .${P}-venue-zone-navigation>section{grid-area:1/1;min-width:0;align-self:start;transition:translate .22s ease}
 .${P}-venue-zone-navigation>section[inert]{height:0;visibility:hidden;transition:translate .22s ease,visibility 0s .22s}
-.${P}-venue-zone-picker[inert]{translate:-100%}
+.${P}-venue-zone-list[inert]{translate:-100%}
 .${P}-venue-zone-editor[inert]{translate:100%}
 @media(prefers-reduced-motion:reduce){.${P}-venue-zone-navigation>section,.${P}-venue-zone-navigation>section[inert]{transition:none}}
 .${P}-venue-zone-picker{display:grid;max-width:22rem}

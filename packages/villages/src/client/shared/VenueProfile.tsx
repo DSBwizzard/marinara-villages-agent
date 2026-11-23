@@ -1,5 +1,4 @@
 import type { ComponentProps, ReactNode, Ref } from "react";
-import type { VillageVenue } from "../../shared/contracts/village.js";
 import { ArtworkImage } from "./ArtworkImage.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 import { VENUE_FALLBACK_DAY_URL, VENUE_FALLBACK_URL } from "./desk-art.js";
@@ -38,7 +37,7 @@ export function VenueProfile({
     <section
       ref={profileRef}
       className={P + "-venue-profile"}
-      aria-label={location ? "Location" : "Venue"}
+      aria-label={tabs.zone ? "Zone" : location ? "Location" : "Venue"}
       data-room-backdrop={roomBackdrop || undefined}
       data-storybook-backdrop={!!fallback || undefined}
       data-storybook-daylight={daylight || undefined}
@@ -66,42 +65,6 @@ export function VenueProfile({
       </header>
       <VenueSections {...tabs} />
       <main className={P + "-venue-profile-body"}>{children}</main>
-    </section>
-  );
-}
-
-export function AssignedVillagers({
-  place,
-  nameOfCharacter,
-  locked = false,
-}: {
-  place: VillageVenue;
-  nameOfCharacter(id: string): string;
-  locked?: boolean;
-}) {
-  const residents = new Set(
-    place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []),
-  );
-  if (place.occupancy.playerHome) residents.add("player");
-  const assignments = [
-    ...[...residents].map((id) => ({ id, role: "Resident" })),
-    ...(place.workerIds ?? []).map((id) => ({ id, role: "Worker" })),
-  ];
-  return (
-    <section className={P + "-venue-people"}>
-      <h2>{locked && assignments.length === 1 ? "Assigned villager" : "Assigned villagers"}</h2>
-      {assignments.length ? (
-        <ul className={P + "-venue-assignments"}>
-          {assignments.map(({ id, role }) => (
-            <li key={role + id}>
-              <span>{nameOfCharacter(id)}</span>
-              <small>{role}</small>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No assigned villagers.</p>
-      )}
     </section>
   );
 }

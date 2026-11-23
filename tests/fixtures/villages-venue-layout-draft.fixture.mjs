@@ -18,7 +18,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
 import {DeskLeaveGuard} from './packages/villages/src/client/shared/DeskWorkspace.js';
 function Harness(){
  const guard=useRef(null),[navigationDisabled,setDisabled]=useState(false),registration=useMemo(()=>({guard,setDisabled}),[]);
- const [snapshot,setSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('a'),[venueSection,setVenueSection]=useState('manage'),[venueZoneKey,setVenueZoneKey]=useState('exterior');
+ const [snapshot,setSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('a'),[venueSection,setVenueSection]=useState('zones'),[venueZoneKey,setVenueZoneKey]=useState('exterior');
  const [room,setRoom]=useState(null),[busy,setBusy]=useState(false),[venueEditBusy,setVenueEditBusy]=useState(false),[venueEditError,setVenueEditError]=useState(''),[venueEditNotice,setVenueEditNotice]=useState(''),[venueEditDraft,setVenueEditDraft]=useState(null),[placeProblem,setPlaceProblem]=useState(null);
  const ports={snapshot,screen,venueId,venuePage:'view',venueZoneKey,setSnapshot,setBusy,setSettingsError:()=>{},setVenueEditBusy,setVenueEditError,setVenueEditNotice,setVenueEditDraft,setVenueProposalDraft:()=>{},setPlaceProblem};
  const commands=useVenueScreenCommands(ports);
@@ -113,12 +113,10 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
 
     const map = page.locator(".villages-zone-map");
     const leave = () => page.getByRole("button", { name: /Return to village|← Village/, exact: true }).click();
-    const manage = page.getByRole("button", { name: "Manage", exact: true });
+    const manage = page.getByRole("button", { name: "Zones", exact: true });
     const save = page.getByRole("button", { name: "Save layout", exact: true });
     const openEditor = async () => {
       if ((await manage.getAttribute("aria-pressed")) !== "true") await manage.click();
-      const building = page.getByRole("button", { name: /^Building/ });
-      if (await building.count()) await building.click();
       await page.getByRole("button", { name: "Zone connections", exact: true }).click();
     };
     const back = async () => {
@@ -154,7 +152,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await connection("other").check();
     await save.click();
     await expect.poll(() => requests.length).toBe(1);
-    await expect(page.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Zones", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "About", exact: true }).click();
     await expect(page.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.evaluate(() =>

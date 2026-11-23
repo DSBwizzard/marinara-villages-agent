@@ -294,15 +294,19 @@ await withBrowser(browser, async () => {
     const tabs = profile.getByRole("navigation", { name: "Venue sections" });
     await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     const about = profile.getByRole("region", { name: "About this venue" });
-    await expect(about.getByRole("heading", { name: "Assigned villagers", exact: true })).toBeVisible();
-    await expect(about.getByRole("listitem").filter({ hasText: "Mara" })).toContainText("Resident");
-    await expect(about.getByRole("listitem").filter({ hasText: "Eli" })).toContainText("Worker");
+    await expect(about.getByText("Resident capacity", { exact: true })).toBeVisible();
+    await tabs.getByRole("button", { name: "People", exact: true }).click();
+    await expect(profile.getByRole("button", { name: "Mara", exact: true })).toBeVisible();
+    await expect(profile.getByRole("button", { name: "Eli", exact: true })).toBeVisible();
+    await tabs.getByRole("button", { name: "About", exact: true }).click();
     await expect(about.getByRole("heading", { name: /Lives here|Works here/ })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
     assert.equal(writes.length, 0);
     await tabs.getByRole("button", { name: "Zones", exact: true }).click();
     const picker = profile.getByRole("region", { name: "Zones", exact: true });
-    await expect(picker.getByRole("button")).toHaveCount(4);
+    await expect(
+      picker.locator("button").filter({ has: page.locator(".marinara-capability-villages-venue-zone-caption") }),
+    ).toHaveCount(4);
     const alcove = picker.getByRole("button", { name: /^Sleeping Alcove/ });
     await expect(alcove.locator("small")).toHaveText(["Permission required"]);
     await expect(picker.getByRole("button", { name: /^Main Bay/ }).locator("small")).toHaveText([
@@ -313,27 +317,28 @@ await withBrowser(browser, async () => {
     await expect(roomBackdrop).toHaveAttribute("src", mapImage);
     await expect(profile.locator(".villages-zone-map")).toHaveCount(0);
     assert.equal(writes.length, 0, "browsing known Zone art never starts a Scene or saves a change");
-    await tabs.getByRole("button", { name: "Manage", exact: true }).click();
-    await profile.getByRole("button", { name: /^Building/ }).click();
+    await profile.locator(`.${prefix}-venue-navigation button`).first().click();
+    await tabs.getByRole("button", { name: "Zones", exact: true }).click();
     await profile.getByRole("button", { name: "Zone connections", exact: true }).click();
     const layout = profile.locator(".villages-zone-map");
     await expect(layout.locator("[data-layout-zone]")).toHaveCount(4);
     await expect(layout.locator("svg :is(line, polyline)")).toHaveCount(3);
     await expect(profile.getByText("Zone settings", { exact: true })).toHaveCount(0);
     await expect(profile.getByLabel("Room name", { exact: true })).toHaveCount(0);
-    const manageBack = profile.getByRole("button", { name: "← Manage", exact: true });
+    const manageBack = profile.getByRole("button", { name: "← Zones", exact: true });
     await manageBack.click();
     await expect(layout).toHaveCount(0);
     await tabs.getByRole("button", { name: "Zones", exact: true }).click();
     const roomButton = (name) => picker.getByRole("button", { name: new RegExp(`^${name}\\b`) });
     const editor = profile.getByRole("region", { name: "Edit room details", exact: true });
-    const zoneBack = editor.getByRole("button", { name: "← Zones", exact: true });
+    const zoneBack = profile.locator(`.${prefix}-venue-navigation button`).first();
     const roomName = editor.getByLabel("Room name", { exact: true });
     const chooseRoom = async (name) => {
-      if (await zoneBack.isVisible()) await zoneBack.click();
+      if (await profile.getByRole("navigation", { name: "Zone sections", exact: true }).count()) await zoneBack.click();
       await roomButton(name).click();
-      if (name === "Entrance") await expect(editor.getByRole("heading", { name, exact: true })).toBeVisible();
-      else await expect(roomName).toHaveValue(name);
+      await expect(profile.getByRole("heading", { name, exact: true, level: 1 })).toBeVisible();
+      await editor.getByRole("button", { name: "Edit", exact: true }).click();
+      if (name !== "Entrance") await expect(roomName).toHaveValue(name);
     };
     await chooseRoom("Workshop");
     await roomName.fill("Unsent Zone name");
@@ -351,7 +356,7 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true })
       .focus();
     await page.keyboard.press("Escape");
-    await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
+    await expect(profile.getByRole("heading", { name: "Workshop", exact: true })).toBeVisible();
     await expect(roomName).toHaveValue("Workshop");
     await chooseRoom("Entrance");
     await expect(profile.getByText("Exterior", { exact: true })).toHaveCount(0);
@@ -503,8 +508,9 @@ await withBrowser(browser, async () => {
     await chooseRoom("Harbour Lounge");
     await expect(roomName).toHaveValue("Harbour Lounge");
     await expect(detail.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
-    await tabs.getByRole("button", { name: "Manage", exact: true }).click();
-    await profile.getByRole("button", { name: /^Building/ }).click();
+    await zoneBack.click();
+    await tabs.getByRole("button", { name: "About", exact: true }).click();
+    await profile.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(profile.getByRole("heading", { name: "Assigned villagers", exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "View housing requests" })).toHaveCount(0);
     await expect(profile.getByLabel("Physical form", { exact: true })).toHaveCount(0);
@@ -533,7 +539,7 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
-    await profile.getByRole("button", { name: "Zone connections", exact: true }).click();
+    await tabs.getByRole("button", { name: "Zones", exact: true }).click();
     await page
       .getByRole("dialog", { name: "Confirm", exact: true })
       .getByRole("button", { name: "Cancel", exact: true })
@@ -588,7 +594,7 @@ await withBrowser(browser, async () => {
       await openProfile();
     }
     await expect(profile).toBeVisible();
-    for (const section of ["About", "Zones", "Manage"]) {
+    for (const section of ["About", "Zones", "People", "Access"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       const bounds = await profile.boundingBox();
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, `${width}: ${section} stays inside the host`);
@@ -623,7 +629,7 @@ await withBrowser(browser, async () => {
       .click();
     await openProfile();
     await expect(profile).toBeVisible();
-    await expect(tabs.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(tabs.getByRole("button", { name: "Access", exact: true })).toHaveAttribute("aria-pressed", "true");
     await tabs.getByRole("button", { name: "About", exact: true }).click();
     await profile.getByRole("button", { name: "Visit venue", exact: true }).click();
     const composer = page.getByRole("textbox", { name: "Message at Renamed warehouse", exact: true });
@@ -633,7 +639,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
     await expect(profile).toBeVisible();
-    for (const section of ["About", "Zones", "Manage"]) {
+    for (const section of ["About", "Zones", "People", "Access"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       await expect(profile).toBeVisible();
       if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {

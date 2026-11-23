@@ -1,6 +1,5 @@
-import { VenueWorkPanel } from "./VenueWorkPanel.js";
-import { VenueHomePanel } from "./VenueHomePanel.js";
-import { VenueManageMenu, VenueManageHeading, type VenueManageSection } from "./VenueManage.js";
+import { VenuePeoplePanel } from "./VenuePeoplePanel.js";
+import type { VenueSection } from "../../shared/VenueNavigation.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
@@ -14,14 +13,13 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { ModalDialog } from "../../shared/ModalDialog.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
-import { playerDisplayName } from "../../shared/presentation.js";
 import { WorkspaceShell } from "../../shared/WorkspaceShell.js";
 import { useLetterFont } from "../../shared/letter-font-css.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
 import { VenueZoneRow } from "../../shared/VenueNavigation.js";
-import { AssignedVillagers, VenueProfile } from "../../shared/VenueProfile.js";
+import { VenueProfile } from "../../shared/VenueProfile.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const id = useId();
@@ -328,9 +326,8 @@ export function VenueScreen({
   const confirmVillages = useConfirmation();
   const { viewing = true, visible } = useVillageActivity();
   const [editingConnections, setEditingConnections] = useState(false);
-  const [editingAccess, setEditingAccess] = useState(false);
-  const [managePage, setManagePage] = useState<VenueManageSection | null>(null);
-  const [venueHoursScope, setVenueHoursScope] = useState(false);
+  const [editingAbout, setEditingAbout] = useState(false);
+  const [zoneSection, setZoneSection] = useState<VenueSection>("about");
   const [zoneDetails, setZoneDetails] = useState<"open" | "closed" | null>(null);
   const zoneDetailsOpen = zoneDetails === "open";
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
@@ -368,7 +365,7 @@ export function VenueScreen({
   const detail =
     narrative?.worldScope === snapshot?.worldScope && narrative?.detail.id === venueId ? narrative.detail : null;
   const place = venue ?? detail?.location;
-  const venueSection = !venue && savedSection === "manage" ? "about" : savedSection;
+  const venueSection = !venue && (savedSection === "people" || savedSection === "access") ? "about" : savedSection;
   useEffect(() => {
     if (venue || !venueId || !snapshot || !viewing || !visible) return;
     let current = true;
@@ -489,7 +486,7 @@ export function VenueScreen({
   const daylightBackdrop = !fromMap && storybookBackdrop && (storybookDaylight ?? lighting !== "night");
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
-  const about = venueSection === "about";
+  const about = venueSection === "about" && !zoneDetailsOpen;
   const returnToMap = async () => {
     if (await canLeave()) leaveVenue(fromMap ? undefined : "map");
   };
@@ -503,6 +500,8 @@ export function VenueScreen({
       mobile && !fromMap ? row.closest<HTMLElement>(`.${ELEMENT_TAG}-desk-stage`) : profile.current?.parentElement;
     zoneReturn.current = { row, scrollArea: scrollArea ?? null, scrollTop: scrollArea?.scrollTop ?? 0 };
     setVenueZoneKey(id);
+    setZoneSection("about");
+    setEditingAbout(false);
     setZoneDetails("open");
   };
   const closeZoneDetails = async () => {
@@ -516,7 +515,7 @@ export function VenueScreen({
       <VenueProfile
         profileRef={profile}
         headingRef={fromMap ? heading : undefined}
-        name={place.name}
+        name={zoneDetailsOpen ? selected.name : place.name}
         location={!venue}
         entranceImage={entranceArt?.url}
         zoneImage={zoneBackdrop ? { url: zoneBackdrop.url, name: selected.name } : undefined}
@@ -541,11 +540,12 @@ export function VenueScreen({
             <button
               type="button"
               className={`${ELEMENT_TAG}-venue-back`}
-              aria-label={fromMap ? "Back to map" : undefined}
+              ref={zoneDetailsOpen ? subpageBack : undefined}
+              aria-label={zoneDetailsOpen ? undefined : fromMap ? "Back to map" : undefined}
               disabled={navigationBusy}
-              onClick={returnToMap}
+              onClick={zoneDetailsOpen ? closeZoneDetails : returnToMap}
             >
-              {fromMap ? "← Map" : "← Locations"}
+              {zoneDetailsOpen ? `← ${place.name}` : fromMap ? "← Map" : "← Locations"}
             </button>
             {activeScene ? (
               <button type="button" className={`${ELEMENT_TAG}-venue-back`} disabled={navigationBusy} onClick={back}>
@@ -555,10 +555,18 @@ export function VenueScreen({
           </>
         }
         tabs={{
-          section: venueSection,
+          section: zoneDetailsOpen ? zoneSection : venueSection,
+          zone: zoneDetailsOpen,
           manage: !!venue,
           disabled: navigationBusy,
           onSelect: async (section) => {
+            if (zoneDetailsOpen) {
+              if (await canLeave(true)) {
+                setZoneSection(section);
+                setEditingAbout(false);
+              }
+              return;
+            }
             if (section === venueSection) {
               if (zoneDetailsOpen) await closeZoneDetails();
               else if (editingConnections) await closeConnections();
@@ -566,8 +574,7 @@ export function VenueScreen({
             }
             if (!(await canLeave())) return;
             setEditingConnections(false);
-            setEditingAccess(false);
-            setManagePage(null);
+            setEditingAbout(false);
             setZoneDetails(null);
             zoneReturn.current = null;
             setZoneNameDirty(false);
@@ -584,12 +591,41 @@ export function VenueScreen({
             <div className={`${ELEMENT_TAG}-venue-summary`}>
               {detail?.description || place.description ? <p>{detail?.description || place.description}</p> : null}
               {venue ? (
-                <AssignedVillagers
-                  place={place}
-                  nameOfCharacter={(id) =>
-                    id === "player" ? playerDisplayName(snapshot) : controller.nameOfCharacter(id)
-                  }
-                />
+                <section className="villages-manage">
+                  <div className="villages-people-actions">
+                    <button
+                      type="button"
+                      disabled={navigationBusy}
+                      onClick={async () => {
+                        if (await canLeave(true)) setEditingAbout(!editingAbout);
+                      }}
+                    >
+                      {editingAbout ? "Done" : "Edit"}
+                    </button>
+                  </div>
+                  {editingAbout ? (
+                    <div className="villages-manage-form">
+                      <VenueName place={place} controller={controller} />
+                      <button
+                        type="button"
+                        className={ELEMENT_TAG + "-button"}
+                        disabled={navigationBusy}
+                        onClick={async () => {
+                          if (await canLeave()) planVenueRenovation(place);
+                        }}
+                      >
+                        Plan a renovation <span aria-hidden="true">›</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <dl className="villages-manage-details">
+                      <dt>Form</dt>
+                      <dd>{place.form}</dd>
+                      <dt>Resident capacity</dt>
+                      <dd>{place.residenceCapacity ?? 0}</dd>
+                    </dl>
+                  )}
+                </section>
               ) : null}
               {(place.constructionStatus === "worksite" || activeProject?.kind === "new-venue") && activeProject ? (
                 <button
@@ -631,23 +667,40 @@ export function VenueScreen({
             </div>
           </section>
         ) : null}
-        {browsing ? (
+        {browsing && !editingConnections ? (
           <div className={`${ELEMENT_TAG}-venue-zone-navigation`}>
-            <section className={`${ELEMENT_TAG}-venue-zone-picker`} aria-label="Zones" inert={zoneDetailsOpen}>
-              {zones.map((zone) => {
-                const image = roomArtwork(zone);
-                return (
-                  <VenueZoneRow
-                    key={zone.id}
-                    name={zone.name}
-                    image={image?.url}
-                    accessLabel={zone.accessLabel}
-                    current={zone.id === selected?.id}
+            <section className={`${ELEMENT_TAG}-venue-zone-list`} inert={zoneDetailsOpen}>
+              {venue && (
+                <div className="villages-people-actions">
+                  <button
+                    ref={connectionsButton}
+                    type="button"
+                    className={ELEMENT_TAG + "-button"}
                     disabled={navigationBusy}
-                    onOpen={(event) => openZoneDetails(zone.id, event.currentTarget)}
-                  />
-                );
-              })}
+                    onClick={async () => {
+                      if (await canLeave(true)) setEditingConnections(true);
+                    }}
+                  >
+                    Zone connections <span aria-hidden="true">›</span>
+                  </button>
+                </div>
+              )}
+              <section className={`${ELEMENT_TAG}-venue-zone-picker`} aria-label="Zones">
+                {zones.map((zone) => {
+                  const image = roomArtwork(zone);
+                  return (
+                    <VenueZoneRow
+                      key={zone.id}
+                      name={zone.name}
+                      image={image?.url}
+                      accessLabel={zone.accessLabel}
+                      current={zone.id === selected?.id}
+                      disabled={navigationBusy}
+                      onOpen={(event) => openZoneDetails(zone.id, event.currentTarget)}
+                    />
+                  );
+                })}
+              </section>
             </section>
             <section
               className={`${ELEMENT_TAG}-venue-zone-editor`}
@@ -656,70 +709,111 @@ export function VenueScreen({
             >
               {zoneDetails && selected ? (
                 <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
-                  <div className={`${ELEMENT_TAG}-venue-zone-toolbar`}>
-                    <button
-                      ref={zoneDetailsOpen ? subpageBack : undefined}
-                      type="button"
-                      className={`${ELEMENT_TAG}-venue-back`}
-                      disabled={navigationBusy}
-                      onClick={closeZoneDetails}
-                    >
-                      ← Zones
-                    </button>
-                    {venue && selected.kind !== "exterior" ? (
-                      <ZoneName
-                        key={place.id + selected.id}
-                        place={place}
-                        zone={selected}
-                        controller={controller}
-                        onDirtyChange={setZoneNameDirty}
-                        saveRef={zoneNameEditor}
-                      />
-                    ) : (
-                      <h2>{selected.name}</h2>
-                    )}
-                  </div>
-                  {selected.seen &&
-                  selected.description &&
-                  selected.description.trim() !== (detail?.description || place.description)?.trim() ? (
-                    <p>{selected.description}</p>
-                  ) : null}
-                  {selected.accessView?.invitation && (
-                    <small>
-                      {[
-                        invitationLabel(selected.accessView.invitation),
-                        controller.nameOfCharacter(selected.accessView.invitation.issuerId),
-                        selected.accessView.invitation.accompanied && "Escort required",
-                        selected.accessView.invitation.outsideHours && "After hours allowed",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </small>
-                  )}
-                  <ZoneArtwork
-                    key={selected.id}
-                    place={place}
-                    zone={selected}
-                    controller={controller}
-                    artworkUrl={zoneArt?.url}
-                    editable={!!venue}
-                  />
-                  {venue && selected.preparation?.status === "failed" ? (
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={controller.busy}
-                      onClick={() => void controller.retryPrivateSpacePreparation()}
-                    >
-                      Retry private-space preparation
-                    </button>
+                  {zoneSection === "about" ? (
+                    <>
+                      {venue && (
+                        <div className="villages-people-actions">
+                          <button
+                            type="button"
+                            disabled={navigationBusy}
+                            onClick={async () => {
+                              if (await canLeave(true)) setEditingAbout(!editingAbout);
+                            }}
+                          >
+                            {editingAbout ? "Done" : "Edit"}
+                          </button>
+                        </div>
+                      )}
+                      {editingAbout && venue && selected.kind !== "exterior" ? (
+                        <ZoneName
+                          key={place.id + selected.id}
+                          place={place}
+                          zone={selected}
+                          controller={controller}
+                          onDirtyChange={setZoneNameDirty}
+                          saveRef={zoneNameEditor}
+                        />
+                      ) : null}
+                      {selected.seen &&
+                      selected.description &&
+                      selected.description.trim() !== (detail?.description || place.description)?.trim() ? (
+                        <p>{selected.description}</p>
+                      ) : null}
+                      {selected.seen && selected.purpose ? (
+                        <dl className="villages-manage-details">
+                          <dt>Used for</dt>
+                          <dd>{selected.purpose}</dd>
+                        </dl>
+                      ) : null}
+                      {editingAbout && venue ? (
+                        <button
+                          type="button"
+                          className={ELEMENT_TAG + "-button"}
+                          disabled={navigationBusy}
+                          onClick={async () => {
+                            if (await canLeave()) planVenueRenovation(place);
+                          }}
+                        >
+                          Plan a renovation <span aria-hidden="true">›</span>
+                        </button>
+                      ) : null}
+                      {selected.accessView?.invitation && (
+                        <small>
+                          {[
+                            invitationLabel(selected.accessView.invitation),
+                            controller.nameOfCharacter(selected.accessView.invitation.issuerId),
+                            selected.accessView.invitation.accompanied && "Escort required",
+                            selected.accessView.invitation.outsideHours && "After hours allowed",
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </small>
+                      )}
+                      {
+                        <>
+                          <ZoneArtwork
+                            key={selected.id}
+                            place={place}
+                            zone={selected}
+                            controller={controller}
+                            artworkUrl={zoneArt?.url}
+                            editable={!!venue && editingAbout}
+                          />
+                          {venue && editingAbout && selected.preparation?.status === "failed" ? (
+                            <button
+                              type="button"
+                              className={`${ELEMENT_TAG}-button`}
+                              disabled={controller.busy}
+                              onClick={() => void controller.retryPrivateSpacePreparation()}
+                            >
+                              Retry private-space preparation
+                            </button>
+                          ) : null}
+                        </>
+                      }
+                    </>
+                  ) : zoneSection === "people" && venue ? (
+                    <VenuePeoplePanel
+                      key={place.id + selected.id}
+                      place={place}
+                      zone={selected}
+                      controller={controller}
+                    />
+                  ) : zoneSection === "access" && venue ? (
+                    <VenueAccessPanel
+                      key={place.id + selected.id + place.accessView?.revision}
+                      place={place}
+                      zone={selected}
+                      controller={controller}
+                      onClose={() => {}}
+                    />
                   ) : null}
                 </section>
               ) : null}
             </section>
           </div>
         ) : null}
-        {venueSection === "manage" && editingConnections && selected ? (
+        {venueSection === "zones" && editingConnections && selected ? (
           <section className={`${ELEMENT_TAG}-venue-connections`} aria-label="Zone connections">
             <div className={`${ELEMENT_TAG}-venue-manage-heading`}>
               <h2>Zone connections</h2>
@@ -730,7 +824,7 @@ export function VenueScreen({
                 disabled={navigationBusy}
                 onClick={closeConnections}
               >
-                ← Manage
+                ← Zones
               </button>
             </div>
             <div className={`${ELEMENT_TAG}-venue-zones-layout`}>
@@ -745,102 +839,37 @@ export function VenueScreen({
             </div>
           </section>
         ) : null}
-        {venueSection === "manage" && editingAccess ? (
-          <VenueAccessPanel
-            key={venueHoursScope ? "venue" : selected?.id}
-            place={place}
-            zone={venueHoursScope ? undefined : selected}
-            controller={controller}
-            onClose={() => {
-              setEditingAccess(false);
-              setManagePage(null);
-            }}
-            onSelect={(id) => {
-              setVenueHoursScope(!id);
-              if (id) void selectRoom(id);
-            }}
-          />
+        {!zoneDetailsOpen && venueSection === "people" && venue ? (
+          <VenuePeoplePanel key={place.id} place={place} controller={controller} />
         ) : null}
-        {venueSection === "manage" && !editingConnections && !editingAccess ? (
-          <section className="villages-manage" aria-label="Manage this venue">
-            {!managePage && (
-              <VenueManageMenu
-                disabled={navigationBusy}
-                onSelect={async (page) => {
-                  if (!(await canLeave(true))) return;
-                  setManagePage(page);
-                  if (
-                    page === "access" &&
-                    (place.accessView?.canManage || zones.some((zone) => zone.accessView?.decision.canInvite))
-                  ) {
-                    const accessZone =
-                      zones.find((zone) => zone.id === selected?.id && zone.accessView?.decision.canInvite) ??
-                      zones.find((zone) => zone.accessView?.decision.canInvite);
-                    setVenueHoursScope(!accessZone);
-                    if (accessZone) await selectRoom(accessZone.id);
-                    setEditingAccess(true);
-                  }
+        {!zoneDetailsOpen && venueSection === "access" && venue && !place.accessView?.canManage ? (
+          <section className={ELEMENT_TAG + "-venue-zone-picker"} aria-label="Zone access">
+            {zones.map((zone) => (
+              <VenueZoneRow
+                key={zone.id}
+                name={zone.name}
+                accessLabel={zone.accessLabel}
+                onOpen={(event) => {
+                  openZoneDetails(zone.id, event.currentTarget);
+                  setZoneSection("access");
+                  setVenueSection("zones");
                 }}
               />
-            )}
-            {managePage === "home" && (
-              <VenueHomePanel key={place.id} place={place} controller={controller} onBack={() => setManagePage(null)} />
-            )}
-            {managePage === "work" && (
-              <VenueWorkPanel key={place.id} place={place} controller={controller} onBack={() => setManagePage(null)} />
-            )}
-            {managePage === "access" && (
-              <>
-                <VenueManageHeading title="Access" onBack={() => setManagePage(null)} />
-                <button type="button" onClick={() => setVenueSection("zones")}>
-                  View Zones
-                </button>
-              </>
-            )}
-            {managePage === "building" && (
-              <>
-                <VenueManageHeading
-                  title="Building"
-                  disabled={navigationBusy}
-                  onBack={async () => {
-                    if (await canLeave()) setManagePage(null);
-                  }}
-                />
-                <div className="villages-manage-form">
-                  <VenueName place={place} controller={controller} />
-                  <button
-                    type="button"
-                    className={ELEMENT_TAG + "-button"}
-                    disabled={navigationBusy}
-                    onClick={async () => {
-                      if (await canLeave()) planVenueRenovation(place);
-                    }}
-                  >
-                    Plan a renovation <span aria-hidden="true">›</span>
-                  </button>
-                  {selected ? (
-                    <button
-                      ref={connectionsButton}
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={navigationBusy}
-                      onClick={async () => {
-                        if (await canLeave(true)) setEditingConnections(true);
-                      }}
-                    >
-                      Zone connections <span aria-hidden="true">›</span>
-                    </button>
-                  ) : null}
-                </div>
-              </>
-            )}
+            ))}
           </section>
+        ) : null}
+        {!zoneDetailsOpen && venueSection === "access" && venue && place.accessView?.canManage ? (
+          <VenueAccessPanel
+            key={place.id + String(place.accessView?.revision)}
+            place={place}
+            zone={undefined}
+            controller={controller}
+            onClose={() => {}}
+          />
         ) : null}
         {placeBusyId === place.id ? <p role="status">Drawing or saving artwork…</p> : null}
         {placeProblem?.id === place.id ? <p role="alert">{placeProblem.text}</p> : null}
-        {venueEditError && (venueSection !== "manage" || editingConnections || managePage !== "building") ? (
-          <p role="alert">{venueEditError}</p>
-        ) : null}
+        {venueEditError && (!about || !editingAbout) ? <p role="alert">{venueEditError}</p> : null}
         {venueEditNotice ? <p role="status">{venueEditNotice}</p> : null}
       </VenueProfile>
     </WorkspaceShell>

@@ -33,14 +33,15 @@ await withBrowser(browser, async () => {
         "#state{display:none}:root{font-size:18px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}body{margin:0}",
     });
     await page.addScriptTag({ content: styles.outputFiles[0].text });
-    await page.getByRole("button", { name: "Manage", exact: true }).click();
-    const menu = page.getByRole("navigation", { name: "Manage sections" });
-    assert.deepEqual(await menu.getByRole("button").allTextContents(), ["Home›", "Work›", "Access›", "Building›"]);
-    await menu.getByRole("button", { name: "Work", exact: false }).click();
-    const panel = page.getByRole("region", { name: "Work arrangements" });
+    await page.getByRole("button", { name: "People", exact: true }).click();
     const worker = f.seed.villagers[0];
-    await panel.getByRole("button", { name: "Add worker", exact: true }).click();
-    await panel.getByRole("button", { name: worker.name, exact: true }).click();
+    await page.getByRole("button", { name: worker.name, exact: true }).click();
+    await page.getByRole("button", { name: "Add arrangement", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Add arrangement", exact: true })
+      .getByRole("button", { name: "Work", exact: true })
+      .click();
+    const panel = page.getByRole("region", { name: "Work arrangements", exact: true });
     await panel.getByLabel("Work activity", { exact: true }).fill("Serving coffee");
     await panel.getByLabel("Ends", { exact: true }).fill("15:00");
     await panel.getByRole("button", { name: "Propose work", exact: true }).click();
@@ -106,8 +107,12 @@ await withBrowser(browser, async () => {
         seed.settings.venues[1].residenceCapacity = 3;
       },
     });
-    await home.page.getByRole("button", { name: "Home", exact: true }).click();
+    await home.page.getByRole("button", { name: "People", exact: true }).click();
     await home.page.getByRole("button", { name: home.seed.villagers[0].name, exact: true }).click();
+    await home.page
+      .getByRole("navigation", { name: "Arrangements", exact: true })
+      .getByRole("button", { name: "Home", exact: true })
+      .click();
     await expect(home.page.getByText("Sleeps in", { exact: true })).toHaveCount(0);
     await home.page.getByLabel("Move to", { exact: true }).selectOption("B / venue");
     await home.page.getByLabel("Sleeping Zone", { exact: true }).selectOption("zone / same");
@@ -144,29 +149,60 @@ await withBrowser(browser, async () => {
           }));
         },
       });
-      await f.page.getByRole("button", { name: /^Work/ }).click();
-      const people = f.page.getByRole("region", { name: "Workers", exact: true });
-      await expect(people.getByRole("heading", { name: "Work", exact: true })).toBeVisible();
-      await expect(people.getByRole("heading", { name: "Workers", exact: true })).toHaveCount(0);
+      await f.page.getByRole("button", { name: "People", exact: true }).click();
+      const people = f.page.getByRole("region", { name: "People", exact: true });
       const card = people.locator(".marinara-capability-villages-directory-card").first();
-      assert.ok((await card.boundingBox()).width <= 146, "Worker cards do not stretch to fill the content column");
-      const back = await people.getByRole("button", { name: "← Manage", exact: true }).boundingBox();
-      const heading = await people.getByRole("heading", { name: "Work", exact: true }).boundingBox();
-      assert.ok(heading.y >= back.y + back.height, "The page heading follows the Back row");
+      assert.ok((await card.boundingBox()).width <= 146, "Cards stay compact");
       assert.deepEqual(
         await people.locator(".marinara-capability-villages-directory-card strong").allTextContents(),
-        f.seed.villagers.slice(0, 4).map((row) => row.name),
+        ["You", ...f.seed.villagers.map((row) => row.name)].slice(0, 4),
       );
       if (count > 4) {
-        await people.getByRole("button", { name: "Next workers page", exact: true }).click();
-        await expect(people.getByRole("button", { name: "Worker 8", exact: true })).toBeVisible();
-        await people.getByRole("button", { name: "Worker 8", exact: true }).click();
+        await people.getByRole("button", { name: "Next people page", exact: true }).click();
+        await expect(people.getByRole("button", { name: "Worker 7", exact: true })).toBeVisible();
+        await people.getByRole("button", { name: "Worker 7", exact: true }).click();
       } else await people.getByRole("button", { name: "Worker 3", exact: true }).click();
+      await f.page
+        .getByRole("navigation", { name: "Arrangements", exact: true })
+        .getByRole("button", { name: "Work", exact: true })
+        .click();
       await expect(f.page.getByLabel("Work activity", { exact: true })).toHaveValue("Serving coffee");
       await f.page.getByLabel("Work activity", { exact: true }).fill("A cancelled change");
       await f.page.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(f.requests.length, 0, "Browsing pages and cancelling never sends a work proposal");
       await f.finish();
     }
+  }
+  {
+    const f = await mount(false, 390, {
+      cleanName: true,
+      prepareSeed(seed) {
+        seed.settings.venues[0].accessView.managerIds = ["player", "mara"];
+      },
+    });
+    await f.page.getByRole("button", { name: "People", exact: true }).click();
+    await f.page.getByRole("button", { name: "You", exact: true }).click();
+    await f.page
+      .getByRole("navigation", { name: "Arrangements", exact: true })
+      .getByRole("button", { name: "Management", exact: true })
+      .click();
+    await f.page.getByRole("checkbox", { name: "Manages this place", exact: true }).uncheck();
+    await f.page.getByRole("button", { name: "Save management", exact: true }).click();
+    await expect.poll(() => f.requests.length).toBe(1);
+    assert.equal(f.requests[0].body.action, "venue-policy");
+    assert.equal(f.requests[0].body.expectedRevision, 1);
+    assert.deepEqual(f.requests[0].body.managerIds, ["mara"]);
+    await expect(f.page.getByRole("button", { name: "← You", exact: true })).toBeDisabled();
+    await f.page.evaluate(() => window.h.revision());
+    await expect(f.page.getByRole("checkbox", { name: "Manages this place", exact: true })).toBeChecked();
+    await f.reply(0);
+    await expect(f.page.getByRole("heading", { name: "Management", exact: true })).toBeVisible();
+    await expect(f.page.getByRole("checkbox", { name: "Manages this place", exact: true })).toBeChecked();
+    await f.page.getByRole("button", { name: "← You", exact: true }).click();
+    await f.page.getByRole("button", { name: "Access", exact: true }).click();
+    await f.page.getByLabel("Hours", { exact: true }).selectOption("schedule");
+    await f.page.evaluate(() => window.h.revision());
+    await expect(f.page.getByLabel("Hours", { exact: true })).toHaveValue("always");
+    await f.finish();
   }
 });

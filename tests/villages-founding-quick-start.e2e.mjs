@@ -163,14 +163,29 @@ await withBrowser(browser, async () => {
       await page.goto("http://page-three.test/");
       const sheet = page.locator(".villages-quick-dialog");
       const button = (name) => page.getByRole("button", { name, exact: true });
-      const closeVenue = () => sheet.getByRole("button", { name: "← Venues", exact: true }).click();
+      const closeVenue = async () => {
+        await parentVenue();
+        return sheet.getByRole("button", { name: "← Venues", exact: true }).click();
+      };
+      const parentVenue = async () => {
+        if (await sheet.getByRole("navigation", { name: "Zone sections" }).count())
+          await sheet.locator(".marinara-capability-villages-venue-navigation button").click();
+      };
+      const openZones = async () => {
+        await parentVenue();
+        await sheet.getByRole("button", { name: "Zones", exact: true }).click();
+      };
+      const edit = async () => {
+        const button = sheet.getByRole("button", { name: "Edit", exact: true });
+        if (await button.count()) await button.click();
+      };
       const manage = async () => {
-        await sheet.getByRole("button", { name: "Manage", exact: true }).click();
-        const building = sheet.getByRole("button", { name: /^Building/ });
-        if (await building.count()) await building.click();
+        await parentVenue();
+        await sheet.getByRole("button", { name: "About", exact: true }).click();
+        await edit();
       };
       const connections = async () => {
-        await manage();
+        await openZones();
         await sheet.getByRole("button", { name: /Zone connections/ }).click();
       };
       await expect(sheet).toHaveCount(0);
@@ -193,16 +208,17 @@ await withBrowser(browser, async () => {
         });
       await sheet.getByRole("button", { name: "Zones", exact: true }).click();
       const zoneGeometry = await geometry(sheet.getByRole("button", { name: /^Entrance/ }));
-      await sheet.getByRole("button", { name: "Manage", exact: true }).click();
+      await sheet.getByRole("button", { name: "People", exact: true }).click();
+      await sheet.getByRole("button", { name: "You", exact: true }).click();
       const manageGeometry = await geometry(sheet.getByRole("button", { name: "Home", exact: true }));
       assert.deepEqual(
         { width: manageGeometry.width, font: manageGeometry.font, fade: manageGeometry.fade },
         { width: zoneGeometry.width, font: zoneGeometry.font, fade: zoneGeometry.fade },
-        "Manage reuses the Zone row width, font and backdrop fade",
+        "Arrangements reuse the Zone row width, font and backdrop fade",
       );
       assert.ok(
         manageGeometry.height >= 44 && manageGeometry.height <= zoneGeometry.height + 1,
-        "Manage keeps the Zone touch target without taller rows",
+        "Arrangements keep the Zone touch target without taller rows",
       );
       await sheet.getByRole("button", { name: "About", exact: true }).click();
       await expect(sheet).toHaveAttribute("open", "");
@@ -255,17 +271,16 @@ await withBrowser(browser, async () => {
       assert.equal(calls, 0);
       await expect(button("+ Add home")).toHaveCount(0);
       await expect(button("+ Add Venue")).toHaveCount(0);
-      await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "People", exact: true })).toBeVisible();
       await expect(sheet.getByRole("combobox")).toHaveCount(0);
       await expect(button("Zones")).toBeVisible();
-      await expect(sheet.getByText("Resident", { exact: true })).toBeVisible();
       await closeVenue();
       await first.click();
       await expect(button("Zones")).toBeVisible();
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("switch")).toHaveCount(0);
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
-      await expect(button("Manage")).toBeVisible();
+      await expect(button("Access")).toBeVisible();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Remove Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
@@ -426,7 +441,7 @@ await withBrowser(browser, async () => {
       await button("Add Zone").click();
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(4);
       const addedZone = await page.evaluate(() => window.quickState.venues[0].spaces.at(-1).id);
-      await button("Zones").click();
+      await openZones();
       await page.evaluate(() => {
         window.heldFocus = [];
         window.nativeFrame = window.requestAnimationFrame;
@@ -436,6 +451,7 @@ await withBrowser(browser, async () => {
         };
       });
       await zone(addedZone).click();
+      await edit();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Reading nook");
       await page.evaluate(() => {
         window.requestAnimationFrame = window.nativeFrame;
@@ -471,7 +487,7 @@ await withBrowser(browser, async () => {
       await button("Modify Zone Connections").click();
       await zone("exterior").click();
       const beforeFinish = await page.evaluate(() => window.quickState.venues);
-      await button("Zones").click();
+      await openZones();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
       await expect(sheet.locator(".villages-zone-map")).toHaveCount(0);
@@ -489,19 +505,21 @@ await withBrowser(browser, async () => {
 
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
-      const access = sheet.getByRole("group", { name: "Visitor access" });
-      const restricted = access.getByRole("button", { name: "Permission required", exact: true });
-      const publicAccess = access.getByRole("button", { name: "Open to all", exact: true });
-      await expect(publicAccess).toHaveAttribute("aria-pressed", "true");
+      await sheet.getByRole("button", { name: "Access", exact: true }).click();
+      const access = sheet.getByRole("region", { name: "Venue access", exact: true });
+      await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("public");
       const preserved = await page.evaluate(() => window.quickState.venues[0]);
-      await restricted.click();
+      await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
+      await access.getByRole("button", { name: "Save access", exact: true }).click();
       const expected = structuredClone(preserved);
       expected.spaces[0].access.mode = "permission-required";
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues[0]),
         expected,
-        "Access changes preserve manager-owned legacy sleeping destinations and all unrelated fields",
+        "Access preserves unrelated fields",
       );
+      await sheet.getByRole("button", { name: "About", exact: true }).click();
+      await edit();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
       expected.spaces[0].name = "Front Office";
       await closeVenue();
@@ -510,8 +528,9 @@ await withBrowser(browser, async () => {
       await sheet.getByLabel("Venue form", { exact: true }).fill("A converted school bus");
       await closeVenue();
       await first.click();
-      await button("Zones").click();
+      await openZones();
       await zone("common:base").click();
+      await edit();
       expected.form = "A converted school bus";
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues[0]),
@@ -523,8 +542,9 @@ await withBrowser(browser, async () => {
       await upload.setInputFiles(file);
       await expect(sheet.getByRole("img", { name: "Artwork for Front Office", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("status")).toHaveText("Reference saved. Generate artwork to use it.");
-      await button("← Zones").click();
+      await parentVenue();
       await zone("exterior").click();
+      await edit();
       await expect(access).toHaveCount(0);
       await expect(sheet.getByRole("img")).toHaveCount(0);
       await upload.setInputFiles(file);
@@ -539,25 +559,53 @@ await withBrowser(browser, async () => {
       await page.locator('[data-venue-id="founding-home:ada"]').click();
       await manage();
       await sheet.getByLabel("Venue Name", { exact: true }).fill("Ada’s café");
-      await sheet.getByRole("button", { name: "← Manage", exact: true }).click();
-      await sheet.getByRole("button", { name: /^Home/ }).click();
+      await sheet.getByRole("button", { name: "People", exact: true }).click();
+      await sheet.getByRole("button", { name: "Add person", exact: true }).click();
+      await sheet.getByRole("button", { name: "Bryn", exact: true }).click();
+      await sheet.getByRole("button", { name: "Add arrangement", exact: true }).click();
+      await sheet
+        .getByRole("navigation", { name: "Add arrangement", exact: true })
+        .getByRole("button", { name: "Home", exact: true })
+        .click();
+      await sheet.getByRole("button", { name: "Save home", exact: true }).click();
+      await expect(sheet.getByRole("alert")).toHaveText("Increase resident capacity in About.");
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues.find((row) => row.id === "founding-home:ada").residentIds),
+        ["ada"],
+      );
+      await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+      await manage();
+      await sheet.getByLabel("Resident capacity", { exact: true }).selectOption("2");
+      await expect(
+        sheet.getByLabel("Resident capacity").getByRole("option", { name: "0", exact: true }),
+      ).toHaveAttribute("disabled", "");
+      await sheet.getByRole("button", { name: "People", exact: true }).click();
       await sheet.getByRole("button", { name: "Ada", exact: true }).click();
-      await sheet.getByLabel("Home places", { exact: true }).selectOption("2");
+      const arrangement = (name) =>
+        sheet.getByRole("navigation", { name: "Arrangements", exact: true }).getByRole("button", { name, exact: true });
+      await arrangement("Home").click();
+      await expect(sheet.getByLabel("Resident capacity", { exact: true })).toHaveCount(0);
+      await expect(sheet.getByRole("checkbox", { name: "Lives here", exact: true })).toHaveCount(0);
+      await sheet.getByLabel("Sleeps in", { exact: true }).selectOption("common:base");
       await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(
         await page.evaluate(
-          () => window.quickState.venues.find((row) => row.id === "founding-home:ada").residenceCapacity,
+          () => window.quickState.venues.find((row) => row.id === "founding-home:ada").destinations.ada.sleep,
         ),
-        1,
-        "Cancel leaves the saved home unchanged",
+        "private:base",
+        "Cancel retains home",
       );
-      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
-      await sheet.getByLabel("Home places", { exact: true }).selectOption("2");
+      await arrangement("Home").click();
+      await sheet.getByLabel("Sleeps in", { exact: true }).selectOption("common:base");
       await sheet.getByRole("button", { name: "Save home", exact: true }).click();
-      await sheet.getByRole("button", { name: "← Manage", exact: true }).click();
-      await sheet.getByRole("button", { name: /^Work/ }).click();
-      await sheet.getByRole("button", { name: "Add worker", exact: true }).click();
-      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
+      const addWork = async () => {
+        await sheet.getByRole("button", { name: "Add arrangement", exact: true }).click();
+        await sheet
+          .getByRole("navigation", { name: "Add arrangement", exact: true })
+          .getByRole("button", { name: "Work", exact: true })
+          .click();
+      };
+      await addWork();
       await sheet.getByLabel("Work activity", { exact: true }).fill("Serving coffee");
       await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(
@@ -565,10 +613,8 @@ await withBrowser(browser, async () => {
           () => window.quickState.venues.find((row) => row.id === "founding-home:ada").access?.work?.length ?? 0,
         ),
         0,
-        "Cancel does not add work",
       );
-      await sheet.getByRole("button", { name: "Add worker", exact: true }).click();
-      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
+      await addWork();
       await sheet.getByLabel("Work activity", { exact: true }).fill("Serving coffee");
       await sheet.getByLabel("Usual work Zone", { exact: true }).selectOption("common:base");
       await sheet.getByRole("button", { name: "Save work", exact: true }).click();
@@ -577,6 +623,23 @@ await withBrowser(browser, async () => {
       assert.equal(cafe.access.work[0].activity, "Serving coffee");
       assert.deepEqual(cafe.access.work[0].accessZoneIds, ["common:base"]);
       assert.equal(cafe.privateSpaces[0].ownerId, "ada");
+      await arrangement("Home").click();
+      await sheet.getByRole("button", { name: "Remove resident", exact: true }).click();
+      const removed = await page.evaluate(() => window.quickState.venues.find((row) => row.id === "founding-home:ada"));
+      assert.deepEqual(removed.residentIds, []);
+      assert.equal(removed.residenceCapacity, 2);
+      assert.deepEqual(removed.workerIds, ["ada"]);
+      assert.deepEqual(removed.destinations.ada, { work: "common:base" });
+      assert.deepEqual(removed.access.managerIds, cafe.access.managerIds);
+      await sheet.getByRole("button", { name: "Add arrangement", exact: true }).click();
+      await sheet
+        .getByRole("navigation", { name: "Add arrangement", exact: true })
+        .getByRole("button", { name: "Home", exact: true })
+        .click();
+      await expect(sheet.getByRole("button", { name: "Remove resident", exact: true })).toHaveCount(0);
+      await sheet.getByRole("button", { name: "Save home", exact: true }).click();
+      await sheet.getByRole("button", { name: "← People", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: "Ada", exact: true })).toBeVisible();
       assert(
         await sheet.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
         "Mixed-use Manage fits the Venue sheet",
@@ -627,11 +690,22 @@ await withBrowser(browser, async () => {
         ),
       );
       await first.click();
-      await button("Zones").click();
+      await openZones();
       await zone("private:base").click();
-      await expect(restricted).toHaveAttribute("aria-pressed", "true");
+      await sheet.getByRole("button", { name: "Access", exact: true }).click();
+      await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("permission-required");
+      await sheet.getByRole("button", { name: "People", exact: true }).click();
+      await sheet.getByRole("button", { name: "You", exact: true }).click();
+      await sheet
+        .getByRole("navigation", { name: "Arrangements", exact: true })
+        .getByRole("button", { name: "Management", exact: true })
+        .click();
+      await expect(sheet.getByRole("checkbox", { name: "Manages this place", exact: true })).toBeDisabled();
+      await expect(sheet.getByRole("button", { name: "Save management", exact: true })).toBeDisabled();
+      await sheet.getByRole("button", { name: "Access", exact: true }).click();
       const personalBefore = await page.evaluate(() => window.quickState.venues[0]);
-      await publicAccess.click();
+      await access.getByLabel("Entry", { exact: true }).selectOption("public");
+      await access.getByRole("button", { name: "Save access", exact: true }).click();
       const personalExpected = structuredClone(personalBefore);
       personalExpected.privateSpaces[0].access.mode = "public";
       assert.deepEqual(
@@ -639,7 +713,8 @@ await withBrowser(browser, async () => {
         personalExpected,
         "Making a personal Zone public keeps its owner and sleeping assignment",
       );
-      await restricted.click();
+      await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
+      await access.getByRole("button", { name: "Save access", exact: true }).click();
       assert.deepEqual(await page.evaluate(() => window.quickState.venues[0]), personalBefore);
       failReply = true;
       await confirm();

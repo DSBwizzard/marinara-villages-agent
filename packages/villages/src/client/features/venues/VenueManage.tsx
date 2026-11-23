@@ -4,29 +4,6 @@ import type { Portrait } from "../../shared/types.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { VenueZoneRow } from "../../shared/VenueNavigation.js";
 
-export type VenueManageSection = "home" | "work" | "access" | "building";
-
-export function VenueManageMenu({
-  onSelect,
-  disabled = false,
-}: {
-  onSelect(section: VenueManageSection): void;
-  disabled?: boolean;
-}) {
-  return (
-    <nav className={`${P}-venue-zone-picker villages-manage-menu`} aria-label="Manage sections">
-      {(["home", "work", "access", "building"] as const).map((section) => (
-        <VenueZoneRow
-          key={section}
-          name={section[0].toUpperCase() + section.slice(1)}
-          disabled={disabled}
-          onOpen={() => onSelect(section)}
-        />
-      ))}
-    </nav>
-  );
-}
-
 export function VenueManageHeading({
   title,
   back = "Manage",
@@ -67,29 +44,40 @@ export function VenuePeoplePicker({
   onAdd,
   addLabel,
   disabled = false,
+  children,
 }: {
   title: string;
-  heading: string;
+  heading?: string;
   back?: string;
-  onBack(): void;
+  onBack?(): void;
   people: readonly VenuePerson[];
   onSelect(id: string): void;
   onAdd?: () => void;
   addLabel?: string;
   disabled?: boolean;
+  children?: ReactNode;
 }) {
   const [page, setPage] = useState(0);
   const count = Math.max(1, Math.ceil(people.length / 4));
   const current = Math.min(page, count - 1);
   return (
     <section className={`${P}-directory-root villages-manage-people`} aria-label={title}>
-      <VenueManageHeading title={heading} back={back} onBack={onBack} disabled={disabled}>
-        {onAdd && (
+      {heading && onBack ? (
+        <VenueManageHeading title={heading} back={back} onBack={onBack} disabled={disabled}>
+          {onAdd && (
+            <button type="button" disabled={disabled} onClick={onAdd}>
+              {addLabel}
+            </button>
+          )}
+        </VenueManageHeading>
+      ) : onAdd ? (
+        <div className="villages-people-actions">
           <button type="button" disabled={disabled} onClick={onAdd}>
             {addLabel}
           </button>
-        )}
-      </VenueManageHeading>
+        </div>
+      ) : null}
+      {children}
       {people.length ? (
         <div className={`${P}-directory-grid`}>
           {people.slice(current * 4, current * 4 + 4).map((person) => (
@@ -136,5 +124,106 @@ export function VenuePeoplePicker({
         </nav>
       )}
     </section>
+  );
+}
+
+export type VenueArrangement = "home" | "work" | "management";
+const arrangements = ["home", "work", "management"] as const;
+export function VenuePeopleFlow({
+  people,
+  assignedIds,
+  roles,
+  renderEditor,
+  disabled = false,
+}: {
+  people: readonly VenuePerson[];
+  assignedIds: readonly string[];
+  roles(id: string): readonly VenueArrangement[];
+  renderEditor(
+    person: VenuePerson,
+    arrangement: VenueArrangement,
+    onBack: () => void,
+    onBusyChange: (busy: boolean) => void,
+  ): ReactNode;
+  disabled?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [personId, setPersonId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [addingArrangement, setAddingArrangement] = useState(false);
+  const [arrangement, setArrangement] = useState<VenueArrangement | null>(null);
+  const person = people.find((row) => row.id === personId);
+  const back = () => {
+    setArrangement(null);
+    setAddingArrangement(false);
+  };
+  if (person && arrangement)
+    return (
+      <>
+        <VenueManageHeading
+          title={arrangement[0]!.toUpperCase() + arrangement.slice(1)}
+          back={person.name}
+          onBack={back}
+          disabled={disabled || busy}
+        />
+        {renderEditor(person, arrangement, back, setBusy)}
+      </>
+    );
+  if (person)
+    return (
+      <>
+        <button
+          type="button"
+          className={P + "-venue-back"}
+          disabled={disabled}
+          onClick={() => {
+            setPersonId(null);
+            setAdding(false);
+            back();
+          }}
+        >
+          ← People
+        </button>
+        <div className="villages-person-heading">
+          <AvatarFace name={person.name} portrait={person.portrait} className={P + "-avatar"} />
+          <h2>{person.name}</h2>
+          <button
+            type="button"
+            disabled={disabled || arrangements.every((role) => roles(person.id).includes(role))}
+            onClick={() => setAddingArrangement(true)}
+          >
+            Add arrangement
+          </button>
+        </div>
+        <nav className={P + "-venue-zone-picker"} aria-label={addingArrangement ? "Add arrangement" : "Arrangements"}>
+          {arrangements
+            .filter((role) => (addingArrangement ? !roles(person.id).includes(role) : roles(person.id).includes(role)))
+            .map((role) => (
+              <VenueZoneRow
+                key={role}
+                name={role[0]!.toUpperCase() + role.slice(1)}
+                disabled={disabled || (person.id === "player" && role === "work")}
+                onOpen={() => setArrangement(role)}
+              />
+            ))}
+        </nav>
+      </>
+    );
+  return (
+    <VenuePeoplePicker
+      key={String(adding)}
+      title={adding ? "Add person" : "People"}
+      heading={adding ? "Add person" : undefined}
+      back="People"
+      onBack={adding ? () => setAdding(false) : undefined}
+      people={people.filter((row) => adding !== assignedIds.includes(row.id))}
+      onSelect={(id) => {
+        setPersonId(id);
+        setAddingArrangement(false);
+      }}
+      onAdd={!adding ? () => setAdding(true) : undefined}
+      addLabel="Add person"
+      disabled={disabled}
+    />
   );
 }

@@ -377,10 +377,11 @@ await withBrowser(browser, async () => {
     await sections.getByRole("button", { name: "Zones", exact: true }).click();
     const zones = doors.getByRole("region", { name: "Zones", exact: true });
     await zones.getByRole("button", { name: /^Entrance\b/ }).click();
+    await doors.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(doors.getByRole("switch", { name: "Automatic artwork updates" })).toBeVisible();
-    await doors.getByRole("button", { name: "← Zones", exact: true }).click();
-    await sections.getByRole("button", { name: "Manage", exact: true }).click();
-    await doors.getByRole("button", { name: /^Building/ }).click();
+    await doors.locator(".marinara-capability-villages-venue-navigation button").first().click();
+    await sections.getByRole("button", { name: "About", exact: true }).click();
+    await doors.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(doors.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
     await sections.getByRole("button", { name: "About", exact: true }).click();
     if (process.env.VILLAGES_VISUAL_OUTPUT)
@@ -576,9 +577,9 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("heading", { name: "Mara's home", exact: true })).toBeVisible();
       await page
         .getByRole("navigation", { name: "Venue sections" })
-        .getByRole("button", { name: "Manage", exact: true })
+        .getByRole("button", { name: "About", exact: true })
         .click();
-      await page.getByRole("button", { name: /^Building/ }).click();
+      await page.getByRole("button", { name: "Edit", exact: true }).click();
       await expect(page.getByRole("button", { name: "Plan a renovation" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Move here" })).toHaveCount(0);
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);

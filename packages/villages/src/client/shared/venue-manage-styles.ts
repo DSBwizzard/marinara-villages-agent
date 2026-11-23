@@ -21,9 +21,10 @@ export const VENUE_MANAGE_STYLES = `
 .villages-manage :is(input:not([type=checkbox]),select,textarea){width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:8px 10px;background:var(--menu-field);border:1px solid var(--menu-control-border,var(--border));border-radius:4px}
 .villages-manage input[type=time]{font-size:16px;padding-inline:6px}
 .villages-manage textarea{min-height:90px}.villages-manage fieldset{display:block;border:0;min-width:0;margin:0;padding:0}
-.villages-manage-form{display:grid;gap:16px;max-width:36rem}
+.villages-manage .villages-manage-form{display:grid;gap:16px;max-width:36rem}
 .villages-manage-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-top:22px}
-.villages-manage .villages-manage-primary{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.villages-manage button.villages-manage-primary{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+.${P}-venue-zone-list .villages-people-actions{margin-bottom:8px}.villages-people-actions{display:flex;justify-content:flex-end;margin-bottom:18px}.villages-person-heading{display:flex;align-items:center;gap:14px;margin:18px 0}.villages-person-heading h2{margin:0;flex:1}.villages-manage .villages-person-heading .${P}-avatar{width:56px;height:56px}.villages-person-heading>button{font-size:16px;min-height:44px}.villages-manage-capacity{max-width:14rem;margin:0 0 20px}.villages-manage-remove{margin-top:16px}
 .villages-manage .villages-manage-check{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:32px}
 .villages-manage input[type=checkbox]{flex:none;width:20px;height:20px;min-height:0;margin:0;accent-color:var(--primary)}
 .villages-manage-empty{margin:14px 0}.villages-manage-details{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px;margin:16px 0}.villages-manage-details dd{margin:0;overflow-wrap:anywhere}
@@ -35,6 +36,7 @@ export const VENUE_MANAGE_STYLES = `
 .villages-work-access legend{margin-bottom:7px}.villages-work-access .villages-manage-check{font-size:15px;min-height:28px;margin:4px 0}
 .villages-work-offer{padding:16px 0;border-top:1px solid var(--border)}.villages-work-offer h3{font-size:22px;margin:0 0 12px}
 .villages-manage .villages-access-panel{width:100%;max-width:none}.villages-manage .villages-access-panel>fieldset{margin-top:18px}
+.villages-access-hours{display:grid;gap:12px}.villages-access-hours>fieldset{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}.villages-access-days{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:10px}.villages-manage .villages-access-days label{display:flex;flex-direction:row;align-items:center;gap:4px;font-size:15px}.villages-access-hours legend{margin:8px 0}.villages-access-hours>fieldset>button{justify-self:start}.villages-manage.villages-access-panel>fieldset{display:grid;gap:16px;border:0;padding:0}.villages-manage.villages-access-panel label{display:flex;flex-direction:column;align-items:stretch}.villages-manage.villages-access-panel label:has(input[type=checkbox]){flex-direction:row;align-items:center}.villages-manage.villages-access-panel :is(select,input[type=time]){background:var(--menu-field);color:var(--venue-ink);min-height:44px}.villages-access-panel>nav{margin-top:22px}
 @container village-desk (max-width:700px){
  .villages-manage-heading h2{font-size:22px}.villages-manage-title-row>button{font-size:15px!important}
  .villages-manage .${P}-avatar{width:80px;height:80px}

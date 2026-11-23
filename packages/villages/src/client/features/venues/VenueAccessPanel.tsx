@@ -1,3 +1,4 @@
+import { VenueZoneRow } from "../../shared/VenueNavigation.js";
 import { HoursEditor } from "../../shared/HoursEditor.js";
 import { useState } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -6,7 +7,6 @@ import { messageFrom } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VenueScreenController } from "./screen-contracts.js";
-import { VenueManageHeading } from "./VenueManage.js";
 
 const week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 type Zone = NonNullable<VillageVenue["zones"]>[number];
@@ -18,15 +18,14 @@ export function VenueAccessPanel({
   place,
   zone,
   controller,
-  onSelect,
   onClose,
 }: {
   place: VillageVenue;
   zone: Zone | undefined;
   controller: VenueScreenController;
-  onSelect: (id: string) => void;
   onClose: () => void;
 }) {
+  const [permissions, setPermissions] = useState(false);
   const view = zone?.accessView;
   const policy = view?.policy;
   const [mode, setMode] = useState(policy?.mode ?? "public");
@@ -63,34 +62,21 @@ export function VenueAccessPanel({
     }
   };
   const validHours = !Array.isArray(hours) || hours.every((row) => row.days.length && row.start && row.end);
-  const availableZones =
-    place.zones?.filter((row) => row.accessView?.decision.canManage || row.accessView?.decision.canInvite) ?? [];
   return (
-    <section className={`${ELEMENT_TAG}-venue-manage villages-access-panel`} aria-label="Venue access">
-      <VenueManageHeading title="Access" disabled={busy} onBack={onClose} />
-      <label>
-        Scope{" "}
-        <select
-          aria-label="Access scope"
-          disabled={busy}
-          value={zone?.id ?? ""}
-          onChange={(event) => onSelect(event.target.value)}
-        >
-          {place.accessView?.canManage && <option value="">Venue hours</option>}
-          {availableZones.map((area) => (
-            <option key={area.id} value={area.id}>
-              {area.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {canManage && (
+    <section className={ELEMENT_TAG + "-venue-manage villages-manage villages-access-panel"} aria-label="Venue access">
+      {!permissions && !canManage && zone && (
+        <dl className="villages-manage-details">
+          <dt>Entry</dt>
+          <dd>{zone.kind === "exterior" || view?.decision.mode === "public" ? "Public" : "By permission"}</dd>
+        </dl>
+      )}
+      {!permissions && canManage && (
         <fieldset disabled={busy}>
-          <legend>Visitor rules</legend>
           {zone && (
             <label>
-              Visitors{" "}
+              Entry{" "}
               <select
+                aria-label="Entry"
                 value={mode}
                 onChange={(event) => setMode(event.target.value === "public" ? "public" : "permission-required")}
               >
@@ -102,6 +88,7 @@ export function VenueAccessPanel({
           <label>
             Hours{" "}
             <select
+              aria-label="Hours"
               value={Array.isArray(hours) ? "schedule" : hours}
               onChange={(event) => {
                 const value = event.target.value;
@@ -119,9 +106,27 @@ export function VenueAccessPanel({
               <option value="schedule">Set hours</option>
             </select>
           </label>
+          {hours === "inherit" && (
+            <p>
+              {place.accessView?.visitorHours
+                ?.map((row) => `${row.days.map((day) => day.slice(0, 3)).join(", ")} ${row.start}–${row.end}`)
+                .join("; ") || "Any time"}
+            </p>
+          )}
           {Array.isArray(hours) && <HoursEditor hours={hours} change={setHours} />}
           <button
             type="button"
+            onClick={() => {
+              setMode(policy?.mode ?? "public");
+              setHours(policy?.visitorHours ?? place.accessView?.visitorHours ?? "always");
+              onClose();
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="villages-manage-primary"
             disabled={!validHours}
             onClick={() =>
               void save(
@@ -136,11 +141,26 @@ export function VenueAccessPanel({
               )
             }
           >
-            Save rules
+            Save access
           </button>
         </fieldset>
       )}
-      {view?.decision.canInvite && (
+      {view?.decision.canInvite && !permissions && (
+        <nav className={ELEMENT_TAG + "-venue-zone-picker"}>
+          <VenueZoneRow name="Permissions" onOpen={() => setPermissions(true)} />
+        </nav>
+      )}
+      {permissions && (
+        <button
+          type="button"
+          className={ELEMENT_TAG + "-venue-back"}
+          disabled={busy}
+          onClick={() => setPermissions(false)}
+        >
+          ← Access
+        </button>
+      )}
+      {permissions && view?.decision.canInvite && (
         <fieldset disabled={busy}>
           <legend>Invitations</legend>
           <label>
@@ -212,7 +232,7 @@ export function VenueAccessPanel({
             .map((grant) => (
               <div className="villages-access-grant" key={grant.id}>
                 <span>
-                  {controller.nameOfCharacter(grant.visitorId)} ·{" "}
+                  {controller.nameOfCharacter(grant.visitorId)},{" "}
                   {grant.duration === "standing" ? "Until withdrawn" : grant.sceneId ? "One visit" : "Next visit"}
                 </span>
                 <button
