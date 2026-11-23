@@ -240,9 +240,11 @@ export type ProjectRoomEdit = { zoneId: string; entryId?: string; text: string |
 export type ProjectRoomEntry = { id: string; version: string; text: string };
 
 export type BuildProject = {
+  firstUse?: { goal: string; completedAt?: string };
   actorNames?: Record<string, string>;
   id: string;
-  kind: "new-venue" | "renovation";
+  kind: "new-venue" | "renovation" | "undertaking";
+  undertaking?: import("./projects.js").UndertakingView;
   place?: VillageVenue;
   title: string;
   venueId: string;
@@ -271,6 +273,7 @@ export type BuildProject = {
   };
   opening?: { established: boolean; provenance: string; work: string; firstUse: string };
   lifecycle?: {
+    designReady?: boolean;
     phase: BuildProject["status"];
     revision: number;
     targetVenueId: string;

@@ -17,7 +17,7 @@ window.fetch=(url,options)=>new Promise(resolve=>window.pending.push({url,signal
 function Harness(){
   const [sceneId,setScene]=useState('A'),[scope,setScope]=useState('a'.repeat(64)),[shown,setShown]=useState(true);
   window.historyHarness={setScene,setScope,setShown};
-  return shown?<SceneHistory sceneId={sceneId} scope={scope} playerName='Player' playerPortrait={{url:avatar+'#player',crop:null}} portraits={{resident:{url:avatar+'#resident',crop:null}}} nameStyle={noop} speechStyle={noop} onClose={()=>setShown(false)}/>:null;
+  return shown?<SceneHistory sceneId={sceneId} scope={scope} playerName='Player' playerPortrait={{url:avatar+'#player',crop:null}} portraits={{resident:{url:avatar+'#resident',crop:null}}} nameStyle={noop} speechStyle={noop} onClose={()=>setShown(false)} onPlanProject={text=>window.projectIdea=text}/>:null;
 }
 const root=createRoot(document.getElementById('root'));
 root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
@@ -78,6 +78,15 @@ await withBrowser(browser, async () => {
     await finish(first, payload(80, { olderCursor: "older-80" }));
     await expect(rows).toHaveCount(40);
     await expect(rows.first()).toContainText("Exact paragraph 80");
+    const dialogue = page.locator('[data-line-id="line-81"]');
+    await dialogue.getByText("…", { exact: true }).click();
+    await dialogue.getByRole("button", { name: "Plan a Project…", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.projectIdea), "Exact paragraph 81");
+    assert.equal(
+      await page.evaluate(() => window.pending.length),
+      delivered,
+      "Copying an idea makes no model or API request",
+    );
     await expect(page.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(0);
     await expect(page.locator(".marinara-capability-villages-chat-vn-portrait img")).toHaveCount(2);
     await expect(page.locator(".marinara-capability-villages-chat-vn-portrait img").first()).toHaveAttribute(

@@ -233,6 +233,7 @@ export function RoomPanel({
   onUseMailbox,
   onMap,
   onProjects,
+  onPlanProject,
   onProposals,
   onSettings,
   movementZones,
@@ -286,6 +287,7 @@ export function RoomPanel({
   onUseMailbox?: () => void;
   onMap?: () => void;
   onProjects?: () => void;
+  onPlanProject?: (text: string) => void;
   onProposals?: () => void;
   onSettings: () => void;
   movementZones: SceneMoveZone[];
@@ -1256,6 +1258,14 @@ export function RoomPanel({
               speechStyle={speechStyle}
               currentVisitId={room.status === "active" ? room.zoneArrivalId : undefined}
               onClose={closeTranscript}
+              onPlanProject={
+                onPlanProject
+                  ? (text) => {
+                      closeTranscript();
+                      onPlanProject(text);
+                    }
+                  : undefined
+              }
             />
           </div>
         ) : null}

@@ -87,6 +87,7 @@ export function agendaSpeechOptions(world: VillageState, actorIds: readonly stri
 }
 
 export function agendaWeek(world: VillageState, actorId: string, now: Date, inspect: boolean): AgendaWeek {
+  projectAgendaReservations(world, now);
   const resident = world.villagers.find((row) => row.characterId === actorId);
   const player = continuityActor(world, "player");
   if (!resident || !player) throw notFound("That villager does not live here.");
@@ -119,6 +120,21 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
       return [];
     return [{ ...fact, id: row.id, source: "agreed" as const }];
   });
+  for (const reservation of resident.agenda?.reservations ?? []) {
+    if (reservation.id.startsWith("undertaking:"))
+      known.push({
+        id: reservation.id,
+        time: {
+          date: reservation.dateKey,
+          startMinute: reservation.startMinute,
+          endMinute: reservation.endMinute,
+          venueId: reservation.venueId,
+          zoneId: reservation.zoneId,
+        },
+        activity: reservation.activity,
+        source: "agreed",
+      });
+  }
   const at = dateAt(world, now);
   return {
     visibility: inspect ? "inspect" : shared ? "shared" : "known",

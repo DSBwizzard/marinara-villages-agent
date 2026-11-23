@@ -464,6 +464,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onUseMailbox={() => setMailboxOpen(true)}
           onMap={goHome}
           onProjects={() => openMenu("projects")}
+          onPlanProject={controller.planProject}
           onProposals={() => openMenu("venueRequests")}
           onSettings={() => openMenu("general")}
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}

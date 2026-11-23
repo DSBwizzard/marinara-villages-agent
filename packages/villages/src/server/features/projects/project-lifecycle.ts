@@ -2,6 +2,12 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 import type { ProjectLifecycle } from "./project-lifecycle-service.js";
 export { draftNewVenueProject, draftRenovationProject } from "./project-drafts.js";
 const binding = createActivationBinding<ProjectLifecycle>("Project lifecycle service is not configured.");
+export async function createUndertaking(...args: Parameters<ProjectLifecycle["createUndertaking"]>): Promise<void> {
+  return binding.get().createUndertaking(...args);
+}
+export async function reviseUndertaking(...args: Parameters<ProjectLifecycle["reviseUndertaking"]>): Promise<void> {
+  return binding.get().reviseUndertaking(...args);
+}
 export function configureProjectLifecycle(service: ProjectLifecycle): () => void {
   return binding.configure(bindActivationService(service));
 }

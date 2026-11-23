@@ -17,6 +17,7 @@ import {
   approvalScope,
   matchesProjectDesign,
   renovationAffectedIds,
+  renovationHasChanges,
   projectDesignKey,
   projectAgreementCurrent,
 } from "./project-terms.js";
@@ -24,6 +25,7 @@ import { cloneVillageContext } from "./world-context-copy.js";
 import { initializeRoomContinuity } from "./native-continuity.js";
 import { captureZoneObservation } from "./zone-observation.js";
 import { stageProjectRoomEdits } from "./project-room-edits.js";
+import { beginUndertaking, undertakingApprovers, undertakingAgreed } from "./undertaking.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
@@ -62,6 +64,10 @@ export function lifecycle(
 }
 export function missingProjectAgreements(state: VillageState, project: VillageProject): string[] {
   const flow = project.lifecycle!;
+  if (project.kind === "undertaking") {
+    flow.affectedIds = undertakingApprovers(state, project);
+    return flow.affectedIds.filter((id) => !undertakingAgreed(state, project, id));
+  }
   if (project.kind !== "renovation") return [];
   const venue = state.venues.find((venue) => venue.id === project.venueId);
   if (!venue) throw conflict("The Project Venue is missing.");
@@ -80,7 +86,26 @@ export function missingProjectAgreements(state: VillageState, project: VillagePr
 export function refreshProjectAgreements(state: VillageState): void {
   for (const project of state.projects) {
     const flow = project.lifecycle;
-    if (!flow || !["planning", "working", "paused"].includes(project.status)) continue;
+    if (
+      !flow ||
+      (!["planning", "working", "paused"].includes(project.status) &&
+        !(
+          project.kind === "undertaking" &&
+          project.status === "complete" &&
+          project.undertaking?.plan.schedule?.weekly
+        ))
+    )
+      continue;
+    if (project.kind === "undertaking") {
+      flow.affectedIds = undertakingApprovers(state, project);
+      flow.approvals = flow.approvals.filter(
+        (approval) =>
+          flow.affectedIds.includes(approval.residentId) &&
+          projectAgreementCurrent(state, approval) &&
+          approval.scope === projectDesignKey(project),
+      );
+      continue;
+    }
     flow.candidates = flow.candidates.filter((row) => projectAgreementCurrent(state, row));
     if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
     const venue = findLocation(state, project.venueId);
@@ -131,6 +156,11 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
   for (const id of state.projects.filter((project) => project.status === "working").map((project) => project.id)) {
     const project = projectFor(state, id),
       flow = project.lifecycle;
+    if (project.kind === "undertaking") {
+      if (missingProjectAgreements(state, project).length)
+        pauseProject(project, at, "Renew the shared plan's agreements, then Resume.");
+      continue;
+    }
     if (
       !state.villagers.some((resident) => resident.characterId === flow.builderId) ||
       !flow.candidates.some(
@@ -162,7 +192,7 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
       }
     }
   }
-  projectAgendaReservations(state);
+  projectAgendaReservations(state, now);
 }
 
 export function beginProject(
@@ -172,6 +202,11 @@ export function beginProject(
   resume: boolean,
   now: Date,
 ) {
+  if (project.kind === "undertaking") {
+    beginUndertaking(state, project, resume, now);
+    projectAgendaReservations(state, now);
+    return;
+  }
   const flow = project.lifecycle;
   const at = now.toISOString();
   if (project.status !== (resume ? "paused" : "planning"))
@@ -188,12 +223,24 @@ export function beginProject(
   )
     throw conflict("Choose a willing resident lead for this design.");
   const others = state.projects.filter(
-    (other) => other.id !== project.id && ["working", "paused"].includes(other.status),
+    (other) =>
+      other.id !== project.id &&
+      other.undertaking?.plan.constructionId !== project.id &&
+      ["working", "paused"].includes(other.status),
   );
-  if (!resume && others.length >= 2) throw conflict("Two Projects are already active.");
+  const parent = state.projects.find(
+    (other) => other.undertaking?.plan.constructionId === project.id && ["working", "paused"].includes(other.status),
+  );
+  const roots = others.filter(
+    (other) =>
+      !state.projects.some(
+        (root) => root.undertaking?.plan.constructionId === other.id && ["working", "paused"].includes(root.status),
+      ),
+  );
+  if (!resume && !parent && roots.length >= 2) throw conflict("Two Projects are already active.");
   if (others.some((other) => other.lifecycle?.builderId === lead))
     throw conflict("This resident already leads an active Project.");
-  if (others.some((other) => other.venueId && other.venueId === project.venueId))
+  if (others.some((other) => other.kind !== "undertaking" && other.venueId && other.venueId === project.venueId))
     throw conflict("This Venue already has an active Project.");
   if (missingProjectAgreements(state, project).length) throw conflict("Obtain the necessary agreements first.");
   if (project.kind !== "new-venue") {
@@ -204,11 +251,7 @@ export function beginProject(
           ? "The Venue design changed. Cancel this Project and plan the current layout."
           : "The Venue design changed. Revise the draft.",
       );
-    if (
-      !flow.changedZoneIds.length &&
-      JSON.stringify([...(flow.change!.classes ?? [])].sort()) === JSON.stringify([...(venue.classes ?? [])].sort()) &&
-      flow.change!.capacity === (venue.residenceCapacity ?? 1)
-    )
+    if (!renovationHasChanges(venue, flow.change, flow.changedZoneIds))
       throw conflict("Choose a physical change before Start.");
     validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds), now);
     stageProjectRoomEdits(state, venue, flow, project.id, at);

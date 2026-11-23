@@ -35,11 +35,9 @@ export function useProjectsController({
   focusProjectRequest: number;
 }) {
   const [selectedId, setSelectedId] = useState(focusProjectId),
-    [draftType, setDraftType] = useState<"new-venue" | "renovation" | "">("");
-  const [name, setName] = useState(""),
-    [description, setDescription] = useState(""),
-    [classes, setClasses] = useState<VenueClass[]>(["community"]),
-    [venueId, setVenueId] = useState("");
+    [draftType, setDraftType] = useState<"new-venue" | "renovation" | "undertaking" | "idea" | "">("");
+  const [idea, setIdea] = useState("");
+  const [venueId, setVenueId] = useState("");
   const selected = useRef(selectedId);
   selected.current = selectedId;
   useEffect(() => {
@@ -80,13 +78,13 @@ export function useProjectsController({
     {
       revision: project?.lifecycle?.revision,
       venue: initial,
-      title: project?.title ?? name,
-      detail: project?.lifecycle?.change?.detail ?? description,
+      title: project?.title ?? "",
+      detail: project?.lifecycle?.change?.detail ?? "",
       zones: project?.lifecycle?.change?.zones ?? target?.zones?.filter((zone) => zone.kind !== "exterior") ?? [],
       roomEdits: project?.lifecycle?.change?.roomEdits ?? [],
       capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 1,
     },
-    String(snapshot?.isFounded ?? ""),
+    snapshot?.worldScope ?? String(snapshot?.isFounded ?? ""),
   );
   const run = async (path: string, body: Record<string, unknown>) => {
     const attempt = workspace.begin();
@@ -117,29 +115,6 @@ export function useProjectsController({
           ...body,
         })
       : Promise.resolve(null);
-  const create = async () => {
-    const next = await run(
-      draftType === "new-venue" ? "/projects" : "/projects/renovations/" + encodeURIComponent(venueId),
-      draftType === "new-venue"
-        ? { name, description, classes }
-        : {
-            title: name,
-            detail: description,
-            classes: workspace.draft.venue?.classes,
-            capacity: workspace.draft.capacity,
-            form: workspace.draft.venue?.form,
-            zones: workspace.draft.zones,
-            roomEdits: workspace.draft.roomEdits,
-          },
-    );
-    if (next && selected.current === selectedId) {
-      const created = next.projects.find((project) => !snapshot?.projects.some((old) => old.id === project.id));
-      if (created) {
-        setSelectedId(created.id);
-        setDraftType("");
-      }
-    }
-  };
   const save = async () => {
     const draft = workspace.draft,
       venue = draft.venue;
@@ -172,25 +147,53 @@ export function useProjectsController({
     return next;
   };
   return {
+    idea,
+    beginIdea: (text = "") => {
+      setIdea(text.slice(0, 2000));
+      setSelectedId("");
+      setDraftType("idea");
+    },
+    createIdea: async (
+      kind: "new-venue" | "renovation" | "undertaking",
+      title: string,
+      description: string,
+      placeId: string,
+    ) => {
+      const next = await run(
+        kind === "undertaking"
+          ? "/projects/undertakings"
+          : kind === "renovation"
+            ? "/projects/renovations/" + encodeURIComponent(placeId)
+            : "/projects",
+        kind === "undertaking"
+          ? { title, description }
+          : kind === "renovation"
+            ? { title, detail: description.trim() || title, firstUse: true }
+            : { name: title, description: description.trim() || title, classes: ["community"], firstUse: true },
+      );
+      if (next && selected.current === selectedId) {
+        const created = next.projects.find((entry) => !snapshot?.projects.some((old) => old.id === entry.id));
+        if (created) {
+          setSelectedId(created.id);
+          setDraftType("");
+          setIdea("");
+        }
+      }
+      return next;
+    },
     selectedId,
     setSelectedId,
     draftType,
     setDraftType,
-    name,
-    setName,
-    description,
-    setDescription,
-    classes,
-    setClasses,
     venueId,
     setVenueId,
     project,
     target,
     workspace,
     action,
-    create,
     save,
     startRenovation: (venue: VillageVenue) => {
+      setIdea("");
       setSelectedId("");
       setDraftType("renovation");
       setVenueId(venue.id);

@@ -4,6 +4,7 @@ import type { AcceptedEpisode } from "./episode-model.js";
 
 /** Exact final fitted evidence and native circumstances, retained by the existing operation checkpoint. */
 export type NarrationReadset = {
+  manualProjectCreation?: true;
   visitorIntroductionFarewell?: true;
   visitorIds?: string[];
   agendaOptions?: {

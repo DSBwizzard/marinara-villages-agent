@@ -13,6 +13,7 @@ import { ReaderBook } from "../../shared/DialogueReader.js";
 import type { Portrait, PortraitMap } from "../../shared/types.js";
 
 type MessageStyle = {
+  onPlanProject?: (text: string) => void;
   playerName: string;
   portraits?: PortraitMap;
   playerPortrait?: Portrait;
@@ -27,6 +28,7 @@ export function SceneMessage({
   playerPortrait,
   nameStyle,
   speechStyle,
+  onPlanProject,
 }: MessageStyle & { line: RoomLine }) {
   const narration = line.role !== "user" && (line.kind === "narration" || line.speakerId === "__venue_scene__");
   const name = line.role === "user" ? playerName : narration ? "Narration" : line.name || "Resident";
@@ -76,6 +78,14 @@ export function SceneMessage({
         >
           {renderVillagesMarkdown(line.content, `message-${line.id ?? "line"}-`)}
         </div>
+        {onPlanProject && !narration ? (
+          <details className={`${ELEMENT_TAG}-scene-message-actions`}>
+            <summary aria-label="Message actions">…</summary>
+            <button type="button" onClick={() => onPlanProject(line.content)}>
+              Plan a Project…
+            </button>
+          </details>
+        ) : null}
       </div>
     </article>
   );
@@ -91,7 +101,9 @@ export function SceneHistory({
   speechStyle,
   onClose,
   currentVisitId,
+  onPlanProject,
 }: {
+  onPlanProject?: (text: string) => void;
   sceneId: string;
   scope: string;
   playerName: string;
@@ -254,6 +266,7 @@ export function SceneHistory({
                     portraits={portraits}
                     nameStyle={nameStyle}
                     speechStyle={speechStyle}
+                    onPlanProject={onPlanProject}
                   />
                 )
               ) : null;

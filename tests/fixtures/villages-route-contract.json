@@ -435,11 +435,19 @@
     },
     {
       "method": "post",
+      "path": "/projects/undertakings"
+    },
+    {
+      "method": "post",
       "path": "/projects"
     },
     {
       "method": "post",
       "path": "/projects/:projectId/plan"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/undertaking-plan"
     },
     {
       "method": "post",

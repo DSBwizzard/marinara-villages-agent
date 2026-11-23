@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { undertakingPlanSchema } from "../decoding/undertaking-codec.js";
 import { narrationSourceSchema } from "./narration-contract.js";
 import { placeDraftSchema } from "./place-discovery.js";
 import { npcAdmissionFields } from "./npc-participation.js";
@@ -81,6 +82,15 @@ export const nativeCommand = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ ...base, type: z.literal("project.start"), project: id }).strict(),
+  z.object({ ...base, type: z.literal("project.advance"), project: id, step: id }).strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("project.propose"),
+      title: z.string().trim().min(1).max(100),
+      plan: undertakingPlanSchema.refine((plan) => !!plan.zoneId && plan.roles.length > 0),
+    })
+    .strict(),
   z
     .object({
       ...base,
@@ -173,7 +183,7 @@ export const NARRATION_HOUSING_COMMANDS =
   "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the request or current decision about its exact terms.";
 
 export const NARRATION_PROJECT_COMMANDS =
-  'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words.';
+  'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words. project.advance {project,step} completes the supplied shared step, or first-use after construction, through a currently witnessed shared deed in its Venue. It cannot construct, change access or fulfill Wishes. Projects are created by the player in Projects; suggestions stay in dialogue.';
 
 export const NARRATION_CIRCUMSTANCE_COMMANDS =
   'circumstance with a supplied grant: {severity?:"gentle|moderate|dramatic",occurrence?,situation:{id?,title,summary,status?:"active|resolved"},conditions?:[{id?,observation?,restriction?:"none|ordinary-use",remedy?,durationMinutes?,clear?}]}. Cite Player-seen narration of the occurrence. A completed repair can use conditions:[{id,clear:true}] without a grant. It requires same-reply Room keeps for every linked entry citing the same completed repair.';

@@ -11,6 +11,8 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
 import { narrationPositions, narrationWitnesses, type NarrationSourceContext } from "./narration-sources.js";
 import { projectSpeechTerms, type ProjectSpeechContext } from "./project-interpretation.js";
+import { undertakingApprovers } from "./undertaking.js";
+import { projectAgendaReservations } from "./project-focus.js";
 
 export function applyNarrationProjectStart(
   state: VillageState,
@@ -33,7 +35,10 @@ export function applyNarrationProjectStart(
     "the complete current Project authority was not supplied",
   );
   const resume = project.status === "paused";
-  memoryRequire(!resume || project.lifecycle.workOrder, "the paused Project has no saved work to resume");
+  memoryRequire(
+    !resume || project.kind === "undertaking" || project.lifecycle.workOrder,
+    "the paused Project has no saved work to resume",
+  );
   beginProject(state, project, {}, resume, new ZonedDate(at, readset.calendar.timeZone));
   return {
     id: receiptId,
@@ -74,7 +79,10 @@ export function applyNarrationProject(
       before.revision === captured.revision &&
       memoryHash(before.terms) === memoryHash(captured.terms) &&
       memoryHash(projectSpeechTerms(state, project)) === memoryHash(captured.terms) &&
-      ["planning", "paused", "working"].includes(project.status),
+      (["planning", "paused", "working"].includes(project.status) ||
+        (project.kind === "undertaking" &&
+          project.status === "complete" &&
+          project.undertaking?.plan.schedule?.weekly)),
     "the complete current Project terms were not supplied",
   );
   const actorId = sources[0]?.actorId,
@@ -121,6 +129,10 @@ export function applyNarrationProject(
   memoryRequire(resident || findNpc(state, actorId), "the Project speaker is unavailable");
   memoryRequire(request.decision !== "builder" || resident, "only Villagers can lead physical work");
   memoryRequire(
+    request.decision !== "builder" || project.kind !== "undertaking",
+    "shared roles use approval, not construction leadership",
+  );
+  memoryRequire(
     !flow.evidenceIds.includes(request.receiptId),
     "Project evidence is already retained; replay its accepted episode",
   );
@@ -133,13 +145,15 @@ export function applyNarrationProject(
     if (selectedLead) flow.builderId = "";
   } else if (request.decision === "approval" || request.decision === "builder") {
     memoryRequire(
-      ["planning", "paused"].includes(project.status),
+      ["planning", "paused"].includes(project.status) || project.kind === "undertaking",
       "this Project cannot accept a new agreement while working",
     );
     if (request.decision === "approval") {
       const venue = findLocation(state, project.venueId);
       memoryRequire(
-        venue && flow.change && renovationAffectedIds(venue, flow.change, flow.changedZoneIds).includes(actorId),
+        project.kind === "undertaking"
+          ? undertakingApprovers(state, project).includes(actorId)
+          : venue && flow.change && renovationAffectedIds(venue, flow.change, flow.changedZoneIds).includes(actorId),
         "this person cannot approve this Project change",
       );
       flow.approvals = flow.approvals.filter((row) => row.residentId !== actorId);
@@ -148,7 +162,10 @@ export function applyNarrationProject(
         incarnation: actor.incarnation,
         source: "conversation",
         evidenceId: request.receiptId,
-        scope: approvalScope(venue, flow.change, actorId, flow.changedZoneIds, flow.roomBasis),
+        scope:
+          project.kind === "undertaking"
+            ? projectDesignKey(project)
+            : approvalScope(venue!, flow.change!, actorId, flow.changedZoneIds, flow.roomBasis),
         at: readset.capturedAt,
       });
     } else {
@@ -184,6 +201,7 @@ export function applyNarrationProject(
     });
   flow.evidenceIds.push(request.receiptId);
   project.updatedAt = request.at;
+  if (project.kind === "undertaking") projectAgendaReservations(state, new ZonedDate(request.at, state.timeZone));
   return {
     id: request.receiptId,
     kind: "project",

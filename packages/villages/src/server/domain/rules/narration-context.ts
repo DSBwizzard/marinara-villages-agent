@@ -706,7 +706,20 @@ export function narrationContinuityContext(
       /\b(?:project|renovation)\b/iu.test(query);
     const request = input.toLocaleLowerCase("en-US");
     const requested = named(request) || localCue(request);
-    if (!requested && !opening && !named(projectQuery) && !localCue(projectQuery)) continue;
+    if (
+      !requested &&
+      !opening &&
+      !named(projectQuery) &&
+      !localCue(projectQuery) &&
+      !(
+        record.firstUse &&
+        !record.firstUse.completed &&
+        record.status === "complete" &&
+        record.venueId === scene.placeId
+      ) &&
+      !(record.kind === "undertaking" && record.status === "working" && record.venueId === scene.placeId)
+    )
+      continue;
     parts.push({
       ...emptyPart(),
       block: {
@@ -896,6 +909,7 @@ export function fittedNarrationReadset(
   const candidates = context.npcCandidates.filter((row) => evidenceIds.includes("npc-candidate:" + row.npc.id));
   return {
     format: 1,
+    manualProjectCreation: true,
     setupAt: state.setupAt,
     capturedAt: context.at,
     calendar: context.calendar,

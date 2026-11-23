@@ -37,7 +37,10 @@ export function VenueLayoutEditor({
   const neighbors = contactNeighborIds(rows, selectedId);
   const projectActive = controller.snapshot.projects.some(
     (project) =>
-      project.venueId === place.id && project.lifecycle && !["complete", "cancelled"].includes(project.lifecycle.phase),
+      project.kind !== "undertaking" &&
+      project.venueId === place.id &&
+      project.lifecycle &&
+      !["complete", "cancelled"].includes(project.lifecycle.phase),
   );
   const busy = controller.venueEditBusy || !!pending?.saving;
   const canArrange = !busy && !sceneActive && place.constructionStatus !== "worksite";

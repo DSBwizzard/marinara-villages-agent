@@ -15,6 +15,7 @@ import { assertPersonalLetter } from "../../domain/rules/personal-letter.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residenceProposal } from "../../domain/rules/residence-agreement.js";
 import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
+import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import {
   captureResidentNarration,
   assertResidentNarrationCurrent,
@@ -193,6 +194,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       );
       memoryRequire(memoryHash(state.opening) === memoryHash(historical.opening), "historical opening changed");
       planRoutineDays(historical, at);
+      projectAgendaReservations(historical, at);
       assertResidentNarrationCurrent(historical, context.narration);
     } else {
       assertResidentNarrationCurrent(state, context.narration);
@@ -352,11 +354,13 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     if (relationship && !dueRelationshipAnswers(state, calendar, opportunity.actorIds).owners.length)
       throw new ReturnOpportunityUnavailable("No relationship blurb is due.");
     const source = relationship ? state : { ...state, ...structuredClone(capture.world) };
-    if (!relationship)
+    if (!relationship) {
       planRoutineDays(
         source,
         new ZonedDate(opportunity.startsAt, source.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
       );
+      projectAgendaReservations(source, new ZonedDate(opportunity.startsAt, source.timeZone));
+    }
     const input = readResidentPlanningInput({
       format: 1,
       context: contextFor(source, opportunity, !relationship),
@@ -566,11 +570,13 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       } else if (opportunity.kind !== "relationship" || relationshipContextCurrent(state, input.context)) {
         const target =
           input.catchup && capture.historical ? { ...next, ...structuredClone(input.catchup.world) } : next;
-        if (capture.historical)
+        if (capture.historical) {
           planRoutineDays(
             target,
             new ZonedDate(capture.context.at, target.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
           );
+          projectAgendaReservations(target, new ZonedDate(capture.context.at, target.timeZone));
+        }
         const fiction = {
             ...(proposal.encounter ? { encounter: proposal.encounter } : {}),
             ...(proposal.reflection ? { reflection: proposal.reflection } : {}),

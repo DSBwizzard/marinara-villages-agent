@@ -9,6 +9,7 @@ import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue
 import { zoneActivityFits } from "./venue-presence.js";
 import { routineRevisionMatches } from "./wish-policy.js";
 import { continuityActor } from "./continuity-actors.js";
+import { addUndertakingReservations } from "./undertaking.js";
 
 export const PROJECT_FOCUS_MS = 6 * 60 * 60_000;
 const minuteMs = 60_000;
@@ -52,7 +53,7 @@ export function readProjectFocus(value: unknown): ProjectFocus {
 }
 
 /** All Agenda consumers receive the same claims from native Projects and resident plans. */
-export function projectAgendaReservations(state: VillageState): void {
+export function projectAgendaReservations(state: VillageState, now?: Date): void {
   for (const resident of state.villagers) if (resident.agenda) resident.agenda.reservations = [];
   for (const project of state.projects) {
     for (const period of project.lifecycle?.workOrder?.focus?.periods ?? []) {
@@ -135,6 +136,10 @@ export function projectAgendaReservations(state: VillageState): void {
       replaces: "flexible",
     });
   }
+  addUndertakingReservations(
+    state,
+    now ?? new ZonedDate(state.clock?.trustedAt || state.simulatedThrough || state.setupAt, state.timeZone || "UTC"),
+  );
 }
 
 /** Consume completed planned minutes, then release the allocation. No historical periods are retained. */

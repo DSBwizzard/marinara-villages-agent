@@ -13,6 +13,7 @@ import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import { cloneReturnCapture } from "../rules/world-context-copy.js";
+import { undertakingSchema, projectFirstUseSchema } from "./undertaking-codec.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -943,7 +944,7 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (
       !asTrimmedString(raw.id) ||
       !asTrimmedString(raw.title) ||
-      !["new-venue", "renovation"].includes(String(raw.kind)) ||
+      !["new-venue", "renovation", "undertaking"].includes(String(raw.kind)) ||
       !["planning", "working", "paused", "complete", "cancelled"].includes(String(raw.status)) ||
       flow.phase !== raw.status ||
       !Number.isInteger(flow.revision) ||
@@ -982,6 +983,53 @@ function coerceProjects(value: unknown): VillageProject[] {
       })
     )
       throw new Error("Invalid Project agreement records.");
+    if (raw.kind === "undertaking") {
+      const undertaking = undertakingSchema.parse(raw.undertaking);
+      const participantIds = undertaking.plan.roles.map((role) => role.actorId);
+      if (
+        flow.workOrder !== null ||
+        flow.change !== null ||
+        (!["planning", "cancelled"].includes(String(raw.status)) &&
+          (!asTrimmedString(raw.venueId) || !undertaking.plan.zoneId || !undertaking.plan.roles.length)) ||
+        (raw.status === "complete" && undertaking.completed.length !== undertaking.plan.milestones.length) ||
+        (raw.status !== "complete" && undertaking.completed.length === undertaking.plan.milestones.length)
+      )
+        throw new Error("Invalid shared Project state.");
+      const lifecycle: NonNullable<VillageProject["lifecycle"]> = {
+        phase: raw.status as VillageProject["status"],
+        revision: Number(flow.revision),
+        targetVenueId: asTrimmedString(raw.venueId),
+        change: null,
+        affectedIds: asStringArray(flow.affectedIds),
+        approvals: structuredClone(approvals) as NonNullable<VillageProject["lifecycle"]>["approvals"],
+        candidates: [],
+        builderId: "",
+        spokenProofs: structuredClone(flow.spokenProofs) as NonNullable<VillageProject["lifecycle"]>["spokenProofs"],
+        evidenceIds: asStringArray(flow.evidenceIds),
+        commandReceipts: Object.fromEntries(
+          Object.entries(asRecord(flow.commandReceipts)).filter(
+            (row): row is [string, string] => typeof row[1] === "string",
+          ),
+        ),
+        baseDesignHash: "",
+        changedZoneIds: [],
+        workOrder: null,
+        blockedReason: asTrimmedString(flow.blockedReason),
+        completedAt: asIsoString(flow.completedAt) ?? "",
+      };
+      return {
+        id: String(raw.id),
+        title: String(raw.title),
+        kind: "undertaking",
+        venueId: asTrimmedString(raw.venueId),
+        participantIds,
+        status: raw.status as VillageProject["status"],
+        progress: Math.round((100 * undertaking.completed.length) / undertaking.plan.milestones.length),
+        updatedAt: asIsoString(raw.updatedAt) ?? "",
+        undertaking,
+        lifecycle,
+      };
+    }
     const order = flow.workOrder === null ? null : asRecord(flow.workOrder);
     if (
       order &&
@@ -1033,6 +1081,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       throw new Error("Invalid Renovation design.");
     const opening = asRecord(raw.opening);
     const project: VillageProject = {
+      ...(raw.firstUse === undefined ? {} : { firstUse: projectFirstUseSchema.parse(raw.firstUse) }),
       id: String(raw.id),
       title: String(raw.title),
       kind: raw.kind as VillageProject["kind"],

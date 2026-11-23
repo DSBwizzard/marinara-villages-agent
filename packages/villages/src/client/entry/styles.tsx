@@ -1986,6 +1986,8 @@ ${ELEMENT_TAG} {
 .${ELEMENT_TAG}-scene-message-face > img { width: 100%; height: 100%; object-fit: contain; }
 .${ELEMENT_TAG}-scene-message-face .${ELEMENT_TAG}-avatar { width: 100%; height: 100%; }
 .${ELEMENT_TAG}-scene-message-body { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-scene-message-actions { margin-top: .25rem; font-size: .85rem; }
+.${ELEMENT_TAG}-scene-message-actions summary { width: fit-content; cursor: pointer; }
 .${ELEMENT_TAG}-scene-message-name { margin: 0 0 .2rem; font-size: .875rem; font-weight: 650; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); }
 .${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text { margin: 0; white-space: pre-wrap; }
 .${ELEMENT_TAG}-scene-message-body .${ELEMENT_TAG}-chat-vn-text > p { margin: 0 0 .5rem; }

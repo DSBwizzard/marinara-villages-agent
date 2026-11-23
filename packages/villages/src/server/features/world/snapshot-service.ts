@@ -1,5 +1,5 @@
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
-import { projectAgreementCurrent } from "../../domain/rules/project-terms.js";
+import { projectAgreementCurrent, renovationHasChanges } from "../../domain/rules/project-terms.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
 import { createHash } from "node:crypto";
@@ -247,8 +247,24 @@ export function createVillageSnapshot({
         })),
       opening: openingView(village),
       projects: village.projects.map((project) => ({
+        ...(project.firstUse
+          ? {
+              firstUse: {
+                goal: project.firstUse.goal,
+                ...(project.firstUse.completed ? { completedAt: project.firstUse.completed.at } : {}),
+              },
+            }
+          : {}),
         id: project.id,
         kind: project.kind,
+        ...(project.undertaking
+          ? {
+              undertaking: {
+                plan: project.undertaking.plan,
+                completed: project.undertaking.completed.map(({ milestoneId, at }) => ({ milestoneId, at })),
+              },
+            }
+          : {}),
         actorNames: Object.fromEntries(
           (project.lifecycle?.affectedIds ?? []).flatMap((id) => {
             const npc = placeRegistry(village)?.npcs[id];
@@ -271,6 +287,16 @@ export function createVillageSnapshot({
         opening: project.opening ? { ...project.opening, provenance: "" } : undefined,
         lifecycle: project.lifecycle
           ? {
+              designReady:
+                project.kind === "new-venue"
+                  ? !!project.plan
+                  : project.kind === "undertaking"
+                    ? true
+                    : renovationHasChanges(
+                        findLocation(village, project.venueId),
+                        project.lifecycle.change,
+                        project.lifecycle.changedZoneIds,
+                      ),
               phase: project.lifecycle.phase,
               revision: project.lifecycle.revision,
               targetVenueId: project.lifecycle.targetVenueId,
