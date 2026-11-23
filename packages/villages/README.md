@@ -78,7 +78,7 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 
 ## Find your way around
 
-- **Map:** Pan and zoom, or select a Venue marker to open its illustrated Venue page. Choose **Visit** to enter a Scene, **Zones**, **People** or **Access** for the Venue controls, or **Map** to return to the same map view.
+- **Map:** Pan and zoom, or select a Venue marker to open its illustrated Venue page. Choose **Visit** to enter a Scene, **Zones** or **Arrangements** for the Venue controls, or **Map** to return to the same map view.
 - **Locations:** Browse known destinations with search, map and category filters. Both Venues and other Locations open their illustrated detail page. **Map** opens the separate village map, and **Visit** starts Scene entry.
 - **People:** Browse residents and open their profiles.
 - **More:** Open the Village's other pages and settings.
@@ -269,7 +269,7 @@ A Venue supports up to six non-Entrance Zones. Its residents can share sleeping 
 
 Scene navigation can open the map; **Return to Scene** restores your draft. Conclude the current Scene before starting another.
 
-Scenery styles apply to future pictures. Open a Zone to edit its heading, Description and Used for fields directly. Founding saves these edits immediately; physical changes during play open a renovation draft and retain consent requirements. People holds Room assignment; occupied rooms retain the residence move flow. The backdrop shows the current image. **Generate Image** uses the known design or last observed appearance. **Upload image** replaces the Zone image immediately and turns off **Automatic artwork updates** until you enable them again. **View fullsize** opens the image, and **Remove image** clears it. Ordinary Scene turns and browsing leave generation idle; **Dynamic Images** controls eligible automatic work on entry.
+Scenery styles apply to future pictures. Open a Zone to edit its heading, Description and Used for fields directly. Founding saves these edits immediately; physical changes during play open a renovation draft and retain consent requirements. Use **Arrangements → Residents** to assign sleeping Zones; home changes during play retain the residence move flow. The backdrop shows the current image. **Generate Image** uses the known design or last observed appearance. **Upload image** replaces the Zone image immediately and turns off **Automatic artwork updates** until you enable them again. **View fullsize** opens the image, and **Remove image** clears it. Ordinary Scene turns and browsing leave generation idle; **Dynamic Images** controls eligible automatic work on entry.
 
 Day/night imagery is standard, with one image reused for AI-known constant lighting. Existing description-writing requests make that decision without an extra classification call. Artwork uses stable daytime lighting independent of generation time, respecting established world rules; night is derived from that same base. Play follows Village time and timezone, including map tint; Founding stays daytime. There are no day/night or Refresh controls. Completed daytime artwork remains visible if night fails, and Retry resumes the failed stage. Each automatic image counts against six images per real hour; paired stages can run together, with five minutes between automatic updates of the same Zone. Undo/Restore preserves limits. Existing artwork is retained without bulk generation. Closed Scenes retain captured presentation. See [Zone pictures](../../docs/zone-pictures.md) for lifecycle and provider limits.
 
