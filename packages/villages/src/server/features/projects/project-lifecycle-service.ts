@@ -19,6 +19,9 @@ import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.j
 import { findLocation } from "../../domain/rules/places.js";
 import { removeNativeRoom } from "../../domain/rules/native-continuity.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
+import { undertakingPlanSchema } from "../../domain/decoding/undertaking-codec.js";
+import { validateUndertaking, undertakingApprovers } from "../../domain/rules/undertaking.js";
+import { lifecycle } from "../../domain/rules/project-lifecycle-rules.js";
 
 function projectDraftRequest(value: unknown) {
   const row = asRecord(value),
@@ -97,6 +100,66 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       }
       const project = draftNewVenueProject(state, row, "", projectId);
       project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
+    });
+  }
+  async function createUndertaking(value: unknown) {
+    const { row, requestId, projectId } = projectDraftRequest(value);
+    await mutateVillageState(
+      (state) => {
+        const fingerprint = JSON.stringify(["create-undertaking", row]);
+        const prior = state.projects.find((project) => project.id === projectId);
+        if (prior) {
+          if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
+            throw conflict("This request ID was already used.");
+          return;
+        }
+        if (
+          state.projects.filter(
+            (project) =>
+              project.status === "planning" &&
+              !state.projects.some((parent) => parent.undertaking?.plan.constructionId === project.id),
+          ).length >= 6
+        )
+          throw conflict("Six Project drafts maximum.");
+        const title = asTrimmedString(row.title);
+        if (!title || title.length > 100) throw badRequest("Give the Project a name of at most 100 characters.");
+        const plan = undertakingPlanSchema.parse(row.plan);
+        const project: VillageProject = {
+          id: projectId,
+          kind: "undertaking",
+          title,
+          venueId: asTrimmedString(row.venueId),
+          participantIds: plan.roles.map((role) => role.actorId),
+          progress: 0,
+          status: "planning",
+          updatedAt: villageNow().toISOString(),
+          undertaking: { plan, completed: [] },
+          lifecycle: lifecycle(asTrimmedString(row.venueId)),
+        };
+        validateUndertaking(state, project);
+        project.lifecycle!.affectedIds = undertakingApprovers(state, project);
+        project.lifecycle!.commandReceipts = { [requestId]: fingerprint };
+        state.projects.push(project);
+      },
+      { memories: true },
+    );
+  }
+  async function reviseUndertaking(id: string, value: unknown) {
+    await command(id, value, "undertaking-plan", (state, project, row) => {
+      planning(project);
+      if (project.kind !== "undertaking") throw conflict("Choose a shared Project.");
+      const title = asTrimmedString(row.title);
+      if (!title || title.length > 100) throw badRequest("Give the Project a name of at most 100 characters.");
+      const plan = undertakingPlanSchema.parse(row.plan);
+      project.title = title;
+      project.venueId = asTrimmedString(row.venueId);
+      project.undertaking = { plan, completed: [] };
+      project.participantIds = plan.roles.map((role) => role.actorId);
+      validateUndertaking(state, project);
+      project.lifecycle.affectedIds = undertakingApprovers(state, project);
+      project.lifecycle.approvals = [];
+      project.lifecycle.revision++;
+      project.updatedAt = villageNow().toISOString();
     });
   }
   async function createRenovationProject(venueId: string, value: unknown) {
@@ -209,18 +272,21 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
   async function cancelProject(id: string, value: unknown, now = villageNow()) {
     await command(id, value, "cancel", (state, project) => {
       if (["complete", "cancelled"].includes(project.status)) throw conflict("This Project is already finished.");
-      trimProjectFocus(project, now.toISOString());
-      project.status = project.lifecycle.phase = "cancelled";
-      project.updatedAt = now.toISOString();
-      project.lifecycle.blockedReason = "";
-      if (project.kind === "new-venue") {
-        const site = state.venues.find((venue) => venue.buildProjectId === id);
-        if (site) {
-          for (const zone of site.zones ?? []) removeNativeRoom(state, site.id, zone.id, now.toISOString());
-          state.venues = state.venues.filter((venue) => venue !== site);
+      const child = state.projects.find((work) => work.id === project.undertaking?.plan.constructionId);
+      for (const target of [project, ...(child && !["complete", "cancelled"].includes(child.status) ? [child] : [])]) {
+        trimProjectFocus(target, now.toISOString());
+        target.status = target.lifecycle!.phase = "cancelled";
+        target.updatedAt = now.toISOString();
+        target.lifecycle!.blockedReason = "";
+        if (target.kind === "new-venue") {
+          const site = state.venues.find((venue) => venue.buildProjectId === target.id);
+          if (site) {
+            for (const zone of site.zones ?? []) removeNativeRoom(state, site.id, zone.id, now.toISOString());
+            state.venues = state.venues.filter((venue) => venue !== site);
+          }
         }
       }
-      projectAgendaReservations(state);
+      projectAgendaReservations(state, now);
     });
   }
   async function debugCompleteProjectConstruction(id: string, value: unknown) {
@@ -238,6 +304,8 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     });
   }
   return {
+    createUndertaking,
+    reviseUndertaking,
     createNewVenueProject,
     createRenovationProject,
     saveProjectPlan,

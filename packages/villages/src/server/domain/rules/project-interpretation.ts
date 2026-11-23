@@ -5,6 +5,7 @@ import { findLocation } from "./places.js";
 import { memoryHash } from "./memory-integrity.js";
 import { continuityActor } from "./continuity-actors.js";
 import { recallTerms } from "./text-recall.js";
+import { undertakingApprovers } from "./undertaking.js";
 export type ProjectSpeechContext = {
   projectId: string;
   revision: number;
@@ -16,12 +17,21 @@ export type ProjectSpeechContext = {
 export function projectSpeechTerms(state: VillageState, project: VillageProject) {
   const venue = findLocation(state, project.venueId),
     flow = project.lifecycle!;
-  const requiredApprovers = venue ? renovationAffectedIds(venue, flow.change, flow.changedZoneIds) : [];
+  const requiredApprovers =
+    project.kind === "undertaking"
+      ? undertakingApprovers(state, project)
+      : venue
+        ? renovationAffectedIds(venue, flow.change, flow.changedZoneIds)
+        : [];
   return {
     kind: project.kind,
     venueId: project.venueId,
     proposal: structuredClone(
-      project.kind === "new-venue" ? { draft: project.venueDraft ?? null, plan: project.plan ?? null } : flow.change,
+      project.kind === "undertaking"
+        ? project.undertaking
+        : project.kind === "new-venue"
+          ? { draft: project.venueDraft ?? null, plan: project.plan ?? null }
+          : flow.change,
     ),
     requiredApprovers: requiredApprovers.toSorted(),
   };
@@ -68,7 +78,10 @@ export function projectSpeechContexts(
   const terms = new Set(recallTerms(query));
   return state.projects.flatMap((project) =>
     project.lifecycle &&
-    ["planning", "paused", "working"].includes(project.status) &&
+    (["planning", "paused", "working"].includes(project.status) ||
+      (project.kind === "undertaking" &&
+        project.status === "complete" &&
+        project.undertaking?.plan.schedule?.weekly)) &&
     (project.venueId === venueId ||
       project.lifecycle.targetVenueId === venueId ||
       [
@@ -108,4 +121,4 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
 }
 
 export const PROJECT_SPEECH_DIRECTION =
-  "Use only the fitted Project terms as native reference. Residents know the terms through actual communication. Controllers can approve their own Renovation. Villagers may volunteer to lead physical work. Approval needs unqualified current words about the exact terms, witnessed by the player. Conditions, politeness and later promises stay ordinary roleplay or common offers. Approval and volunteering may share an utterance. Refusal or withdrawal is unilateral. Only explicit Player Start or Resume begins physical work, which takes 24 elapsed hours. Gifts and objects provide no Project benefit.";
+  "Use only the fitted Project terms as native reference. Residents know terms through actual communication. Controllers approve their own Renovation; Villagers may volunteer to lead physical work. For an undertaking, approval agrees to that person's role, milestones and exact schedule, including weekly continuation when supplied; required controllers approve the use of their Zone. Approval needs unqualified current deciding words witnessed by the player. Conditions, politeness and later promises are not approval. Refusal or withdrawal is unilateral, including weekly arrangements after Project completion. Only explicit Player Start or Resume starts a Project. Physical construction takes 24 elapsed hours. Shared undertakings have no completion timer: project.advance marks only the next supplied milestone after an actual currently observed deed. First use happens in the agreed Zone after linked construction finishes. Narrate the deed and cite current sight evidence, never a promise, retrospective report or mere attendance. Completing a Project grants no physical changes, access, jobs or Wish fulfillment; each requires its ordinary native evidence. Gifts and objects provide no construction benefit.";

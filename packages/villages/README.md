@@ -231,13 +231,23 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 
 The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
 
-**Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
+**Projects** are shared undertakings: a first village supper, an exhibition, a garden restoration, or another finite plan with a lasting result. Start one in conversation with the residents present, or choose **New Project** on the board. A proposal saves a draft; it does not commit anyone. Up to six shared drafts can wait while you decide.
+
+Choose the goal, a known activity Zone in a finished Venue, residents' roles, and a few milestones ending in its first use. Ask the participants and the Zone's managers to agree to those exact terms, then choose **Begin together**. Two Projects can be active at once; paused plans still count. Changing a draft's terms needs fresh agreements.
+
+Progress follows actual deeds witnessed by your Persona and a participating resident. Discussion, a claim about yesterday, or elapsed time cannot complete a milestone. The final milestone happens in the agreed Zone. There is no completion button or timer for a shared undertaking. **Set aside** cancels it and any linked unfinished physical work.
+
+An agreed dated session reserves the whole group's available flexible time. Protected duties, access, capacity and other accepted commitments take precedence. A weekly session remains on their Agendas after the first use completes the Project, while everyone still agrees. Residents may withdraw. An arrangement establishes a plan; attendance and lived experience follow separately.
+
+Wishes can supply personal reasons to help, but completing a Project does not automatically fulfill a Wish, improve a relationship, or grant access. Exploration can reveal a setting for a new plan: visit a Location, admit it as a Venue, then agree on what to do there. Ordinary visits and conversations remain meaningful without a Project.
+
+**Physical work** creates new Venues or renovates existing ones. It keeps the native structural design, authority and construction rules. A shared Project can link a renovation at its Venue; first use waits for that work to finish. Review the design, Zones, people, site, and progress. Saving a construction draft and starting work are separate steps:
 
 1. Describe the physical result and choose the site or existing Venue.
 2. Arrange the needed agreements and a willing resident lead.
 3. Review the saved design, then press **Start** when you want work to begin.
 
-Every Project takes **24 elapsed real hours**. Two can be active at once, with different leads and one per Venue or site. Paused Projects count toward those limits. Visiting a site or leaving the game does not speed up or pause its clock.
+Physical work takes **24 elapsed real hours**, with different leads and one construction plan per Venue or site. A linked renovation shares its parent Project's active slot. Visiting a site or leaving the game does not speed up or pause its construction clock.
 
 Starting a Project reserves **six hours of lead focus** before its completion deadline. This replaces ordinary work or discretionary activities while protecting essential duties, rest and accepted time reservations. Work uses substantial periods at the site's Entrance. If the time cannot fit, choose another willing lead or start later. The Project's Progress view shows its next work period; the Agenda determines availability and location from the same reservations.
 

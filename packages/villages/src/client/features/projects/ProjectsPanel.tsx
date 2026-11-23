@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { SceneView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
-import { MAX_PHYSICAL_DESIGN_LENGTH, MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { SpaceConnections } from "../../shared/SpaceConnections.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
@@ -11,6 +11,7 @@ import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./Projec
 import { ProjectZones } from "./ProjectZones.js";
 import { projectStyles } from "./project-styles.js";
 import type { ProjectsController } from "./useProjectsController.js";
+import { UndertakingPanel } from "./UndertakingPanel.js";
 
 const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as const;
 type Tab = (typeof tabs)[number];
@@ -57,10 +58,6 @@ export function ProjectsPanel({
   const [selectedTabs, setTabs] = useState<Record<string, Tab>>({});
   const [selectedZones, setZones] = useState<Record<string, string>>({});
   const [detailPages, setDetailPages] = useState<Record<string, string>>({});
-  const [indexView, setIndexView] = useState<"projects" | "history">("projects");
-  const [mobileSection, setMobileSection] = useState<"drafts" | "slot1" | "slot2">("drafts");
-  const [draftPage, setDraftPage] = useState(0);
-  const [historyPage, setHistoryPage] = useState(0);
   const [peopleSection, setPeopleSection] = useState<"lead" | "agreements">("lead");
   const [peoplePage, setPeoplePage] = useState(0);
   const boardRef = useRef<HTMLElement>(null);
@@ -95,7 +92,19 @@ export function ProjectsPanel({
   const missing =
     flow?.affectedIds.filter((id) => !flow.approvals.some((approval) => approval.residentId === id)) ?? [];
   const stale = draft.dirty && (!editable || draft.revision !== flow?.revision);
-  const otherActive = snapshot.projects.filter((entry) => entry.id !== project?.id && active(entry.status));
+  const otherActive = snapshot.projects.filter(
+    (entry) =>
+      entry.id !== project?.id && entry.undertaking?.plan.constructionId !== project?.id && active(entry.status),
+  );
+  const isLinkedWork = snapshot.projects.some(
+    (entry) => entry.undertaking?.plan.constructionId === project?.id && active(entry.status),
+  );
+  const activeRoots = otherActive.filter(
+    (entry) =>
+      !snapshot.projects.some(
+        (parent) => parent.undertaking?.plan.constructionId === entry.id && active(parent.status),
+      ),
+  );
   const unavailable = draft.dirty
     ? "Save design before Start."
     : project?.kind === "new-venue" && !project.plan
@@ -106,11 +115,12 @@ export function ProjectsPanel({
           ? "Choose a willing lead in People."
           : missing.length
             ? "Agreement needed · " + missing.map(person).join(", ")
-            : otherActive.length >= 2
+            : !isLinkedWork && activeRoots.length >= 2
               ? "Two Projects are already active."
               : otherActive.some((entry) => entry.lifecycle?.builderId === flow?.builderId)
                 ? "The lead is working on another Project."
-                : project?.venueId && otherActive.some((entry) => entry.venueId === project.venueId)
+                : project?.venueId &&
+                    otherActive.some((entry) => entry.kind !== "undertaking" && entry.venueId === project.venueId)
                   ? "This Venue already has active work."
                   : "";
   const allProjects = () => {
@@ -167,17 +177,10 @@ export function ProjectsPanel({
     project?.kind === "new-venue"
       ? (venue?.spaces?.length ?? 0) + (venue?.privateSpaces?.length ?? 0)
       : draft.zones.length;
-  const drafts = snapshot.projects.filter((entry) => entry.status === "planning");
-  const activeProjects = snapshot.projects.filter((entry) => active(entry.status));
-  const finished = snapshot.projects.filter((entry) => entry.status === "complete" || entry.status === "cancelled");
-  const history = [...activeProjects.slice(2), ...finished];
-  const pageSize =
-    boardHeight && boardHeight < 490 ? 2 : boardHeight && boardHeight < 600 ? 3 : mobile ? 4 : MAX_PROJECT_DRAFTS;
   const detailPageSize = mobile ? (boardHeight && boardHeight < 650 ? 1 : 2) : 4;
-  const pages = Math.max(1, Math.ceil(drafts.length / pageSize));
-  const currentDraftPage = Math.min(draftPage, pages - 1);
-  const historyPages = Math.max(1, Math.ceil(history.length / pageSize));
-  const currentHistoryPage = Math.min(historyPage, historyPages - 1);
+  if (project?.kind === "undertaking" || c.draftType === "undertaking" || (!project && !c.draftType)) {
+    return <UndertakingPanel snapshot={snapshot} controller={c} onVenue={onVenue} onPeople={onPeople} />;
+  }
   return (
     <div className={P + "-project-desk"}>
       <style>{projectStyles}</style>
@@ -185,188 +188,11 @@ export function ProjectsPanel({
         <header className="vp-header">
           <StorybookHeading>Projects</StorybookHeading>
           <div className="vp-actions">
-            {!project && !c.draftType && indexView === "projects" ? (
-              <span className="vp-note">{activeProjects.length} / 2 active</span>
-            ) : null}
-            {project || c.draftType ? (
-              <button type="button" className="vp-subtle" onClick={allProjects}>
-                ‹ All Projects
-              </button>
-            ) : null}
-            {!project && !c.draftType && indexView === "projects" && history.length ? (
-              <button type="button" onClick={() => setIndexView("history")}>
-                History
-              </button>
-            ) : null}
+            <button type="button" className="vp-subtle" onClick={allProjects}>
+              ‹ All Projects
+            </button>
           </div>
         </header>
-        {!project && !c.draftType && indexView === "projects" ? (
-          <>
-            <div className="vp-mobile-sections" role="group" aria-label="Project sections">
-              {(
-                [
-                  ["drafts", "Drafts"],
-                  ["slot1", "Slot 1"],
-                  ["slot2", "Slot 2"],
-                ] as const
-              ).map(([id, label]) => (
-                <button type="button" key={id} aria-pressed={mobileSection === id} onClick={() => setMobileSection(id)}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            <nav className="vp-workspace" aria-label="Projects" data-mobile-section={mobileSection}>
-              <section className="vp-drafts" aria-label="Project drafts">
-                <h2>Project Drafts</h2>
-                <div className="vp-project-list">
-                  {drafts.slice(currentDraftPage * pageSize, currentDraftPage * pageSize + pageSize).map((entry) => (
-                    <button
-                      type="button"
-                      className="vp-project-row"
-                      key={entry.id}
-                      onClick={() => c.setSelectedId(entry.id)}
-                    >
-                      <span>{entry.title}</span>
-                      <span aria-hidden="true">›</span>
-                    </button>
-                  ))}
-                  {!drafts.length ? <p className="vp-note">No drafts.</p> : null}
-                </div>
-                <div className="vp-actions vp-draft-create" data-full={activeProjects.length >= 2}>
-                  <button
-                    type="button"
-                    disabled={drafts.length >= MAX_PROJECT_DRAFTS}
-                    onClick={() => c.setDraftType("new-venue")}
-                  >
-                    New Venue
-                  </button>
-                  <button
-                    type="button"
-                    disabled={drafts.length >= MAX_PROJECT_DRAFTS}
-                    onClick={() => c.setDraftType("renovation")}
-                  >
-                    Renovation
-                  </button>
-                </div>
-                {drafts.length >= MAX_PROJECT_DRAFTS ? <p className="vp-note">Six drafts maximum.</p> : null}
-                {pages > 1 ? (
-                  <div className="vp-actions">
-                    <button
-                      type="button"
-                      disabled={currentDraftPage === 0}
-                      onClick={() => setDraftPage(currentDraftPage - 1)}
-                    >
-                      Previous
-                    </button>
-                    <span>
-                      {currentDraftPage + 1} / {pages}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={currentDraftPage + 1 === pages}
-                      onClick={() => setDraftPage(currentDraftPage + 1)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                ) : null}
-              </section>
-              {[0, 1].map((index) => {
-                const entry = activeProjects[index - Math.max(0, 2 - activeProjects.length)];
-                const artwork =
-                  entry?.kind === "renovation"
-                    ? snapshot.settings.venues.find((item) => item.id === entry.venueId)?.presentation.image
-                    : entry?.plan?.exteriorImage;
-                return (
-                  <section className="vp-active-slot" key={index} aria-label={`Project slot ${index + 1}`}>
-                    <h2 className="vp-slot-title">Project Slot {index + 1}</h2>
-                    {entry ? (
-                      <button type="button" className="vp-active-project" onClick={() => c.setSelectedId(entry.id)}>
-                        <strong>{kindName(entry.kind)}</strong>
-                        {artwork ? <img src={artwork.url} alt="" /> : null}
-                        <span>{entry.title}</span>
-                        <small>{titleCase(entry.status)}</small>
-                      </button>
-                    ) : (
-                      <div className="vp-empty-slot">
-                        <span>Empty slot</span>
-                        {index === 0 ? (
-                          <div className="vp-new-types">
-                            <button
-                              type="button"
-                              disabled={drafts.length >= MAX_PROJECT_DRAFTS}
-                              onClick={() => c.setDraftType("new-venue")}
-                            >
-                              New Venue
-                            </button>
-                            <button
-                              type="button"
-                              disabled={drafts.length >= MAX_PROJECT_DRAFTS}
-                              onClick={() => c.setDraftType("renovation")}
-                            >
-                              Renovation
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
-            </nav>
-          </>
-        ) : null}
-        {!project && !c.draftType && indexView !== "projects" ? (
-          <>
-            <button type="button" onClick={() => setIndexView("projects")}>
-              ‹ Projects
-            </button>
-
-            {indexView === "history" ? (
-              <section className="vp-panel">
-                <h2>History</h2>
-                <nav aria-label="Project history" className="vp-project-list">
-                  {history
-                    .slice(currentHistoryPage * pageSize, currentHistoryPage * pageSize + pageSize)
-                    .map((entry) => (
-                      <button
-                        className="vp-project-row"
-                        type="button"
-                        key={entry.id}
-                        onClick={() => c.setSelectedId(entry.id)}
-                      >
-                        <span>
-                          {entry.title} · {titleCase(entry.status)}
-                        </span>
-                        <span aria-hidden="true">›</span>
-                      </button>
-                    ))}
-                </nav>
-                {historyPages > 1 ? (
-                  <div className="vp-actions">
-                    <button
-                      type="button"
-                      disabled={currentHistoryPage === 0}
-                      onClick={() => setHistoryPage(currentHistoryPage - 1)}
-                    >
-                      Previous
-                    </button>
-                    <span>
-                      {currentHistoryPage + 1} / {historyPages}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={currentHistoryPage + 1 === historyPages}
-                      onClick={() => setHistoryPage(currentHistoryPage + 1)}
-                    >
-                      Next
-                    </button>
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
-          </>
-        ) : null}
         {c.draftType ? (
           <form
             autoComplete="off"

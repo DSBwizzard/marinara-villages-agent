@@ -28,6 +28,7 @@ import { stageProjectRoomEdits } from "./project-room-edits.js";
 
 /** Only the saved committed design is applied; the lifecycle stages this transaction. */
 export function completeProject(state: VillageState, project: VillageProject, at: string): void {
+  if (project.kind === "undertaking") throw conflict("Shared Projects finish through their witnessed milestones.");
   const flow = project.lifecycle!;
   const venue = findLocation(state, project.venueId);
   if (!venue) throw conflict("The Project site is missing.");

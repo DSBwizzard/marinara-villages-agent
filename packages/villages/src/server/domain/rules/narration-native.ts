@@ -16,6 +16,7 @@ import {
   type NarrationPublication,
 } from "./narration-acceptance.js";
 import { applyNarrationProject, applyNarrationProjectStart } from "./narration-project.js";
+import { advanceNarratedUndertaking, proposeNarratedUndertaking } from "./narration-undertaking.js";
 import { applyNarrationScene } from "./narration-scene.js";
 import { narrationAppointment } from "./narration-appointment.js";
 import { applyNarrationResidence } from "./narration-residence.js";
@@ -261,6 +262,7 @@ export function prepareNarrationNative(
       ) &&
         (command.type === "scene.end" ||
           command.type === "project.start" ||
+          command.type === "project.propose" ||
           command.type === "move.request" ||
           (command.type === "move" && command.who === "player") ||
           (command.type === "contact.end" && command.who === "player") ||
@@ -404,6 +406,18 @@ export function prepareNarrationNative(
         "too many native Place outcomes in one reply",
       );
       return { receipt: applyNarrationPlace(candidate, command, readset, context, sources, receiptId, at), sources };
+    }
+    if (command.type === "project.propose") {
+      return {
+        receipt: proposeNarratedUndertaking(candidate, command, readset, context, sources, receiptId, at),
+        sources,
+      };
+    }
+    if (command.type === "project.advance") {
+      return {
+        receipt: advanceNarratedUndertaking(candidate, command, readset, context, sources, receiptId, at, state),
+        sources,
+      };
     }
     if (command.type === "project.start") {
       const project = state.projects.find((project) => project.id === command.project);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { undertakingPlanSchema } from "../decoding/undertaking-codec.js";
 import { narrationSourceSchema } from "./narration-contract.js";
 import { placeDraftSchema } from "./place-discovery.js";
 import { npcAdmissionFields } from "./npc-participation.js";
@@ -81,6 +82,15 @@ export const nativeCommand = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ ...base, type: z.literal("project.start"), project: id }).strict(),
+  z.object({ ...base, type: z.literal("project.advance"), project: id, step: id }).strict(),
+  z
+    .object({
+      ...base,
+      type: z.literal("project.propose"),
+      title: z.string().trim().min(1).max(100),
+      plan: undertakingPlanSchema,
+    })
+    .strict(),
   z
     .object({
       ...base,
@@ -164,6 +174,7 @@ export const NARRATION_NATIVE =
   "Native changes use commands:[{type,id?,at:segment ID,source:[exact current evidence],requires?,independent?,...fields}]. Mark prose asserting a change with requires:[command ID]. Use commands for actions that actually occur.\n" +
   'move {who,to,trespass?:true} records one resident crossing at its narration ID. Cite the crossing segment with perceive:{kind:"seen",by:["player"]}. The crossing applies before that segment. move.request {to,actors} records an explicit request to the entire named local group. It gives no consent or movement. Give each crossing its own move. trespass:true is explicit unauthorized entry for a supplied eligible actor across one usable adjacent connection; it never grants permission or bypasses bans, refusals, closures or capacity. move.request may use trespass:true for an actual Player request to enter without permission. move.decide {who,agrees,to?,trespass?:true} records ordinary following: own heard agreement or actual player-seen following narration. Omit to for ongoing following during this same uninterrupted Scene outing; supplying to limits the decision to ONE adjacent crossing. agrees:false stops or withdraws. Ongoing trespass:true needs that actor’s own complete heard commitment to sneaking together for the outing, never merely observed following or one unauthorized crossing. No request, proximity, friendship or invitation establishes following. It moves nobody; use ordinary Move to travel together. depart {who} records an observed resident exit. contact.end {who} ends an admitted cross-Zone contact.\n' +
   NARRATION_NPC_COMMANDS +
+  '\nproject.propose {title,plan:{goal,zoneId,roles:[{actorId,role}],milestones:[{id,title,kind:"preparation|first-use"}],schedule?:{firstDate:"YYYY-MM-DD",startMinute,endMinute,weekly},constructionId?}} saves a NEW shared Project draft at this current established Venue when the Player explicitly pursues the idea through current communicated words or visible action. Cite that exact Player intent. Use one to three current local Villagers, an existing activity Zone, one to six meaningful milestones ending in first use. No mandatory schedule or construction. Ordinary Wishes, suggestions and private thoughts alone do not create Projects. A draft grants no consent, jobs, housing, construction or access. Review the saved terms before later native approvals or Start; do not invent the new Project ID. Do not copy an existing Project.\n' +
   "\n" +
   'place.discover {existingId} or {place:{name,description,form?,report?,controllers?,zones?,people?:[{ref,existingId,role}]}} discovers existing infrastructure using established people only. venue.request {by,name,classes} records a villager request. appointment {by,when:{dayOffset}|{weekday,afterToday?}|{date:"YYYY-MM-DD"},minute?} uses current spoken agreement and the supplied calendar.';
 
@@ -173,7 +184,7 @@ export const NARRATION_HOUSING_COMMANDS =
   "Housing commands: residence.request {by,venue}; residence.decide {by,person,venue,approved}. Cite the request or current decision about its exact terms.";
 
 export const NARRATION_PROJECT_COMMANDS =
-  'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words.';
+  'Project commands: project.start {project} needs explicit current Player Start or Resume. project.decide {by,project,decision:"approval|builder|refuse|withdrawal|conditional|uncertain"} uses deciding words. project.advance {project,step} completes the next shared milestone through a currently witnessed deed, citing its observation; it cannot construct, change access or fulfill Wishes.';
 
 export const NARRATION_CIRCUMSTANCE_COMMANDS =
   'circumstance with a supplied grant: {severity?:"gentle|moderate|dramatic",occurrence?,situation:{id?,title,summary,status?:"active|resolved"},conditions?:[{id?,observation?,restriction?:"none|ordinary-use",remedy?,durationMinutes?,clear?}]}. Cite Player-seen narration of the occurrence. A completed repair can use conditions:[{id,clear:true}] without a grant. It requires same-reply Room keeps for every linked entry citing the same completed repair.';

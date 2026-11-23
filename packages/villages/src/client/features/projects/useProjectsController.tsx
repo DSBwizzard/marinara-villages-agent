@@ -35,7 +35,7 @@ export function useProjectsController({
   focusProjectRequest: number;
 }) {
   const [selectedId, setSelectedId] = useState(focusProjectId),
-    [draftType, setDraftType] = useState<"new-venue" | "renovation" | "">("");
+    [draftType, setDraftType] = useState<"new-venue" | "renovation" | "undertaking" | "">("");
   const [name, setName] = useState(""),
     [description, setDescription] = useState(""),
     [classes, setClasses] = useState<VenueClass[]>(["community"]),
@@ -86,7 +86,7 @@ export function useProjectsController({
       roomEdits: project?.lifecycle?.change?.roomEdits ?? [],
       capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 1,
     },
-    String(snapshot?.isFounded ?? ""),
+    snapshot?.worldScope ?? String(snapshot?.isFounded ?? ""),
   );
   const run = async (path: string, body: Record<string, unknown>) => {
     const attempt = workspace.begin();
@@ -172,6 +172,17 @@ export function useProjectsController({
     return next;
   };
   return {
+    createUndertaking: async (value: Record<string, unknown>) => {
+      const next = await run("/projects/undertakings", value);
+      if (next && selected.current === selectedId) {
+        const created = next.projects.find((entry) => !snapshot?.projects.some((old) => old.id === entry.id));
+        if (created) {
+          setSelectedId(created.id);
+          setDraftType("");
+        }
+      }
+      return next;
+    },
     selectedId,
     setSelectedId,
     draftType,

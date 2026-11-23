@@ -706,7 +706,14 @@ export function narrationContinuityContext(
       /\b(?:project|renovation)\b/iu.test(query);
     const request = input.toLocaleLowerCase("en-US");
     const requested = named(request) || localCue(request);
-    if (!requested && !opening && !named(projectQuery) && !localCue(projectQuery)) continue;
+    if (
+      !requested &&
+      !opening &&
+      !named(projectQuery) &&
+      !localCue(projectQuery) &&
+      !(record.kind === "undertaking" && record.status === "working" && record.venueId === scene.placeId)
+    )
+      continue;
     parts.push({
       ...emptyPart(),
       block: {

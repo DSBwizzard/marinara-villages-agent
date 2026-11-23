@@ -502,7 +502,11 @@ export type VillageProject = {
   progress: number;
   status: VillageProjectPhase;
   updatedAt: string;
-  kind: "new-venue" | "renovation";
+  kind: "new-venue" | "renovation" | "undertaking";
+  undertaking?: {
+    plan: import("../../../shared/contracts/projects.js").UndertakingPlan;
+    completed: { milestoneId: string; at: string; episodeId: string; evidenceId: string }[];
+  };
   venueDraft?: {
     name: string;
     classes: VillageVenueClass[];

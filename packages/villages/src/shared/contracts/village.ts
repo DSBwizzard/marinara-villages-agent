@@ -242,7 +242,8 @@ export type ProjectRoomEntry = { id: string; version: string; text: string };
 export type BuildProject = {
   actorNames?: Record<string, string>;
   id: string;
-  kind: "new-venue" | "renovation";
+  kind: "new-venue" | "renovation" | "undertaking";
+  undertaking?: import("./projects.js").UndertakingView;
   place?: VillageVenue;
   title: string;
   venueId: string;

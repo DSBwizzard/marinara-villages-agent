@@ -249,6 +249,14 @@ export function createVillageSnapshot({
       projects: village.projects.map((project) => ({
         id: project.id,
         kind: project.kind,
+        ...(project.undertaking
+          ? {
+              undertaking: {
+                plan: project.undertaking.plan,
+                completed: project.undertaking.completed.map(({ milestoneId, at }) => ({ milestoneId, at })),
+              },
+            }
+          : {}),
         actorNames: Object.fromEntries(
           (project.lifecycle?.affectedIds ?? []).flatMap((id) => {
             const npc = placeRegistry(village)?.npcs[id];

@@ -10,6 +10,8 @@ import { projectRoomEntries } from "../../domain/rules/project-room-edits.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import {
   cancelProject,
+  createUndertaking,
+  reviseUndertaking,
   createNewVenueProject,
   createRenovationProject,
   debugCompleteProjectConstruction,
@@ -24,6 +26,14 @@ import {
 
 export function registerProjectRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.post<{ Body: unknown }>("/projects/undertakings", async (request, reply) => {
+    try {
+      await createUndertaking(request.body);
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "planning a shared Project");
+    }
+  });
   app.post<{ Body: unknown }>("/projects", async (request, reply) => {
     try {
       await createNewVenueProject(request.body);
@@ -46,6 +56,7 @@ export function registerProjectRoutes(engine: FastifyInstance) {
     );
   };
   projectAction("plan", saveProjectPlan);
+  projectAction("undertaking-plan", reviseUndertaking);
   projectAction("place", placeNewVenueProject);
   projectAction("builder", lockProjectBuilder);
   projectAction("start", startProjectConstruction);

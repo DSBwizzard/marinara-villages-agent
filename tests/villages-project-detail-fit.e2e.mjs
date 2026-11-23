@@ -177,8 +177,7 @@ await withBrowser(browser, async () => {
     };
     const { page: focusPage } = await openProjectPage(browser, width, working);
     await focusPage.setViewportSize({ width, height });
-    if (width < 700) await focusPage.getByRole("button", { name: "Slot 2", exact: true }).click();
-    await focusPage.getByRole("button", { name: /New Venue.*Canvas Tent.*Working/ }).click();
+    await focusPage.getByRole("button", { name: "Canvas Tent", exact: true }).click();
     await focusPage.getByRole("button", { name: "Progress", exact: true }).click();
     await expect(focusPage.getByText("6 hours", { exact: true })).toBeVisible();
     await expect(focusPage.getByText("Next work period", { exact: true })).toBeVisible();

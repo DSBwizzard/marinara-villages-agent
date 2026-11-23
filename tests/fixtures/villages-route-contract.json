@@ -1,6 +1,8 @@
 {
   "baseline": "native-memories",
   "routes": [
+    { "method": "post", "path": "/projects/undertakings" },
+    { "method": "post", "path": "/projects/:projectId/undertaking-plan" },
     {
       "method": "get",
       "path": "/keepsakes"

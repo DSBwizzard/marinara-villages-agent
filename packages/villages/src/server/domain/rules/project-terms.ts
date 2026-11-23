@@ -110,6 +110,7 @@ export function approvalScope(
   ]);
 }
 export function projectDesignKey(project: VillageProject): string {
+  if (project.kind === "undertaking") return JSON.stringify([project.kind, project.venueId, project.undertaking?.plan]);
   const plan = project.plan;
   return JSON.stringify([
     project.kind,

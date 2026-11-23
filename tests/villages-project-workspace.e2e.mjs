@@ -1,113 +1,113 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { currentProject, openProjectPage, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
 
+function sharedProject(snapshot, id = "shared-supper") {
+  const actors = snapshot.villagers.slice(0, 2);
+  return {
+    ...currentProject(id),
+    id,
+    kind: "undertaking",
+    title: "Thursday supper",
+    venueId: snapshot.settings.venues[0].id,
+    undertaking: {
+      plan: {
+        goal: "Cook and enjoy an unhurried supper together.",
+        zoneId: "work",
+        roles: actors.map((actor) => ({ actorId: actor.characterId, role: "Taking part" })),
+        milestones: [
+          { id: "prepare", title: "Prepare the table together", kind: "preparation" },
+          { id: "meal", title: "Share the first supper", kind: "first-use" },
+        ],
+        schedule: { firstDate: "2026-11-26", startMinute: 1140, endMinute: 1200, weekly: true },
+      },
+      completed: [],
+    },
+    lifecycle: {
+      ...currentProject(id).lifecycle,
+      affectedIds: actors.map((actor) => actor.characterId),
+      approvals: [],
+      builderId: "",
+      candidates: [],
+      workOrder: null,
+    },
+  };
+}
 const browser = await chromium.launch({ headless: true });
-const output = process.env.VILLAGES_VISUAL_OUTPUT;
-if (output) await mkdir(output, { recursive: true });
-
 await withBrowser(browser, async () => {
-  for (const { width, height } of [
-    { width: 1280, height: 900 },
-    { width: 850, height: 900 },
-    { width: 390, height: 740 },
-    { width: 390, height: 568 },
-    { width: 320, height: 568 },
+  for (const [width, height] of [
+    [1280, 900],
+    [850, 900],
+    [390, 740],
+    [320, 568],
   ]) {
     const snapshot = projectSnapshot();
-    snapshot.projects = Array.from({ length: 6 }, (_, index) => ({
-      ...currentProject(`draft-${index}`),
-      title: `Draft ${index + 1}`,
-    }));
-    const active = currentProject("renovation", "renovation");
-    active.title = "The Mill";
-    active.status = "working";
-    active.lifecycle.phase = "working";
-    snapshot.projects.push(active);
-    const f = await openProjectPage(browser, width, snapshot);
+    snapshot.projects = [sharedProject(snapshot)];
+    const f = await openProjectPage(browser, width, snapshot, async (path, body, current) => {
+      if (path === "/projects/undertakings") {
+        const project = sharedProject(current, "new-reading-circle");
+        Object.assign(project, {
+          title: body.title,
+          venueId: body.venueId,
+          undertaking: { plan: body.plan, completed: [] },
+        });
+        current.projects.push(project);
+      } else if (path.endsWith("/start")) {
+        const project = current.projects.find((entry) => path.includes(entry.id));
+        project.status = project.lifecycle.phase = "working";
+      }
+    });
     const { page } = f;
     await page.setViewportSize({ width, height });
-    const root = page.locator(".marinara-capability-villages-project-root");
-    const board = page.getByRole("main", { name: "Projects", exact: true });
-    await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-    await expect(board.getByRole("button", { name: "Map", exact: true })).toHaveCount(0);
-    await expect(board.getByRole("heading", { name: "Your Projects", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Draft 1", exact: true })).toBeVisible();
-    await expect(board).toContainText("1 / 2 active");
-    if (output) await page.screenshot({ path: resolve(output, `projects-drafts-${width}.png`), fullPage: true });
-    if (width < 700) {
-      await page.getByRole("button", { name: "Next", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Draft 6", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Slot 2", exact: true }).click();
-    }
-    await expect(page.getByRole("button", { name: /Renovation.*The Mill.*Working/ })).toBeVisible();
-    if (width < 700) await page.getByRole("button", { name: "Slot 1", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Project slot 1" })).toContainText("Empty slot");
-    await expect(page.getByRole("button", { name: "New Venue", exact: true })).toBeDisabled();
-    if (width >= 700) {
-      const lines = await page.getByRole("button", { name: "Renovation", exact: true }).evaluate((button) => {
-        const range = document.createRange();
-        range.selectNodeContents(button);
-        return range.getClientRects().length;
-      });
-      assert.equal(lines, 1, "Renovation remains on one line in the empty slot");
-    }
-    const metrics = await root.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      const boardRect = element.querySelector("main").getBoundingClientRect();
-      return {
-        clientHeight: element.clientHeight,
-        scrollHeight: element.scrollHeight,
-        bottom: rect.bottom,
-        boardBottom: boardRect.bottom,
-        viewport: innerHeight,
-      };
-    });
-    assert(metrics.scrollHeight <= metrics.clientHeight + 1, "Projects overview does not scroll");
-    assert(metrics.bottom <= metrics.viewport + 1, "Projects overview fits inside the viewport");
-    assert(metrics.boardBottom <= metrics.viewport + 1, "the whole blueprint remains visible");
-    const clipped = await root.evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return [...element.querySelectorAll("button")]
-        .filter((button) => {
-          if (!button.checkVisibility()) return false;
-          const rect = button.getBoundingClientRect();
-          return rect.bottom > bounds.bottom + 1 || rect.top < bounds.top - 1;
-        })
-        .map((button) => button.textContent.trim());
-    });
-    assert.deepEqual(clipped, [], "visible controls are not clipped");
-    if (output) await page.screenshot({ path: resolve(output, `projects-workspace-${width}.png`), fullPage: true });
+    await expect(page.getByRole("heading", { name: "Thursday supper", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open Project", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Begin together", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /Start.*24 hours/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Complete milestone|Mark complete/ })).toHaveCount(0);
+    await page.getByRole("tab", { name: "Plan", exact: true }).click();
+    await page.getByLabel("What we're making", { exact: true }).fill("An unhurried supper with space for new friends.");
+    await page.getByRole("tab", { name: "Location", exact: true }).click();
+    await page.getByRole("tab", { name: "Plan", exact: true }).click();
+    await expect(page.getByLabel("What we're making", { exact: true })).toHaveValue(
+      "An unhurried supper with space for new friends.",
+    );
+    await page.getByRole("button", { name: "‹ All Projects", exact: true }).click();
+    await expect(page.getByText("Leave with an unsaved plan?", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByLabel("What we're making", { exact: true })).toHaveValue(
+      "An unhurried supper with space for new friends.",
+    );
+    snapshot.projects[0].lifecycle.revision = 2;
+    await f.update();
+    await page.getByRole("button", { name: "Save plan", exact: true }).click();
+    assert.equal(f.calls.at(-1).body.expectedRevision, 1);
+    await page.getByRole("tab", { name: "People", exact: true }).click();
+    await expect(page.getByText("People and agreements", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "People", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.peopleOpened), true);
+    snapshot.projects[0].lifecycle.approvals = snapshot.projects[0].lifecycle.affectedIds.map((residentId) => ({
+      residentId,
+      source: "conversation",
+    }));
+    await f.update();
+    await page.getByRole("button", { name: "Begin together", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Begin together", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "‹ All Projects", exact: true }).click();
+    await page.getByRole("button", { name: "New Project", exact: true }).click();
+    await page.getByLabel("Name", { exact: true }).fill("A reading circle of our own");
+    await page.getByLabel("What we're making", { exact: true }).fill("Share books with friends in a quiet room.");
+    await page.getByLabel("Venue", { exact: true }).selectOption(snapshot.settings.venues[0].id);
+    await page.getByLabel("Zone", { exact: true }).selectOption("work");
+    await page.getByRole("checkbox", { name: snapshot.villagers[0].name, exact: true }).check();
+    await page.getByLabel("Role", { exact: true }).fill("Host the circle");
+    await page.getByRole("button", { name: "Keep this plan", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "A reading circle of our own", exact: true })).toBeVisible();
+    const created = f.calls.find((call) => call.path === "/projects/undertakings");
+    assert.equal(created.body.plan.roles[0].role, "Host the circle");
+    assert.equal(created.body.plan.milestones.at(-1).kind, "first-use");
+    assert(created.body.requestId);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.close();
   }
-  const legacy = projectSnapshot();
-  legacy.projects = Array.from({ length: 7 }, (_, index) => ({
-    ...currentProject(`old-${index}`),
-    title: `Old draft ${index + 1}`,
-  }));
-  legacy.projects.push(
-    ...Array.from({ length: 7 }, (_, index) => ({
-      ...currentProject(`finished-${index}`),
-      title: `Finished ${index + 1}`,
-      status: "cancelled",
-    })),
-  );
-  legacy.projects.push(
-    ...Array.from({ length: 3 }, (_, index) => ({
-      ...currentProject(`active-${index}`),
-      title: `Active ${index + 1}`,
-      status: "working",
-    })),
-  );
-  const old = await openProjectPage(browser, 1280, legacy);
-  await old.page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(old.page.getByRole("button", { name: "Old draft 7", exact: true })).toBeVisible();
-  await old.page.getByRole("button", { name: "History", exact: true }).click();
-  await expect(old.page.getByRole("button", { name: /Active 3/ })).toBeVisible();
-  await old.page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect(old.page.getByRole("button", { name: /Finished 7/ })).toBeVisible();
-  await old.page.close();
-  console.log("Project drafts and active slots fit on desktop and phone.");
 });
+console.log("Shared Project plans, consent controls, new undertakings, and phone layouts passed.");

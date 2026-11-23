@@ -3,6 +3,7 @@ import type { ResidentPlanningOpportunity, VillageState } from "../models/world.
 import { agendaBlocksFor } from "./agenda-week.js";
 
 import { planRoutineDays } from "./resident-agenda.js";
+import { projectAgendaReservations } from "./project-focus.js";
 import { localDateKey } from "./resident-planning.js";
 import { hashString } from "./village-clock.js";
 import { villagePresence } from "./village-projections.js";
@@ -49,6 +50,7 @@ export function returnCatchupOpportunities(
   for (let dayCount = 0; dayCount < 9 && day.getTime() < end; dayCount++) {
     const projected = cloneVillageContext(captured);
     planRoutineDays(projected, day);
+    projectAgendaReservations(projected, day);
     const schedules = residents.map((original) => {
       const resident = projected.villagers.find((row) => row.characterId === original.characterId)!;
       return {
