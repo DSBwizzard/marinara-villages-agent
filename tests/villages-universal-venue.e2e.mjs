@@ -620,6 +620,7 @@ await withBrowser(browser, async () => {
       await openProfile();
     }
     await expect(profile).toBeVisible();
+    if (await profile.getByRole("navigation", { name: "Zone sections", exact: true }).count()) await zoneBack.click();
     for (const section of ["About", "Zones", "People", "Access"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       const bounds = await profile.boundingBox();

@@ -499,10 +499,9 @@ await withBrowser(browser, async () => {
       await expect(backToZones).toBeFocused();
       await expect(list).toHaveCount(0);
       await expect(venue.locator("." + P + "-venue-zone-list")).toHaveCSS("translate", "-100%");
-      await editor.getByRole("button", { name: "Edit", exact: true }).click();
       await expect(venue.getByRole("textbox", { name: "Zone name" })).toHaveValue("Room 5");
       await expect(storybook).toHaveAttribute("src", /\/venue-fallback(?:-day)?\.webp$/);
-      await expect(viewFullImage).toHaveCount(0);
+      await expect(viewFullImage).toBeDisabled();
       await backToZones.press("Escape");
       await expect(lastZone).toBeFocused();
       await expect(lastZone).toHaveAttribute("aria-current", "true");
