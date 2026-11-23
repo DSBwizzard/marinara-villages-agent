@@ -228,9 +228,11 @@ async function main() {
   );
   await assert.rejects(() => commands.updateVillageVenue("venue", { description: "replacement" }), /Project/);
   editVenue.zones.push({ ...structuredClone(beforeRename), id: "exterior", kind: "exterior", name: "Exterior" });
-  await assert.rejects(
-    () => commands.renameVillageZone("venue", "exterior", { name: "Front door" }),
-    /always named Exterior/,
+  await commands.renameVillageZone("venue", "exterior", { name: "Front door" });
+  assert.equal(
+    editVenue.zones.find((zone) => zone.id === "exterior")!.name,
+    "Front door",
+    "Entrance uses the same editable Zone heading",
   );
   console.log(
     "Venue service ports, overlapping independent stores, binding ownership, Scene timing and retry fences passed.",
