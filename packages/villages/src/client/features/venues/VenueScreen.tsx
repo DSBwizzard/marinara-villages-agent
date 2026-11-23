@@ -487,6 +487,7 @@ export function VenueScreen({
   const visit = () =>
     activeScene && room.placeId === place.id ? setScreen("room") : void openRoom(place, exterior?.id);
   const about = venueSection === "about" && !zoneDetailsOpen;
+  const description = venue ? place.form : detail?.description || place.description;
   const returnToMap = async () => {
     if (await canLeave()) leaveVenue(fromMap ? undefined : "map");
   };
@@ -589,7 +590,7 @@ export function VenueScreen({
             aria-label={venue ? "About this venue" : "About this location"}
           >
             <div className={`${ELEMENT_TAG}-venue-summary`}>
-              {detail?.description || place.description ? <p>{detail?.description || place.description}</p> : null}
+              {description ? <p>{description}</p> : null}
               {venue ? (
                 <section className="villages-manage">
                   <div className="villages-people-actions">
@@ -619,8 +620,6 @@ export function VenueScreen({
                     </div>
                   ) : (
                     <dl className="villages-manage-details">
-                      <dt>Form</dt>
-                      <dd>{place.form}</dd>
                       <dt>Resident capacity</dt>
                       <dd>{place.residenceCapacity ?? 0}</dd>
                     </dl>
@@ -734,11 +733,7 @@ export function VenueScreen({
                           saveRef={zoneNameEditor}
                         />
                       ) : null}
-                      {selected.seen &&
-                      selected.description &&
-                      selected.description.trim() !== (detail?.description || place.description)?.trim() ? (
-                        <p>{selected.description}</p>
-                      ) : null}
+                      {selected.seen && selected.description ? <p>{selected.description}</p> : null}
                       {selected.seen && selected.purpose ? (
                         <dl className="villages-manage-details">
                           <dt>Used for</dt>

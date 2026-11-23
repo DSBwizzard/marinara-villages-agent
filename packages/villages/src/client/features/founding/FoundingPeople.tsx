@@ -185,7 +185,13 @@ function ManagementEditor({
   return (
     <>
       <label className="villages-manage-check">
-        <input type="checkbox" disabled={readOnly} checked={manages} onChange={(e) => setManages(e.target.checked)} />
+        <input
+          autoComplete="off"
+          type="checkbox"
+          disabled={readOnly}
+          checked={manages}
+          onChange={(e) => setManages(e.target.checked)}
+        />
         Manages this place
       </label>
       <div className="villages-manage-actions">

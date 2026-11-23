@@ -65,7 +65,7 @@ await withBrowser(browser, async () => {
         kind: "exterior",
         connectedTo: ["bay"],
         seen: true,
-        description: "A sheltered approach.",
+        description: place.description,
         image: null,
       },
       {
@@ -294,6 +294,9 @@ await withBrowser(browser, async () => {
     const tabs = profile.getByRole("navigation", { name: "Venue sections" });
     await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     const about = profile.getByRole("region", { name: "About this venue" });
+    await expect(about.getByText(place.form, { exact: true })).toHaveCount(1);
+    await expect(about.getByText(place.description, { exact: true })).toHaveCount(0);
+    await expect(about.getByText("Form", { exact: true })).toHaveCount(0);
     await expect(about.getByText("Resident capacity", { exact: true })).toBeVisible();
     await tabs.getByRole("button", { name: "People", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Mara", exact: true })).toBeVisible();
@@ -359,6 +362,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("heading", { name: "Workshop", exact: true })).toBeVisible();
     await expect(roomName).toHaveValue("Workshop");
     await chooseRoom("Entrance");
+    await expect(editor.getByText(place.description, { exact: true })).toBeVisible();
     await expect(profile.getByText("Exterior", { exact: true })).toHaveCount(0);
     await expect(roomName).toHaveCount(0);
     await expect(profile.getByText("Access options", { exact: true })).toHaveCount(0);

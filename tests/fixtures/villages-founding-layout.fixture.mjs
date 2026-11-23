@@ -2191,7 +2191,7 @@ export async function verifyFoundingLayout(group) {
         );
         await editVenue("founding-home:player");
         await expect(sheet).toBeVisible();
-        await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveCount(0);
+        await expect(sheet.getByLabel("Description", { exact: true })).toHaveCount(0);
         await expect(sheet.getByRole("navigation", { name: "Venue sections" })).toBeVisible();
         await expect(sheet.getByRole("combobox")).toHaveCount(0);
         await sheet.getByRole("button", { name: "Zones", exact: true }).click();
@@ -2463,7 +2463,7 @@ export async function verifyFoundingLayout(group) {
         );
         await editVenue("founding-home:player");
         await manageVenue();
-        const appearance = sheet.getByLabel("Venue form", { exact: true });
+        const appearance = sheet.getByLabel("Description", { exact: true });
         const savedAppearance = await appearance.inputValue();
         await appearance.fill("");
         await closeVenue();
@@ -2501,7 +2501,7 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet).toHaveCount(0);
         await editVenue("founding-home:player");
         await manageVenue();
-        await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveValue(savedAppearance);
+        await expect(sheet.getByLabel("Description", { exact: true })).toHaveValue(savedAppearance);
         await closeVenue();
         await advance();
         await expect(root).toHaveAttribute("data-step", "4");

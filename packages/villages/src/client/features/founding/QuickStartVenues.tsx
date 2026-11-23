@@ -346,20 +346,8 @@ export function QuickStartVenues({
                     <label>
                       Description
                       <textarea
-                        aria-label="Description"
-                        {...errorProps("description")}
-                        maxLength={1000}
-                        rows={3}
-                        value={selected.description}
-                        onChange={(e) => patch({ ...selected, description: e.target.value })}
-                      />
-                      {fieldError("description")}
-                    </label>
-                    <label>
-                      Venue form
-                      <textarea
                         autoComplete="off"
-                        aria-label="Venue form"
+                        aria-label="Description"
                         {...errorProps("form")}
                         maxLength={2000}
                         rows={2}
@@ -389,10 +377,8 @@ export function QuickStartVenues({
                   </fieldset>
                 ) : (
                   <>
-                    <p>{selected.description}</p>
+                    <p>{selected.form}</p>
                     <dl className="villages-manage-details">
-                      <dt>Form</dt>
-                      <dd>{selected.form}</dd>
                       <dt>Resident capacity</dt>
                       <dd>{selected.residenceCapacity ?? 0}</dd>
                     </dl>
@@ -538,10 +524,10 @@ export function QuickStartVenues({
                     <div className="villages-quick-zone-content">
                       <div className="villages-quick-zone-fields">
                         <label className="villages-quick-zone-description">
-                          <span>{zoneId === "exterior" ? "Exterior description" : "Zone description"}</span>
+                          <span>Description</span>
                           <textarea
                             autoComplete="off"
-                            aria-label="Zone description"
+                            aria-label="Description"
                             {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
                             value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
                             maxLength={1000}

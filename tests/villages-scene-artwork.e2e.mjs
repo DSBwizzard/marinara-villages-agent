@@ -158,6 +158,8 @@ await withBrowser(browser, async () => {
           .getByRole("button", { name: new RegExp(`^${targetName}\\b`) })
           .click();
       }
+      const edit = editor.getByRole("button", { name: "Edit", exact: true });
+      if (await edit.count()) await edit.click();
     };
     const openSettings = async () => {
       await page.getByRole("button", { name: "Venue actions", exact: true }).click();
@@ -168,6 +170,7 @@ await withBrowser(browser, async () => {
     await openSettings();
     await expect(page.getByRole("button", { name: "Generate artwork", exact: true })).toBeEnabled();
     await expect(page.getByText("Artwork is out of date.", { exact: true })).toBeVisible();
+    await page.locator(".marinara-capability-villages-venue-navigation button").first().click();
     await page.getByRole("button", { name: "About", exact: true }).click();
     const photo = page.locator(".marinara-capability-villages-venue-photo img");
     await expect(photo).toHaveAttribute("src", night);

@@ -254,14 +254,39 @@ await withBrowser(browser, async () => {
       await page.keyboard.press("Escape");
       await expect(sheet).toBeVisible();
       await manage();
-      await sheet.getByLabel("Venue form", { exact: true }).fill("A timber cottage");
+      const originalExterior = await page.evaluate(() => window.quickState.venues[0].description);
+      await expect(sheet.getByRole("textbox", { name: "Description", exact: true })).toHaveCount(1);
+      await sheet.getByLabel("Description", { exact: true }).fill("A timber cottage");
+      assert.equal(
+        await page.evaluate(() => window.quickState.venues[0].description),
+        originalExterior,
+        "Venue Description edits leave Entrance unchanged",
+      );
       await closeVenue();
       await expect(sheet).toHaveCount(0);
       await expect(first).toBeFocused();
       await expect(page.locator(".villages-forging-body")).toHaveJSProperty("inert", false);
       await first.click();
       await manage();
-      await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveValue("A timber cottage");
+      await expect(sheet.getByLabel("Description", { exact: true })).toHaveValue("A timber cottage");
+      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await expect(sheet.getByText("A timber cottage", { exact: true })).toHaveCount(1);
+      await expect(sheet.getByText(originalExterior, { exact: true })).toHaveCount(0);
+      await openZones();
+      await sheet.locator('[data-layout-zone="exterior"]').click();
+      await expect(sheet.getByText(originalExterior, { exact: true })).toBeVisible();
+      await edit();
+      await sheet.getByLabel("Description", { exact: true }).fill("A sheltered porch beside the village path.");
+      assert.equal(
+        await page.evaluate(() => window.quickState.venues[0].form),
+        "A timber cottage",
+        "Entrance Description edits leave the Venue unchanged",
+      );
+      assert.equal(
+        await page.evaluate(() => window.quickState.venues[0].description),
+        "A sheltered porch beside the village path.",
+      );
+      await parentVenue();
       await page.keyboard.press("Escape");
       await expect(sheet).toBeVisible();
       await closeVenue();
@@ -525,7 +550,7 @@ await withBrowser(browser, async () => {
       await closeVenue();
       await first.click();
       await manage();
-      await sheet.getByLabel("Venue form", { exact: true }).fill("A converted school bus");
+      await sheet.getByLabel("Description", { exact: true }).fill("A converted school bus");
       await closeVenue();
       await first.click();
       await openZones();
@@ -755,7 +780,7 @@ await withBrowser(browser, async () => {
       );
       await first.click();
       await manage();
-      await sheet.getByLabel("Venue form", { exact: true }).fill("Still editable after an unavailable result");
+      await sheet.getByLabel("Description", { exact: true }).fill("Still editable after an unavailable result");
       await closeVenue();
       await page.waitForTimeout(2250);
       assert.equal(reads, beforeUnavailableReads + 1, "An authoritative missing result stops the recovery interval");

@@ -64,7 +64,13 @@ function Management({
   return (
     <fieldset disabled={busy}>
       <label className="villages-manage-check">
-        <input type="checkbox" disabled={!canManage} checked={active} onChange={(e) => setActive(e.target.checked)} />
+        <input
+          autoComplete="off"
+          type="checkbox"
+          disabled={!canManage}
+          checked={active}
+          onChange={(e) => setActive(e.target.checked)}
+        />
         Manages this place
       </label>
       {error && <p role="alert">{error}</p>}
