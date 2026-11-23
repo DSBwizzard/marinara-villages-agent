@@ -1907,7 +1907,7 @@ export async function verifyFoundingLayout(group) {
             return original;
           });
           await expect(
-            root.getByText("Provide public shared Zones in at least two Venues.", { exact: true }),
+            root.getByText("Keep shared Zones open around the clock in at least two Venues.", { exact: true }),
           ).toBeVisible();
           await expect(button("Use starter homes")).toHaveCount(0);
           await page.evaluate((venues) => window.featureController.setSetupVenues(venues), sharedVenues);
@@ -2210,8 +2210,30 @@ export async function verifyFoundingLayout(group) {
           assert.deepEqual(await readPosition(), moved, "Cancelling a touch drag keeps the saved position");
           const canvas = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
           const picture = mapCanvas.getByRole("img", { name: "Map of Old Harbour" });
+          await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
+          await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
           const beforePan = await picture.boundingBox();
-          const panStart = { x: canvas.x + canvas.width * 0.75, y: canvas.y + canvas.height * 0.15 };
+          assert.ok(beforePan.width > canvas.width + 60, "Zoomed map has room for a horizontal pan");
+          const panStart = await page.evaluate((bounds) => {
+            const controls = [...document.querySelectorAll(".villages-quick-map button")].map((node) =>
+              node.getBoundingClientRect(),
+            );
+            for (const y of [0.1, 0.3, 0.5, 0.7, 0.9])
+              for (const x of [0.8, 0.6, 0.4, 0.2]) {
+                const point = { x: bounds.x + bounds.width * x, y: bounds.y + bounds.height * y };
+                const target = document.elementFromPoint(point.x, point.y);
+                const nearControl = controls.some(
+                  (box) =>
+                    point.x > box.left - 32 &&
+                    point.x < box.right + 32 &&
+                    point.y > box.top - 32 &&
+                    point.y < box.bottom + 32,
+                );
+                if (!nearControl && target?.closest('[aria-label="Map navigation"]') && !target.closest("button"))
+                  return point;
+              }
+            throw Error("No map background available for the pan gesture");
+          }, canvas);
           await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [panStart] });
           await touch.send("Input.dispatchTouchEvent", {
             type: "touchMove",
@@ -2220,6 +2242,7 @@ export async function verifyFoundingLayout(group) {
           await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
           await expect.poll(async () => (await picture.boundingBox()).x).not.toBe(beforePan.x);
           assert.deepEqual(await readPosition(), moved, "Dragging the background pans without moving pins");
+          await showVenuePin("founding-home:player");
           const oldZoom = Number(
             await mapCanvas.locator("[data-navigation-zoom]").getAttribute("data-navigation-zoom"),
           );
@@ -2484,9 +2507,14 @@ export async function verifyFoundingLayout(group) {
         await expect(overview.getByRole("button", { name: "Edit People", exact: true })).toHaveCount(0);
         await expect(overview.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 1 });
         for (const row of await overview.locator(".villages-selected-villager").all()) {
+          await row.evaluate((node) => node.scrollIntoView({ block: "center", inline: "nearest" }));
           await expect(row).toBeInViewport({ ratio: 1 });
           assert.equal(await row.evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
         }
+        const arrangements = overview.getByRole("region", { name: "Home and work arrangements", exact: true });
+        await arrangements.locator("h3").last().scrollIntoViewIfNeeded();
+        await expect(arrangements.locator("h3").last()).toBeInViewport({ ratio: 1 });
+        await expect(overview.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 1 });
         if (view.width === 320 || view.width === 1366) {
           const residentIds = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
           await page.evaluate(() => window.featureController.setSetupFoundingVillagerIds([]));

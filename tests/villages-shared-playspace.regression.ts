@@ -81,7 +81,7 @@ for (const restrict of [
     common(s).preparation = { status: "pending" } as any;
   },
   (s: VillageState) => {
-    common(s).kind = "restricted";
+    common(s).kind = "personal";
   },
   (s: VillageState) => {
     s.venues[0]!.access!.bans.push({
@@ -100,6 +100,11 @@ for (const restrict of [
   assert.equal(sharedPlayspace(state, at).zoneCount, 2);
   state.venues.pop();
   assert.throws(() => assertSharedPlayspace(state, at), /Open replacement shared space first/);
+}
+{
+  const state = world();
+  common(state).kind = "restricted";
+  assert.equal(sharedPlayspace(state, at).zoneCount, 3, "The explicit access policy decides shared use");
 }
 {
   const state = world();

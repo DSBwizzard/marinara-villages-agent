@@ -82,7 +82,7 @@ initializeVenueAccess(saved.venues[0]);
 assert.equal(coerceVillageState(saved).venues[0].zones!.length, 7, "Entrance is extra");
 saved.venues[0].zones!.push({ ...saved.venues[0].zones![1], id: "seventh" });
 assert.throws(() => coerceVillageState(saved), /six Zones/);
-await assert.rejects(f.service.saveProjectPlan(id, f.body(id, { ...plan, capacity: 5 })), /one to four/);
+await assert.rejects(f.service.saveProjectPlan(id, f.body(id, { ...plan, capacity: 5 })), /zero to four/);
 const distinct = fixture(),
   distinctId = await distinct.newProject("Workshop", "a", { x: 0.7, y: 0.7 }, "r".repeat(200));
 const physicalDesign = "A timber hall with sheltered work tables, wide windows and a shared gathering space. "

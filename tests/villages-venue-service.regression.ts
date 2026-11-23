@@ -61,8 +61,8 @@ async function main() {
     f.ports.sceneQueries = () => ({ activeVenueSession: async () => scene });
     const venue = f.state.venues[0];
     const common = venue.zones!.find((zone) => zone.id !== "exterior")!;
-    venue.zones!.push({ ...structuredClone(common), id: "other", name: "Other", connectedTo: ["exterior"] });
-    venue.zones!.find((zone) => zone.id === "exterior")!.connectedTo!.push("other");
+    venue.zones!.push({ ...structuredClone(common), id: "annex", name: "Annex", connectedTo: ["exterior"] });
+    venue.zones!.find((zone) => zone.id === "exterior")!.connectedTo!.push("annex");
     const zones = materializeConnections(venueZones(venue));
     const cosmetic = {
       base: zoneLayoutKey(zones, venue.zoneLayout),
@@ -89,8 +89,8 @@ async function main() {
       base: zoneLayoutKey(venue.zones!, venue.zoneLayout),
       connections: cosmetic.connections.map((zone) => ({ ...zone, connectedTo: [...zone.connectedTo] })),
     };
-    change.connections.find((zone) => zone.id === common.id)!.connectedTo.push("other");
-    change.connections.find((zone) => zone.id === "other")!.connectedTo.push(common.id);
+    change.connections.find((zone) => zone.id === common.id)!.connectedTo.push("annex");
+    change.connections.find((zone) => zone.id === "annex")!.connectedTo.push(common.id);
     const before = JSON.stringify(venue);
     await assert.rejects(commands.updateVenueZoneLayout(venue.id, change), /End the active Scene/);
     assert.equal(JSON.stringify(venue), before, "Scene anywhere blocks passage changes");

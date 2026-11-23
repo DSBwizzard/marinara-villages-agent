@@ -41,6 +41,7 @@ function fixture(name: string) {
       spaces: [{ id: "residence", description: "A small home", image: null }],
       residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id: "destination",
+      residenceCapacity: 1,
       name: `${name} home`,
       description: "A small home",
     }),

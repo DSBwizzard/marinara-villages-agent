@@ -18,6 +18,7 @@ const home = venueDraft({ name: "Home", description: "A blue door" }, null);
 home.id = "home";
 home.layoutVersion = 1;
 home.residentIds = ["resident"];
+home.residenceCapacity = 1;
 home.zones = [
   {
     ...defaultVenueSpace("residence", "A blue door"),

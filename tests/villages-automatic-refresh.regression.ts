@@ -403,6 +403,7 @@ async function main() {
               zones: undefined,
               spaces: undefined,
               residentIds: ["housing-resident"],
+              residenceCapacity: 1,
               name: "Rosa home",
               privateSpaces: [
                 {
@@ -425,6 +426,7 @@ async function main() {
               spaces: undefined,
               residentIds: [],
               name: "The bakery",
+              residenceCapacity: 1,
               description: "A small bakery.",
               occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
               presentation: { image: null, x: 0.6, y: 0.6 },

@@ -108,7 +108,7 @@ export function ProjectZones({
       name: "New Zone",
       purpose: "",
       description: "",
-      kind: kindFor(personal),
+      kind: personal && renovation ? ("restricted" as const) : kindFor(personal),
       connectedTo: ["exterior"],
       controllerIds: [],
     };
@@ -342,7 +342,21 @@ export function ProjectZones({
                 ) : null}
               </div>
               <div className="vp-zone-options">
-                {!mobile || optionPage === "main" ? <></> : null}
+                {privateRoom && renovation && !existingRoom && (!mobile || optionPage === "main") ? (
+                  <label>
+                    Room use
+                    <select
+                      aria-label="Room use"
+                      value={selected.kind}
+                      onChange={(event) =>
+                        patch({ kind: event.target.value as "personal" | "restricted", controllerIds: [] })
+                      }
+                    >
+                      <option value="restricted">Shared Zone</option>
+                      <option value="personal">Personal room</option>
+                    </select>
+                  </label>
+                ) : null}
                 {hasControllers && (!mobile || optionPage === "controllers") ? (
                   <>
                     <span className="vp-label">Controllers</span>

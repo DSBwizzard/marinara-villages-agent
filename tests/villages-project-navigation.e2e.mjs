@@ -406,6 +406,11 @@ await withBrowser(browser, async () => {
     if (width < 700) await restricted.page.getByRole("button", { name: "Long-term details", exact: true }).click();
     await restricted.page.getByLabel("Room Specification", { exact: true }).fill("Shelves and a reading desk.");
     if (width < 700) await restricted.page.getByRole("button", { name: "Options", exact: true }).click();
+    const roomUse = restricted.page.getByRole("combobox", { name: "Room use", exact: true });
+    await expect(roomUse).toHaveValue("restricted");
+    await roomUse.selectOption("personal");
+    await expect(restricted.page.getByRole("group", { name: "Zone controllers" })).toHaveCount(0);
+    await roomUse.selectOption("restricted");
     if (width < 700) await restricted.page.getByRole("button", { name: "Controllers", exact: true }).click();
     await restricted.page
       .getByRole("group", { name: "Zone controllers" })

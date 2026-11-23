@@ -1051,8 +1051,9 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2[data-review] .villages-forging-body[data-step="4"] { display:flex; flex-direction:column; min-height:0; overflow:hidden; }
 .villages-founding-review { display:flex; flex:1; flex-direction:column; min-width:0; min-height:0; gap:.65rem; padding:clamp(.6rem,1.1cqw,1rem); border:1px solid var(--founding-line); border-radius:.8rem; background:var(--founding-panel); }
 .villages-forging-v2 .villages-founding-review>h2 { margin:0; font-size:clamp(1.1rem,2cqw,1.6rem); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.villages-review-fields { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; justify-content:safe center; overflow:auto; gap:.65rem; }
-.villages-review-fields>* { flex-shrink:0; }
+.villages-review-fields { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; justify-content:center; }
+.villages-founding-review[data-page="people"] .villages-review-fields { justify-content:safe center; overflow:auto; gap:.65rem; }
+.villages-founding-review[data-page="people"] .villages-review-fields>* { flex-shrink:0; }
 .villages-review-fields .villages-people-panel>.villages-forging-card { padding:0; border:0; }
 .villages-review-fields .villages-people-panel { width:100%; max-width:40rem; align-self:center; }
 .villages-review-fields .villages-review-setting-editor { width:100%; max-width:48rem; align-self:center; }

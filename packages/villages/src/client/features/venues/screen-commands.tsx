@@ -264,7 +264,7 @@ export function useVenueScreenCommands(ports: {
           requestId: createVillagesClientId(),
           capacity: venueProposalDraft.capacity,
           title: venueProposalDraft.title || `Change ${place.name}`,
-          detail: venueProposalDraft.description || `Change Venue Classes or capacity at ${place.name}.`,
+          detail: venueProposalDraft.description || `Change home capacity at ${place.name}.`,
         }),
       });
       if (!editor.owns(claim)) return;

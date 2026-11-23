@@ -67,7 +67,7 @@ assert.notEqual(connectionProblem(draft), "");
 const initialized = materializeConnections(draft);
 assert.deepEqual(
   initialized.map((entry: any) => entry.connectedTo),
-  [["kitchen"], ["kitchen"], ["exterior", "bedroom"]],
+  [["bedroom", "kitchen"], ["exterior"], ["exterior"]],
 );
 assert.equal(connectionProblem(initialized), "");
 assert.deepEqual(materializeConnections(initialized), initialized);

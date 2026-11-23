@@ -61,6 +61,7 @@ function fixture(name: string) {
   );
   home.occupancy = { playerHome: false, residentCharacterId: "same", homeKind: "small-home" };
   home.residentIds = ["same"];
+  home.residenceCapacity = 1;
   state.venues = [...[home], ...sharedVenuesFixture()];
   const calls: string[] = [],
     owners: unknown[] = [],
