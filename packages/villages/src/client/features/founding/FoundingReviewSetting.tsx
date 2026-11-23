@@ -93,11 +93,8 @@ export function FoundingReviewSetting({
             books={controller.lorebooks}
             error={controller.lorebooksError}
             selected={controller.setupLorebookDraft}
-            onChange={(ids) => {
-              controller.setSetupLorebookDraft(ids);
-              onSection("Map");
-            }}
-            founding={{ inline: false, onBack: () => onSection("Map") }}
+            onChange={controller.setSetupLorebookDraft}
+            embedded
             disabled={disabled}
             budget={{
               value: controller.setupLoreTokenBudgetDraft,

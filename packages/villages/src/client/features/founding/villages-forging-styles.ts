@@ -525,6 +525,8 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-lorebook-search-row { display:flex; align-items:center; gap:.35rem; flex:none; min-width:0; }
 .villages-lorebook-search-row .villages-lorebook-search { flex:1; min-width:0; margin:0; }
 .villages-lorebook-inline .villages-lorebook-results { --lorebook-rows:4; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.villages-forging-v2 .villages-lorebook-embedded .villages-lorebook-results { --lorebook-rows:2; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:hidden; }
+.villages-lorebook-embedded>.villages-founding-pagination { padding-top:0; margin:0; }
 .villages-forging-v2 .villages-founding-overlay>dialog.villages-lorebook-dialog[open] { display:flex; flex-direction:column; gap:.5rem; width:min(34rem,100%); max-width:100%; max-height:100%; padding:.75rem; }
 .villages-forging-v2 .villages-lorebook-dialog[open]>header { padding:0; margin:0; background:transparent; border-bottom:1px solid var(--founding-line,#a6809166); }
 .villages-forging-v2 .villages-lorebook-dialog[open]>header h3 { margin:0; }

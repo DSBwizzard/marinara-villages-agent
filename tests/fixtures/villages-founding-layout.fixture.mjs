@@ -2520,8 +2520,47 @@ export async function verifyFoundingLayout(group) {
         await overview.getByRole("button", { name: "World", exact: true }).click();
         await expect(overview.getByLabel("World rules", { exact: true })).toHaveValue("The sun never sets.");
         await overview.getByRole("button", { name: "Lorebooks", exact: true }).click();
-        await expect(loreDialog).toBeVisible();
-        await loreDialog.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(loreDialog).toHaveCount(0);
+        const inlineLore = overview.getByRole("region", { name: "Village Lorebooks", exact: true });
+        await expect(inlineLore).toBeVisible();
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-lorebooks-${view.width}-${view.height}.png`),
+          });
+        await expect(overview.getByRole("button", { name: "Lorebooks", exact: true })).toHaveAttribute(
+          "aria-pressed",
+          "true",
+        );
+        for (const control of await inlineLore.locator("input,button").all())
+          await expect(control).toBeInViewport({ ratio: 1 });
+        assert.equal(
+          await inlineLore.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+          true,
+          "Lorebooks fits inside Setting review without a scrolling body",
+        );
+        assert.equal(await overview.evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
+        const loreBounds = await inlineLore.boundingBox();
+        const reviewFooter = await overview.locator(".villages-review-actions").boundingBox();
+        assert.ok(
+          loreBounds.y + loreBounds.height <= reviewFooter.y + 1,
+          "Inline Lorebooks stays above the shared Review navigation",
+        );
+        await expect(overview.getByRole("button", { name: "Next", exact: true })).toHaveCount(1);
+        await inlineLore.getByRole("button", { name: "Next Lorebooks page", exact: true }).click();
+        await inlineLore.getByRole("searchbox", { name: "Search Lorebooks", exact: true }).fill("Community archive 3");
+        const loreChoice = inlineLore.getByRole("checkbox", { name: "Community archive 3", exact: true });
+        await loreChoice.check();
+        await inlineLore.getByRole("textbox", { name: "Lorebook Token Budget", exact: true }).fill("1700");
+        await overview.getByRole("button", { name: "World", exact: true }).click();
+        await overview.getByRole("button", { name: "Lorebooks", exact: true }).click();
+        await inlineLore.getByRole("searchbox", { name: "Search Lorebooks", exact: true }).fill("Community archive 3");
+        await expect(loreChoice).toBeChecked();
+        await expect(inlineLore.getByRole("textbox", { name: "Lorebook Token Budget", exact: true })).toHaveValue(
+          "1700",
+        );
+        await loreChoice.uncheck();
+        await inlineLore.getByRole("textbox", { name: "Lorebook Token Budget", exact: true }).fill("1600");
+        await inlineLore.getByRole("searchbox", { name: "Search Lorebooks", exact: true }).fill("");
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `review-setting-${view.width}-${view.height}.png`),

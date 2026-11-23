@@ -378,6 +378,7 @@ export function VillageLorebookPicker({
   onChange,
   disabled,
   founding,
+  embedded = false,
   budget,
 }: {
   books: VillageLorebookOption[] | null;
@@ -386,6 +387,7 @@ export function VillageLorebookPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
   founding?: { inline: boolean; onBack(): void };
+  embedded?: boolean;
   budget?: Parameters<typeof LoreTokenBudgetField>[0];
 }) {
   const inline = founding?.inline ?? false;
@@ -398,9 +400,11 @@ export function VillageLorebookPicker({
     setOpen(false);
     if (inline) requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true }));
   };
-  const active = open ? pending : selected;
+  const active = embedded ? selected : open ? pending : selected;
   const stale =
-    open && (baseSelection.length !== selected.length || baseSelection.some((id, index) => id !== selected[index]));
+    !embedded &&
+    open &&
+    (baseSelection.length !== selected.length || baseSelection.some((id, index) => id !== selected[index]));
   const [query, setQuery] = useState("");
   const byId = new Map((books ?? []).map((book) => [book.id, book]));
   const visible = (books ?? []).filter(
@@ -410,7 +414,7 @@ export function VillageLorebookPicker({
   const options = [...visible, ...missing.map((id) => ({ id, name: id, enabled: false }))];
   const filtered = options.filter((book) => book.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const [page, setPage] = useState(0);
-  const pageSize = founding && !inline ? 6 : 12;
+  const pageSize = embedded ? 4 : founding && !inline ? 6 : 12;
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const pageIndex = Math.min(page, pages - 1);
   const shown = filtered.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
@@ -478,7 +482,11 @@ export function VillageLorebookPicker({
                     (!book.enabled && !checked && !selected.includes(book.id)) ||
                     (!checked && active.length >= 24)
                   }
-                  onChange={() => setPending(checked ? active.filter((id) => id !== book.id) : [...active, book.id])}
+                  onChange={() =>
+                    (embedded ? onChange : setPending)(
+                      checked ? active.filter((id) => id !== book.id) : [...active, book.id],
+                    )
+                  }
                 />
                 {state ? (
                   <span className="villages-lorebook-state" aria-hidden="true" title={state}>
@@ -526,6 +534,14 @@ export function VillageLorebookPicker({
       </footer>
     </>
   );
+  if (embedded)
+    return (
+      <section className="villages-lorebook-inline villages-lorebook-embedded" aria-label="Village Lorebooks">
+        {choices}
+        {budget ? <LoreTokenBudgetField {...budget} description={false} /> : null}
+        <FoundingPagination compact page={pageIndex} count={pages} onPage={setPage} label="Lorebooks" />
+      </section>
+    );
   return (
     <section
       className={founding ? undefined : ELEMENT_TAG + "-field " + ELEMENT_TAG + "-lore-picker villages-lorebook-card"}
@@ -613,12 +629,14 @@ export function LoreTokenBudgetField({
   min = 0,
   max = 3200,
   disabled = false,
+  description = true,
 }: {
   value: number;
   onChange(value: number): void;
   min?: number;
   max?: number;
   disabled?: boolean;
+  description?: boolean;
 }) {
   const id = useId();
   const [empty, setEmpty] = useState(false);
@@ -630,7 +648,7 @@ export function LoreTokenBudgetField({
         <input
           id={id}
           aria-label="Lorebook Token Budget"
-          aria-describedby={`${id}-description`}
+          aria-describedby={description ? `${id}-description` : undefined}
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
@@ -648,7 +666,7 @@ export function LoreTokenBudgetField({
         />
         <span>tokens</span>
       </div>
-      <p id={`${id}-description`}>Maximum lorebook information added to each model request.</p>
+      {description ? <p id={`${id}-description`}>Maximum lorebook information added to each model request.</p> : null}
     </div>
   );
 }
