@@ -292,13 +292,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await page.getByRole("button", { name: "Cancel Project", exact: true }).click();
     await back();
-    await page.getByRole("button", { name: "History", exact: true }).click();
-    await expect(
-      page
-        .getByRole("navigation", { name: "Project history", exact: true })
-        .getByRole("button", { name: /Canvas Tent.*Cancelled/ }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "‹ Projects", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Canvas Tent", exact: true })).toContainText("Set aside");
     await select(/Workshop/);
     await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A revised workshop");
     await page.getByRole("button", { name: "Save design", exact: true }).click();
