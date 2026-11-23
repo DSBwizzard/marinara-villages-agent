@@ -88,6 +88,26 @@ assert.equal(complete.destinations, undefined);
 assert.equal(complete.zoneLayout, undefined);
 assert.deepEqual(foundingVenueIssues([complete]), []);
 assert.doesNotThrow(() => parsePlace(complete, true));
+{
+  const image = { id: "uploaded", ref: "global-gallery:uploaded", url: "/uploaded.png" };
+  const uploaded = parsePlace(
+    {
+      ...complete,
+      freezePicture: true,
+      presentation: { ...complete.presentation, image },
+      zones: [{ id: "exterior", name: "Front door", kind: "exterior" }],
+      spaces: complete.spaces?.map((space) => ({ ...space, image, freezePicture: true })),
+    },
+    true,
+  );
+  assert.equal(uploaded.zones![0].name, "Front door");
+  assert.deepEqual(uploaded.zones![0].image, image);
+  assert.equal(uploaded.zones![0].freezePicture, true);
+  for (const space of uploaded.zones!.filter((zone) => zone.kind === "public")) {
+    assert.deepEqual(space.image, image);
+    assert.equal(space.freezePicture, true, "Founding preserves direct uploaded art and pinning");
+  }
+}
 for (const personal of [false, true]) {
   const added = addFoundingZone(complete, personal, "zone:new");
   assert.equal(foundingZoneProblem(added), "", "New Zones have usable, editable defaults");

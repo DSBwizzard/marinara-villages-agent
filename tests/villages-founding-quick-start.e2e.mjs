@@ -43,7 +43,7 @@ function Harness(){
  window.restoreMissingSuggestion=()=>setWorkspace(state=>({...state,suggestionRequest:{id:'absent-draft-result',sourceKey:source,quickStart:true}}));
  const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
  const select=venue=>{setSelected(venue.id);setMoving(null);setWorkspace(state=>({...state,view:'details',paused:true}))};
- const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,pictureReference:image}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,pictureReference:image}:zone)});};
+ const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
  window.quickState={venues,workspace,authored,suggestionsKey:key,problem,moving};
  window.replaceQuickVenues=setVenues;
  window.legacyPolicy=()=>setVenues(rows=>rows.map(row=>row.id!=='founding-home:player'?row:{...row,
@@ -485,7 +485,7 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
       await sheet.getByLabel("Zone name", { exact: true }).press("Enter");
       await expect(sheet.getByRole("heading", { name: "Reading nook", exact: true })).toBeVisible();
-      await button("Rename Zone").click();
+      await sheet.getByLabel("Zone name", { exact: true }).focus();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
       await connections();
       const beforeConnect = await page.evaluate(() => window.quickState.venues);
@@ -562,17 +562,17 @@ await withBrowser(browser, async () => {
         expected,
         "Text edits preserve ownership, access and sleeping data",
       );
-      const upload = sheet.getByLabel("Upload Zone reference", { exact: true });
+      const upload = sheet.getByLabel("Upload Front Office image", { exact: true });
       const file = { name: "zone.png", mimeType: "image/png", buffer: Buffer.from("fixture") };
       await upload.setInputFiles(file);
       await expect(sheet.getByRole("img", { name: "Artwork for Front Office", exact: true })).toHaveCount(0);
-      await expect(sheet.getByRole("status")).toHaveText("Reference saved. Generate artwork to use it.");
+      await expect(sheet.getByRole("button", { name: "View fullsize", exact: true })).toBeEnabled();
       await parentVenue();
       await zone("exterior").click();
       await edit();
       await expect(access).toHaveCount(0);
       await expect(sheet.getByRole("img")).toHaveCount(0);
-      await upload.setInputFiles(file);
+      await sheet.getByLabel("Upload Entrance image", { exact: true }).setInputFiles(file);
       await expect.poll(() => first.evaluate((node) => node.style.backgroundImage)).not.toContain("data:image");
       await expect(first.locator("img")).toHaveCount(0);
       const confirm = async () => {

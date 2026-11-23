@@ -1,4 +1,4 @@
-import { observedPictureKey } from "../../domain/rules/zone-observation.js";
+import { rememberZoneArtwork, zoneObservationKey, observedPictureKey } from "../../domain/rules/zone-observation.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import { observableRoomDescription } from "../../domain/rules/zone-picture.js";
 import { DAYTIME_IMAGE_INSTRUCTION } from "../../domain/rules/location-image-rules.js";
@@ -315,6 +315,9 @@ export function createLocationImages(ports: LocationImagePorts) {
   async function storeVillageVenueImage(venueId: string, zoneId: string, dataUrl: unknown): Promise<VillageSnapshot> {
     const { village, venue } = await requireVenue(venueId);
     await assertVenueImageAccess(venueId, zoneId, true);
+    const before = resolveVenueZone(venue, zoneId)!;
+    const revision = before.pictureRevision ?? 0;
+    const observation = before.observed && zoneObservationKey(before.observed);
     const decoded = decodeImageDataUrl(dataUrl);
     const image = await uploadVillageGalleryImage({
       bytes: decoded.bytes,
@@ -324,21 +327,29 @@ export function createLocationImages(ports: LocationImagePorts) {
     });
     await mutateVillageState((state) => {
       if (state.seed !== village.seed || state.foundedAt !== village.foundedAt)
-        throw conflict("That Village changed. Upload the reference again.");
+        throw conflict("That Village changed. Upload the image again.");
       const current = state.venues.find((row) => row.id === venueId);
       const zone = current && resolveVenueZone(current, zoneId);
       if (!zone) throw notFound("That Zone is no longer here.");
-      zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
+      if (
+        (zone.pictureRevision ?? 0) !== revision ||
+        !zone.observed ||
+        zoneObservationKey(zone.observed) !== observation
+      )
+        throw conflict("The Zone image changed. Upload again.");
+      zone.image = image;
+      zone.freezePicture = true;
+      zone.pictureRevision = revision + 1;
       zone.picture = {
-        ...zone.picture,
-        base: zone.picture?.base ?? zone.image,
-        reference: image,
-        dirty: true,
-        claim: undefined,
-        failed: false,
-        problem: undefined,
+        base: image,
+        context: zone.observed.context,
+        baseline: zone.observed.context,
+        daylight: false,
+        dirty: false,
         removed: false,
       };
+      rememberZoneArtwork(zone, true);
+      if (zone.kind === "exterior") current!.presentation.image = image;
     });
     return ports.buildVillageSnapshot!();
   }

@@ -135,7 +135,9 @@ export function VenuePeopleFlow({
   roles,
   renderEditor,
   disabled = false,
+  overview,
 }: {
+  overview?: ReactNode;
   people: readonly VenuePerson[];
   assignedIds: readonly string[];
   roles(id: string): readonly VenueArrangement[];
@@ -210,20 +212,23 @@ export function VenuePeopleFlow({
       </>
     );
   return (
-    <VenuePeoplePicker
-      key={String(adding)}
-      title={adding ? "Add person" : "People"}
-      heading={adding ? "Add person" : undefined}
-      back="People"
-      onBack={adding ? () => setAdding(false) : undefined}
-      people={people.filter((row) => adding !== assignedIds.includes(row.id))}
-      onSelect={(id) => {
-        setPersonId(id);
-        setAddingArrangement(false);
-      }}
-      onAdd={!adding ? () => setAdding(true) : undefined}
-      addLabel="Add person"
-      disabled={disabled}
-    />
+    <>
+      {!adding && overview}
+      <VenuePeoplePicker
+        key={String(adding)}
+        title={adding ? "Add person" : "People"}
+        heading={adding ? "Add person" : undefined}
+        back="People"
+        onBack={adding ? () => setAdding(false) : undefined}
+        people={people.filter((row) => adding !== assignedIds.includes(row.id))}
+        onSelect={(id) => {
+          setPersonId(id);
+          setAddingArrangement(false);
+        }}
+        onAdd={!adding ? () => setAdding(true) : undefined}
+        addLabel="Add person"
+        disabled={disabled}
+      />
+    </>
   );
 }

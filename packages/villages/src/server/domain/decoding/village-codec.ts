@@ -786,7 +786,7 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         ...(typeof row.roomSpecification === "string"
           ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
           : {}),
-        purpose: boundText(row.purpose, 240),
+        ...(row.purpose !== undefined ? { purpose: boundText(row.purpose, 240) } : {}),
         controllerIds: coerceVenueIds(row.controllerIds),
         ownerId: asTrimmedString(row.ownerId) || undefined,
         connectedTo: Array.isArray(row.connectedTo)

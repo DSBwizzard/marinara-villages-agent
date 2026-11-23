@@ -364,7 +364,12 @@ export function createFoundingUploadSetupImage(ports: {
         return;
       patchSetupVenue(venue.id, (row) =>
         area === "exterior"
-          ? { ...row, pictureReference: image, referenceAppliedId: undefined }
+          ? {
+              ...createFoundingWithSetupImage()(row, area, image, zoneId),
+              pictureReference: undefined,
+              referenceAppliedId: undefined,
+              freezePicture: true,
+            }
           : {
               ...row,
               [area === "private" ? "privateSpaces" : "spaces"]: (area === "private"
@@ -372,7 +377,18 @@ export function createFoundingUploadSetupImage(ports: {
                 : row.spaces
               )?.map((room, index) =>
                 (zoneId ? room.id === zoneId : index === 0)
-                  ? { ...room, pictureReference: image, referenceAppliedId: undefined }
+                  ? {
+                      ...room,
+                      image,
+                      pictureReference: undefined,
+                      referenceAppliedId: undefined,
+                      freezePicture: true,
+                      daylightReady: false,
+                      pictureContext: JSON.stringify({
+                        description: room.description,
+                        ...(row.form ? { form: row.form } : {}),
+                      }),
+                    }
                   : room,
               ),
             },

@@ -377,7 +377,6 @@ await withBrowser(browser, async () => {
     await sections.getByRole("button", { name: "Zones", exact: true }).click();
     const zones = doors.getByRole("region", { name: "Zones", exact: true });
     await zones.getByRole("button", { name: /^Entrance\b/ }).click();
-    await doors.getByRole("button", { name: "Edit", exact: true }).click();
     await expect(doors.getByRole("switch", { name: "Automatic artwork updates" })).toBeVisible();
     await doors.locator(".marinara-capability-villages-venue-navigation button").first().click();
     await sections.getByRole("button", { name: "About", exact: true }).click();

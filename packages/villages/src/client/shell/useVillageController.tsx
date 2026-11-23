@@ -1607,8 +1607,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venueId,
     venueSection,
     setVenueSection,
-    planVenueRenovation: (place: VillageVenue) => {
-      if (projectsController.startRenovation(place)) openMenu("projects");
+    planVenueRenovation: (place: VillageVenue, draft?: import("../shared/zone-renovation.js").ZoneRenovationDraft) => {
+      if (projectsController.startRenovation(place, draft)) openMenu("projects");
     },
     openVenueProject: (id: string) => {
       openMenu("projects");

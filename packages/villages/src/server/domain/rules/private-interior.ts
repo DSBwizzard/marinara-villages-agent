@@ -22,7 +22,11 @@ export function retryPrivateInterior(zone: VillageVenueZone) {
 /** Finishing changes constraints; preparation reconciles the saved interior once. */
 export function prepareRenovatedPrivateInterior(zone: VillageVenueZone, previous?: VillageVenueZone): void {
   if (!isPrivateInterior(zone)) return;
-  if (previous && zone.ownerId !== previous.ownerId && (zone.kind === "personal" || previous.kind === "personal"))
+  if (
+    previous?.ownerId &&
+    zone.ownerId !== previous.ownerId &&
+    (zone.kind === "personal" || previous.kind === "personal")
+  )
     throw conflict("Resident moves assign Private Spaces; Renovations cannot transfer occupied rooms.");
   if (zone.ownerId === "player") return;
   if (!previous) {

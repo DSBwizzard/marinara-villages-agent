@@ -20,6 +20,7 @@ import { boundText } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { roomWasRemoved, WORKSITE_DESCRIPTION } from "./native-continuity.js";
 import { captureProjectRoomEdits } from "./project-room-edits.js";
+import { validateVenueWork } from "./venue-work.js";
 
 export function readRenovationChange(
   state: VillageState,
@@ -29,6 +30,17 @@ export function readRenovationChange(
   prior?: VillageProjectLifecycle,
 ) {
   const row = asRecord(value);
+  if (row.expectedZoneIds !== undefined) {
+    const currentIds = venueZones(venue)
+      .filter((zone) => zone.kind !== "exterior")
+      .map((zone) => zone.id)
+      .sort();
+    if (
+      !Array.isArray(row.expectedZoneIds) ||
+      JSON.stringify([...row.expectedZoneIds].sort()) !== JSON.stringify(currentIds)
+    )
+      throw conflict("The Venue layout changed. Open the Zone again to plan this renovation.");
+  }
   if (row.form !== undefined && (typeof row.form !== "string" || row.form.length > MAX_PHYSICAL_DESIGN_LENGTH))
     throw badRequest("Physical form must be at most 2000 characters.");
   const form = typeof row.form === "string" ? row.form.trim() : undefined;
@@ -37,17 +49,19 @@ export function readRenovationChange(
     throw badRequest("Residence capacity must be from zero to four.");
   const rawZones =
     row.zones ??
+    prior?.change?.zones ??
     venueZones(venue)
       .filter((zone) => zone.kind !== "exterior")
-      .map((zone) => ({ ...zone, description: "", roomSpecification: undefined }));
+      .map((zone) => ({ ...zone, description: "", purpose: undefined, roomSpecification: undefined }));
   if (!Array.isArray(rawZones) || rawZones.length > 6)
     throw badRequest("A Venue may have at most six Zones besides Entrance.");
   const zones: VillageZoneDraft[] = rawZones.map((value) => {
     const raw = asRecord(value),
       id = asTrimmedString(raw.id);
     const previous = venueZones(venue).find((zone) => zone.id === id);
-    const kind = asTrimmedString(raw.kind),
-      name = boundText(raw.name, 100).trim();
+    const kind = raw.kind === undefined ? (previous?.kind ?? "") : asTrimmedString(raw.kind),
+      name = raw.name === undefined ? (previous?.name ?? "") : boundText(raw.name, 100).trim(),
+      ownerId = raw.ownerId === undefined ? previous?.ownerId : asTrimmedString(raw.ownerId) || undefined;
     if (
       !id ||
       Buffer.byteLength(id) > 160 ||
@@ -56,9 +70,13 @@ export function readRenovationChange(
       !["public", "personal", "restricted"].includes(kind)
     )
       throw badRequest("Give each Zone a unique ID, name and kind.");
-    if (previous?.ownerId && (raw.ownerId !== previous.ownerId || kind !== previous.kind))
+    if (previous?.ownerId && (ownerId !== previous.ownerId || kind !== previous.kind))
       throw conflict("Resident moves assign occupied rooms.");
     const description = previous ? "" : asTrimmedString(raw.description);
+    const purpose =
+      raw.purpose === undefined
+        ? prior?.change?.zones?.find((zone) => zone.id === id)?.purpose
+        : boundText(raw.purpose, 240);
     const roomSpecification = asTrimmedString(raw.roomSpecification);
     if (roomSpecification.length > 4000) throw badRequest("Room specification must be at most 4000 characters.");
     if (description.length > 4000) throw badRequest("Zone description must be at most 4000 characters.");
@@ -67,12 +85,15 @@ export function readRenovationChange(
       name,
       kind: kind as VillageZoneDraft["kind"],
       description,
-      purpose: boundText(raw.purpose, 240),
+      ...(purpose !== undefined ? { purpose } : {}),
       ...(raw.roomSpecification !== undefined ? { roomSpecification } : {}),
-      ownerId: asTrimmedString(raw.ownerId) || undefined,
-      controllerIds: Array.isArray(raw.controllerIds)
-        ? raw.controllerIds.filter((id): id is string => typeof id === "string")
-        : [],
+      ownerId,
+      controllerIds:
+        raw.controllerIds === undefined
+          ? previous?.controllerIds
+          : Array.isArray(raw.controllerIds)
+            ? raw.controllerIds.filter((id): id is string => typeof id === "string")
+            : [],
       connectedTo: raw.connectedTo === undefined ? previous?.connectedTo : readConnectionIds(raw.connectedTo),
     };
   });
@@ -136,12 +157,21 @@ export function validateRenovationDesign(
       proposed.zones!.find((zone) => zone.kind === "exterior")!,
       ...zones.map((draft) => {
         const previous = proposed.zones!.find((zone) => zone.id === draft.id);
-        return { ...defaultVenueSpace(draft.id), ...previous, ...draft, access: previous?.access };
+        return {
+          ...defaultVenueSpace(draft.id),
+          ...previous,
+          ...draft,
+          access:
+            previous && (previous.kind !== draft.kind || previous.ownerId !== draft.ownerId)
+              ? undefined
+              : previous?.access,
+        };
       }),
     ],
     zones,
   );
   initializeVenueAccess(proposed);
+  for (const work of venue.access?.work ?? []) validateVenueWork(proposed, work);
   for (const actor of [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])]) {
     for (const role of ["home", "sleep"] as const) {
       const id = venue.destinations?.[actor]?.[role];

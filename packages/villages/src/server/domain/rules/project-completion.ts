@@ -88,8 +88,12 @@ export function completeProject(state: VillageState, project: VillageProject, at
           ...previous,
           ...draft,
           description: previous ? previous.description : draft.description,
+          purpose: draft.purpose ?? previous?.purpose,
           roomSpecification: draft.roomSpecification ?? previous?.roomSpecification,
-          access: previous?.access,
+          access:
+            previous && (previous.kind !== draft.kind || previous.ownerId !== draft.ownerId)
+              ? undefined
+              : previous?.access,
           image: previous?.image ?? null,
           seen: previous?.seen ?? draft.ownerId === "player",
           preparation:

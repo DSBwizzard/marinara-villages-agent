@@ -358,6 +358,7 @@ export type VillageVenue = {
   referenceAppliedId?: string;
   pictureContext?: string;
   daylightReady?: boolean;
+  freezePicture?: boolean;
   dayNight?: boolean;
   zoneLayout?: import("../helpers/zone-layout.js").ZoneLayout;
   venueType?: string;

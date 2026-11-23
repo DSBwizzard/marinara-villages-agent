@@ -2210,8 +2210,8 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.locator(".villages-zone-map-canvas")).toHaveCount(0);
         await expect(
           sheet
-            .getByRole("region", { name: "Zone artwork", exact: true })
-            .getByRole("button", { name: "Generate artwork", exact: true }),
+            .getByRole("region", { name: "Zone image", exact: true })
+            .getByRole("button", { name: "Generate Image", exact: true }),
         ).toBeVisible();
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
@@ -2333,10 +2333,11 @@ export async function verifyFoundingLayout(group) {
 
         if (view.width === 1366) {
           await sheet
-            .getByRole("region", { name: "Zone artwork", exact: true })
-            .getByRole("button", { name: "Generate artwork", exact: true })
+            .getByRole("region", { name: "Zone image", exact: true })
+            .getByRole("button", { name: "Generate Image", exact: true })
             .click();
-          await expect(sheet.getByRole("img", { name: "Artwork for Common Space", exact: true })).toBeVisible();
+          await expect(sheet.locator(".marinara-capability-villages-venue-zone-photo")).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "View fullsize", exact: true })).toBeEnabled();
           await closeVenue();
           assert.equal(generatedImages, 3, "Map and Zone artwork require explicit clicks");
           assert.deepEqual(

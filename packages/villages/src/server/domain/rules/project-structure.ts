@@ -24,6 +24,7 @@ export function changedZoneIds(venue: VillageVenue, change?: VillageProjectChang
     const previous = old.find((saved) => saved.id === zone.id);
     return {
       ...zone,
+      purpose: zone.purpose ?? previous?.purpose,
       roomSpecification: zone.roomSpecification ?? previous?.roomSpecification,
     };
   });

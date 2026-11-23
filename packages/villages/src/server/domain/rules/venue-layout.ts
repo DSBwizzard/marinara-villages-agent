@@ -135,12 +135,16 @@ export function readBaseVenueLayout(
       ...defaultVenueSpace("exterior"),
       ...daylight(row),
       id: "exterior",
-      name: "Entrance",
+      name:
+        asTrimmedString(
+          (Array.isArray(row.zones) ? row.zones.map(asRecord).find((zone) => zone.id === "exterior") : undefined)?.name,
+        ).slice(0, 100) || "Entrance",
       kind: "exterior",
       purpose: "Arrival and approach",
       description: asTrimmedString(row.description),
       image: image(asRecord(row.presentation).image),
       picture: picture(row, image(asRecord(row.presentation).image)),
+      freezePicture: row.freezePicture === true,
       seen: true,
     },
   ];
@@ -183,6 +187,7 @@ export function readBaseVenueLayout(
       controllerIds: controllers,
       image: image(area.image),
       picture: picture(area, image(area.image)),
+      freezePicture: area.freezePicture === true,
       seen: ownerId === "player",
       preparation: prepareInterior ? { status: "pending" } : undefined,
     });

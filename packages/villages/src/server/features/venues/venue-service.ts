@@ -230,8 +230,8 @@ export function createVenueCommands({
       const venue = state.venues.find((entry) => entry.id === venueId);
       const zone = venue && resolveVenueZone(venue, zoneId);
       if (!zone) throw notFound("That Zone is no longer here.");
-      if (zone.kind === "exterior") throw badRequest("Exterior is always named Exterior.");
       zone.name = (row.name as string).trim();
+      if (zone.observed) zone.observed.name = zone.name;
     });
     return buildVillageSnapshot();
   }

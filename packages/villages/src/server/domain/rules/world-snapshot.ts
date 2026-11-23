@@ -376,6 +376,7 @@ export function villageSettings(
               ? visible.picture!.night.image
               : undefined,
           nightPending:
+            !originalZone.freezePicture &&
             visible.dayNight === true &&
             (!visible.picture?.daylight || !visible.image || visible.picture?.night?.sourceId !== visible.image.id),
           pictureRevision: undefined,

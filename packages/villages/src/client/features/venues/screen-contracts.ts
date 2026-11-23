@@ -15,7 +15,10 @@ export type VenueScreenController = {
   readonly openPlace: (place: VillageVenue) => void;
   readonly venueSection: VenuesState["venueSection"];
   readonly setVenueSection: VenuesState["setVenueSection"];
-  readonly planVenueRenovation: (place: VillageVenue) => void;
+  readonly planVenueRenovation: (
+    place: VillageVenue,
+    draft?: import("../../shared/zone-renovation.js").ZoneRenovationDraft,
+  ) => void;
   readonly openVenueProject: (id: string) => void;
   readonly openVenueRequests: (venueId: string) => void;
   readonly busy: boolean;

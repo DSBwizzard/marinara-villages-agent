@@ -179,7 +179,7 @@ export function initializeVenueAccess(venue: VillageVenue): void {
   if (created && !venue.access.managerIds.length) venue.access.managerIds = ["player"];
   for (const zone of venue.zones ?? []) {
     if (zone.kind === "exterior") {
-      zone.name = "Entrance";
+      if (!zone.name || zone.name === "Exterior") zone.name = "Entrance";
       zone.access = undefined;
       continue;
     }

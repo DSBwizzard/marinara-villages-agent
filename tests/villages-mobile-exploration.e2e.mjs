@@ -457,14 +457,11 @@ await withBrowser(browser, async () => {
       await roomWithArtwork.click();
       await expect(backToZones).toBeFocused();
       await expect(venue.getByRole("heading", { name: "Room 1", exact: true, level: 1 })).toBeVisible();
-      await expect
-        .poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight))
-        .toBeLessThanOrEqual(1);
-      await editor.getByRole("button", { name: "Edit", exact: true }).click();
-      await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 1");
-      await expect(editor.getByText("Room name", { exact: true })).toHaveCount(0);
+      await expect.poll(() => scroller.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+      await expect(venue.getByRole("textbox", { name: "Zone name" })).toHaveValue("Room 1");
+      await expect(editor.getByText("Zone name", { exact: true })).toHaveCount(0);
       await expect(editor.getByRole("heading", { name: "Room 1", exact: true })).toHaveCount(0);
-      await expect(editor.getByRole("status")).toHaveText("Artwork pending");
+      await expect(editor.getByRole("status").filter({ hasText: "Artwork pending" })).toBeVisible();
       await editor.getByRole("switch", { name: "Automatic artwork updates" }).scrollIntoViewIfNeeded();
       await expect(editor.getByRole("switch", { name: "Automatic artwork updates" })).toBeInViewport({ ratio: 1 });
       assert(
@@ -474,7 +471,7 @@ await withBrowser(browser, async () => {
       const roomBackdrop = venue.locator("." + P + "-venue-zone-photo");
       await expect(roomBackdrop).toHaveAttribute("src", roomImage.url);
       await expect(editor.locator("img")).toHaveCount(0);
-      const viewFullImage = editor.getByRole("button", { name: "View full image" });
+      const viewFullImage = editor.getByRole("button", { name: "View fullsize" });
       await viewFullImage.tap();
       const viewer = page.getByRole("dialog", { name: "Room 1", exact: true });
       await expect(viewer.getByRole("img")).toHaveAttribute("src", roomImage.url);
@@ -503,7 +500,7 @@ await withBrowser(browser, async () => {
       await expect(list).toHaveCount(0);
       await expect(venue.locator("." + P + "-venue-zone-list")).toHaveCSS("translate", "-100%");
       await editor.getByRole("button", { name: "Edit", exact: true }).click();
-      await expect(editor.getByRole("textbox", { name: "Room name" })).toHaveValue("Room 5");
+      await expect(venue.getByRole("textbox", { name: "Zone name" })).toHaveValue("Room 5");
       await expect(storybook).toHaveAttribute("src", /\/venue-fallback(?:-day)?\.webp$/);
       await expect(viewFullImage).toHaveCount(0);
       await backToZones.press("Escape");

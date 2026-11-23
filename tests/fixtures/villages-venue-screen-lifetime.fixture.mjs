@@ -143,12 +143,14 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
-      requests.push({
-        route,
-        path: new URL(route.request().url()).pathname,
-        method: route.request().method(),
-        body: route.request().postDataJSON(),
-      }),
+      new URL(route.request().url()).pathname.startsWith("/api/villages/projects/rooms/")
+        ? fulfill(route, { json: { entries: [] } })
+        : requests.push({
+            route,
+            path: new URL(route.request().url()).pathname,
+            method: route.request().method(),
+            body: route.request().postDataJSON(),
+          }),
     );
     await page.goto("http://venue-screen.test/");
     await page.evaluate((values) => Object.assign(window, values), {
@@ -255,8 +257,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       .getByRole("button", { name: /^A Zone/ })
       .first()
       .click();
-    await f.page.getByRole("button", { name: "Edit", exact: true }).click();
-    return f.page.getByLabel("Room name", { exact: true });
+    return f.page.getByLabel("Zone name", { exact: true });
   }
   // State-only lifetime scenarios need one width; responsive UI lives in universal-venue coverage.
   for (const width of [390])
@@ -270,10 +271,10 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.reply(0, { fail: true });
         await expect(name).toHaveValue("Retained name");
         await expect(f.page.getByRole("alert").filter({ hasText: "The Zone name could not be saved" })).toBeVisible();
-        await f.page.getByRole("button", { name: "Save room name", exact: true }).click();
+        await name.press("Enter");
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
+        await expect(name).toBeEnabled();
         await f.finish();
       }
       {
@@ -292,7 +293,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.reply(0);
         await expect(name).toBeDisabled();
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
+        await expect(name).toBeEnabled();
         await f.finish();
       }
       for (const kind of kinds)

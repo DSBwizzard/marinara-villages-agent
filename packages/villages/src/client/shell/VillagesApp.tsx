@@ -237,8 +237,8 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     openVenueProject: (id) => {
       void move("projects", () => controller.openVenueProject(id));
     },
-    planVenueRenovation: (place) => {
-      void move("projects", () => controller.planVenueRenovation(place));
+    planVenueRenovation: (place, draft) => {
+      void move("projects", () => controller.planVenueRenovation(place, draft));
     },
     returnToScene: () => {
       void move(null, controller.returnToScene);

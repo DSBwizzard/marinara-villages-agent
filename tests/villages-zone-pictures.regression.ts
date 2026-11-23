@@ -78,6 +78,7 @@ function fixture(seed = "pictures") {
     fail = false,
     during: (() => Promise<void> | void) | undefined;
   let present = true;
+  let duringUpload: (() => void) | undefined;
   const calls: Record<string, unknown>[] = [];
   const zone = (id = "living") => state.venues[0].zones!.find((row) => row.id === id)!;
   const at = () => new Date(stamp).toISOString();
@@ -149,7 +150,10 @@ function fixture(seed = "pictures") {
       if (fail) throw Error("Synthetic image failure");
       return { bytes: new Uint8Array([1]), mime: "image/png", dataUrl: "synthetic" };
     },
-    uploadVillageGalleryImage: async () => image("render-" + calls.length),
+    uploadVillageGalleryImage: async () => {
+      duringUpload?.();
+      return image("render-" + calls.length);
+    },
     assertVenueImageAccess: async () => {},
     readVillageImageLore: async () => "",
     buildVillageSnapshot: async () => ({
@@ -195,6 +199,9 @@ function fixture(seed = "pictures") {
     },
     during: (work?: typeof during) => {
       during = work;
+    },
+    duringUpload: (work: () => void) => {
+      duringUpload = work;
     },
     dirty: (text: string, id = "living") => {
       change(text, id);
@@ -771,30 +778,53 @@ console.log(
   f.zone().dayNight = true;
   f.zone().observed!.dayNight = true;
   f.present(false);
-  const oldImage = f.zone().image!.id;
   await f.service.storeVillageVenueImage("home", "living", "data:image/png;base64,AA==");
-  assert.equal(f.zone().image!.id, oldImage, "an upload never becomes a backdrop");
-  assert.equal(f.zone().picture?.reference?.id, "render-0");
-  assert.equal(f.calls.length, 0, "saving a reference is model-free");
-  await f.enter();
-  await f.service.generateVillageLocationImage("home", "living", undefined);
-  assert.equal(f.calls.length, 2, "Generate new can use the observed account after leaving");
-  f.present(true);
-  await f.enter();
-  assert.equal(f.calls.length, 2, "a visit creates the canonical day and its night companion");
-  assert.deepEqual(f.calls[0].referenceImages, ["reference:render-0"]);
-  assert.match(String(f.calls[0].prompt), /artistic reference only/);
-  assert.match(String(f.calls[0].prompt), /White walls/);
-  assert.deepEqual(
-    f.calls[1].referenceImages,
-    ["reference:render-1"],
-    "night never relights the uploaded reference directly",
-  );
-  assert.equal(f.zone().picture?.referenceAppliedId, "render-0");
+  assert.equal(f.zone().image!.id, "render-0", "uploads replace the displayed image immediately");
   assert.equal(
-    coerceVillageState(f.world()).venues[0].zones!.find((z) => z.id === "living")!.picture?.reference?.id,
+    f.zone().observed!.image!.id,
     "render-0",
+    "uploads update remembered art without changing observed facts",
   );
+  assert.equal(f.zone().picture?.reference, undefined);
+  assert.equal(f.zone().freezePicture, true, "uploads stay pinned");
+  assert.equal(f.calls.length, 0, "uploading is model-free");
+  await f.enter();
+  assert.equal(f.calls.length, 0, "arrival never regenerates a pinned upload");
+  const restored = coerceVillageState(f.world()).venues[0].zones!.find((z) => z.id === "living")!;
+  assert.equal(restored.image!.id, "render-0");
+  assert.equal(restored.freezePicture, true);
+  await f.service.generateVillageLocationImage("home", "living", undefined);
+  assert.equal(f.calls.length, 2, "explicit Generate still creates a replacement and night companion");
+  assert.equal(f.calls[0].referenceImages, undefined, "an upload does not become a hidden generation reference");
+  assert.match(String(f.calls[0].prompt), /White walls/);
+  assert.equal(f.zone().picture?.reference, undefined);
+}
+{
+  const f = fixture();
+  f.zone().dayNight = true;
+  f.zone().observed!.dayNight = true;
+  f.during(async () => {
+    f.during(undefined);
+    await f.service.storeVillageVenueImage("home", "living", "data:image/png;base64,AA==");
+  });
+  await assert.rejects(f.service.generateVillageLocationImage("home", "living", undefined), /scenery changed/);
+  assert.equal(f.zone().freezePicture, true, "a later upload wins over in-flight generation");
+  assert.equal(f.zone().picture?.daylight, false);
+  assert.equal(f.zone().picture?.night, undefined);
+  assert.equal(f.zone().picture?.claim, undefined);
+  assert.equal(f.calls.length, 1, "cancelled generation does not buy a night companion");
+}
+{
+  const f = fixture();
+  f.duringUpload(() => {
+    f.zone().pictureRevision = (f.zone().pictureRevision ?? 0) + 1;
+    f.zone().image = image("newer-image");
+  });
+  await assert.rejects(
+    f.service.storeVillageVenueImage("home", "living", "data:image/png;base64,AA=="),
+    /image changed/,
+  );
+  assert.equal(f.zone().image!.id, "newer-image", "a late upload cannot overwrite a newer image");
 }
 {
   const f = fixture();
@@ -1105,7 +1135,9 @@ console.log(
   f.zone().preparation = { status: "pending" };
   f.zone().dayNight = true;
   await f.service.storeVillageVenueImage("home", "living", "synthetic-reference");
-  assert.equal(f.zone().picture?.reference?.id, "render-1");
+  assert.equal(f.zone().picture?.base?.id, "render-1");
+  assert.equal(f.zone().picture?.reference, undefined);
+  assert.equal(f.zone().freezePicture, true);
   await f.ports.setVillageVenueImage("home", "living", null, false, undefined, false, undefined, true);
   assert.equal(f.zone().observed!.image, null, "Remove remains cosmetic while a Zone is unavailable");
   assert.equal(f.zone().observed!.dayNight, false, "Remove does not reveal unseen lighting changes");
