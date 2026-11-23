@@ -1,4 +1,3 @@
-import { venueCapacity, venueAssignedCount } from "./venue-model.js";
 import { narrationWitnesses } from "./narration-sources.js";
 import { z } from "zod";
 import type { VillageState } from "../models/world.js";
@@ -20,11 +19,9 @@ export function narrationResidenceContext(state: VillageState, actors: string[])
       .filter(
         (venue) =>
           venue.constructionStatus !== "worksite" &&
-          venueCapacity(venue) >
-            venueAssignedCount(venue) +
-              state.residences.filter(
-                (move) => move.proposedVenueId === venue.id && ["pending", "moving"].includes(move.status),
-              ).length,
+          venueZones(venue).some(
+            (zone) => zone.kind !== "exterior" && zone.kind !== "personal" && !zoneClosed(state, venue, zone),
+          ),
       )
       .map((venue) => ({
         id: venue.id,

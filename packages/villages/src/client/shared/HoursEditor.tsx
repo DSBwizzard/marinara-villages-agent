@@ -4,24 +4,24 @@ export function HoursEditor({ hours, change }: { hours: VisitorHours; change: (v
   return (
     <div className="villages-access-hours">
       {hours.map((window, index) => (
-        <fieldset key={index}>
-          <legend>Hours {index + 1}</legend>
+        <fieldset key={index} aria-label={`Opening hours ${index + 1}`}>
+          {hours.length > 1 && <legend>Hours {index + 1}</legend>}
           <div className="villages-access-days">
             {week.map((day) => (
-              <label key={day}>
-                <input
-                  autoComplete="off"
-                  type="checkbox"
-                  checked={window.days.includes(day)}
-                  onChange={(event) => {
-                    const days = event.target.checked
-                      ? [...window.days, day]
-                      : window.days.filter((value) => value !== day);
-                    change(hours.map((item, row) => (row === index ? { ...item, days } : item)));
-                  }}
-                />
+              <button
+                type="button"
+                key={day}
+                aria-label={day}
+                aria-pressed={window.days.includes(day)}
+                onClick={() => {
+                  const days = !window.days.includes(day)
+                    ? [...window.days, day]
+                    : window.days.filter((value) => value !== day);
+                  change(hours.map((item, row) => (row === index ? { ...item, days } : item)));
+                }}
+              >
                 {day.slice(0, 3)}
-              </label>
+              </button>
             ))}
           </div>
           <label>
@@ -46,18 +46,31 @@ export function HoursEditor({ hours, change }: { hours: VisitorHours; change: (v
               }
             />
           </label>
-          <button type="button" onClick={() => change(hours.filter((_, row) => row !== index))}>
-            Remove hours
-          </button>
+          <div className="villages-hours-actions">
+            <button type="button" onClick={() => change(hours.filter((_, row) => row !== index))}>
+              Remove hours
+            </button>
+            {index === hours.length - 1 && (
+              <button
+                type="button"
+                disabled={hours.length >= 7}
+                onClick={() => change([...hours, { days: week, start: "09:00", end: "17:00" }])}
+              >
+                Add hours
+              </button>
+            )}
+          </div>
         </fieldset>
       ))}
-      <button
-        type="button"
-        disabled={hours.length >= 28}
-        onClick={() => change([...hours, { days: week, start: "09:00", end: "17:00" }])}
-      >
-        Add hours
-      </button>
+      {!hours.length && (
+        <button
+          type="button"
+          disabled={hours.length >= 28}
+          onClick={() => change([...hours, { days: week, start: "09:00", end: "17:00" }])}
+        >
+          Add hours
+        </button>
+      )}
     </div>
   );
 }

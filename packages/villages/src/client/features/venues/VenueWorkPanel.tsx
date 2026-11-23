@@ -18,6 +18,7 @@ function WorkEditor({
   place: VillageVenue;
   person: string;
   zoneId?: string;
+  fixedVenue?: boolean;
   controller: ArrangementController;
   onBack(): void;
   onBusyChange(busy: boolean): void;
@@ -40,21 +41,25 @@ function WorkEditor({
   const submit = useArrangementRequest(controller, person, place.id);
   const records = place.accessView?.work ?? [];
   const offers = place.accessView?.workOffers ?? [];
+  const scopedWork = (value: VenueWork): VenueWork =>
+    zoneId ? { ...value, zoneId, accessZoneIds: [...new Set([...value.accessZoneIds, zoneId])] } : value;
   const [work, setWork] = useState<VenueWork | null>(() =>
     offers.some((row) => row.characterId === person)
       ? null
-      : structuredClone(
-          records.find((row) => row.characterId === person) ??
-            initialVenueWork(
-              person,
-              zoneId
-                ? [...zones.filter((row) => row.id === zoneId), ...zones.filter((row) => row.id !== zoneId)]
-                : zones,
-            ),
+      : scopedWork(
+          structuredClone(
+            records.find((row) => row.characterId === person) ??
+              initialVenueWork(
+                person,
+                zoneId
+                  ? [...zones.filter((row) => row.id === zoneId), ...zones.filter((row) => row.id !== zoneId)]
+                  : zones,
+              ),
+          ),
         ),
   );
   const edit = (id: string) => {
-    setWork(structuredClone(records.find((row) => row.characterId === id) ?? initialVenueWork(id, zones)));
+    setWork(scopedWork(structuredClone(records.find((row) => row.characterId === id) ?? initialVenueWork(id, zones))));
     setError("");
     setNotice("");
   };
@@ -140,7 +145,7 @@ function WorkEditor({
           ))}
         {work ? (
           <>
-            <WorkFields value={work} zones={zones} onChange={setWork} />
+            <WorkFields fixedZone={!!zoneId} value={work} zones={zones} onChange={setWork} />
             <div className="villages-manage-actions">
               <button type="button" onClick={onBack}>
                 Cancel
@@ -151,7 +156,7 @@ function WorkEditor({
                 disabled={!venueWorkSchema.safeParse(work).success || !work.accessZoneIds.includes(work.zoneId)}
                 onClick={() => void send({ action: "work-propose", characterId: work.characterId, terms: work })}
               >
-                Propose work
+                Propose changes
               </button>
             </div>
             {records.some((row) => row.characterId === person) && (
@@ -176,6 +181,7 @@ function WorkEditor({
 }
 
 export function VenueWorkPanel(props: {
+  fixedVenue?: boolean;
   place: VillageVenue;
   person: string;
   zoneId?: string;
@@ -197,16 +203,18 @@ export function VenueWorkPanel(props: {
   return (
     <section className="villages-manage" aria-label="Work arrangements">
       <h2>Work</h2>
-      <label>
-        Venue
-        <select aria-label="Venue" value={place.id} disabled={busy} onChange={(e) => setTargetId(e.target.value)}>
-          {props.controller.snapshot.settings.venues.map((row) => (
-            <option key={row.id} value={row.id}>
-              {row.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      {props.fixedVenue === false && (
+        <label>
+          Venue
+          <select aria-label="Venue" value={place.id} disabled={busy} onChange={(e) => setTargetId(e.target.value)}>
+            {props.controller.snapshot.settings.venues.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <WorkEditor
         key={place.id}
         {...props}

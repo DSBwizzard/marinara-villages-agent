@@ -29,7 +29,12 @@ export function PersonArrangements({ person, controller }: { person: string; con
         {person !== "player" && <VenueZoneRow name="Work" accessLabel={work?.name} onOpen={() => setKind("work")} />}
       </nav>
     );
-  const fallback: VillageVenue = home ?? places.find((row) => (row.residenceCapacity ?? 0) > 0) ?? places[0]!;
+  const fallback: VillageVenue =
+    home ??
+    places.find(
+      (row) => row.constructionStatus !== "worksite" && row.zones?.some((zone) => zone.kind !== "exterior"),
+    ) ??
+    places[0]!;
   return (
     <section className="villages-person-arrangements">
       <button type="button" className={P + "-venue-back"} disabled={busy} onClick={back}>
@@ -39,6 +44,7 @@ export function PersonArrangements({ person, controller }: { person: string; con
         fallback && (
           <VenueHomePanel
             key={person}
+            fixedVenue={false}
             place={fallback}
             person={person}
             controller={controller}
@@ -49,6 +55,7 @@ export function PersonArrangements({ person, controller }: { person: string; con
       ) : (work ?? fallback) ? (
         <VenueWorkPanel
           key={person}
+          fixedVenue={false}
           place={(work ?? fallback)!}
           person={person}
           controller={controller}

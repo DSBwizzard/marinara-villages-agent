@@ -45,7 +45,6 @@ export function venueDesignHash(
     .update(
       JSON.stringify([
         ...(change?.form !== undefined ? [venue.form ?? ""] : []),
-        venue.residenceCapacity,
         (venue.zones ?? []).map((zone) => zone.id).sort(),
         zoneIds
           .slice()

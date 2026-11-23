@@ -126,7 +126,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     const draft = structuredClone(seed.settings.venues[0]);
     if (!options.cleanName) draft.name = " Draft A ";
     const proposal = {
-      capacity: 2,
       title: " Improvement ",
       description: " Raw proposed detail ",
     };
@@ -235,7 +234,7 @@ export async function verifyVenueScreenLifetimes(browser) {
     residence: { characterId: "resident / A", venueId: "target / B", privateZoneId: " private / target " },
     proposal: {
       requestId: f.requests[0].body?.requestId,
-      capacity: 2,
+
       title: f.proposal.title,
       detail: f.proposal.description,
     },

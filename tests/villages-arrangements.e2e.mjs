@@ -41,7 +41,7 @@ await withBrowser(browser, async () => {
         id: "cafe",
         name: "Cafe",
         residentIds: ["a", "b"],
-        residenceCapacity: 2,
+
         destinations: { a: { sleep: "bed" }, b: { sleep: "bed" } },
         privateSpaces: [{ id: "bed", ownerId: "a", name: "Bedroom", description: "Two beds", image: null }],
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
@@ -74,11 +74,12 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
     await profile.getByRole("button", { name: "Zones", exact: true }).click();
     await profile.getByRole("button", { name: /^Private Space/ }).click();
+    await profile.getByRole("button", { name: "Arrangements", exact: true }).click();
     await expect(profile.getByRole("button", { name: /^Sleeps here.*2/ })).toBeVisible();
     await profile.getByRole("button", { name: /^Sleeps here/ }).click();
     await profile.getByRole("button", { name: "Bob", exact: true }).click();
-    await expect(profile.getByLabel("Venue", { exact: true })).toHaveValue("cafe");
-    await expect(profile.getByLabel("Sleeps in", { exact: true })).toHaveValue("bed");
+    await expect(profile.getByLabel("Venue", { exact: true })).toHaveCount(0);
+    await expect(profile.getByLabel("Sleeps in", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "← Sleeps here", exact: true })).toHaveCount(1);
     await expect(profile.getByLabel("Room assignment", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("link")).toHaveCount(0);

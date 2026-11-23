@@ -3,7 +3,7 @@ import { ArtworkImage } from "./ArtworkImage.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 import { VillageIcon } from "./VillageIcon.js";
 
-const SECTIONS = ["about", "zones", "access"] as const;
+const SECTIONS = ["about", "zones", "arrangements"] as const;
 export type VenueSection = (typeof SECTIONS)[number];
 
 export function VenueSections({

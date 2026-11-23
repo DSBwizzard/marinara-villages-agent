@@ -61,13 +61,6 @@ export function parsePlace(value: unknown): VillageVenue {
     residentIds = ids(row.residentIds, "residents"),
     workerIds = ids(row.workerIds ?? [], "workers");
   const household = [...residentIds, ...(playerHome ? ["player"] : [])];
-  if (
-    !Number.isInteger(row.residenceCapacity) ||
-    Number(row.residenceCapacity) < 0 ||
-    Number(row.residenceCapacity) > 4 ||
-    household.length > Number(row.residenceCapacity)
-  )
-    throw badRequest("Home places range from zero to four; household assignments must fit its capacity.");
   if (row.layoutVersion !== 1) throw badRequest("Choose an explicit Venue layout before founding.");
   validateStartingVenue(row);
   const zones = readBaseVenueLayout(row, "", foundingImage, {
@@ -90,7 +83,7 @@ export function parsePlace(value: unknown): VillageVenue {
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! })),
     residentIds,
     workerIds,
-    residenceCapacity: Number(row.residenceCapacity),
+
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     access: readVenueAccess(row.access),
     destinations: {},
@@ -117,9 +110,6 @@ export function parsePlace(value: unknown): VillageVenue {
       if (zone.kind !== "exterior" && !zone.access)
         zone.access = { ...defaultZonePolicy(result, zone), mode: "public" };
   initializeVenueAccess(result);
-  for (const zone of zones)
-    if (zone.ownerId && JSON.stringify(zone.access?.managerIds) !== JSON.stringify([zone.ownerId]))
-      throw badRequest("A private room must remain controlled by its assigned person.");
   for (const [actor, raw] of Object.entries(asRecord(row.destinations))) {
     if (!result.destinations![actor]) throw badRequest("Choose destinations only for assigned residents or workers.");
     const selected = asRecord(raw);

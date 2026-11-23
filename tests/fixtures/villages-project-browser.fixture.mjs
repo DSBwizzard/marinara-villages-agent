@@ -41,7 +41,7 @@ export function currentProject(id, kind = "new-venue") {
             form: "A canvas pavilion",
             exteriorDescription: "An open approach.",
             exteriorImage: null,
-            capacity: 2,
+
             layoutVersion: 1,
             layout: "common",
             spaces: [
@@ -63,7 +63,6 @@ export function currentProject(id, kind = "new-venue") {
       change:
         kind === "renovation"
           ? {
-              capacity: 3,
               detail: "Create a bright workshop.",
               zones: [
                 {
@@ -91,7 +90,7 @@ export function projectSnapshot() {
   delete snapshot.opening;
   snapshot.projects = [currentProject("canvas"), currentProject("workshop", "renovation")];
   const venue = snapshot.settings.venues[0];
-  venue.residenceCapacity = 2;
+
   venue.layoutVersion = 1;
   venue.zones = [
     {

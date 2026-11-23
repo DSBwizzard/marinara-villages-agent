@@ -41,7 +41,6 @@ const plan = {
   exteriorDescription: "The garden gate.",
   spaces: publicZones,
   privateSpaces: privateZones,
-  capacity: 4,
 };
 assert.equal(readProjectPlan(plan, target).spaces.length + readProjectPlan(plan, target).privateSpaces.length, 6);
 assert.throws(
@@ -82,7 +81,7 @@ initializeVenueAccess(saved.venues[0]);
 assert.equal(coerceVillageState(saved).venues[0].zones!.length, 7, "Entrance is extra");
 saved.venues[0].zones!.push({ ...saved.venues[0].zones![1], id: "seventh" });
 assert.throws(() => coerceVillageState(saved), /six Zones/);
-await assert.rejects(f.service.saveProjectPlan(id, f.body(id, { ...plan, capacity: 5 })), /zero to four/);
+await assert.doesNotReject(f.service.saveProjectPlan(id, f.body(id, { ...plan })));
 const distinct = fixture(),
   distinctId = await distinct.newProject("Workshop", "a", { x: 0.7, y: 0.7 }, "r".repeat(200));
 const physicalDesign = "A timber hall with sheltered work tables, wide windows and a shared gathering space. "

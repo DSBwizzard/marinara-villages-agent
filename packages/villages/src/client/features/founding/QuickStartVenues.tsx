@@ -1,5 +1,11 @@
-import { FoundingAccess } from "./FoundingAccess.js";
-import { ArrangementSummary, arrangementLabel, type ArrangementPage } from "../venues/ArrangementNavigation.js";
+import {
+  ArrangementSummary,
+  arrangementLabel,
+  arrangementBack,
+  arrangementAddLabel,
+  visitorDefault,
+  type ArrangementPage,
+} from "../venues/ArrangementNavigation.js";
 import { FoundingPeople } from "./FoundingPeople.js";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
@@ -109,7 +115,6 @@ export function QuickStartVenues({
     });
   };
   const issues = foundingVenueIssues(venues, false);
-  const members = selected ? foundingHomeMembers(selected) : [];
   const actors = [{ id: "player", name: "You" }, ...people];
   const patch = (venue: SetupVenueDraft) => onPatch(reconcileFoundingHome(venue));
   const selectSection = (next: VenueSection) => {
@@ -297,11 +302,25 @@ export function QuickStartVenues({
                       ? "Add resident"
                       : arrangementPage.kind === "work"
                         ? "Add worker"
-                        : "Add manager"
+                        : "Add person"
                     : arrangementLabel(arrangementPage.kind, zoneDetails)))
                 : zoneDetails
                   ? artworkName
                   : selected.name || "Venue"
+            }
+            headingAction={
+              arrangementPage &&
+              !arrangementPage.personId &&
+              !arrangementPage.adding &&
+              arrangementPage.kind !== "visitors" ? (
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  onClick={() => setArrangementPage({ ...arrangementPage, adding: true })}
+                >
+                  {arrangementAddLabel(arrangementPage.kind)}
+                </button>
+              ) : undefined
             }
             heading={
               zoneDetails && !arrangementPage ? (
@@ -361,17 +380,14 @@ export function QuickStartVenues({
                 type="button"
                 onClick={
                   arrangementPage
-                    ? () =>
-                        setArrangementPage(
-                          arrangementPage.personId || arrangementPage.adding ? { kind: arrangementPage.kind } : null,
-                        )
+                    ? () => setArrangementPage(arrangementBack(arrangementPage))
                     : zoneDetails
                       ? backToZones
                       : closeVenue
                 }
               >
                 {arrangementPage
-                  ? `← ${arrangementPage.personId || arrangementPage.adding ? arrangementLabel(arrangementPage.kind, zoneDetails) : zoneDetails ? artworkName : selected.name}`
+                  ? `← ${arrangementPage.personId || arrangementPage.adding ? arrangementLabel(arrangementPage.kind, zoneDetails) : arrangementPage.kind === "rules" || arrangementPage.kind === "invite" ? "Visitors" : zoneDetails ? artworkName : selected.name}`
                   : zoneDetails
                     ? `← ${selected.name || "Venue"}`
                     : onCloseVenue
@@ -427,35 +443,12 @@ export function QuickStartVenues({
                       />
                       {fieldError("form")}
                     </label>
-                    <label className="villages-manage-capacity">
-                      Resident capacity
-                      <select
-                        aria-label="Resident capacity"
-                        value={selected.residenceCapacity ?? 0}
-                        onChange={(e) => {
-                          const capacity = Number(e.target.value);
-                          if (capacity >= members.length)
-                            patch({ ...selected, residenceCapacity: capacity, foundingCapacity: capacity });
-                        }}
-                      >
-                        {[0, 1, 2, 3, 4].map((n) => (
-                          <option key={n} disabled={n < members.length}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                   </fieldset>
                 ) : (
                   <>
                     <p>{selected.form}</p>
-                    <dl className="villages-manage-details">
-                      <dt>Resident capacity</dt>
-                      <dd>{selected.residenceCapacity ?? 0}</dd>
-                    </dl>
                   </>
                 )}
-                <ArrangementSummary place={selected} onOpen={(kind) => setArrangementPage({ kind })} />
               </section>
             ) : null}
             {arrangementPage ? (
@@ -471,19 +464,18 @@ export function QuickStartVenues({
                 onPage={setArrangementPage}
               />
             ) : null}
-            {!arrangementPage && (zoneDetails ? zoneSection : section) === "access" ? (
-              <>
-                <nav className={P + "-venue-zone-picker"}>
-                  <VenueZoneRow name="Managers" onOpen={() => setArrangementPage({ kind: "management" })} />
-                </nav>
-                <FoundingAccess
-                  key={selected.id + (zoneDetails ? zoneId : "venue")}
-                  venue={selected}
-                  zoneId={zoneDetails ? zoneId : undefined}
-                  onPatch={patch}
-                  disabled={busy || imageBusy}
-                />
-              </>
+            {!arrangementPage && (zoneDetails ? zoneSection : section) === "arrangements" ? (
+              <ArrangementSummary
+                place={selected}
+                zoneId={zoneDetails ? zoneId : undefined}
+                disabled={busy || imageBusy}
+                onOpen={(kind) =>
+                  setArrangementPage({
+                    kind,
+                    ...(kind === "visitors" ? { zoneId: zoneDetails ? zoneId : visitorDefault(selected) } : {}),
+                  })
+                }
+              />
             ) : null}
             {!arrangementPage && section === "zones" && connectionsOpen && !zoneDetails ? (
               <>
@@ -575,7 +567,6 @@ export function QuickStartVenues({
                     </label>
                   ) : null}
                 </div>
-                <ArrangementSummary place={selected} zoneId={zoneId} onOpen={(kind) => setArrangementPage({ kind })} />
                 <ZoneImageControls
                   key={selected.id + ":" + zoneId}
                   name={artworkName}

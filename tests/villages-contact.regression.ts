@@ -25,7 +25,7 @@ function venue(id: string, spaces = ["community"]): VillageVenue {
     residentIds: [],
     workerIds: [],
     improvements: [null, null],
-    residenceCapacity: 1,
+
     capabilities: [],
     state: {
       revision: 0,
@@ -82,7 +82,7 @@ state.seed = "social-fixture";
 state.foundedAt = state.setupAt = stamp;
 let house = venue("house", ["residence", "workplace"]);
 house.residentIds = ["messenger", "alex"];
-house.residenceCapacity = 2;
+
 house.workerIds = ["alex"];
 house.layoutVersion = 1;
 house.zones = [

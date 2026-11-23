@@ -6,7 +6,7 @@ export const foundingPeopleSchema = z
   .object({
     residentIds: z.array(id).max(3),
     playerHome: z.boolean(),
-    residenceCapacity: z.number().int().min(0).max(4),
+
     managerIds: z.array(id).min(1).max(4),
     work: z.array(venueWorkSchema).max(3),
     destinations: z.record(id, z.object({ home: id.optional(), sleep: id.optional(), work: id.optional() }).strict()),
@@ -19,8 +19,7 @@ export function applyFoundingPeople<T extends VillageVenue>(venue: T, people?: F
     ...venue,
     residentIds: people.residentIds,
     occupancy: { ...venue.occupancy, playerHome: people.playerHome },
-    residenceCapacity: people.residenceCapacity,
-    foundingCapacity: people.residenceCapacity,
+
     workerIds: people.work.map((work) => work.characterId),
     destinations: people.destinations,
     access: {

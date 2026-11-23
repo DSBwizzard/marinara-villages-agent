@@ -169,7 +169,15 @@ await crowded.mutate((state) => {
     ],
   };
 });
-const crowdedId = await renovation(crowded);
+const crowdedId = await renovation(crowded, {
+  zones: [
+    ...crowded
+      .state()
+      .venues.find((venue) => venue.id === "cafe")!
+      .zones!.filter((zone) => zone.kind !== "exterior"),
+    { id: "addition", name: "Workroom", kind: "public", description: "A new workroom", connectedTo: ["exterior"] },
+  ],
+});
 await crowded.agree(crowdedId, "z");
 await crowded.service.startProjectConstruction(crowdedId, crowded.body(crowdedId), at("2026-10-29T12:00:00Z"));
 const crowdedPeriods = crowded.get(crowdedId).lifecycle!.workOrder!.focus!.periods;

@@ -18,7 +18,7 @@ function draftVenue(name: string, physicalDesign: string): VillageVenue {
     presentation: { mapId: "", image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    residenceCapacity: 0,
+
     spaces: [],
     privateSpaces: [],
   };
@@ -68,7 +68,6 @@ export function useProjectsController({
                 spaces: project.plan.spaces,
                 privateSpaces: project.plan.privateSpaces.map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" })),
                 presentation: { mapId: "", image: project.plan.exteriorImage, x: null, y: null },
-                residenceCapacity: project.plan.capacity,
               }
             : {}),
         }
@@ -93,7 +92,6 @@ export function useProjectsController({
         target?.zones?.filter((zone) => zone.kind !== "exterior") ??
         [],
       roomEdits: seedDraft?.initial.roomEdits ?? project?.lifecycle?.change?.roomEdits ?? [],
-      capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 0,
     },
     String(snapshot?.isFounded ?? ""),
   );
@@ -136,9 +134,6 @@ export function useProjectsController({
             detail: description,
             ...(seedDraft
               ? {
-                  ...(workspace.draft.capacity !== seedDraft.initial.base.residenceCapacity
-                    ? { capacity: workspace.draft.capacity }
-                    : {}),
                   ...(workspace.draft.venue?.form !== seedDraft.initial.base.form
                     ? { form: workspace.draft.venue?.form }
                     : {}),
@@ -148,7 +143,6 @@ export function useProjectsController({
                     .map((zone) => zone.id),
                 }
               : {
-                  capacity: workspace.draft.capacity,
                   form: workspace.draft.venue?.form,
                   zones: workspace.draft.zones,
                 }),
@@ -178,14 +172,13 @@ export function useProjectsController({
           layout: venue.layout,
           spaces: venue.spaces ?? [],
           privateSpaces: venue.privateSpaces ?? [],
-          capacity: draft.capacity,
         })
       : action("revise", {
           expectedRevision: draft.revision,
           title: draft.title,
           detail: draft.detail,
           form: venue.form,
-          capacity: draft.capacity,
+
           zones: draft.zones,
           roomEdits: draft.roomEdits,
         }));

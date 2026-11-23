@@ -130,7 +130,6 @@ export function establishPlace(
     residentIds: [],
     workerIds: [],
     capabilities: [],
-    residenceCapacity: 0,
   };
   const entrance = connected.find((zone) => zone.id === "exterior")!;
   entrance.observed = priorEntrance

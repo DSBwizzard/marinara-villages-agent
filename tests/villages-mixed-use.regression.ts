@@ -33,7 +33,7 @@ const cafe = venueFixture({
   name: "Rowan’s cafe",
   form: "A cafe with an upstairs bedroom",
   residentIds: ["a"],
-  residenceCapacity: 2,
+
   zones: [
     {
       id: "floor",

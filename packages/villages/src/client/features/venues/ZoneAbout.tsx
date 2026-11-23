@@ -31,7 +31,7 @@ export function planZoneRenovation(
     title: `Renovate ${zone.name}`,
     detail: `Update ${zone.name}.`,
     zones,
-    base: structuredClone({ zones: place.zones, form: place.form, residenceCapacity: place.residenceCapacity }),
+    base: structuredClone({ zones: place.zones, form: place.form }),
     roomEdits:
       change.description === undefined
         ? []

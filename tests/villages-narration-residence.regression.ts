@@ -138,12 +138,12 @@ await runCase("narration-residence/authority", () => {
   }
 });
 await runCase("narration-residence/stale", () => {
-  for (const kind of ["request", "capacity", "ban"]) {
+  for (const kind of ["request", "household", "ban"]) {
     const f = fixture();
     f.pending();
     const turn = f.prepare({ type: "residence.decide", by: "a", person: "b", venue: "home", approved: true }, "a");
     if (kind === "request") f.state.residences[0].agreement!.requestId = "replacement-request";
-    if (kind === "capacity") f.home.residenceCapacity = 1;
+    if (kind === "household") f.home.residentIds!.push("new-housemate");
     if (kind === "ban")
       f.home.access!.bans.push({
         id: "ban",
@@ -160,8 +160,9 @@ await runCase("narration-residence/stale", () => {
   }
   const f = fixture(),
     turn = f.prepare({ type: "residence.request", by: "b", venue: "home" });
-  f.home.residenceCapacity = 1;
-  assert.equal(turn.accept().held, true, "a captured vacancy cannot survive a capacity change");
+
+  f.home.residentIds!.push("new-housemate");
+  assert.equal(turn.accept().held, true, "A captured arrangement cannot survive a household change");
 });
 await runCase("narration-residence/venue-request", async () => {
   const f = fixture(),

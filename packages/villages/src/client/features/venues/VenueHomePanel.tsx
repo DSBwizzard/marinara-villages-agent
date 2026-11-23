@@ -7,6 +7,7 @@ export function VenueHomePanel({
   place,
   person,
   zoneId,
+  fixedVenue = true,
   controller,
   onBack,
   onBusyChange,
@@ -14,6 +15,7 @@ export function VenueHomePanel({
   place: VillageVenue;
   person: string;
   zoneId?: string;
+  fixedVenue?: boolean;
   controller: ArrangementController;
   onBack(): void;
   onBusyChange(busy: boolean): void;
@@ -26,7 +28,9 @@ export function VenueHomePanel({
     onBusyChange(busy);
     return () => onBusyChange(false);
   }, [busy, onBusyChange]);
-  const venues = controller.snapshot.settings.venues.filter((row) => (row.residenceCapacity ?? 0) > 0);
+  const venues = controller.snapshot.settings.venues.filter(
+    (row) => row.constructionStatus !== "worksite" && row.zones?.some((zone) => zone.kind !== "exterior"),
+  );
   const target = venues.find((row) => row.id === targetId);
   const zones = target?.zones?.filter((row) => row.kind !== "exterior") ?? [];
   const send = useArrangementRequest(controller, person, targetId);
@@ -57,6 +61,8 @@ export function VenueHomePanel({
       <h2>Home</h2>
       <fieldset disabled={busy}>
         <HomeFields
+          fixedVenue={fixedVenue}
+          fixedZone={!!zoneId}
           venues={venues}
           venueId={targetId}
           zoneId={sleep}

@@ -554,11 +554,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     };
     const mapReady = !setupMapBusy;
     const venueShapeProblem = foundingVenueShapeProblem(setupVenues);
-    const standardHomes = setupVenues.every(
-      (venue) => foundingHomeMembers(venue).length <= (venue.residenceCapacity ?? 0),
-    );
-    const missingSharedVenue =
-      standardHomes && setupVenues.filter((venue) => !foundingHomeMembers(venue).length).length < 2;
+    const missingSharedVenue = setupVenues.filter((venue) => !foundingHomeMembers(venue).length).length < 2;
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
         {setupMapProblem ? (
@@ -1090,7 +1086,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           saveError={draftSaveError || undefined}
           problem={setupProblem || venueShapeProblem}
           problemAction={
-            venueShapeProblem && (missingSharedVenue || !standardHomes) ? (
+            venueShapeProblem && missingSharedVenue ? (
               <button
                 type="button"
                 disabled={

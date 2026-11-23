@@ -24,9 +24,7 @@ const actors = [
   );
   reused = assignFoundingHome(reused, "founding-home:player", "a", true);
   reused = assignFoundingHome(reused, "founding-home:a", "b", true);
-  reused = reused.map((home) =>
-    home.id === "founding-home:a" ? reconcileFoundingHome({ ...home, foundingCapacity: 1 }) : home,
-  );
+  reused = reused.map((home) => (home.id === "founding-home:a" ? reconcileFoundingHome({ ...home }) : home));
   reused = reconcileFoundingRoster(
     reused,
     actors.filter((actor) => actor.id !== "a"),
@@ -34,11 +32,7 @@ const actors = [
     "community",
   );
   const restoredRoster = reconcileFoundingRoster(reused, actors, ["a"], "community");
-  assert.deepEqual(restoredRoster.find((home) => home.id === "founding-home:a")!.residentIds, ["b"]);
-  assert.ok(
-    restoredRoster.every((home) => !home.residentIds?.includes("a")),
-    "Re-adding someone never displaces an occupied full home or crashes setup",
-  );
+  assert.deepEqual(restoredRoster.find((home) => home.id === "founding-home:a")!.residentIds, ["b", "a"]);
 }
 let rows = reconcileFoundingRoster(
   [],
@@ -77,19 +71,16 @@ assert.ok(
     .every((row) => row.destinations && Object.keys(row.destinations).length === 1),
 );
 rows = assignFoundingHome(rows, "founding-home:player", "a", true);
-assert.equal(rows[0].residenceCapacity, 2);
 assert.equal(rows[0].destinations!.a.sleep, rows[0].spaces![0].id);
 rows = assignFoundingHome(rows, "founding-home:a", "a", true);
-assert.equal(rows[0].residenceCapacity, 1, "Automatic capacity shrinks with the household");
-rows[0] = reconcileFoundingHome({ ...rows[0], foundingCapacity: 3 });
+rows[0] = reconcileFoundingHome({ ...rows[0] });
 rows = assignFoundingHome(rows, rows[0].id, "a", true);
 rows = assignFoundingHome(rows, "founding-home:a", "a", true);
-assert.equal(rows[0].residenceCapacity, 3, "A deliberately chosen capacity survives moves");
-rows[0] = reconcileFoundingHome({ ...rows[0], foundingCapacity: 1 });
+rows[0] = reconcileFoundingHome({ ...rows[0] });
 const before = JSON.stringify(rows);
-assert.throws(() => assignFoundingHome(rows, rows[0].id, "a", true), /full/);
-assert.equal(JSON.stringify(rows), before, "A full fixed home does not evict or partly move anyone");
-rows[0] = reconcileFoundingHome({ ...rows[0], foundingCapacity: null });
+assert.doesNotThrow(() => assignFoundingHome(rows, rows[0].id, "a", true));
+assert.equal(JSON.stringify(rows), before, "Preparing a new household leaves the prior draft untouched");
+rows[0] = reconcileFoundingHome({ ...rows[0] });
 rows = assignFoundingHome(rows, rows[0].id, "a", true);
 rows[0] = addFoundingZone(rows[0], true, "ada-room");
 rows[0].privateSpaces![0].ownerId = "a";
@@ -125,7 +116,6 @@ rows[0].privateSpaces![0].access = {
 rows[0].destinations!.a.sleep = "ada-room";
 assert.equal(rows[0].destinations!.a.sleep, "ada-room");
 const restored = JSON.parse(JSON.stringify(rows));
-assert.equal(restored[0].foundingCapacity, null);
 const placed = restored.map((row: any, index: number) => ({
   ...row,
   presentation: { ...row.presentation, x: 0.1 + index * 0.2, y: 0.5 },
@@ -156,7 +146,7 @@ const saved = restored.map((row: any, index: number) =>
   }),
 );
 assert.equal(saved[0].destinations!.a.sleep, "ada-room");
-assert.equal(saved[0].residenceCapacity, 2);
+assert.equal("residenceCapacity" in saved[0], false);
 assert.equal("foundingCapacity" in saved[0], false, "Setup choices do not leak into the saved-world contract");
 for (const venue of saved)
   for (const zone of venue.zones!) {
@@ -170,7 +160,6 @@ const illustrated = parsePlace({
   spaces: restored[0].spaces.map((zone: any) => ({ ...zone, image: foundingImage })),
 });
 assert.equal(illustrated.zones!.find((zone) => zone.image)?.observed?.image?.id, "founding");
-const retained = { ...newSetupVenue("existing", 0.1, 0.1, true), residenceCapacity: 3 };
 const vacant = newSetupVenue("vacant", 0.4, 0.4);
 const { draftZonePolicy } =
   await import("../packages/villages/src/client/features/founding/villages-founding-zones.js");
@@ -179,19 +168,6 @@ assert.equal(
   reconcileFoundingHome({ ...vacant, name: "Authored vacant house" }).spaces![0].access!.mode,
   "permission-required",
   "Unrelated edits preserve explicit access in an already-vacant home",
-);
-delete retained.foundingCapacity;
-const { quickStartTemplates } = await import("../packages/villages/src/client/features/founding/quick-start-drafts.js");
-assert.equal(
-  quickStartTemplates([retained])[0].foundingCapacity,
-  undefined,
-  "Recovering an admitted template preserves an existing draft's fixed capacity semantics",
-);
-assert.equal(quickStartTemplates([{ ...retained, foundingCapacity: 3 }])[0].foundingCapacity, 3);
-assert.equal(
-  reconcileFoundingHome(retained).residenceCapacity,
-  3,
-  "An existing draft retains an unknown capacity choice until explicitly set to Automatic",
 );
 const starting = selectFoundingHomes([], [], actors, "community");
 const sharedVenue = starting.venues.find((venue) => venue.id === "founding-garden")!;
@@ -262,10 +238,7 @@ mixed.spaces![0].access = {
   accompanied: false,
 };
 mixed.destinations = { ...mixed.destinations, a: { ...mixed.destinations!.a, work: mixed.spaces![0].id } };
-const sharedHome = reconcileFoundingHome({ ...structuredClone(authored), id: "shared-loft", foundingCapacity: null }, [
-  "a",
-  "b",
-]);
+const sharedHome = reconcileFoundingHome({ ...structuredClone(authored), id: "shared-loft" }, ["a", "b"]);
 const legacy = selectFoundingHomes(
   [...starting.venues.filter((venue) => venue.id !== authored.id), mixed, sharedHome],
   [],

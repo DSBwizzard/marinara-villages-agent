@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { SetupVenueDraft } from "../../shared/types.js";
 import type { ZoneVisitorHours } from "../../../shared/helpers/venue-access.js";
 import { HoursEditor } from "../../shared/HoursEditor.js";
-import { foundingAccess } from "./FoundingPeople.js";
+import { foundingAccess } from "./founding-access.js";
 import { draftZonePolicy } from "./villages-founding-zones.js";
 import { foundingHomeMembers, foundingSleepZones } from "./founding-homes.js";
 
@@ -11,11 +11,13 @@ export function FoundingAccess({
   zoneId,
   onPatch,
   disabled,
+  children,
 }: {
   venue: SetupVenueDraft;
   zoneId?: string;
   onPatch(venue: SetupVenueDraft): void;
   disabled: boolean;
+  children?: ReactNode;
 }) {
   const access = foundingAccess(venue);
   const personal = !!venue.privateSpaces?.some((row) => row.id === zoneId);
@@ -32,7 +34,16 @@ export function FoundingAccess({
         ? {
             ...venue,
             [key]: venue[key]?.map((row) =>
-              row.id === zone.id ? { ...row, access: { ...policy, mode, visitorHours: hours } } : row,
+              row.id === zone.id
+                ? {
+                    ...row,
+                    access: {
+                      ...policy,
+                      mode,
+                      visitorHours: hours,
+                    },
+                  }
+                : row,
             ),
           }
         : { ...venue, access: { ...access, visitorHours: Array.isArray(hours) ? hours : null } };
@@ -54,7 +65,7 @@ export function FoundingAccess({
   };
   if (zoneId === "exterior") return <p>Public</p>;
   return (
-    <section className="villages-manage" aria-label="Venue access">
+    <section className="villages-manage" aria-label="Visitors">
       <fieldset disabled={disabled} className="villages-manage-form">
         {zone && (
           <label>
@@ -104,6 +115,7 @@ export function FoundingAccess({
         )}
         {Array.isArray(hours) && <HoursEditor hours={hours} change={setHours} />}
         {error && <p role="alert">{error}</p>}
+        {children}
         <div className="villages-manage-actions">
           <button
             type="button"
@@ -121,7 +133,7 @@ export function FoundingAccess({
             disabled={Array.isArray(hours) && hours.some((row) => !row.days.length || !row.start || !row.end)}
             onClick={save}
           >
-            Save access
+            Save visitor rules
           </button>
         </div>
       </fieldset>

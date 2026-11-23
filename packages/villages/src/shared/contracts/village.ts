@@ -257,7 +257,6 @@ export type BuildProject = {
     position?: { mapId?: string; x: number | null; y: number | null };
   };
   plan?: {
-    capacity: number;
     form: string;
     venueType: string;
     exteriorDescription: string;
@@ -276,7 +275,7 @@ export type BuildProject = {
     change: {
       form?: string;
       roomEdits?: ProjectRoomEdit[];
-      capacity?: number;
+
       zones?: VillageZoneDraft[];
       detail: string;
     } | null;
@@ -412,7 +411,7 @@ export type VillageVenue = {
     pictureUpdating?: boolean;
     image: VillageVenueImage | null;
   }>;
-  residenceCapacity?: number;
+
   residentIds?: string[];
   privateSpaces?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {

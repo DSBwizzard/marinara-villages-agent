@@ -48,7 +48,8 @@ import {
   socialContinuationValid,
   socialPlanCandidates,
 } from "../../domain/rules/social-rules.js";
-import { venueCapacity, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueZones } from "../../domain/rules/venue-zones.js";
+import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
@@ -132,7 +133,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
                     venue.constructionStatus !== "worksite" &&
                     !venue.occupancy.playerHome &&
                     !venueResidentIds(venue).length &&
-                    venueCapacity(venue) > 0 &&
+                    venueZones(venue).some((zone) => zone.kind !== "exterior") &&
                     !state.residences.some(
                       (row) => row.proposedVenueId === venue.id && ["pending", "moving"].includes(row.status),
                     ),
@@ -620,7 +621,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             venue.constructionStatus !== "worksite" &&
             !venue.occupancy.playerHome &&
             !venueResidentIds(venue).length &&
-            venueCapacity(venue) > 0 &&
+            venueZones(venue).some((zone) => zone.kind !== "exterior") &&
             !next.residences.some(
               (row) =>
                 row.status !== "current" &&

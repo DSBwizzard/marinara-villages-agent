@@ -65,8 +65,6 @@ export function useLeaveVenue(ports: {
   setVenuePage: React.Dispatch<SetStateAction<"view" | "edit" | "proposal">>;
   setVenueProposalDraft: React.Dispatch<
     SetStateAction<{
-      capacity: number;
-
       title: string;
       description: string;
     }>

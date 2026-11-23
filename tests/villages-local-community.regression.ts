@@ -265,7 +265,7 @@ for (const [groups, count] of [
 async function housing() {
   let state = world({ a: "a", b: "a" });
   const target = state.venues.find((venue) => venue.residentIds?.includes("a"))!;
-  target.residenceCapacity = 4;
+
   const service = createResidences({
     mutateVillageState: async (update) => {
       const next = structuredClone(state);
@@ -312,7 +312,7 @@ await housing();
 {
   const state = world({ a: "a", b: "a" }),
     target = state.venues.find((venue) => venue.residentIds?.includes("a"))!;
-  target.residenceCapacity = 4;
+
   const move = residenceProposal(state, "c", target, "player", at, "", "stale-move");
   for (const id of move.agreement!.requiredIds) move.agreement!.approvals[id] = true;
   move.status = "moving";
@@ -434,7 +434,7 @@ await housing();
   const lounge = { ...structuredClone(bedroom), id: "lounge", name: "Lounge", connectedTo: ["exterior"] };
   home.zones!.push(lounge);
   home.zones![0].connectedTo!.push(lounge.id);
-  const design = { detail: "Rework the home.", capacity: home.residenceCapacity };
+  const design = { detail: "Rework the home." };
   const interiors = () => home.zones!.filter((zone) => zone.kind !== "exterior");
   assert.throws(
     () =>
@@ -596,18 +596,18 @@ console.log(
 
 {
   const initial = reconcileFoundingRoster(
-      [],
-      actors,
-      actors.map((actor) => actor.id),
-      "community",
-    ),
-    home = initial.find((row) => row.residentIds?.includes("b"))!;
-  home.residenceCapacity = 4;
-  home.foundingCapacity = 4;
+    [],
+    actors,
+    actors.map((actor) => actor.id),
+    "community",
+  );
+
   assert.equal(
-    assignFoundingHome(initial, "founding-home:player", "b", true).find((row) => row.id === home.id)?.residenceCapacity,
-    4,
-    "Moving a starting resident retains capacity-only edits",
+    assignFoundingHome(initial, "founding-home:player", "b", true)
+      .find((row) => row.id === "founding-home:player")
+      ?.residentIds?.includes("b"),
+    true,
+    "Starting residents can share an existing home",
   );
   const state = world();
   state.setting += " " + Array.from({ length: 75 }, (_, i) => "Farm " + i).join(", ");
@@ -650,7 +650,8 @@ console.log(
     requestId: "repurpose-community",
     title: "A new use",
     detail: "Convert this gathering room into an unused residence",
-    capacity: 2,
+    form: "A home with a shared gathering room.",
+
     zones: target.zones!.filter((z) => z.kind !== "exterior").map((z) => ({ ...z, kind: "public" })),
   });
   const id = f
@@ -672,7 +673,7 @@ console.log(
 {
   let state = world({ a: "a", b: "a" });
   const target = state.venues.find((v) => v.residentIds?.includes("a"))!;
-  target.residenceCapacity = 4;
+
   const source = target.zones!.find((z) => z.kind !== "exterior")!;
   target.zones!.push({
     ...structuredClone(source),
@@ -707,7 +708,7 @@ console.log(
   assert.equal(
     state.residences.find((row) => row.characterId === "c")!.status,
     "pending",
-    "Two people can propose sharing a bedroom within household capacity",
+    "Two people can propose sharing a bedroom without a quota",
   );
   for (const id of ["a", "b"]) decideResidenceMove(state, "player", true, "villager", id, scope, new Date());
   assert.equal(

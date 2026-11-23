@@ -103,7 +103,7 @@ assert.throws(
   /daylight decision/,
 );
 
-for (const key of ["residentIds", "occupancy", "residenceCapacity", "destinations", "presentation"] as const)
+for (const key of ["residentIds", "occupancy", "destinations", "presentation"] as const)
   assert.deepEqual(drafted[key], home[key], key);
 for (const old of [...home.spaces!, ...home.privateSpaces!]) {
   const next = [...drafted.spaces!, ...drafted.privateSpaces!].find((zone) => zone.id === old.id)!;

@@ -140,7 +140,7 @@ await withBrowser(browser, async () => {
                     ...place("home", 0.76, 0.23),
                     name: "Mara's home",
                     residentIds: ["mara"],
-                    residenceCapacity: 1,
+
                     occupancy: { playerHome: false, residentCharacterId: "mara", homeKind: null },
                   },
                 ],

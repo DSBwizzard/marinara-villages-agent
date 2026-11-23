@@ -516,7 +516,7 @@ export function applyAccessCommand(
         validateVenueWork(venue, command.terms);
       }
       const requiredIds = workRequirements(command.characterId, command.terms);
-      if (!ledger.managerIds.length) throw badRequest("Choose a Venue manager first.");
+      if (!ledger.managerIds.length) throw badRequest("Choose who can change visitor rules first.");
       ledger.workOffers = (ledger.workOffers ?? []).filter((row) => row.characterId !== command.characterId);
       ledger.workOffers.push({
         id: command.operationId,
@@ -546,7 +546,7 @@ export function applyAccessCommand(
           JSON.stringify(ledger.work?.find((row) => row.characterId === offer!.characterId) ?? null) ||
         JSON.stringify(offer!.requiredIds) !== JSON.stringify(workRequirements(offer!.characterId, offer!.terms))
       )
-        throw conflict("Work or its managers changed. Propose the current terms again.");
+        throw conflict("Work or visitor rules changed. Propose the current terms again.");
       if (offer!.terms) validateVenueWork(venue, offer!.terms);
       offer!.approvedIds = [...new Set([...offer!.approvedIds, actor])];
       break;
@@ -558,7 +558,7 @@ export function applyAccessCommand(
         (zone ? !managesAccess(venue, null, actor) : actor !== "player")
       )
         forbidden();
-      if (!command.managerIds.length) throw badRequest("Choose at least one manager.");
+      if (!command.managerIds.length) throw badRequest("Choose at least one person to change visitor rules.");
       assertIds(command.managerIds);
       if (zone) zone.access!.managerIds = command.managerIds;
       else ledger.managerIds = command.managerIds;
@@ -605,7 +605,7 @@ export function applyAccessCommand(
       break;
     case "venue-policy":
       if (command.zoneId !== null || !manager) forbidden();
-      if (!command.managerIds.length) throw badRequest("Choose at least one Venue manager.");
+      if (!command.managerIds.length) throw badRequest("Choose at least one person to change visitor rules.");
       assertIds(command.managerIds);
       ledger.managerIds = command.managerIds;
       ledger.visitorHours = command.visitorHours;
@@ -614,7 +614,7 @@ export function applyAccessCommand(
       if (!zone || !manager) forbidden();
       assertIds([...(command.policy.managerIds ?? []), ...command.policy.memberIds, ...command.policy.inviterIds]);
       if (command.policy.managerIds?.length === 0)
-        throw badRequest("Choose at least one manager or inherit Venue managers.");
+        throw badRequest("Choose a person to change visitor rules or use Venue visitor rules.");
       zone!.access = command.policy;
       break;
     case "invite":

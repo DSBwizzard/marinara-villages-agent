@@ -15,7 +15,7 @@ const house: any = venueFixture({
   residentIds: [],
   workerIds: ["faraway"],
   improvements: [null, null],
-  residenceCapacity: 1,
+
   capabilities: [],
   state: {
     revision: 0,

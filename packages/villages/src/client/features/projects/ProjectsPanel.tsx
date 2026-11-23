@@ -583,19 +583,6 @@ export function ProjectsPanel({
                             }
                           />
                         </label>
-                        {
-                          <label className="vp-capacity">
-                            Home places
-                            <input
-                              autoComplete="off"
-                              type="number"
-                              min={0}
-                              max={4}
-                              value={draft.capacity}
-                              onChange={(event) => workspace.field("capacity")(Number(event.target.value))}
-                            />
-                          </label>
-                        }
                         {project.kind === "new-venue" ? (
                           <ArtworkUpload busy={draft.busy} onUpload={(file) => void upload(file)} />
                         ) : null}
@@ -606,7 +593,6 @@ export function ProjectsPanel({
                           Physical design
                           <textarea autoComplete="off" aria-label="Physical design" readOnly value={intended} />
                         </label>
-                        {<Facts rows={[["Home places", String(draft.capacity)]]} />}
                       </>
                     )}
                   </section>

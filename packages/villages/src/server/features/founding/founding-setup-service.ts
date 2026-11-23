@@ -199,7 +199,7 @@ export function createFoundingSetup({
         layoutVersion: prior?.layoutVersion ?? place.layoutVersion,
         zoneLayout: place.zoneLayout,
         spaces: place.spaces,
-        residenceCapacity: prior?.residenceCapacity ?? place.residenceCapacity,
+
         residentIds: prior ? venueResidentIds(prior) : place.residentIds,
         zones: prior?.zones ?? place.zones,
         privateSpaces: prior?.privateSpaces ?? place.privateSpaces,

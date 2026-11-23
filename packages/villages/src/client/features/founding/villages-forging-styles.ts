@@ -388,9 +388,6 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-footer { flex:none; align-items:center; }
 .villages-forging-v2 .villages-quick-dialog>.villages-quick-footer { padding:.75rem 0 0; background:transparent; }
 .villages-forging-v2 .villages-quick-dialog>.villages-quick-footer button { flex:none; }
-.villages-quick-home-capacity { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.5rem; font-size:.9rem; margin:.3rem 0; }
-.villages-forging-v2 .villages-quick-home-capacity label { display:flex; align-items:center; gap:.5rem; margin:0; }
-.villages-quick-home-capacity select { width:auto; }
 .villages-forging-v2 .villages-quick-sleeping { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:.5rem; align-items:center; font-size:.9rem; margin:.5rem 0; }
 .villages-quick-sleeping select { min-width:0; }
 .villages-quick-panel { display:grid; grid-template-columns:11rem minmax(0,1fr); gap:1.5rem; flex:1; min-height:0; align-content:start; padding:0 .1rem; }

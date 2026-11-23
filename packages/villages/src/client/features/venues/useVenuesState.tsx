@@ -15,7 +15,7 @@ export function useVenuesState() {
   const [venueId, setVenueId] = useState<string | null>(null);
 
   const [venuePage, setVenuePage] = useState<"view" | "edit" | "proposal">("view");
-  const [venueSection, setVenueSection] = useState<"about" | "zones" | "access">("about");
+  const [venueSection, setVenueSection] = useState<"about" | "zones" | "arrangements">("about");
   const [venueReturnTo, setVenueReturnTo] = useState<"home" | "menu" | "room" | "person">("home");
   const [housingVenueId, setHousingVenueId] = useState("");
 
@@ -24,8 +24,6 @@ export function useVenuesState() {
   const [venueEditDraft, setVenueEditDraft] = useState<VillageVenue | null>(null);
 
   const [venueProposalDraft, setVenueProposalDraft] = useState<{
-    capacity: number;
-
     title: string;
     description: string;
   } | null>(null);

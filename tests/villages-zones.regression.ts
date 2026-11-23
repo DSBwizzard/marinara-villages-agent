@@ -122,7 +122,6 @@ console.log("Direct Zone Renovations, targeted closures, untouched rooms and fro
 // A later addition changes the baseline membership even if the original changed room is untouched.
 const g = fixture(),
   older = await renovation(g, {
-    capacity: 2,
     zones: g
       .state()
       .venues[0].zones!.filter((z) => z.kind !== "exterior")
@@ -130,7 +129,6 @@ const g = fixture(),
   });
 await g.agree(older);
 const added = await renovation(g, {
-  capacity: 2,
   zones: [
     ...g.state().venues[0].zones!.filter((z) => z.kind !== "exterior"),
     {

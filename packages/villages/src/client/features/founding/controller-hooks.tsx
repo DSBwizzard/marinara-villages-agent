@@ -474,12 +474,6 @@ export function useFoundingSetupBlocker(ports: {
       if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
         return "A chosen villager is no longer in your character cards. Choose another villager on People.";
       if (setupVenues.length > 16) return "A Village supports at most 16 Venues.";
-      if (
-        residences.some(
-          (home) => (home.residentIds?.length ?? 0) + Number(home.occupancy.playerHome) > (home.residenceCapacity ?? 0),
-        )
-      )
-        return "Household assignments exceed a Residence’s capacity.";
       return "";
     },
     [

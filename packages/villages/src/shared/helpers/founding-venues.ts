@@ -4,12 +4,6 @@ import { contactNeighborIds, materializeConnections } from "./zone-contact.js";
 export function foundingVenueShapeProblem(venues: readonly VillageVenue[]): string {
   if (!venues.length || venues.length > 16) return "Provide between one and sixteen starting Venues.";
   if (
-    venues.some(
-      (venue) => (venue.residentIds?.length ?? 0) + Number(venue.occupancy.playerHome) > (venue.residenceCapacity ?? 0),
-    )
-  )
-    return "Keep enough home places for everyone assigned here.";
-  if (
     venues.filter((venue) => {
       const zones = materializeConnections([
         { id: "exterior", kind: "exterior" },

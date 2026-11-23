@@ -168,7 +168,11 @@ await withBrowser(browser, async () => {
         return sheet.getByRole("button", { name: "← Venues", exact: true }).click();
       };
       const parentVenue = async () => {
-        if (await sheet.getByRole("navigation", { name: "Zone sections" }).count())
+        for (
+          let step = 0;
+          step < 6 && !(await sheet.getByRole("navigation", { name: "Venue sections" }).count());
+          step++
+        )
           await sheet.locator(".marinara-capability-villages-venue-navigation button").click();
       };
       const openZones = async () => {
@@ -208,7 +212,7 @@ await withBrowser(browser, async () => {
         });
       await sheet.getByRole("button", { name: "Zones", exact: true }).click();
       const zoneGeometry = await geometry(sheet.getByRole("button", { name: /^Entrance/ }));
-      await sheet.getByRole("button", { name: "About", exact: true }).click();
+      await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
       const manageGeometry = await geometry(sheet.getByRole("button", { name: /^Residents/ }));
       assert.deepEqual(
         { font: manageGeometry.font, fade: manageGeometry.fade },
@@ -315,7 +319,7 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("switch")).toHaveCount(0);
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
-      await expect(button("Access")).toBeVisible();
+      await expect(button("Arrangements")).toBeVisible();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Remove Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
@@ -540,12 +544,13 @@ await withBrowser(browser, async () => {
 
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
-      await sheet.getByRole("button", { name: "Access", exact: true }).click();
-      const access = sheet.getByRole("region", { name: "Venue access", exact: true });
+      await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+      await sheet.getByRole("button", { name: /^Visitors/ }).click();
+      const access = sheet.getByRole("region", { name: "Visitors", exact: true });
       await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("public");
       const preserved = await page.evaluate(() => window.quickState.venues[0]);
       await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
-      await access.getByRole("button", { name: "Save access", exact: true }).click();
+      await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
       const expected = structuredClone(preserved);
       expected.spaces[0].access.mode = "permission-required";
       assert.deepEqual(
@@ -553,6 +558,7 @@ await withBrowser(browser, async () => {
         expected,
         "Access preserves unrelated fields",
       );
+      await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
       await sheet.getByRole("button", { name: "About", exact: true }).click();
       await edit();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
@@ -594,18 +600,15 @@ await withBrowser(browser, async () => {
       await page.locator('[data-venue-id="founding-home:ada"]').click();
       await manage();
       await sheet.getByLabel("Venue Name", { exact: true }).fill("Ada’s café");
-      const residents = () => sheet.getByRole("button", { name: /^Residents/ }).click();
-      const workers = () => sheet.getByRole("button", { name: /^Workers/ }).click();
+      const residents = async () => {
+        await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+        await sheet.getByRole("button", { name: /^Residents/ }).click();
+      };
+      const workers = async () => {
+        await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+        await sheet.getByRole("button", { name: /^Workers/ }).click();
+      };
       const returnToVenue = () => sheet.getByRole("button", { name: "← Ada’s café", exact: true }).click();
-      await residents();
-      await sheet.getByRole("button", { name: "Add resident", exact: true }).click();
-      await sheet.getByRole("button", { name: "Bryn", exact: true }).click();
-      await sheet.getByRole("button", { name: "Save home", exact: true }).click();
-      await expect(sheet.getByRole("alert")).toHaveText("Increase resident capacity in About.");
-      await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
-      await returnToVenue();
-      await manage();
-      await sheet.getByLabel("Resident capacity", { exact: true }).selectOption("2");
       await residents();
       await sheet.getByRole("button", { name: "Ada", exact: true }).click();
       await expect(sheet.getByLabel("Resident capacity", { exact: true })).toHaveCount(0);
@@ -658,7 +661,7 @@ await withBrowser(browser, async () => {
       await sheet.getByRole("button", { name: "Remove resident", exact: true }).click();
       const removed = await page.evaluate(() => window.quickState.venues.find((row) => row.id === "founding-home:ada"));
       assert.deepEqual(removed.residentIds, []);
-      assert.equal(removed.residenceCapacity, 2);
+      assert.equal("residenceCapacity" in removed, false);
       assert.deepEqual(removed.workerIds, ["ada"]);
       assert.deepEqual(removed.destinations.ada, { work: "common:base" });
       assert.deepEqual(removed.access.managerIds, cafe.access.managerIds);
@@ -719,17 +722,25 @@ await withBrowser(browser, async () => {
       await first.click();
       await openZones();
       await zone("private:base").click();
-      await sheet.getByRole("button", { name: "Access", exact: true }).click();
+      await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+      await sheet.getByRole("button", { name: /^Visitors/ }).click();
       await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("permission-required");
-      await sheet.getByRole("button", { name: "Managers", exact: true }).click();
+      await sheet.getByRole("button", { name: /^Change visitor rules/ }).click();
       await sheet.getByRole("button", { name: "You", exact: true }).click();
-      await expect(sheet.getByRole("checkbox", { name: "Manages this place", exact: true })).toBeDisabled();
-      await expect(sheet.getByRole("button", { name: "Save management", exact: true })).toBeDisabled();
-      await sheet.getByRole("button", { name: "← Managers", exact: true }).click();
+      await expect(sheet.getByRole("checkbox", { name: "Change visitor rules", exact: true })).toBeDisabled();
+      await expect(sheet.getByRole("button", { name: "Save visitor rules", exact: true })).toBeDisabled();
+      await sheet.getByRole("button", { name: "← Change visitor rules", exact: true }).click();
+      await sheet.getByRole("button", { name: "Add person", exact: true }).click();
+      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
+      await sheet.getByRole("checkbox", { name: "Change visitor rules", exact: true }).check();
+      await sheet.getByRole("button", { name: "Save visitor rules", exact: true }).click();
+      assert(
+        (await page.evaluate(() => window.quickState.venues[0].privateSpaces[0].access.managerIds)).includes("ada"),
+      );
       await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
       const personalBefore = await page.evaluate(() => window.quickState.venues[0]);
       await access.getByLabel("Entry", { exact: true }).selectOption("public");
-      await access.getByRole("button", { name: "Save access", exact: true }).click();
+      await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
       const personalExpected = structuredClone(personalBefore);
       personalExpected.privateSpaces[0].access.mode = "public";
       assert.deepEqual(
@@ -738,7 +749,7 @@ await withBrowser(browser, async () => {
         "Making a personal Zone public keeps its owner and sleeping assignment",
       );
       await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
-      await access.getByRole("button", { name: "Save access", exact: true }).click();
+      await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
       assert.deepEqual(await page.evaluate(() => window.quickState.venues[0]), personalBefore);
       failReply = true;
       await confirm();

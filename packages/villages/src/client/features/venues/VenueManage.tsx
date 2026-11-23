@@ -2,6 +2,7 @@ import { useState, type ReactNode, type Ref } from "react";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { Portrait } from "../../shared/types.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
+import { VillageIcon } from "../../shared/VillageIcon.js";
 
 export function VenueManageHeading({
   title,
@@ -88,7 +89,13 @@ export function VenuePeoplePicker({
               onClick={() => onSelect(person.id)}
             >
               <span aria-hidden="true">
-                <AvatarFace name={person.name} portrait={person.portrait} className={`${P}-avatar`} />
+                {person.portrait ? (
+                  <AvatarFace name={person.name} portrait={person.portrait} className={`${P}-avatar`} />
+                ) : (
+                  <span className={`${P}-avatar villages-profile-fallback`}>
+                    <VillageIcon name="people" />
+                  </span>
+                )}
               </span>
               <span className={`${P}-directory-text`}>
                 <strong>{person.name}</strong>

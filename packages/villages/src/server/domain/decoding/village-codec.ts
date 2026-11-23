@@ -497,13 +497,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
   const residentIds = coerceVenueIds(raw.residentIds);
   if (residentIds.length !== raw.residentIds.length || residentIds.includes("player"))
     throw new Error("Saved resident IDs must be distinct non-player people.");
-  if (
-    !Number.isInteger(raw.residenceCapacity) ||
-    Number(raw.residenceCapacity) < 0 ||
-    Number(raw.residenceCapacity) > 4 ||
-    residentIds.length + Number(playerHome) > Number(raw.residenceCapacity)
-  )
-    throw new Error("Saved household membership must fit explicit residential capacity.");
   const privateSpaceFor = (ownerId: string, value: unknown) => {
     const row = asRecord(value);
     return {
@@ -595,12 +588,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     discovered: raw.discovered === true,
     layoutVersion: 1,
     spaces,
-    residenceCapacity:
-      Number.isInteger(raw.residenceCapacity) &&
-      Number(raw.residenceCapacity) >= 0 &&
-      Number(raw.residenceCapacity) <= 4
-        ? Number(raw.residenceCapacity)
-        : 1,
+
     residentIds,
     privateSpaces,
     playerSeenShared: raw.playerSeenShared === true,
@@ -1006,9 +994,6 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (
       raw.kind === "renovation" &&
       ((change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
-        !Number.isInteger(change.capacity) ||
-        Number(change.capacity) < 0 ||
-        Number(change.capacity) > 4 ||
         !Array.isArray(change.zones) ||
         !zones ||
         zones.length !== change.zones.length ||
@@ -1064,7 +1049,6 @@ function coerceProjects(value: unknown): VillageProject[] {
         flow.change === null
           ? null
           : {
-              capacity: Number(asRecord(flow.change).capacity),
               zones,
               detail: asTrimmedString(asRecord(flow.change).detail),
               ...(asRecord(flow.change).form !== undefined

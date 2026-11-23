@@ -49,7 +49,6 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board fieldset{padding:0;border:0;margin:0;min-width:0}
 .${P}-project-board .vp-choices{display:flex;flex-wrap:wrap;gap:.4rem;margin:.3rem 0 1rem}
 .${P}-project-board .vp-choices button{font-size:.9rem;padding:.5rem .7rem}
-.${P}-project-board .vp-capacity{max-width:10rem}
 .${P}-project-board .${P}-artwork-upload{position:relative;font-size:.85rem;text-transform:none;letter-spacing:0;overflow:hidden}
 .${P}-project-board .${P}-artwork-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .${P}-project-board .${P}-artwork-upload:has(input:disabled){opacity:.48}

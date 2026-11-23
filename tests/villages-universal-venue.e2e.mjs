@@ -301,10 +301,12 @@ await withBrowser(browser, async () => {
     await expect(about.getByText(place.form, { exact: true })).toHaveCount(1);
     await expect(about.getByText(place.description, { exact: true })).toHaveCount(0);
     await expect(about.getByText("Form", { exact: true })).toHaveCount(0);
-    await expect(about.getByText("Resident capacity", { exact: true })).toBeVisible();
-    await tabs.getByRole("button", { name: "People", exact: true }).click();
+    await expect(about.getByText("Resident capacity", { exact: true })).toHaveCount(0);
+    await tabs.getByRole("button", { name: "Arrangements", exact: true }).click();
+    await profile.getByRole("button", { name: /^Residents/ }).click();
     await expect(profile.getByRole("button", { name: "Mara", exact: true })).toBeVisible();
-    await expect(profile.getByRole("button", { name: "Eli", exact: true })).toBeVisible();
+    await expect(profile.getByRole("button", { name: "Eli", exact: true })).toHaveCount(0);
+    await profile.getByRole("button", { name: "← Warehouse home", exact: true }).click();
     await tabs.getByRole("button", { name: "About", exact: true }).click();
     await expect(about.getByRole("heading", { name: /Lives here|Works here/ })).toHaveCount(0);
     await expect(profile.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
@@ -621,7 +623,7 @@ await withBrowser(browser, async () => {
     }
     await expect(profile).toBeVisible();
     if (await profile.getByRole("navigation", { name: "Zone sections", exact: true }).count()) await zoneBack.click();
-    for (const section of ["About", "Zones", "People", "Access"]) {
+    for (const section of ["About", "Zones", "Arrangements"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       const bounds = await profile.boundingBox();
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, `${width}: ${section} stays inside the host`);
@@ -656,7 +658,10 @@ await withBrowser(browser, async () => {
       .click();
     await openProfile();
     await expect(profile).toBeVisible();
-    await expect(tabs.getByRole("button", { name: "Access", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(tabs.getByRole("button", { name: "Arrangements", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await tabs.getByRole("button", { name: "About", exact: true }).click();
     await profile.getByRole("button", { name: "Visit venue", exact: true }).click();
     const composer = page.getByRole("textbox", { name: "Message at Renamed warehouse", exact: true });
@@ -666,7 +671,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
     await expect(profile).toBeVisible();
-    for (const section of ["About", "Zones", "People", "Access"]) {
+    for (const section of ["About", "Zones", "Arrangements"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       await expect(profile).toBeVisible();
       if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {

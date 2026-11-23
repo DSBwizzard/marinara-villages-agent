@@ -60,7 +60,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
     venue.imageContext = plan.imageContext;
     venue.description = plan.exteriorDescription;
     venue.presentation.image = zones[0].image;
-    venue.residenceCapacity = plan.capacity;
     completeWorksiteEntrance(state, venue, project.id, at);
     venue.constructionStatus = "complete";
   } else {
@@ -110,7 +109,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
     if (change.form !== undefined) {
       venue.form = change.form;
     }
-    venue.residenceCapacity = change.capacity ?? venue.residenceCapacity;
   }
   venue.layoutVersion = 1;
   initializeVenueAccess(venue);
@@ -150,16 +148,12 @@ export function readProjectPlan(value: unknown, _venue: VillageVenue): NonNullab
   const exteriorDescription = readPlaceDescription(row.exteriorDescription).trim();
   if (!form || !exteriorDescription || row.layoutVersion !== 1)
     throw badRequest("Define the Physical design, layout and Entrance before work starts.");
-  const capacity = Number(row.capacity ?? 0);
-  if (!Number.isInteger(capacity) || capacity < 0 || capacity > 4)
-    throw badRequest("Residence capacity must be from zero to four.");
   const zones = readBaseVenueLayout(
     { ...row, description: exteriorDescription, presentation: { image: row.exteriorImage } },
     "",
     validImage,
   );
   return {
-    capacity: Number(row.capacity ?? 0),
     imageContext: readVenueImageContext(row.imageContext),
     form,
     venueType: boundText(row.venueType, 100),

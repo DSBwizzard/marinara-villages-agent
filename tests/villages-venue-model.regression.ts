@@ -4,7 +4,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { venueInZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { initializeRoomContinuity } from "../packages/villages/src/server/domain/rules/native-continuity.js";
 import { observableRoomDescription } from "../packages/villages/src/server/domain/rules/zone-picture.js";
@@ -74,7 +74,7 @@ const state = coerceVillageState({
       presentation: { image: null, x: 0.3, y: 0.4 },
       description: "A vehicle parked by the road. A gate.",
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      residenceCapacity: 2,
+
       residentIds: ["bob"],
     }),
   ],
@@ -83,7 +83,6 @@ const venue = state.venues[0];
 assert.match(venueInZone(venue, "residence").description, /bed/);
 assert.match(venueInZone(venue, "workplace").description, /lathe/);
 assert.equal(venueInZone(venue, "workplace").presentation.image?.id, "work-image");
-assert.equal(venueCapacity(venue), 2);
 assert.match(venueInZone(venue, "exterior").description, /gate/);
 assert.match(venueInZone(venue, "private:bob").description, /letter/);
 assert.doesNotMatch(venueInZone(venue, "exterior").description, /private/);
@@ -136,7 +135,6 @@ assert.deepEqual(
 );
 const decoded = coerceVillageState(JSON.parse(JSON.stringify(state)));
 assert.equal(Object.hasOwn(decoded.venues[0], "classes"), false);
-assert.equal(venueCapacity(decoded.venues[0]), 2);
 assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(decoded))), decoded);
 assert.equal(appearance("exterior", decoded), appearance("exterior"));
 assert(acceptNarration(decoded, publication, "turn", at).replayed);

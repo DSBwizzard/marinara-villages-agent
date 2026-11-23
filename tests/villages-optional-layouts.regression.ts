@@ -14,7 +14,7 @@ import {
   assertResidencePrivateDestination,
   readBaseVenueLayout,
 } from "../packages/villages/src/server/domain/rules/venue-layout.js";
-import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   canOccupyZone,
   chooseAgendaZone,
@@ -50,7 +50,7 @@ function draft(layout: string, role = "residence", owner = "a") {
     residentIds: [role !== "residence" || layout === "exterior" || owner === "player" ? null : owner || null].filter(
       (id) => typeof id === "string" && !!id,
     ),
-    residenceCapacity: 1,
+
     id: "venue:" + layout + ":" + role + ":" + owner,
     layoutVersion: 1,
     layout,
@@ -370,21 +370,7 @@ async function main() {
       current.venues.find((venue) => venue.id === outside.id)!.zones!.map((zone) => zone.kind),
       ["exterior"],
     );
-    assert.equal(venueCapacity(outside), 1);
-    // A reviewed capacity change needs no new room.
-    await createRenovationProject(outside.id, {
-      title: "Another mat",
-      detail: "Room for two sleeping mats outside",
-      capacity: 2,
-    });
-    current = await readVillageState({ memories: true });
-    let project = current.projects.find(
-      (project) => project.kind === "renovation" && project.lifecycle?.phase !== "complete",
-    )!;
-    await finish(project.id);
-    current = await readVillageState({ memories: true });
-    assert.equal(venueCapacity(current.venues.find((venue) => venue.id === outside.id)!), 2);
-    assert.equal(current.venues.find((venue) => venue.id === outside.id)!.zones!.length, 1);
+    let project;
     // Add and remove a base Common Space through reviewed structural terms.
     await createRenovationProject(outside.id, {
       title: "Add shelter",
@@ -533,7 +519,6 @@ async function main() {
     const chamber = expanded.zones!.find((zone) => zone.kind === "personal")!;
     assert.equal(chamber.ownerId, undefined);
     assert.equal(chamber.preparation?.status, "pending");
-    assert.equal(venueCapacity(expanded), 2);
     // The room stays closed during neutral preparation; later checks use a completed synthetic job.
     assert.throws(() => assertResidencePrivateDestination(current, expanded, "player", chamber.id), /no longer vacant/);
     chamber.preparation!.status = "ready";

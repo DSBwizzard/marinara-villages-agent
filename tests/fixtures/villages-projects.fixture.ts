@@ -78,7 +78,7 @@ export function venue(id = "cafe", role: "community" | "residence" = "community"
     spaces: [common],
     privateSpaces: [],
     residentIds: role === "residence" ? ["a"] : [],
-    residenceCapacity: 2,
+
     description: "A familiar place.",
     category: "",
     form: "A building",
@@ -190,7 +190,7 @@ export function fixture() {
         exteriorDescription: "A clear entrance.",
         layoutVersion: 1,
         layout: "common",
-        capacity: 2,
+
         spaces: [
           {
             id: "work",
@@ -216,7 +216,15 @@ export async function renovation(f: Fixture, change: Record<string, unknown> = {
     requestId,
     title: "Renovate",
     detail: "A larger shared room.",
-    capacity: 3,
+    ...(Object.keys(change).length
+      ? {}
+      : {
+          zones: f
+            .state()
+            .venues.find((venue) => venue.id === "cafe")!
+            .zones!.filter((zone) => zone.kind !== "exterior")
+            .map((zone) => ({ ...zone, roomSpecification: "Enlarge this shared room." })),
+        }),
     ...change,
   });
   return f.state().projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, requestId))!.id;

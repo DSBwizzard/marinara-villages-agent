@@ -49,11 +49,7 @@ await g.mutate((state) => {
 await g.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)));
 assert.equal(g.get(r).status, "paused");
 assert.equal(g.get(r).lifecycle!.workOrder!.remainingMs, 0);
-assert.equal(
-  g.state().venues[0].residenceCapacity,
-  original[0].residenceCapacity,
-  "failed completion applies no partial capacity change",
-);
+assert.equal(g.state().venues[0].form, original[0].form, "Failed completion applies no partial building change");
 assert.equal(observableRoomDescription(g.state(), "cafe", "common", now.toISOString()), "A newly authored room.");
 await assert.rejects(g.service.resumeProject(r, g.body(r), now), /planned Room changed/);
 const h = fixture(),
@@ -97,7 +93,7 @@ await m.mutate((state) => {
     },
   });
 });
-const capacity = await renovation(m, { capacity: 3 });
+const capacity = await renovation(m, {});
 await m.agree(capacity);
 await m.service.startProjectConstruction(capacity, m.body(capacity), now);
 await m.mutate((state) => {

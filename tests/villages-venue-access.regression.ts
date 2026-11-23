@@ -78,7 +78,7 @@ function fixture(): VillageVenue {
     description: "The approach",
     residentIds: ["jim", "mara"],
     workerIds: ["employee"],
-    residenceCapacity: 3,
+
     improvements: [null, null],
     category: "",
     occupancy: { playerHome: false, residentCharacterId: "jim", homeKind: null },

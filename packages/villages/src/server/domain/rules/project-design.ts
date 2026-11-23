@@ -44,9 +44,6 @@ export function readRenovationChange(
   if (row.form !== undefined && (typeof row.form !== "string" || row.form.length > MAX_PHYSICAL_DESIGN_LENGTH))
     throw badRequest("Physical form must be at most 2000 characters.");
   const form = typeof row.form === "string" ? row.form.trim() : undefined;
-  const capacity = Number(row.capacity ?? venue.residenceCapacity ?? 0);
-  if (!Number.isInteger(capacity) || capacity < 0 || capacity > 4)
-    throw badRequest("Residence capacity must be from zero to four.");
   const rawZones =
     row.zones ??
     prior?.change?.zones ??
@@ -98,7 +95,6 @@ export function readRenovationChange(
     };
   });
   const change: VillageProjectChange = {
-    capacity,
     zones,
     detail: boundText(row.detail, 2000).trim(),
     ...(form !== undefined && form !== (venue.form ?? "") ? { form } : {}),
@@ -139,9 +135,6 @@ export function validateRenovationDesign(
   change: VillageProjectChange,
   at: Date,
 ): void {
-  const residents = venueResidentIds(venue).length + Number(venue.occupancy.playerHome);
-  if (residents > (change.capacity ?? venue.residenceCapacity ?? 0))
-    throw conflict("Keep room for the current residents.");
   const zones = change.zones ?? venueZones(venue).filter((zone) => zone.kind !== "exterior");
   const liveZones = new Set(venueZones(venue).map((zone) => zone.id));
   if (zones.some((zone) => !liveZones.has(zone.id) && roomWasRemoved(state, venue.id, zone.id)))
@@ -203,7 +196,7 @@ export function plannedVenue(project: VillageProject): VillageVenue {
   const venue: VillageVenue = {
     id: "site:" + project.id,
     name: draft.name,
-    residenceCapacity: project.plan?.capacity ?? 0,
+
     buildProjectId: project.id,
     constructionStatus: "worksite",
     description: WORKSITE_DESCRIPTION,

@@ -8,6 +8,7 @@ export function VenueProfile({
   profileRef,
   headingRef,
   heading,
+  headingAction,
   name,
   location = false,
   entranceImage,
@@ -23,6 +24,7 @@ export function VenueProfile({
   profileRef?: Ref<HTMLElement>;
   headingRef?: Ref<HTMLHeadingElement>;
   heading?: ReactNode;
+  headingAction?: ReactNode;
   name: string;
   location?: boolean;
   entranceImage?: string;
@@ -61,11 +63,14 @@ export function VenueProfile({
       </figure>
       <div className={P + "-venue-navigation"}>{navigation}</div>
       <header className={P + "-workspace-venue-header"}>
-        {heading ?? (
-          <h1 className={P + "-storybook-heading"} ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
-            {name}
-          </h1>
-        )}
+        <div className="villages-profile-title-row">
+          {heading ?? (
+            <h1 className={P + "-storybook-heading"} ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
+              {name}
+            </h1>
+          )}
+          {headingAction}
+        </div>
       </header>
       <VenueSections {...tabs} />
       <main className={P + "-venue-profile-body"}>{children}</main>

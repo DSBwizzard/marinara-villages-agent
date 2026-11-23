@@ -14,7 +14,7 @@ import { continuityHolderKey, protectContinuity } from "./continuity.js";
 import { agendaRepairRecords, applyAgendaRepair } from "./repair-agenda.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
-import { venueCapacity, venueResidentIds } from "./venue-model.js";
+import { venueResidentIds } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { normalizeVillageMutation } from "./world-mutation.js";
 import { retainNativeFact } from "./native-continuity.js";
@@ -842,11 +842,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         const [venueId, zoneId] = repairParts(str("destination")),
           destination = state.venues.find((v) => v.id === venueId);
         if (!destination || destination.constructionStatus === "worksite") throw conflict("That home is unavailable.");
-        if (
-          !venueResidentIds(destination).includes(id) &&
-          venueResidentIds(destination).length + Number(destination.occupancy.playerHome) >= venueCapacity(destination)
-        )
-          throw conflict("That home is full.");
         assertResidencePrivateDestination(state, destination, id, zoneId);
         for (const venue of state.venues) {
           venue.residentIds = venueResidentIds(venue).filter((p) => p !== id);

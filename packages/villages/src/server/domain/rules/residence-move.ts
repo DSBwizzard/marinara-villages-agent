@@ -4,7 +4,7 @@ import type { VillageState } from "../models/world.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { personalDestinationSpace } from "./venue-authoring.js";
-import { venueAssignedCount, venueCapacity, venueResidentIds, venueSleepers } from "./venue-model.js";
+import { venueResidentIds, venueSleepers } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { assertResidenceAgreement, residenceProposal } from "./residence-agreement.js";
 import { initializeVenueAccess } from "./venue-access.js";
@@ -24,13 +24,7 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
     return false;
   }
   const destination = state.venues.find((venue) => venue.id === residence.proposedVenueId);
-  if (
-    !destination ||
-    (!venueResidentIds(destination).includes(characterId) &&
-      !(characterId === "player" && destination.occupancy.playerHome) &&
-      venueAssignedCount(destination) >= venueCapacity(destination))
-  )
-    throw conflict("The new venue is no longer available for this move.");
+  if (!destination) throw conflict("The new venue is no longer available for this move.");
   const old = state.venues.find((venue) =>
     characterId === "player" ? venue.occupancy.playerHome : venueResidentIds(venue).includes(characterId),
   );

@@ -16,10 +16,12 @@ export function WorkFields({
   value,
   zones,
   onChange,
+  fixedZone = false,
 }: {
   value: VenueWork;
   zones: { id: string; name?: string }[];
   onChange(value: VenueWork): void;
+  fixedZone?: boolean;
 }) {
   const minute = (text: string) => Number(text.slice(0, 2)) * 60 + Number(text.slice(3));
   return (
@@ -34,27 +36,29 @@ export function WorkFields({
           onChange={(e) => onChange({ ...value, activity: e.target.value })}
         />
       </label>
-      <label>
-        Usual Zone
-        <select
-          aria-label="Usual work Zone"
-          value={value.zoneId}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              zoneId: e.target.value,
-              accessZoneIds: [...new Set([...value.accessZoneIds, e.target.value])],
-            })
-          }
-        >
-          <option value="">Choose a Zone</option>
-          {zones.map((zone) => (
-            <option key={zone.id} value={zone.id}>
-              {zone.name || "Zone"}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!fixedZone && (
+        <label>
+          Usual Zone
+          <select
+            aria-label="Usual work Zone"
+            value={value.zoneId}
+            onChange={(e) =>
+              onChange({
+                ...value,
+                zoneId: e.target.value,
+                accessZoneIds: [...new Set([...value.accessZoneIds, e.target.value])],
+              })
+            }
+          >
+            <option value="">Choose a Zone</option>
+            {zones.map((zone) => (
+              <option key={zone.id} value={zone.id}>
+                {zone.name || "Zone"}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <fieldset className="villages-work-days">
         <legend>Days</legend>
         <div className="villages-work-day-buttons">

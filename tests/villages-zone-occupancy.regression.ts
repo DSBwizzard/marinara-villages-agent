@@ -70,7 +70,6 @@ function fixture(count: number) {
         venueFixture({
           id: "home" + i,
           layoutVersion: 1,
-          residenceCapacity: 4,
           name: "Home " + i,
           occupancy: { playerHome: i === 0, homeKind: "house", residentCharacterId: null },
           residentIds: ids.filter((_, index) => Math.floor((index + 1) / 4) === i),

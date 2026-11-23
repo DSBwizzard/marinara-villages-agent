@@ -565,9 +565,7 @@ console.log(
   );
   assert.throws(() =>
     parsePlaces(
-      separate.map((row) =>
-        row.id === "founding-home:a" ? { ...row, residentIds: ["a", "b"], residenceCapacity: 2 } : row,
-      ),
+      separate.map((row) => (row.id === "founding-home:a" ? { ...row, residentIds: ["a", "b"] } : row)),
       new Set(["a", "b", "c"]),
       true,
     ),

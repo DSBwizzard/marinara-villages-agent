@@ -41,7 +41,7 @@ function fixture(name: string) {
       spaces: [{ id: "residence", description: "A small home", image: null }],
       residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id: "destination",
-      residenceCapacity: 1,
+
       name: `${name} home`,
       description: "A small home",
     }),
@@ -142,13 +142,10 @@ changed.retryWith((state) => {
   state.venues[0]!.residentIds = ["other"];
   state.venues[0]!.occupancy.residentCharacterId = "other";
 });
-await assert.rejects(changed.service.proposeVillageResidence("same", "destination"), /unreserved resident place/);
-assert.equal(
-  changed.state.residences.length,
-  0,
-  "A destination occupied during retry cannot commit an earlier proposal.",
-);
-assert(!changed.calls.includes("snapshot"));
+await assert.doesNotReject(changed.service.proposeVillageResidence("same", "destination"));
+assert.equal(changed.state.residences.length, 1, "A retry can propose sharing with the current household.");
+assert(changed.state.residences[0].agreement!.requiredIds.includes("other"));
+assert.equal(changed.state.residences[0].agreement!.approvals.other, undefined, "A new housemate must agree");
 const postponed = fixture("Postponed"),
   attemptClock = new Date("2026-10-06T12:00:00Z");
 const proposed = residenceProposal(

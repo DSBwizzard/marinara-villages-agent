@@ -3,8 +3,16 @@ import { VenueZoneRow } from "../../shared/VenueNavigation.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { VenuePeoplePicker, type VenuePerson } from "./VenueManage.js";
 
-export type ArrangementKind = "home" | "work" | "management";
-export type ArrangementPage = { kind: ArrangementKind; personId?: string; adding?: boolean };
+export type ArrangementKind = "home" | "work" | "rules" | "invite" | "visitors" | "guests";
+export type ArrangementPage = { kind: ArrangementKind; personId?: string; adding?: boolean; zoneId?: string };
+export function arrangementBack(page: ArrangementPage): ArrangementPage | null {
+  if (page.personId || page.adding) return { kind: page.kind, zoneId: page.zoneId };
+  return page.kind === "rules" || page.kind === "invite" || page.kind === "guests"
+    ? { kind: "visitors", zoneId: page.zoneId }
+    : null;
+}
+export const arrangementAddLabel = (kind: ArrangementKind) =>
+  kind === "home" ? "Add resident" : kind === "work" ? "Add worker" : "Add person";
 export const arrangementLabel = (kind: ArrangementKind, zone = false) =>
   kind === "home"
     ? zone
@@ -14,19 +22,78 @@ export const arrangementLabel = (kind: ArrangementKind, zone = false) =>
       ? zone
         ? "Works here"
         : "Workers"
-      : "Managers";
+      : kind === "rules"
+        ? "Change visitor rules"
+        : kind === "invite"
+          ? "Invite guests"
+          : kind === "guests"
+            ? "Invitations"
+            : "Visitors";
+export function visitorZones(place: VillageVenue) {
+  if (place.accessView && place.zones) return place.zones;
+  return [
+    ...(place.zones?.filter((zone) => zone.kind === "exterior") ?? []),
+    ...(place.spaces?.length || place.privateSpaces?.length
+      ? [
+          ...(place.spaces ?? []).map((zone) => ({ ...zone, kind: "public" as const })),
+          ...(place.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "personal" as const })),
+        ]
+      : (place.zones?.filter((zone) => zone.kind !== "exterior") ?? [])),
+  ];
+}
+export function visitorDefault(place: VillageVenue) {
+  const zones = visitorZones(place).filter((zone) => zone.kind !== "exterior");
+  return (zones.find((zone) => !zone.ownerId) ?? zones[0])?.id;
+}
+export function VisitorsScope({
+  place,
+  zoneId,
+  disabled,
+  onZone,
+}: {
+  place: VillageVenue;
+  zoneId?: string;
+  disabled?: boolean;
+  onZone(id?: string): void;
+}) {
+  return (
+    <label>
+      Zone
+      <select
+        aria-label="Visitor Zone"
+        value={zoneId ?? ""}
+        disabled={disabled}
+        onChange={(e) => onZone(e.target.value || undefined)}
+      >
+        {visitorZones(place)
+          .filter((zone) => zone.kind !== "exterior")
+          .map((zone) => (
+            <option key={zone.id} value={zone.id}>
+              {zone.name || "Zone"}
+            </option>
+          ))}
+        <option value="">Venue defaults</option>
+      </select>
+    </label>
+  );
+}
 export function arrangementIds(place: VillageVenue, kind: ArrangementKind, zoneId?: string): string[] {
-  if (kind === "management") {
-    const zone =
-      place.zones?.find((row) => row.id === zoneId) ??
-      [...(place.spaces ?? []), ...(place.privateSpaces ?? [])].find((row) => row.id === zoneId);
-    return (
+  if (kind === "rules" || kind === "invite") {
+    const zone = visitorZones(place).find((row) => row.id === zoneId);
+    if (zone?.accessView?.decision.canRecover) return [];
+    const managers =
       zone?.accessView?.policy?.managerIds ??
       zone?.access?.managerIds ??
       place.accessView?.managerIds ??
       place.access?.managerIds ??
-      []
-    );
+      (!place.accessView && !place.access
+        ? [...(place.occupancy.playerHome ? ["player"] : []), ...(place.residentIds ?? [])].length
+          ? [...(place.occupancy.playerHome ? ["player"] : []), ...(place.residentIds ?? [])]
+          : ["player"]
+        : []);
+    return kind === "rules"
+      ? managers
+      : [...new Set([...managers, ...(zone?.accessView?.policy?.inviterIds ?? zone?.access?.inviterIds ?? [])])];
   }
   if (kind === "home")
     return [...(place.occupancy.playerHome ? ["player"] : []), ...(place.residentIds ?? [])].filter(
@@ -50,7 +117,7 @@ export function ArrangementSummary({
 }) {
   return (
     <nav className={P + "-venue-zone-picker villages-arrangement-summary"} aria-label="Arrangements">
-      {(["home", "work"] as const).map((kind) => (
+      {(zoneId === "exterior" ? [] : (["home", "work"] as const)).map((kind) => (
         <VenueZoneRow
           key={kind}
           name={arrangementLabel(kind, !!zoneId)}
@@ -59,6 +126,24 @@ export function ArrangementSummary({
           onOpen={() => onOpen(kind)}
         />
       ))}
+      <VenueZoneRow
+        name="Visitors"
+        accessLabel={(() => {
+          const zones = visitorZones(place).filter((zone) => (zoneId ? zone.id === zoneId : zone.kind !== "exterior"));
+          const modes = new Set(
+            zones.map((zone) =>
+              zone.kind === "exterior"
+                ? "public"
+                : (zone.accessView?.decision.mode ??
+                  zone.access?.mode ??
+                  (zone.ownerId ? "permission-required" : "public")),
+            ),
+          );
+          return modes.size > 1 ? "Mixed" : modes.has("permission-required") ? "By permission" : "Public";
+        })()}
+        disabled={disabled}
+        onOpen={() => onOpen("visitors")}
+      />
     </nav>
   );
 }
@@ -78,9 +163,6 @@ export function ArrangementRoster({
   disabled?: boolean;
 }) {
   const assigned = arrangementIds(place, page.kind, zoneId);
-  const owner =
-    place.zones?.find((row) => row.id === zoneId)?.ownerId ??
-    place.privateSpaces?.find((row) => row.id === zoneId)?.ownerId;
   return (
     <section className="villages-manage">
       <VenuePeoplePicker
@@ -90,10 +172,6 @@ export function ArrangementRoster({
           .filter((row) => page.kind !== "work" || row.id !== "player")
           .filter((row) => !!page.adding !== assigned.includes(row.id))}
         onSelect={(personId) => onPage({ ...page, personId })}
-        onAdd={
-          !page.adding && !(page.kind === "management" && owner) ? () => onPage({ ...page, adding: true }) : undefined
-        }
-        addLabel={page.kind === "home" ? "Add resident" : page.kind === "work" ? "Add worker" : "Add manager"}
         disabled={disabled}
       />
     </section>

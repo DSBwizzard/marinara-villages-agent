@@ -21,7 +21,7 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
   const venue = {
     description: "A place in the community.",
     residentIds: [],
-    residenceCapacity: Math.max(0, (input.residentIds?.length ?? 0) + Number(!!input.occupancy?.playerHome)),
+
     spaces: [],
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { mapId: "", image: null, x: null, y: null },
@@ -107,16 +107,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
   if (!description) throw badRequest("Approve a description before saving this venue.");
   const category = venueFieldText(record.category, existing?.category ?? "", MAX_VENUE_NOTE_LENGTH).trim();
   const form = venueFieldText(record.form, existing?.form ?? "", MAX_VENUE_NOTE_LENGTH).trim();
-  const requestedCapacity = record.residenceCapacity;
-  if (existing && requestedCapacity !== undefined && requestedCapacity !== existing.residenceCapacity)
-    throw badRequest("Changing residence capacity requires a Venue proposal.");
-  if (
-    requestedCapacity !== undefined &&
-    (!Number.isInteger(requestedCapacity) || Number(requestedCapacity) < 0 || Number(requestedCapacity) > 4)
-  )
-    throw badRequest("A Residence holds between one and four people.");
-  const residenceCapacity =
-    existing?.residenceCapacity ?? (typeof requestedCapacity === "number" ? requestedCapacity : 0);
   const presentationValue = record.presentation;
   const presentation =
     presentationValue && typeof presentationValue === "object" && !Array.isArray(presentationValue)
@@ -148,7 +138,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     name,
     form,
     spaces,
-    residenceCapacity,
     residentIds: existing ? venueResidentIds(existing) : venueStringList(record.residentIds, []),
     privateSpaces: existing?.privateSpaces,
     archivedPrivateSpaces: existing?.archivedPrivateSpaces,

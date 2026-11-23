@@ -30,8 +30,7 @@ export function newSetupVenue(id: string, x: number, y: number, playerHome = fal
     form: "Existing structure",
     layoutVersion: 1,
     spaces: [],
-    residenceCapacity: playerHome ? 1 : 0,
-    foundingCapacity: null,
+
     residentIds: [],
     description: "An existing place in the Village.",
     category: "",

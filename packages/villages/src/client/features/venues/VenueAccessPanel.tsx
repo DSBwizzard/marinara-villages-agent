@@ -1,6 +1,5 @@
-import { VenueZoneRow } from "../../shared/VenueNavigation.js";
 import { HoursEditor } from "../../shared/HoursEditor.js";
-import { useState } from "react";
+import { useState, useLayoutEffect, type ReactNode } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { AccessCommand, ZoneVisitorHours } from "../../../shared/helpers/venue-access.js";
 import { messageFrom } from "../../shared/api.js";
@@ -19,13 +18,18 @@ export function VenueAccessPanel({
   zone,
   controller,
   onClose,
+  onBusyChange,
+  invitationsOnly = false,
+  children,
 }: {
   place: VillageVenue;
   zone: Zone | undefined;
   controller: VenueScreenController;
   onClose: () => void;
+  onBusyChange(busy: boolean): void;
+  invitationsOnly?: boolean;
+  children?: ReactNode;
 }) {
-  const [permissions, setPermissions] = useState(false);
   const view = zone?.accessView;
   const policy = view?.policy;
   const [mode, setMode] = useState(policy?.mode ?? "public");
@@ -37,9 +41,13 @@ export function VenueAccessPanel({
   const [escort, setEscort] = useState(false);
   const [afterHours, setAfterHours] = useState(false);
   const [busy, setBusy] = useState(false);
+  useLayoutEffect(() => {
+    onBusyChange(busy);
+    return () => onBusyChange(false);
+  }, [busy, onBusyChange]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const canManage = zone ? !!policy : !!place.accessView?.canManage;
+  const canManage = zone ? zone.kind !== "exterior" && !!policy : !!place.accessView?.canManage;
   const thisVisit = controller.room?.placeId === place.id && controller.room.status === "active";
   const people = controller.snapshot.villagers;
   const save = async (command: Details, result: string) => {
@@ -56,21 +64,21 @@ export function VenueAccessPanel({
       });
       if (applied) setNotice(result);
     } catch (cause) {
-      setError(messageFrom(cause, "Access could not be saved."));
+      setError(messageFrom(cause, "Could not save visitor rules."));
     } finally {
       setBusy(false);
     }
   };
   const validHours = !Array.isArray(hours) || hours.every((row) => row.days.length && row.start && row.end);
   return (
-    <section className={ELEMENT_TAG + "-venue-manage villages-manage villages-access-panel"} aria-label="Venue access">
-      {!permissions && !canManage && zone && (
+    <section className={ELEMENT_TAG + "-venue-manage villages-manage villages-access-panel"} aria-label="Visitors">
+      {!invitationsOnly && !canManage && zone && (
         <dl className="villages-manage-details">
           <dt>Entry</dt>
           <dd>{zone.kind === "exterior" || view?.decision.mode === "public" ? "Public" : "By permission"}</dd>
         </dl>
       )}
-      {!permissions && canManage && (
+      {!invitationsOnly && canManage && (
         <fieldset disabled={busy}>
           {zone && (
             <label>
@@ -114,53 +122,48 @@ export function VenueAccessPanel({
             </p>
           )}
           {Array.isArray(hours) && <HoursEditor hours={hours} change={setHours} />}
-          <button
-            type="button"
-            onClick={() => {
-              setMode(policy?.mode ?? "public");
-              setHours(policy?.visitorHours ?? place.accessView?.visitorHours ?? "always");
-              onClose();
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="villages-manage-primary"
-            disabled={!validHours}
-            onClick={() =>
-              void save(
-                policy
-                  ? { action: "zone-policy", policy: { ...policy, mode, visitorHours: hours } }
-                  : {
-                      action: "venue-policy",
-                      managerIds: place.accessView?.managerIds ?? [],
-                      visitorHours: Array.isArray(hours) ? hours : null,
-                    },
-                "Visitor rules saved.",
-              )
-            }
-          >
-            Save access
-          </button>
+          {children}
+          <div className="villages-manage-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setMode(policy?.mode ?? "public");
+                setHours(policy?.visitorHours ?? place.accessView?.visitorHours ?? "always");
+                onClose();
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="villages-manage-primary"
+              disabled={!validHours}
+              onClick={() =>
+                void save(
+                  policy
+                    ? {
+                        action: "zone-policy",
+                        policy: {
+                          ...policy,
+                          mode,
+                          visitorHours: hours,
+                        },
+                      }
+                    : {
+                        action: "venue-policy",
+                        managerIds: place.accessView?.managerIds ?? [],
+                        visitorHours: Array.isArray(hours) ? hours : null,
+                      },
+                  "Visitor rules saved.",
+                )
+              }
+            >
+              Save visitor rules
+            </button>
+          </div>
         </fieldset>
       )}
-      {view?.decision.canInvite && !permissions && (
-        <nav className={ELEMENT_TAG + "-venue-zone-picker"}>
-          <VenueZoneRow name="Permissions" onOpen={() => setPermissions(true)} />
-        </nav>
-      )}
-      {permissions && (
-        <button
-          type="button"
-          className={ELEMENT_TAG + "-venue-back"}
-          disabled={busy}
-          onClick={() => setPermissions(false)}
-        >
-          ← Access
-        </button>
-      )}
-      {permissions && view?.decision.canInvite && (
+      {invitationsOnly && view?.decision.canInvite && (
         <fieldset disabled={busy}>
           <legend>Invitations</legend>
           <label>
@@ -245,6 +248,7 @@ export function VenueAccessPanel({
             ))}
         </fieldset>
       )}
+      {!invitationsOnly && !canManage && children}
       {notice && <p role="status">{notice}</p>}
       {error && <p role="alert">{error}</p>}
     </section>

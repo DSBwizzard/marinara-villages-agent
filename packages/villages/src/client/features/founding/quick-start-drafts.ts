@@ -29,11 +29,6 @@ export function quickStartTemplates(venues: readonly SetupVenueDraft[]): SetupVe
       previous.name === "New Venue" ? (residence ? `Home ${index + 1}` : `Venue ${index + 1}`) : previous.name;
     venue.category = previous.category;
     venue.residentIds = previous.residentIds ?? [];
-    venue.residenceCapacity = Math.max(
-      previous.residenceCapacity ?? 0,
-      (previous.residentIds?.length ?? 0) + Number(previous.occupancy.playerHome),
-    );
-    venue.foundingCapacity = previous.foundingCapacity;
     const community = venue.category === "public-center";
     venue.layout = residence ? "both" : "common";
     venue.spaces = [

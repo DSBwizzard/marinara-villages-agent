@@ -32,7 +32,7 @@ export function useOpenPlace(ports: {
   worldScope?: string;
   screen?: string;
   setVenueReturnTo?: React.Dispatch<SetStateAction<"home" | "menu" | "room" | "person">>;
-  setVenueSection?: React.Dispatch<SetStateAction<"about" | "zones" | "people" | "access">>;
+  setVenueSection?: React.Dispatch<SetStateAction<"about" | "zones" | "arrangements">>;
   setVenueEditError?: (error: string) => void;
   setVenueEditNotice?: (notice: string) => void;
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
@@ -43,8 +43,6 @@ export function useOpenPlace(ports: {
   setVenuePage: React.Dispatch<SetStateAction<"view" | "edit" | "proposal">>;
   setVenueProposalDraft: React.Dispatch<
     SetStateAction<{
-      capacity: number;
-
       title: string;
       description: string;
     }>

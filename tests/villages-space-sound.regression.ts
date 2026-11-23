@@ -93,7 +93,7 @@ world.venues = [
     residentIds: [],
     workerIds: [],
     improvements: [null, null],
-    residenceCapacity: 1,
+
     capabilities: [],
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { image: null, x: 0, y: 0 },

@@ -1,11 +1,7 @@
 import type { VillageVenue, VillageVenueSpace } from "../models/world.js";
-export const MAX_VENUE_RESIDENTS = 4;
 export const MAX_ZONE_VILLAGERS = 4;
 export function venueResidentIds(venue: Pick<VillageVenue, "residentIds" | "occupancy">): string[] {
   return venue.residentIds ?? [];
-}
-export function venueCapacity(venue: Pick<VillageVenue, "residenceCapacity">): number {
-  return Math.min(MAX_VENUE_RESIDENTS, venue.residenceCapacity ?? 0);
 }
 export function venueSleepers(venue: VillageVenue, zoneId: string): string[] {
   return [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])].filter(

@@ -8,7 +8,7 @@ export type ProjectWorkspace = {
   roomEdits: DraftProjectRoomEdit[];
   title: string;
   detail: string;
-  capacity: number;
+
   dirty: boolean;
   busy: boolean;
   error: string;

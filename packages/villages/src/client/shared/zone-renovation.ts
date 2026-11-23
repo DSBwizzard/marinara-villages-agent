@@ -4,7 +4,7 @@ export type ZoneRenovationDraft = {
   title: string;
   detail: string;
   zones: VillageZoneDraft[];
-  base: Pick<VillageVenue, "zones" | "form" | "residenceCapacity">;
+  base: Pick<VillageVenue, "zones" | "form">;
   roomEdits: (ProjectRoomEdit & { version?: string })[];
 };
 

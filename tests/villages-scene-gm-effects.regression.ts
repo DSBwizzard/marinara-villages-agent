@@ -242,7 +242,7 @@ for (const scenario of scenarios)
           draftRenovationProject(
             world,
             "mill",
-            { title: "Larger Common room", detail: "Capacity three.", capacity: 3 },
+            { title: "Larger Common room", detail: "Capacity three." },
             "project:common",
           );
         }

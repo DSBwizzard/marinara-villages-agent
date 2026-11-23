@@ -34,7 +34,7 @@ function fixture() {
   state.villagers = ["a", "b", "c"].map((id) => ({
     characterId: id,
     incarnation: id,
-    cardSnapshot: { id, name: id, capturedAt: at.toISOString() },
+    cardSnapshot: { id, name: id, capturedAt: at.toISOString(), revision: 1, sourceStatus: "available" },
     addedAt: at.toISOString(),
     agenda: null,
     letterFontId: "lora",
@@ -43,7 +43,7 @@ function fixture() {
     id: "home",
     name: "Cafe",
     residentIds: ["a", "b"],
-    residenceCapacity: 2,
+
     privateSpaces: [
       {
         id: "bed",
@@ -65,7 +65,7 @@ function fixture() {
   const inn = venueFixture({
     id: "inn",
     name: "Inn",
-    residenceCapacity: 3,
+
     spaces: [{ id: "room", description: "A bedroom", image: null }],
   });
   state.venues = [home, inn];
@@ -86,7 +86,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
   assert.equal(completeResidenceMove(state, "b", true, at), true);
   assert.deepEqual(home.destinations!.b, { sleep: "bed", work: "floor" });
   assert.deepEqual(home.residentIds, ["a", "b"]);
-  assert.equal(home.residenceCapacity, 2);
+  assert.equal("residenceCapacity" in home, false);
   assert.deepEqual(zone, physical, "Changing bedrooms preserves physical room and access policy");
   assert.equal(evaluateZoneAccess(home, zone, "b", { at }).allowed, true);
   assert.equal(managesAccess(home, zone.id, "b"), false, "Sharing does not grant management");
@@ -104,10 +104,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
 }
 {
   const { state, home } = fixture();
-  assert.throws(
-    () => requestResidenceMove(state, "c", home.id, "player", "bed", "full", at),
-    /unreserved resident place/,
-  );
+  assert.doesNotThrow(() => requestResidenceMove(state, "c", home.id, "player", "bed", "share", at));
 }
 
 {
@@ -126,7 +123,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
 
 {
   const { state, home } = fixture();
-  home.residenceCapacity = 3;
+
   requestResidenceMove(state, "c", home.id, "player", "bed", "stale", at);
   const move = approve(state, "c");
   home.destinations!.b.sleep = "bed";
@@ -141,7 +138,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
 }
 {
   const { state, home, inn } = fixture();
-  home.residenceCapacity = 3;
+
   home.destinations!.b.sleep = "bed";
   home.access!.managerIds = ["c"];
   requestResidenceMove(state, "a", inn.id, "player", "room", "leave", at);
@@ -209,8 +206,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
 {
   const draft = newSetupVenue("bedroom-only", 0.5, 0.5, false);
   draft.residentIds = ["a", "b"];
-  draft.residenceCapacity = 2;
-  draft.foundingCapacity = 2;
+
   draft.spaces = [];
   draft.privateSpaces = [
     {
@@ -257,5 +253,52 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
     "Profiles use learned arrangements, not unseen canonical changes",
   );
   assert.equal((projected as any).knownSleepDestinations, undefined);
+}
+{
+  const { state, home } = fixture();
+  for (const id of ["d", "e", "f"])
+    state.villagers.push({
+      ...structuredClone(state.villagers[0]),
+      characterId: id,
+      incarnation: id,
+      cardSnapshot: { ...state.villagers[0].cardSnapshot!, id, name: id },
+    });
+  for (const id of ["b", "c", "d", "e", "f"]) {
+    requestResidenceMove(state, id, home.id, "player", ["b", "c"].includes(id) ? "bed" : "other", "share-" + id, at);
+    const move = approve(state, id);
+    assertResidenceAgreement(state, move);
+    assert.equal(completeResidenceMove(state, id, true, at), true);
+  }
+  const saved = coerceVillageState(JSON.parse(JSON.stringify(state)));
+  const shared = saved.venues.find((row) => row.id === home.id)!;
+  assert.equal(shared.residentIds!.length, 6);
+  assert.deepEqual(
+    shared.residentIds!.map((id) => shared.destinations![id].sleep),
+    ["bed", "bed", "bed", "other", "other", "other"],
+  );
+  const { villagePresence } = await import("../packages/villages/src/server/domain/rules/village-projections.js");
+  const { agendaFixture } = await import("./helpers/agenda.fixture.js");
+  for (const actor of saved.villagers)
+    actor.agenda = agendaFixture({
+      generatedAt: at.toISOString(),
+      day: [
+        {
+          venueId: home.id,
+          zoneId: shared.destinations![actor.characterId].sleep,
+          activity: "Sleeping",
+          startMinute: 0,
+          endMinute: 1440,
+          flexible: true,
+        },
+      ],
+    });
+  const present = [...villagePresence(saved, 600, at).values()];
+  assert.equal(
+    present.filter((row) => row.id === home.id).length,
+    6,
+    "A Venue can house six residents across its rooms",
+  );
+  for (const zoneId of ["bed", "other"])
+    assert.equal(present.filter((row) => row.id === home.id && row.zoneId === zoneId).length, 3);
 }
 console.log("Shared bedrooms: consent, access, preservation, knowledge and Founding passed.");

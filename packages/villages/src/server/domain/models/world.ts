@@ -317,8 +317,7 @@ export type VillageVenue = {
   spaces?: VillageVenueSpace[];
   zones?: VillageVenueZone[];
   archivedZones?: { zone: VillageVenueZone; archivedAt: string }[];
-  /** Direct residence capacity, up to four people. */
-  residenceCapacity?: number;
+
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
   privateSpaces?: VillagePrivateSpace[];
@@ -411,7 +410,7 @@ export type VillageProjectPhase = "planning" | "working" | "paused" | "complete"
 export type VillageProjectChange = {
   form?: string;
   roomEdits?: ProjectRoomEdit[];
-  capacity?: number;
+
   zones?: VillageZoneDraft[];
   detail: string;
 };
@@ -463,7 +462,6 @@ export type VillageProjectLifecycle = {
 export type VillageProject = {
   place?: VillageVenue;
   plan?: {
-    capacity: number;
     form: string;
     venueType: string;
     exteriorDescription: string;

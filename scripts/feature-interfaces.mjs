@@ -142,6 +142,11 @@ export const clientFeatureInterfaces = Object.freeze({
   "venues/ArrangementNavigation.tsx": [
     "ArrangementSummary",
     "arrangementLabel",
+    "arrangementAddLabel",
+    "arrangementBack",
+    "arrangementIds",
+    "visitorDefault",
+    "VisitorsScope",
     "ArrangementPage",
     "ArrangementRoster",
   ],

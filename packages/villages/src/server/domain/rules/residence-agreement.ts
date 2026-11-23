@@ -1,7 +1,8 @@
+import { MAX_VILLAGERS } from "./village-limits.js";
 import { createHash } from "node:crypto";
 import type { VillageResidence, VillageState, VillageVenue } from "../models/world.js";
 import { conflict, badGateway } from "./errors.js";
-import { venueAssignedCount, venueCapacity, venueResidentIds, venueSleepers } from "./venue-model.js";
+import { venueResidentIds, venueSleepers } from "./venue-model.js";
 import { zoneManagers } from "./venue-access.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { accessibleVenueRoute } from "./venue-path.js";
@@ -48,7 +49,7 @@ export function readResidenceAgreement(value: unknown): NonNullable<VillageResid
     typeof row.sleepZoneId !== "string" ||
     !row.sleepZoneId ||
     !Array.isArray(row.householdIds) ||
-    row.householdIds.length > 4 ||
+    row.householdIds.length > MAX_VILLAGERS + 1 ||
     row.householdIds.some((id) => typeof id !== "string" || !id) ||
     new Set(row.householdIds).size !== row.householdIds.length ||
     !row.approvals ||
@@ -79,15 +80,6 @@ export function captureResidenceAgreement(
     venue.access?.bans.some((ban) => ban.active && ban.visitorId === actor && (!ban.zoneId || ban.zoneId === sleep.id))
   )
     throw conflict("The destination's access rules prevent this move.");
-  const reservations = state.residences.filter(
-    (move) =>
-      move.characterId !== actor &&
-      move.proposedVenueId === venue.id &&
-      move.status !== "current" &&
-      !membersOfVenue(venue, move.characterId),
-  );
-  if (!membersOfVenue(venue, actor) && venueAssignedCount(venue) + reservations.length >= venueCapacity(venue))
-    throw conflict("This Residence has no unreserved resident place.");
   const members = householdIds(venue);
   if (!accessibleSleepingRoute(state, venue, actor, sleep.id, new ZonedDate(at, state.timeZone || "UTC")))
     throw conflict("No accessible route connects Entrance to this sleeping Zone.");
@@ -110,7 +102,6 @@ export function captureResidenceAgreement(
         venue.access?.bans.filter(
           (ban) => ban.active && ban.visitorId === actor && (!ban.zoneId || ban.zoneId === sleep.id),
         ),
-        venueCapacity(venue),
       ]),
     )
     .digest("hex");

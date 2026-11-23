@@ -94,11 +94,11 @@ state.startingHistory.reviewed = Object.fromEntries(
 );
 const home = venue("home", ["residence"]);
 home.residentIds = ["a"];
-home.residenceCapacity = 1;
+
 home.occupancy.residentCharacterId = "a";
 const own = venue("own", ["residence"]);
 own.occupancy.playerHome = true;
-own.residenceCapacity = 1;
+
 own.privateSpaces = [
   {
     ...defaultVenueSpace("residence", "My journal and hammock"),
@@ -112,7 +112,7 @@ work.workerIds = ["a", "b"];
 work.access = undefined;
 const combined = venue("combined", ["residence", "workplace"]);
 combined.residentIds = ["b"];
-combined.residenceCapacity = 1;
+
 const park = venue("park", ["community"]);
 park.zones!.push({
   ...defaultVenueSpace("community", "A greenhouse"),

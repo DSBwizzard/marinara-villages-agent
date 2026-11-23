@@ -25,9 +25,7 @@ export function validImage(value: unknown): VillageVenueImage | null {
   return /^global-gallery:[^\\s]{1,200}$/u.test(ref) && url.startsWith("/") && id ? { ref, url, id } : null;
 }
 function globalChange(venue: VillageVenue, change: VillageProjectChange) {
-  const capacity = change.capacity !== undefined && change.capacity !== (venue.residenceCapacity ?? 0);
   return {
-    capacity: capacity ? change.capacity : undefined,
     ...(change.form !== undefined ? { form: change.form } : {}),
   };
 }
@@ -43,9 +41,7 @@ export function renovationAffectedIds(
   const global = globalChange(venue, change);
   const building = global.form !== undefined || !!change.roomEdits?.some(({ zoneId }) => zoneId === "exterior");
   const residence =
-    building ||
-    global.capacity !== undefined ||
-    [...touched, ...added].some((zone) => zone.kind !== "exterior" && zone.kind !== "personal");
+    building || [...touched, ...added].some((zone) => zone.kind !== "exterior" && zone.kind !== "personal");
   const workplace =
     building ||
     [...touched, ...added].some((zone) =>
@@ -55,7 +51,7 @@ export function renovationAffectedIds(
           venue.access?.work?.some((work) => work.characterId === id && work.accessZoneIds.includes(zone.id)),
       ),
     );
-  if (!ids.length && !building && global.capacity === undefined) return [];
+  if (!ids.length && !building) return [];
   return [
     ...new Set([
       ...(venue.access?.managerIds ?? []),
@@ -130,7 +126,6 @@ export function projectDesignKey(project: VillageProject): string {
           plan.form,
           plan.venueType,
           plan.exteriorDescription,
-          plan.capacity,
           plan.layout,
           [...plan.spaces, ...plan.privateSpaces].map(shape),
         ]
