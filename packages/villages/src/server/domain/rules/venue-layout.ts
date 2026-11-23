@@ -63,6 +63,7 @@ export function applyVenueZoneLayout(
     if (
       state.projects.some(
         (project) =>
+          project.kind !== "undertaking" &&
           project.venueId === venue.id &&
           project.lifecycle &&
           !["complete", "cancelled"].includes(project.lifecycle.phase),

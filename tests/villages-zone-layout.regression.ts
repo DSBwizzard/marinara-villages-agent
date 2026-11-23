@@ -171,6 +171,14 @@ assert.doesNotThrow(
   "A cancelled Project no longer owns the layout",
 );
 state.projects = [];
+const sharedLayout = command();
+sharedLayout.connections.find((z) => z.id === "zone:3")!.connectedTo.push("zone:6");
+state.projects.push({ kind: "undertaking", venueId: venue.id, lifecycle: { phase: "working" } } as VillageProject);
+assert.doesNotThrow(
+  () => applyVenueZoneLayout(state, venue, sharedLayout),
+  "A shared activity does not take structural ownership of its Venue",
+);
+state.projects = [];
 const cosmetic = command();
 cosmetic.positions.exterior = { x: 2, y: 2 };
 venue.access!.managerIds = ["other"];

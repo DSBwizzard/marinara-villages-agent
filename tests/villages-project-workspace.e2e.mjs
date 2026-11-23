@@ -60,6 +60,18 @@ await withBrowser(browser, async () => {
     const { page } = f;
     await page.setViewportSize({ width, height });
     await expect(page.getByRole("heading", { name: "Thursday supper", exact: true })).toBeVisible();
+    const targetId = snapshot.settings.venues[0].id;
+    assert.equal(
+      await page.evaluate((id) => window.projectVenuePins.find((pin) => pin.id === id)?.image, targetId),
+      snapshot.settings.venues[0].presentation.image?.url ?? null,
+      "Shared Projects retain normal Venue artwork on the map",
+    );
+    await page.evaluate((id) => window.projectVenuePins.find((pin) => pin.id === id)?.onSelect(), targetId);
+    assert.equal(
+      await page.evaluate(() => window.lastVisit),
+      targetId,
+      "The map opens a shared Project's usable Venue",
+    );
     await page.getByRole("button", { name: "Open Project", exact: true }).click();
     await expect(page.getByRole("button", { name: "Begin together", exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: /Start.*24 hours/ })).toHaveCount(0);

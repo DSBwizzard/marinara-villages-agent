@@ -48,7 +48,10 @@ export function calculateSavedPins(ports: {
       const spot = placeSpot(place);
       if (!spot) continue;
       const project = snapshot?.projects.find(
-        (entry) => entry.venueId === place.id && entry.lifecycle?.phase !== "complete",
+        (entry) =>
+          entry.kind !== "undertaking" &&
+          entry.venueId === place.id &&
+          !["complete", "cancelled"].includes(entry.status),
       );
       const occupant = place.occupancy.residentCharacterId;
       const house = isHouse(place);
