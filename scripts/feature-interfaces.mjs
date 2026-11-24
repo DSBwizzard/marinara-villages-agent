@@ -146,8 +146,6 @@ export const clientFeatureInterfaces = Object.freeze({
     "arrangementAddLabel",
     "arrangementBack",
     "arrangementIds",
-    "VisitorsOverview",
-    "visitorZones",
     "arrangementBackLabel",
     "arrangementTitle",
     "ArrangementPage",

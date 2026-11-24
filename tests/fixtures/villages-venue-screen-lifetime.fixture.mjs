@@ -37,6 +37,7 @@ edit:patch=>rawDraft(current=>({...current,...patch})),proposal:patch=>rawPropos
 reset:()=>flushSync(()=>{rawSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});rawBusy(true)}),
 refound:()=>flushSync(()=>{rawSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B'}});rawBusy(false);rawEditBusy(false);rawEditError('B marker');rawNotice('B marker');rawSettingsError('B marker')}),
 poll:()=>rawSnapshot(current=>structuredClone(current)),hydrate:()=>rawSnapshot(current=>({...current,isFounded:true})),
+world:()=>rawSnapshot(current=>({...current,worldScope:'d'.repeat(64),settings:{...current.settings,setting:'New world'}})),
 removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.filter(v=>v.id!==venueId)}})),
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};

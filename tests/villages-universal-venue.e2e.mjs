@@ -302,7 +302,7 @@ await withBrowser(browser, async () => {
     await expect(about.getByText(place.description, { exact: true })).toHaveCount(0);
     await expect(about.getByText("Form", { exact: true })).toHaveCount(0);
     await expect(about.getByText("Resident capacity", { exact: true })).toHaveCount(0);
-    await tabs.getByRole("button", { name: "Arrangements", exact: true }).click();
+    await tabs.getByRole("button", { name: "Assignments", exact: true }).click();
     await profile.getByRole("button", { name: /^Residents/ }).click();
     await expect(profile.getByRole("button", { name: "Mara", exact: true })).toBeVisible();
     await expect(profile.getByRole("button", { name: "Eli", exact: true })).toHaveCount(0);
@@ -623,7 +623,7 @@ await withBrowser(browser, async () => {
     }
     await expect(profile).toBeVisible();
     if ((await profile.getAttribute("aria-label")) === "Zone") await zoneBack.click();
-    for (const section of ["About", "Zones", "Arrangements"]) {
+    for (const section of ["About", "Zones", "Assignments"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       const bounds = await profile.boundingBox();
       assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= width + 1, `${width}: ${section} stays inside the host`);
@@ -658,7 +658,7 @@ await withBrowser(browser, async () => {
       .click();
     await openProfile();
     await expect(profile).toBeVisible();
-    await expect(tabs.getByRole("button", { name: "Arrangements", exact: true })).toHaveAttribute(
+    await expect(tabs.getByRole("button", { name: "Assignments", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -671,7 +671,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
     await expect(profile).toBeVisible();
-    for (const section of ["About", "Zones", "Arrangements"]) {
+    for (const section of ["About", "Zones", "Assignments"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       await expect(profile).toBeVisible();
       if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {

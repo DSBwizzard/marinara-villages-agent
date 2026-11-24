@@ -33,7 +33,7 @@ await withBrowser(browser, async () => {
         "#state{display:none}:root{font-size:18px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}body{margin:0}",
     });
     await page.addScriptTag({ content: styles.outputFiles[0].text });
-    await page.getByRole("button", { name: "Arrangements", exact: true }).click();
+    await page.getByRole("button", { name: "Assignments", exact: true }).click();
     const worker = f.seed.villagers[0];
     await page.getByRole("button", { name: /^Workers/ }).click();
     await page.getByRole("button", { name: "Add worker", exact: true }).click();
@@ -102,7 +102,7 @@ await withBrowser(browser, async () => {
       cleanName: true,
       prepareSeed(seed) {},
     });
-    await home.page.getByRole("button", { name: "Arrangements", exact: true }).click();
+    await home.page.getByRole("button", { name: "Assignments", exact: true }).click();
     await home.page.getByRole("button", { name: /^Residents/ }).click();
     await home.page.getByRole("button", { name: home.seed.villagers[0].name, exact: true }).click();
     await expect(home.page.getByRole("combobox", { name: "Venue", exact: true })).toHaveCount(0);
@@ -140,7 +140,7 @@ await withBrowser(browser, async () => {
           }));
         },
       });
-      await f.page.getByRole("button", { name: "Arrangements", exact: true }).click();
+      await f.page.getByRole("button", { name: "Assignments", exact: true }).click();
       await f.page.getByRole("button", { name: /^Workers/ }).click();
       const people = f.page.locator(".marinara-capability-villages-venue-profile");
       const card = people.locator(".marinara-capability-villages-directory-card").first();
@@ -189,27 +189,26 @@ await withBrowser(browser, async () => {
     await f.reply(0);
     await expect(f.page.getByRole("heading", { name: "Runs this Venue", exact: true })).toBeVisible();
     await f.page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await f.page.getByRole("button", { name: "Arrangements", exact: true }).click();
-    await f.page.getByRole("button", { name: /^Visitors/ }).click();
-    await expect(f.page.getByRole("combobox", { name: "Visitor Zone" })).toHaveCount(0);
-    const visitorRows = f.page.getByRole("navigation", { name: "Visitor Zones", exact: true }).getByRole("button");
-    const bounds = await visitorRows.evaluateAll((rows) =>
-      rows.map((row) => {
-        const rect = row.getBoundingClientRect();
-        return { left: rect.left, top: rect.top, bottom: rect.bottom };
-      }),
-    );
-    assert.ok(bounds.length > 1);
-    for (let index = 1; index < bounds.length; index++) {
-      assert.equal(bounds[index].left, bounds[0].left, "Visitors keeps one column on phone");
-      assert.ok(bounds[index].top >= bounds[index - 1].bottom);
-    }
-    await expect(visitorRows.first().locator(".marinara-capability-villages-venue-zone-thumb")).toBeHidden();
-    await visitorRows.first().click();
-    await expect(f.page.getByRole("button", { name: /^Change visitor rules/ })).toHaveCount(0);
-    await f.page.getByLabel("Hours", { exact: true }).selectOption("schedule");
+    await f.page.getByRole("button", { name: "Assignments", exact: true }).click();
+    await expect(f.page.getByRole("button", { name: /^Visitors/ })).toHaveCount(0);
+    await f.page.getByRole("button", { name: "Zones", exact: true }).click();
+    await f.page.getByRole("region", { name: "Zones", exact: true }).getByRole("button").first().click();
+    await f.page.getByRole("button", { name: "Schedule", exact: true }).click();
+    const schedule = f.page.getByRole("dialog", { name: "Schedule", exact: true });
+    await schedule.getByLabel("Set times", { exact: true }).check();
     await f.page.evaluate(() => window.h.revision());
-    await expect(f.page.getByLabel("Hours", { exact: true })).toHaveValue("always");
+    await expect(schedule).toHaveCount(0);
+    await f.page.getByRole("button", { name: "Schedule", exact: true }).click();
+    await expect(
+      f.page.getByRole("dialog", { name: "Schedule", exact: true }).getByLabel("Any time", { exact: true }),
+    ).toBeChecked();
+    await f.page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await f.page.getByLabel("Entry", { exact: true }).selectOption("permission-required");
+    await expect.poll(() => f.requests.length).toBe(2);
+    await f.page.evaluate(() => window.h.world());
+    await f.reply(1);
+    await expect.poll(() => f.page.evaluate(() => window.h.read().setting)).toBe("New world");
+    await expect(f.page.getByLabel("Entry", { exact: true })).toHaveValue("public");
     await f.finish();
   }
 });

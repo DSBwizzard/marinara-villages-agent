@@ -39,7 +39,7 @@ const titles: Record<ProfileSection, string> = {
   relationships: "Relationships",
   wishes: "Wishes",
   memories: "Memories",
-  arrangements: "Arrangements",
+  arrangements: "Assignments",
   agenda: "Agenda",
   venues: "Venues",
   tools: "Character Tools",

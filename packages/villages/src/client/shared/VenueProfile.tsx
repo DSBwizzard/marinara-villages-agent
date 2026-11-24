@@ -42,6 +42,7 @@ export function VenueProfile({
       ref={profileRef}
       className={P + "-venue-profile"}
       aria-label={tabs.zone ? "Zone" : location ? "Location" : "Venue"}
+      data-zone-profile={tabs.zone || undefined}
       data-room-backdrop={roomBackdrop || undefined}
       data-storybook-backdrop={!!fallback || undefined}
       data-storybook-daylight={daylight || undefined}

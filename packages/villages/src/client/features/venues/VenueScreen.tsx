@@ -23,7 +23,7 @@ import {
 import type { PlaceDetail } from "../../../shared/contracts/places.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageActivity } from "../../shared/activity.js";
-import { invitationLabel } from "../../shared/zone-access.js";
+import { VenueAccessPanel } from "./VenueAccessPanel.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -463,9 +463,7 @@ export function VenueScreen({
           arrangementPage &&
           !arrangementPage.personId &&
           !arrangementPage.adding &&
-          arrangementPage.kind !== "runners" &&
-          arrangementPage.kind !== "visitors" &&
-          arrangementPage.kind !== "guests" ? (
+          arrangementPage.kind !== "runners" ? (
             <button
               type="button"
               disabled={navigationBusy}
@@ -701,17 +699,13 @@ export function VenueScreen({
                     ) : selected.seen && selected.description ? (
                       <p>{selected.description}</p>
                     ) : null}
-                    {selected.accessView?.invitation && (
-                      <small>
-                        {[
-                          invitationLabel(selected.accessView.invitation),
-                          controller.nameOfCharacter(selected.accessView.invitation.issuerId),
-                          selected.accessView.invitation.accompanied && "Escort required",
-                          selected.accessView.invitation.outsideHours && "After hours allowed",
-                        ]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </small>
+                    {venue && (
+                      <VenueAccessPanel
+                        place={place}
+                        zone={selected}
+                        controller={controller}
+                        onBusyChange={setArrangementBusy}
+                      />
                     )}
                     {
                       <>

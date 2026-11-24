@@ -9,6 +9,7 @@ import {
   type ArrangementPage,
 } from "../venues/ArrangementNavigation.js";
 import { FoundingPeople } from "./FoundingPeople.js";
+import { FoundingAccess } from "./FoundingAccess.js";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -539,7 +540,7 @@ export function QuickStartVenues({
                       {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
                       value={zone ? zone.description : selected.description}
                       maxLength={1000}
-                      rows={4}
+                      rows={3}
                       onChange={(e) =>
                         zone
                           ? patchZone({ description: e.target.value })
@@ -564,6 +565,9 @@ export function QuickStartVenues({
                     </label>
                   ) : null}
                 </div>
+                {zone && (
+                  <FoundingAccess venue={selected} zoneId={zoneId} onPatch={patch} disabled={busy || imageBusy} />
+                )}
                 <ZoneImageControls
                   key={selected.id + ":" + zoneId}
                   name={artworkName}

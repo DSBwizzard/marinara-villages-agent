@@ -5,12 +5,8 @@ import { venueWorkSchema, type VenueWork } from "../../../shared/helpers/venue-w
 import { WorkFields, initialVenueWork } from "../../shared/WorkFields.js";
 import { type VenuePerson } from "../venues/VenueManage.js";
 import { HomeFields } from "../../shared/HomeFields.js";
-import { ArrangementRoster, VisitorsOverview, type ArrangementPage } from "../venues/ArrangementNavigation.js";
-import { createVillagesClientId } from "../../shared/request-id.js";
-import { VenueZoneRow } from "../../shared/VenueNavigation.js";
-import { visitorZones } from "../venues/ArrangementNavigation.js";
+import { ArrangementRoster, type ArrangementPage } from "../venues/ArrangementNavigation.js";
 import { VenueRunners } from "../venues/VenueRunners.js";
-import { FoundingAccess } from "./FoundingAccess.js";
 import { foundingHomeMembers, foundingSleepZones, reconcileFoundingHome } from "./founding-homes.js";
 
 function HomeEditor({
@@ -168,120 +164,6 @@ function WorkEditor({
   );
 }
 
-function FoundingInvitations({
-  venue,
-  zoneId,
-  people,
-  onPatch,
-  disabled,
-}: {
-  venue: SetupVenueDraft;
-  zoneId: string;
-  people: VenuePerson[];
-  onPatch(venue: SetupVenueDraft): void;
-  disabled: boolean;
-}) {
-  const [guest, setGuest] = useState("");
-  const [standing, setStanding] = useState(false);
-  const [escort, setEscort] = useState(false);
-  const [afterHours, setAfterHours] = useState(false);
-  const access = foundingAccess(venue),
-    zone = visitorZones(venue).find((row) => row.id === zoneId);
-  const sleepers = foundingHomeMembers(venue).filter((id) => venue.destinations?.[id]?.sleep === zoneId);
-  const managers =
-    zone?.kind === "personal" && sleepers.length ? sleepers : (zone?.access?.managerIds ?? access.managerIds);
-  const issuer = managers.includes("player") ? "player" : (managers[0] ?? "player");
-  return (
-    <section className="villages-manage" aria-label="Invitations">
-      <fieldset className="villages-manage-form" disabled={disabled}>
-        <label>
-          Guest
-          <select value={guest} onChange={(e) => setGuest(e.target.value)}>
-            <option value="">Choose a Villager</option>
-            {people.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Duration
-          <select value={standing ? "standing" : "next"} onChange={(e) => setStanding(e.target.value === "standing")}>
-            <option value="next">Next visit</option>
-            <option value="standing">Until withdrawn</option>
-          </select>
-        </label>
-        <label className="villages-manage-check">
-          <input type="checkbox" checked={escort} onChange={(e) => setEscort(e.target.checked)} />
-          Escort required
-        </label>
-        <label className="villages-manage-check">
-          <input type="checkbox" checked={afterHours} onChange={(e) => setAfterHours(e.target.checked)} />
-          Allow after hours
-        </label>
-        <button
-          type="button"
-          disabled={!guest}
-          onClick={() => {
-            onPatch({
-              ...venue,
-              access: {
-                ...access,
-                permissions: [
-                  ...access.permissions,
-                  {
-                    id: createVillagesClientId(),
-                    zoneId,
-                    visitorId: guest,
-                    issuerId: issuer,
-                    duration: standing ? "standing" : "visit",
-                    sceneId: null,
-                    accompaniedBy: escort ? issuer : null,
-                    outsideHours: afterHours,
-                    revoked: false,
-                    issuedAt: new Date().toISOString(),
-                    sourceLineIds: [],
-                  },
-                ],
-              },
-            });
-            setGuest("");
-          }}
-        >
-          Invite
-        </button>
-        {access.permissions
-          .filter((grant) => grant.zoneId === zoneId && !grant.revoked)
-          .map((grant) => (
-            <div className="villages-access-grant" key={grant.id}>
-              <span>
-                {people.find((person) => person.id === grant.visitorId)?.name ?? grant.visitorId},{" "}
-                {grant.duration === "standing" ? "Until withdrawn" : "Next visit"}
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  onPatch({
-                    ...venue,
-                    access: {
-                      ...access,
-                      permissions: access.permissions.map((row) =>
-                        row.id === grant.id ? { ...row, revoked: true } : row,
-                      ),
-                    },
-                  })
-                }
-              >
-                Withdraw
-              </button>
-            </div>
-          ))}
-      </fieldset>
-    </section>
-  );
-}
-
 export function FoundingPeople({
   venue,
   venues,
@@ -315,28 +197,8 @@ export function FoundingPeople({
         }}
       />
     );
-  if (page.kind === "guests" && page.zoneId)
-    return (
-      <FoundingInvitations venue={venue} zoneId={page.zoneId} people={people} disabled={disabled} onPatch={onPatch} />
-    );
-  if (page.kind === "visitors")
-    return page.zoneId ? (
-      <FoundingAccess
-        venue={venue}
-        zoneId={page.zoneId}
-        onPatch={onPatch}
-        disabled={disabled}
-        onClose={() => onPage({ kind: "visitors" })}
-      >
-        <nav className="marinara-capability-villages-venue-zone-picker villages-arrangement-summary">
-          <VenueZoneRow name="Invitations" disabled={disabled} onOpen={() => onPage({ ...page, kind: "guests" })} />
-        </nav>
-      </FoundingAccess>
-    ) : (
-      <VisitorsOverview place={venue} disabled={disabled} onOpen={(zoneId) => onPage({ ...page, zoneId })} />
-    );
   return (
-    <section className="villages-manage" aria-label="Arrangements">
+    <section className="villages-manage" aria-label="Assignments">
       <fieldset disabled={disabled}>
         {person ? (
           <>

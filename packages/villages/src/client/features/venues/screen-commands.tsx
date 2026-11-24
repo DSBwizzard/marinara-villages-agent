@@ -50,7 +50,11 @@ export function useVenueScreenCommands(ports: {
     selectedVenue?.zones?.find((entry) => entry.id === ports.venueZoneKey)?.id ??
     selectedVenue?.zones?.[0]?.id ??
     ports.venueZoneKey;
-  const venueSelection = useMemo(() => ({ activeVenueId, page: ports.venuePage }), [activeVenueId, ports.venuePage]);
+  const worldScope = ports.snapshot?.worldScope;
+  const venueSelection = useMemo(
+    () => ({ activeVenueId, page: ports.venuePage, worldScope }),
+    [activeVenueId, ports.venuePage, worldScope],
+  );
   const zoneSelection = useMemo(() => ({ venueSelection, key: selectedZoneId }), [venueSelection, selectedZoneId]);
   // Access already remounts its panel when the authoritative access revision changes.
   const accessRevision = selectedVenue?.accessView?.revision;

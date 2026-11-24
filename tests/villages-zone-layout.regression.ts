@@ -149,11 +149,19 @@ zone.access = {
   visitorHours: "inherit",
   accompanied: false,
 };
+assert.doesNotThrow(
+  () => applyVenueZoneLayout(state, structuredClone(venue), unauthorized),
+  "Venue operators can rewire general Zones with legacy delegates",
+);
+zone.kind = "personal";
+zone.ownerId = "other";
 assert.throws(
   () => applyVenueZoneLayout(state, venue, unauthorized),
   /managers/,
   "A Venue manager cannot rewire independently managed private boundaries",
 );
+zone.kind = "public";
+delete zone.ownerId;
 zone.access = {
   mode: "public",
   managerIds: ["player"],

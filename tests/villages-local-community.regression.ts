@@ -169,7 +169,7 @@ for (const [groups, count] of [
   };
   state.venues = restorePlaces([...drafts(), mall, second]);
   const first = state.venues.find((venue) => venue.id === mall.id)!;
-  assert.deepEqual(first.access!.managerIds, ["player"]);
+  assert.deepEqual(first.access!.managerIds, []);
   first.zones!.find((zone) => zone.kind === "public")!.description =
     "The atrium floor is repaired; the shopfronts remain boarded.";
   const restarted = coerceVillageState(state);
@@ -353,8 +353,8 @@ await housing();
   ];
   const access = evaluateZoneAccess(target, zone, "player", { environment: state.narrative, at: new Date(at) });
   assert.equal(access.allowed, true);
-  assert.equal(access.canManage, false);
-  assert.equal(access.canInvite, false);
+  assert.equal(access.canManage, true);
+  assert.equal(access.canInvite, true);
   assert.match(access.explanation, /inspection/i);
   assert.equal(
     accessibleVenueRoute(state, target, "player", zone.id, new Date(at)),
@@ -463,6 +463,8 @@ await housing();
     ),
   );
   lounge.access = { ...lounge.access!, managerIds: ["a"], memberIds: ["a"], memberRoles: [] };
+  lounge.kind = "personal";
+  lounge.ownerId = "a";
   assert.throws(
     () =>
       readRenovationChange(
@@ -480,6 +482,8 @@ await housing();
     /sleeping destination/,
     "a private intermediate room cannot block another housemate's sleep",
   );
+  lounge.kind = "public";
+  delete lounge.ownerId;
   lounge.access = structuredClone(bedroom.access);
   const project = draftRenovationProject(state, home.id, {
     ...design,

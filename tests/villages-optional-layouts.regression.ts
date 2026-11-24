@@ -548,7 +548,12 @@ async function main() {
       capturePrivateInterior(current, expanded, chamber, current.setupAt).basis,
       capturePrivateInterior(current, changedLayout, chamber, current.setupAt).basis,
     );
-    // An unoccupied Residence can be assigned directly.
+    // An unoccupied, unclaimed Residence can be assigned directly.
+    await mutateVillageState((record) => {
+      const unclaimed = record.venues.find((venue) => venue.id === privateOnly.id)!;
+      unclaimed.access!.managerIds = [];
+      unclaimed.zones!.find((zone) => zone.id === "personal")!.access!.managerIds = null;
+    });
     await movePlayerToResidence(privateOnly.id, "personal");
     current = await readVillageState({ memories: true });
     assert.equal(current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.ownerId, "player");

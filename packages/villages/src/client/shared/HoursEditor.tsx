@@ -4,8 +4,15 @@ export function HoursEditor({ hours, change }: { hours: VisitorHours; change: (v
   return (
     <div className="villages-access-hours">
       {hours.map((window, index) => (
-        <fieldset key={index} aria-label={`Opening hours ${index + 1}`}>
-          {hours.length > 1 && <legend>Hours {index + 1}</legend>}
+        <fieldset key={index} aria-label={`Opening period ${index + 1}`}>
+          <div className="villages-hours-period-heading">
+            <span>Days</span>
+            {hours.length > 1 && (
+              <button type="button" onClick={() => change(hours.filter((_, row) => row !== index))}>
+                Remove period
+              </button>
+            )}
+          </div>
           <div className="villages-access-days">
             {week.map((day) => (
               <button
@@ -46,31 +53,15 @@ export function HoursEditor({ hours, change }: { hours: VisitorHours; change: (v
               }
             />
           </label>
-          <div className="villages-hours-actions">
-            <button type="button" onClick={() => change(hours.filter((_, row) => row !== index))}>
-              Remove hours
-            </button>
-            {index === hours.length - 1 && (
-              <button
-                type="button"
-                disabled={hours.length >= 7}
-                onClick={() => change([...hours, { days: week, start: "09:00", end: "17:00" }])}
-              >
-                Add hours
-              </button>
-            )}
-          </div>
         </fieldset>
       ))}
-      {!hours.length && (
-        <button
-          type="button"
-          disabled={hours.length >= 28}
-          onClick={() => change([...hours, { days: week, start: "09:00", end: "17:00" }])}
-        >
-          Add hours
-        </button>
-      )}
+      <button
+        type="button"
+        disabled={hours.length >= 7}
+        onClick={() => change([...hours, { days: week, start: "09:00", end: "17:00" }])}
+      >
+        Add opening period
+      </button>
     </div>
   );
 }

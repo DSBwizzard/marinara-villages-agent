@@ -245,7 +245,9 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
     state.timeZone = "America/Los_Angeles";
     const now = new ZonedDate("2026-11-02T18:00:00Z", state.timeZone);
     const cafe = state.venues.find((venue) => venue.id === "cafe")!;
-    cafe.access!.visitorHours = [{ days: ["Monday"], start: "09:00", end: "17:00" }];
+    cafe.zones!.find((zone) => zone.id === "common")!.access!.visitorHours = [
+      { days: ["Monday"], start: "09:00", end: "17:00" },
+    ];
     for (const resident of state.villagers) {
       resident.scheduleInfluence = influenceSettings({ ...resident.scheduleInfluence, enabled: false });
       resident.agenda!.activeDay = {

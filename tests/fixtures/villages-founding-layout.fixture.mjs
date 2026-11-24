@@ -1972,7 +1972,7 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("group", { name: "Who lives here?" })).toHaveCount(0);
         await manageVenue();
         await expect(sheet.getByLabel("Resident capacity", { exact: true })).toHaveCount(0);
-        await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+        await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
         await sheet.getByRole("button", { name: /^Residents/ }).click();
         await sheet.getByRole("button", { name: "You", exact: true }).click();
         await expect(sheet.getByLabel("Resident capacity", { exact: true })).toHaveCount(0);
@@ -1983,7 +1983,7 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("button", { name: "Remove resident", exact: true })).toBeVisible();
         await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
         await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
-        await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+        await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
         await sheet.getByRole("button", { name: /^Workers/ }).click();
         await sheet.getByRole("button", { name: "Add worker", exact: true }).click();
         await sheet.locator(".marinara-capability-villages-directory-card").first().click();
@@ -2043,7 +2043,7 @@ export async function verifyFoundingLayout(group) {
           await closeVenue();
           await expect(root.getByRole("region", { name: "Starting Venues", exact: true })).toBeVisible();
           await community.click();
-          await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+          await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
           await sheet.getByRole("button", { name: /^Residents/ }).click();
           await expect(sheet.locator(".marinara-capability-villages-directory-card")).toHaveCount(0);
           await closeVenue();
@@ -2261,7 +2261,7 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByRole("group", { name: "Who sleeps here?" })).toHaveCount(0);
         await expect(sheet.getByRole("group", { name: "Whose space is it?" })).toHaveCount(0);
         await expect(sheet.getByRole("navigation", { name: "Zone sections" })).toHaveCount(0);
-        await expect(sheet.getByRole("button", { name: "Arrangements", exact: true })).toHaveCount(0);
+        await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toHaveCount(0);
         await editProfile();
         await expect(sheet.getByRole("button", { name: "← Your home", exact: true })).toBeVisible();
         await expect(sheet.locator(".villages-zone-map-canvas")).toHaveCount(0);
@@ -2436,7 +2436,7 @@ export async function verifyFoundingLayout(group) {
               ).id,
           );
           await editVenue(founderHome);
-          await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+          await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
           await sheet.getByRole("button", { name: /^Residents/ }).click();
           const residentCard = sheet.locator(".marinara-capability-villages-directory-card").first();
           await expect(residentCard.locator("img")).toBeVisible();
@@ -2740,7 +2740,7 @@ export async function verifyFoundingLayout(group) {
         await root.locator('[data-pin-id="founding-home:player"]').click();
         await expect(sheet.getByRole("button", { name: "About", exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toBeVisible();
-        await expect(sheet.getByRole("button", { name: "Arrangements", exact: true })).toBeVisible();
+        await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toBeVisible();
         await sheet.getByRole("button", { name: "← Map", exact: true }).click();
         await expect(reviewMap.locator("img")).toHaveAttribute("style", camera);
         assert.deepEqual(

@@ -150,4 +150,25 @@ assert.deepEqual(
   ["guest", "player"],
   "An unclaimed Venue still requires the player's Home approval",
 );
+const unclaimedRoom = emptyVenue.zones!.find((zone) => zone.id === "room")!;
+unclaimedRoom.access!.mode = "permission-required";
+assert.equal(managesAccess(emptyVenue, "room", "player"), true);
+assert.equal(
+  evaluateZoneAccess(emptyVenue, unclaimedRoom, "player", { at }).allowed,
+  false,
+  "Fallback editing authority does not grant physical entry",
+);
+unclaimedRoom.access!.mode = "public";
+unclaimedRoom.access!.visitorHours = [{ days: ["Monday"], start: "17:00", end: "23:00" }];
+assert.equal(
+  evaluateZoneAccess(emptyVenue, unclaimedRoom, "player", { at }).allowed,
+  false,
+  "Fallback editing authority does not bypass visiting hours",
+);
+unclaimedRoom.access!.managerIds = ["guest"];
+assert.equal(
+  managesAccess(emptyVenue, "room", "player"),
+  false,
+  "An unclaimed Venue does not take over a Zone with an assigned controller",
+);
 console.log("Venue responsibility, shared bedrooms, scheduled work, private invitations and explicit hours passed.");

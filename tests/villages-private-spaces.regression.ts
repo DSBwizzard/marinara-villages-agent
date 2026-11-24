@@ -190,7 +190,7 @@ assert.equal(canInviteToZone(authored.venues[2]!, staff, "b"), true);
 authored.venues[2]!.workerIds = [];
 authored.venues[2]!.access!.managerIds = [];
 assert.equal(canInviteToZone(authored.venues[2]!, staff, "b"), false);
-assert.deepEqual(zoneControllerIds(authored.venues[2]!, staff), []);
+assert.deepEqual(zoneControllerIds(authored.venues[2]!, staff), ["player"]);
 authored.venues[2]!.workerIds = ["a", "b"];
 authored.venues[2]!.access!.managerIds = ["a", "b"];
 assert.throws(() => readSceneryStyle("x".repeat(601)), /600/);

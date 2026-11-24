@@ -252,7 +252,7 @@ await withBrowser(browser, async () => {
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
       const venueProfile = page.locator("." + tag + "-venue-profile");
       await expect(venueProfile).toBeVisible();
-      for (const section of ["About", "Zones", "Arrangements"]) {
+      for (const section of ["About", "Zones", "Assignments"]) {
         await page
           .getByRole("navigation", { name: "Venue sections" })
           .getByRole("button", { name: section, exact: true })

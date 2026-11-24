@@ -91,7 +91,7 @@ export function ZoneAbout({
           <textarea
             autoComplete="off"
             aria-label="Description"
-            rows={4}
+            rows={3}
             maxLength={16000}
             readOnly={!entries}
             value={value}

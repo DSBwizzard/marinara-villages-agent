@@ -32,7 +32,7 @@ export function VenueSections({
           aria-pressed={section === entry}
           onClick={() => onSelect(entry)}
         >
-          {entry[0]!.toUpperCase() + entry.slice(1)}
+          {entry === "arrangements" ? "Assignments" : entry[0]!.toUpperCase() + entry.slice(1)}
         </button>
       ))}
     </nav>

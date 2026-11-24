@@ -218,13 +218,17 @@ export function initializeVenueAccess(venue: VillageVenue): void {
 export function venueManagers(venue: VillageVenue): string[] {
   return venue.access ? (venue.access.managerIds.length ? venue.access.managerIds : ["player"]) : [];
 }
-export function zoneManagers(venue: VillageVenue, zone: VillageVenueZone): string[] {
+function assignedZoneManagers(venue: VillageVenue, zone: VillageVenueZone): string[] {
   const sleepers = zone.kind === "personal" || zone.ownerId ? venueSleepers(venue, zone.id) : [];
   if (sleepers.length) return [...new Set([...sleepers, ...(zone.ownerId ? [zone.ownerId] : [])])];
   const assigned =
     zone.kind !== "personal" && !zone.ownerId
-      ? [...new Set([...venueManagers(venue), ...(zone.access?.managerIds ?? [])])]
+      ? [...new Set([...(venue.access?.managerIds ?? []), ...(zone.access?.managerIds ?? [])])]
       : (zone.access?.managerIds ?? venue.access?.managerIds ?? []);
+  return assigned;
+}
+export function zoneManagers(venue: VillageVenue, zone: VillageVenueZone): string[] {
+  const assigned = assignedZoneManagers(venue, zone);
   return assigned.length ? assigned : venue.access ? ["player"] : [];
 }
 export function managesAccess(venue: VillageVenue, zoneId: string | null, actor: string): boolean {
@@ -233,7 +237,7 @@ export function managesAccess(venue: VillageVenue, zoneId: string | null, actor:
   return (
     !!zone &&
     zone.kind !== "exterior" &&
-    (zoneManagers(venue, zone).includes(actor) || (!zoneManagers(venue, zone).length && actor === "player"))
+    (zoneManagers(venue, zone).includes(actor) || (!assignedZoneManagers(venue, zone).length && actor === "player"))
   );
 }
 export function mayInvite(venue: VillageVenue, zone: VillageVenueZone, actor: string): boolean {
@@ -284,7 +288,7 @@ function members(venue: VillageVenue, zone: VillageVenueZone, at?: Date): string
           at.getHours() * 60 + at.getMinutes() < work.endMinute,
       )
       .map((work) => work.characterId),
-    ...zoneManagers(venue, zone),
+    ...assignedZoneManagers(venue, zone),
     ...(policy?.memberIds ?? []),
     ...(policy?.memberRoles.includes("residents")
       ? [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])]
@@ -443,7 +447,7 @@ export function evaluateZoneAccess(
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
     return restricted
-      ? !zoneManagers(venue, zone).length
+      ? !assignedZoneManagers(venue, zone).length
         ? result(
             true,
             "public",
@@ -592,7 +596,7 @@ export function applyAccessCommand(
       break;
     }
     case "recover-managers": {
-      const currentManagers = zone ? zoneManagers(venue, zone) : ledger.managerIds;
+      const currentManagers = zone ? assignedZoneManagers(venue, zone) : ledger.managerIds;
       if (
         currentManagers.some((id) => knownActors.includes(id)) ||
         (zone ? !managesAccess(venue, null, actor) : actor !== "player")
@@ -815,7 +819,7 @@ export function projectZoneAccess(venue: VillageVenue, zone: VillageVenueZone, a
   const decision = evaluateZoneAccess(venue, zone, actor, context);
   const { permissionId: _permission, accompaniedBy: _escort, ...safeDecision } = decision;
   safeDecision.canRecover =
-    !zoneManagers(venue, zone).length && managesAccess(venue, null, actor) && zone.kind !== "exterior";
+    !assignedZoneManagers(venue, zone).length && managesAccess(venue, null, actor) && zone.kind !== "exterior";
   const hours = effectiveHours(venue, zone);
   const grant =
     venue.access?.permissions.find((row) => row.id === decision.permissionId) ??

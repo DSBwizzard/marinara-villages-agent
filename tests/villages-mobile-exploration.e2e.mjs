@@ -424,7 +424,7 @@ await withBrowser(browser, async () => {
       (await Promise.all([heading.boundingBox(), tabs.boundingBox()])).map(({ x, y }) => [x, y]);
     await page.evaluate(() => document.fonts.ready);
     const aboutPosition = await headerPosition();
-    for (const section of ["Zones", "Arrangements", "About"]) {
+    for (const section of ["Zones", "Assignments", "About"]) {
       await tabs.getByRole("button", { name: section, exact: true }).click();
       if (mobile) {
         assert.deepEqual(await headerPosition(), aboutPosition);

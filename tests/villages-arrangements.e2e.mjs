@@ -77,7 +77,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("navigation")).toHaveCount(0);
     await expect(profile.getByLabel("Description", { exact: true })).toBeVisible();
     await profile.locator(".marinara-capability-villages-venue-navigation button").click();
-    await profile.getByRole("button", { name: "Arrangements", exact: true }).click();
+    await profile.getByRole("button", { name: "Assignments", exact: true }).click();
     await expect(profile.getByRole("button", { name: /^Residents.*2/ })).toBeVisible();
     await profile.getByRole("button", { name: /^Residents/ }).click();
     await profile.getByRole("button", { name: "Bob", exact: true }).click();
@@ -98,7 +98,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("button", { name: "← Residents", exact: true })).toBeEnabled();
     await page.evaluate(() => window.arrangements.mode("person"));
     await page.getByRole("button", { name: /^Home/ }).click();
-    await expect(page.getByRole("button", { name: "← Arrangements", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "← Assignments", exact: true })).toHaveCount(1);
     await expect(page.getByLabel("Sleeps in", { exact: true })).toHaveValue("bed");
     await page.getByRole("button", { name: "Propose changes", exact: true }).click();
     await expect.poll(() => posts.length).toBe(2);

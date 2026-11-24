@@ -24,7 +24,7 @@ export function PersonArrangements({ person, controller }: { person: string; con
   };
   if (!kind)
     return (
-      <nav className={P + "-venue-zone-picker"} aria-label="Arrangements">
+      <nav className={P + "-venue-zone-picker"} aria-label="Assignments">
         <VenueZoneRow name="Home" accessLabel={home?.name} onOpen={() => setKind("home")} />
         {person !== "player" && <VenueZoneRow name="Work" accessLabel={work?.name} onOpen={() => setKind("work")} />}
       </nav>
@@ -38,7 +38,7 @@ export function PersonArrangements({ person, controller }: { person: string; con
   return (
     <section className="villages-person-arrangements">
       <button type="button" className={P + "-venue-back"} disabled={busy} onClick={back}>
-        ← Arrangements
+        ← Assignments
       </button>
       {kind === "home" ? (
         fallback && (

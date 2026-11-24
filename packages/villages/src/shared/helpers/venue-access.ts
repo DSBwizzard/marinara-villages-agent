@@ -186,19 +186,3 @@ export function zoneVisitingHours(
 ): Exclude<ZoneVisitorHours, "inherit"> {
   return hours === "inherit" ? (previousDefault ?? "always") : (hours ?? "always");
 }
-export function visitorHoursLabel(hours: ZoneVisitorHours | undefined): string {
-  if (!Array.isArray(hours)) return "Any time";
-  if (!hours.length) return "Closed";
-  return hours
-    .map((row) => {
-      const names =
-        row.days.length === 7
-          ? "Every day"
-          : row.days.length === 5 &&
-              ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].every((day) => row.days.includes(day))
-            ? "Weekdays"
-            : row.days.map((day) => day.slice(0, 3)).join(", ");
-      return names + ", " + row.start + "–" + row.end;
-    })
-    .join("; ");
-}

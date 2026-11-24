@@ -212,7 +212,7 @@ await withBrowser(browser, async () => {
         });
       await sheet.getByRole("button", { name: "Zones", exact: true }).click();
       const zoneGeometry = await geometry(sheet.getByRole("button", { name: /^Entrance/ }));
-      await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+      await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
       const manageGeometry = await geometry(sheet.getByRole("button", { name: /^Residents/ }));
       assert.deepEqual(
         { font: manageGeometry.font, fade: manageGeometry.fade },
@@ -319,7 +319,7 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("switch")).toHaveCount(0);
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
-      await expect(button("Arrangements")).toBeVisible();
+      await expect(button("Assignments")).toBeVisible();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Remove Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
@@ -544,17 +544,15 @@ await withBrowser(browser, async () => {
 
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
-      await expect(sheet.getByRole("button", { name: "Arrangements", exact: true })).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toHaveCount(0);
       await parentVenue();
-      await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
-      await sheet.getByRole("button", { name: /^Visitors/ }).click();
+      await sheet.getByRole("button", { name: "Zones", exact: true }).click();
       await sheet.locator('[data-layout-zone="common:base"]').click();
       const access = sheet.getByRole("region", { name: "Visitors", exact: true });
       await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("public");
       const preserved = await page.evaluate(() => window.quickState.venues[0]);
       await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
-      await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
-      await sheet.locator('[data-layout-zone="common:base"]').click();
+
       const expected = structuredClone(preserved);
       expected.spaces[0].access.mode = "permission-required";
       expected.spaces[0].access.visitorHours = "always";
@@ -562,6 +560,42 @@ await withBrowser(browser, async () => {
         await page.evaluate(() => window.quickState.venues[0]),
         expected,
         "Access preserves unrelated fields",
+      );
+      const imageActions = sheet.locator(".marinara-capability-villages-zone-image-actions");
+      const imageBounds = await imageActions.boundingBox(),
+        textBounds = await sheet.getByLabel("Description", { exact: true }).boundingBox();
+      assert.ok(
+        Math.abs(imageBounds.x - textBounds.x) < 1 &&
+          Math.abs(imageBounds.x + imageBounds.width - textBounds.x - textBounds.width) < 1,
+        "Image actions match the text field edges",
+      );
+      await sheet.getByRole("button", { name: "Schedule", exact: true }).click();
+      const schedule = page.getByRole("dialog", { name: "Schedule", exact: true });
+      assert.equal(await schedule.evaluate((node) => node.matches(":modal")), false, "Schedule stays within Villages");
+      await page.getByRole("button", { name: "Engine control", exact: true }).click();
+      await schedule.getByLabel("Set times", { exact: true }).check();
+      await schedule.getByRole("button", { name: "Add opening period", exact: true }).click();
+      await expect(schedule.getByRole("group", { name: "Opening period 2", exact: true })).toBeVisible();
+      await schedule.getByRole("button", { name: "Remove period", exact: true }).last().click();
+      await expect(schedule.getByRole("button", { name: "Remove period", exact: true })).toHaveCount(0);
+      await schedule.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues[0]),
+        expected,
+        "Cancel discards schedule changes",
+      );
+      await sheet.getByRole("button", { name: "Schedule", exact: true }).click();
+      await expect(schedule.getByLabel("Any time", { exact: true })).toBeChecked();
+      await schedule.getByLabel("Set times", { exact: true }).check();
+      await schedule.getByRole("button", { name: "Save schedule", exact: true }).click();
+      await expect(schedule).toHaveCount(0);
+      expected.spaces[0].access.visitorHours = [
+        { days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], start: "09:00", end: "17:00" },
+      ];
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues[0]),
+        expected,
+        "Schedule saves the current Zone only",
       );
       await openZones();
       await zone("common:base").click();
@@ -605,11 +639,11 @@ await withBrowser(browser, async () => {
       await manage();
       await sheet.getByLabel("Venue Name", { exact: true }).fill("Ada’s café");
       const residents = async () => {
-        await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+        await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
         await sheet.getByRole("button", { name: /^Residents/ }).click();
       };
       const workers = async () => {
-        await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
+        await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
         await sheet.getByRole("button", { name: /^Workers/ }).click();
       };
       const returnToVenue = () => sheet.getByRole("button", { name: "← Ada’s café", exact: true }).click();
@@ -724,16 +758,15 @@ await withBrowser(browser, async () => {
         ),
       );
       await first.click();
-      await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
-      await sheet.getByRole("button", { name: /^Visitors/ }).click();
+      await sheet.getByRole("button", { name: "Zones", exact: true }).click();
       await sheet.locator('[data-layout-zone="private:base"]').click();
       await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("permission-required");
       await expect(sheet.getByRole("button", { name: /^Change visitor rules/ })).toHaveCount(0);
-      await expect(sheet.getByLabel("Hours").locator('option[value="inherit"]')).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Schedule", exact: true })).toBeVisible();
+      await expect(sheet.getByLabel("Hours", { exact: true })).toHaveCount(0);
       const personalBefore = await page.evaluate(() => window.quickState.venues[0]);
       await access.getByLabel("Entry", { exact: true }).selectOption("public");
-      await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
-      await sheet.locator('[data-layout-zone="private:base"]').click();
+
       const personalExpected = structuredClone(personalBefore);
       personalExpected.privateSpaces[0].access.mode = "public";
       assert.deepEqual(
@@ -742,7 +775,7 @@ await withBrowser(browser, async () => {
         "Making a personal Zone public keeps its owner and sleeping assignment",
       );
       await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
-      await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
+
       assert.deepEqual(await page.evaluate(() => window.quickState.venues[0]), personalBefore);
       await parentVenue();
       await sheet.getByRole("button", { name: "About", exact: true }).click();

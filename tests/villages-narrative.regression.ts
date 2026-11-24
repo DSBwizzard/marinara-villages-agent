@@ -671,8 +671,9 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   assert.ok(!JSON.stringify(villageSettings(state, player, null)).includes(proposalValue.situation.summary));
 }
 {
-  const fixture = world(),
-    grant = admitted(fixture);
+  const fixture = world();
+  fixture.venue.access!.managerIds = ["player"];
+  const grant = admitted(fixture);
   const raw = proposal(grant),
     effect = readNarrativeDevelopment(raw, grant);
   const oldScene: any = {

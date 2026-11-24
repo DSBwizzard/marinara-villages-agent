@@ -85,11 +85,7 @@ community.spaces![0] = {
   description: "Trees and benches",
 };
 const parsedPark = parsePlace(community, true);
-assert.deepEqual(
-  parsedPark.access?.managerIds,
-  ["player"],
-  "unselected infrastructure is player-managed; Community designation is validated separately",
-);
+assert.deepEqual(parsedPark.access?.managerIds, [], "Unclaimed infrastructure keeps Nobody as its recorded operator");
 assert.equal(parsedPark.zones?.find((zone) => zone.id === "common:base")?.access?.mode, "public");
 assert.doesNotThrow(() => parsePlace({ ...community, layout: "exterior", spaces: [], privateSpaces: [] }, true));
 const restricted = parsePlace(

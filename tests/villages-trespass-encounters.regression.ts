@@ -41,6 +41,7 @@ function nativeFixture(npc = false) {
     seen: true,
   });
   initializeVenueAccess(venue);
+  venue.access!.managerIds = ["c"];
   venue.zones!.find((z) => z.id === "garden")!.access = {
     mode: "permission-required",
     managerIds: ["c"],
@@ -880,6 +881,7 @@ for (const scenario of ["ordinary", "sneaking", "staying", "escorted"]) {
         },
       });
       if (scenario === "escorted") {
+        venue.access!.managerIds = ["mara"];
         const common = venue.zones!.find((row) => row.id === "common")!,
           garden = venue.zones!.find((row) => row.id === "garden")!;
         common.connectedTo = common.connectedTo!.map((id) => (id === "garden" ? "middle" : id));

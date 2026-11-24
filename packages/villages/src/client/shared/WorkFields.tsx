@@ -129,6 +129,7 @@ export function WorkFields({
       <label className="villages-manage-check villages-work-invite">
         <input
           type="checkbox"
+          autoComplete="off"
           checked={!!value.inviteGuests}
           onChange={(e) => onChange({ ...value, inviteGuests: e.target.checked })}
         />
