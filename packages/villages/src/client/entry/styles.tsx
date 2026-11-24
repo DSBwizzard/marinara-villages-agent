@@ -1277,6 +1277,8 @@ ${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(-
   object-fit: contain;
   user-select: none;
 }
+/* Keep Engine accent transitions from animating map geometry. */
+.${ELEMENT_TAG}-stage .${ELEMENT_TAG}-canvas-img { transition-property:filter!important; }
 
 .${ELEMENT_TAG}-zoom {
   position: absolute; right: .5rem; bottom: .5rem; z-index: 3;

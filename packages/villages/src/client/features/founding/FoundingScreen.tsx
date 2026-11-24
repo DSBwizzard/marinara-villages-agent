@@ -289,6 +289,11 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     [setSetupWorkspace],
   );
   const [artSettingsOpen, setArtSettingsOpen] = useState(false);
+  const confirmMapDefaults = useConfirmation(artSettingsOpen);
+  const mapPromptValid = setupMapPrompt.trim().length > 0;
+  const closeArtSettings = () => {
+    if (mapPromptValid) setArtSettingsOpen(false);
+  };
   const [reviewEditor, setReviewEditor] = useState<"map">();
   const [reviewSettingSection, setReviewSettingSection] = useState<ReviewSettingSection>("Map");
   useLetterFont(screen === "setup" ? "lora" : undefined);
@@ -900,7 +905,14 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             </button>
             <button
               type="button"
-              disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
+              disabled={
+                busy ||
+                setupMapBusy ||
+                setupSuggestionsBusy ||
+                setupVenueBusy ||
+                !setupSetting.trim() ||
+                (!setupMapRequest && !mapPromptValid)
+              }
               onClick={() => {
                 if (setupMapRequest?.phase === "paused") {
                   setSetupMapProblem("");
@@ -1351,7 +1363,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           </FoundingDialog>
         ) : null}
         {setupStep === FOUNDING_STEP.Maps && artSettingsOpen ? (
-          <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
+          <FoundingDialog title="Art settings" onClose={closeArtSettings}>
             <div className="villages-founding-editor-body">
               <AgentConnectionsControls connections={connections} kind="images" compact />
               {appearanceControl}
@@ -1366,12 +1378,20 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 <textarea
                   autoComplete="off"
                   aria-label="Map details"
+                  required
+                  aria-invalid={!mapPromptValid || undefined}
+                  aria-describedby={!mapPromptValid ? "villages-map-prompt-error" : undefined}
                   maxLength={1500}
                   rows={8}
                   value={setupMapPrompt}
                   onChange={(event) => controller.setSetupMapPrompt(event.target.value)}
                 />
               </label>
+              {!mapPromptValid ? (
+                <p id="villages-map-prompt-error" role="alert">
+                  Enter Map details.
+                </p>
+              ) : null}
               <label>
                 Exclude from map
                 <textarea
@@ -1385,7 +1405,24 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               </label>
             </div>
             <footer>
-              <button type="button" disabled={connections.saving} onClick={() => setArtSettingsOpen(false)}>
+              <button
+                type="button"
+                disabled={connections.saving}
+                onClick={async () => {
+                  if (
+                    await confirmMapDefaults("Replace Map details and Exclude from map with their defaults?", {
+                      cancel: "Keep editing",
+                      confirm: "Restore defaults",
+                    })
+                  ) {
+                    controller.setSetupMapPrompt(snapshot.settings.townMapLayoutPrompt);
+                    controller.setSetupMapNegativePrompt(snapshot.settings.townMapNegativePrompt);
+                  }
+                }}
+              >
+                Restore defaults
+              </button>
+              <button type="button" disabled={connections.saving || !mapPromptValid} onClick={closeArtSettings}>
                 Back
               </button>
             </footer>

@@ -1804,6 +1804,37 @@ export async function verifyFoundingLayout(group) {
           .fill("Watercolor with muted teal and warm amber.");
         await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
         await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
+        const restoreDefaults = artSettings.getByRole("button", { name: "Restore defaults", exact: true });
+        const restoreConfirmation = page.getByRole("dialog", { name: "Confirm", exact: true });
+        await restoreDefaults.click();
+        await expect(restoreConfirmation).toContainText("Map details and Exclude from map");
+        await restoreConfirmation.getByRole("button", { name: "Keep editing", exact: true }).click();
+        await expect(artSettings.getByLabel("Map details", { exact: true })).toHaveValue(
+          "A circular Village around a central pond.",
+        );
+        await expect(artSettings.getByLabel("Exclude from map", { exact: true })).toHaveValue("neon colors");
+        await artSettings.getByLabel("Map details", { exact: true }).fill("   ");
+        await expect(artSettings.getByLabel("Map details", { exact: true })).toHaveAttribute("aria-invalid", "true");
+        await expect(artSettings.getByRole("button", { name: "Back", exact: true })).toBeDisabled();
+        await expect(button("Generate image")).toBeDisabled();
+        await page.evaluate(() => window.featureController.generateSetupTownMap());
+        assert.equal(generatedImages, 0, "Blank instructions never create or dispatch an image attempt");
+        assert.equal(await page.evaluate(() => window.featureController.setupMapRequest), null);
+        await restoreDefaults.click();
+        await restoreConfirmation.getByRole("button", { name: "Restore defaults", exact: true }).click();
+        await expect(artSettings.getByLabel("Map details", { exact: true })).toHaveValue(
+          DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+        );
+        await expect(artSettings.getByLabel("Exclude from map", { exact: true })).toHaveValue(
+          DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+        );
+        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("");
+        await expect(artSettings.getByRole("button", { name: "Back", exact: true })).toBeEnabled();
+        await artSettings.getByRole("button", { name: "Back", exact: true }).click();
+        await button("Art settings").click();
+        await expect(artSettings.getByLabel("Exclude from map", { exact: true })).toHaveValue("");
+        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
+        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),

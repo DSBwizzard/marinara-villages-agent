@@ -56,6 +56,10 @@ export function useFoundingGenerateSetupTownMap(ports: {
       setSetupMapProblem("Describe the starting location before generating its map.");
       return;
     }
+    if (!setupMapPrompt.trim()) {
+      setSetupMapProblem("Enter Map details before generating its image.");
+      return;
+    }
     setSetupMapBusy(true);
     setSetupMapProblem("");
     setSetupProblem("");
