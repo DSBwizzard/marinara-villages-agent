@@ -343,7 +343,7 @@ export function useOpenSetup(ports: {
       setSetupMapImageSource(null);
       setSetupMapGeneratedKey("");
       setSetupMapSize(null);
-      setSetupMapPrompt(fresh ? "" : (village?.settings.townMapLayoutPrompt ?? ""));
+      setSetupMapPrompt(village?.settings.townMapLayoutPrompt ?? "");
       setSetupMapNegativePrompt(village?.settings.townMapNegativePrompt ?? "");
       setSetupMapBusy(false);
       setSetupMapProblem("");

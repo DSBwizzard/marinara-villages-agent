@@ -74,6 +74,7 @@ export function useFoundingFlushSetupDraft(ports: {
   }, [draftBlocked, draftReady, persistSetupDraft, setupDraftData]);
 }
 export function createFoundingRestoreSetupDraft(ports: {
+  readonly defaultMapPrompt: string;
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
   readonly loadLorebooks: (signal?: AbortSignal) => Promise<void>;
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
@@ -259,7 +260,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupMapImageSource(data.mapImageSource);
     setSetupMapGeneratedKey(data.mapGeneratedKey);
     setSetupMapSize(data.mapSize);
-    setSetupMapPrompt(data.mapPrompt);
+    setSetupMapPrompt(data.mapPrompt || ports.defaultMapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
     setSetupMapReviewed(data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");

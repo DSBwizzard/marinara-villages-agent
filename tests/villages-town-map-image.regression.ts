@@ -55,10 +55,10 @@ async function main() {
       });
       assert.equal(images.length, before + 1, "adaptive composition uses one image request without a mode");
       const image = images.at(-1)!;
-      assert.ok(image.prompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
+      assert.ok(!image.prompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
       assert.ok(image.prompt.includes("Village description: " + setting));
       assert.ok(image.prompt.includes("Map details: " + details));
-      assert.match(image.prompt, /Map details take priority.*default composition/);
+      assert.doesNotMatch(image.prompt, /Use cutaways|Preserve overhead|Illustrated overhead/);
       assert.match(image.prompt, /Art style for this scenery: Watercolor/);
       assert.equal(image.sceneryStyleProfileId, "shared-style");
     }
@@ -119,7 +119,7 @@ async function main() {
   ];
   for (const setting of fixtures) {
     const prompt = buildTownMapPrompt("Respect repeated living spaces and the shared approach.", setting);
-    assert.ok(prompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
+    assert.ok(!prompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
     assert.ok(prompt.includes(setting));
     assert.doesNotMatch(
       prompt,
@@ -148,7 +148,7 @@ async function main() {
   for (const details of ["No water.", "No buildings; use tents.", "Footpaths only, no roads."]) {
     const prompt = buildTownMapPrompt(details, "A harbor town with canals, stone buildings and paved roads.");
     assert.ok(prompt.includes("Map details: " + details));
-    assert.match(prompt, /Map details take priority over conflicting Village description/);
+    assert.ok(!prompt.includes(DEFAULT_TOWN_MAP_LAYOUT_PROMPT), "Custom instructions replace the default composition");
     assert.ok(prompt.includes("Village description: A harbor town with canals"));
   }
   const imprintMap = buildTownMapPrompt(undefined, "Misty cliffs", "", "Restored timber");
@@ -160,7 +160,9 @@ async function main() {
   );
   assert.doesNotMatch(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /square plots/);
   assert.equal(buildTownMapNegativePrompt(), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
-  assert.match(buildTownMapNegativePrompt("foggy artifacts"), /writing, numerals.*foggy artifacts/);
+  assert.equal(buildTownMapNegativePrompt("foggy artifacts"), "foggy artifacts");
+  assert.equal(buildTownMapNegativePrompt(""), "");
+  assert.equal(buildTownMapNegativePrompt("   "), "");
   assert.equal(buildTownMapNegativePrompt(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
   assert.throws(() => buildTownMapPrompt(undefined, "   "), /cannot be blank/);
   assert.throws(() => buildTownMapPrompt(" ".repeat(3), "forest"), /cannot be blank/);
@@ -238,6 +240,7 @@ async function main() {
     };
     const input = {
       structure: "A corridor and shared hall. ".repeat(50),
+      negative: "",
       setting: "An indoor observatory. ".repeat(58),
       sceneryArtStyle: "Painted scenery. ".repeat(35),
       useVisualLore: true,
@@ -252,7 +255,7 @@ async function main() {
       undefined,
       input.sceneryArtStyle.trim(),
     );
-    assert.ok(expectedPrompt.length > 4000 && expectedPrompt.length <= 8000);
+    assert.ok(expectedPrompt.length > 3000 && expectedPrompt.length <= 8000);
     await assert.rejects(
       generateVillageTownMap({ ...input, structure: "x".repeat(1501) }),
       /Map details can be at most 1500 characters/,
@@ -263,8 +266,17 @@ async function main() {
     assert.equal(imageRequests.length, 1);
     assert.deepEqual([imageRequests[0].width, imageRequests[0].height], [2560, 1440]);
     assert.equal(imageRequests[0].appearance, expectedPrompt);
-    assert.equal(expectedPrompt.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
+    assert.equal(
+      expectedPrompt.includes(VILLAGE_SHARED_SETTING_RULE),
+      false,
+      "Maps add no hidden setting instructions",
+    );
     assert.equal(imageRequests[0].promptOverrides[0].prompt, expectedPrompt);
+    assert.equal(
+      imageRequests[0].promptOverrides[0].negativePrompt,
+      undefined,
+      "Cleared exclusions stay cleared at dispatch",
+    );
     resultImage = "data:image/png;base64," + "A".repeat(8_000_004);
     await assert.rejects(generateVillageTownMap(input), /too large to store/);
     assert.equal(imageRequests.length, 2, "an oversized result must not trigger another paid request");
@@ -343,7 +355,7 @@ async function main() {
     documents.set("villages-village", { id: "villages-village", kind: "village", data: legacy, revision: 1 });
     await generateVillageTownMap({ ...input } as any);
     assert.doesNotMatch(imageRequests.at(-1).appearance, /Venue photographs|sixteen|forty-eight/);
-    assert.equal(imageRequests.at(-1).appearance.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
+    assert.equal(imageRequests.at(-1).appearance.includes(VILLAGE_SHARED_SETTING_RULE), false);
   } finally {
     globalThis.fetch = originalFetch;
     releaseRuntime();

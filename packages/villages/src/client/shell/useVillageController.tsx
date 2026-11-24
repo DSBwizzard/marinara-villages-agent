@@ -447,6 +447,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const restoreSetupDraft = createFoundingRestoreSetupDraft({
     ...founding,
+    defaultMapPrompt: snapshot?.settings.townMapLayoutPrompt ?? "",
     get loadCatalog() {
       return loadCatalog;
     },
@@ -921,7 +922,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     persistSetupDraft,
     setupDraftData,
     setupMapGenerationKey,
-    snapshot,
     updateSetupMapRequest,
   });
 
