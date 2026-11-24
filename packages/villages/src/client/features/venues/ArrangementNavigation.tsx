@@ -62,7 +62,10 @@ export function VisitorsOverview({
   onOpen(zoneId: string): void;
 }) {
   return (
-    <nav className={P + "-venue-zone-picker villages-visitors-list"} aria-label="Visitor Zones">
+    <nav
+      className={P + "-venue-zone-picker villages-arrangement-summary villages-visitors-list"}
+      aria-label="Visitor Zones"
+    >
       {visitorZones(place)
         .filter((zone) => zone.kind !== "exterior")
         .map((zone) => (

@@ -169,6 +169,13 @@ await withBrowser(browser, async () => {
         seed.settings.venues[0].accessView.managerIds = ["player", "mara"];
       },
     });
+    await f.page.evaluate(() => {
+      const host = document.createElement("marinara-capability-villages");
+      host.className = "marinara-capability-villages-desk-container";
+      document.body.append(host);
+      host.append(document.getElementById("root"));
+    });
+    await f.page.addScriptTag({ content: styles.outputFiles[0].text });
     await f.page.getByRole("button", { name: "About", exact: true }).click();
     await f.page.getByRole("button", { name: /^Runs this Venue/ }).click();
     await f.page.getByRole("button", { name: "Nobody", exact: true }).click();
@@ -185,7 +192,20 @@ await withBrowser(browser, async () => {
     await f.page.getByRole("button", { name: "Arrangements", exact: true }).click();
     await f.page.getByRole("button", { name: /^Visitors/ }).click();
     await expect(f.page.getByRole("combobox", { name: "Visitor Zone" })).toHaveCount(0);
-    await f.page.getByRole("navigation", { name: "Visitor Zones", exact: true }).getByRole("button").first().click();
+    const visitorRows = f.page.getByRole("navigation", { name: "Visitor Zones", exact: true }).getByRole("button");
+    const bounds = await visitorRows.evaluateAll((rows) =>
+      rows.map((row) => {
+        const rect = row.getBoundingClientRect();
+        return { left: rect.left, top: rect.top, bottom: rect.bottom };
+      }),
+    );
+    assert.ok(bounds.length > 1);
+    for (let index = 1; index < bounds.length; index++) {
+      assert.equal(bounds[index].left, bounds[0].left, "Visitors keeps one column on phone");
+      assert.ok(bounds[index].top >= bounds[index - 1].bottom);
+    }
+    await expect(visitorRows.first().locator(".marinara-capability-villages-venue-zone-thumb")).toBeHidden();
+    await visitorRows.first().click();
     await expect(f.page.getByRole("button", { name: /^Change visitor rules/ })).toHaveCount(0);
     await f.page.getByLabel("Hours", { exact: true }).selectOption("schedule");
     await f.page.evaluate(() => window.h.revision());
