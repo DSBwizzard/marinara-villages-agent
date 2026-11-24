@@ -319,7 +319,7 @@ await withBrowser(browser, async () => {
     const alcove = picker.getByRole("button", { name: /^Sleeping Alcove/ });
     await expect(alcove.locator("small")).toHaveText(["Invitation only"]);
     await expect(picker.getByRole("button", { name: /^Main Bay/ }).locator("small")).toHaveText([
-      "Permission required",
+      "Invitation only",
     ]);
     await alcove.click();
     const roomBackdrop = profile.locator(`.${prefix}-venue-zone-photo`);
