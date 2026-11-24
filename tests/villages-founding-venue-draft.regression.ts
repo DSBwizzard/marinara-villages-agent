@@ -172,6 +172,7 @@ bad((row) => {
 assert.throws(() => readFoundingZoneIds(["common:base"], source), /distinct/);
 
 let textCalls = 0;
+let venueReply: unknown = { venues: [raw] };
 const writer = createFoundingDrafts({
   findVillagerCard: async (id: string) =>
     readVillagerCard({ id, comment: "", data: { name: "Ada", description: "A careful cook" } }),
@@ -186,7 +187,7 @@ const writer = createFoundingDrafts({
   }),
   completeWithRoom: async () => {
     textCalls++;
-    return { content: JSON.stringify({ venues: [raw] }), finishReason: "stop" };
+    return { content: JSON.stringify(venueReply), finishReason: "stop" };
   },
 } as any);
 const input = {
@@ -222,6 +223,38 @@ await assert.rejects(writer.suggestStartingVenues({ ...input, actionId: undefine
 assert.equal(textCalls, 0);
 assert.deepEqual((await writer.suggestStartingVenues(input)).venues[0].zones, plan.zones);
 assert.equal(textCalls, 1);
+const incomplete = {
+  ...input,
+  mode: "draft-plan",
+  targetVenueId: undefined,
+  foundingCharacterIds: ["ada", "unhoused"],
+  foundingResidentAdmissions: {
+    ada: { homeworld: "", startingSituation: "" },
+    unhoused: { homeworld: "", startingSituation: "" },
+  },
+  sourceVenues: [foundingVenueDraftSource(home)],
+  newZoneIdsByVenue: { [home.id]: ["new-kitchen"] },
+  venues: input.venues.slice(0, 1),
+};
+assert.equal(
+  (await writer.suggestStartingVenues(incomplete)).venues[0].id,
+  home.id,
+  "Selected people need no Home to draft",
+);
+assert.equal(
+  (await writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: undefined })).venues.length,
+  1,
+  "Older requests recover their selected roster from saved context keys",
+);
+const beforeInvalid = textCalls;
+await assert.rejects(
+  writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: ["ada"] }),
+  /Starting situations/,
+);
+assert.equal(textCalls, beforeInvalid, "Unselected context keys fail before model dispatch");
+venueReply = { venues: [raw, raw] };
+await assert.rejects(writer.suggestStartingVenues(incomplete), /exactly once/);
+venueReply = { venues: [raw] };
 
 const tick = () => new Promise<void>((done) => setImmediate(done));
 function harness() {

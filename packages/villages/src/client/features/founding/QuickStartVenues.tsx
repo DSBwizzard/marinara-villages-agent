@@ -10,13 +10,14 @@ import {
 } from "../venues/ArrangementNavigation.js";
 import { FoundingPeople } from "./FoundingPeople.js";
 import { FoundingAccess } from "./FoundingAccess.js";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { SetupVenueDraft, Portrait } from "../../shared/types.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { addFoundingZone } from "./founding-template.js";
 import { foundingHomeMembers, reconcileFoundingHome } from "./founding-homes.js";
+import { draftZonePolicy } from "./villages-founding-zones.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { DESK_STYLES } from "../../shared/desk-styles.js";
 import { VenueProfile } from "../../shared/VenueProfile.js";
@@ -52,6 +53,8 @@ export function QuickStartVenues({
   onRetrySaving,
   onCloseVenue,
   backLabel,
+  onRedraft,
+  onRemove,
 }: {
   inlineVenue?: boolean;
   mobile?: boolean;
@@ -78,6 +81,8 @@ export function QuickStartVenues({
   onRetrySaving?(): void;
   onCloseVenue?(): void;
   backLabel?: string;
+  onRedraft?(venue: SetupVenueDraft): void;
+  onRemove?(venue: SetupVenueDraft): Promise<boolean> | boolean;
 }) {
   const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -93,6 +98,7 @@ export function QuickStartVenues({
   const venuesRoot = useRef<HTMLElement>(null);
   const venueBack = useRef<HTMLButtonElement>(null);
   const openedFromPin = useRef(false);
+  const returnFocus = useRef<{ id: string; pin: boolean } | null>(null);
   const fieldId = useId();
   const [zoneId, setZoneId] = useState("exterior");
   const selected = venues.find((venue) => venue.id === selectedId) ?? venues[0];
@@ -105,17 +111,20 @@ export function QuickStartVenues({
   const open = editorOpen && !!selected;
   const inlineOpen = inlineVenue && open;
   const closeVenue = () => {
+    if (inlineOpen && selected) returnFocus.current = { id: selected.id, pin: mobile || openedFromPin.current };
     setEditorOpen(false);
     onCloseVenue?.();
-    if (!inlineOpen || !selected) return;
-    const id = CSS.escape(selected.id);
-    requestAnimationFrame(() => {
-      const root = venuesRoot.current;
-      const pin =
-        mobile || openedFromPin.current ? root?.querySelector<HTMLButtonElement>(`[data-pin-id="${id}"]`) : null;
-      (pin ?? root?.querySelector<HTMLButtonElement>(`[data-venue-id="${id}"]`))?.focus({ preventScroll: true });
-    });
   };
+  useLayoutEffect(() => {
+    if (editorOpen || !returnFocus.current) return;
+    const { id, pin } = returnFocus.current,
+      root = venuesRoot.current;
+    returnFocus.current = null;
+    (pin
+      ? root?.querySelector<HTMLButtonElement>(`[data-pin-id="${CSS.escape(id)}"]`)
+      : root?.querySelector<HTMLButtonElement>(`[data-venue-id="${CSS.escape(id)}"]`)
+    )?.focus({ preventScroll: true });
+  }, [editorOpen]);
   const issues = foundingVenueIssues(venues, false);
   const actors = [{ id: "player", name: "You" }, ...people];
   const patch = (venue: SetupVenueDraft) => onPatch(reconcileFoundingHome(venue));
@@ -248,39 +257,82 @@ export function QuickStartVenues({
   const cards = ordered.map((venue) => {
     const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
     return (
-      <button
-        key={venue.id}
-        type="button"
-        className="villages-quick-venue-card"
-        aria-label={venue.name || "Venue"}
-        aria-expanded={inlineVenue ? inlineOpen && selected?.id === venue.id : undefined}
-        data-venue-id={venue.id}
-        data-selected={selected?.id === venue.id}
-        disabled={busy || imageBusy}
-        onClick={() => {
-          openedFromPin.current = false;
-          onSelect(venue);
-          selectSection("about");
-          setEditorOpen(true);
-        }}
-      >
-        <span className="villages-quick-venue-icon">
-          <VillageIcon name={home ? "places" : "people"} />
-        </span>
-        <span className="villages-quick-venue-copy">
-          <strong>{venue.name || "Venue"}</strong>
-          <small className="villages-quick-zone-summary">
-            {home
-              ? foundingHomeMembers(venue)
-                  .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
-                  .join(", ")
-              : venue.category === "public-center"
-                ? "Community Venue"
-                : venue.venueType || "Venue"}
-          </small>
-        </span>
-        <span aria-hidden="true">›</span>
-      </button>
+      <div className="villages-founding-venue-row" key={venue.id}>
+        <button
+          type="button"
+          className="villages-quick-venue-card"
+          aria-label={venue.name || "Venue"}
+          aria-expanded={inlineVenue ? inlineOpen && selected?.id === venue.id : undefined}
+          data-venue-id={venue.id}
+          data-selected={selected?.id === venue.id}
+          disabled={busy || imageBusy}
+          onClick={() => {
+            openedFromPin.current = false;
+            onSelect(venue);
+            selectSection("about");
+            setEditorOpen(true);
+          }}
+        >
+          <span className="villages-quick-venue-icon">
+            <VillageIcon name={home ? "places" : "people"} />
+          </span>
+          <span className="villages-quick-venue-copy">
+            <strong>{venue.name || "Venue"}</strong>
+            <small className="villages-quick-zone-summary">
+              {home
+                ? foundingHomeMembers(venue)
+                    .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
+                    .join(", ")
+                : venue.category === "public-center"
+                  ? "Community Venue"
+                  : venue.venueType || "Venue"}
+            </small>
+          </span>
+          <span aria-hidden="true">›</span>
+        </button>
+        {(onRedraft || onRemove) && (
+          <details
+            className="villages-founding-venue-options"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
+          >
+            <summary role="button" aria-label={`Options for ${venue.name || "Venue"}`}>
+              ⋯
+            </summary>
+            <div>
+              {onRedraft && (
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  onClick={(event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    onRedraft(venue);
+                  }}
+                >
+                  Redraft Venue
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  onClick={(event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    onRemove(venue);
+                  }}
+                >
+                  Remove Venue
+                </button>
+              )}
+            </div>
+          </details>
+        )}
+      </div>
     );
   });
   const venuePage =
@@ -407,6 +459,22 @@ export function QuickStartVenues({
             {!arrangementPage && !zoneDetails && section === "about" ? (
               <section className="villages-manage" aria-label="About this venue">
                 <div className="villages-people-actions">
+                  {onRedraft && (
+                    <button type="button" disabled={busy || imageBusy} onClick={() => onRedraft(selected)}>
+                      Redraft Venue
+                    </button>
+                  )}
+                  {onRemove && (
+                    <button
+                      type="button"
+                      disabled={busy || imageBusy}
+                      onClick={async () => {
+                        if (await onRemove(selected)) closeVenue();
+                      }}
+                    >
+                      Remove Venue
+                    </button>
+                  )}
                   <button type="button" disabled={busy || imageBusy} onClick={() => setEditingAbout(!editingAbout)}>
                     {editingAbout ? "Done" : "Edit"}
                   </button>
@@ -506,6 +574,7 @@ export function QuickStartVenues({
                     image={selected.presentation.image?.url}
                     disabled={busy || imageBusy}
                     current={zoneId === "exterior"}
+                    accessLabel="Open to everyone"
                     onOpen={() => selectZone("exterior")}
                   />
                   {[...(selected.spaces ?? []), ...(selected.privateSpaces ?? [])].map((row) => (
@@ -516,7 +585,18 @@ export function QuickStartVenues({
                       image={row.image?.url}
                       disabled={busy || imageBusy}
                       current={zoneId === row.id}
-                      accessLabel={row.access?.mode === "permission-required" ? "Permission required" : undefined}
+                      accessLabel={
+                        (
+                          row.access ??
+                          draftZonePolicy(
+                            selected,
+                            row,
+                            selected.privateSpaces?.some((zone) => zone.id === row.id),
+                          )
+                        ).mode === "permission-required"
+                          ? "Invitation only"
+                          : "Open to everyone"
+                      }
                       onOpen={() => selectZone(row.id)}
                     />
                   ))}

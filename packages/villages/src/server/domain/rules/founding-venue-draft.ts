@@ -77,9 +77,13 @@ export function parseFoundingVenueDraft(
   const people = row.people === undefined ? undefined : foundingPeopleSchema.parse(row.people);
   if (
     people &&
-    [...people.residentIds, ...people.managerIds, ...people.work.map((work) => work.characterId)].some(
-      (id) => !allowedActors.includes(id),
-    )
+    ([
+      ...people.residentIds,
+      ...people.managerIds,
+      ...people.work.map((work) => work.characterId),
+      ...Object.keys(people.destinations),
+    ].some((id) => !allowedActors.includes(id)) ||
+      people.work.some((work) => work.characterId === "player"))
   )
     throw badRequest("Use only the chosen founding people.");
   source = applyFoundingPeople(source, people) as typeof source;

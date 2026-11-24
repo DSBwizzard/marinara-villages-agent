@@ -442,7 +442,7 @@ export function useFoundingSetupBlocker(ports: {
       ) {
         return "Place one to three homes for initial villagers.";
       }
-      if (!residences.some((venue) => venue.occupancy.playerHome)) return "One Residence has to be yours.";
+      if (!residences.some((venue) => venue.occupancy.playerHome)) return "Assign your Home on Venues.";
       if (
         setupVenues.some(
           (venue) =>
@@ -460,7 +460,12 @@ export function useFoundingSetupBlocker(ports: {
         !snapshot?.isFounded &&
         (occupants.length !== setupHomeCount || occupants.some((id) => !setupFoundingVillagerIds.includes(id)))
       )
-        return "Assign every villager chosen on People to one Residence.";
+        return `Assign a Home to ${
+          setupFoundingVillagerIds
+            .filter((id) => !occupants.includes(id))
+            .map((id) => catalog?.find((person) => person.id === id)?.name ?? "the selected Villager")
+            .join(", ") || "each selected Villager"
+        } on Venues.`;
       if (
         setupVenues.some((venue) =>
           venue.privateSpaces?.some(
@@ -473,7 +478,7 @@ export function useFoundingSetupBlocker(ports: {
         return "Give each Private Space a name, purpose, and controller on Venues.";
       if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
         return "A chosen villager is no longer in your character cards. Choose another villager on People.";
-      if (setupVenues.length > 16) return "A Village supports at most 16 Venues.";
+      if (!snapshot?.isFounded && setupVenues.length > 6) return "Keep at most six starting Venues.";
       return "";
     },
     [

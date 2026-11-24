@@ -82,7 +82,13 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
               managerIds: zone.controllerIds?.length ? zone.controllerIds : null,
               memberRoles: ["workers"],
             }
-          : draftZonePolicy(venue, zone, zone.kind === "personal");
+          : {
+              ...draftZonePolicy(venue, zone, zone.kind === "personal"),
+              // These fixtures author private homes explicitly; production no longer infers Entry from residency.
+              ...((venue.occupancy.playerHome || venue.residentIds?.length) && venue.category !== "public-center"
+                ? { mode: "permission-required" as const }
+                : {}),
+            };
   initializeVenueAccess(venue);
   return venue;
 }

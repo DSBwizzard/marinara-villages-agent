@@ -144,6 +144,7 @@ export function createFoundingSuggestSetupVenues(ports: {
     options = pending
       ? {
           quickStart: pending.quickStart,
+          plan: pending.plan,
           separateHomes: pending.separateHomes,
           venueId: pending.venueId,
           ...(pending.fullVenue ? { fullVenue: true, draftEntranceImage: pending.draftEntranceImage } : {}),
@@ -172,11 +173,13 @@ export function createFoundingSuggestSetupVenues(ports: {
     setupSuggestionsClaim.current = true;
     const replacing = !!options.quickStart;
     const identity = quickStartIdentity(setupVenues);
-    const source = replacing
+    const source = options.plan
       ? JSON.stringify([setupBeginningSourceKey, identity])
-      : options.venueId
-        ? JSON.stringify([setupBeginningSourceKey, options.venueId])
-        : setupBeginningSourceKey;
+      : replacing
+        ? JSON.stringify([setupBeginningSourceKey, identity])
+        : options.venueId
+          ? JSON.stringify([setupBeginningSourceKey, options.venueId])
+          : setupBeginningSourceKey;
     const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData.roster ?? [];
     const replacementSource = JSON.stringify(setupVenues);
     const rows = options.separateHomes
@@ -212,11 +215,30 @@ export function createFoundingSuggestSetupVenues(ports: {
               () => "zone:" + createVillagesClientId(),
             )
         : undefined;
-      const input = {
+      const preparedInput = {
         setting: setupSetting,
-        venueBrief: ports.setupWorkspace.venueBrief ?? "",
+        venueBrief: options.venueId
+          ? (ports.setupWorkspace.venueBriefs?.[options.venueId] ?? "")
+          : (ports.setupWorkspace.venueBrief ?? ""),
         worldName: ports.setupWorldName,
         ...(options.quickStart ? { mode: "quick-start" } : {}),
+        ...(options.plan
+          ? {
+              mode: "draft-plan",
+              sourceVenues: rows.map(foundingVenueDraftSource),
+              newZoneIdsByVenue: pending?.sourceInputs
+                ? JSON.parse(pending.sourceInputs).newZoneIdsByVenue
+                : Object.fromEntries(
+                    rows.map((row) => [
+                      row.id,
+                      Array.from(
+                        { length: Math.max(0, 6 - (row.spaces?.length ?? 0) - (row.privateSpaces?.length ?? 0)) },
+                        () => "zone:" + createVillagesClientId(),
+                      ),
+                    ]),
+                  ),
+            }
+          : {}),
         ...(options.fullVenue
           ? {
               mode: "draft-venue",
@@ -235,8 +257,10 @@ export function createFoundingSuggestSetupVenues(ports: {
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,
         foundingResidentAdmissions: selectedResidentAdmissions,
+        foundingCharacterIds: roster,
         venues: requestRows(rows),
       };
+      const input: typeof preparedInput = pending?.sourceInputs ? JSON.parse(pending.sourceInputs) : preparedInput;
       const result = await requestFoundingSuggestions(
         { ...ports, signal, setupBeginningSourceKey: source },
         options,
@@ -245,6 +269,16 @@ export function createFoundingSuggestSetupVenues(ports: {
       const currentTarget = targetSource ? setupVenuesRef.current.find((row) => row.id === targetSource.id) : undefined;
 
       if (
+        input.setting !== setupSetting ||
+        (input.foundingCharacterIds !== undefined &&
+          JSON.stringify(input.foundingCharacterIds) !== JSON.stringify(roster)) ||
+        (options.plan &&
+          JSON.stringify(input.sourceVenues) !==
+            JSON.stringify(setupVenuesRef.current.map(foundingVenueDraftSource))) ||
+        (options.fullVenue &&
+          input.targetVenue &&
+          JSON.stringify(input.targetVenue) !==
+            JSON.stringify(currentTarget && foundingVenueDraftSource(currentTarget))) ||
         (targetSource &&
           (!currentTarget ||
             JSON.stringify(targetSource) !== JSON.stringify(foundingVenueDraftSource(currentTarget)))) ||
@@ -257,7 +291,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         (!replacing && rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id)))
       )
         throw new Error(
-          "The people or setting changed while suggestions were prepared. Your existing draft is kept; request fresh suggestions when ready.",
+          "Founding choices changed while suggestions were prepared. Your existing draft is kept; request fresh suggestions when ready.",
         );
       if (replacing) {
         ports.setSetupWorkspace((state) => ({ ...state, lore: result.lore }));
@@ -283,6 +317,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         ports.setSetupWorkspace((state) => ({
           ...state,
           venueReview: {
+            sourceKey: setupBeginningSourceKey,
             baseline: JSON.stringify(setupVenuesRef.current),
             venues: arrangeQuickStartVenues(next.map((row) => reconcileFoundingHome(row))),
           },
@@ -314,7 +349,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           quickStartIdentity([row]) !== quickStartIdentity([before])
         )
           return row;
-        if (options.fullVenue) {
+        if (options.fullVenue || options.plan) {
           const next = applyFoundingVenueDraft(row, proposal);
           return result.entranceImage
             ? { ...next, presentation: { ...next.presentation, image: result.entranceImage } }
@@ -328,20 +363,31 @@ export function createFoundingSuggestSetupVenues(ports: {
         if (changed.description !== row.description) Object.assign(changed, zoneDayNightDefault(proposal.dayNight));
         return changed;
       });
-      if (options.fullVenue && options.venueId) {
-        const claimed = foundingHomeMembers(reviewed.find((row) => row.id === options.venueId)!);
+      if (options.fullVenue || options.plan) {
+        const claims = result.venues
+          .filter((row) => row.people)
+          .flatMap((row) => [
+            ...row.people!.residentIds.map((actor) => ({ actor, venueId: row.id })),
+            ...(row.people!.playerHome ? [{ actor: "player", venueId: row.id }] : []),
+          ]);
+        if (new Set(claims.map((row) => row.actor)).size !== claims.length)
+          throw new Error("The draft proposes more than one Home for a person. Your current draft stays unchanged.");
         reviewed = reviewed.map((row) =>
-          row.id === options.venueId
-            ? reconcileFoundingHome(row)
-            : reconcileFoundingHome(
-                row,
-                foundingHomeMembers(row).filter((id) => !claimed.includes(id)),
-              ),
+          reconcileFoundingHome(
+            row,
+            foundingHomeMembers(row).filter(
+              (id) => !claims.some((claim) => claim.actor === id && claim.venueId !== row.id),
+            ),
+          ),
         );
       }
       ports.setSetupWorkspace((state) => ({
         ...state,
-        venueReview: { baseline: JSON.stringify(setupVenuesRef.current), venues: reviewed },
+        venueReview: {
+          baseline: JSON.stringify(setupVenuesRef.current),
+          venues: reviewed,
+          sourceKey: setupBeginningSourceKey,
+        },
       }));
       if (result.imageError) setSetupProblem(result.imageError);
       if (!options?.venueId) setSetupSuggestionsKey(source);

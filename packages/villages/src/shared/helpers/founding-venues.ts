@@ -1,8 +1,9 @@
 import type { VillageVenue } from "../contracts/village.js";
 import { alwaysOpenVisitorHours } from "./venue-access.js";
 import { contactNeighborIds, materializeConnections } from "./zone-contact.js";
+export const FOUNDING_VENUE_LIMIT = 6;
 export function foundingVenueShapeProblem(venues: readonly VillageVenue[]): string {
-  if (!venues.length || venues.length > 16) return "Provide between one and sixteen starting Venues.";
+  if (!venues.length || venues.length > FOUNDING_VENUE_LIMIT) return "Keep one to six starting Venues.";
   if (
     venues.filter((venue) => {
       const zones = materializeConnections([

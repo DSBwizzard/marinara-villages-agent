@@ -7,7 +7,7 @@ import { validateStartingVenue } from "./founding-template.js";
 import { isGlobalGalleryRef, MAX_VENUE_IMAGE_URL_LENGTH, MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readPlaceDescription } from "./prompt-preset.js";
-import { defaultZonePolicy, initializeVenueAccess, readVenueAccess } from "./venue-access.js";
+import { initializeVenueAccess, readVenueAccess } from "./venue-access.js";
 import { readPlacePosition } from "./venue-authoring.js";
 import { readBaseVenueLayout } from "./venue-layout.js";
 import { accessibleVenueRoute } from "./venue-path.js";
@@ -105,10 +105,6 @@ export function parsePlace(value: unknown): VillageVenue {
     if (!layout) throw badRequest("Zone positions must be valid and distinct.");
     result.zoneLayout = layout;
   }
-  if (!household.length && !workerIds.length)
-    for (const zone of zones)
-      if (zone.kind !== "exterior" && !zone.access)
-        zone.access = { ...defaultZonePolicy(result, zone), mode: "public" };
   initializeVenueAccess(result);
   for (const [actor, raw] of Object.entries(asRecord(row.destinations))) {
     if (!result.destinations![actor]) throw badRequest("Choose destinations only for assigned residents or workers.");
@@ -141,7 +137,7 @@ export function parsePlaces(
   at = new Date(),
 ): VillageVenue[] {
   if (!founding) throw badRequest("Establish starting Venues through Founding.");
-  if (!Array.isArray(value) || value.length > 16) throw badRequest("Founding supports at most sixteen Venues.");
+  if (!Array.isArray(value) || value.length > 6) throw badRequest("Founding supports at most six Venues.");
   const venues = value.map(parsePlace),
     assigned = new Set<string>(),
     seen = new Set<string>(),

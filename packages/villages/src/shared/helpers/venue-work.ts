@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { VillageVenue } from "../contracts/village.js";
+import { contactNeighborIds } from "./zone-contact.js";
 
 export const WORK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 const id = z.string().trim().min(1).max(200);
@@ -16,6 +18,30 @@ export const venueWorkSchema = z
   .strict()
   .refine((work) => work.startMinute < work.endMinute, "Work must finish later on the same day.");
 export type VenueWork = z.infer<typeof venueWorkSchema>;
+export function venueWorkProblem(venue: VillageVenue, work: VenueWork): string {
+  const zones = venue.zones ?? [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])];
+  if (
+    !work.accessZoneIds.includes(work.zoneId) ||
+    new Set(work.accessZoneIds).size !== work.accessZoneIds.length ||
+    new Set(work.days).size !== work.days.length ||
+    work.accessZoneIds.some((id) => {
+      const zone = zones.find((row) => row.id === id);
+      return (
+        !zone || ("kind" in zone && zone.kind === "exterior") || (zone.ownerId && zone.ownerId !== work.characterId)
+      );
+    })
+  )
+    return "Choose the work Zone and only the rooms this worker may use.";
+  const reachable = new Set(["exterior"]),
+    queue = ["exterior"];
+  for (const id of queue)
+    for (const next of contactNeighborIds(zones, id))
+      if (work.accessZoneIds.includes(next) && !reachable.has(next)) {
+        reachable.add(next);
+        queue.push(next);
+      }
+  return reachable.has(work.zoneId) ? "" : "Include every Zone on the worker’s route from Entrance.";
+}
 export const workOfferSchema = z
   .object({
     id,

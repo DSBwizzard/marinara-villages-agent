@@ -317,7 +317,7 @@ await withBrowser(browser, async () => {
       picker.locator("button").filter({ has: page.locator(".marinara-capability-villages-venue-zone-caption") }),
     ).toHaveCount(4);
     const alcove = picker.getByRole("button", { name: /^Sleeping Alcove/ });
-    await expect(alcove.locator("small")).toHaveText(["Permission required"]);
+    await expect(alcove.locator("small")).toHaveText(["Invitation only"]);
     await expect(picker.getByRole("button", { name: /^Main Bay/ }).locator("small")).toHaveText([
       "Permission required",
     ]);

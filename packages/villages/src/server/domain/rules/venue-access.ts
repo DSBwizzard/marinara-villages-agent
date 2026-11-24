@@ -242,12 +242,7 @@ export function managesAccess(venue: VillageVenue, zoneId: string | null, actor:
 }
 export function mayInvite(venue: VillageVenue, zone: VillageVenueZone, actor: string): boolean {
   return (
-    zone.kind !== "exterior" &&
-    (managesAccess(venue, zone.id, actor) ||
-      !!zone.access?.inviterIds.includes(actor) ||
-      !!venue.access?.work?.some(
-        (work) => work.characterId === actor && work.inviteGuests && work.accessZoneIds.includes(zone.id),
-      ))
+    zone.kind !== "exterior" && (managesAccess(venue, zone.id, actor) || !!zone.access?.inviterIds.includes(actor))
   );
 }
 function validGrantIssuer(venue: VillageVenue, zone: VillageVenueZone, grant: VenueAccessState["permissions"][number]) {

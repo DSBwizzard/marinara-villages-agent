@@ -1,6 +1,7 @@
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { newSetupVenue } from "./FoundingPanels.js";
+import { startingZone } from "./founding-template.js";
 import { quickStartTemplates, separateFoundingTemplates } from "./quick-start-drafts.js";
 import { draftZonePolicy, foundingLayoutZones } from "./villages-founding-zones.js";
 
@@ -9,7 +10,11 @@ export const foundingHomeMembers = (venue: SetupVenueDraft): string[] => [
   ...(venue.residentIds ?? []),
 ];
 
-function reachableFoundingZones(venue: SetupVenueDraft, actor: string, sleep = venue.destinations?.[actor]?.sleep) {
+export function reachableFoundingZones(
+  venue: SetupVenueDraft,
+  actor: string,
+  sleep = venue.destinations?.[actor]?.sleep,
+) {
   const members = foundingHomeMembers(venue),
     zones = foundingLayoutZones(venue);
   const accessible = new Set(
@@ -18,12 +23,20 @@ function reachableFoundingZones(venue: SetupVenueDraft, actor: string, sleep = v
         if (zone.kind === "exterior" || zone.id === sleep) return true;
         const area = zone as NonNullable<SetupVenueDraft["spaces"]>[number];
         const access = area.access ?? draftZonePolicy(venue, area, zone.kind === "personal");
+        const operators = venue.access?.managerIds ?? members;
+        const sleepers = members.filter((id) => venue.destinations?.[id]?.sleep === zone.id);
+        const managers =
+          zone.kind === "personal" || area.ownerId
+            ? sleepers.length
+              ? [...sleepers, area.ownerId ?? ""]
+              : (access.managerIds ?? operators)
+            : [...operators, ...(access.managerIds ?? [])];
         return (
           access.mode === "public" ||
           area.ownerId === actor ||
-          (access.managerIds ?? members).includes(actor) ||
-          access.memberIds.includes(actor) ||
-          (access.memberRoles.includes("residents") && members.includes(actor))
+          managers.includes(actor) ||
+          (access.memberIds ?? []).includes(actor) ||
+          ((access.memberRoles ?? []).includes("residents") && members.includes(actor))
         );
       })
       .map((zone) => zone.id),
@@ -201,7 +214,7 @@ export function reconcileFoundingRoster(
     ["founding-community", "Meeting place"],
   ]) {
     if (next.filter((venue) => venue.spaces?.some((zone) => zone.access?.mode === "public")).length >= 2) break;
-    if (next.some((venue) => venue.id === id) || next.length >= 16) continue;
+    if (next.some((venue) => venue.id === id) || next.length >= 6) continue;
     const venue = quickStartTemplates([{ ...newSetupVenue(id!, 0.5, 0.5), category: "public-center" }])[0]!;
     venue.name = name!;
     while (next.some((row) => row.name === venue.name)) venue.name += " 2";
@@ -219,6 +232,31 @@ export function selectFoundingHomes(
   openingVenueId: string,
   removedIds: string[] = [],
 ) {
+  if (!venues.length && !unusedHomes.length) {
+    const shared = newSetupVenue("founding-home:shared", 0.5, 0.5, true);
+    shared.name = "Shared home";
+    shared.residentIds = actors.filter((actor) => actor.id !== "player").map((actor) => actor.id);
+    const template = quickStartTemplates([shared])[0]!;
+    const rooms = actors.map((actor) => ({
+      ...startingZone(shared, true),
+      id: `bedroom:${actor.id}`,
+      name: `${actor.name} bedroom`,
+      ownerId: actor.id,
+      connectedTo: ["common:base"],
+      access: draftZonePolicy(shared, { ownerId: actor.id }, true),
+    }));
+    const home = reconcileFoundingHome({
+      ...shared,
+      layout: "both",
+      spaces: template.spaces?.map((zone) => ({
+        ...zone,
+        connectedTo: ["exterior", ...rooms.map((room) => room.id)],
+      })),
+      privateSpaces: rooms,
+      presentation: { ...shared.presentation, x: null, y: null },
+    });
+    return { venues: reconcileFoundingRoster([home], actors, [], openingVenueId), unusedHomes: [] };
+  }
   const chosen = new Set(actors.map((actor) => actor.id));
   const active = venues.filter(
     (venue) =>
@@ -259,6 +297,7 @@ export function selectFoundingHomes(
   );
   for (const actor of actors) {
     if (active.some((venue) => foundingHomeMembers(venue).includes(actor.id))) continue;
+    if (active.length >= 6) continue;
     const index = unused.findIndex((venue) => foundingHomeMembers(venue)[0] === actor.id);
     const template = templates.find((venue) => foundingHomeMembers(venue)[0] === actor.id)!;
     const home =

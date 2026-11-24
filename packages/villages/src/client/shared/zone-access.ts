@@ -10,6 +10,10 @@ export function invitationLabel(invitation: NonNullable<NonNullable<Zone["access
 export function zoneAccessLabel(zone: Zone, venue: VillageVenue, inScene = false): string {
   const access = zone.accessView;
   if (zone.closed) return "Closed for renovation";
+  if (!inScene)
+    return (access?.decision.mode ?? zone.access?.mode) === "permission-required"
+      ? "Invitation only"
+      : "Open to everyone";
   if (inScene && access?.routeBlocked) return "Route blocked";
   if (inScene && access?.accessNeededVia) {
     const via = venue.zones?.find(({ id }) => id === access.accessNeededVia);

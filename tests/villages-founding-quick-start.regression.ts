@@ -571,7 +571,6 @@ console.log(
     ),
   );
   for (const ordinary of [
-    [...separate, newSetupVenue("extra", 0.5, 0.5)],
     separate.map((row) => (row.id === "founding-home:a" ? { ...row, workerIds: ["a"] } : row)),
     separate.map((row) =>
       row.id === "community" ? { ...row, spaces: row.spaces?.map((zone) => ({ ...zone })) } : row,

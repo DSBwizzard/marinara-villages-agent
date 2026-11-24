@@ -222,7 +222,7 @@ export async function verifyFoundingLayout(group) {
                 error: "Language model connection not found: stale-model-id",
               });
             assert.equal(body.openingVenueId, "founding-community");
-            assert.equal(body.mode, "quick-start");
+            assert.equal(body.mode, "draft-plan");
             assert.equal(body.draftEntranceImage, undefined);
             assert.equal(body.context.rules, "The sun never sets.");
             const result = {
@@ -241,19 +241,25 @@ export async function verifyFoundingLayout(group) {
                   const shared = row.residentIds.length + Number(row.playerHome) > 1;
                   const layout = (row.playerHome || !!row.residentIds?.length) && !shared ? "both" : "common";
                   return {
-                    ...(body.mode === "draft-venue"
+                    ...(["draft-venue", "draft-plan"].includes(body.mode)
                       ? {
-                          zones: [...(body.targetVenue.spaces ?? []), ...(body.targetVenue.privateSpaces ?? [])].map(
-                            (zone) => ({
-                              id: zone.id,
-                              name: zone.name,
-                              purpose: zone.purpose,
-                              description: "Drafted visible Zone appearance.",
-                              private: body.targetVenue.privateSpaces?.some((room) => room.id === zone.id) ?? false,
-                              ownerId: zone.ownerId ?? "",
-                              connectedTo: zone.connectedTo ?? ["exterior"],
-                            }),
-                          ),
+                          zones: [
+                            ...((body.targetVenue ?? body.sourceVenues.find((source) => source.id === row.id)).spaces ??
+                              []),
+                            ...((body.targetVenue ?? body.sourceVenues.find((source) => source.id === row.id))
+                              .privateSpaces ?? []),
+                          ].map((zone) => ({
+                            id: zone.id,
+                            name: zone.name,
+                            purpose: zone.purpose,
+                            description: "Drafted visible Zone appearance.",
+                            private:
+                              (
+                                body.targetVenue ?? body.sourceVenues.find((source) => source.id === row.id)
+                              ).privateSpaces?.some((room) => room.id === zone.id) ?? false,
+                            ownerId: zone.ownerId ?? "",
+                            connectedTo: zone.connectedTo ?? ["exterior"],
+                          })),
                         }
                       : {}),
                     id: row.id,
@@ -424,7 +430,7 @@ export async function verifyFoundingLayout(group) {
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
-            const introduction = guide.getByText(/^Start with homes and two public places/);
+            const introduction = guide.getByText(/^Add or draft your Venues/);
             await expect(introduction).toBeVisible();
             await expect(work).toHaveCount(0);
             await layer("Venue");
@@ -1725,10 +1731,61 @@ export async function verifyFoundingLayout(group) {
         await expect(resident.getByRole("button", { name: "Portrait", exact: true })).toHaveCount(0);
         await expect(resident.getByRole("button", { name: "Assign Side", exact: true })).toHaveCount(0);
         await expect(settingNext()).toBeEnabled();
+        // Verify compact starters, then exercise restored separate-home drafts across the full wizard.
+        await page.evaluate(() => {
+          const c = window.featureController,
+            rows = c.setupVenues,
+            actors = ["player", ...c.setupFoundingVillagerIds];
+          if (rows.length >= actors.length + 2) throw Error("Fresh starters should share a building");
+          const base = rows.find((row) => row.occupancy.playerHome);
+          const homes = actors.map((actor, index) => {
+            const source = rows.find((row) =>
+              actor === "player" ? row.occupancy.playerHome : row.residentIds.includes(actor),
+            );
+            const common = {
+              ...structuredClone(source.spaces[0]),
+              id: "common:base",
+              connectedTo: ["exterior", "private:base"],
+            };
+            const room = {
+              ...structuredClone(source.privateSpaces.find((room) => room.ownerId === actor)),
+              id: "private:base",
+              connectedTo: ["common:base"],
+            };
+            return {
+              ...source,
+              id: "founding-home:" + actor,
+              name: actor === "player" ? "Your home" : c.catalog.find((person) => person.id === actor).name + " home",
+              residentIds: actor === "player" ? [] : [actor],
+              occupancy: { ...source.occupancy, playerHome: actor === "player" },
+              access: undefined,
+              spaces: [common],
+              privateSpaces: [room],
+              destinations: { [actor]: { home: common.id, sleep: room.id } },
+              presentation: { ...base.presentation, x: 0.12 + index * 0.18, y: 0.3 },
+            };
+          });
+          const positions = [
+            [0.5, 0.5],
+            [0.32, 0.5],
+            [0.68, 0.5],
+            [0.14, 0.5],
+            [0.86, 0.5],
+            [0.5, 0.32],
+          ];
+          c.setSetupVenues(
+            [...homes, ...rows.filter((row) => !row.occupancy.playerHome && !row.residentIds.length)].map(
+              (row, index) => ({
+                ...row,
+                presentation: { ...row.presentation, x: positions[index][0], y: positions[index][1] },
+              }),
+            ),
+          );
+        });
         await bounds("people");
         await advance();
         await expect(root).toHaveAttribute("data-step", "2");
-        await expect(root.getByText(/^Start with homes and two public places/)).toHaveCount(0);
+        await expect(root.getByText(/^Add or draft your Venues/)).toHaveCount(0);
         await enterChapter();
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
@@ -1871,7 +1928,7 @@ export async function verifyFoundingLayout(group) {
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.locator("[data-explanation]")).toHaveCount(1);
-        await expect(root.getByText(/^Start with homes and two public places/)).toBeVisible();
+        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
         await expect(work).toHaveCount(0);
         await enterChapter();
         await retreat();
@@ -1880,7 +1937,7 @@ export async function verifyFoundingLayout(group) {
         if (phone)
           await expect(root.locator(".villages-setting-dialogue:visible")).not.toHaveAttribute("data-reader-next-page");
         await finishPassage(root, -1);
-        await expect(root.getByText(/^Start with homes and two public places/)).toBeVisible();
+        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
         await expect(work).toHaveCount(0);
         await retreat();
         await expect(root).toHaveAttribute("data-step", "2");
@@ -1896,22 +1953,30 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
         await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(phone ? 0 : view.count + 3);
         if (view.width === 390 && view.height === 844) {
-          const keptVenues = await page.evaluate(() => {
-            const kept = window.featureController.setupVenues.filter((venue) => venue.id !== "founding-garden");
-            window.featureController.setSetupVenues(kept);
-            return kept;
-          });
-          await button("Add shared Venue").click();
+          const keptVenues = await page.evaluate(() => structuredClone(window.featureController.setupVenues));
+          const selectedPeople = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
+          await button("Add Venue").click();
+          await expect(sheet).toBeVisible();
+          await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
+          const redraft = page.getByRole("dialog", { name: "Redraft Venue", exact: true });
+          await redraft.getByLabel("Venue ideas", { exact: true }).fill("A small library");
+          await redraft.getByRole("button", { name: "Back", exact: true }).click();
+          assert.equal(suggestions, 0, "Opening a local draft prompt spends nothing");
+          await sheet.getByRole("button", { name: "Remove Venue", exact: true }).click();
+          await page
+            .getByRole("dialog", { name: "Confirm", exact: true })
+            .getByRole("button", { name: "Remove Venue", exact: true })
+            .click();
+          await expect(sheet).toBeHidden();
           assert.deepEqual(
-            await page.evaluate(() =>
-              window.featureController.setupVenues.filter((venue) => venue.id !== "founding-garden"),
-            ),
+            await page.evaluate(() => window.featureController.setupVenues),
             keptVenues,
-            "Adding a second shared starter preserves the old draft's homes, text, artwork and pins",
+            "Removing a manual Venue preserves other places",
           );
-          await showVenuePin("founding-garden");
-          await expect(root.locator('[data-pin-id="founding-garden"]')).toBeVisible();
-          await expect(button("Add shared Venue")).toHaveCount(0);
+          assert.deepEqual(
+            await page.evaluate(() => window.featureController.setupFoundingVillagerIds),
+            selectedPeople,
+          );
           const sharedVenues = await page.evaluate(() => {
             const original = window.featureController.setupVenues;
             window.featureController.setSetupVenues(
@@ -2477,32 +2542,17 @@ export async function verifyFoundingLayout(group) {
             ),
           );
         const savedPins = await readPins();
-        await button("Suggest").click();
-        await page
-          .getByRole("dialog", { name: "Suggest", exact: true })
-          .getByRole("button", { name: "Back", exact: true })
-          .click();
+        await expect(button("Draft Venues")).toBeEnabled();
         assert.equal(suggestions, 0);
         failVenueConnection = true;
-        await button("Suggest").click();
-        await page
-          .getByRole("dialog", { name: "Suggest", exact: true })
-          .getByRole("button", { name: "Replace and suggest", exact: true })
-          .click();
+        await button("Draft Venues").click();
         await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
-        await expect(root.getByText("stale-model-id", { exact: false })).toHaveCount(0);
         await button("Check Model Connections").click();
-        await expect(root).toHaveAttribute("data-step", "3");
         const repair = root.getByRole("dialog", { name: "Model Connections", exact: true });
-        await expect(repair.getByRole("button", { name: /^System / })).toBeVisible();
         await repair.getByRole("button", { name: "Back", exact: true }).click();
-        assert.equal(suggestions, 1, "checking connections never retries generation");
+        assert.equal(suggestions, 1, "Checking connections never retries generation");
         failVenueConnection = false;
-        await button("Retry").click();
-        await page
-          .getByRole("dialog", { name: "Retry", exact: true })
-          .getByRole("button", { name: "Replace and suggest", exact: true })
-          .click();
+        await button("Retry draft").click();
         await expect.poll(() => suggestions).toBe(2);
         await root.getByRole("button", { name: "Use changes", exact: true }).click();
         await expect

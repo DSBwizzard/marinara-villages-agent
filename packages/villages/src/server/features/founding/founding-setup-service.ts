@@ -149,6 +149,15 @@ export function createFoundingSetup({
     if (!Array.isArray(input.venues)) throw badRequest("The setup needs the places you put on the map.");
     const cards = await listVillagerCards();
     const cardNames = new Map(cards.map((card) => [card.id, card.name]));
+    if (Array.isArray(input.foundingCharacterIds)) {
+      const homes = (input.venues as unknown[]).map(asRecord);
+      for (const id of input.foundingCharacterIds) {
+        if (!homes.some((home) => Array.isArray(home.residentIds) && home.residentIds.includes(id)))
+          throw badRequest(`Assign a Home to ${cardNames.get(String(id)) ?? "each selected Villager"} on Venues.`);
+      }
+      if (!homes.some((home) => asRecord(home.occupancy).playerHome === true))
+        throw badRequest("Assign your Home on Venues.");
+    }
     const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, villageNow());
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
@@ -166,9 +175,9 @@ export function createFoundingSetup({
     if (assignedResidents.has(PROFESSOR_MARI_ID))
       throw badRequest("Professor Mari will visit after founding. Choose another founding Villager.");
     const circumstances = readFoundingCircumstances(input.circumstances, places, villageNow().toISOString());
-    const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
     if (input.foundingCharacterIds !== undefined)
       validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
+    const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
     if (privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
       throw badRequest("Choose founding villagers as room controllers.");
     const initialResidentIds = [...assignedResidents];

@@ -169,7 +169,15 @@ assert.equal(
   "permission-required",
   "Unrelated edits preserve explicit access in an already-vacant home",
 );
-const starting = selectFoundingHomes([], [], actors, "community");
+const starting = {
+  venues: reconcileFoundingRoster(
+    [],
+    actors,
+    actors.map((actor) => actor.id),
+    "community",
+  ),
+  unusedHomes: [],
+};
 const sharedVenue = starting.venues.find((venue) => venue.id === "founding-garden")!;
 sharedVenue.name = "The riverside garden";
 sharedVenue.description = "A garden with benches beneath a willow.";
@@ -262,8 +270,8 @@ assert.equal(workshop.privateSpaces![0].ownerId, "");
 assert.equal(workshop.privateSpaces![0].access, undefined);
 assert.deepEqual(legacy.venues.find((venue) => venue.id === sharedHome.id)!.residentIds, ["b"]);
 assert.ok(
-  legacy.venues.some((venue) => venue.residentIds?.includes("c")),
-  "New founders still receive a home in legacy drafts",
+  !legacy.venues.some((venue) => venue.residentIds?.includes("c")),
+  "A full legacy draft stays intact; a newly selected person needs a manual Home",
 );
 const legacyArchive = { ...authored, id: "founding-home:c" };
 const invitedHome = structuredClone(authored);

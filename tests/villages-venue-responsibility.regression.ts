@@ -11,6 +11,7 @@ import {
   applyAccessCommand,
   projectVenueAccess,
   projectZoneAccess,
+  readVenueAccess,
 } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import type { AccessCommand } from "../packages/villages/src/shared/helpers/venue-access.js";
 
@@ -61,7 +62,7 @@ assert.equal(mayInvite(venue, venue.zones![2]!, "b"), true);
 assert.equal(managesAccess(venue, "floor", "friend"), false, "A couch arrangement grants no café authority");
 assert.equal(mayInvite(venue, venue.zones![1]!, "worker"), false);
 venue.access!.work[0]!.inviteGuests = true;
-assert.equal(mayInvite(venue, venue.zones![1]!, "worker"), true);
+assert.equal(mayInvite(venue, venue.zones![1]!, "worker"), false, "The retired work flag grants no invitations");
 assert.equal(mayInvite(venue, venue.zones![2]!, "worker"), false);
 venue.zones![1]!.access!.mode = "permission-required";
 assert.equal(evaluateZoneAccess(venue, venue.zones![1]!, "worker", { at }).allowed, true);
@@ -70,24 +71,33 @@ assert.equal(
   false,
 );
 const workVenue = structuredClone(venue);
-applyAccessCommand(
-  workVenue,
-  {
-    action: "invite",
-    operationId: "worker-guest",
-    expectedRevision: workVenue.access!.revision,
-    zoneId: "floor",
-    visitorId: "guest",
-    duration: "standing",
-    accompanied: false,
-    outsideHours: false,
-  },
-  "worker",
-  at.toISOString(),
-  known,
+assert.throws(
+  () =>
+    applyAccessCommand(
+      workVenue,
+      {
+        action: "invite",
+        operationId: "worker-guest",
+        expectedRevision: workVenue.access!.revision,
+        zoneId: "floor",
+        visitorId: "guest",
+        duration: "standing",
+        accompanied: false,
+        outsideHours: false,
+      },
+      "worker",
+      at.toISOString(),
+      known,
+    ),
+  /invite|manage|authority/i,
 );
 const afterShift = new ZonedDate("2026-11-23T20:00:00Z", "UTC");
-assert.equal(evaluateZoneAccess(workVenue, workVenue.zones![1]!, "guest", { at: afterShift }).allowed, true);
+assert.equal(evaluateZoneAccess(workVenue, workVenue.zones![1]!, "guest", { at: afterShift }).allowed, false);
+assert.deepEqual(
+  readVenueAccess(JSON.parse(JSON.stringify(workVenue.access)))!.work,
+  workVenue.access!.work,
+  "Legacy Work terms still load",
+);
 workVenue.access!.work[0]!.inviteGuests = false;
 initializeVenueAccess(workVenue);
 assert.equal(evaluateZoneAccess(workVenue, workVenue.zones![1]!, "guest", { at: afterShift }).allowed, false);

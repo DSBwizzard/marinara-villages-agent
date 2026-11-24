@@ -109,8 +109,6 @@ function WorkEditor({
                   <dd>
                     {workTime(offer.terms.startMinute)}–{workTime(offer.terms.endMinute)}
                   </dd>
-                  <dt>Guest invitations</dt>
-                  <dd>{offer.terms.inviteGuests ? "Work Zones" : "None"}</dd>
                   <dt>Work access</dt>
                   <dd>
                     {offer.terms.accessZoneIds

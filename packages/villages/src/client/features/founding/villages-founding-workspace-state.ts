@@ -5,7 +5,8 @@ import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
   venueBrief?: string;
-  venueReview?: { baseline: string; venues: VillageVenue[] };
+  venueBriefs?: Record<string, string>;
+  venueReview?: { baseline: string; venues: VillageVenue[]; sourceKey?: string; accepted?: string[] };
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   settingBrief?: string;
@@ -21,6 +22,7 @@ export type FoundingWorkspaceState = {
     id: string;
     sourceKey: string;
     quickStart: boolean;
+    plan?: boolean;
     separateHomes?: boolean;
     sourceVenues?: string;
     venueId?: string;

@@ -585,6 +585,10 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-venue-card h3 { margin:0; }
 .villages-quick-household { display:block; min-height:1.2em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:.8rem; margin:0!important; }
 .villages-quick-zone-list { display:grid; gap:0; }
+.villages-founding-venue-row { display:grid; grid-template-columns:minmax(0,1fr) auto; position:relative; align-items:center; min-width:0; }
+.villages-founding-venue-options summary { cursor:pointer; list-style:none; padding:.5rem; min-width:32px; text-align:center; }
+.villages-founding-venue-options>div { position:absolute; right:0; z-index:12; display:grid; gap:.3rem; padding:.4rem; border:1px solid var(--founding-line); border-radius:.4rem; background:var(--founding-panel); box-shadow:0 4px 12px #0004; }
+.villages-founding-venue-options button { white-space:nowrap; }
 .villages-forging-v2 .villages-quick-zone-list .villages-quick-venue-card {
   display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:.6rem;
   min-height:44px; max-height:none; padding:.55rem .2rem; overflow:visible;
