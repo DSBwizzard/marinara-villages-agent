@@ -4,6 +4,10 @@ import { build } from "../../scripts/esbuild.mjs";
 import { wantsCase, runCase } from "../../scripts/test-cases.mjs";
 import { chromium, withBrowser, mockEngineLookups, fulfill, expect } from "./browser-diagnostics.mjs";
 import { foundingFixture } from "./founding-browser.fixture.mjs";
+import {
+  DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+  DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+} from "../../packages/villages/src/server/domain/rules/town-map-prompts.ts";
 const foundingBundle = await foundingFixture();
 const browser = await chromium.launch({ headless: true });
 const snapshot = {
@@ -26,6 +30,8 @@ const snapshot = {
     townMapExpectedHeight: 1024,
     townMapGenerationWidth: 1536,
     townMapGenerationHeight: 1024,
+    townMapLayoutPrompt: DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+    townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     villageNameMaxLength: 80,
     settingMaxLength: 4096,
@@ -1762,6 +1768,12 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
         const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
+        await expect(artSettings.getByLabel("Map details", { exact: true })).toHaveValue(
+          DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+        );
+        await expect(artSettings.getByLabel("Exclude from map", { exact: true })).toHaveValue(
+          DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+        );
         await expect(artSettings.getByRole("button", { name: "Back", exact: true })).toHaveCSS(
           "background-color",
           daylight ? "rgb(212, 229, 222)" : "rgb(81, 65, 87)",
@@ -1779,7 +1791,7 @@ export async function verifyFoundingLayout(group) {
           root
             .getByRole("region", { name: "Map artwork", exact: true })
             .getByRole("button", { name: "Art settings", exact: true }),
-        ).toHaveCount(0);
+        ).toBeVisible();
         await artSettings
           .getByRole("combobox", { name: "Scenery style preset", exact: true })
           .selectOption("fixture-ink");
@@ -1824,11 +1836,11 @@ export async function verifyFoundingLayout(group) {
         assert.deepEqual(await root.boundingBox(), frame, "Missing artwork keeps the player on Maps");
         if (view.width === 1366) {
           failMapGeneration = true;
-          await button("Generate artwork").click();
+          await button("Generate image").click();
           await expect(
             root.getByRole("alert").filter({ hasText: "Map artwork could not be generated." }),
           ).toBeVisible();
-          await expect(button("Generate artwork")).toBeEnabled();
+          await expect(button("Generate image")).toBeEnabled();
           await expect(button("Upload image")).toBeEnabled();
           assert.equal(generatedImages, 1, "Reading the failed attempt never generates another image");
           assert.equal(await page.evaluate(() => window.featureController.setupMapRequest), null);
@@ -1838,7 +1850,7 @@ export async function verifyFoundingLayout(group) {
           await advance();
           await expect(root).toHaveAttribute("data-step", "2");
           failMapGeneration = false;
-          await button("Generate artwork").click();
+          await button("Generate image").click();
           await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
           assert.equal(generatedImages, 2);
         } else {
@@ -1852,6 +1864,19 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
         const mapPreview = root.getByRole("region", { name: "Map artwork preview" });
         await expect(mapPreview.locator("img")).toBeVisible();
+        const mapImageBox = await mapPreview.locator("img").boundingBox();
+        const mapFrame = await mapPreview.getByRole("group", { name: "Map navigation", exact: true }).boundingBox();
+        assert.ok(
+          mapImageBox.width <= mapFrame.width + 0.5 && mapImageBox.height <= mapFrame.height + 0.5,
+          "The initial map shows the whole image without automatic magnification",
+        );
+        await button("Art settings").click();
+        await artSettings.getByRole("button", { name: "Back", exact: true }).click();
+        assert.deepEqual(
+          await mapPreview.locator("img").boundingBox(),
+          mapImageBox,
+          "Opening Art settings never changes the image size",
+        );
         const stillMap = await mapPreview.evaluate(async (node) => {
           const image = node.querySelector("img");
           const samples = [];
@@ -1872,7 +1897,7 @@ export async function verifyFoundingLayout(group) {
           .getByRole("region", { name: "Map artwork", exact: true })
           .getByRole("heading")
           .boundingBox();
-        const mapActions = await button("Generate artwork").boundingBox();
+        const mapActions = await button("Generate image").boundingBox();
         if (phone) {
           assert.ok(mapTitle.y + mapTitle.height <= mapActions.y, "The map title stays above its artwork controls");
         } else {
@@ -1897,6 +1922,11 @@ export async function verifyFoundingLayout(group) {
         await advance();
         await enterChapter();
         await expect(root.getByRole("region", { name: "Map artwork preview" })).toBeVisible();
+        assert.deepEqual(
+          await mapPreview.locator("img").boundingBox(),
+          mapImageBox,
+          "Returning to Maps preserves the image size",
+        );
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.locator("[data-explanation]")).toHaveCount(1);
@@ -2176,15 +2206,16 @@ export async function verifyFoundingLayout(group) {
             "A drop outside the visible map keeps the saved pin, even when it is inside the zoomed image",
           );
           await showVenuePin("founding-home:player");
+          await mapCanvas.getByRole("button", { name: "Reset map view", exact: true }).click();
           const picture = await mapCanvas.getByRole("img", { name: "Map of Old Harbour" }).boundingBox();
           const viewport = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
           assert.ok(
-            picture.x <= viewport.x + 1 && picture.x + picture.width >= viewport.x + viewport.width - 1,
-            "The game map fills the workspace width",
+            picture.x >= viewport.x - 1 && picture.x + picture.width <= viewport.x + viewport.width + 1,
+            "Reset shows the whole map width without automatic magnification",
           );
           assert.ok(
-            picture.y <= viewport.y + 1 && picture.y + picture.height >= viewport.y + viewport.height - 1,
-            "The game map fills the workspace height",
+            picture.y >= viewport.y - 1 && picture.y + picture.height <= viewport.y + viewport.height + 1,
+            "Reset shows the whole map height without automatic magnification",
           );
           const start = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
           await drag(

@@ -497,10 +497,8 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       <button
         type="button"
         className="villages-founding-models"
-        aria-label={
-          prelude ? "Menu appearance" : setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"
-        }
-        title={prelude ? "Menu appearance" : setupStep === FOUNDING_STEP.Maps ? "Art settings" : "Model Connections"}
+        aria-label={prelude ? "Menu appearance" : "Model Connections"}
+        title={prelude ? "Menu appearance" : "Model Connections"}
         aria-haspopup="dialog"
         disabled={
           setupStep === FOUNDING_STEP.Maps &&
@@ -508,10 +506,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         }
         onClick={() => {
           if (prelude) setAppearanceOpen(true);
-          else if (setupStep === FOUNDING_STEP.Maps) {
-            connections.refresh();
-            setArtSettingsOpen(true);
-          } else openConnectionPicker();
+          else openConnectionPicker();
         }}
       >
         <VillageIcon name="settings" />
@@ -605,6 +600,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             mobile={false}
             fitToRoom={false}
             exploration
+            navigationFit="contain"
             navigationView={mapNavigation}
             onNavigationView={setMapNavigation}
             navigationControlsWhilePlacing
@@ -893,6 +889,17 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           <>
             <button
               type="button"
+              aria-haspopup="dialog"
+              disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
+              onClick={() => {
+                connections.refresh();
+                setArtSettingsOpen(true);
+              }}
+            >
+              Art settings
+            </button>
+            <button
+              type="button"
               disabled={busy || setupMapBusy || setupSuggestionsBusy || setupVenueBusy || !setupSetting.trim()}
               onClick={() => {
                 if (setupMapRequest?.phase === "paused") {
@@ -906,7 +913,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 ? "Generating map…"
                 : setupMapRequest?.phase === "paused"
                   ? "Check map status"
-                  : "Generate artwork"}
+                  : "Generate image"}
             </button>
             <button
               type="button"
@@ -1360,7 +1367,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                   autoComplete="off"
                   aria-label="Map details"
                   maxLength={1500}
-                  rows={3}
+                  rows={8}
                   value={setupMapPrompt}
                   onChange={(event) => controller.setSetupMapPrompt(event.target.value)}
                 />

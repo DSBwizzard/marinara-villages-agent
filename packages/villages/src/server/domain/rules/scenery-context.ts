@@ -13,10 +13,14 @@ export function readSceneryStyle(value: unknown): string {
     throw badRequest("Scenery art style must be at most 600 characters.");
   return value.trim();
 }
-export function sceneryPrompt(required: string[], optional: string[], style = "", essential: string[] = []): string {
-  const framing = [VILLAGE_SHARED_SETTING_RULE, style ? `Art style for this scenery: ${style}.` : ""]
-    .filter(Boolean)
-    .join("\n");
+export function sceneryPrompt(
+  required: string[],
+  optional: string[],
+  style = "",
+  essential: string[] = [],
+  settingRule = VILLAGE_SHARED_SETTING_RULE,
+): string {
+  const framing = [settingRule, style ? `Art style for this scenery: ${style}.` : ""].filter(Boolean).join("\n");
   const preserved = essential.filter(Boolean).join("\n");
   const parts = required.filter(Boolean);
   const budget = MAX_IMAGE_PROMPT_LENGTH - framing.length - preserved.length - parts.length - 2;

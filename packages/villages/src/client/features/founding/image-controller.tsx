@@ -28,7 +28,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupContext: FoundingState["setupContext"];
-  readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly updateSetupMapRequest: (value: import("../../../shared/contracts/village").SetupMapRequest) => void;
 }) {
   const {
@@ -47,7 +46,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
     setupMapRequestRef,
     setupSetting,
     setupContext,
-    snapshot,
     updateSetupMapRequest,
   } = ports;
   const { setupWorldName } = ports;
@@ -79,9 +77,8 @@ export function useFoundingGenerateSetupTownMap(ports: {
           actionId: pending.id,
           targetId: "founding-map",
           sourceKey: pending.sourceKey,
-          structure: setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? undefined : setupMapPrompt,
-          negative:
-            setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
+          structure: setupMapPrompt,
+          negative: setupMapNegativePrompt,
           setting: setupSetting,
           worldName: setupWorldName,
           selectedLorebookIds: setupLorebookDraft,
@@ -115,8 +112,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
     persistSetupDraft,
     setupDraftData,
     setupMapPrompt,
-    snapshot?.settings?.townMapLayoutPrompt,
-    snapshot?.settings?.townMapNegativePrompt,
     setupMapNegativePrompt,
     setupWorldName,
     setupLorebookDraft,

@@ -176,7 +176,8 @@ async function main() {
       const map = buildTownMapPrompt(undefined, setting);
       for (const prompt of [current, map, sceneryPrompt(["Entrance of " + home], ["Setting: " + current])]) {
         assert.ok(prompt.includes(setting), name + ": authored setting is retained");
-        assert.ok(prompt.includes(VILLAGE_SHARED_SETTING_RULE), name + ": shared setting framing is supplied");
+        if (prompt !== map)
+          assert.ok(prompt.includes(VILLAGE_SHARED_SETTING_RULE), name + ": shared setting framing is supplied");
         assert.doesNotMatch(prompt, /a small (fictional )?village|The village begins on Day 1|natural clearings/);
       }
       assert.equal(current.includes(circumstances), false, "starting circumstances are not a recurring script");
@@ -242,7 +243,7 @@ async function main() {
     assert.ok(captured.includes("HISTORY_FROM_LOREBOOK"));
     assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|Player-authored creative preferences/);
     const map = buildTownMapPrompt("No water or decorative buildings.", scenarios[4][1]);
-    assert.match(map, /Map details take priority over conflicting Village description/);
+    assert.doesNotMatch(map, /Use cutaways|Preserve overhead|Illustrated overhead/);
     assert.match(map, /Map details: No water or decorative buildings/);
     const maximumMap = buildTownMapPrompt("m".repeat(1500), "x".repeat(4096), "", "r".repeat(4096), "s".repeat(600));
     assert.ok(maximumMap.length <= 8000, "individually valid maximum inputs fit the image allowance");

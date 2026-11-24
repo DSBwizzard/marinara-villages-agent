@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { PNG } from "pngjs";
 import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT } from "../packages/villages/src/server/domain/rules/town-map-prompts.ts";
 
 const P = "marinara-capability-villages";
 const browser = await chromium.launch({ headless: true });
@@ -22,6 +23,7 @@ await withBrowser(browser, async () => {
     state.village.name = "Maple House";
     state.settings.setting = "An apartment building and its neighborhood.";
     state.settings.townMapImageMaxLength = 8000000;
+    state.settings.townMapLayoutPrompt = DEFAULT_TOWN_MAP_LAYOUT_PROMPT;
     state.settings.maps[0].name = "Maple House";
     state.settings.maps.push({
       ...state.settings.maps[0],
@@ -233,6 +235,9 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Choose map", exact: true }).click();
     await page.getByRole("button", { name: "Manage maps", exact: true }).click();
     await page.getByRole("button", { name: "Add map", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Map details", exact: true })).toHaveValue(
+      DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+    );
     await page.getByRole("textbox", { name: "Map name", exact: true }).fill("Riverside");
     await expect(page.getByRole("button", { name: "Save map", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Generate artwork", exact: true }).click();
@@ -242,11 +247,40 @@ await withBrowser(browser, async () => {
     releaseStatus();
     await expect(page.getByRole("button", { name: "Save map", exact: true })).toBeEnabled();
     const requestId = generation.id;
+    // Pre-change drafts stored blank details while the server supplied the map instructions.
+    await page.evaluate(async () => {
+      const db = await new Promise((resolve, reject) => {
+        const request = indexedDB.open("villages-drafts-v4", 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction("drafts", "readwrite");
+        const store = transaction.objectStore("drafts");
+        const cursor = store.openCursor();
+        cursor.onsuccess = () => {
+          const item = cursor.result;
+          if (!item) return;
+          if (String(item.key).endsWith(":new")) {
+            const saved = item.value;
+            saved.data.details = "";
+            item.update(saved);
+          }
+          item.continue();
+        };
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+      db.close();
+    });
     await mount();
     await page.getByRole("button", { name: "Choose map", exact: true }).click();
     await page.getByRole("button", { name: "Manage maps", exact: true }).click();
     await page.getByRole("button", { name: "Add map", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Map name", exact: true })).toHaveValue("Riverside");
+    await expect(page.getByRole("textbox", { name: "Map details", exact: true })).toHaveValue(
+      DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+    );
     await expect(page.getByRole("button", { name: "Save map", exact: true })).toBeEnabled();
     assert.equal(generation.id, requestId, "reload recovers the candidate without another generation");
     await page.getByRole("button", { name: "Save map", exact: true }).click();

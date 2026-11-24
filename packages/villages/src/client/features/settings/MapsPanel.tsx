@@ -107,7 +107,7 @@ function MapEditor({
   const initial = (): Draft => ({
     id: map?.id ?? createVillagesClientId(),
     name: map?.name ?? "",
-    details: "",
+    details: snapshot.settings.townMapLayoutPrompt,
     image: "",
     width: map?.width ?? 2560,
     height: map?.height ?? 1440,
@@ -164,7 +164,10 @@ function MapEditor({
         if (!alive.current) return;
         if (saved) {
           revision.current = saved.revision;
-          setDraft(saved.data);
+          setDraft({
+            ...saved.data,
+            details: saved.data.details.trim() ? saved.data.details : snapshot.settings.townMapLayoutPrompt,
+          });
         }
         setReady(true);
       })
@@ -174,7 +177,7 @@ function MapEditor({
     return () => {
       alive.current = false;
     };
-  }, [draftKey]);
+  }, [draftKey, snapshot.settings.townMapLayoutPrompt]);
   const persist = (next: Draft) => {
     const write = writes.current.then(async () => {
       const saved = await saveDeviceDraft(draftKey, next, revision.current);
@@ -229,7 +232,7 @@ function MapEditor({
     return () => window.clearTimeout(timer);
   });
   const generate = async () => {
-    if (!ready || busy || draft.phase || !draft.name.trim()) return;
+    if (!ready || busy || draft.phase || !draft.name.trim() || !draft.details.trim()) return;
     attempt.current++;
     setBusy(true);
     setError("");
@@ -351,7 +354,7 @@ function MapEditor({
         <button
           type="button"
           className={P + "-button"}
-          disabled={disabled || !draft.name.trim()}
+          disabled={disabled || !draft.name.trim() || !draft.details.trim()}
           onClick={() => void generate()}
         >
           Generate artwork
