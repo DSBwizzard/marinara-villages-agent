@@ -13,7 +13,7 @@ import { readBaseVenueLayout } from "./venue-layout.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import { assertSharedPlayspace } from "./shared-playspace.js";
+import { openingPlayspace } from "./opening-playspace.js";
 import { captureZoneObservation } from "./zone-observation.js";
 
 export function foundingImage(value: unknown): VillageVenueImage | null {
@@ -135,6 +135,7 @@ export function parsePlaces(
   residents: ReadonlySet<string>,
   founding: true,
   at = new Date(),
+  timeZone?: string,
 ): VillageVenue[] {
   if (!founding) throw badRequest("Establish starting Venues through Founding.");
   if (!Array.isArray(value) || value.length > 6) throw badRequest("Founding supports at most six Venues.");
@@ -185,6 +186,7 @@ export function parsePlaces(
     }
   }
   const sharedWorld = {
+    timeZone,
     venues,
     villagers: [...assigned].map((characterId) => ({
       characterId,
@@ -192,7 +194,8 @@ export function parsePlaces(
     projects: [],
   };
   assertWorkSchedules(venues, [...assigned]);
-  assertSharedPlayspace(sharedWorld, at);
+  if (!openingPlayspace(sharedWorld, [...assigned], at).length)
+    throw badRequest("Choose a starting Zone everyone can enter.");
   return venues;
 }
 

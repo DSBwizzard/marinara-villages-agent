@@ -222,8 +222,8 @@ export async function verifyFoundingLayout(group) {
                 error: "Language model connection not found: stale-model-id",
               });
             assert.equal(body.openingVenueId, "founding-community");
-            assert.equal(body.mode, "draft-plan");
-            assert.equal(body.draftEntranceImage, undefined);
+            assert.equal(body.mode, "draft-venue");
+            assert.equal(body.draftEntranceImage, false);
             assert.equal(body.context.rules, "The sun never sets.");
             const result = {
               ...(body.draftEntranceImage
@@ -1731,55 +1731,27 @@ export async function verifyFoundingLayout(group) {
         await expect(resident.getByRole("button", { name: "Portrait", exact: true })).toHaveCount(0);
         await expect(resident.getByRole("button", { name: "Assign Side", exact: true })).toHaveCount(0);
         await expect(settingNext()).toBeEnabled();
-        // Verify compact starters, then exercise restored separate-home drafts across the full wizard.
+        // Fresh roster selection creates no places or assignments. The remaining layout walk uses a saved manual draft.
         await page.evaluate(() => {
-          const c = window.featureController,
-            rows = c.setupVenues,
-            actors = ["player", ...c.setupFoundingVillagerIds];
-          if (rows.length >= actors.length + 2) throw Error("Fresh starters should share a building");
-          const base = rows.find((row) => row.occupancy.playerHome);
-          const homes = actors.map((actor, index) => {
-            const source = rows.find((row) =>
-              actor === "player" ? row.occupancy.playerHome : row.residentIds.includes(actor),
-            );
-            const common = {
-              ...structuredClone(source.spaces[0]),
-              id: "common:base",
-              connectedTo: ["exterior", "private:base"],
-            };
-            const room = {
-              ...structuredClone(source.privateSpaces.find((room) => room.ownerId === actor)),
-              id: "private:base",
-              connectedTo: ["common:base"],
-            };
-            return {
-              ...source,
-              id: "founding-home:" + actor,
-              name: actor === "player" ? "Your home" : c.catalog.find((person) => person.id === actor).name + " home",
-              residentIds: actor === "player" ? [] : [actor],
-              occupancy: { ...source.occupancy, playerHome: actor === "player" },
-              access: undefined,
-              spaces: [common],
-              privateSpaces: [room],
-              destinations: { [actor]: { home: common.id, sleep: room.id } },
-              presentation: { ...base.presentation, x: 0.12 + index * 0.18, y: 0.3 },
-            };
-          });
-          const positions = [
-            [0.5, 0.5],
-            [0.32, 0.5],
-            [0.68, 0.5],
-            [0.14, 0.5],
-            [0.86, 0.5],
-            [0.5, 0.32],
+          const c = window.featureController;
+          if (c.setupVenues.length) throw Error("Selecting people must not create Venues");
+          const actors = [
+            { id: "player", name: "Your" },
+            ...c.setupFoundingVillagerIds.map((id) => ({
+              id,
+              name: c.catalog.find((person) => person.id === id).name,
+            })),
           ];
+          const rows = window.manualHomesFixture([], actors, [], "founding-community");
           c.setSetupVenues(
-            [...homes, ...rows.filter((row) => !row.occupancy.playerHome && !row.residentIds.length)].map(
-              (row, index) => ({
-                ...row,
-                presentation: { ...row.presentation, x: positions[index][0], y: positions[index][1] },
-              }),
-            ),
+            rows.map((row, index) => ({
+              ...row,
+              presentation: {
+                ...row.presentation,
+                x: [0.5, 0.32, 0.68, 0.14, 0.86, 0.5][index],
+                y: index === 5 ? 0.32 : 0.5,
+              },
+            })),
           );
         });
         await bounds("people");
@@ -1954,6 +1926,9 @@ export async function verifyFoundingLayout(group) {
         await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(phone ? 0 : view.count + 3);
         if (view.width === 390 && view.height === 844) {
           const keptVenues = await page.evaluate(() => structuredClone(window.featureController.setupVenues));
+          await page.evaluate(() => window.featureController.setSetupVenues([]));
+          await expect(button("Draft Venues")).toBeEnabled();
+          await page.evaluate((rows) => window.featureController.setSetupVenues(rows), keptVenues);
           const selectedPeople = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
           await button("Add Venue").click();
           await expect(sheet).toBeVisible();
@@ -1977,28 +1952,6 @@ export async function verifyFoundingLayout(group) {
             await page.evaluate(() => window.featureController.setupFoundingVillagerIds),
             selectedPeople,
           );
-          const sharedVenues = await page.evaluate(() => {
-            const original = window.featureController.setupVenues;
-            window.featureController.setSetupVenues(
-              original.map((venue) =>
-                venue.id === "founding-garden"
-                  ? {
-                      ...venue,
-                      spaces: venue.spaces.map((zone) => ({
-                        ...zone,
-                        access: { ...zone.access, mode: "permission-required" },
-                      })),
-                    }
-                  : venue,
-              ),
-            );
-            return original;
-          });
-          await expect(
-            root.getByText("Keep shared Zones open around the clock in at least two Venues.", { exact: true }),
-          ).toBeVisible();
-          await expect(button("Use starter homes")).toHaveCount(0);
-          await page.evaluate((venues) => window.featureController.setSetupVenues(venues), sharedVenues);
         }
         await expect(settingNext()).toBeInViewport({ ratio: 1 });
         await expect(root.getByRole("button", { name: "Next Venues page", exact: true })).toHaveCount(0);
@@ -2545,14 +2498,23 @@ export async function verifyFoundingLayout(group) {
         await expect(button("Draft Venues")).toBeEnabled();
         assert.equal(suggestions, 0);
         failVenueConnection = true;
-        await button("Draft Venues").click();
+        await editVenue("founding-community");
+        await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
+        await page
+          .getByRole("dialog", { name: "Redraft Venue", exact: true })
+          .getByRole("button", { name: "Draft Venue", exact: true })
+          .click();
         await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
         await button("Check Model Connections").click();
         const repair = root.getByRole("dialog", { name: "Model Connections", exact: true });
         await repair.getByRole("button", { name: "Back", exact: true }).click();
         assert.equal(suggestions, 1, "Checking connections never retries generation");
         failVenueConnection = false;
-        await button("Retry draft").click();
+        await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
+        await page
+          .getByRole("dialog", { name: "Redraft Venue", exact: true })
+          .getByRole("button", { name: "Draft Venue", exact: true })
+          .click();
         await expect.poll(() => suggestions).toBe(2);
         await root.getByRole("button", { name: "Use changes", exact: true }).click();
         await expect
@@ -2613,6 +2575,7 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet.getByLabel("Description", { exact: true })).toHaveValue(savedAppearance);
         await closeVenue();
         await advance();
+
         await expect(root).toHaveAttribute("data-step", "4");
         await expectPose("proud");
         if (process.env.VILLAGES_SCREENSHOT_DIR)
@@ -2639,7 +2602,7 @@ export async function verifyFoundingLayout(group) {
           await overview.getByRole("button", { name: "Finn · Remove", exact: true }).click();
           await expect
             .poll(() => page.evaluate(() => window.featureController.setupWorkspace.unusedHomes?.length))
-            .toBe(1);
+            .toBe(0);
           assert.equal(
             await page.evaluate(() =>
               window.featureController.setupVenues.some((venue) => venue.residentIds?.includes("finn")),
@@ -2647,10 +2610,8 @@ export async function verifyFoundingLayout(group) {
             false,
           );
           await expect
-            .poll(() =>
-              page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.unusedHomes?.length),
-            )
-            .toBe(1);
+            .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.roster.includes("finn")))
+            .toBe(false);
           await page.reload();
           const readsBeforeReview = portraitReads;
           await page.addScriptTag({ content: foundingBundle });
@@ -2661,12 +2622,23 @@ export async function verifyFoundingLayout(group) {
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
           await picker.getByRole("button", { name: "Finn · Add", exact: true }).click();
           await picker.getByRole("button", { name: "Confirm", exact: true }).click();
-          assert.deepEqual(
+          assert.equal(
             await page.evaluate(() =>
-              window.featureController.setupVenues.find((venue) => venue.residentIds?.includes("finn")),
+              window.featureController.setupVenues.some((venue) => venue.residentIds?.includes("finn")),
             ),
+            false,
+            "Returning founders need a manual Home assignment",
+          );
+          const physical = await page.evaluate(
+            (id) => window.featureController.setupVenues.find((row) => row.id === id),
+            originalHome.id,
+          );
+          assert.equal(physical.name, originalHome.name);
+          assert.deepEqual(physical.presentation, originalHome.presentation);
+          await page.evaluate(
+            (home) =>
+              window.featureController.setSetupVenues((rows) => rows.map((row) => (row.id === home.id ? home : row))),
             originalHome,
-            "Removing, saving, reloading and re-adding a founder restores their edited home and pin",
           );
           await expect(overview.locator(".villages-selected-villager img")).toHaveCount(2);
         }

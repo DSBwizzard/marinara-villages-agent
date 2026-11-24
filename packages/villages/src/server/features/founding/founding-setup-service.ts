@@ -22,7 +22,7 @@ import {
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
 import { initialOpening } from "../../domain/rules/opening-project.js";
-import { sharedPlayspace } from "../../domain/rules/shared-playspace.js";
+import { openingPlayspace } from "../../domain/rules/opening-playspace.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
@@ -158,7 +158,13 @@ export function createFoundingSetup({
       if (!homes.some((home) => asRecord(home.occupancy).playerHome === true))
         throw badRequest("Assign your Home on Venues.");
     }
-    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, villageNow());
+    const places = parsePlaces(
+      input.venues,
+      new Set(cardNames.keys()),
+      true,
+      villageNow(),
+      typeof input.timeZone === "string" ? input.timeZone : undefined,
+    );
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
     );
@@ -298,9 +304,11 @@ export function createFoundingSetup({
         addedResidents.push(card);
       }
       const at = state.setupAt;
-      const shared = sharedPlayspace(state, villageNow());
-      if (!shared.sufficient) throw badRequest("Provide public shared Zones in at least two Venues.");
-      const openingVenueId = shared.venues[Math.floor(openingRoll * shared.venues.length)]!.venueId;
+      const shared = openingPlayspace(state, [...assignedResidents], villageNow());
+      if (!shared.length) throw badRequest("Choose a starting Zone everyone can enter.");
+      const indoors = shared.filter((row) => row.zoneIds.some((id) => id !== "exterior"));
+      const hosts = indoors.length ? indoors : shared;
+      const openingVenueId = hosts[Math.floor(openingRoll * hosts.length)]!.venueId;
       state.opening = initialOpening([...assignedResidents], openingVenueId, randomUUID());
       seedFoundingCircumstances(state, circumstances, ["player", ...assignedResidents], at);
     });

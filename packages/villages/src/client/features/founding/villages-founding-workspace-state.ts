@@ -6,7 +6,7 @@ import type { InactiveFoundingZones } from "./founding-template.js";
 export type FoundingWorkspaceState = {
   venueBrief?: string;
   venueBriefs?: Record<string, string>;
-  venueReview?: { baseline: string; venues: VillageVenue[]; sourceKey?: string; accepted?: string[] };
+  venueReview?: { baseline: string; venues: VillageVenue[]; sourceKey?: string; replaceAll?: boolean };
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   settingBrief?: string;
@@ -83,12 +83,6 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
       (venue.occupancy.playerHome && venues.some((row) => row.id !== venue.id && row.occupancy.playerHome))
     )
       add("assignment", "Assign this resident to only one home.");
-    if (!existing && venue.destinations)
-      for (const actor of foundingHomeMembers(venue)) {
-        const sleep = venue.destinations?.[actor]?.sleep;
-        if (!foundingSleepZones(venue, actor).some((zone) => zone.id === sleep))
-          add("sleep", `Choose an accessible sleeping Zone in ${venue.name || "this Venue"}.`, sleep);
-      }
     for (const zone of [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])]) {
       const privateZone = venue.privateSpaces?.some((row) => row.id === zone.id);
       if (!existing || zone.access || privateZone) {
@@ -100,6 +94,12 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
       if (privateZone && !zone.access && !zone.ownerId && !zone.controllerIds?.length)
         add("controller", "Choose a controller for this Zone.", zone.id);
     }
+    if (!existing && venue.destinations)
+      for (const actor of foundingHomeMembers(venue)) {
+        const sleep = venue.destinations?.[actor]?.sleep;
+        if (!foundingSleepZones(venue, actor).some((zone) => zone.id === sleep))
+          add("sleep", `Choose an accessible sleeping Zone in ${venue.name || "this Venue"}.`, sleep);
+      }
     return issues;
   });
 }

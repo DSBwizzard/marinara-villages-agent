@@ -1,3 +1,4 @@
+import { manualHomesFixture } from "./helpers/founding-homes.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -5,10 +6,7 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { startingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
-import {
-  assignFoundingHome,
-  reconcileFoundingRoster,
-} from "../packages/villages/src/client/features/founding/founding-homes.js";
+import { assignFoundingHome } from "../packages/villages/src/client/features/founding/founding-homes.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import {
   readFoundingCircumstances,
@@ -44,7 +42,7 @@ const actors = [
   { id: "c", name: "Cleo" },
 ];
 function drafts(assignments: Record<string, string> = {}) {
-  let rows = reconcileFoundingRoster(
+  let rows = manualHomesFixture(
     [],
     actors,
     actors.map((actor) => actor.id),
@@ -105,7 +103,7 @@ for (const [groups, count] of [
 }
 
 {
-  let rows = reconcileFoundingRoster(
+  let rows = manualHomesFixture(
     [],
     actors,
     actors.map((actor) => actor.id),
@@ -142,7 +140,7 @@ for (const [groups, count] of [
   );
   assert.equal(founded.find((row) => row.id === fresh.id)!.destinations!.a.sleep, "common:base");
   const withoutHome = assignFoundingHome(rows, fresh.id, "a", false);
-  const retained = reconcileFoundingRoster(withoutHome, actors, [], "community");
+  const retained = manualHomesFixture(withoutHome, actors, [], "community");
   assert.ok(
     retained.every((row) => !row.residentIds?.includes("a")),
     "Reconciliation never recreates an intentionally cleared assignment",
@@ -505,7 +503,7 @@ console.log(
 );
 
 {
-  const initial = reconcileFoundingRoster(
+  const initial = manualHomesFixture(
     [],
     actors,
     actors.map((actor) => actor.id),
@@ -599,7 +597,7 @@ console.log(
 }
 
 {
-  const initial = reconcileFoundingRoster(
+  const initial = manualHomesFixture(
     [],
     actors,
     actors.map((actor) => actor.id),

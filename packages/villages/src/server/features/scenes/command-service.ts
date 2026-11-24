@@ -1,4 +1,4 @@
-import { sharedPlayspace } from "../../domain/rules/shared-playspace.js";
+import { openingPlayspace } from "../../domain/rules/opening-playspace.js";
 import { followingMovementParty } from "../../domain/rules/resident-movement.js";
 import { memoryHash } from "../../domain/rules/memory-integrity.js";
 import {
@@ -748,10 +748,10 @@ export function createSceneCommands({
     const gathering =
       !existing && !travel && village.opening?.stage === "gathering" && village.opening.openingVenueId === placeId;
     const gatheringZones = gathering
-      ? sharedPlayspace(village, villageNow()).venues.find((row) => row.venueId === placeId)?.zoneIds
+      ? openingPlayspace(village, village.opening!.residentIds, now).find((row) => row.venueId === placeId)?.zoneIds
       : undefined;
     if (gathering && (!gatheringZones?.length || (requestedZoneId && !gatheringZones.includes(requestedZoneId))))
-      throw conflict("Start the opening gathering in an available public shared Zone.");
+      throw conflict("Choose an available starting Zone everyone can enter.");
     const requested = requestedZoneId ?? gatheringZones?.[0] ?? defaultVenueZoneId(place, "public");
     let zone = resolveVenueZone(place, requested);
     if (!zone) throw notFound("That zone is not in this Venue.");
@@ -935,6 +935,13 @@ export function createSceneCommands({
         const current = findLocation(state, place.id);
         const target = current && resolveVenueZone(current, zone!.id);
         if (!current || !target) throw conflict("That Zone is no longer available.");
+        if (
+          gathering &&
+          !openingPlayspace(state, village.opening!.residentIds, villageNow()).some(
+            (row) => row.venueId === place.id && row.zoneIds.includes(target.id),
+          )
+        )
+          throw conflict("Choose an available starting Zone everyone can enter.");
         if (
           travel &&
           (state.seed !== live.seed ||

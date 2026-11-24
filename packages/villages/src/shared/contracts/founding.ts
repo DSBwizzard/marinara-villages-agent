@@ -12,7 +12,6 @@ export type FoundingDraftZone = {
   connectedTo: string[];
 };
 export type FoundingVenueSuggestion = {
-  people?: import("../helpers/founding-people.js").FoundingPeoplePlan;
   dayNight?: boolean;
   commonDayNight?: boolean;
   privateDayNight?: boolean;

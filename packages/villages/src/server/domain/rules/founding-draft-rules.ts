@@ -1,4 +1,3 @@
-import { foundingPeopleSchema } from "../../../shared/helpers/founding-people.js";
 import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { asTrimmedString } from "./coerce.js";
@@ -114,18 +113,8 @@ export function parseFoundingVenueSuggestions(
     for (const key of ["dayNight", "commonDayNight", "privateDayNight"] as const)
       if (row[key] !== undefined && typeof row[key] !== "boolean")
         throw badRequest("The Zone daylight decision must be on or off.");
-    const people = row.people === undefined ? undefined : foundingPeopleSchema.parse(row.people);
-    const actors = new Set(["player", ...(template ?? []).flatMap((row) => row.residentIds ?? [])]);
-    if (
-      people &&
-      [...people.residentIds, ...people.managerIds, ...people.work.map((work) => work.characterId)].some(
-        (id) => !actors.has(id),
-      )
-    )
-      throw badRequest("Use only the chosen founding people.");
     return {
       id,
-      ...(people ? { people } : {}),
       ...(typeof row.dayNight === "boolean" ? { dayNight: row.dayNight } : {}),
       ...(typeof row.commonDayNight === "boolean" ? { commonDayNight: row.commonDayNight } : {}),
       ...(typeof row.privateDayNight === "boolean" ? { privateDayNight: row.privateDayNight } : {}),

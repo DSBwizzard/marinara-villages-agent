@@ -20,7 +20,7 @@ import { planRoutineDays } from "../packages/villages/src/server/domain/rules/re
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { separateFoundingTemplates } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import { manualHomesFixture } from "./helpers/founding-homes.fixture.js";
 import {
   narrationAccessPrompt,
   narrationAccessScopes,
@@ -213,7 +213,15 @@ assert.equal(new Set(claims.map((row) => row.dateKey)).size, claims.length, "DST
 assert(claims.some((row) => row.dateKey === "2026-11-02"));
 const reloaded = coerceVillageState(JSON.parse(JSON.stringify(state)));
 assert.deepEqual(reloaded.venues[0]!.access!.work, [terms]);
-const founders = separateFoundingTemplates(["a"], "square");
+const founders = manualHomesFixture(
+  [],
+  [
+    { id: "player", name: "Player" },
+    { id: "a", name: "Ada" },
+  ],
+  [],
+  "square",
+);
 const home = founders.find((row) => row.residentIds?.includes("a"))!;
 home.workerIds = ["a"];
 home.access = {

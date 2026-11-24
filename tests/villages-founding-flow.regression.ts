@@ -479,7 +479,17 @@ async function foundingConnectionOwnership() {
           ? compactReply(label)
           : operation === "suggest"
             ? {
-                venues: draftRows.map((row) => ({
+                venues: draftRows.slice(0, 1).map((row) => ({
+                  zones: [
+                    {
+                      id: "common:base",
+                      name: "Shared room",
+                      purpose: "Conversation",
+                      description: "A table",
+                      private: false,
+                      connectedTo: ["exterior"],
+                    },
+                  ],
                   ...row,
                   name: `${label} ${row.name}`,
                   layout: "common",
@@ -651,7 +661,16 @@ async function foundingConnectionOwnership() {
                 await a.pause("callback");
               })
             : operation === "suggest"
-              ? suggestStartingVenues({ ...scenarioInput, playerPersonaId: "equal-persona", venues: draftRows })
+              ? suggestStartingVenues({
+                  ...scenarioInput,
+                  mode: "draft-venue",
+                  actionId: "equal-draft",
+                  targetVenueId: "equal-venue",
+                  targetVenue: newSetupVenue("equal-venue", 0.5, 0.5),
+                  newZoneIds: [],
+                  playerPersonaId: "equal-persona",
+                  venues: draftRows,
+                })
               : operation === "image"
                 ? generateFoundingVenueImage({ ...scenarioInput, venue: draftRows[0] })
                 : operation === "upload"
@@ -735,7 +754,7 @@ async function foundingConnectionOwnership() {
       }
       if (operation === "suggest") {
         const suggestions = (result.value as { venues: Array<Record<string, unknown>> }).venues;
-        assert.equal(suggestions.length, 3);
+        assert.equal(suggestions.length, 1);
         assert(suggestions.every((venue) => !("x" in venue)));
       }
       if (operation === "image" || operation === "upload") assert.equal((result.value as { id: string }).id, "A-image");

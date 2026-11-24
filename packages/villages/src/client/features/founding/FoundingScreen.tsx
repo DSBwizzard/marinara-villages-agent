@@ -990,15 +990,29 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           <FoundingVenueReview
             review={setupWorkspace.venueReview}
             sourceKey={controller.setupBeginningSourceKey}
-            onAccepted={(accepted) =>
-              setSetupWorkspace((state) => ({
-                ...state,
-                venueReview: state.venueReview ? { ...state.venueReview, accepted } : undefined,
-              }))
-            }
             current={setupVenues}
-            people={wizardVillagers}
-            onUse={setSetupVenues}
+            onUse={(venues) => {
+              setSetupVenues(venues);
+              if (setupWorkspace.venueReview?.replaceAll) {
+                setSelectedSetupVenueId(null);
+                setMovingSetupVenueId(null);
+                setSetupMapReviewed(false);
+                setSetupContext((state) => ({
+                  ...state,
+                  openingVenueId: venues[0]?.id ?? "",
+                  circumstances: state.circumstances.filter((row) => row.scope !== "zone"),
+                }));
+                setSetupWorkspace((state) => ({
+                  ...state,
+                  unusedHomes: [],
+                  view: "map",
+                  paused: false,
+                  sections: {},
+                  zones: {},
+                  inactive: {},
+                }));
+              }
+            }}
             onDismiss={() => setSetupWorkspace((state) => ({ ...state, venueReview: undefined }))}
             onProblem={setSetupProblem}
           />
@@ -1109,14 +1123,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               ) : (
                 <QuickStartButton
                   busy={busy || setupSuggestionsBusy}
-                  disabled={
-                    setupVenueBusy ||
-                    !!setupMapRequest ||
-                    !!pendingSetting ||
-                    setupVenues.length > 6 ||
-                    !setupVenues.length ||
-                    !!setupWorkspace.venueReview
-                  }
+                  disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting || !!setupWorkspace.venueReview}
                   pending={
                     !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
                   }

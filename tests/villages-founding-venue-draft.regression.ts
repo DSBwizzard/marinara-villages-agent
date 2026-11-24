@@ -1,3 +1,5 @@
+import { newFoundingPlanSources } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import { manualHomesFixture } from "./helpers/founding-homes.fixture.js";
 import { createFoundingWithSetupImage } from "../packages/villages/src/client/features/founding/image-controller.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
@@ -20,12 +22,9 @@ import {
   foundingVenueDraftSource,
 } from "../packages/villages/src/shared/helpers/founding-venue-draft.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
-import {
-  assignFoundingHome,
-  reconcileFoundingRoster,
-} from "../packages/villages/src/client/features/founding/founding-homes.js";
+import { assignFoundingHome } from "../packages/villages/src/client/features/founding/founding-homes.js";
 
-let homes = reconcileFoundingRoster(
+let homes = manualHomesFixture(
   [],
   [
     { id: "player", name: "You" },
@@ -116,6 +115,14 @@ for (const old of [...home.spaces!, ...home.privateSpaces!]) {
     assert.deepEqual(next[key], old[key], key + " survives drafting");
 }
 assert.equal(drafted.spaces!.at(-1)!.name, "Kitchen");
+// Incomplete manual Work never blocks physical drafting or gains new authority.
+const unfinished = structuredClone(home);
+unfinished.workerIds = ["ada"];
+unfinished.access = { work: [{ characterId: "ada", zoneId: "missing", accessZoneIds: [] }] } as any;
+assert.doesNotThrow(() => readFoundingVenueDraftSource(unfinished));
+const oldOwner = structuredClone(home);
+delete oldOwner.privateSpaces![0].access;
+assert.deepEqual(readFoundingVenueDraftSource(oldOwner).privateSpaces![0].access!.managerIds, ["player"]);
 const disconnected = structuredClone(home);
 [...disconnected.spaces!, ...disconnected.privateSpaces!].forEach((zone) => (zone.connectedTo = []));
 assert.doesNotThrow(
@@ -142,7 +149,7 @@ const mixedPlan = parseFoundingVenueDraft(
 assert.equal(
   applyFoundingVenueDraft(mixed, mixedPlan).privateSpaces!.find((zone) => zone.id === "new-bedroom")!.ownerId,
   "",
-  "A new bedroom stays unassigned until the player accepts a Home proposal",
+  "A new bedroom stays unassigned until the player assigns a Home",
 );
 assert.deepEqual(
   foundingVenueDraftSource({ ...home, presentation: { ...home.presentation, x: 0.9, y: 0.8 } }),
@@ -199,59 +206,14 @@ const aliasedPlan = parseFoundingVenueDraft(
   ["player", "ada", "kitchen-label"],
 );
 assert.equal(aliasedPlan.zones!.at(-1)!.id, "new-kitchen");
-assert.equal(aliasedPlan.people!.work[0].characterId, "kitchen-label", "Zone remapping never changes an actor ID");
-assert.equal(aliasedPlan.people!.work[0].zoneId, "new-kitchen");
-assert.deepEqual(aliasedPlan.people!.work[0].accessZoneIds, ["common:base", "new-kitchen"]);
-assert.equal(aliasedPlan.people!.destinations["kitchen-label"].work, "new-kitchen");
-assert.deepEqual(home, original, "Reply normalization leaves the current draft and artwork untouched");
-const proposedBedroom = structuredClone(mixedReply);
-proposedBedroom.zones.at(-1)!.id = "upstairs-label";
-proposedBedroom.zones.at(-1)!.ownerId = "unhoused";
-proposedBedroom.zones[0].connectedTo.push("upstairs-label");
-const physicalOnly = parseFoundingVenueDraft(
-  { venues: [proposedBedroom] },
-  source,
-  ["new-kitchen", "new-bedroom"],
-  now,
-  ["player", "ada", "unhoused"],
-);
-assert.equal(
-  physicalOnly.zones!.at(-1)!.ownerId,
-  "",
-  "A room owner field never silently moves someone into this Venue",
-);
-const homeProposal = parseFoundingVenueDraft(
-  {
-    venues: [
-      {
-        ...proposedBedroom,
-        people: {
-          residentIds: ["ada", "unhoused"],
-          playerHome: true,
-          managerIds: [],
-          work: [],
-          destinations: { ...home.destinations, unhoused: { home: "upstairs-label", sleep: "upstairs-label" } },
-        },
-      },
-    ],
-  },
-  source,
-  ["new-kitchen", "new-bedroom"],
-  now,
-  ["player", "ada", "unhoused"],
-);
-assert.equal(homeProposal.people!.destinations.unhoused.home, "new-bedroom");
-assert.equal(homeProposal.people!.destinations.unhoused.sleep, "new-bedroom");
-assert.ok(homeProposal.zones![0].connectedTo.includes("new-bedroom"));
+assert.equal("people" in aliasedPlan, false, "AI assignment data never enters the result");
+assert.deepEqual(home, original);
 assert.throws(() => parseFoundingVenueDraft({ venues: [aliased] }, source, [], now), /more Zones/);
-bad((row) => {
-  row.zones[0].connectedTo = ["ada-room"];
-  row.zones.find((zone) => zone.id === "private:base")!.connectedTo = ["common:base"];
-  row.zones.find((zone) => zone.id === "ada-room")!.connectedTo = ["exterior"];
-}, /accessible sleeping/);
-bad((row) => {
-  row.zones.forEach((zone) => (zone.connectedTo = []));
-}, /Unreachable/);
+// Existing passages survive Redraft even if the model omits them.
+const noLinks = structuredClone(raw);
+noLinks.zones.forEach((zone) => (zone.connectedTo = []));
+noLinks.zones.at(-1).connectedTo = ["exterior"];
+assert.doesNotThrow(() => parseFoundingVenueDraft({ venues: [noLinks] }, source, ["new-kitchen"], now));
 bad((row) => {
   row.zones.push(row.zones[0]);
 }, /distinct/);
@@ -312,7 +274,10 @@ assert.equal(textCalls, 0);
 assert.deepEqual((await writer.suggestStartingVenues(input)).venues[0].zones, plan.zones);
 assert.equal(textCalls, 1);
 assert.ok(!modelInput.targetVenue.zones.some((zone: any) => zone.id === "exterior"));
-assert.deepEqual(modelInput.responseTemplate.venues[0].people.destinations, source.destinations);
+assert.equal("people" in modelInput.responseTemplate.venues[0], false);
+assert.ok(modelInput.targetVenue.zones.every((zone: any) => !("ownerId" in zone)));
+
+const slots = newFoundingPlanSources();
 const incomplete = {
   ...input,
   mode: "draft-plan",
@@ -322,30 +287,43 @@ const incomplete = {
     ada: { homeworld: "", startingSituation: "" },
     unhoused: { homeworld: "", startingSituation: "" },
   },
-  sourceVenues: [foundingVenueDraftSource(home)],
-  newZoneIdsByVenue: { [home.id]: ["new-kitchen"] },
-  venues: input.venues.slice(0, 1),
+  sourceVenues: slots.map(foundingVenueDraftSource),
+  newZoneIdsByVenue: Object.fromEntries(slots.map((row) => [row.id, ["room"]])),
+  venues: slots.map((row) => ({ id: row.id, name: "", form: "", description: "", residentIds: [], playerHome: false })),
 };
-assert.equal(
-  (await writer.suggestStartingVenues(incomplete)).venues[0].id,
-  home.id,
-  "Selected people need no Home to draft",
+venueReply = {
+  venues: [0, 1, 2].map((index) => ({
+    ...raw,
+    name: "Venue " + index,
+    zones: [
+      {
+        id: "bedroom",
+        name: "Bedroom",
+        purpose: "Rest",
+        description: "A quiet room.",
+        private: true,
+        connectedTo: ["exterior"],
+      },
+    ],
+  })),
+};
+const clean = await writer.suggestStartingVenues(incomplete);
+assert.equal(clean.venues.length, 3);
+assert.deepEqual(
+  clean.venues.map((row) => row.id),
+  slots.slice(0, 3).map((row) => row.id),
 );
-assert.ok(!modelInput.sourceVenues[0].zones.some((zone: any) => zone.id === "exterior"));
+assert.ok(clean.venues.every((row) => !("people" in row) && row.zones.every((zone) => !zone.ownerId)));
 assert.deepEqual(modelInput.foundingCharacterIds, ["ada", "unhoused"]);
-assert.equal(
-  (await writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: undefined })).venues.length,
-  1,
-  "Older requests recover their selected roster from saved context keys",
-);
+assert.equal((await writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: undefined })).venues.length, 3);
 const beforeInvalid = textCalls;
 await assert.rejects(
   writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: ["ada"] }),
   /Starting situations/,
 );
-assert.equal(textCalls, beforeInvalid, "Unselected context keys fail before model dispatch");
-venueReply = { venues: [raw, raw] };
-await assert.rejects(writer.suggestStartingVenues(incomplete), /exactly once/);
+assert.equal(textCalls, beforeInvalid);
+venueReply = { venues: [raw] };
+await assert.rejects(writer.suggestStartingVenues(incomplete), /three or four/);
 venueReply = { venues: [raw] };
 
 const tick = () => new Promise<void>((done) => setImmediate(done));

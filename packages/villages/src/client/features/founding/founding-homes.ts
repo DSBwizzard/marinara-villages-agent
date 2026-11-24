@@ -1,8 +1,5 @@
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
-import { newSetupVenue } from "./FoundingPanels.js";
-import { startingZone } from "./founding-template.js";
-import { quickStartTemplates, separateFoundingTemplates } from "./quick-start-drafts.js";
 import { draftZonePolicy, foundingLayoutZones } from "./villages-founding-zones.js";
 
 export const foundingHomeMembers = (venue: SetupVenueDraft): string[] => [
@@ -154,120 +151,24 @@ export function assignFoundingHome(
   });
 }
 
-export function reconcileFoundingRoster(
-  rows: SetupVenueDraft[],
-  actors: { id: string; name: string }[],
-  addedIds: string[],
-  openingVenueId: string,
-): SetupVenueDraft[] {
-  const ids = actors.map((actor) => actor.id);
-  const next = rows.map((venue) => {
-    const members = [...(venue.occupancy.playerHome ? ["player"] : []), ...(venue.residentIds ?? [])];
-    return members.some((id) => !ids.includes(id))
-      ? reconcileFoundingHome(
-          venue,
-          members.filter((id) => ids.includes(id)),
-        )
-      : venue;
-  });
-  for (const actor of actors.filter((actor) => !rows.length || addedIds.includes(actor.id))) {
-    if (
-      next.some((venue) => (actor.id === "player" ? venue.occupancy.playerHome : venue.residentIds?.includes(actor.id)))
-    )
-      continue;
-    const id = `founding-home:${actor.id}`;
-    const existing = next.find((venue) => venue.id === id);
-    if (existing) {
-      const updated = assignFoundingHome(next, id, actor.id, true);
-      next.splice(0, next.length, ...updated);
-    } else {
-      if (next.filter((venue) => foundingHomeMembers(venue).length > 0).length >= 4) {
-        const vacant = next.find(
-          (venue) =>
-            !foundingHomeMembers(venue).length &&
-            foundingSleepZones(reconcileFoundingHome(venue, [actor.id]), actor.id).length,
-        );
-        if (vacant) {
-          const updated = assignFoundingHome(next, vacant.id, actor.id, true);
-          next.splice(0, next.length, ...updated);
-        }
-        continue;
-      }
-      const venue = newSetupVenue(id, 0.5, 0.5, actor.id === "player");
-      venue.name = `${actor.name} home`;
-      venue.residentIds = actor.id === "player" ? [] : [actor.id];
-      venue.presentation = { ...venue.presentation, x: null, y: null };
-      const template = quickStartTemplates([venue])[0]!;
-      next.push(
-        reconcileFoundingHome({
-          ...venue,
-          layout: template.layout,
-          spaces: template.spaces,
-          privateSpaces: template.privateSpaces,
-        }),
-      );
-    }
-  }
-  for (const [id, name] of [
-    [openingVenueId, "Meeting place"],
-    ["founding-garden", "Shared space"],
-    ["founding-community", "Meeting place"],
-  ]) {
-    if (next.filter((venue) => venue.spaces?.some((zone) => zone.access?.mode === "public")).length >= 2) break;
-    if (next.some((venue) => venue.id === id) || next.length >= 6) continue;
-    const venue = quickStartTemplates([{ ...newSetupVenue(id!, 0.5, 0.5), category: "public-center" }])[0]!;
-    venue.name = name!;
-    while (next.some((row) => row.name === venue.name)) venue.name += " 2";
-    venue.presentation = { ...venue.presentation, x: null, y: null };
-    next.push(venue);
-  }
-  return next;
-}
-
-/** People changes keep a former resident's authored home available if that resident returns. */
+/** Roster changes remove departed people, never create or assign places. */
 export function selectFoundingHomes(
   venues: SetupVenueDraft[],
   unusedHomes: SetupVenueDraft[],
   actors: { id: string; name: string }[],
-  openingVenueId: string,
+  _openingVenueId: string,
   removedIds: string[] = [],
 ) {
-  if (!venues.length && !unusedHomes.length) {
-    const shared = newSetupVenue("founding-home:shared", 0.5, 0.5, true);
-    shared.name = "Shared home";
-    shared.residentIds = actors.filter((actor) => actor.id !== "player").map((actor) => actor.id);
-    const template = quickStartTemplates([shared])[0]!;
-    const rooms = actors.map((actor) => ({
-      ...startingZone(shared, true),
-      id: `bedroom:${actor.id}`,
-      name: `${actor.name} bedroom`,
-      ownerId: actor.id,
-      connectedTo: ["common:base"],
-      access: draftZonePolicy(shared, { ownerId: actor.id }, true),
-    }));
-    const home = reconcileFoundingHome({
-      ...shared,
-      layout: "both",
-      spaces: template.spaces?.map((zone) => ({
-        ...zone,
-        connectedTo: ["exterior", ...rooms.map((room) => room.id)],
-      })),
-      privateSpaces: rooms,
-      presentation: { ...shared.presentation, x: null, y: null },
-    });
-    return { venues: reconcileFoundingRoster([home], actors, [], openingVenueId), unusedHomes: [] };
-  }
   const chosen = new Set(actors.map((actor) => actor.id));
-  const active = venues.filter(
-    (venue) =>
-      !!venue.workerIds?.length ||
-      foundingHomeMembers(venue).length !== 1 ||
-      foundingHomeMembers(venue).some((id) => chosen.has(id)),
-  );
-  const unused = [...unusedHomes, ...venues.filter((venue) => !active.includes(venue))];
   const removed = new Set([
     ...removedIds,
-    ...[...venues, ...unusedHomes].flatMap(foundingHomeMembers).filter((id) => !chosen.has(id)),
+    ...venues
+      .flatMap((venue) => [
+        ...foundingHomeMembers(venue),
+        ...(venue.workerIds ?? []),
+        ...(venue.access?.managerIds ?? []),
+      ])
+      .filter((id) => !chosen.has(id)),
   ]);
   const keep = (id: string) => !removed.has(id);
   const cleanZone = <T extends NonNullable<SetupVenueDraft["spaces"]>[number]>(zone: T): T => ({
@@ -288,30 +189,8 @@ export function selectFoundingHomes(
           },
         }
       : {}),
-    ...(zone.ownerId && removed.has(zone.ownerId) ? { access: undefined, controllerIds: undefined } : {}),
   });
-  const templates = separateFoundingTemplates(
-    actors.filter((actor) => actor.id !== "player").map((actor) => actor.id),
-    openingVenueId,
-    [...venues, ...unusedHomes].map((venue) => venue.id),
-  );
-  for (const actor of actors) {
-    if (active.some((venue) => foundingHomeMembers(venue).includes(actor.id))) continue;
-    if (active.length >= 6) continue;
-    const index = unused.findIndex((venue) => foundingHomeMembers(venue)[0] === actor.id);
-    const template = templates.find((venue) => foundingHomeMembers(venue)[0] === actor.id)!;
-    const home =
-      index >= 0
-        ? unused.splice(index, 1)[0]!
-        : reconcileFoundingHome({
-            ...template,
-            name: `${actor.name} home`,
-            presentation: { ...template.presentation, x: null, y: null },
-          });
-    active.push(home);
-  }
-  // Dormant homes retain their authored assignments; only active places lose departed founders.
-  const reconciled = active.map((venue) =>
+  const reconciled = venues.map((venue) =>
     removed.size &&
     [
       ...foundingHomeMembers(venue),
@@ -355,5 +234,5 @@ export function selectFoundingHomes(
         })
       : venue,
   );
-  return { venues: reconcileFoundingRoster(reconciled, actors, [], openingVenueId), unusedHomes: unused };
+  return { venues: reconciled, unusedHomes };
 }

@@ -1,3 +1,4 @@
+import { manualHomesFixture } from "./helpers/founding-homes.fixture.js";
 import assert from "node:assert/strict";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
@@ -5,7 +6,6 @@ import {
   assignFoundingHome,
   foundingSleepZones,
   reconcileFoundingHome,
-  reconcileFoundingRoster,
   selectFoundingHomes,
 } from "../packages/villages/src/client/features/founding/founding-homes.js";
 import { parsePlace, parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
@@ -15,26 +15,7 @@ const actors = [
   { id: "a", name: "Ada" },
   { id: "b", name: "Bryn" },
 ];
-{
-  let reused = reconcileFoundingRoster(
-    [],
-    actors,
-    actors.map((actor) => actor.id),
-    "community",
-  );
-  reused = assignFoundingHome(reused, "founding-home:player", "a", true);
-  reused = assignFoundingHome(reused, "founding-home:a", "b", true);
-  reused = reused.map((home) => (home.id === "founding-home:a" ? reconcileFoundingHome({ ...home }) : home));
-  reused = reconcileFoundingRoster(
-    reused,
-    actors.filter((actor) => actor.id !== "a"),
-    [],
-    "community",
-  );
-  const restoredRoster = reconcileFoundingRoster(reused, actors, ["a"], "community");
-  assert.deepEqual(restoredRoster.find((home) => home.id === "founding-home:a")!.residentIds, ["b", "a"]);
-}
-let rows = reconcileFoundingRoster(
+let rows = manualHomesFixture(
   [],
   actors,
   actors.map((row) => row.id),
@@ -169,173 +150,12 @@ assert.equal(
   "permission-required",
   "Unrelated edits preserve explicit access in an already-vacant home",
 );
-const starting = {
-  venues: reconcileFoundingRoster(
-    [],
-    actors,
-    actors.map((actor) => actor.id),
-    "community",
-  ),
-  unusedHomes: [],
-};
-const sharedVenue = starting.venues.find((venue) => venue.id === "founding-garden")!;
-sharedVenue.name = "The riverside garden";
-sharedVenue.description = "A garden with benches beneath a willow.";
-sharedVenue.presentation = { ...sharedVenue.presentation, x: 0.18, y: 0.72 };
-const sharedBefore = structuredClone(sharedVenue);
-const singleSharedDraft = starting.venues.filter((venue) => venue !== sharedVenue);
-const completedShared = selectFoundingHomes(singleSharedDraft, [], actors, "community");
-assert.equal(
-  completedShared.venues.filter((venue) => !(venue.occupancy.playerHome || !!venue.residentIds?.length)).length,
-  2,
-);
-assert.deepEqual(
-  completedShared.venues.filter((venue) => singleSharedDraft.some((prior) => prior.id === venue.id)),
-  singleSharedDraft,
-  "Completing an older single-Community draft preserves every existing Venue and pin",
-);
-const authored = starting.venues.find((venue) => venue.id === "founding-home:a")!;
-authored.name = "Ada's canal loft";
-authored.privateSpaces![0].description = "Ada's blue quilt.";
-authored.presentation = { ...authored.presentation, x: 0.37, y: 0.62 };
-authored.description = "A carefully furnished home.";
-authored.privateSpaces![0].purpose = "Rest and quilting";
-const replacementActors = [actors[0]!, actors[2]!, { id: "c", name: "Cleo" }];
-const replacement = selectFoundingHomes(starting.venues, starting.unusedHomes, replacementActors, "community");
-assert.deepEqual(
-  replacement.venues.find((venue) => venue.id === sharedVenue.id),
-  sharedBefore,
-);
-assert.equal(
-  replacement.venues.some((venue) => venue.id === authored.id),
-  false,
-);
-assert.deepEqual(replacement.unusedHomes, [authored]);
-const returned = selectFoundingHomes(replacement.venues, replacement.unusedHomes, actors, "community");
-assert.deepEqual(
-  returned.venues.find((venue) => venue.id === authored.id),
-  authored,
-);
-assert.equal(returned.venues.find((venue) => venue.id === authored.id)!.destinations!.a.sleep, "private:base");
-let cycled = returned;
-for (let i = 0; i < 3; i++) {
-  cycled = selectFoundingHomes(cycled.venues, cycled.unusedHomes, replacementActors, "community", ["a"]);
-  const saved = JSON.parse(JSON.stringify(cycled));
-  assert.equal(saved.unusedHomes.filter((venue: { id: string }) => venue.id === authored.id).length, 1);
-  cycled = selectFoundingHomes(saved.venues, saved.unusedHomes, actors, "community", ["c"]);
-  assert.deepEqual(
-    cycled.venues.find((venue) => venue.id === authored.id),
-    authored,
-  );
-  assert.equal(
-    new Set([...cycled.venues, ...cycled.unusedHomes].map((venue) => venue.id)).size,
-    cycled.venues.length + cycled.unusedHomes.length,
-  );
-}
-const mixed = structuredClone(authored);
-mixed.id = "canal-workshop";
-mixed.workerIds = ["a"];
-mixed.spaces![0].controllerIds = ["a", "b"];
-mixed.spaces![0].access = {
-  mode: "permission-required",
-  managerIds: ["a", "b"],
-  memberIds: ["a", "visitor"],
-  memberRoles: [],
-  inviterIds: ["a", "b"],
-  visitorHours: "inherit",
-  accompanied: false,
-};
-mixed.destinations = { ...mixed.destinations, a: { ...mixed.destinations!.a, work: mixed.spaces![0].id } };
-const sharedHome = reconcileFoundingHome({ ...structuredClone(authored), id: "shared-loft" }, ["a", "b"]);
-const legacy = selectFoundingHomes(
-  [...starting.venues.filter((venue) => venue.id !== authored.id), mixed, sharedHome],
-  [],
-  replacementActors,
-  "community",
-  ["a"],
-);
-assert.equal(legacy.unusedHomes.length, 0, "Mixed-use and shared places never enter the single-owner home cache");
-const workshop = legacy.venues.find((venue) => venue.id === mixed.id)!;
-assert.equal(workshop.name, mixed.name);
-assert.equal(workshop.description, mixed.description);
-assert.deepEqual(workshop.presentation, mixed.presentation);
-assert.deepEqual(workshop.residentIds, []);
-assert.deepEqual(workshop.workerIds, []);
-assert.equal(workshop.destinations!.a, undefined);
-assert.deepEqual(workshop.spaces![0].controllerIds, ["b"]);
-assert.deepEqual(workshop.spaces![0].access!.managerIds, ["b"]);
-assert.deepEqual(workshop.spaces![0].access!.memberIds, ["visitor"]);
-assert.deepEqual(workshop.spaces![0].access!.inviterIds, ["b"]);
-assert.equal(workshop.privateSpaces![0].ownerId, "");
-assert.equal(workshop.privateSpaces![0].access, undefined);
-assert.deepEqual(legacy.venues.find((venue) => venue.id === sharedHome.id)!.residentIds, ["b"]);
-assert.ok(
-  !legacy.venues.some((venue) => venue.residentIds?.includes("c")),
-  "A full legacy draft stays intact; a newly selected person needs a manual Home",
-);
-const legacyArchive = { ...authored, id: "founding-home:c" };
-const invitedHome = structuredClone(authored);
-invitedHome.spaces![0].controllerIds = ["a", "b"];
-invitedHome.spaces![0].access = {
-  mode: "permission-required",
-  managerIds: ["a", "b"],
-  memberIds: ["b", "visitor"],
-  memberRoles: [],
-  inviterIds: ["b"],
-  visitorHours: "inherit",
-  accompanied: false,
-};
-const archivedInvitation = selectFoundingHomes(
-  starting.venues.map((venue) => (venue.id === authored.id ? invitedHome : venue)),
-  [],
-  replacementActors,
-  "community",
-  ["a"],
-);
-assert.deepEqual(archivedInvitation.unusedHomes, [invitedHome]);
-const restoredInvitation = selectFoundingHomes(
-  archivedInvitation.venues,
-  archivedInvitation.unusedHomes,
-  [actors[0]!, actors[1]!, { id: "c", name: "Cleo" }],
-  "community",
-  ["b"],
-);
-const restoredZone = restoredInvitation.venues.find((venue) => venue.id === authored.id)!.spaces![0];
-assert.deepEqual(restoredZone.controllerIds, ["a"]);
-assert.deepEqual(restoredZone.access!.managerIds, ["a"]);
-assert.deepEqual(restoredZone.access!.memberIds, ["visitor"]);
-assert.deepEqual(restoredZone.access!.inviterIds, []);
-const withoutAda = starting.venues.filter((venue) => venue !== authored);
-const withCleo = selectFoundingHomes(withoutAda, [legacyArchive], replacementActors, "community");
-assert.notEqual(withCleo.venues.find((venue) => venue.residentIds?.includes("c"))!.id, legacyArchive.id);
-const restoredHome = selectFoundingHomes(withCleo.venues, withCleo.unusedHomes, actors, "community");
-assert.deepEqual(
-  restoredHome.venues.find((venue) => venue.id === legacyArchive.id),
-  legacyArchive,
-);
-const { activeFoundingCircumstances } =
-  await import("../packages/villages/src/client/features/founding/draft-model.js");
-const fact = {
-  scope: "zone" as const,
-  venueId: legacyArchive.id,
-  zoneId: "private:base",
-  summary: "Ada stores quilts here.",
-};
-assert.deepEqual(activeFoundingCircumstances([fact], withCleo.venues), []);
-assert.deepEqual(activeFoundingCircumstances([fact], restoredHome.venues), [fact]);
-assert.ok(
-  returned.venues
-    .filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length)
-    .every((venue) => Number(venue.occupancy.playerHome) + venue.residentIds!.length === 1),
-);
-assert.doesNotThrow(() =>
-  parsePlaces(
-    returned.venues.map((venue, index) => ({
-      ...venue,
-      presentation: { ...venue.presentation, x: 0.1 + index * 0.15, y: 0.5 },
-    })),
-    new Set(["a", "b"]),
-    true,
-  ),
-);
-console.log("Founding homes: fixed starting households, legacy access, sleeping and draft persistence passed.");
+// Selecting people never creates places or assignments.
+assert.deepEqual(selectFoundingHomes([], [], actors, "community").venues, []);
+const beforeCleanup = structuredClone(rows);
+const cleaned = selectFoundingHomes(rows, [], [actors[0], actors[2]], "community", ["a"]);
+assert.equal(cleaned.venues.length, rows.length);
+assert.ok(cleaned.venues.every((row) => !row.residentIds?.includes("a") && !row.workerIds?.includes("a")));
+assert.deepEqual(rows, beforeCleanup);
+const returning = selectFoundingHomes(cleaned.venues, [], actors, "community");
+assert.deepEqual(returning.venues, cleaned.venues, "Returning people require an explicit assignment");

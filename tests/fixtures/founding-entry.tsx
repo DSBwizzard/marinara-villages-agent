@@ -1,3 +1,5 @@
+import { manualHomesFixture } from "../helpers/founding-homes.fixture.js";
+(window as any).manualHomesFixture = manualHomesFixture;
 import { installFeature } from "./feature-root.js";
 import { FoundingScreen } from "../../packages/villages/src/client/features/founding/FoundingScreen.js";
 import { PreparationScreen } from "../../packages/villages/src/client/features/founding/PreparationScreen.js";
