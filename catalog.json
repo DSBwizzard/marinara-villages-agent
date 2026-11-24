@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-24T16:43:42.723Z",
+  "generatedAt": "2026-11-24T17:24:27.389Z",
   "packages": [
     {
       "manifest": {
@@ -15,7 +15,7 @@
         },
         "id": "villages",
         "name": "Villages",
-        "version": "0.8.10",
+        "version": "0.8.11",
         "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
         "engine": {
           "min": "2.5.2",
@@ -94,13 +94,13 @@
           },
           {
             "path": "server.mjs",
-            "sha256": "acbc33d8b9dfceaf708cf2ba499c9efc0d9aa7290ae21a1675ee1769d48d7030",
-            "bytes": 1941423
+            "sha256": "5e37e7b14db395ffb79fd79fab5df7e3259f3193bf4163f78daa4b7772bd1398",
+            "bytes": 1941916
           },
           {
             "path": "client.js",
-            "sha256": "566a5ebd3df69f36342910062e22ba35a30fea89949bcdf49446250f2827ffbe",
-            "bytes": 2394936
+            "sha256": "111bc566fb374d2b4e661af8c16ac432ba7be8e5f04b4b4cbe7baa745f7192da",
+            "bytes": 2395743
           },
           {
             "path": "letter-fonts/PROVENANCE.txt",
@@ -393,14 +393,14 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-42356f9d0f5af608/villages-0.8.10-42356f9d0f5af608.zip",
-        "sha256": "42356f9d0f5af60881fe4d93de69b6dd10899d94eb95d2040840bfbdb94d3b5e",
-        "bytes": 27006674
+        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-8f045a4e19b35c65/villages-0.8.11-8f045a4e19b35c65.zip",
+        "sha256": "8f045a4e19b35c6591de8d311e32e5c455fc8dfd28368e7920ff286068a6f818",
+        "bytes": 27007180
       }
     }
   ],
   "provenance": {
     "kind": "custom",
-    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/45439194339"
+    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/45445837391"
   }
 }
