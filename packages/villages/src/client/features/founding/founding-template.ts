@@ -35,7 +35,6 @@ export function startingZone(venue: VillageVenue, personal: boolean) {
     ownerId,
     access: {
       ...draftZonePolicy(venue, { ownerId }, personal),
-      ...(!personal && home && !community ? { mode: "permission-required" as const } : {}),
       ...(personal && community ? { managerIds: ["player"], memberIds: ["player"] } : {}),
     },
   };

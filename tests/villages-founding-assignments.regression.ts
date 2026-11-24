@@ -8,6 +8,7 @@ import {
 import { applyFoundingPeople } from "../packages/villages/src/shared/helpers/founding-people.js";
 import { draftZonePolicy } from "../packages/villages/src/shared/helpers/founding-zone-policy.js";
 import { parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 
 const actors = [
   { id: "player", name: "Your" },
@@ -105,6 +106,11 @@ assert.equal(
   "Residency no longer controls a new shared Zone's Entry",
 );
 assert.equal(draftZonePolicy(before[0], {}, true).mode, "permission-required");
+assert.equal(
+  addFoundingZone(before[0], false, "generic-new").spaces!.at(-1)!.access!.mode,
+  "public",
+  "Manually added general Zones use the same default in a lived-in Venue",
+);
 const overlap = structuredClone(workOnly);
 overlap[2].access = { ...overlap[1].access!, work: [terms] };
 assert.match(foundingAssignmentReviewProblem(overlap), /overlap/);

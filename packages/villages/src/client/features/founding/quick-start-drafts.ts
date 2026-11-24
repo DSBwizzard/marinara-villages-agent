@@ -4,6 +4,7 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { newSetupVenue } from "./FoundingPanels.js";
 import { startingZone } from "./founding-template.js";
+import { draftZonePolicy } from "../../../shared/helpers/founding-zone-policy.js";
 
 export type { FoundingVenueSuggestion as StartingVenueSuggestion } from "../../../shared/contracts/founding.js";
 import type { FoundingVenueSuggestion as StartingVenueSuggestion } from "../../../shared/contracts/founding.js";
@@ -34,6 +35,9 @@ export function quickStartTemplates(venues: readonly SetupVenueDraft[]): SetupVe
     venue.spaces = [
       {
         ...startingZone(venue, false),
+        ...(residence && !community
+          ? { access: { ...draftZonePolicy(venue, {}), mode: "permission-required" as const } }
+          : {}),
         ...(community ? { name: "Gathering Space" } : residence ? { purpose: "Daily life and shared activities" } : {}),
         connectedTo: residence ? ["exterior", "private:base"] : ["exterior"],
       },
