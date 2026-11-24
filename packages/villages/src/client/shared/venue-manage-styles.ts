@@ -39,7 +39,7 @@ export const VENUE_MANAGE_STYLES = `
 .villages-manage-empty{margin:14px 0}.villages-manage-details{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px 18px;margin:16px 0}.villages-manage-details dd{margin:0;overflow-wrap:anywhere}
 .villages-work-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:14px 18px}
 .villages-manage .villages-work-fields label{flex-wrap:nowrap;margin:0}
-.villages-work-fields>:is(.villages-work-days,.villages-work-times,.villages-work-access){grid-column:1/-1}.villages-work-fields .villages-work-day-buttons{display:flex;gap:4px;margin-top:6px}
+.villages-work-fields>:is(.villages-work-days,.villages-work-times,.villages-work-access,.villages-work-invite){grid-column:1/-1}.villages-work-fields .villages-work-day-buttons{display:flex;gap:4px;margin-top:6px}
 .villages-work-fields .villages-work-day-buttons button{flex:1;min-width:0;min-height:44px;padding:5px 2px;font-size:14px}
 .villages-work-fields .villages-work-day-buttons button[aria-pressed=true]{background:var(--menu-selected);border-color:var(--menu-selected-border);color:var(--venue-ink,var(--foreground))}
 .villages-work-times{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));gap:10px;align-self:start}
@@ -50,6 +50,7 @@ export const VENUE_MANAGE_STYLES = `
 .${P}-workspace-venue-header form{margin:0}.${P}-venue-profile .${P}-workspace-venue-header h1 input[aria-label="Zone name"]{font:inherit;color:inherit;background:transparent;border:0;border-radius:0;padding:0;margin:0;min-width:0;min-height:44px;width:100%;outline:none}.${P}-venue-profile .${P}-workspace-venue-header h1 input[aria-label="Zone name"]:focus-visible{box-shadow:0 2px var(--primary)}
 .villages-zone-fields{margin-bottom:18px}.villages-zone-fields textarea{resize:vertical}.villages-zone-fields label:last-child textarea{min-height:72px}
 .${P}-zone-artwork h3{font:inherit;font-weight:500;margin:14px 0 8px}.${P}-zone-image-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-width:25rem}.${P}-zone-image-actions>button{font:inherit;color:inherit;min-height:44px;padding:8px 10px;background:var(--menu-field);border:1px solid var(--menu-control-border,var(--border));border-radius:5px}.${P}-zone-image-actions>input{display:none}.villages-room-assignment{margin-bottom:20px}
+.villages-manage .villages-runners-nobody{font:inherit;min-height:44px;margin-bottom:18px;padding:8px 18px;background:var(--menu-field);color:inherit;border:1px solid var(--menu-control-border,var(--border));border-radius:5px}.villages-manage .${P}-directory-card[aria-pressed]{position:relative}.villages-manage .${P}-directory-card[aria-pressed=true],.villages-runners-nobody[aria-pressed=true]{background:var(--menu-selected);border-color:var(--menu-selected-border)}.villages-person-selected{position:absolute;top:8px;right:8px;width:20px;height:20px;border:1px solid var(--menu-control-border,var(--border));border-radius:3px;background:var(--menu-field);display:grid;place-items:center;font-size:16px}.villages-manage .villages-work-invite{flex-direction:row}
 @container village-desk (max-width:700px){
  .villages-manage-heading h2{font-size:22px}.villages-manage-title-row>button{font-size:15px!important}
  .villages-manage .${P}-avatar{width:80px;height:80px}

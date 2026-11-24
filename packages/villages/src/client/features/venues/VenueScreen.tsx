@@ -1,9 +1,10 @@
+import { VenueRunnersRow } from "./VenueRunners.js";
 import {
   ArrangementSummary,
-  arrangementLabel,
   arrangementBack,
   arrangementAddLabel,
-  visitorDefault,
+  arrangementTitle,
+  arrangementBackLabel,
   type ArrangementPage,
 } from "./ArrangementNavigation.js";
 import { VenuePeoplePanel } from "./VenuePeoplePanel.js";
@@ -453,7 +454,7 @@ export function VenueScreen({
                   : arrangementPage.kind === "work"
                     ? "Add worker"
                     : "Add person"
-                : arrangementLabel(arrangementPage.kind, zoneDetailsOpen)
+                : arrangementTitle(arrangementPage, place)
             : zoneDetailsOpen
               ? selected.name
               : place.name
@@ -462,6 +463,7 @@ export function VenueScreen({
           arrangementPage &&
           !arrangementPage.personId &&
           !arrangementPage.adding &&
+          arrangementPage.kind !== "runners" &&
           arrangementPage.kind !== "visitors" &&
           arrangementPage.kind !== "guests" ? (
             <button
@@ -525,7 +527,7 @@ export function VenueScreen({
               }
             >
               {arrangementPage
-                ? `← ${arrangementPage.personId || arrangementPage.adding ? arrangementLabel(arrangementPage.kind, zoneDetailsOpen) : arrangementPage.kind === "rules" || arrangementPage.kind === "invite" || arrangementPage.kind === "guests" ? "Visitors" : zoneDetailsOpen ? selected.name : place.name}`
+                ? `← ${arrangementBackLabel(arrangementPage, place)}`
                 : zoneDetailsOpen
                   ? `← ${place.name}`
                   : fromMap
@@ -582,6 +584,12 @@ export function VenueScreen({
                       {editingAbout ? "Done" : "Edit"}
                     </button>
                   </div>
+                  <VenueRunnersRow
+                    ids={place.accessView?.runnerIds ?? place.accessView?.managerIds ?? []}
+                    nameOf={controller.nameOfCharacter}
+                    disabled={navigationBusy || !place.accessView?.canManage}
+                    onOpen={() => setArrangementPage({ kind: "runners" })}
+                  />
                   {editingAbout ? (
                     <div className="villages-manage-form">
                       <VenueName place={place} controller={controller} />
@@ -771,7 +779,7 @@ export function VenueScreen({
             controller={controller}
             page={arrangementPage}
             onPage={(page) => {
-              if (page.zoneId) setVenueZoneKey(page.zoneId);
+              if (page?.zoneId) setVenueZoneKey(page.zoneId);
               setArrangementPage(page);
             }}
             onBusyChange={setArrangementBusy}
@@ -782,9 +790,7 @@ export function VenueScreen({
             place={place}
             disabled={navigationBusy}
             onOpen={(kind) => {
-              const zoneId = kind === "visitors" ? visitorDefault(place) : undefined;
-              if (zoneId) setVenueZoneKey(zoneId);
-              setArrangementPage({ kind, zoneId });
+              setArrangementPage({ kind });
             }}
           />
         ) : null}

@@ -7,7 +7,7 @@ export const foundingPeopleSchema = z
     residentIds: z.array(id).max(3),
     playerHome: z.boolean(),
 
-    managerIds: z.array(id).min(1).max(4),
+    managerIds: z.array(id).max(4),
     work: z.array(venueWorkSchema).max(3),
     destinations: z.record(id, z.object({ home: id.optional(), sleep: id.optional(), work: id.optional() }).strict()),
   })

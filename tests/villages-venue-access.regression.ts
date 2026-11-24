@@ -356,6 +356,8 @@ command({
   outsideHours: false,
 } as any);
 assert.equal(decide("living", "player").allowed, true, "Explicit standing permission permits entry");
+const otherBedroom = zone("mara-bedroom");
+venue.zones = venue.zones!.filter((row) => row !== otherBedroom);
 const ban = command({ action: "ban", zoneId: null, visitorId: "player" } as any);
 assert.equal(decide("exterior").allowed, true);
 assert.equal(decide("bedroom").reason, "banned");
@@ -369,6 +371,7 @@ assert.equal(
 command({ action: "ban", zoneId: null, visitorId: "player" } as any);
 assert.equal(decide("bedroom").reason, "banned", "A later ban is not covered by a previous exception.");
 for (const row of venue.access!.bans) row.active = false;
+venue.zones!.push(otherBedroom);
 venue.access!.visitorHours = [{ days: ["Monday"], start: "09:00", end: "17:00" }];
 assert.equal(zone("bedroom").access!.visitorHours, "always", "New private rooms have their own visitor schedule.");
 zone("bedroom").access!.visitorHours = "inherit"; // Existing rooms with an explicit inherited schedule retain it.
@@ -476,7 +479,9 @@ for (const scenario of [
     scene.departedIds = ["jim"];
   }
   if (scenario === "escort-cannot-enter") {
-    target.access!.managerIds = [];
+    home.access!.managerIds = ["mara"];
+    home.destinations!.jim = { home: "living", sleep: "living" };
+    target.access!.managerIds = ["mara"];
     target.access!.memberIds = [];
     target.access!.inviterIds = ["jim"];
   }
@@ -672,7 +677,7 @@ assert.throws(
 recovery.zones!.find((zone) => zone.id === "office")!.access!.managerIds = ["departed"];
 applyAccessCommand(
   recovery,
-  { action: "ban", operationId: "recovery-ban", expectedRevision: 0, zoneId: null, visitorId: "visitor" },
+  { action: "ban", operationId: "recovery-ban", expectedRevision: 0, zoneId: "living", visitorId: "visitor" },
   "jim",
   stamp,
   known,
@@ -921,6 +926,7 @@ async function main() {
     assert.equal(entered.zoneId, "bedroom");
     assert.equal((await readVillageState({ memories: true })).venues[0].access!.permissions[0].sceneId, entered.id);
     const gapManager = "trina";
+    const beforeGapManagers = [...(await readVillageState({ memories: true })).venues[0].access!.managerIds];
     const beforeGapPolicy = structuredClone(
       (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.id === "living")!.access!,
     );
@@ -940,6 +946,7 @@ async function main() {
           stamp,
           known,
         );
+        home.access!.managerIds = [gapManager];
         applyAccessCommand(
           home,
           {
@@ -1029,6 +1036,7 @@ async function main() {
           stamp,
           known,
         );
+        home.access!.managerIds = beforeGapManagers;
       },
       { memories: true },
     );

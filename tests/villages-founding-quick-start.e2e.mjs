@@ -548,13 +548,16 @@ await withBrowser(browser, async () => {
       await parentVenue();
       await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
       await sheet.getByRole("button", { name: /^Visitors/ }).click();
+      await sheet.locator('[data-layout-zone="common:base"]').click();
       const access = sheet.getByRole("region", { name: "Visitors", exact: true });
       await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("public");
       const preserved = await page.evaluate(() => window.quickState.venues[0]);
       await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
       await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
+      await sheet.locator('[data-layout-zone="common:base"]').click();
       const expected = structuredClone(preserved);
       expected.spaces[0].access.mode = "permission-required";
+      expected.spaces[0].access.visitorHours = "always";
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues[0]),
         expected,
@@ -723,24 +726,14 @@ await withBrowser(browser, async () => {
       await first.click();
       await sheet.getByRole("button", { name: "Arrangements", exact: true }).click();
       await sheet.getByRole("button", { name: /^Visitors/ }).click();
-      await sheet.getByLabel("Visitor Zone", { exact: true }).selectOption("private:base");
+      await sheet.locator('[data-layout-zone="private:base"]').click();
       await expect(access.getByLabel("Entry", { exact: true })).toHaveValue("permission-required");
-      await sheet.getByRole("button", { name: /^Change visitor rules/ }).click();
-      await sheet.getByRole("button", { name: "You", exact: true }).click();
-      await expect(sheet.getByRole("checkbox", { name: "Change visitor rules", exact: true })).toBeDisabled();
-      await expect(sheet.getByRole("button", { name: "Save visitor rules", exact: true })).toBeDisabled();
-      await sheet.getByRole("button", { name: "← Change visitor rules", exact: true }).click();
-      await sheet.getByRole("button", { name: "Add person", exact: true }).click();
-      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
-      await sheet.getByRole("checkbox", { name: "Change visitor rules", exact: true }).check();
-      await sheet.getByRole("button", { name: "Save visitor rules", exact: true }).click();
-      assert(
-        (await page.evaluate(() => window.quickState.venues[0].privateSpaces[0].access.managerIds)).includes("ada"),
-      );
-      await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
+      await expect(sheet.getByRole("button", { name: /^Change visitor rules/ })).toHaveCount(0);
+      await expect(sheet.getByLabel("Hours").locator('option[value="inherit"]')).toHaveCount(0);
       const personalBefore = await page.evaluate(() => window.quickState.venues[0]);
       await access.getByLabel("Entry", { exact: true }).selectOption("public");
       await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
+      await sheet.locator('[data-layout-zone="private:base"]').click();
       const personalExpected = structuredClone(personalBefore);
       personalExpected.privateSpaces[0].access.mode = "public";
       assert.deepEqual(
@@ -751,6 +744,18 @@ await withBrowser(browser, async () => {
       await access.getByLabel("Entry", { exact: true }).selectOption("permission-required");
       await access.getByRole("button", { name: "Save visitor rules", exact: true }).click();
       assert.deepEqual(await page.evaluate(() => window.quickState.venues[0]), personalBefore);
+      await parentVenue();
+      await sheet.getByRole("button", { name: "About", exact: true }).click();
+      await sheet.getByRole("button", { name: /^Runs this Venue/ }).click();
+      await sheet.getByRole("button", { name: "Nobody", exact: true }).click();
+      await sheet.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: /^Runs this Venue/ })).toContainText("Nobody");
+      assert.deepEqual(await page.evaluate(() => window.quickState.venues[0].access.managerIds), []);
+      await sheet.getByRole("button", { name: /^Runs this Venue/ }).click();
+      await sheet.getByRole("button", { name: "You", exact: true }).click();
+      await sheet.getByRole("button", { name: "Ada", exact: true }).click();
+      await sheet.getByRole("button", { name: "Save", exact: true }).click();
+      assert.deepEqual(await page.evaluate(() => window.quickState.venues[0].access.managerIds), ["player", "ada"]);
       failReply = true;
       await confirm();
       await expect(button("Retry")).toBeVisible();

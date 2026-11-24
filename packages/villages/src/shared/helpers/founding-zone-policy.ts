@@ -10,7 +10,7 @@ export function draftZonePolicy(venue: VillageVenue, area: { ownerId?: string },
     memberIds: personal && owner ? [owner] : [],
     memberRoles: !personal && household ? ["residents"] : [],
     inviterIds: [],
-    visitorHours: restricted ? "always" : "inherit",
+    visitorHours: "always",
     accompanied: false,
   };
 }

@@ -108,7 +108,8 @@ assert.equal(
     "b",
     { at: night },
   ).allowed,
-  true,
+  false,
+  "Work access ends with the shift",
 );
 assert.equal(
   evaluateZoneAccess(

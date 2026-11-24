@@ -1,3 +1,4 @@
+import { venueManagers } from "./venue-access.js";
 import { narrationWitnesses } from "./narration-sources.js";
 import { z } from "zod";
 import type { VillageState } from "../models/world.js";
@@ -27,7 +28,7 @@ export function narrationResidenceContext(state: VillageState, actors: string[])
         id: venue.id,
         name: venue.name,
         householdIds: householdIds(venue),
-        managerIds: [...(venue.access?.managerIds ?? [])],
+        managerIds: [...venueManagers(venue)],
         sleepZones: venueZones(venue)
           .filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal" && !zoneClosed(state, venue, zone))
           .map((zone) => ({ id: zone.id, name: zone.name, kind: zone.kind, managerIds: zone.access?.managerIds })),

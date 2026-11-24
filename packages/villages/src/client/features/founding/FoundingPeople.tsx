@@ -5,16 +5,12 @@ import { venueWorkSchema, type VenueWork } from "../../../shared/helpers/venue-w
 import { WorkFields, initialVenueWork } from "../../shared/WorkFields.js";
 import { type VenuePerson } from "../venues/VenueManage.js";
 import { HomeFields } from "../../shared/HomeFields.js";
-import {
-  ArrangementRoster,
-  VisitorsScope,
-  arrangementIds,
-  arrangementLabel,
-  type ArrangementPage,
-} from "../venues/ArrangementNavigation.js";
+import { ArrangementRoster, VisitorsOverview, type ArrangementPage } from "../venues/ArrangementNavigation.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { VenueZoneRow } from "../../shared/VenueNavigation.js";
+import { visitorZones } from "../venues/ArrangementNavigation.js";
+import { VenueRunners } from "../venues/VenueRunners.js";
 import { FoundingAccess } from "./FoundingAccess.js";
-import { draftZonePolicy } from "./villages-founding-zones.js";
 import { foundingHomeMembers, foundingSleepZones, reconcileFoundingHome } from "./founding-homes.js";
 
 function HomeEditor({
@@ -172,49 +168,117 @@ function WorkEditor({
   );
 }
 
-function VisitorRoleEditor({
-  active,
-  onSave,
-  onBack,
-  readOnly = false,
-  label,
+function FoundingInvitations({
+  venue,
+  zoneId,
+  people,
+  onPatch,
+  disabled,
 }: {
-  active: boolean;
-  readOnly?: boolean;
-  label: string;
-  onSave(active: boolean): void;
-  onBack(): void;
+  venue: SetupVenueDraft;
+  zoneId: string;
+  people: VenuePerson[];
+  onPatch(venue: SetupVenueDraft): void;
+  disabled: boolean;
 }) {
-  const [manages, setManages] = useState(active);
+  const [guest, setGuest] = useState("");
+  const [standing, setStanding] = useState(false);
+  const [escort, setEscort] = useState(false);
+  const [afterHours, setAfterHours] = useState(false);
+  const access = foundingAccess(venue),
+    zone = visitorZones(venue).find((row) => row.id === zoneId);
+  const sleepers = foundingHomeMembers(venue).filter((id) => venue.destinations?.[id]?.sleep === zoneId);
+  const managers =
+    zone?.kind === "personal" && sleepers.length ? sleepers : (zone?.access?.managerIds ?? access.managerIds);
+  const issuer = managers.includes("player") ? "player" : (managers[0] ?? "player");
   return (
-    <>
-      <label className="villages-manage-check">
-        <input
-          autoComplete="off"
-          type="checkbox"
-          disabled={readOnly}
-          checked={manages}
-          onChange={(e) => setManages(e.target.checked)}
-        />
-        {label}
-      </label>
-      <div className="villages-manage-actions">
-        <button type="button" onClick={onBack}>
-          Cancel
-        </button>
+    <section className="villages-manage" aria-label="Invitations">
+      <fieldset className="villages-manage-form" disabled={disabled}>
+        <label>
+          Guest
+          <select value={guest} onChange={(e) => setGuest(e.target.value)}>
+            <option value="">Choose a Villager</option>
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Duration
+          <select value={standing ? "standing" : "next"} onChange={(e) => setStanding(e.target.value === "standing")}>
+            <option value="next">Next visit</option>
+            <option value="standing">Until withdrawn</option>
+          </select>
+        </label>
+        <label className="villages-manage-check">
+          <input type="checkbox" checked={escort} onChange={(e) => setEscort(e.target.checked)} />
+          Escort required
+        </label>
+        <label className="villages-manage-check">
+          <input type="checkbox" checked={afterHours} onChange={(e) => setAfterHours(e.target.checked)} />
+          Allow after hours
+        </label>
         <button
           type="button"
-          className="villages-manage-primary"
-          disabled={readOnly || manages === active}
+          disabled={!guest}
           onClick={() => {
-            onSave(manages);
-            onBack();
+            onPatch({
+              ...venue,
+              access: {
+                ...access,
+                permissions: [
+                  ...access.permissions,
+                  {
+                    id: createVillagesClientId(),
+                    zoneId,
+                    visitorId: guest,
+                    issuerId: issuer,
+                    duration: standing ? "standing" : "visit",
+                    sceneId: null,
+                    accompaniedBy: escort ? issuer : null,
+                    outsideHours: afterHours,
+                    revoked: false,
+                    issuedAt: new Date().toISOString(),
+                    sourceLineIds: [],
+                  },
+                ],
+              },
+            });
+            setGuest("");
           }}
         >
-          Save visitor rules
+          Invite
         </button>
-      </div>
-    </>
+        {access.permissions
+          .filter((grant) => grant.zoneId === zoneId && !grant.revoked)
+          .map((grant) => (
+            <div className="villages-access-grant" key={grant.id}>
+              <span>
+                {people.find((person) => person.id === grant.visitorId)?.name ?? grant.visitorId},{" "}
+                {grant.duration === "standing" ? "Until withdrawn" : "Next visit"}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  onPatch({
+                    ...venue,
+                    access: {
+                      ...access,
+                      permissions: access.permissions.map((row) =>
+                        row.id === grant.id ? { ...row, revoked: true } : row,
+                      ),
+                    },
+                  })
+                }
+              >
+                Withdraw
+              </button>
+            </div>
+          ))}
+      </fieldset>
+    </section>
   );
 }
 
@@ -223,7 +287,6 @@ export function FoundingPeople({
   venues,
   people,
   onPatch,
-  zoneId,
   disabled = false,
   page,
   onPage,
@@ -232,132 +295,60 @@ export function FoundingPeople({
   venues: SetupVenueDraft[];
   people: VenuePerson[];
   onPatch(venue: SetupVenueDraft): void;
-  zoneId?: string;
   disabled?: boolean;
   page: ArrangementPage;
-  onPage(page: ArrangementPage): void;
+  onPage(page: ArrangementPage | null): void;
 }) {
-  const person = people.find((row) => row.id === page.personId);
-  const back = () => onPage({ kind: page.kind, zoneId: page.zoneId });
-  const access = foundingAccess(venue);
-  const policyZoneId = page.kind === "rules" || page.kind === "invite" ? page.zoneId : zoneId;
-  const personal = !!venue.privateSpaces?.some((row) => row.id === policyZoneId);
-  const zone = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find((row) => row.id === policyZoneId);
-  const policy = zone ? (zone.access ?? draftZonePolicy(venue, zone, personal)) : undefined;
-  const managers = policy ? (policy.managerIds ?? access.managerIds) : access.managerIds;
-  if (page.kind === "visitors")
+  const access = foundingAccess(venue),
+    person = people.find((row) => row.id === page.personId);
+  const back = () => onPage({ kind: page.kind });
+  if (page.kind === "runners")
     return (
-      <section className="villages-manage">
-        {!zoneId && (
-          <VisitorsScope
-            place={venue}
-            zoneId={page.zoneId}
-            disabled={disabled}
-            onZone={(zoneId) => onPage({ ...page, zoneId })}
-          />
-        )}
-        <FoundingAccess
-          key={venue.id + (page.zoneId ?? "venue")}
-          venue={venue}
-          zoneId={page.zoneId}
-          onPatch={onPatch}
-          disabled={disabled}
-        >
-          {page.zoneId !== "exterior" && (
-            <nav className="marinara-capability-villages-venue-zone-picker villages-arrangement-summary villages-visitor-roles">
-              {(["rules", ...(page.zoneId ? ["invite"] : [])] as const).map((kind: "rules" | "invite") => (
-                <VenueZoneRow
-                  key={kind}
-                  name={arrangementLabel(kind)}
-                  accessLabel={String(arrangementIds(venue, kind, page.zoneId).length)}
-                  disabled={disabled}
-                  onOpen={() => onPage({ ...page, kind })}
-                />
-              ))}
-            </nav>
-          )}
-        </FoundingAccess>
-      </section>
+      <VenueRunners
+        ids={access.managerIds}
+        people={people}
+        disabled={disabled}
+        onBack={() => onPage(null)}
+        onSave={(ids) => {
+          onPatch({ ...venue, access: { ...access, managerIds: ids } });
+          return true;
+        }}
+      />
+    );
+  if (page.kind === "guests" && page.zoneId)
+    return (
+      <FoundingInvitations venue={venue} zoneId={page.zoneId} people={people} disabled={disabled} onPatch={onPatch} />
+    );
+  if (page.kind === "visitors")
+    return page.zoneId ? (
+      <FoundingAccess
+        venue={venue}
+        zoneId={page.zoneId}
+        onPatch={onPatch}
+        disabled={disabled}
+        onClose={() => onPage({ kind: "visitors" })}
+      >
+        <nav className="marinara-capability-villages-venue-zone-picker villages-arrangement-summary">
+          <VenueZoneRow name="Invitations" disabled={disabled} onOpen={() => onPage({ ...page, kind: "guests" })} />
+        </nav>
+      </FoundingAccess>
+    ) : (
+      <VisitorsOverview place={venue} disabled={disabled} onOpen={(zoneId) => onPage({ ...page, zoneId })} />
     );
   return (
     <section className="villages-manage" aria-label="Arrangements">
       <fieldset disabled={disabled}>
         {person ? (
           <>
-            <h2 className="villages-arrangement-kind">
-              {page.kind === "home" ? "Home" : page.kind === "work" ? "Work" : arrangementLabel(page.kind)}
-            </h2>
+            <h2>{page.kind === "home" ? "Home" : "Work"}</h2>
             {page.kind === "home" ? (
-              <HomeEditor
-                key={person.id}
-                venue={venue}
-                venues={venues}
-                id={person.id}
-                zoneId={zoneId}
-                onPatch={onPatch}
-                onBack={back}
-              />
-            ) : page.kind === "work" ? (
-              <WorkEditor
-                key={person.id}
-                venue={venue}
-                venues={venues}
-                zoneId={zoneId}
-                id={person.id}
-                onPatch={onPatch}
-                onBack={back}
-              />
+              <HomeEditor venue={venue} venues={venues} id={person.id} onPatch={onPatch} onBack={back} />
             ) : (
-              <VisitorRoleEditor
-                key={person.id}
-                label={arrangementLabel(page.kind)}
-                active={
-                  page.kind === "invite"
-                    ? managers.includes(person.id) || !!policy?.inviterIds.includes(person.id)
-                    : managers.includes(person.id)
-                }
-                readOnly={managers.includes(person.id) && (page.kind === "invite" || managers.length === 1)}
-                onBack={back}
-                onSave={(active) => {
-                  const managerIds = active
-                    ? [...new Set([...managers, person.id])]
-                    : managers.filter((id) => id !== person.id);
-                  if (zone && policy) {
-                    const key = personal ? "privateSpaces" : "spaces";
-                    onPatch({
-                      ...venue,
-                      [key]: venue[key]?.map((row) =>
-                        row.id === zone.id
-                          ? {
-                              ...row,
-                              access: {
-                                ...policy,
-                                ...(page.kind === "invite"
-                                  ? {
-                                      inviterIds: active
-                                        ? [...new Set([...policy.inviterIds, person.id])]
-                                        : policy.inviterIds.filter((id) => id !== person.id),
-                                    }
-                                  : { managerIds }),
-                              },
-                            }
-                          : row,
-                      ),
-                    });
-                  } else onPatch({ ...venue, access: { ...access, managerIds } });
-                }}
-              />
+              <WorkEditor venue={venue} venues={venues} id={person.id} onPatch={onPatch} onBack={back} />
             )}
           </>
         ) : (
-          <ArrangementRoster
-            place={venue}
-            zoneId={policyZoneId}
-            people={people}
-            page={page}
-            onPage={onPage}
-            disabled={disabled}
-          />
+          <ArrangementRoster place={venue} people={people} page={page} onPage={onPage} disabled={disabled} />
         )}
       </fieldset>
     </section>

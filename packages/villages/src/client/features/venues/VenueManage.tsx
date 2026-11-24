@@ -44,6 +44,7 @@ export function VenuePeoplePicker({
   onAdd,
   addLabel,
   disabled = false,
+  selectedIds,
   children,
 }: {
   title: string;
@@ -55,6 +56,7 @@ export function VenuePeoplePicker({
   onAdd?: () => void;
   addLabel?: string;
   disabled?: boolean;
+  selectedIds?: readonly string[];
   children?: ReactNode;
 }) {
   const [page, setPage] = useState(0);
@@ -86,8 +88,14 @@ export function VenuePeoplePicker({
               key={person.id}
               className={`${P}-directory-card`}
               disabled={disabled}
+              aria-pressed={selectedIds?.includes(person.id)}
               onClick={() => onSelect(person.id)}
             >
+              {selectedIds && (
+                <span className="villages-person-selected" aria-hidden="true">
+                  {selectedIds.includes(person.id) ? "✓" : ""}
+                </span>
+              )}
               <span aria-hidden="true">
                 {person.portrait ? (
                   <AvatarFace name={person.name} portrait={person.portrait} className={`${P}-avatar`} />

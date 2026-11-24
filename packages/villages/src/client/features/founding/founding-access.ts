@@ -6,7 +6,7 @@ export function foundingAccess(venue: SetupVenueDraft): VenueAccessState {
     venue.access ?? {
       version: 1,
       revision: 0,
-      managerIds: foundingHomeMembers(venue).length ? foundingHomeMembers(venue) : ["player"],
+      managerIds: foundingHomeMembers(venue),
       visitorHours: null,
       permissions: [],
       bans: [],

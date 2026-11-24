@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { VillageResidence, VillageState, VillageVenue } from "../models/world.js";
 import { conflict, badGateway } from "./errors.js";
 import { venueResidentIds, venueSleepers } from "./venue-model.js";
-import { zoneManagers } from "./venue-access.js";
+import { venueManagers, zoneManagers } from "./venue-access.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -98,7 +98,7 @@ export function captureResidenceAgreement(
         sleep.ownerId ?? null,
         sleep.description,
         sleep.access,
-        [...(venue.access?.managerIds ?? []), ...zoneManagers(venue, sleep)].sort(),
+        [...venueManagers(venue), ...zoneManagers(venue, sleep)].sort(),
         venue.access?.bans.filter(
           (ban) => ban.active && ban.visitorId === actor && (!ban.zoneId || ban.zoneId === sleep.id),
         ),
@@ -113,7 +113,7 @@ export function captureResidenceAgreement(
       ...new Set([
         actor,
         ...members,
-        ...(venue.access?.managerIds ?? []),
+        ...venueManagers(venue),
         ...zoneManagers(venue, sleep),
         ...(sleep.ownerId ? [sleep.ownerId] : []),
       ]),

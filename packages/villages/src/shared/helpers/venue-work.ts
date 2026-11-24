@@ -8,6 +8,7 @@ export const venueWorkSchema = z
     activity: z.string().trim().min(1).max(240),
     zoneId: id,
     accessZoneIds: z.array(id).max(6),
+    inviteGuests: z.boolean().optional(),
     days: z.array(z.enum(WORK_DAYS)).min(1).max(7),
     startMinute: z.number().int().min(0).max(1439),
     endMinute: z.number().int().min(1).max(1440),

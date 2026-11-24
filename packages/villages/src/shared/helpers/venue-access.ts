@@ -102,6 +102,7 @@ export type ZoneAccessView = {
   canTrespass?: boolean;
   companions?: { id: string; name: string; staying?: true; trespass?: true }[];
   nextOpening?: string;
+  visitorHours?: Exclude<ZoneVisitorHours, "inherit">;
   canAllowAfterHours?: boolean;
   invitation?: {
     issuerId: string;
@@ -122,6 +123,7 @@ export type VenueAccessView = {
   revision: number;
   canManage: boolean;
   canRecover?: boolean;
+  runnerIds?: string[];
   managerIds?: string[];
   visitorHours?: VisitorHours | null;
   bans?: AccessBan[];
@@ -136,7 +138,7 @@ export type AccessCommand = {
   | { action: "work-propose"; characterId: string; terms: import("./venue-work.js").VenueWork | null }
   | { action: "work-decide"; offerId: string; accept: boolean }
   | { action: "recover-managers"; managerIds: string[] }
-  | { action: "venue-policy"; managerIds: string[]; visitorHours: VisitorHours | null }
+  | { action: "venue-policy"; managerIds: string[]; visitorHours?: VisitorHours | null }
   | { action: "zone-policy"; policy: ZoneAccessPolicy }
   | {
       action: "invite";
@@ -175,4 +177,28 @@ export function alwaysOpenVisitorHours(hours: VisitorHours | null): boolean {
     }
     return through === 1440;
   });
+}
+
+/** Older saved Zones retain their effective schedule when the editor removes inheritance. */
+export function zoneVisitingHours(
+  hours: ZoneVisitorHours | undefined,
+  previousDefault: VisitorHours | null = null,
+): Exclude<ZoneVisitorHours, "inherit"> {
+  return hours === "inherit" ? (previousDefault ?? "always") : (hours ?? "always");
+}
+export function visitorHoursLabel(hours: ZoneVisitorHours | undefined): string {
+  if (!Array.isArray(hours)) return "Any time";
+  if (!hours.length) return "Closed";
+  return hours
+    .map((row) => {
+      const names =
+        row.days.length === 7
+          ? "Every day"
+          : row.days.length === 5 &&
+              ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].every((day) => row.days.includes(day))
+            ? "Weekdays"
+            : row.days.map((day) => day.slice(0, 3)).join(", ");
+      return names + ", " + row.start + "–" + row.end;
+    })
+    .join("; ");
 }

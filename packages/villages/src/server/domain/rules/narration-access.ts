@@ -44,16 +44,14 @@ export function narrationAccessScopes(state: VillageState, actors: string[]) {
           .map((zone) => ({
             id: zone.id,
             name: zone.name,
-            policy: structuredClone(zone.access),
+            policy: managesAccess(venue, zone.id, actorId) ? structuredClone(zone.access) : undefined,
             manages: managesAccess(venue, zone.id, actorId),
             invites: mayInvite(venue, zone, actorId),
           }));
         const permissions = venue.access!.permissions.filter(
           (permission) =>
             !permission.revoked &&
-            (permission.issuerId === actorId ||
-              venueManager ||
-              zones.some((zone) => zone.manages && zone.id === permission.zoneId)),
+            (permission.issuerId === actorId || zones.some((zone) => zone.manages && zone.id === permission.zoneId)),
         );
         const work = (venue.access!.work ?? []).filter((row) => venueManager || row.characterId === actorId);
         const workOffers = (venue.access!.workOffers ?? [])
@@ -178,7 +176,7 @@ export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, inp
 
 export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
   return scopes.length
-    ? 'Scoped native access authority (GM only). Omitted Zone hours inherit; null removes hours. Work offers are exact pending terms, not current work. Only the actual required speaker may agree or decline through access.decide outcome:"access-management", zone:null, management:{action:"work-decide",offerId:the exact pending id,accept:true|false}. Require that speaker’s complete current communication explicitly accepting those terms; another person reporting agreement is insufficient. Changes to terms require a fresh proposal and fresh approvals. To propose new terms use management:{action:"work-propose",characterId,terms:{characterId,activity,zoneId,accessZoneIds,days,startMinute,endMinute}}; terms:null proposes ending work. Never invent an agreement or infer one from ordinary work attendance. ' +
+    ? 'Scoped native access authority (GM only). Each Zone has explicit visitorHours: "always" or a schedule array. Set hours through zone-policy for that Zone; venue-policy changes only who runs the Venue. Work offers are exact pending terms, not current work. Only the actual required speaker may agree or decline through access.decide outcome:"access-management", zone:null, management:{action:"work-decide",offerId:the exact pending id,accept:true|false}. Require that speaker’s complete current communication explicitly accepting those terms; another person reporting agreement is insufficient. Changes to terms require a fresh proposal and fresh approvals. To propose new terms use management:{action:"work-propose",characterId,terms:{characterId,activity,zoneId,accessZoneIds,inviteGuests,days,startMinute,endMinute}}; terms:null proposes ending work. Never invent an agreement or infer one from ordinary work attendance. ' +
         JSON.stringify(
           scopes.map(({ venueId, name, authorities }) => ({
             venueId,
@@ -190,10 +188,6 @@ export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
               venuePolicy: row.venuePolicy
                 ? {
                     managerIds: row.venuePolicy.managerIds,
-                    visitorHours:
-                      row.venuePolicy.visitorHours === null
-                        ? undefined
-                        : hoursSchema.parse(row.venuePolicy.visitorHours),
                   }
                 : undefined,
               zones: row.zones.map(({ id, name, policy, manages, invites }) => ({

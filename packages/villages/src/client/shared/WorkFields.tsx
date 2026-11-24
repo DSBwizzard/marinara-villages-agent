@@ -126,6 +126,14 @@ export function WorkFields({
           </label>
         ))}
       </fieldset>
+      <label className="villages-manage-check villages-work-invite">
+        <input
+          type="checkbox"
+          checked={!!value.inviteGuests}
+          onChange={(e) => onChange({ ...value, inviteGuests: e.target.checked })}
+        />
+        Invite guests to work Zones
+      </label>
     </div>
   );
 }

@@ -69,14 +69,6 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
     old.zones ??= venueZones(old);
     old.layoutVersion = 1;
   }
-  const previousHouseholds = new Map(
-    [old, destination]
-      .filter((venue) => !!venue)
-      .map((venue) => [
-        venue.id,
-        [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])].sort(),
-      ]),
-  );
   const archivedAt = new Date(now).toISOString();
   const oldPrivate = old && personalDestinationSpace(old, characterId);
   if (old) {
@@ -135,8 +127,6 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
   destination.destinations[characterId] = { ...destination.destinations[characterId], sleep: zone.id };
   for (const venue of [old, destination].filter((venue) => !!venue)) {
     initializeVenueAccess(venue);
-    if (JSON.stringify([...venue.access!.managerIds].sort()) === JSON.stringify(previousHouseholds.get(venue.id)))
-      venue.access!.managerIds = [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])];
     venue.access!.revision++;
   }
   destination.occupancy.residentCharacterId = destination.residentIds[0] ?? null;

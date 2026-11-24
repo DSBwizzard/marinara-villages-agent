@@ -89,7 +89,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
   assert.equal("residenceCapacity" in home, false);
   assert.deepEqual(zone, physical, "Changing bedrooms preserves physical room and access policy");
   assert.equal(evaluateZoneAccess(home, zone, "b", { at }).allowed, true);
-  assert.equal(managesAccess(home, zone.id, "b"), false, "Sharing does not grant management");
+  assert.equal(managesAccess(home, zone.id, "b"), true, "Roommates control their shared bedroom");
   assert.equal(home.knownSleepDestinations!.b, "bed");
   home.access!.bans.push({
     id: "ban",
@@ -163,7 +163,7 @@ function approve(state: ReturnType<typeof fixture>["state"], actor: string) {
   approve(state, "c");
   assert.equal(completeResidenceMove(state, "c", true, at), true);
   assert.deepEqual(home.destinations!.c, { work: "floor", sleep: "bed" });
-  assert.equal(managesAccess(home, "bed", "c"), false);
+  assert.equal(managesAccess(home, "bed", "c"), true);
   assert.deepEqual(bed.access, before, "Another sleeper does not replace existing access policy");
 }
 {

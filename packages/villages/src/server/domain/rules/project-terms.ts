@@ -1,3 +1,4 @@
+import { venueManagers, managesAccess } from "./venue-access.js";
 import { changedZoneIds, shape } from "./project-structure.js";
 export { changedZoneIds } from "./project-structure.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -54,7 +55,7 @@ export function renovationAffectedIds(
   if (!ids.length && !building) return [];
   return [
     ...new Set([
-      ...(venue.access?.managerIds ?? []),
+      ...venueManagers(venue),
       ...ids.flatMap((id) => venueSleepers(venue, id)),
       ...(residence ? venueResidentIds(venue) : []),
       ...(workplace ? (venue.workerIds ?? []) : []),
@@ -77,7 +78,7 @@ export function approvalScope(
   roomBasis?: string[],
 ): string {
   const changed = approvedZoneIds ?? changedZoneIds(venue, change);
-  const manager = venue.access?.managerIds.includes(actorId);
+  const manager = managesAccess(venue, null, actorId);
   const resident = venueResidentIds(venue).includes(actorId);
   const worker = venue.workerIds?.includes(actorId);
   const relevant = changed.filter((id) => {

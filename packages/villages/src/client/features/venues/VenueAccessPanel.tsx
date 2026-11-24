@@ -1,3 +1,4 @@
+import { zoneVisitingHours } from "../../../shared/helpers/venue-access.js";
 import { HoursEditor } from "../../shared/HoursEditor.js";
 import { useState, useLayoutEffect, type ReactNode } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -33,8 +34,8 @@ export function VenueAccessPanel({
   const view = zone?.accessView;
   const policy = view?.policy;
   const [mode, setMode] = useState(policy?.mode ?? "public");
-  const [hours, setHours] = useState<ZoneVisitorHours>(
-    policy?.visitorHours ?? place.accessView?.visitorHours ?? "always",
+  const [hours, setHours] = useState<Exclude<ZoneVisitorHours, "inherit">>(
+    zoneVisitingHours(policy?.visitorHours, place.accessView?.visitorHours),
   );
   const [guest, setGuest] = useState("");
   const [duration, setDuration] = useState<"this" | "next" | "standing">("next");
@@ -47,11 +48,11 @@ export function VenueAccessPanel({
   }, [busy, onBusyChange]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const canManage = zone ? zone.kind !== "exterior" && !!policy : !!place.accessView?.canManage;
+  const canManage = !!zone && zone.kind !== "exterior" && !!policy;
   const thisVisit = controller.room?.placeId === place.id && controller.room.status === "active";
   const people = controller.snapshot.villagers;
   const save = async (command: Details, result: string) => {
-    if (busy || !place.accessView) return;
+    if (busy || !place.accessView || !zone) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -60,9 +61,12 @@ export function VenueAccessPanel({
         ...command,
         operationId: createVillagesClientId(),
         expectedRevision: place.accessView.revision,
-        zoneId: zone?.id ?? null,
+        zoneId: zone.id,
       });
-      if (applied) setNotice(result);
+      if (applied) {
+        if (invitationsOnly) setNotice(result);
+        else onClose();
+      }
     } catch (cause) {
       setError(messageFrom(cause, "Could not save visitor rules."));
     } finally {
@@ -75,7 +79,9 @@ export function VenueAccessPanel({
       {!invitationsOnly && !canManage && zone && (
         <dl className="villages-manage-details">
           <dt>Entry</dt>
-          <dd>{zone.kind === "exterior" || view?.decision.mode === "public" ? "Public" : "By permission"}</dd>
+          <dd>
+            {zone.kind === "exterior" || view?.decision.mode === "public" ? "Open to everyone" : "Invitation only"}
+          </dd>
         </dl>
       )}
       {!invitationsOnly && canManage && (
@@ -88,8 +94,8 @@ export function VenueAccessPanel({
                 value={mode}
                 onChange={(event) => setMode(event.target.value === "public" ? "public" : "permission-required")}
               >
-                <option value="public">Public</option>
-                <option value="permission-required">By permission</option>
+                <option value="public">Open to everyone</option>
+                <option value="permission-required">Invitation only</option>
               </select>
             </label>
           )}
@@ -100,27 +106,13 @@ export function VenueAccessPanel({
               value={Array.isArray(hours) ? "schedule" : hours}
               onChange={(event) => {
                 const value = event.target.value;
-                setHours(
-                  value === "inherit"
-                    ? "inherit"
-                    : value === "always"
-                      ? "always"
-                      : [{ days: week, start: "09:00", end: "17:00" }],
-                );
+                setHours(value === "always" ? "always" : [{ days: week, start: "09:00", end: "17:00" }]);
               }}
             >
-              {zone && <option value="inherit">Use Venue hours</option>}
               <option value="always">Any time</option>
               <option value="schedule">Set hours</option>
             </select>
           </label>
-          {hours === "inherit" && (
-            <p>
-              {place.accessView?.visitorHours
-                ?.map((row) => `${row.days.map((day) => day.slice(0, 3)).join(", ")} ${row.start}–${row.end}`)
-                .join("; ") || "Any time"}
-            </p>
-          )}
           {Array.isArray(hours) && <HoursEditor hours={hours} change={setHours} />}
           {children}
           <div className="villages-manage-actions">
@@ -128,7 +120,7 @@ export function VenueAccessPanel({
               type="button"
               onClick={() => {
                 setMode(policy?.mode ?? "public");
-                setHours(policy?.visitorHours ?? place.accessView?.visitorHours ?? "always");
+                setHours(zoneVisitingHours(policy?.visitorHours, place.accessView?.visitorHours));
                 onClose();
               }}
             >
@@ -138,25 +130,13 @@ export function VenueAccessPanel({
               type="button"
               className="villages-manage-primary"
               disabled={!validHours}
-              onClick={() =>
+              onClick={() => {
+                if (!policy) return;
                 void save(
-                  policy
-                    ? {
-                        action: "zone-policy",
-                        policy: {
-                          ...policy,
-                          mode,
-                          visitorHours: hours,
-                        },
-                      }
-                    : {
-                        action: "venue-policy",
-                        managerIds: place.accessView?.managerIds ?? [],
-                        visitorHours: Array.isArray(hours) ? hours : null,
-                      },
+                  { action: "zone-policy", policy: { ...policy, mode, visitorHours: hours } },
                   "Visitor rules saved.",
-                )
-              }
+                );
+              }}
             >
               Save visitor rules
             </button>
@@ -228,7 +208,7 @@ export function VenueAccessPanel({
               )
             }
           >
-            Grant permission
+            Invite
           </button>
           {view.permissions
             ?.filter((grant) => !grant.revoked)

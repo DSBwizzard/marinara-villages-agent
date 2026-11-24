@@ -241,12 +241,13 @@ await runCase("narration-access/native-management", () => {
   f.apply(decision);
   assert.equal(f.home.location.access!.revision, 1);
   for (const management of [
-    { action: "venue-policy", managerIds: [], visitorHours: null },
     { action: "venue-policy", managerIds: [f.actorId], visitorHours: null, extra: true },
     { action: "venue-policy", managerIds: [f.actorId], visitorHours: null, expectedRevision: 0 },
   ])
     assert.throws(() => f.apply({ ...decision, management }, "invalid"));
   assert.equal(f.home.location.access!.revision, 1);
+  f.apply({ ...decision, management: { action: "venue-policy", managerIds: [], visitorHours: null } }, "unclaimed");
+  assert.deepEqual(f.home.location.access!.managerIds, []);
 });
 
 await runCase("narration-access/empty-withdrawal", () => {
@@ -281,7 +282,7 @@ await runCase("narration-access/current-outside-hours", () => {
   const f = fixture(),
     venue = f.cafe.location,
     zone = venue.zones!.find((zone) => zone.id === "parlor")!;
-  venue.access!.visitorHours = [{ days: ["Monday"], start: "18:00", end: "19:00" }];
+  zone.access!.visitorHours = [{ days: ["Monday"], start: "18:00", end: "19:00" }];
   const access = narrationAccessScopes(f.state, [f.actorId]);
   const readset = { ...f.readset, access },
     before = access.find((scope) => scope.venueId === venue.id)!;

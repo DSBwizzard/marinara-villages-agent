@@ -32,7 +32,7 @@ export function FoundingArrangements({
               )}
               {!!venue.access?.managerIds.length && (
                 <>
-                  <dt>Change visitor rules</dt>
+                  <dt>Runs this Venue</dt>
                   <dd>{venue.access.managerIds.map(name).join(", ")}</dd>
                 </>
               )}

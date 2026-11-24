@@ -1,9 +1,11 @@
+import { VenueRunnersRow } from "../venues/VenueRunners.js";
+import { foundingAccess } from "./founding-access.js";
 import {
   ArrangementSummary,
-  arrangementLabel,
+  arrangementBackLabel,
+  arrangementTitle,
   arrangementBack,
   arrangementAddLabel,
-  visitorDefault,
   type ArrangementPage,
 } from "../venues/ArrangementNavigation.js";
 import { FoundingPeople } from "./FoundingPeople.js";
@@ -300,7 +302,7 @@ export function QuickStartVenues({
                       : arrangementPage.kind === "work"
                         ? "Add worker"
                         : "Add person"
-                    : arrangementLabel(arrangementPage.kind, zoneDetails)))
+                    : arrangementTitle(arrangementPage, selected)))
                 : zoneDetails
                   ? artworkName
                   : selected.name || "Venue"
@@ -309,7 +311,7 @@ export function QuickStartVenues({
               arrangementPage &&
               !arrangementPage.personId &&
               !arrangementPage.adding &&
-              arrangementPage.kind !== "visitors" ? (
+              (arrangementPage.kind === "home" || arrangementPage.kind === "work") ? (
                 <button
                   type="button"
                   disabled={busy || imageBusy}
@@ -384,7 +386,7 @@ export function QuickStartVenues({
                 }
               >
                 {arrangementPage
-                  ? `← ${arrangementPage.personId || arrangementPage.adding ? arrangementLabel(arrangementPage.kind, zoneDetails) : arrangementPage.kind === "rules" || arrangementPage.kind === "invite" ? "Visitors" : zoneDetails ? artworkName : selected.name}`
+                  ? `← ${arrangementBackLabel(arrangementPage, selected)}`
                   : zoneDetails
                     ? `← ${selected.name || "Venue"}`
                     : onCloseVenue
@@ -441,6 +443,12 @@ export function QuickStartVenues({
                     <p>{selected.form}</p>
                   </>
                 )}
+                <VenueRunnersRow
+                  ids={foundingAccess(selected).managerIds}
+                  nameOf={(id) => actors.find((row) => row.id === id)?.name || id}
+                  disabled={busy || imageBusy}
+                  onOpen={() => setArrangementPage({ kind: "runners" })}
+                />
               </section>
             ) : null}
             {arrangementPage ? (
@@ -462,7 +470,6 @@ export function QuickStartVenues({
                 onOpen={(kind) =>
                   setArrangementPage({
                     kind,
-                    ...(kind === "visitors" ? { zoneId: visitorDefault(selected) } : {}),
                   })
                 }
               />
