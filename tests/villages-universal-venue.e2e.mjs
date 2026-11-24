@@ -455,11 +455,18 @@ await withBrowser(browser, async () => {
       );
     }
     const actions = detail.locator(`.${prefix}-zone-image-actions`);
+    const labels = await actions.locator("button").evaluateAll((buttons) =>
+      buttons.map((button) => ({
+        text: button.textContent,
+        scroll: button.scrollWidth,
+        width: button.clientWidth,
+        font: getComputedStyle(button).fontSize,
+        padding: getComputedStyle(button).padding,
+      })),
+    );
     assert.ok(
-      await actions
-        .locator("button")
-        .evaluateAll((buttons) => buttons.every((button) => button.scrollWidth <= button.clientWidth + 1)),
-      "short artwork labels fit their buttons",
+      labels.every((button) => button.scroll <= button.width + 1),
+      "short artwork labels fit their buttons: " + JSON.stringify({ width, labels }),
     );
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
       await actions.screenshot({
