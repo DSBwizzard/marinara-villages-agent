@@ -1,4 +1,5 @@
 import { FOUNDING_STEP, savedFoundingStep } from "./founding-steps.js";
+import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 
@@ -244,7 +245,10 @@ export function createFoundingRestoreSetupDraft(ports: {
         ? { households: data.context.households }
         : {}),
     });
-    setSetupVenues(data.venues);
+    // Keep admitted requests bound to their exact saved source until recovery finishes.
+    const pending = data.workspace.suggestionRequest && !data.workspace.suggestionRequest.failure;
+    const venues = pending ? data.venues : arrangeQuickStartVenues(data.venues);
+    setSetupVenues(venues);
     setupZoneDrafts.current = data.zoneDrafts;
     setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);
@@ -262,7 +266,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupMapSize(data.mapSize);
     setSetupMapPrompt(data.mapPrompt || ports.defaultMapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapReviewed(data.mapReviewed);
+    setSetupMapReviewed(data.mapReviewed && venues.every((venue, index) => venue === data.venues[index]));
     setSetupMapProblem(data.mapProblem ?? "");
     const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
     updateSetupMapRequest(mapRequest);

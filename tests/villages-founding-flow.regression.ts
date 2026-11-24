@@ -1007,6 +1007,32 @@ await main()
   const legacyDraft = { ...draft, venues: [oldHome] };
   restore(JSON.parse(JSON.stringify(legacyDraft)));
   assert.deepEqual(values.setSetupVenues[0], oldHome, "Restoring a draft preserves its authored layout");
+  const unplaced = newSetupVenue("unplaced", 0.5, 0.5);
+  unplaced.presentation.x = null;
+  unplaced.presentation.y = null;
+  const missingPinDraft = { ...legacyDraft, venues: [oldHome, unplaced], mapReviewed: true };
+  const missingPinSource = structuredClone(missingPinDraft);
+  restore(missingPinDraft);
+  assert.deepEqual(values.setSetupVenues[0], oldHome, "Restoring a missing pin preserves authored positions");
+  assert.equal(values.setSetupVenues[1].presentation.x, 0.5);
+  assert.equal(values.setSetupVenues[1].presentation.y, 0.5);
+  assert.equal(values.setSetupMapReviewed, false, "Restored pins need map review");
+  assert.deepEqual(missingPinDraft, missingPinSource, "Restoring pins leaves the saved source unchanged");
+  const pendingPinDraft = {
+    ...missingPinDraft,
+    workspace: {
+      ...draft.workspace,
+      suggestionRequest: { id: "admitted-pin", sourceKey: "source", quickStart: true },
+    },
+  };
+  restore(pendingPinDraft);
+  assert.deepEqual(values.setSetupVenues, pendingPinDraft.venues, "Pending work keeps its exact source positions");
+  const failedPinDraft = structuredClone(pendingPinDraft);
+  failedPinDraft.workspace.suggestionRequest.failure = "Draft unavailable";
+  restore(failedPinDraft);
+  assert.equal(values.setSetupVenues[1].presentation.x, 0.5, "A failed request does not hide a missing pin");
+  assert.equal(values.setSetupVenues[1].presentation.y, 0.5);
+  assert.deepEqual(values.setSetupWorkspace.suggestionRequest, failedPinDraft.workspace.suggestionRequest);
   for (const held of [
     { ...legacyDraft, interruptedGeneration: true },
     { ...legacyDraft, editorOriginal: oldHome },

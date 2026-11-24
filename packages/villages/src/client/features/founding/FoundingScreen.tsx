@@ -1100,10 +1100,13 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                   onClick={() => {
                     const id = "venue:" + createVillagesClientId();
                     const row = newSetupVenue(id, 0.5, 0.5);
-                    setSetupVenues((rows) => [
-                      ...rows,
-                      { ...row, presentation: { ...row.presentation, x: null, y: null } },
-                    ]);
+                    setSetupVenues((rows) =>
+                      arrangeQuickStartVenues([
+                        ...rows,
+                        { ...row, presentation: { ...row.presentation, x: null, y: null } },
+                      ]),
+                    );
+                    setSetupMapReviewed(false);
                     setSelectedSetupVenueId(id);
                     setOpenVenueFromMap({ id });
                   }}
