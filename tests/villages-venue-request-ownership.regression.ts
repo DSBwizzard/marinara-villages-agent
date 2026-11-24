@@ -27,7 +27,7 @@ import {
 } from "../packages/villages/src/server/features/venues/venue-requests.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
-const core = { name: "Glasshouse", classes: ["community"] as ["community"] };
+const core = { name: "Glasshouse" };
 function deferred() {
   return Promise.withResolvers<void>();
 }
@@ -51,16 +51,17 @@ function fixture(name: string) {
   });
   const home = venueDraft(
     {
+      spaces: [{ id: "residence", description: "A small cabin", image: null }],
       id: "home",
       name: `${name}'s home`,
       form: "Cabin",
       description: "A small cabin",
-      classes: ["residence"],
     },
     null,
   );
   home.occupancy = { playerHome: false, residentCharacterId: "same", homeKind: "small-home" };
   home.residentIds = ["same"];
+
   state.venues = [...[home], ...sharedVenuesFixture()];
   const calls: string[] = [],
     owners: unknown[] = [],
@@ -180,7 +181,7 @@ await assert.rejects(
     name: "Greenhouse",
     description: "A different plan.",
   }),
-  /not available yet/,
+  /Keep the requested Venue name/,
 );
 assert.equal(countered.state.pendingDecisions[0]!.status, "pending");
 assert.equal(countered.state.projects.length, 0);

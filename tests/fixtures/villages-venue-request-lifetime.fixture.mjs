@@ -60,13 +60,12 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
     const entry = {
       id: "request / A",
       requesterName: "Resident",
-      venueDraft: { name: " Fallback ", classes: ["community"], description: "Fallback description" },
+      venueDraft: { name: " Fallback ", description: "Fallback description" },
     };
     seed.venueRequests = [entry];
     seed.residences = [];
-    const overrides = { unrelated: { name: "Keep", classes: ["other"], description: "Keep" } };
-    if (!options.fallback)
-      overrides[entry.id] = { name: " Counteroffer ", classes: ["workplace"], description: "Original description" };
+    const overrides = { unrelated: { name: "Keep", description: "Keep" } };
+    if (!options.fallback) overrides[entry.id] = { name: " Counteroffer ", description: "Original description" };
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-requests.test/", (route) =>
       fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
@@ -145,7 +144,7 @@ export async function verifyVenueRequestLifetimes(browser) {
           assert.deepEqual(
             f.requests[0].body,
             kind === "description"
-              ? { venues: [{ id: f.entry.id, name: " Counteroffer ", classes: ["workplace"] }] }
+              ? { venues: [{ id: f.entry.id, name: " Counteroffer " }] }
               : kind.startsWith("upgrade")
                 ? null
                 : { characterId: "resident / A" },
@@ -169,7 +168,7 @@ export async function verifyVenueRequestLifetimes(browser) {
         await f.run("description");
         await expect.poll(() => f.requests.length).toBe(1);
         assert.deepEqual(f.requests[0].body, {
-          venues: [{ id: f.entry.id, name: " Fallback ", classes: ["community"] }],
+          venues: [{ id: f.entry.id, name: " Fallback " }],
         });
         await f.reply(0, { missing });
         await f.settle(0);
@@ -210,7 +209,7 @@ export async function verifyVenueRequestLifetimes(browser) {
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => {
           const { name, classes, description } = window.entry.venueDraft;
-          window.h.replaceSource({ description, classes, name });
+          window.h.replaceSource({ description, name });
         });
         await f.reply(0);
         await f.settle(0);

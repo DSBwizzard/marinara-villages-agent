@@ -165,7 +165,6 @@ function sourceScene(scene: VenueScene) {
     placeId: scene.placeId,
     placeName: scene.placeName,
     zoneId: scene.zoneId,
-    spaceClass: scene.spaceClass,
     area: scene.area,
     privateOwnerId: scene.privateOwnerId,
     privateAccessOwnerId: scene.privateAccessOwnerId,

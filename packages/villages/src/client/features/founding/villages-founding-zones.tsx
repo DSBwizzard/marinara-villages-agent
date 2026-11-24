@@ -9,11 +9,11 @@ export function foundingLayoutZones(venue: VillageVenue) {
     { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: undefined as string[] | undefined },
     ...(venue.spaces ?? []).map((zone) => ({
       ...zone,
-      kind: zone.venueClass === "residence" ? "shared-residence" : "public",
+      kind: "public",
     })),
     ...(venue.privateSpaces ?? []).map((zone) => ({
       ...zone,
-      kind: zone.venueClass === "residence" ? "private-residence" : "restricted",
+      kind: "personal",
     })),
   ]);
 }

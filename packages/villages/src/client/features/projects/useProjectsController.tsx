@@ -1,15 +1,15 @@
+import { renovationZoneChanges, type ZoneRenovationDraft } from "../../shared/zone-renovation.js";
 import { projectPhysicalDesign } from "../../../shared/helpers/project-design.js";
-import type { VillageSnapshot, VillageVenue, VenueClass } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { useEffect, useRef, useState } from "react";
 import { request, messageFrom } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useProjectWorkspaces } from "./useProjectWorkspaces.js";
 
-function draftVenue(name: string, classes: VenueClass[], physicalDesign: string): VillageVenue {
+function draftVenue(name: string, physicalDesign: string): VillageVenue {
   return {
     id: "draft",
     name,
-    classes,
     form: physicalDesign,
     description: "",
     category: "",
@@ -18,7 +18,7 @@ function draftVenue(name: string, classes: VenueClass[], physicalDesign: string)
     presentation: { mapId: "", image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    residenceCapacity: 1,
+
     spaces: [],
     privateSpaces: [],
   };
@@ -38,8 +38,12 @@ export function useProjectsController({
     [draftType, setDraftType] = useState<"new-venue" | "renovation" | "">("");
   const [name, setName] = useState(""),
     [description, setDescription] = useState(""),
-    [classes, setClasses] = useState<VenueClass[]>(["community"]),
     [venueId, setVenueId] = useState("");
+  const [renovationDraft, setRenovationDraft] = useState<{
+    venueId: string;
+    key: string;
+    initial: ZoneRenovationDraft;
+  } | null>(null);
   const selected = useRef(selectedId);
   selected.current = selectedId;
   useEffect(() => {
@@ -54,7 +58,7 @@ export function useProjectsController({
   const initial =
     project?.kind === "new-venue"
       ? {
-          ...draftVenue(project.title, project.venueDraft?.classes ?? ["other"], projectPhysicalDesign(project)),
+          ...draftVenue(project.title, projectPhysicalDesign(project)),
           ...(project.plan
             ? {
                 form: project.plan.form,
@@ -64,27 +68,30 @@ export function useProjectsController({
                 spaces: project.plan.spaces,
                 privateSpaces: project.plan.privateSpaces.map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" })),
                 presentation: { mapId: "", image: project.plan.exteriorImage, x: null, y: null },
-                residenceCapacity: project.plan.capacity,
               }
             : {}),
         }
       : target
         ? {
             ...target,
-            classes: project?.lifecycle?.change?.classes ?? target.classes,
             form: project?.lifecycle?.change?.form ?? target.form,
           }
         : null;
+  const seedDraft =
+    !project && draftType === "renovation" && renovationDraft?.venueId === venueId ? renovationDraft : null;
   const workspace = useProjectWorkspaces(
-    project ? "project:" + project.id : "draft:" + draftType + ":" + venueId,
+    project ? "project:" + project.id : "draft:" + draftType + ":" + venueId + (seedDraft ? ":" + seedDraft.key : ""),
     {
       revision: project?.lifecycle?.revision,
       venue: initial,
-      title: project?.title ?? name,
-      detail: project?.lifecycle?.change?.detail ?? description,
-      zones: project?.lifecycle?.change?.zones ?? target?.zones?.filter((zone) => zone.kind !== "exterior") ?? [],
-      roomEdits: project?.lifecycle?.change?.roomEdits ?? [],
-      capacity: project?.lifecycle?.change?.capacity ?? initial?.residenceCapacity ?? 1,
+      title: seedDraft?.initial.title ?? project?.title ?? name,
+      detail: seedDraft?.initial.detail ?? project?.lifecycle?.change?.detail ?? description,
+      zones:
+        seedDraft?.initial.zones ??
+        project?.lifecycle?.change?.zones ??
+        target?.zones?.filter((zone) => zone.kind !== "exterior") ??
+        [],
+      roomEdits: seedDraft?.initial.roomEdits ?? project?.lifecycle?.change?.roomEdits ?? [],
     },
     String(snapshot?.isFounded ?? ""),
   );
@@ -121,14 +128,24 @@ export function useProjectsController({
     const next = await run(
       draftType === "new-venue" ? "/projects" : "/projects/renovations/" + encodeURIComponent(venueId),
       draftType === "new-venue"
-        ? { name, description, classes }
+        ? { name, description }
         : {
             title: name,
             detail: description,
-            classes: workspace.draft.venue?.classes,
-            capacity: workspace.draft.capacity,
-            form: workspace.draft.venue?.form,
-            zones: workspace.draft.zones,
+            ...(seedDraft
+              ? {
+                  ...(workspace.draft.venue?.form !== seedDraft.initial.base.form
+                    ? { form: workspace.draft.venue?.form }
+                    : {}),
+                  zones: renovationZoneChanges(workspace.draft.zones, seedDraft.initial.base.zones ?? []),
+                  expectedZoneIds: seedDraft.initial.base.zones
+                    ?.filter((zone) => zone.kind !== "exterior")
+                    .map((zone) => zone.id),
+                }
+              : {
+                  form: workspace.draft.venue?.form,
+                  zones: workspace.draft.zones,
+                }),
             roomEdits: workspace.draft.roomEdits,
           },
     );
@@ -147,7 +164,6 @@ export function useProjectsController({
     const next = await (project.kind === "new-venue"
       ? action("plan", {
           expectedRevision: draft.revision,
-          classes: venue.classes,
           form: venue.form,
           venueType: venue.venueType,
           exteriorDescription: venue.description,
@@ -156,15 +172,13 @@ export function useProjectsController({
           layout: venue.layout,
           spaces: venue.spaces ?? [],
           privateSpaces: venue.privateSpaces ?? [],
-          capacity: draft.capacity,
         })
       : action("revise", {
           expectedRevision: draft.revision,
           title: draft.title,
           detail: draft.detail,
           form: venue.form,
-          classes: venue.classes,
-          capacity: draft.capacity,
+
           zones: draft.zones,
           roomEdits: draft.roomEdits,
         }));
@@ -180,8 +194,6 @@ export function useProjectsController({
     setName,
     description,
     setDescription,
-    classes,
-    setClasses,
     venueId,
     setVenueId,
     project,
@@ -190,7 +202,12 @@ export function useProjectsController({
     action,
     create,
     save,
-    startRenovation: (venue: VillageVenue) => {
+    startRenovation: (venue: VillageVenue, initial?: ZoneRenovationDraft) => {
+      setRenovationDraft(initial ? { venueId: venue.id, key: createVillagesClientId(), initial } : null);
+      if (initial) {
+        setName(initial.title);
+        setDescription(initial.detail);
+      }
       setSelectedId("");
       setDraftType("renovation");
       setVenueId(venue.id);

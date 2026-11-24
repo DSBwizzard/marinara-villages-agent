@@ -729,13 +729,13 @@ await runCase("native-repair/checkpoint", async () => {
   const checkpoint = await f.api.createCheckpoint("Before edit", "before-edit"),
     record = await wishRecord(f),
     original = await f.read();
+  const zone = original.venues[0].zones!.find((row) => row.kind !== "exterior")!;
   const access = {
-    action: "venue-policy" as const,
+    action: "zone-policy" as const,
     operationId: "hall-hours",
     expectedRevision: original.venues[0].access!.revision,
-    zoneId: null,
-    managerIds: ["player"],
-    visitorHours: [],
+    zoneId: zone.id,
+    policy: { ...zone.access!, visitorHours: [] },
   };
   await f.repository.mutateAuthority((state) => applyAccessCommand(state.venues[0], access, "player", at, ["player"]));
   const edit = await f.prepare(record.id, "edit", "Only in spring.");

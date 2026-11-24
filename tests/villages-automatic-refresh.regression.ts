@@ -249,7 +249,6 @@ async function main() {
           ...[
             venueFixture({
               residentIds: [null].filter((id) => typeof id === "string" && !!id),
-              classes: false || null ? ["residence"] : ["other"],
               id: "square",
               name: "Village Square",
               category: "public",
@@ -400,16 +399,15 @@ async function main() {
             venueFixture({
               ...state.venues[0]!,
               id: "rosa-home",
-              classes: ["residence"],
               baseClasses: ["residence"],
               zones: undefined,
               spaces: undefined,
               residentIds: ["housing-resident"],
+
               name: "Rosa home",
               privateSpaces: [
                 {
                   id: "private:housing-resident",
-                  venueClass: "residence",
                   ownerId: "housing-resident",
                   name: "Bedroom",
                   purpose: "Rest",
@@ -423,12 +421,12 @@ async function main() {
             venueFixture({
               ...state.venues[0]!,
               id: "empty-venue",
-              classes: ["residence"],
               baseClasses: ["residence"],
               zones: undefined,
               spaces: undefined,
               residentIds: [],
               name: "The bakery",
+
               description: "A small bakery.",
               occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
               presentation: { image: null, x: 0.6, y: 0.6 },

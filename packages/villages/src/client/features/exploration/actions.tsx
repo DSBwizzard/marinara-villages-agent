@@ -1,4 +1,4 @@
-import type { VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
 
@@ -32,7 +32,7 @@ export function useOpenPlace(ports: {
   worldScope?: string;
   screen?: string;
   setVenueReturnTo?: React.Dispatch<SetStateAction<"home" | "menu" | "room" | "person">>;
-  setVenueSection?: React.Dispatch<SetStateAction<"about" | "zones" | "manage">>;
+  setVenueSection?: React.Dispatch<SetStateAction<"about" | "zones" | "arrangements">>;
   setVenueEditError?: (error: string) => void;
   setVenueEditNotice?: (notice: string) => void;
   setExploreSheet: React.Dispatch<SetStateAction<ExplorationSheet>>;
@@ -43,9 +43,6 @@ export function useOpenPlace(ports: {
   setVenuePage: React.Dispatch<SetStateAction<"view" | "edit" | "proposal">>;
   setVenueProposalDraft: React.Dispatch<
     SetStateAction<{
-      classes: VenueClass[];
-      capacity: number;
-
       title: string;
       description: string;
     }>

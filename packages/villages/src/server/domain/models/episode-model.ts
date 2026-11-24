@@ -61,7 +61,6 @@ export type AcceptedEpisode = {
       zoneId: string;
       segment: number;
       path: string[];
-      spaceClass: import("./world.js").VillageVenueClass;
       area: "outside" | "public" | "shared" | "private";
       privateOwnerId: string;
       trespass?: import("../../../shared/helpers/venue-access.js").TrespassReason;

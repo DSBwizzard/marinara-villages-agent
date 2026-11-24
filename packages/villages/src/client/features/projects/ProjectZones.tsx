@@ -1,22 +1,14 @@
 import { draftZonePolicy } from "../founding/villages-founding-zones.js";
 import type { VillageVenue, VillageZoneDraft } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { ClassChoices, ArtworkUpload } from "./ProjectDesign.js";
+import { ArtworkUpload } from "./ProjectDesign.js";
 import { useState } from "react";
 import { ProjectRoomEditor } from "./ProjectRoomEditor.js";
 import type { DraftProjectRoomEdit } from "./useProjectWorkspaces.js";
 
-const personalKind = (kind: string) => ["private-residence", "staff", "restricted"].includes(kind);
-function kindFor(role: string, personal: boolean): VillageZoneDraft["kind"] {
-  return personal
-    ? role === "residence"
-      ? "private-residence"
-      : role === "workplace"
-        ? "staff"
-        : "restricted"
-    : role === "residence"
-      ? "shared-residence"
-      : "public";
+const personalKind = (kind: string) => ["personal", "restricted"].includes(kind);
+function kindFor(personal: boolean): VillageZoneDraft["kind"] {
+  return personal ? "personal" : "public";
 }
 export function ProjectZones({
   venue,
@@ -69,12 +61,12 @@ export function ProjectZones({
         ...(venue.spaces ?? []).map((zone) => ({
           ...zone,
           name: zone.name ?? "",
-          kind: kindFor(zone.venueClass, false),
+          kind: kindFor(false),
         })),
         ...(venue.privateSpaces ?? []).map((zone) => ({
           ...zone,
           name: zone.name ?? "",
-          kind: kindFor(zone.venueClass, true),
+          kind: kindFor(true),
         })),
       ];
   const selected = rows.find((zone) => zone.id === selectedId);
@@ -111,14 +103,12 @@ export function ProjectZones({
     });
   const add = (personal: boolean) => {
     if (rows.length >= 6) return;
-    const role = venue.classes?.[0] ?? "other";
     const zone = {
       id: "zone:" + createVillagesClientId(),
       name: "New Zone",
       purpose: "",
       description: "",
-      kind: kindFor(role, personal),
-      venueClass: role,
+      kind: personal && renovation ? ("restricted" as const) : kindFor(personal),
       connectedTo: ["exterior"],
       controllerIds: [],
     };
@@ -127,8 +117,8 @@ export function ProjectZones({
       const area = {
         ...zone,
         access: {
-          ...draftZonePolicy(venue, zone, personal),
-          mode: personal || role === "residence" ? ("permission-required" as const) : ("public" as const),
+          ...draftZonePolicy(venue, {}, personal),
+          mode: personal ? ("permission-required" as const) : ("public" as const),
         },
         image: null,
       };
@@ -205,9 +195,7 @@ export function ProjectZones({
               >
                 <span>
                   <strong>{zone.name || "Unnamed Zone"}</strong>
-                  <small>
-                    {personalKind(zone.kind) ? "Private" : "Shared"} · {zone.venueClass}
-                  </small>
+                  <small>{personalKind(zone.kind) ? "Private" : "Shared"}</small>
                 </span>
                 <span>›</span>
               </button>
@@ -354,16 +342,20 @@ export function ProjectZones({
                 ) : null}
               </div>
               <div className="vp-zone-options">
-                {!mobile || optionPage === "main" ? (
-                  <>
-                    <span className="vp-label">Class</span>
-                    <ClassChoices
-                      value={[selected.venueClass]}
-                      choices={venue.classes ?? []}
-                      multiple={false}
-                      onChange={([role]) => patch({ venueClass: role, kind: kindFor(role, privateRoom) })}
-                    />
-                  </>
+                {privateRoom && renovation && !existingRoom && (!mobile || optionPage === "main") ? (
+                  <label>
+                    Room use
+                    <select
+                      aria-label="Room use"
+                      value={selected.kind}
+                      onChange={(event) =>
+                        patch({ kind: event.target.value as "personal" | "restricted", controllerIds: [] })
+                      }
+                    >
+                      <option value="restricted">Shared Zone</option>
+                      <option value="personal">Personal room</option>
+                    </select>
+                  </label>
                 ) : null}
                 {hasControllers && (!mobile || optionPage === "controllers") ? (
                   <>

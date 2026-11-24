@@ -24,7 +24,7 @@ import { registerVillageSettingsRoutes } from "../packages/villages/src/server/f
 function deferred() {
   return Promise.withResolvers<void>();
 }
-const hall = () => venueDraft({ name: "Hall", description: "A public meeting place", classes: ["community"] }, null);
+const hall = () => venueDraft({ name: "Hall", description: "A public meeting place" }, null);
 function fixture(name: string) {
   let state = defaultVillageState();
   state.name = name;

@@ -111,7 +111,7 @@ await runCase("narration-place/discovery", () => {
   assert.equal(receipt.kind, "discovery");
   assert.deepEqual(place.knownBy, ["player", "a"]);
   assert.equal(place.prepared, false);
-  assert.deepEqual(place.location.classes, ["other"]);
+  assert.equal(Object.hasOwn(place.location, "classes"), false);
   assert.equal(f.state.venues.length, 3);
   assert.equal(memoryHash(f.state.venues[0]), before, "discovery never constructs or edits the current Venue");
   for (const zone of place.location.zones!) {

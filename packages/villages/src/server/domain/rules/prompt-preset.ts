@@ -2,7 +2,6 @@ import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admis
 import type { TownMapFit, VillageTownMapView, VillageVenue } from "../models/world.js";
 import { asTrimmedString } from "./coerce.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { hasVenueClass } from "./venue-model.js";
 import { badGateway } from "./errors.js";
 /** Bound venue event text and decision titles. */
 export const MAX_EVENT_TEXT_LENGTH = 280;
@@ -55,17 +54,12 @@ export function readPlaceDescription(value: unknown): string {
 }
 /** Maximum authored Places in a Village, including housing. */
 export const MAX_PLACES = 48;
-/** Routine destinations exclude worksites and residence-only Places. */
+/** Existing Zones and access policies decide which activities a place supports. */
 export function routineVenues(venues: readonly VillageVenue[]): VillageVenue[] {
-  return venues.filter(
-    (venue) =>
-      venue.constructionStatus !== "worksite" &&
-      (venue.classes?.length ? venue.classes.some((venueClass) => venueClass !== "residence") : !isHousePlace(venue)),
-  );
+  return venues.filter((venue) => venue.constructionStatus !== "worksite");
 }
-/** Housing classification also applies before residents move in. */
-export function isHousePlace(place: Pick<VillageVenue, "occupancy" | "classes">): boolean {
-  return hasVenueClass(place, "residence");
+export function isHousePlace(place: Pick<VillageVenue, "occupancy" | "residentIds">): boolean {
+  return place.occupancy.playerHome || !!place.residentIds?.length;
 }
 
 /**

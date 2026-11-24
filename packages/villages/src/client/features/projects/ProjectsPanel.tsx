@@ -7,7 +7,7 @@ import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { StorybookHeading } from "../../shared/StorybookHeading.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
 
-import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
+import { ArtworkUpload, ProjectDrawing, titleCase } from "./ProjectDesign.js";
 import { ProjectZones } from "./ProjectZones.js";
 import { projectStyles } from "./project-styles.js";
 import type { ProjectsController } from "./useProjectsController.js";
@@ -420,12 +420,7 @@ export function ProjectsPanel({
                       onChange={(event) => c.setDescription(event.target.value)}
                     />
                   </label>
-                  {c.draftType === "new-venue" ? (
-                    <>
-                      <span className="vp-label">Classes · up to two</span>
-                      <ClassChoices value={c.classes} onChange={c.setClasses} />
-                    </>
-                  ) : null}
+                  {c.draftType === "new-venue" ? <></> : null}
                   <button className="vp-primary" disabled={draft.busy || (c.draftType === "renovation" && !c.venueId)}>
                     Create draft
                   </button>
@@ -572,11 +567,7 @@ export function ProjectsPanel({
                             </label>
                           </>
                         ) : null}
-                        <span className="vp-label">Classes · up to two</span>
-                        <ClassChoices
-                          value={venue.classes ?? []}
-                          onChange={(classes) => patchVenue({ ...venue, classes })}
-                        />
+
                         <label>
                           Physical design
                           <textarea
@@ -592,33 +583,16 @@ export function ProjectsPanel({
                             }
                           />
                         </label>
-                        {venue.classes?.includes("residence") ? (
-                          <label className="vp-capacity">
-                            Residence capacity
-                            <input
-                              autoComplete="off"
-                              type="number"
-                              min={1}
-                              max={4}
-                              value={draft.capacity}
-                              onChange={(event) => workspace.field("capacity")(Number(event.target.value))}
-                            />
-                          </label>
-                        ) : null}
                         {project.kind === "new-venue" ? (
                           <ArtworkUpload busy={draft.busy} onUpload={(file) => void upload(file)} />
                         ) : null}
                       </fieldset>
                     ) : (
                       <>
-                        <Facts rows={[["Classes", (venue.classes ?? []).map(titleCase).join(" · ")]]} />
                         <label>
                           Physical design
                           <textarea autoComplete="off" aria-label="Physical design" readOnly value={intended} />
                         </label>
-                        {venue.classes?.includes("residence") ? (
-                          <Facts rows={[["Residence capacity", String(draft.capacity)]]} />
-                        ) : null}
                       </>
                     )}
                   </section>

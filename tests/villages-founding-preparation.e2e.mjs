@@ -46,7 +46,7 @@ await withBrowser(browser, async () => {
           {
             id: "private:base",
             name: "Signal Loft",
-            kind: "private-residence",
+            kind: "personal",
             description: "",
           },
         ],

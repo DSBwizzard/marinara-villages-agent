@@ -1,17 +1,30 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { VenueRunnersRow } from "../venues/VenueRunners.js";
+import { foundingAccess } from "./founding-access.js";
+import {
+  ArrangementSummary,
+  arrangementBackLabel,
+  arrangementTitle,
+  arrangementBack,
+  arrangementAddLabel,
+  type ArrangementPage,
+} from "../venues/ArrangementNavigation.js";
+import { FoundingPeople } from "./FoundingPeople.js";
+import { FoundingAccess } from "./FoundingAccess.js";
+import { useEffect, useLayoutEffect, useId, useRef, useState, type ReactNode } from "react";
 import { FoundingDialog } from "./FoundingDialog.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
-import type { SetupVenueDraft } from "../../shared/types.js";
+import type { SetupVenueDraft, Portrait } from "../../shared/types.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { addFoundingZone } from "./founding-template.js";
-import { foundingHomeMembers, foundingSleepZones, reconcileFoundingHome } from "./founding-homes.js";
+import { foundingHomeMembers, reconcileFoundingHome } from "./founding-homes.js";
+import { draftZonePolicy } from "./villages-founding-zones.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { DESK_STYLES } from "../../shared/desk-styles.js";
-import { AssignedVillagers, VenueProfile } from "../../shared/VenueProfile.js";
+import { VenueProfile } from "../../shared/VenueProfile.js";
 import { VillageIcon } from "../../shared/VillageIcon.js";
 import { VenueZoneRow, type VenueSection } from "../../shared/VenueNavigation.js";
-import { QuickStartZoneArtwork } from "./QuickStartZoneArtwork.js";
-import { draftZonePolicy, FoundingConnections } from "./villages-founding-zones.js";
+import { ZoneImageControls } from "../../shared/ZoneImageControls.js";
+import { FoundingConnections } from "./villages-founding-zones.js";
 import { foundingVenueIssues, type FoundingIssue } from "./villages-founding-workspace-state.js";
 
 export function QuickStartVenues({
@@ -40,13 +53,15 @@ export function QuickStartVenues({
   onRetrySaving,
   onCloseVenue,
   backLabel,
+  onRedraft,
+  onRemove,
 }: {
   inlineVenue?: boolean;
   mobile?: boolean;
   daylight?: boolean;
   venues: SetupVenueDraft[];
   locationName: string;
-  people: { id: string; name: string }[];
+  people: { id: string; name: string; portrait?: Portrait }[];
   selectedId: string | null;
   busy: boolean;
   imageBusy: boolean;
@@ -66,9 +81,13 @@ export function QuickStartVenues({
   onRetrySaving?(): void;
   onCloseVenue?(): void;
   backLabel?: string;
+  onRedraft?(venue: SetupVenueDraft): void;
+  onRemove?(venue: SetupVenueDraft): Promise<boolean> | boolean;
 }) {
+  const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [section, setSection] = useState<VenueSection>("about");
+  const [editingAbout, setEditingAbout] = useState(false);
   const [zoneDetails, setZoneDetails] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
@@ -79,43 +98,49 @@ export function QuickStartVenues({
   const venuesRoot = useRef<HTMLElement>(null);
   const venueBack = useRef<HTMLButtonElement>(null);
   const openedFromPin = useRef(false);
-  const zoneName = useRef<HTMLInputElement>(null);
+  const returnFocus = useRef<{ id: string; pin: boolean } | null>(null);
   const fieldId = useId();
   const [zoneId, setZoneId] = useState("exterior");
   const selected = venues.find((venue) => venue.id === selectedId) ?? venues[0];
   const ordered = [
-    ...venues.filter((venue) => venue.classes?.includes("residence")),
-    ...venues.filter((venue) => !venue.classes?.includes("residence")),
+    ...venues.filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length),
+    ...venues.filter((venue) => !(venue.occupancy.playerHome || !!venue.residentIds?.length)),
   ];
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const open = editorOpen && !!selected;
   const inlineOpen = inlineVenue && open;
   const closeVenue = () => {
+    if (inlineOpen && selected) returnFocus.current = { id: selected.id, pin: mobile || openedFromPin.current };
     setEditorOpen(false);
     onCloseVenue?.();
-    if (!inlineOpen || !selected) return;
-    const id = CSS.escape(selected.id);
-    requestAnimationFrame(() => {
-      const root = venuesRoot.current;
-      const pin =
-        mobile || openedFromPin.current ? root?.querySelector<HTMLButtonElement>(`[data-pin-id="${id}"]`) : null;
-      (pin ?? root?.querySelector<HTMLButtonElement>(`[data-venue-id="${id}"]`))?.focus({ preventScroll: true });
-    });
   };
+  useLayoutEffect(() => {
+    if (editorOpen || !returnFocus.current) return;
+    const { id, pin } = returnFocus.current,
+      root = venuesRoot.current;
+    returnFocus.current = null;
+    (pin
+      ? root?.querySelector<HTMLButtonElement>(`[data-pin-id="${CSS.escape(id)}"]`)
+      : root?.querySelector<HTMLButtonElement>(`[data-venue-id="${CSS.escape(id)}"]`)
+    )?.focus({ preventScroll: true });
+  }, [editorOpen]);
   const issues = foundingVenueIssues(venues, false);
-  const members = selected ? foundingHomeMembers(selected) : [];
   const actors = [{ id: "player", name: "You" }, ...people];
   const patch = (venue: SetupVenueDraft) => onPatch(reconcileFoundingHome(venue));
   const selectSection = (next: VenueSection) => {
+    setArrangementPage(null);
     setSection(next);
+    setEditingAbout(false);
     setConnectionsOpen(false);
     setZoneDetails(false);
     setChoiceError("");
   };
   const selectZone = (id: string) => {
     const opener = document.activeElement;
+    setArrangementPage(null);
     setZoneId(id);
+    setEditingAbout(false);
     setZoneDetails(true);
     setChoiceError("");
     requestAnimationFrame(() => {
@@ -147,12 +172,16 @@ export function QuickStartVenues({
     setConnectionsOpen(field === "layout" || field === "sleep");
     setSection(
       field === "name" || field === "form" || field === "layout" || field === "sleep"
-        ? "manage"
+        ? field === "layout" || field === "sleep"
+          ? "zones"
+          : "about"
         : field === "assignment"
           ? "about"
           : "zones",
     );
+    setArrangementPage(field === "assignment" ? { kind: "home" } : null);
     setZoneDetails(field !== "sleep" && !!focusIssue.zoneId);
+    setEditingAbout(true);
     setEditorOpen(true);
   }, [focusIssue, inlineVenue]);
   useEffect(() => {
@@ -174,12 +203,14 @@ export function QuickStartVenues({
     });
     return () => cancelAnimationFrame(frame);
   }, [open, inlineOpen, selected?.id, focusIssue, mobile]);
-  const zoneAccess = zone && selected ? (zone.access ?? draftZonePolicy(selected, zone, personal)) : undefined;
   const area = zoneId === "exterior" ? "exterior" : personal ? "private" : "interior";
   const artworkZone = zone;
   const artworkArea = artworkZone ? area : "exterior";
   const image = artworkZone ? artworkZone.image : selected?.presentation.image;
-  const artworkName = artworkZone?.name || (artworkZone ? "Zone" : "Entrance");
+  const entranceName = selected?.zones?.find((row) => row.id === "exterior")?.name;
+  const artworkName =
+    artworkZone?.name ||
+    (artworkZone ? "Zone" : entranceName && entranceName !== "Exterior" ? entranceName : "Entrance");
   const fieldIssue = (field: FoundingIssue["field"]) =>
     focusIssue?.venueId === selected?.id
       ? issues.find(
@@ -224,41 +255,84 @@ export function QuickStartVenues({
     }
   };
   const cards = ordered.map((venue) => {
-    const home = venue.classes?.includes("residence");
+    const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
     return (
-      <button
-        key={venue.id}
-        type="button"
-        className="villages-quick-venue-card"
-        aria-label={venue.name || "Venue"}
-        aria-expanded={inlineVenue ? inlineOpen && selected?.id === venue.id : undefined}
-        data-venue-id={venue.id}
-        data-selected={selected?.id === venue.id}
-        disabled={busy || imageBusy}
-        onClick={() => {
-          openedFromPin.current = false;
-          onSelect(venue);
-          selectSection("about");
-          setEditorOpen(true);
-        }}
-      >
-        <span className="villages-quick-venue-icon">
-          <VillageIcon name={home ? "places" : "people"} />
-        </span>
-        <span className="villages-quick-venue-copy">
-          <strong>{venue.name || "Venue"}</strong>
-          <small className="villages-quick-zone-summary">
-            {home
-              ? foundingHomeMembers(venue)
-                  .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
-                  .join(", ")
-              : venue.classes?.includes("community")
-                ? "Community Venue"
-                : venue.venueType || venue.classes?.join(" · ") || "Venue"}
-          </small>
-        </span>
-        <span aria-hidden="true">›</span>
-      </button>
+      <div className="villages-founding-venue-row" key={venue.id}>
+        <button
+          type="button"
+          className="villages-quick-venue-card"
+          aria-label={venue.name || "Venue"}
+          aria-expanded={inlineVenue ? inlineOpen && selected?.id === venue.id : undefined}
+          data-venue-id={venue.id}
+          data-selected={selected?.id === venue.id}
+          disabled={busy || imageBusy}
+          onClick={() => {
+            openedFromPin.current = false;
+            onSelect(venue);
+            selectSection("about");
+            setEditorOpen(true);
+          }}
+        >
+          <span className="villages-quick-venue-icon">
+            <VillageIcon name={home ? "places" : "people"} />
+          </span>
+          <span className="villages-quick-venue-copy">
+            <strong>{venue.name || "Venue"}</strong>
+            <small className="villages-quick-zone-summary">
+              {home
+                ? foundingHomeMembers(venue)
+                    .map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident")
+                    .join(", ")
+                : venue.category === "public-center"
+                  ? "Community Venue"
+                  : venue.venueType || "Venue"}
+            </small>
+          </span>
+          <span aria-hidden="true">›</span>
+        </button>
+        {(onRedraft || onRemove) && (
+          <details
+            className="villages-founding-venue-options"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}
+          >
+            <summary role="button" aria-label={`Options for ${venue.name || "Venue"}`}>
+              ⋯
+            </summary>
+            <div>
+              {onRedraft && (
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  onClick={(event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    onRedraft(venue);
+                  }}
+                >
+                  Redraft Venue
+                </button>
+              )}
+              {onRemove && (
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  onClick={(event) => {
+                    event.currentTarget.closest("details")?.removeAttribute("open");
+                    onRemove(venue);
+                  }}
+                >
+                  Remove Venue
+                </button>
+              )}
+            </div>
+          </details>
+        )}
+      </div>
     );
   });
   const venuePage =
@@ -272,9 +346,73 @@ export function QuickStartVenues({
         >
           <VenueProfile
             daylight={daylight}
-            name={selected.name || "Venue"}
-            type={selected.venueType || selected.classes?.join(" · ") || "Venue"}
-            mapName={locationName}
+            name={
+              arrangementPage
+                ? (actors.find((row) => row.id === arrangementPage.personId)?.name ??
+                  (arrangementPage.adding
+                    ? arrangementPage.kind === "home"
+                      ? "Add resident"
+                      : arrangementPage.kind === "work"
+                        ? "Add worker"
+                        : "Add person"
+                    : arrangementTitle(arrangementPage, selected)))
+                : zoneDetails
+                  ? artworkName
+                  : selected.name || "Venue"
+            }
+            headingAction={
+              arrangementPage &&
+              !arrangementPage.personId &&
+              !arrangementPage.adding &&
+              (arrangementPage.kind === "home" || arrangementPage.kind === "work") ? (
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  onClick={() => setArrangementPage({ ...arrangementPage, adding: true })}
+                >
+                  {arrangementAddLabel(arrangementPage.kind)}
+                </button>
+              ) : undefined
+            }
+            heading={
+              zoneDetails && !arrangementPage ? (
+                <h1 className={P + "-storybook-heading"} aria-label={artworkName}>
+                  <input
+                    autoComplete="off"
+                    aria-label="Zone name"
+                    {...errorProps("zone-name")}
+                    value={
+                      zone
+                        ? (zone.name ?? "")
+                        : entranceName === undefined || entranceName === "Exterior"
+                          ? "Entrance"
+                          : entranceName
+                    }
+                    maxLength={60}
+                    disabled={busy || imageBusy}
+                    onChange={(e) => {
+                      if (zone) patchZone({ name: e.target.value });
+                      else
+                        patch({
+                          ...selected,
+                          zones: [
+                            {
+                              id: "exterior",
+                              kind: "exterior",
+                              name: e.target.value,
+                              description: selected.description,
+                              image: selected.presentation.image,
+                              seen: true,
+                              purpose: "Arrival and approach",
+                            },
+                            ...(selected.zones ?? []).filter((row) => row.id !== "exterior"),
+                          ],
+                        });
+                    }}
+                  />
+                </h1>
+              ) : undefined
+            }
             entranceImage={selected.presentation.image?.url}
             zoneImage={
               section === "zones" && zoneDetails && zone && image ? { url: image.url, name: artworkName } : undefined
@@ -288,61 +426,127 @@ export function QuickStartVenues({
             }
             roomBackdrop={section === "zones" && zoneDetails && !!image}
             navigation={
-              <button ref={venueBack} className={P + "-venue-back"} type="button" onClick={closeVenue}>
-                {onCloseVenue ? backLabel || "← Review" : inlineVenue ? "← Map" : "← Venues"}
+              <button
+                ref={zoneDetails ? zoneBack : venueBack}
+                className={P + "-venue-back"}
+                type="button"
+                onClick={
+                  arrangementPage
+                    ? () => setArrangementPage(arrangementBack(arrangementPage))
+                    : zoneDetails
+                      ? backToZones
+                      : closeVenue
+                }
+              >
+                {arrangementPage
+                  ? `← ${arrangementBackLabel(arrangementPage, selected)}`
+                  : zoneDetails
+                    ? `← ${selected.name || "Venue"}`
+                    : onCloseVenue
+                      ? backLabel || "← Review"
+                      : inlineVenue
+                        ? "← Map"
+                        : "← Venues"}
               </button>
             }
-            tabs={{ section, onSelect: selectSection }}
+            tabs={{
+              hidden: !!arrangementPage,
+              section,
+              zone: zoneDetails,
+              onSelect: selectSection,
+            }}
           >
-            {section === "about" ? (
-              <>
-                <AssignedVillagers
-                  place={selected}
-                  locked
-                  nameOfCharacter={(id) => actors.find((actor) => actor.id === id)?.name ?? "Resident"}
+            {!arrangementPage && !zoneDetails && section === "about" ? (
+              <section className="villages-manage" aria-label="About this venue">
+                <div className="villages-people-actions">
+                  {onRedraft && (
+                    <button type="button" disabled={busy || imageBusy} onClick={() => onRedraft(selected)}>
+                      Redraft Venue
+                    </button>
+                  )}
+                  {onRemove && (
+                    <button
+                      type="button"
+                      disabled={busy || imageBusy}
+                      onClick={async () => {
+                        if (await onRemove(selected)) closeVenue();
+                      }}
+                    >
+                      Remove Venue
+                    </button>
+                  )}
+                  <button type="button" disabled={busy || imageBusy} onClick={() => setEditingAbout(!editingAbout)}>
+                    {editingAbout ? "Done" : "Edit"}
+                  </button>
+                </div>
+                {editingAbout ? (
+                  <fieldset className="villages-manage-form" disabled={busy || imageBusy}>
+                    <label>
+                      Venue name
+                      <input
+                        autoComplete="off"
+                        aria-label="Venue Name"
+                        {...errorProps("name")}
+                        maxLength={60}
+                        value={selected.name}
+                        onChange={(e) => patch({ ...selected, name: e.target.value })}
+                      />
+                      {fieldError("name")}
+                    </label>
+                    <label>
+                      Description
+                      <textarea
+                        autoComplete="off"
+                        aria-label="Description"
+                        {...errorProps("form")}
+                        maxLength={2000}
+                        rows={2}
+                        value={selected.form ?? ""}
+                        onChange={(e) => patch({ ...selected, form: e.target.value })}
+                      />
+                      {fieldError("form")}
+                    </label>
+                  </fieldset>
+                ) : (
+                  <>
+                    <p>{selected.form}</p>
+                  </>
+                )}
+                <VenueRunnersRow
+                  ids={foundingAccess(selected).managerIds}
+                  nameOf={(id) => actors.find((row) => row.id === id)?.name || id}
+                  disabled={busy || imageBusy}
+                  onOpen={() => setArrangementPage({ kind: "runners" })}
                 />
-              </>
-            ) : null}
-            {section === "manage" && !connectionsOpen ? (
-              <section className={P + "-venue-manage"} aria-label="Manage this venue">
-                <fieldset className="villages-quick-venue-header" disabled={busy || imageBusy}>
-                  <label>
-                    Venue name
-                    <input
-                      autoComplete="off"
-                      aria-label="Venue Name"
-                      {...errorProps("name")}
-                      maxLength={60}
-                      placeholder="Venue name"
-                      value={selected.name}
-                      onChange={(event) => patch({ ...selected, name: event.target.value })}
-                    />
-                    {fieldError("name")}
-                  </label>
-                  <label>
-                    Venue form
-                    <textarea
-                      autoComplete="off"
-                      aria-label="Venue form"
-                      {...errorProps("form")}
-                      maxLength={2000}
-                      rows={2}
-                      placeholder="What does this place look like?"
-                      value={selected.form ?? ""}
-                      onChange={(event) => patch({ ...selected, form: event.target.value })}
-                    />
-                    {fieldError("form")}
-                  </label>
-                </fieldset>
-                <button type="button" className={P + "-button"} onClick={() => setConnectionsOpen(true)}>
-                  Zone connections <span aria-hidden="true">›</span>
-                </button>
               </section>
             ) : null}
-            {section === "manage" && connectionsOpen ? (
+            {arrangementPage ? (
+              <FoundingPeople
+                key={selected.id + zoneId + arrangementPage.kind + (arrangementPage.personId ?? "")}
+                venue={selected}
+                venues={venues}
+                people={actors}
+                onPatch={patch}
+                disabled={busy || imageBusy}
+                page={arrangementPage}
+                onPage={setArrangementPage}
+              />
+            ) : null}
+            {!arrangementPage && !zoneDetails && section === "arrangements" ? (
+              <ArrangementSummary
+                place={selected}
+                disabled={busy || imageBusy}
+                onOpen={(kind) =>
+                  setArrangementPage({
+                    kind,
+                  })
+                }
+              />
+            ) : null}
+            {!arrangementPage && section === "zones" && connectionsOpen && !zoneDetails ? (
               <>
                 <button type="button" className={P + "-venue-back"} onClick={() => setConnectionsOpen(false)}>
-                  ← Manage
+                  ← Zones
                 </button>
                 <FoundingConnections
                   venue={selected}
@@ -356,190 +560,112 @@ export function QuickStartVenues({
                 />
               </>
             ) : null}
-            {section === "zones" && !zoneDetails ? (
-              <section className={`${P}-venue-zone-picker`} aria-label="Zones" ref={zoneList}>
-                <VenueZoneRow
-                  id="exterior"
-                  name="Entrance"
-                  image={selected.presentation.image?.url}
-                  disabled={busy || imageBusy}
-                  current={zoneId === "exterior"}
-                  onOpen={() => selectZone("exterior")}
-                />
-                {[...(selected.spaces ?? []), ...(selected.privateSpaces ?? [])].map((row) => (
+            {section === "zones" && !zoneDetails && !connectionsOpen ? (
+              <>
+                <div className="villages-people-actions">
+                  <button type="button" className={P + "-button"} onClick={() => setConnectionsOpen(true)}>
+                    Zone connections <span aria-hidden="true">›</span>
+                  </button>
+                </div>
+                <section className={`${P}-venue-zone-picker`} aria-label="Zones" ref={zoneList}>
                   <VenueZoneRow
-                    key={row.id}
-                    id={row.id}
-                    name={row.name || "Zone"}
-                    image={row.image?.url}
+                    id="exterior"
+                    name={entranceName && entranceName !== "Exterior" ? entranceName : "Entrance"}
+                    image={selected.presentation.image?.url}
                     disabled={busy || imageBusy}
-                    current={zoneId === row.id}
-                    accessLabel={row.access?.mode === "permission-required" ? "Permission required" : undefined}
-                    onOpen={() => selectZone(row.id)}
+                    current={zoneId === "exterior"}
+                    accessLabel="Open to everyone"
+                    onOpen={() => selectZone("exterior")}
                   />
-                ))}
-              </section>
+                  {[...(selected.spaces ?? []), ...(selected.privateSpaces ?? [])].map((row) => (
+                    <VenueZoneRow
+                      key={row.id}
+                      id={row.id}
+                      name={row.name || "Zone"}
+                      image={row.image?.url}
+                      disabled={busy || imageBusy}
+                      current={zoneId === row.id}
+                      accessLabel={
+                        (
+                          row.access ??
+                          draftZonePolicy(
+                            selected,
+                            row,
+                            selected.privateSpaces?.some((zone) => zone.id === row.id),
+                          )
+                        ).mode === "permission-required"
+                          ? "Invitation only"
+                          : "Open to everyone"
+                      }
+                      onOpen={() => selectZone(row.id)}
+                    />
+                  ))}
+                </section>
+              </>
             ) : null}
-            {section === "zones" && zoneDetails ? (
+            {!arrangementPage && zoneDetails ? (
               <fieldset
-                className="villages-quick-selected-zone"
+                className="villages-quick-selected-zone villages-manage"
                 aria-label="Selected Zone"
                 data-zone-id={zoneId}
                 disabled={busy || imageBusy}
               >
-                <div className={`${P}-venue-zone-toolbar`}>
-                  <button ref={zoneBack} className={P + "-venue-back"} type="button" onClick={backToZones}>
-                    ← Zones
-                  </button>
-                  <header className="villages-quick-zone-heading">
-                    <h3 aria-label={zone ? zone.name || "Zone" : "Entrance"}>
-                      {zone ? (
-                        <input
-                          ref={zoneName}
-                          autoComplete="off"
-                          aria-label="Zone name"
-                          {...errorProps("zone-name")}
-                          value={zone.name ?? ""}
-                          size={Math.max(8, zone.name?.length ?? 0)}
-                          placeholder="Zone name"
-                          maxLength={100}
-                          onChange={(event) => patchZone({ name: event.target.value })}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              event.currentTarget.blur();
-                            }
-                          }}
-                        />
-                      ) : (
-                        "Entrance"
-                      )}
-                    </h3>
-                    {zone ? (
-                      <button
-                        type="button"
-                        aria-label="Rename Zone"
-                        title="Rename Zone"
-                        onClick={() => {
-                          zoneName.current?.focus();
-                          zoneName.current?.select();
-                        }}
-                      >
-                        <svg
-                          className="mari-rgb-static-icon"
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden="true"
-                        >
-                          <path d="m16 3 5 5M3 21l5-1L21 7a2.1 2.1 0 0 0-4-4L4 16l-1 5Z" />
-                        </svg>
-                      </button>
-                    ) : null}
-                  </header>
-                </div>
                 {fieldError("zone-name")}
-                <div className="villages-quick-zone-content">
-                  <div className="villages-quick-zone-fields">
-                    <label className="villages-quick-zone-description">
-                      <span>{zoneId === "exterior" ? "Exterior description" : "Zone description"}</span>
+                <div className="villages-manage-form villages-zone-fields">
+                  <label>
+                    Description
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Description"
+                      {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
+                      value={zone ? zone.description : selected.description}
+                      maxLength={1000}
+                      rows={3}
+                      onChange={(e) =>
+                        zone
+                          ? patchZone({ description: e.target.value })
+                          : patch({ ...selected, description: e.target.value })
+                      }
+                    />
+                    {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
+                  </label>
+                  {zone ? (
+                    <label>
+                      Used for
                       <textarea
                         autoComplete="off"
-                        aria-label="Zone description"
-                        {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
-                        value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
-                        maxLength={1000}
-                        rows={5}
-                        onChange={(event) =>
-                          zoneId === "exterior"
-                            ? patch({ ...selected, description: event.target.value })
-                            : patchZone({ description: event.target.value })
-                        }
+                        aria-label="Used for"
+                        {...errorProps("zone-purpose")}
+                        value={zone.purpose ?? ""}
+                        maxLength={240}
+                        rows={2}
+                        onChange={(e) => patchZone({ purpose: e.target.value })}
                       />
-                      {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
+                      {fieldError("zone-purpose")}
                     </label>
-                    {zone ? (
-                      <label>
-                        Used for
-                        <input
-                          autoComplete="off"
-                          aria-label="Used for"
-                          {...errorProps("zone-purpose")}
-                          value={zone.purpose ?? ""}
-                          maxLength={240}
-                          onChange={(event) => patchZone({ purpose: event.target.value })}
-                        />
-                        {fieldError("zone-purpose")}
-                      </label>
-                    ) : null}
-                  </div>
-                  <div className="villages-founding-zone-use">
-                    {zone && zoneAccess ? (
-                      <fieldset className="villages-founding-venue-choices">
-                        <legend>Visitor access</legend>
-                        {(["public", "permission-required"] as const).map((mode) => (
-                          <button
-                            key={mode}
-                            type="button"
-                            aria-pressed={zoneAccess.mode === mode}
-                            onClick={() => {
-                              const key = personal ? "privateSpaces" : "spaces";
-                              const candidate = {
-                                ...selected,
-                                [key]: selected[key]?.map((row) =>
-                                  row.id === zone.id ? { ...row, access: { ...zoneAccess, mode } } : row,
-                                ),
-                              };
-                              if (
-                                members.some((actor) => {
-                                  const sleep = selected.destinations?.[actor]?.sleep;
-                                  return (
-                                    sleep &&
-                                    foundingSleepZones(selected, actor).some((row) => row.id === sleep) &&
-                                    !foundingSleepZones(candidate, actor).some((row) => row.id === sleep)
-                                  );
-                                })
-                              ) {
-                                setChoiceError("Keep a route to the assigned sleeping Zone.");
-                                return;
-                              }
-                              patch(candidate);
-                              setChoiceError("");
-                            }}
-                          >
-                            {mode === "public" ? "Open to all" : "Permission required"}
-                          </button>
-                        ))}
-                      </fieldset>
-                    ) : null}
-                  </div>
+                  ) : null}
                 </div>
-                <div className="villages-founding-zone-artwork">
-                  <QuickStartZoneArtwork
-                    key={selected.id + ":" + zoneId}
-                    image={image}
-                    reference={artworkZone?.pictureReference ?? (!artworkZone ? selected.pictureReference : undefined)}
-                    name={artworkName}
-                    busy={busy || imageBusy}
-                    onUpload={(file) => onUploadImage(selected, artworkArea, file, artworkZone?.id)}
-                    onGenerate={() => onGenerateImage(selected, artworkArea, artworkZone?.id)}
-                    onRemove={() =>
-                      !artworkZone
-                        ? patch({
-                            ...selected,
-                            pictureReference: undefined,
-                            referenceAppliedId: undefined,
-                            presentation: { ...selected.presentation, image: null },
-                          })
-                        : patchZone({ image: null, pictureReference: undefined, referenceAppliedId: undefined })
-                    }
-                  />
-                </div>
+                {zone && (
+                  <FoundingAccess venue={selected} zoneId={zoneId} onPatch={patch} disabled={busy || imageBusy} />
+                )}
+                <ZoneImageControls
+                  key={selected.id + ":" + zoneId}
+                  name={artworkName}
+                  imageUrl={image?.url}
+                  disabled={busy || imageBusy}
+                  onUpload={(file) => onUploadImage(selected, artworkArea, file, artworkZone?.id)}
+                  onGenerate={() => onGenerateImage(selected, artworkArea, artworkZone?.id)}
+                  onRemove={() =>
+                    !artworkZone
+                      ? patch({
+                          ...selected,
+                          pictureReference: undefined,
+                          referenceAppliedId: undefined,
+                          presentation: { ...selected.presentation, image: null },
+                        })
+                      : patchZone({ image: null, pictureReference: undefined, referenceAppliedId: undefined })
+                  }
+                />
               </fieldset>
             ) : null}
             {choiceError ? <p role="alert">{choiceError}</p> : null}
@@ -564,6 +690,7 @@ export function QuickStartVenues({
       ref={venuesRoot}
       aria-label="Venues"
       data-map-open={(!mobile && mapOpen) || undefined}
+      data-venue-open={inlineOpen || undefined}
     >
       {map ? (
         <section className="villages-forging-card villages-quick-map-panel" aria-label="Starting location map">
@@ -588,7 +715,7 @@ export function QuickStartVenues({
         </section>
       ) : null}
       {!mobile && !onCloseVenue ? (
-        <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
+        <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues" hidden={open}>
           <header className="villages-venue-heading">
             <h2>Starting Venues</h2>
             <div className="villages-quick-venue-actions">

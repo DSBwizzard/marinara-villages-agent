@@ -1,3 +1,4 @@
+import { assertWorkSchedules } from "./venue-work.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { placeRegistry, sceneActorIds } from "./places.js";
 import { projectAgendaReservations } from "./project-focus.js";
@@ -50,8 +51,7 @@ export function normalizeVillageMutation(
       throw new Error("Moving an existing Venue between maps is not supported.");
   }
   const capacity = villageVenueUsage(state);
-  if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
-    assertVillageVenueCapacity(state);
+  if (capacity.total > previousCapacity.total) assertVillageVenueCapacity(state);
   const semanticAccess = (entry: VillageVenue) =>
     JSON.stringify({
       managers: entry.access?.managerIds,
@@ -121,6 +121,10 @@ export function normalizeVillageMutation(
   reconcileSocialPlans(
     state,
     new ZonedDate(sources.now(), state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+  );
+  assertWorkSchedules(
+    state.venues,
+    state.villagers.map((row) => row.characterId),
   );
   projectAgendaReservations(state);
   if (state.foundedAt.length === 0) state.foundedAt = sources.now().toISOString();

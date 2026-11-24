@@ -344,7 +344,6 @@ async function foundingConnectionOwnership() {
   const draftRows = [
     {
       id: "equal-venue",
-      venueClass: "residence",
       residentCharacterId: "equal-resident",
       residentIds: ["equal-resident"],
       playerHome: false,
@@ -357,7 +356,6 @@ async function foundingConnectionOwnership() {
       id: "player-room",
       residentIds: [],
       playerHome: true,
-      venueClass: "residence",
       residentCharacterId: "",
       name: "Your room",
       form: "Room",
@@ -368,7 +366,6 @@ async function foundingConnectionOwnership() {
       id: "community",
       residentIds: [],
       playerHome: false,
-      venueClass: "community",
       residentCharacterId: "",
       name: "Hall",
       form: "Hall",
@@ -407,11 +404,11 @@ async function foundingConnectionOwnership() {
         venues: [
           ...[
             venueFixture({
+              spaces: [{ id: "residence", description: "Blue door", image: null }],
               id: "equal-venue",
               name: label + " room",
               form: "Room",
               description: "Blue door",
-              classes: ["residence"],
               residentIds: ["equal-resident"],
               presentation: { mapId: "", image: null, x: null, y: null },
               occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
@@ -482,7 +479,17 @@ async function foundingConnectionOwnership() {
           ? compactReply(label)
           : operation === "suggest"
             ? {
-                venues: draftRows.map((row) => ({
+                venues: draftRows.slice(0, 1).map((row) => ({
+                  zones: [
+                    {
+                      id: "common:base",
+                      name: "Shared room",
+                      purpose: "Conversation",
+                      description: "A table",
+                      private: false,
+                      connectedTo: ["exterior"],
+                    },
+                  ],
                   ...row,
                   name: `${label} ${row.name}`,
                   layout: "common",
@@ -654,14 +661,21 @@ async function foundingConnectionOwnership() {
                 await a.pause("callback");
               })
             : operation === "suggest"
-              ? suggestStartingVenues({ ...scenarioInput, playerPersonaId: "equal-persona", venues: draftRows })
+              ? suggestStartingVenues({
+                  ...scenarioInput,
+                  mode: "draft-venue",
+                  actionId: "equal-draft",
+                  targetVenueId: "equal-venue",
+                  targetVenue: newSetupVenue("equal-venue", 0.5, 0.5),
+                  newZoneIds: [],
+                  playerPersonaId: "equal-persona",
+                  venues: draftRows,
+                })
               : operation === "image"
                 ? generateFoundingVenueImage({ ...scenarioInput, venue: draftRows[0] })
                 : operation === "upload"
                   ? uploadFoundingVenueImage({ image: png, name: "Uploaded room" })
-                  : draftVillageVenueDescriptions("Quiet harbor", [
-                      { id: "equal-venue", name: "Room", classes: ["residence"] },
-                    ]),
+                  : draftVillageVenueDescriptions("Quiet harbor", [{ id: "equal-venue", name: "Room" }]),
       );
       const outcome = a.scope.run(() =>
         work.then(
@@ -740,7 +754,7 @@ async function foundingConnectionOwnership() {
       }
       if (operation === "suggest") {
         const suggestions = (result.value as { venues: Array<Record<string, unknown>> }).venues;
-        assert.equal(suggestions.length, 3);
+        assert.equal(suggestions.length, 1);
         assert(suggestions.every((venue) => !("x" in venue)));
       }
       if (operation === "image" || operation === "upload") assert.equal((result.value as { id: string }).id, "A-image");
@@ -819,7 +833,6 @@ async function foundingArchitecturePrompts() {
   const venue = {
     id: "bungalow",
     name: "Professor Mari's Bungalow",
-    venueClass: "residence",
     residentIds: ["resident"],
     playerHome: true,
     form: "A pleasant resort bungalow",
@@ -990,11 +1003,10 @@ await main()
     false,
     "Settled drafts discard retired grouping state",
   );
-  const oldHome = newSetupVenue("founding-home:player", "residence", 0.2, 0.3, true);
+  const oldHome = newSetupVenue("founding-home:player", 0.2, 0.3, true);
   const legacyDraft = { ...draft, venues: [oldHome] };
   restore(JSON.parse(JSON.stringify(legacyDraft)));
-  assert.equal(values.setSetupVenues[0].privateSpaces.length, 1);
-  assert.equal(values.setSetupVenues[0].destinations.player.sleep, "private:base");
+  assert.deepEqual(values.setSetupVenues[0], oldHome, "Restoring a draft preserves its authored layout");
   for (const held of [
     { ...legacyDraft, interruptedGeneration: true },
     { ...legacyDraft, editorOriginal: oldHome },

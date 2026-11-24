@@ -341,7 +341,7 @@ async function main() {
     const legacy: any = { ...defaultVillageState(), setupAt: "2026-10-03T12:00:00.000Z" };
     delete legacy.venueCapacityPolicy;
     documents.set("villages-village", { id: "villages-village", kind: "village", data: legacy, revision: 1 });
-    await generateVillageTownMap({ ...input, capacity: 1 } as any);
+    await generateVillageTownMap({ ...input } as any);
     assert.doesNotMatch(imageRequests.at(-1).appearance, /Venue photographs|sixteen|forty-eight/);
     assert.equal(imageRequests.at(-1).appearance.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
   } finally {

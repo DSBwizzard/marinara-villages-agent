@@ -13,12 +13,11 @@ const now = new Date(),
   stamp = now.toISOString(),
   dateKey = agendaDateKey(now),
   weekday = now.toLocaleDateString("en-US", { weekday: "long" });
-function venue(id: string, classes: VillageVenue["classes"] = ["community"]): VillageVenue {
+function venue(id: string, spaces = ["community"]): VillageVenue {
   return venueFixture({
     id,
     name: id,
-    classes,
-    spaces: classes!.map((role) => defaultVenueSpace(role, "The " + role + " interior.")),
+    spaces: spaces.map((id) => defaultVenueSpace(id, "The " + id + " interior.")),
     description: "The outside of " + id,
     category: "",
     presentation: { image: null, x: 0.2, y: 0.3 },
@@ -26,7 +25,7 @@ function venue(id: string, classes: VillageVenue["classes"] = ["community"]): Vi
     residentIds: [],
     workerIds: [],
     improvements: [null, null],
-    residenceCapacity: 1,
+
     capabilities: [],
     state: {
       revision: 0,
@@ -83,28 +82,29 @@ state.seed = "social-fixture";
 state.foundedAt = state.setupAt = stamp;
 let house = venue("house", ["residence", "workplace"]);
 house.residentIds = ["messenger", "alex"];
-house.residenceCapacity = 2;
+
 house.workerIds = ["alex"];
 house.layoutVersion = 1;
 house.zones = [
   { ...defaultVenueSpace("other"), id: "exterior", name: "Exterior", kind: "exterior", seen: true },
-  { ...defaultVenueSpace("residence"), id: "common", name: "Common Space", kind: "shared-residence" },
+  { ...defaultVenueSpace("residence"), id: "common", name: "Common Space", kind: "public" },
   { ...defaultVenueSpace("workplace"), id: "public", name: "Workshop", kind: "public" },
-  { ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"), id: "office", name: "Office", kind: "staff" },
+  { ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"), id: "office", name: "Office", kind: "restricted" },
   {
     ...defaultVenueSpace("residence", "SECRET BEDROOM"),
     id: "private:alex",
     name: "Bedroom",
-    kind: "private-residence",
+    kind: "personal",
     ownerId: "alex",
   },
 ];
 house = venueFixture(house);
+house.zones!.find((zone) => zone.id === "office")!.access!.mode = "permission-required";
 state.venues = [house];
 state.villagers = [villager("messenger", "house", "common"), villager("alex", "house", "office")];
 const saved = coerceVillageState(state);
 
-assert.deepEqual(contactNeighbors(house, "exterior").sort(), ["common", "public"]);
+assert.deepEqual(contactNeighbors(house, "exterior").sort(), ["common", "office", "public"]);
 assert.deepEqual(contactPath(saved, house, "common", "public", "messenger"), ["common", "exterior", "public"]);
 assert.equal(contactPath(saved, house, "common", "office", "messenger"), null, "staff permission is enforced");
 assert.equal(contactPath(saved, house, "common", "private:alex", "messenger"), null, "private ownership is enforced");

@@ -66,20 +66,19 @@ export function venue(id = "cafe", role: "community" | "residence" = "community"
     id: "common",
     name: "Common room",
     purpose: "Meeting",
-    kind: role === "residence" ? ("shared-residence" as const) : ("public" as const),
+    kind: role === "residence" ? ("public" as const) : ("public" as const),
     seen: true,
     connectedTo: ["exterior"],
   };
   const result: VillageVenue = venueFixture({
     id,
     name: id,
-    classes: [role],
     layoutVersion: 1,
     zones: [entrance, common],
     spaces: [common],
     privateSpaces: [],
     residentIds: role === "residence" ? ["a"] : [],
-    residenceCapacity: 2,
+
     description: "A familiar place.",
     category: "",
     form: "A building",
@@ -181,7 +180,6 @@ export function fixture() {
     await service.createNewVenueProject({
       requestId,
       name,
-      classes: ["community"],
       description: "A shared place for making art.",
     });
     const id = state.projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, requestId))!.id;
@@ -192,13 +190,12 @@ export function fixture() {
         exteriorDescription: "A clear entrance.",
         layoutVersion: 1,
         layout: "common",
-        capacity: 2,
+
         spaces: [
           {
             id: "work",
             name: "Work room",
             purpose: "Making art",
-            venueClass: "community",
             description: "A room for making art.",
             connectedTo: ["exterior"],
           },
@@ -219,7 +216,15 @@ export async function renovation(f: Fixture, change: Record<string, unknown> = {
     requestId,
     title: "Renovate",
     detail: "A larger shared room.",
-    capacity: 3,
+    ...(Object.keys(change).length
+      ? {}
+      : {
+          zones: f
+            .state()
+            .venues.find((venue) => venue.id === "cafe")!
+            .zones!.filter((zone) => zone.kind !== "exterior")
+            .map((zone) => ({ ...zone, roomSpecification: "Enlarge this shared room." })),
+        }),
     ...change,
   });
   return f.state().projects.find((project) => Object.hasOwn(project.lifecycle!.commandReceipts, requestId))!.id;

@@ -1,3 +1,4 @@
+import { venueWorkSchema, workOfferViewSchema } from "../../../shared/helpers/venue-work.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import { z } from "zod";
 import type { AcceptedEpisode } from "../models/episode-model.js";
@@ -43,21 +44,25 @@ export function narrationAccessScopes(state: VillageState, actors: string[]) {
           .map((zone) => ({
             id: zone.id,
             name: zone.name,
-            policy: structuredClone(zone.access),
+            policy: managesAccess(venue, zone.id, actorId) ? structuredClone(zone.access) : undefined,
             manages: managesAccess(venue, zone.id, actorId),
             invites: mayInvite(venue, zone, actorId),
           }));
         const permissions = venue.access!.permissions.filter(
           (permission) =>
             !permission.revoked &&
-            (permission.issuerId === actorId ||
-              venueManager ||
-              zones.some((zone) => zone.manages && zone.id === permission.zoneId)),
+            (permission.issuerId === actorId || zones.some((zone) => zone.manages && zone.id === permission.zoneId)),
         );
-        if (!venueManager && !zones.length && !permissions.length) return [];
+        const work = (venue.access!.work ?? []).filter((row) => venueManager || row.characterId === actorId);
+        const workOffers = (venue.access!.workOffers ?? [])
+          .filter((row) => row.requiredIds.includes(actorId))
+          .map(({ previous: _previous, ...row }) => row);
+        if (!venueManager && !zones.length && !permissions.length && !work.length && !workOffers.length) return [];
         return [
           {
             actorId,
+            work: structuredClone(work),
+            workOffers: structuredClone(workOffers),
             ...(venueManager
               ? {
                   venuePolicy: {
@@ -88,6 +93,8 @@ export function narrationAccessScopes(state: VillageState, actors: string[]) {
             venue.access,
             venue.residentIds,
             venue.workerIds,
+            venue.access?.work,
+            venue.access?.workOffers,
             venue.occupancy.playerHome,
             venue.zones?.map((zone) => [zone.id, zone.kind, zone.ownerId, zone.controllerIds, zone.access]),
           ]),
@@ -110,6 +117,8 @@ export const narrationAccessScopeSchema = z
         z
           .object({
             actorId: id,
+            work: z.array(venueWorkSchema).max(100),
+            workOffers: z.array(workOfferViewSchema).max(100),
             venuePolicy: z.object({ managerIds: ids, visitorHours: hoursSchema.nullable() }).strict().optional(),
             zones: z
               .array(
@@ -135,7 +144,7 @@ export const narrationAccessScopeSchema = z
 export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, input: string) {
   // shortcut: keep full rules for structured access and likely access dialogue, extend only if access requests are missed.
   const accessWords =
-    /\b(?:access|permission|invit(?:e|ed|es|ing|ation)|allow(?:ed|ing)?|forbid(?:den)?|ban(?:ned)?|visitor hours|visiting hours|(?:may|can|could) (?:i|we) (?:enter|come|go|use|visit)|come (?:in|through|inside)|let (?:me|us|them|you) (?:in|through)|open (?:the |this )?door|knock|locked|unlock)\b/iu;
+    /\b(?:work|shift|job|schedule|access|permission|invit(?:e|ed|es|ing|ation)|allow(?:ed|ing)?|forbid(?:den)?|ban(?:ned)?|visitor hours|visiting hours|(?:may|can|could) (?:i|we) (?:enter|come|go|use|visit)|come (?:in|through|inside)|let (?:me|us|them|you) (?:in|through)|open (?:the |this )?door|knock|locked|unlock)\b/iu;
   const origin = scene.zoneId ?? "exterior";
   const neighbors = contactNeighbors(venue, origin, scene);
   const named = input.normalize("NFKC").toLowerCase();
@@ -167,20 +176,18 @@ export function sceneAccessDiscussed(scene: VenueScene, venue: VillageVenue, inp
 
 export function narrationAccessPrompt(scopes: NarrationAccessScope[]) {
   return scopes.length
-    ? "Scoped native access authority (GM only). Omitted Zone hours inherit; null removes hours. " +
+    ? 'Scoped native access authority (GM only). Each Zone has explicit visitorHours: "always" or a schedule array. Set hours through zone-policy for that Zone; venue-policy changes only who runs the Venue. Work offers are exact pending terms, not current work. Only the actual required speaker may agree or decline through access.decide outcome:"access-management", zone:null, management:{action:"work-decide",offerId:the exact pending id,accept:true|false}. Require that speaker’s complete current communication explicitly accepting those terms; another person reporting agreement is insufficient. Changes to terms require a fresh proposal and fresh approvals. To propose new terms use management:{action:"work-propose",characterId,terms:{characterId,activity,zoneId,accessZoneIds,days,startMinute,endMinute}}; terms:null proposes ending work. Never invent an agreement or infer one from ordinary work attendance. ' +
         JSON.stringify(
           scopes.map(({ venueId, name, authorities }) => ({
             venueId,
             name,
             authorities: authorities.map((row) => ({
               actorId: row.actorId,
+              work: row.work.length ? row.work : undefined,
+              workOffers: row.workOffers.length ? row.workOffers : undefined,
               venuePolicy: row.venuePolicy
                 ? {
                     managerIds: row.venuePolicy.managerIds,
-                    visitorHours:
-                      row.venuePolicy.visitorHours === null
-                        ? undefined
-                        : hoursSchema.parse(row.venuePolicy.visitorHours),
                   }
                 : undefined,
               zones: row.zones.map(({ id, name, policy, manages, invites }) => ({
@@ -342,6 +349,7 @@ export function applyNarrationAccess(
       at,
       known,
       lineIds,
+      state.villagers.map((row) => row.characterId),
     );
   };
   if (decision.type === "permission.revoke") {
@@ -410,9 +418,22 @@ export function applyNarrationAccess(
       "invalid access management",
     );
     const raw = decision.management as Record<string, unknown>;
+    if (raw.action === "work-propose" || raw.action === "work-decide")
+      memoryRequire(
+        state.venues.some((row) => row.id === venue.id),
+        "Work arrangements need an admitted Venue.",
+      );
     memoryRequire(
       !["operationId", "expectedRevision", "zoneId", "sceneId"].some((key) => Object.hasOwn(raw, key)) &&
-        ["venue-policy", "zone-policy", "recover-managers", "lift-ban", "exception"].includes(String(raw.action)),
+        [
+          "venue-policy",
+          "zone-policy",
+          "recover-managers",
+          "lift-ban",
+          "exception",
+          "work-propose",
+          "work-decide",
+        ].includes(String(raw.action)),
       "unsupported access management fields",
     );
     apply({ ...raw, zoneId: decision.zone });

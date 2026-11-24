@@ -68,7 +68,7 @@ await withBrowser(browser, async () => {
         "#state{display:none} :root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}body{margin:0}",
     });
     await f.page.addScriptTag({ content: styles.outputFiles[0].text });
-    await f.page.getByRole("button", { name: "Manage", exact: true }).click();
+    await f.page.getByRole("button", { name: "Zones", exact: true }).click();
     await f.page.getByRole("button", { name: "Zone connections", exact: true }).click();
     const map = f.page.locator(".villages-zone-map");
     const save = f.page.getByRole("button", { name: "Save layout", exact: true });
@@ -200,7 +200,7 @@ installFeature(controller=><SceneScreen controller={controller}/>);
           { id: "walkway", name: "Walkway", kind: "public", connectedTo: ["exterior", "garden"] },
           { id: "garden", name: "Garden", kind: "public", connectedTo: ["walkway"] },
           { id: "airstrip", name: "Airstrip", kind: "restricted", connectedTo: ["exterior", "hangar"] },
-          { id: "hangar", name: "Hangar", kind: "staff", connectedTo: ["airstrip"] },
+          { id: "hangar", name: "Hangar", kind: "restricted", connectedTo: ["airstrip"] },
         ],
       });
       for (const zone of venue.zones) {

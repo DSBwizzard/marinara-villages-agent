@@ -115,7 +115,11 @@ export function configureSceneCostWorld(world: VillageState, now: string, id: Sc
     draftRenovationProject(
       world,
       "mill",
-      { title: "Larger Common room", detail: "Residence capacity three.", capacity: 3 },
+      {
+        title: "Larger Common room",
+        detail: "Enlarge the shared room.",
+        form: "A larger building with a shared room.",
+      },
       "project:common",
     );
   if (["invitation", "refusal", "movement-privacy"].includes(id)) {

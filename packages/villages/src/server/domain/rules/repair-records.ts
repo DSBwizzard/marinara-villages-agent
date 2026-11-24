@@ -14,7 +14,7 @@ import { continuityHolderKey, protectContinuity } from "./continuity.js";
 import { agendaRepairRecords, applyAgendaRepair } from "./repair-agenda.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
-import { hasVenueClass, venueCapacity, venueResidentIds } from "./venue-model.js";
+import { venueResidentIds } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { normalizeVillageMutation } from "./world-mutation.js";
 import { retainNativeFact } from "./native-continuity.js";
@@ -316,10 +316,10 @@ export function worldRepairRecords(
     const id = person.characterId,
       name = person.cardSnapshot.name;
     const homeOptions = state.venues
-      .filter((v) => hasVenueClass(v, "residence") && v.constructionStatus !== "worksite")
+      .filter((v) => v.constructionStatus !== "worksite")
       .flatMap((v) =>
         venueZones(v)
-          .filter((z) => z.kind === "private-residence" && (!z.ownerId || z.ownerId === id))
+          .filter((z) => z.kind === "personal" && (!z.ownerId || z.ownerId === id))
           .map((z) => ({ value: repairId(v.id, z.id), label: `${v.name} · ${z.name}` })),
       );
     const home = state.venues.find((v) => venueResidentIds(v).includes(id)),
@@ -841,13 +841,7 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         if (!str("destination")) throw badRequest("Choose a residential Private Space.");
         const [venueId, zoneId] = repairParts(str("destination")),
           destination = state.venues.find((v) => v.id === venueId);
-        if (!destination || !hasVenueClass(destination, "residence") || destination.constructionStatus === "worksite")
-          throw conflict("That home is unavailable.");
-        if (
-          !venueResidentIds(destination).includes(id) &&
-          venueResidentIds(destination).length + Number(destination.occupancy.playerHome) >= venueCapacity(destination)
-        )
-          throw conflict("That home is full.");
+        if (!destination || destination.constructionStatus === "worksite") throw conflict("That home is unavailable.");
         assertResidencePrivateDestination(state, destination, id, zoneId);
         for (const venue of state.venues) {
           venue.residentIds = venueResidentIds(venue).filter((p) => p !== id);

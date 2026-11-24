@@ -7,9 +7,7 @@ import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 export const scheduledAgendaActivity = (block: VillageAgendaBlock) =>
   !(!block.venueId && flexibleAgendaBlock(block) && block.activity === "Taking care of their own affairs");
 
-export function restingAgendaBlock(block: Pick<VillageAgendaBlock, "activity"> | null): boolean {
-  return /\b(?:sleep(?:ing)?|asleep|hibernate|hibernating|dormant)\b/iu.test(block?.activity ?? "");
-}
+export { restingAgendaBlock } from "./agenda-flexibility.js";
 
 export function unwrittenVillageAgenda(now = new Date()): VillageAgenda {
   const week = workingAgendaWeek();

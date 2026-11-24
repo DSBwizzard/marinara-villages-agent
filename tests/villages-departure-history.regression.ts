@@ -224,9 +224,11 @@ await runCase("departure-history/comparison", async () => {
     const projection = cloneVillageContext(live);
     assert(departureContinuityAvailable(capture, projection));
     assert.equal(returnCaptureRevision(projection.returnCatchup!.capture), identity);
-    assert(sameReturnResident(capture.world.villagers[0], live.villagers[0], new Date(at), live));
+    assert(sameReturnResident(capture.world.villagers[0], live.villagers[0], new Date(at), live, live));
     projection.villagers[0].incarnation = "ada-replacement";
-    assert(!sameReturnResident(capture.world.villagers[0], projection.villagers[0], new Date(at), projection));
+    assert(
+      !sameReturnResident(capture.world.villagers[0], projection.villagers[0], new Date(at), projection, projection),
+    );
     assert.equal(returnCaptureRevision(capture), identity);
     assert(!departureContinuityAvailable(capture, { ...live, seed: "another-world" }));
     assert(!departureContinuityAvailable(capture, { ...live, setupAt: at }));

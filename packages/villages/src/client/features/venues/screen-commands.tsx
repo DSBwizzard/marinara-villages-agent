@@ -8,7 +8,7 @@ import { useVenueLayoutDraft } from "./layout-draft.js";
 import type { VenuesState } from "./useVenuesState.js";
 
 function proposalDraftKey(draft: NonNullable<VenuesState["venueProposalDraft"]>) {
-  return JSON.stringify([draft.classes, draft.capacity, draft.title, draft.description]);
+  return JSON.stringify([draft.title, draft.description]);
 }
 
 /** Always mounted by the shell; the Venue screen supplies explicit current inputs. */
@@ -50,7 +50,11 @@ export function useVenueScreenCommands(ports: {
     selectedVenue?.zones?.find((entry) => entry.id === ports.venueZoneKey)?.id ??
     selectedVenue?.zones?.[0]?.id ??
     ports.venueZoneKey;
-  const venueSelection = useMemo(() => ({ activeVenueId, page: ports.venuePage }), [activeVenueId, ports.venuePage]);
+  const worldScope = ports.snapshot?.worldScope;
+  const venueSelection = useMemo(
+    () => ({ activeVenueId, page: ports.venuePage, worldScope }),
+    [activeVenueId, ports.venuePage, worldScope],
+  );
   const zoneSelection = useMemo(() => ({ venueSelection, key: selectedZoneId }), [venueSelection, selectedZoneId]);
   // Access already remounts its panel when the authoritative access revision changes.
   const accessRevision = selectedVenue?.accessView?.revision;
@@ -262,10 +266,8 @@ export function useVenueScreenCommands(ports: {
         method: "POST",
         body: JSON.stringify({
           requestId: createVillagesClientId(),
-          classes: venueProposalDraft.classes,
-          capacity: venueProposalDraft.capacity,
           title: venueProposalDraft.title || `Change ${place.name}`,
-          detail: venueProposalDraft.description || `Change Venue Classes or capacity at ${place.name}.`,
+          detail: venueProposalDraft.description || `Renovate ${place.name}.`,
         }),
       });
       if (!editor.owns(claim)) return;

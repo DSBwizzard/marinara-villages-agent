@@ -18,7 +18,7 @@ import { venueZones } from "../packages/villages/src/server/domain/rules/venue-z
 // Synthetic independent stores; no Engine runtime, host bindings or providers.
 function fixture(name: string) {
   const state = defaultVillageState();
-  const venue = venueDraft({ name, description: "A quiet meeting place.", classes: ["community"] }, null);
+  const venue = venueDraft({ name, description: "A quiet meeting place." }, null);
   venue.id = "venue";
   initializeVenueAccess(venue);
   state.venues = [venue];
@@ -61,8 +61,8 @@ async function main() {
     f.ports.sceneQueries = () => ({ activeVenueSession: async () => scene });
     const venue = f.state.venues[0];
     const common = venue.zones!.find((zone) => zone.id !== "exterior")!;
-    venue.zones!.push({ ...structuredClone(common), id: "other", name: "Other", connectedTo: ["exterior"] });
-    venue.zones!.find((zone) => zone.id === "exterior")!.connectedTo!.push("other");
+    venue.zones!.push({ ...structuredClone(common), id: "annex", name: "Annex", connectedTo: ["exterior"] });
+    venue.zones!.find((zone) => zone.id === "exterior")!.connectedTo!.push("annex");
     const zones = materializeConnections(venueZones(venue));
     const cosmetic = {
       base: zoneLayoutKey(zones, venue.zoneLayout),
@@ -89,8 +89,8 @@ async function main() {
       base: zoneLayoutKey(venue.zones!, venue.zoneLayout),
       connections: cosmetic.connections.map((zone) => ({ ...zone, connectedTo: [...zone.connectedTo] })),
     };
-    change.connections.find((zone) => zone.id === common.id)!.connectedTo.push("other");
-    change.connections.find((zone) => zone.id === "other")!.connectedTo.push(common.id);
+    change.connections.find((zone) => zone.id === common.id)!.connectedTo.push("annex");
+    change.connections.find((zone) => zone.id === "annex")!.connectedTo.push(common.id);
     const before = JSON.stringify(venue);
     await assert.rejects(commands.updateVenueZoneLayout(venue.id, change), /End the active Scene/);
     assert.equal(JSON.stringify(venue), before, "Scene anywhere blocks passage changes");
@@ -203,8 +203,8 @@ async function main() {
   editVenue.zones = [
     {
       ...defaultVenueSpace("community", "Original workspace."),
-      id: "staff",
-      kind: "staff",
+      id: "restricted",
+      kind: "restricted",
       name: "Workroom",
       controllerIds: ["resident"],
       seen: true,
@@ -214,21 +214,25 @@ async function main() {
   const commands = createVenueCommands(edits.ports);
   const beforeRename = structuredClone(editVenue.zones[0]);
   editVenue.zones[0].seen = false;
-  await commands.renameVillageZone("venue", "staff", { name: " Studio " });
+  await commands.renameVillageZone("venue", "restricted", { name: " Studio " });
   assert.equal(editVenue.zones[0].name, "Studio");
   assert.equal(editVenue.zones[0].seen, false, "renaming does not discover an interior");
   assert.deepEqual(editVenue.zones[0].state, beforeRename.state);
   assert.deepEqual(editVenue.zones[0].image, beforeRename.image);
   assert.equal(editVenue.zones[0].description, beforeRename.description);
-  await assert.rejects(() => commands.renameVillageZone("venue", "staff", { name: "", description: "replacement" }));
   await assert.rejects(() =>
-    commands.renameVillageZone("venue", "staff", { name: "Studio", description: "replacement" }),
+    commands.renameVillageZone("venue", "restricted", { name: "", description: "replacement" }),
+  );
+  await assert.rejects(() =>
+    commands.renameVillageZone("venue", "restricted", { name: "Studio", description: "replacement" }),
   );
   await assert.rejects(() => commands.updateVillageVenue("venue", { description: "replacement" }), /Project/);
   editVenue.zones.push({ ...structuredClone(beforeRename), id: "exterior", kind: "exterior", name: "Exterior" });
-  await assert.rejects(
-    () => commands.renameVillageZone("venue", "exterior", { name: "Front door" }),
-    /always named Exterior/,
+  await commands.renameVillageZone("venue", "exterior", { name: "Front door" });
+  assert.equal(
+    editVenue.zones.find((zone) => zone.id === "exterior")!.name,
+    "Front door",
+    "Entrance uses the same editable Zone heading",
   );
   console.log(
     "Venue service ports, overlapping independent stores, binding ownership, Scene timing and retry fences passed.",

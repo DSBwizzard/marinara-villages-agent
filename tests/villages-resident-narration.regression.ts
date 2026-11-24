@@ -384,7 +384,7 @@ await runCase("resident-narration/native-residence", () => {
     home.residentIds = ["mara"];
     home.occupancy.residentCharacterId = "mara";
     home.occupancy.playerHome = playerApproval;
-    home.residenceCapacity = 3;
+
     home.access!.managerIds = ["mara", ...(playerApproval ? ["player"] : [])];
     for (const zone of home.zones!)
       if (zone.kind !== "exterior") zone.access!.managerIds = ["mara", ...(playerApproval ? ["player"] : [])];

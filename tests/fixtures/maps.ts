@@ -25,7 +25,6 @@ export function mapsFixture() {
       residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id,
       name: id,
-      classes: ["community" as const],
       description: id,
       category: "",
       presentation: { mapId: state.maps[index].id, image: null, x: 0.3, y: 0.3 },

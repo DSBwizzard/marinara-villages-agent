@@ -222,8 +222,8 @@ export async function verifyFoundingLayout(group) {
                 error: "Language model connection not found: stale-model-id",
               });
             assert.equal(body.openingVenueId, "founding-community");
-            assert.equal(body.mode, "quick-start");
-            assert.equal(body.draftEntranceImage, undefined);
+            assert.equal(body.mode, "draft-venue");
+            assert.equal(body.draftEntranceImage, false);
             assert.equal(body.context.rules, "The sun never sets.");
             const result = {
               ...(body.draftEntranceImage
@@ -239,26 +239,32 @@ export async function verifyFoundingLayout(group) {
                 .filter((row) => !body.targetVenueId || row.id === body.targetVenueId)
                 .map((row) => {
                   const shared = row.residentIds.length + Number(row.playerHome) > 1;
-                  const layout = row.venueClass === "residence" && !shared ? "both" : "common";
+                  const layout = (row.playerHome || !!row.residentIds?.length) && !shared ? "both" : "common";
                   return {
-                    ...(body.mode === "draft-venue"
+                    ...(["draft-venue", "draft-plan"].includes(body.mode)
                       ? {
-                          zones: [...(body.targetVenue.spaces ?? []), ...(body.targetVenue.privateSpaces ?? [])].map(
-                            (zone) => ({
-                              id: zone.id,
-                              name: zone.name,
-                              purpose: zone.purpose,
-                              description: "Drafted visible Zone appearance.",
-                              private: body.targetVenue.privateSpaces?.some((room) => room.id === zone.id) ?? false,
-                              ownerId: zone.ownerId ?? "",
-                              connectedTo: zone.connectedTo ?? ["exterior"],
-                            }),
-                          ),
+                          zones: [
+                            ...((body.targetVenue ?? body.sourceVenues.find((source) => source.id === row.id)).spaces ??
+                              []),
+                            ...((body.targetVenue ?? body.sourceVenues.find((source) => source.id === row.id))
+                              .privateSpaces ?? []),
+                          ].map((zone) => ({
+                            id: zone.id,
+                            name: zone.name,
+                            purpose: zone.purpose,
+                            description: "Drafted visible Zone appearance.",
+                            private:
+                              (
+                                body.targetVenue ?? body.sourceVenues.find((source) => source.id === row.id)
+                              ).privateSpaces?.some((room) => room.id === zone.id) ?? false,
+                            ownerId: zone.ownerId ?? "",
+                            connectedTo: zone.connectedTo ?? ["exterior"],
+                          })),
                         }
                       : {}),
                     id: row.id,
                     name:
-                      row.venueClass === "residence"
+                      row.playerHome || !!row.residentIds?.length
                         ? shared
                           ? "Household home"
                           : row.playerHome
@@ -267,7 +273,7 @@ export async function verifyFoundingLayout(group) {
                         : row.id === "founding-garden"
                           ? "Community Garden"
                           : "Community Courtyard",
-                    form: row.venueClass === "residence" ? "A coastal home" : "An open courtyard",
+                    form: row.playerHome || !!row.residentIds?.length ? "A coastal home" : "An open courtyard",
                     description: "A sheltered approach beside the coast.",
                     layout,
                     commonName: "Common room",
@@ -424,7 +430,7 @@ export async function verifyFoundingLayout(group) {
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
-            const introduction = guide.getByText(/^A new Village starts with 2 public locations/);
+            const introduction = guide.getByText(/^Add or draft your Venues/);
             await expect(introduction).toBeVisible();
             await expect(work).toHaveCount(0);
             await layer("Venue");
@@ -536,7 +542,22 @@ export async function verifyFoundingLayout(group) {
         const settingNext = () => button("Next");
         const frame = await root.boundingBox();
         const sheet = page.locator(".villages-quick-dialog");
-        const closeVenue = () => sheet.getByRole("button", { name: /^← (Map|Venues)$/ }).click();
+        const parentVenue = async () => {
+          const back = sheet.locator(".marinara-capability-villages-venue-navigation button");
+          for (let step = 0; step < 6; step++) {
+            await expect(back).toBeVisible();
+            if (
+              (await sheet.getByRole("navigation", { name: "Venue sections" }).count()) ||
+              /^← (Map|Venues)$/.test(await back.innerText())
+            )
+              return;
+            await back.click();
+          }
+        };
+        const closeVenue = async () => {
+          await parentVenue();
+          await sheet.getByRole("button", { name: /^← (Map|Venues)$/ }).click();
+        };
         const showMap = async () => {
           if (phone && (await sheet.count())) await closeVenue();
         };
@@ -565,7 +586,15 @@ export async function verifyFoundingLayout(group) {
           await showVenuePin(id);
           await root.locator(`[${phone ? "data-pin-id" : "data-venue-id"}="${id}"]`).click();
         };
-        const manageVenue = () => sheet.getByRole("button", { name: "Manage", exact: true }).click();
+        const editProfile = async () => {
+          const edit = sheet.getByRole("button", { name: "Edit", exact: true });
+          if (await edit.count()) await edit.click();
+        };
+        const manageVenue = async () => {
+          await parentVenue();
+          await sheet.getByRole("button", { name: "About", exact: true }).click();
+          await editProfile();
+        };
 
         const bounds = async (phase) => {
           await checkPalette();
@@ -1702,10 +1731,33 @@ export async function verifyFoundingLayout(group) {
         await expect(resident.getByRole("button", { name: "Portrait", exact: true })).toHaveCount(0);
         await expect(resident.getByRole("button", { name: "Assign Side", exact: true })).toHaveCount(0);
         await expect(settingNext()).toBeEnabled();
+        // Fresh roster selection creates no places or assignments. The remaining layout walk uses a saved manual draft.
+        await page.evaluate(() => {
+          const c = window.featureController;
+          if (c.setupVenues.length) throw Error("Selecting people must not create Venues");
+          const actors = [
+            { id: "player", name: "Your" },
+            ...c.setupFoundingVillagerIds.map((id) => ({
+              id,
+              name: c.catalog.find((person) => person.id === id).name,
+            })),
+          ];
+          const rows = window.manualHomesFixture([], actors, [], "founding-community");
+          c.setSetupVenues(
+            rows.map((row, index) => ({
+              ...row,
+              presentation: {
+                ...row.presentation,
+                x: [0.5, 0.32, 0.68, 0.14, 0.86, 0.5][index],
+                y: index === 5 ? 0.32 : 0.5,
+              },
+            })),
+          );
+        });
         await bounds("people");
         await advance();
         await expect(root).toHaveAttribute("data-step", "2");
-        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toHaveCount(0);
+        await expect(root.getByText(/^Add or draft your Venues/)).toHaveCount(0);
         await enterChapter();
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
@@ -1848,7 +1900,7 @@ export async function verifyFoundingLayout(group) {
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.locator("[data-explanation]")).toHaveCount(1);
-        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toBeVisible();
+        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
         await expect(work).toHaveCount(0);
         await enterChapter();
         await retreat();
@@ -1857,7 +1909,7 @@ export async function verifyFoundingLayout(group) {
         if (phone)
           await expect(root.locator(".villages-setting-dialogue:visible")).not.toHaveAttribute("data-reader-next-page");
         await finishPassage(root, -1);
-        await expect(root.getByText(/^A new Village starts with 2 public locations/)).toBeVisible();
+        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
         await expect(work).toHaveCount(0);
         await retreat();
         await expect(root).toHaveAttribute("data-step", "2");
@@ -1873,44 +1925,33 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
         await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(phone ? 0 : view.count + 3);
         if (view.width === 390 && view.height === 844) {
-          const keptVenues = await page.evaluate(() => {
-            const kept = window.featureController.setupVenues.filter((venue) => venue.id !== "founding-garden");
-            window.featureController.setSetupVenues(kept);
-            return kept;
-          });
-          await button("Add shared Venue").click();
+          const keptVenues = await page.evaluate(() => structuredClone(window.featureController.setupVenues));
+          await page.evaluate(() => window.featureController.setSetupVenues([]));
+          await expect(button("Draft Venues")).toBeEnabled();
+          await page.evaluate((rows) => window.featureController.setSetupVenues(rows), keptVenues);
+          const selectedPeople = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
+          await button("Add Venue").click();
+          await expect(sheet).toBeVisible();
+          await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
+          const redraft = page.getByRole("dialog", { name: "Redraft Venue", exact: true });
+          await redraft.getByLabel("Venue ideas", { exact: true }).fill("A small library");
+          await redraft.getByRole("button", { name: "Back", exact: true }).click();
+          assert.equal(suggestions, 0, "Opening a local draft prompt spends nothing");
+          await sheet.getByRole("button", { name: "Remove Venue", exact: true }).click();
+          await page
+            .getByRole("dialog", { name: "Confirm", exact: true })
+            .getByRole("button", { name: "Remove Venue", exact: true })
+            .click();
+          await expect(sheet).toBeHidden();
           assert.deepEqual(
-            await page.evaluate(() =>
-              window.featureController.setupVenues.filter((venue) => venue.id !== "founding-garden"),
-            ),
+            await page.evaluate(() => window.featureController.setupVenues),
             keptVenues,
-            "Adding a second shared starter preserves the old draft's homes, text, artwork and pins",
+            "Removing a manual Venue preserves other places",
           );
-          await showVenuePin("founding-garden");
-          await expect(root.locator('[data-pin-id="founding-garden"]')).toBeVisible();
-          await expect(button("Add shared Venue")).toHaveCount(0);
-          const sharedVenues = await page.evaluate(() => {
-            const original = window.featureController.setupVenues;
-            window.featureController.setSetupVenues(
-              original.map((venue) =>
-                venue.id === "founding-garden"
-                  ? {
-                      ...venue,
-                      spaces: venue.spaces.map((zone) => ({
-                        ...zone,
-                        access: { ...zone.access, mode: "permission-required" },
-                      })),
-                    }
-                  : venue,
-              ),
-            );
-            return original;
-          });
-          await expect(
-            root.getByText("Provide public shared Zones in at least two Venues.", { exact: true }),
-          ).toBeVisible();
-          await expect(button("Use starter homes")).toHaveCount(0);
-          await page.evaluate((venues) => window.featureController.setSetupVenues(venues), sharedVenues);
+          assert.deepEqual(
+            await page.evaluate(() => window.featureController.setupFoundingVillagerIds),
+            selectedPeople,
+          );
         }
         await expect(settingNext()).toBeInViewport({ ratio: 1 });
         await expect(root.getByRole("button", { name: "Next Venues page", exact: true })).toHaveCount(0);
@@ -1918,7 +1959,7 @@ export async function verifyFoundingLayout(group) {
           await expect(
             root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
           ).toBeVisible();
-        const placementPane = root.getByRole("region", { name: "Venue placement", exact: true });
+        const placementPane = root.getByRole("region", { name: "Venue placement", exact: true, includeHidden: true });
         const mobileWorkspaceBounds = phone
           ? await root.locator(".villages-chapter-map>.villages-forging-body").boundingBox()
           : null;
@@ -1935,24 +1976,95 @@ export async function verifyFoundingLayout(group) {
         }
         await editVenue("founding-home:player");
         await expect(sheet.getByRole("navigation", { name: "Venue sections" })).toBeVisible();
-        await expect(sheet.getByText("Resident · Fixed for Founding", { exact: true })).toBeVisible();
+        await expect(sheet.locator(".marinara-capability-villages-venue-metadata")).toHaveCount(0);
+        await expect(sheet.locator(".marinara-capability-villages-workspace-venue-header svg")).toHaveCount(0);
+        const headerGap = await sheet.evaluate((node) => {
+          const navigation = node
+            .querySelector(".marinara-capability-villages-venue-navigation")
+            .getBoundingClientRect();
+          const heading = node.querySelector("h1").getBoundingClientRect();
+          return heading.top - navigation.bottom;
+        });
+        assert.ok(headerGap >= 0 && headerGap <= 24, "The Venue title follows Map without an oversized spacer");
         await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
         await expect(sheet.getByRole("group", { name: "Who lives here?" })).toHaveCount(0);
+        await manageVenue();
+        await expect(sheet.getByLabel("Resident capacity", { exact: true })).toHaveCount(0);
+        await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
+        await sheet.getByRole("button", { name: /^Residents/ }).click();
+        await sheet.getByRole("button", { name: "You", exact: true }).click();
+        await expect(sheet.getByLabel("Resident capacity", { exact: true })).toHaveCount(0);
+        await expect(sheet.getByRole("checkbox", { name: "Lives here", exact: true })).toHaveCount(0);
+        const saveHome = sheet.getByRole("button", { name: "Save home", exact: true });
+        await expect(saveHome).toHaveCSS("background-color", palette(daylight).primary);
+        await expect(saveHome).toHaveCSS("color", daylight ? "rgb(232, 242, 236)" : "rgb(41, 41, 56)");
+        await expect(sheet.getByRole("button", { name: "Remove resident", exact: true })).toBeVisible();
+        await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+        await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
+        await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
+        await sheet.getByRole("button", { name: /^Workers/ }).click();
+        await sheet.getByRole("button", { name: "Add worker", exact: true }).click();
+        await sheet.locator(".marinara-capability-villages-directory-card").first().click();
+        const host = page.locator("marinara-capability-villages");
+        if (view.width === 2550)
+          await host.evaluate((node) => {
+            node.style.width = "calc(100% - 600px)";
+          });
+        await expect
+          .poll(() =>
+            sheet
+              .locator(".villages-work-times input")
+              .first()
+              .evaluate((node) => node.getBoundingClientRect().width),
+          )
+          .toBeGreaterThanOrEqual(144);
+        assert.ok(
+          await sheet.locator(".villages-work-access label").evaluateAll((labels) =>
+            labels.every((label) => {
+              const check = label.querySelector("input").getBoundingClientRect(),
+                text = label.querySelector("span").getBoundingClientRect();
+              return text.x >= check.right && text.right <= label.getBoundingClientRect().right + 1;
+            }),
+          ),
+          "Work access keeps each label beside its checkbox",
+        );
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "work-editor-" + view.width + ".png"),
+          });
+        if (view.width === 2550)
+          await host.evaluate((node) => {
+            node.style.width = "";
+          });
+        await sheet.getByRole("button", { name: "Cancel", exact: true }).click();
+        await sheet.locator(".marinara-capability-villages-venue-navigation").getByRole("button").click();
+        await sheet.getByRole("button", { name: "About", exact: true }).click();
         const venuePage = await sheet.boundingBox();
         assert.deepEqual(
           venuePage,
-          placementBounds ?? mobileWorkspaceBounds,
+          placementBounds ? await placementPane.boundingBox() : mobileWorkspaceBounds,
           "The Venue fills the workspace above the fixed actions",
         );
         const homeRow = root.locator('[data-venue-id="founding-home:player"]');
         if (placementBounds) {
           await expect(root.getByRole("dialog")).toHaveCount(0);
           await expect(placementPane).toBeHidden();
+          await expect(
+            root.getByRole("region", { name: "Starting Venues", exact: true, includeHidden: true }),
+          ).toBeHidden();
           await expect(root.getByRole("complementary", { name: "Professor Mari" })).toBeVisible();
           await expect(homeRow).toHaveAttribute("aria-expanded", "true");
+          await expect(
+            root.getByRole("region", { name: "Starting Venues", exact: true, includeHidden: true }),
+          ).toBeHidden();
           const community = root.locator('[data-venue-id="founding-community"]');
+          await closeVenue();
+          await expect(root.getByRole("region", { name: "Starting Venues", exact: true })).toBeVisible();
           await community.click();
-          await expect(sheet.getByText("No assigned villagers.")).toBeVisible();
+          await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
+          await sheet.getByRole("button", { name: /^Residents/ }).click();
+          await expect(sheet.locator(".marinara-capability-villages-directory-card")).toHaveCount(0);
+          await closeVenue();
           await homeRow.click();
           await expect(sheet.getByRole("button", { name: "← Map", exact: true })).toBeFocused();
         }
@@ -1965,7 +2077,10 @@ export async function verifyFoundingLayout(group) {
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "venue-profile-" + view.width + ".png"),
           });
         await closeVenue();
-        if (placementBounds) await expect(homeRow).toBeFocused();
+        if (placementBounds) {
+          await expect(homeRow).toBeFocused();
+          await expect(root.getByRole("region", { name: "Starting Venues", exact: true })).toBeVisible();
+        }
         await editVenue("founding-garden");
         const openingGathering = sheet.getByRole("button", { name: "Opening gathering", exact: true });
         await expect(openingGathering).toHaveCount(0);
@@ -2123,7 +2238,7 @@ export async function verifyFoundingLayout(group) {
           });
         const prepared = await page.evaluate(() => window.featureController.setupVenues);
         for (const venue of prepared) {
-          const community = venue.classes.includes("community");
+          const community = !(venue.occupancy.playerHome || !!venue.residentIds?.length);
           assert.equal(venue.spaces.length, community ? 2 : 1);
           assert.equal(venue.privateSpaces.length, community ? 0 : 1);
           if (!community) {
@@ -2150,7 +2265,7 @@ export async function verifyFoundingLayout(group) {
         );
         await editVenue("founding-home:player");
         await expect(sheet).toBeVisible();
-        await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveCount(0);
+        await expect(sheet.getByLabel("Description", { exact: true })).toHaveCount(0);
         await expect(sheet.getByRole("navigation", { name: "Venue sections" })).toBeVisible();
         await expect(sheet.getByRole("combobox")).toHaveCount(0);
         await sheet.getByRole("button", { name: "Zones", exact: true }).click();
@@ -2163,13 +2278,15 @@ export async function verifyFoundingLayout(group) {
         );
         await expect(sheet.getByRole("group", { name: "Who sleeps here?" })).toHaveCount(0);
         await expect(sheet.getByRole("group", { name: "Whose space is it?" })).toHaveCount(0);
-        await expect(sheet.getByRole("group", { name: "Visitor access" })).toBeVisible();
-        await expect(sheet.getByRole("button", { name: "← Zones", exact: true })).toBeVisible();
+        await expect(sheet.getByRole("navigation", { name: "Zone sections" })).toHaveCount(0);
+        await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toHaveCount(0);
+        await editProfile();
+        await expect(sheet.getByRole("button", { name: "← Your home", exact: true })).toBeVisible();
         await expect(sheet.locator(".villages-zone-map-canvas")).toHaveCount(0);
         await expect(
           sheet
-            .getByRole("region", { name: "Zone artwork", exact: true })
-            .getByRole("button", { name: "Generate artwork", exact: true }),
+            .getByRole("region", { name: "Zone image", exact: true })
+            .getByRole("button", { name: "Generate Image", exact: true }),
         ).toBeVisible();
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
@@ -2210,8 +2327,30 @@ export async function verifyFoundingLayout(group) {
           assert.deepEqual(await readPosition(), moved, "Cancelling a touch drag keeps the saved position");
           const canvas = await mapCanvas.getByRole("group", { name: "Map navigation" }).boundingBox();
           const picture = mapCanvas.getByRole("img", { name: "Map of Old Harbour" });
+          await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
+          await mapCanvas.getByRole("button", { name: "Zoom in", exact: true }).click();
           const beforePan = await picture.boundingBox();
-          const panStart = { x: canvas.x + canvas.width * 0.75, y: canvas.y + canvas.height * 0.15 };
+          assert.ok(beforePan.width > canvas.width + 60, "Zoomed map has room for a horizontal pan");
+          const panStart = await page.evaluate((bounds) => {
+            const controls = [...document.querySelectorAll(".villages-quick-map button")].map((node) =>
+              node.getBoundingClientRect(),
+            );
+            for (const y of [0.1, 0.3, 0.5, 0.7, 0.9])
+              for (const x of [0.8, 0.6, 0.4, 0.2]) {
+                const point = { x: bounds.x + bounds.width * x, y: bounds.y + bounds.height * y };
+                const target = document.elementFromPoint(point.x, point.y);
+                const nearControl = controls.some(
+                  (box) =>
+                    point.x > box.left - 32 &&
+                    point.x < box.right + 32 &&
+                    point.y > box.top - 32 &&
+                    point.y < box.bottom + 32,
+                );
+                if (!nearControl && target?.closest('[aria-label="Map navigation"]') && !target.closest("button"))
+                  return point;
+              }
+            throw Error("No map background available for the pan gesture");
+          }, canvas);
           await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [panStart] });
           await touch.send("Input.dispatchTouchEvent", {
             type: "touchMove",
@@ -2220,6 +2359,7 @@ export async function verifyFoundingLayout(group) {
           await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
           await expect.poll(async () => (await picture.boundingBox()).x).not.toBe(beforePan.x);
           assert.deepEqual(await readPosition(), moved, "Dragging the background pans without moving pins");
+          await showVenuePin("founding-home:player");
           const oldZoom = Number(
             await mapCanvas.locator("[data-navigation-zoom]").getAttribute("data-navigation-zoom"),
           );
@@ -2268,10 +2408,11 @@ export async function verifyFoundingLayout(group) {
 
         if (view.width === 1366) {
           await sheet
-            .getByRole("region", { name: "Zone artwork", exact: true })
-            .getByRole("button", { name: "Generate artwork", exact: true })
+            .getByRole("region", { name: "Zone image", exact: true })
+            .getByRole("button", { name: "Generate Image", exact: true })
             .click();
-          await expect(sheet.getByRole("img", { name: "Artwork for Common Space", exact: true })).toBeVisible();
+          await expect(sheet.locator(".marinara-capability-villages-venue-zone-photo")).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "View fullsize", exact: true })).toBeEnabled();
           await closeVenue();
           assert.equal(generatedImages, 3, "Map and Zone artwork require explicit clicks");
           assert.deepEqual(
@@ -2301,9 +2442,27 @@ export async function verifyFoundingLayout(group) {
               }),
             )
             .toBe(true);
+          const readsBeforeVenueReload = portraitReads;
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await expect(root).toHaveAttribute("data-step", "3");
+          await expect.poll(() => portraitReads).toBeGreaterThan(readsBeforeVenueReload);
+          const founderHome = await page.evaluate(
+            () =>
+              window.featureController.setupVenues.find((row) =>
+                row.residentIds?.includes(window.featureController.setupFoundingVillagerIds[0]),
+              ).id,
+          );
+          await editVenue(founderHome);
+          await sheet.getByRole("button", { name: "Assignments", exact: true }).click();
+          await sheet.getByRole("button", { name: /^Residents/ }).click();
+          const residentCard = sheet.locator(".marinara-capability-villages-directory-card").first();
+          await expect(residentCard.locator("img")).toBeVisible();
+          assert.ok(
+            (await residentCard.boundingBox()).width <= 146,
+            "Home cards keep a compact portrait width after reload",
+          );
+          await closeVenue();
           await expect
             .poll(() =>
               page.evaluate(() => [
@@ -2336,33 +2495,28 @@ export async function verifyFoundingLayout(group) {
             ),
           );
         const savedPins = await readPins();
-        await button("Suggest").click();
-        await page
-          .getByRole("dialog", { name: "Suggest", exact: true })
-          .getByRole("button", { name: "Back", exact: true })
-          .click();
+        await expect(button("Draft Venues")).toBeEnabled();
         assert.equal(suggestions, 0);
         failVenueConnection = true;
-        await button("Suggest").click();
+        await editVenue("founding-community");
+        await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
         await page
-          .getByRole("dialog", { name: "Suggest", exact: true })
-          .getByRole("button", { name: "Replace and suggest", exact: true })
+          .getByRole("dialog", { name: "Redraft Venue", exact: true })
+          .getByRole("button", { name: "Draft Venue", exact: true })
           .click();
         await expect(root.getByText("The System connection is unavailable.", { exact: false })).toBeVisible();
-        await expect(root.getByText("stale-model-id", { exact: false })).toHaveCount(0);
         await button("Check Model Connections").click();
-        await expect(root).toHaveAttribute("data-step", "3");
         const repair = root.getByRole("dialog", { name: "Model Connections", exact: true });
-        await expect(repair.getByRole("button", { name: /^System / })).toBeVisible();
         await repair.getByRole("button", { name: "Back", exact: true }).click();
-        assert.equal(suggestions, 1, "checking connections never retries generation");
+        assert.equal(suggestions, 1, "Checking connections never retries generation");
         failVenueConnection = false;
-        await button("Retry").click();
+        await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
         await page
-          .getByRole("dialog", { name: "Retry", exact: true })
-          .getByRole("button", { name: "Replace and suggest", exact: true })
+          .getByRole("dialog", { name: "Redraft Venue", exact: true })
+          .getByRole("button", { name: "Draft Venue", exact: true })
           .click();
         await expect.poll(() => suggestions).toBe(2);
+        await root.getByRole("button", { name: "Use changes", exact: true }).click();
         await expect
           .poll(() =>
             page.evaluate(
@@ -2374,13 +2528,13 @@ export async function verifyFoundingLayout(group) {
         assert.ok(
           await page.evaluate(() =>
             window.featureController.setupVenues
-              .filter((row) => row.classes.includes("residence"))
+              .filter((row) => row.occupancy.playerHome || !!row.residentIds?.length)
               .every((row) => row.residentIds.length + Number(row.occupancy.playerHome) === 1),
           ),
         );
         await editVenue("founding-home:player");
         await manageVenue();
-        const appearance = sheet.getByLabel("Venue form", { exact: true });
+        const appearance = sheet.getByLabel("Description", { exact: true });
         const savedAppearance = await appearance.inputValue();
         await appearance.fill("");
         await closeVenue();
@@ -2394,7 +2548,8 @@ export async function verifyFoundingLayout(group) {
         await editVenue("founding-home:player");
         await sheet.getByRole("button", { name: "Zones", exact: true }).click();
         await common.click();
-        await expect(sheet.getByRole("button", { name: "← Zones", exact: true })).toBeFocused();
+        await expect(sheet.getByRole("button", { name: "← Your home", exact: true })).toBeFocused();
+        await editProfile();
         const purpose = sheet.getByLabel("Used for", { exact: true });
         const savedPurpose = await purpose.inputValue();
         await purpose.fill("");
@@ -2417,9 +2572,10 @@ export async function verifyFoundingLayout(group) {
         await expect(sheet).toHaveCount(0);
         await editVenue("founding-home:player");
         await manageVenue();
-        await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveValue(savedAppearance);
+        await expect(sheet.getByLabel("Description", { exact: true })).toHaveValue(savedAppearance);
         await closeVenue();
         await advance();
+
         await expect(root).toHaveAttribute("data-step", "4");
         await expectPose("proud");
         if (process.env.VILLAGES_SCREENSHOT_DIR)
@@ -2446,7 +2602,7 @@ export async function verifyFoundingLayout(group) {
           await overview.getByRole("button", { name: "Finn · Remove", exact: true }).click();
           await expect
             .poll(() => page.evaluate(() => window.featureController.setupWorkspace.unusedHomes?.length))
-            .toBe(1);
+            .toBe(0);
           assert.equal(
             await page.evaluate(() =>
               window.featureController.setupVenues.some((venue) => venue.residentIds?.includes("finn")),
@@ -2454,10 +2610,8 @@ export async function verifyFoundingLayout(group) {
             false,
           );
           await expect
-            .poll(() =>
-              page.evaluate(() => window.featureController.savedSetupDraft?.data.workspace.unusedHomes?.length),
-            )
-            .toBe(1);
+            .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.roster.includes("finn")))
+            .toBe(false);
           await page.reload();
           const readsBeforeReview = portraitReads;
           await page.addScriptTag({ content: foundingBundle });
@@ -2468,12 +2622,23 @@ export async function verifyFoundingLayout(group) {
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
           await picker.getByRole("button", { name: "Finn · Add", exact: true }).click();
           await picker.getByRole("button", { name: "Confirm", exact: true }).click();
-          assert.deepEqual(
+          assert.equal(
             await page.evaluate(() =>
-              window.featureController.setupVenues.find((venue) => venue.residentIds?.includes("finn")),
+              window.featureController.setupVenues.some((venue) => venue.residentIds?.includes("finn")),
             ),
+            false,
+            "Returning founders need a manual Home assignment",
+          );
+          const physical = await page.evaluate(
+            (id) => window.featureController.setupVenues.find((row) => row.id === id),
+            originalHome.id,
+          );
+          assert.equal(physical.name, originalHome.name);
+          assert.deepEqual(physical.presentation, originalHome.presentation);
+          await page.evaluate(
+            (home) =>
+              window.featureController.setSetupVenues((rows) => rows.map((row) => (row.id === home.id ? home : row))),
             originalHome,
-            "Removing, saving, reloading and re-adding a founder restores their edited home and pin",
           );
           await expect(overview.locator(".villages-selected-villager img")).toHaveCount(2);
         }
@@ -2483,9 +2648,17 @@ export async function verifyFoundingLayout(group) {
         await expect(overview.getByRole("button", { name: "Edit People", exact: true })).toHaveCount(0);
         await expect(overview.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 1 });
         for (const row of await overview.locator(".villages-selected-villager").all()) {
+          await row.evaluate((node) => node.scrollIntoView({ block: "center", inline: "nearest" }));
           await expect(row).toBeInViewport({ ratio: 1 });
           assert.equal(await row.evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
         }
+        const arrangements = overview.getByRole("region", { name: "Home and work arrangements", exact: true });
+        await arrangements
+          .locator("h3")
+          .last()
+          .evaluate((node) => node.scrollIntoView({ block: "center" }));
+        await expect(arrangements.locator("h3").last()).toBeInViewport({ ratio: 1 });
+        await expect(overview.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 1 });
         if (view.width === 320 || view.width === 1366) {
           const residentIds = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
           await page.evaluate(() => window.featureController.setSetupFoundingVillagerIds([]));
@@ -2592,7 +2765,7 @@ export async function verifyFoundingLayout(group) {
         await root.locator('[data-pin-id="founding-home:player"]').click();
         await expect(sheet.getByRole("button", { name: "About", exact: true })).toBeVisible();
         await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toBeVisible();
-        await expect(sheet.getByRole("button", { name: "Manage", exact: true })).toBeVisible();
+        await expect(sheet.getByRole("button", { name: "Assignments", exact: true })).toBeVisible();
         await sheet.getByRole("button", { name: "← Map", exact: true }).click();
         await expect(reviewMap.locator("img")).toHaveAttribute("style", camera);
         assert.deepEqual(

@@ -1921,7 +1921,6 @@ await runCase("narration-acceptance/player-movement", () => {
           zoneId: "exterior",
           segment: 0,
           path: [publication.readset.source.scene.zoneId!, "exterior"],
-          spaceClass: "other",
           area: "outside",
           privateOwnerId: "",
         },

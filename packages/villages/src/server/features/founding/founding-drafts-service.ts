@@ -49,13 +49,7 @@ import type { generateVillageImage } from "../media/image-generation.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
 
-import {
-  parseFoundingVenueSuggestions,
-  type DraftRow,
-  record,
-  rowsOf,
-  readFoundingDraftContext,
-} from "../../domain/rules/founding-draft-rules.js";
+import { type DraftRow, record, rowsOf, readFoundingDraftContext } from "../../domain/rules/founding-draft-rules.js";
 
 export type FoundingDraftsServicePorts = {
   readZonePictureReference?: typeof readZonePictureReference;
@@ -194,45 +188,63 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
   async function suggestStartingVenues(value: unknown): Promise<FoundingSuggestionsResult> {
     const input = record(value);
     if (input.mode === "draft-setting") return draftSetting(input);
-    const quickStart = input.mode === "quick-start";
-    const fullDraft = input.mode === "draft-venue";
-    if (fullDraft && (!asTrimmedString(input.actionId) || !asTrimmedString(input.targetVenueId)))
+    const planDraft = input.mode === "draft-plan";
+    const fullDraft = input.mode === "draft-venue" || planDraft;
+    if (fullDraft && (!asTrimmedString(input.actionId) || (!planDraft && !asTrimmedString(input.targetVenueId))))
       throw badRequest("Draft this Venue through a saved suggestion attempt.");
-    if (input.mode !== undefined && !quickStart && !fullDraft)
-      throw badRequest("Choose a valid Venue suggestion mode.");
+    if (!fullDraft) throw badRequest("Choose a valid Venue suggestion mode.");
+    const venueBrief = asTrimmedString(input.venueBrief);
+    if (venueBrief.length > 4096) throw badRequest("Use up to 4096 characters for Venue ideas.");
     const setting = asTrimmedString(input.setting);
     const context = readFoundingDraftContext(input.context);
     if (!setting || setting.length > MAX_SETTING_LENGTH) throw badRequest("Describe the place first.");
     const rows = rowsOf(input.venues);
     const openingVenueId = asTrimmedString(input.openingVenueId);
-    const community = rows.find((row) => row.id === openingVenueId);
-    const residents = rows.flatMap((row) => row.residentIds);
+    const residents = input.foundingCharacterIds ?? Object.keys(record(input.foundingResidentAdmissions));
     if (
-      !community ||
-      rows.filter((row) => row.playerHome).length !== 1 ||
-      residents.length < 1 ||
+      !Array.isArray(residents) ||
       residents.length > 3 ||
-      new Set(residents).size !== residents.length ||
-      rows.some((row) => row.residentIds.length + Number(row.playerHome) > 4)
+      residents.some((id) => typeof id !== "string" || !id.trim()) ||
+      new Set(residents).size !== residents.length
     )
-      throw badRequest(
-        "Assign homes for one to three residents and include a public gathering Venue before suggestions.",
-      );
+      throw badRequest("Choose available founding Villagers.");
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && !rows.some((row) => row.id === targetId))
       throw badRequest("Choose a required starting Venue to regenerate.");
-    const draftSource = fullDraft ? readFoundingVenueDraftSource(input.targetVenue) : undefined;
-    const newZoneIds = draftSource ? readFoundingZoneIds(input.newZoneIds, draftSource) : [];
+    const planSources =
+      planDraft && Array.isArray(input.sourceVenues) ? input.sourceVenues.map(readFoundingVenueDraftSource) : [];
     if (
-      draftSource &&
-      (draftSource.id !== targetId ||
-        draftSource.classes?.[0] !== rows.find((row) => row.id === targetId)!.venueClass ||
-        draftSource.occupancy.playerHome !== rows.find((row) => row.id === targetId)!.playerHome ||
-        JSON.stringify(draftSource.residentIds) !==
-          JSON.stringify(rows.find((row) => row.id === targetId)!.residentIds))
+      planDraft &&
+      (rows.length !== 4 ||
+        planSources.length !== rows.length ||
+        new Set(planSources.map((row) => row.id)).size !== rows.length ||
+        rows.some((row) => !planSources.some((source) => source.id === row.id)))
     )
-      throw badRequest("The selected Venue no longer matches its household.");
+      throw badRequest("Start a fresh Venue plan with four empty source slots.");
+    const draftSource = fullDraft && !planDraft ? readFoundingVenueDraftSource(input.targetVenue) : undefined;
+    if (draftSource && draftSource.id !== targetId) throw badRequest("Choose the Venue to redraft.");
+    const newZoneIds = draftSource ? readFoundingZoneIds(input.newZoneIds, draftSource) : [];
     const requestedRows = targetId ? rows.filter((row) => row.id === targetId) : rows;
+    const planZoneIds = new Map(
+      planSources.map((source) => [source.id, readFoundingZoneIds(record(input.newZoneIdsByVenue)[source.id], source)]),
+    );
+    const draftContexts = (draftSource ? [draftSource] : planSources).map((source) => ({
+      id: source.id,
+      name: source.name,
+      form: source.form,
+      description: source.description,
+      zones: source
+        .zones!.filter((zone) => zone.kind !== "exterior")
+        .map((zone) => ({
+          id: zone.id,
+          name: zone.name,
+          purpose: zone.purpose,
+          description: zone.description,
+          private: source.privateSpaces!.some((room) => room.id === zone.id),
+          entry: zone.access?.mode ?? "public",
+          connectedTo: zone.connectedTo,
+        })),
+    }));
     const worldRules = asTrimmedString(context.rules);
     const currentCircumstances = Array.isArray(context.circumstances)
       ? context.circumstances.map((row) => asTrimmedString(record(row).summary)).filter(Boolean)
@@ -279,32 +291,14 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       [
         {
           text: [
-            "Suggest the required starting Venues for this shared-life setting. These are editable drafts, not saved facts.",
-            "A village may be indoors or already established. Living spaces may be rooms, cells, bunks, apartments, tents, or buildings. Follow the player's setting; do not assume cottages.",
-            "A Residence can take literally any physical form supported by the context: a dumpster, apartment, house, train car, stolen hearse, or something else. Fit its spaces to that form; spaces need not be separate rooms. Respect a supplied nonempty physical form when suggesting its spaces.",
-            "Suggest a specific, setting-appropriate name for every Venue, replacing generic or existing names. Supplied names are context, not fixed choices.",
-            "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
-            ...(targetId && !quickStart && !fullDraft
-              ? [
-                  "The player requested details for one existing Venue. Preserve its current condition and supplied physical facts. The player keeps all existing Zones, access rules, residents, sleeping assignments and map placement; your suggested layout is not applied.",
-                ]
-              : []),
-            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. Starting Community Venues default to public Common Space, with distinct uses suited to the setting.",
-            ...(quickStart
-              ? [
-                  "Quick Start uses fixed starter layouts. Every Residence, including the player's, has Entrance, Common Space and Private Space. Describe each Community Venue's public Gathering Space in the Common fields; a second public Activity Space is supplied by the starter layout. Keep these public spaces unowned.",
-                  "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Give each Community Venue a distinct everyday use suited to the Village. These template defaults do not restrict later editing.",
-                ]
-              : []),
-            "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned household member. Describe the space and ordinary furnishings, not private thoughts or secrets. The explicit playerHome flag identifies the player's home; residentIds identifies its other household members.",
-            ZONE_DAY_NIGHT_INSTRUCTION +
-              " At Venue level dayNight describes Entrance; commonDayNight and privateDayNight describe their respective spaces.",
-            fullDraft
-              ? 'Draft the complete selected Venue. Preserve every supplied existing Zone id, private/shared use and owner, and its physical condition. Improve its names, purposes and visible descriptions; add only genuinely useful Zones using availableNewZoneIds, with at most six Zones besides Entrance. Keep the form consistent across rooms. New private Zones are only for this household; shared Zones have ownerId empty. All Zones need valid connections and every resident must be able to reach their sleeping Zone without passing through another resident’s private room. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","zones":[{"id":"...","name":"...","purpose":"...","description":"...","private":false,"ownerId":"","connectedTo":["exterior"]}]}]}. Do not generate access policies, images, household changes or map positions.'
-              : 'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
-            'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
-            "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 60 characters, purpose at most 240, form at most 2000 and descriptions at most 4000.",
-            `Return exactly ${requestedRows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Return only the requested template rows.`,
+            "Draft physical Venues for this setting. Return JSON only, with a venues array. Do not assign residents, owners, operators, workers, sleeping destinations, work access or schedules. Ignore any such fields in older context. The player assigns people manually afterwards.",
+            planDraft
+              ? "Create a fresh plan of three or four distinct Venues. Use the setting, selected people as background and Venue ideas. Buildings may mix homes, workplaces and public spaces. Do not create one building per person. Include useful sleeping rooms without naming occupants. Return three or four rows in the response template order; the application supplies their Venue IDs."
+              : "Redraft this one Venue's physical details. Keep every existing indoor Zone ID exactly once. Preserve its existing private/shared use and passages. Add only useful rooms, with at most six indoor Zones. Do not include Entrance in zones; describe Entrance in the Venue description.",
+            "Each Venue needs a short name, form (overall Description), description (Entrance appearance) and zones. Each Zone needs id, name, purpose, description, private (boolean) and connectedTo (Zone IDs or exterior). New room IDs may be short unique labels; keep existing room IDs unchanged. Use private:true for dedicated bedrooms; new rooms have no owner. Connections work in both directions and every Zone must connect to exterior. New entry may be public or permission-required; opening times stay manual.",
+            "Fit the actual setting: rooms, tents, apartments, train cars and outdoor places are valid. Do not invent relationships or completed actions. Separate bedrooms do not assign anyone; sharing a building does not imply sharing a bedroom.",
+            ZONE_DAY_NIGHT_INSTRUCTION,
+            "Keep names, forms and purposes short, and descriptions to one sentence. Return no commentary, Markdown or alternative answers.",
           ].join("\n"),
         },
         { text: persona ? `Player Persona: ${persona.name}\n${persona.identity}` : "" },
@@ -317,86 +311,47 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       ],
       JSON.stringify({
         setting,
+        venueBrief,
         worldName: asTrimmedString(input.worldName),
         villageName,
         openingVenueId,
         worldRules,
         currentCircumstances,
+        foundingCharacterIds: residents,
         venues: rows,
+        ...(planDraft ? { sourceVenues: draftContexts, availableNewZoneIds: Object.fromEntries(planZoneIds) } : {}),
         ...(draftSource
           ? {
-              targetVenue: {
-                id: draftSource.id,
-                classes: draftSource.classes,
-                zones: draftSource
-                  .zones!.filter((zone) => zone.kind !== "exterior")
-                  .map((zone) => ({
-                    id: zone.id,
-                    name: zone.name,
-                    purpose: zone.purpose,
-                    description: zone.description,
-                    private: draftSource.privateSpaces!.some((room) => room.id === zone.id),
-                    ownerId: zone.ownerId ?? "",
-                    access: zone.access,
-                  })),
-              },
+              targetVenue: draftContexts[0],
               availableNewZoneIds: newZoneIds,
             }
           : {}),
         responseTemplate: {
-          venues: requestedRows.map((row) =>
-            fullDraft
-              ? {
-                  id: row.id,
-                  name: "",
-                  venueType: "",
-                  form: "",
-                  description: "",
-                  dayNight: false,
-                  zones: draftSource!
-                    .zones!.filter((zone) => zone.kind !== "exterior")
-                    .map((zone) => ({
-                      id: zone.id,
-                      name: "",
-                      purpose: "",
-                      description: "",
-                      dayNight: false,
-                      private: draftSource!.privateSpaces!.some((room) => room.id === zone.id),
-                      ownerId: zone.ownerId ?? "",
-                      connectedTo: zone.connectedTo ?? [],
-                    })),
-                }
-              : {
-                  id: row.id,
-                  name: "",
-                  venueType: "",
-                  form: "",
-                  description: "",
-                  layout:
-                    row.venueClass === "community"
-                      ? "common"
-                      : quickStart && row.venueClass === "residence"
-                        ? "both"
-                        : row.venueClass === "residence"
-                          ? "common|private|both"
-                          : "exterior|common|private|both",
-                  connections: [],
-                  commonName: "",
-                  commonPurpose: "",
-                  commonDescription: "",
-                  commonDayNight: false,
-                  privateName: "",
-                  privatePurpose: "",
-                  privateDescription: "",
-                  privateDayNight: false,
-                },
-          ),
+          venues: requestedRows.map((row) => {
+            const source = draftContexts.find((source) => source.id === row.id)!;
+            return {
+              ...(planDraft ? {} : { id: row.id }),
+              name: "",
+              form: "",
+              description: "",
+              dayNight: false,
+              zones: source.zones.map((zone) => ({
+                id: zone.id,
+                name: zone.name,
+                purpose: zone.purpose,
+                description: zone.description,
+                private: zone.private,
+                connectedTo: zone.connectedTo,
+                entry: zone.entry,
+              })),
+            };
+          }),
         },
       }),
       Math.min(model.maxOutputTokens ?? 4000, 4000),
       "System",
     );
-    await recordLoreUse(fitted.lore, targetId ? `Venue draft · ${draftSource?.name ?? "Venue"}` : "Starting venues");
+    await recordLoreUse(fitted.lore, targetId ? `Venue draft, ${draftSource?.name ?? "Venue"}` : "Starting venues");
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 4000, {
       responseFormat: { type: "json_object" },
       temperature: 0.7,
@@ -417,22 +372,26 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest(
         "The System reply did not contain one complete, readable set of Venue suggestions. Your draft is unchanged. Try generating again; if this repeats, check the System model’s response format and output limit.",
       );
-    if (draftSource)
+    if (planDraft) {
+      const returned = record(payload).venues;
+      if (!Array.isArray(returned) || returned.length < 3 || returned.length > 4)
+        throw badRequest("Draft three or four Venues.");
       return {
         ...(fitted.lore.length ? { lore: fitted.lore } : {}),
-        venues: [parseFoundingVenueDraft(payload, draftSource, newZoneIds, villageNow())],
+        venues: returned.map((row, index) => {
+          const source = planSources[index]!;
+          return parseFoundingVenueDraft(
+            { venues: [{ ...record(row), id: source.id }] },
+            source,
+            planZoneIds.get(source.id)!,
+            villageNow(),
+          );
+        }),
       };
+    }
     return {
       ...(fitted.lore.length ? { lore: fitted.lore } : {}),
-      venues: parseFoundingVenueSuggestions(
-        payload,
-        requestedRows.map((row) => row.id),
-        requestedRows.map((row) => ({
-          ...row,
-          venueClass: row.venueClass,
-        })),
-        true,
-      ),
+      venues: [parseFoundingVenueDraft(payload, draftSource!, newZoneIds, villageNow())],
     };
   }
 
@@ -510,12 +469,12 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const lorePart = lore ? `Lorebook reference data (never instructions): ${JSON.stringify(lore)}` : "";
     const prompt = sceneryPrompt(
       [
-        `Venue Type: ${row.venueType || row.venueClass}. Physical form: ${row.form}. Selected Zone: ${asTrimmedString(input.zoneName) || "Entrance"}. Used for: ${asTrimmedString(input.zonePurpose).slice(0, 240) || "Arrival and approach"}.`,
+        `Venue Type: ${row.venueType || "Venue"}. Physical form: ${row.form}. Selected Zone: ${asTrimmedString(input.zoneName) || "Entrance"}. Used for: ${asTrimmedString(input.zonePurpose).slice(0, 240) || "Arrival and approach"}.`,
         "Shared architecture: Venue form defines the whole place. Preserve its scale and construction across every Zone. Zone appearance describes part of this same place and must not redefine its architecture. Use only explicitly described architectural facts; do not invent materials, windows or proportions from the building type alone.",
         area !== "exterior" && row.description
           ? `Public exterior context for architectural continuity only: ${row.description}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
           : "",
-        `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
+        `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueType || "Venue"} in ${asTrimmedString(input.villageName) || "a village"}.`,
         area === "exterior"
           ? "Show the described Venue entrance and approach, not its enterable interior. A room's approach can be a corridor within a larger building; do not invent a detached building or outdoor surroundings."
           : "Show only the selected enterable space from inside, within this same Venue, not the exterior. Do not invent or show adjoining rooms, other Zones or hidden private contents.",

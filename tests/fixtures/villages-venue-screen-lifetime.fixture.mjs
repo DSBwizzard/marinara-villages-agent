@@ -17,7 +17,7 @@ import {useSaveBackgroundPace} from './packages/villages/src/client/features/set
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
 const [snapshot,rawSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('A / venue'),[venuePage,setVenuePage]=useState(window.page),[venueZoneKey,setVenueZoneKey]=useState(window.initialZone);
-const [room,setRoom]=useState(null);
+const [room,setRoom]=useState(null); const [venueSection,setVenueSection]=useState('about');
 const [busy,rawBusy]=useState(false),[settingsError,rawSettingsError]=useState(''),[venueEditBusy,rawEditBusy]=useState(false),[venueEditError,rawEditError]=useState(''),[venueEditNotice,rawNotice]=useState(''),
 [venueEditDraft,rawDraft]=useState(window.draft),[venueProposalDraft,rawProposal]=useState(window.proposal),[placeProblem,rawProblem]=useState(null);
 const setSnapshot=useCallback(v=>{window.calls.snapshot++;rawSnapshot(v)},[]),setBusy=useCallback(v=>{window.calls.busy++;rawBusy(v)},[]),setSettingsError=useCallback(v=>{window.calls.settingsError++;rawSettingsError(v)},[]),
@@ -37,6 +37,7 @@ edit:patch=>rawDraft(current=>({...current,...patch})),proposal:patch=>rawPropos
 reset:()=>flushSync(()=>{rawSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});rawBusy(true)}),
 refound:()=>flushSync(()=>{rawSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B'}});rawBusy(false);rawEditBusy(false);rawEditError('B marker');rawNotice('B marker');rawSettingsError('B marker')}),
 poll:()=>rawSnapshot(current=>structuredClone(current)),hydrate:()=>rawSnapshot(current=>({...current,isFounded:true})),
+world:()=>rawSnapshot(current=>({...current,worldScope:'d'.repeat(64),settings:{...current.settings,setting:'New world'}})),
 removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.filter(v=>v.id!==venueId)}})),
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
@@ -44,7 +45,7 @@ return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{<VenueScreen co
 homeBuildings:[],mobile:true,room,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
-venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}
+venueSection,setVenueSection,planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}
 </>;
 }
 window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};
@@ -95,14 +96,13 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       ...seed.settings.venues[0],
       id,
       name: id,
-      classes: ["residence", "community"],
       form: "A building",
       venueType: "Home",
       layoutVersion: 1,
       workerIds: [],
       residentIds: ["mara"],
       state: { ...seed.settings.venues[0].state },
-      spaces: [{ id: "common", venueClass: "residence", description: "Common description", state, image: null }],
+      spaces: [{ id: "common", description: "Common description", state, image: null }],
       privateSpaces: [{ ownerId: "mara", description: "Private description", state, image: null }],
       accessView: { revision: 1, canManage: true, managerIds: ["player"], visitorHours: null, bans: [], changes: [] },
       zones: ["zone / same", "zone / other"].map((zoneId) => ({
@@ -110,7 +110,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         kind: "public",
         name: (index ? "B" : "A") + " Zone",
         purpose: "Community",
-        venueClass: "community",
         description: (index ? "B" : "A") + " Zone description",
         seen: true,
         state,
@@ -128,8 +127,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     const draft = structuredClone(seed.settings.venues[0]);
     if (!options.cleanName) draft.name = " Draft A ";
     const proposal = {
-      classes: ["residence", "community"],
-      capacity: 2,
       title: " Improvement ",
       description: " Raw proposed detail ",
     };
@@ -146,12 +143,14 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
-      requests.push({
-        route,
-        path: new URL(route.request().url()).pathname,
-        method: route.request().method(),
-        body: route.request().postDataJSON(),
-      }),
+      new URL(route.request().url()).pathname.startsWith("/api/villages/projects/rooms/")
+        ? fulfill(route, { json: { entries: [] } })
+        : requests.push({
+            route,
+            path: new URL(route.request().url()).pathname,
+            method: route.request().method(),
+            body: route.request().postDataJSON(),
+          }),
     );
     await page.goto("http://venue-screen.test/");
     await page.evaluate((values) => Object.assign(window, values), {
@@ -236,8 +235,7 @@ export async function verifyVenueScreenLifetimes(browser) {
     residence: { characterId: "resident / A", venueId: "target / B", privateZoneId: " private / target " },
     proposal: {
       requestId: f.requests[0].body?.requestId,
-      classes: f.proposal.classes,
-      capacity: 2,
+
       title: f.proposal.title,
       detail: f.proposal.description,
     },
@@ -259,7 +257,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       .getByRole("button", { name: /^A Zone/ })
       .first()
       .click();
-    return f.page.getByLabel("Room name", { exact: true });
+    return f.page.getByLabel("Zone name", { exact: true });
   }
   // State-only lifetime scenarios need one width; responsive UI lives in universal-venue coverage.
   for (const width of [390])
@@ -268,15 +266,15 @@ export async function verifyVenueScreenLifetimes(browser) {
         const f = await mount(strict, width, { cleanName: true });
         const name = await openRoomDetails(f);
         await name.fill("Retained name");
-        await f.page.getByRole("button", { name: "← Zones", exact: true }).focus();
+        await f.page.getByRole("button", { name: "← A / venue", exact: true }).focus();
         await expect.poll(() => f.requests.length).toBe(1);
         await f.reply(0, { fail: true });
         await expect(name).toHaveValue("Retained name");
         await expect(f.page.getByRole("alert").filter({ hasText: "The Zone name could not be saved" })).toBeVisible();
-        await f.page.getByRole("button", { name: "Save room name", exact: true }).click();
+        await name.press("Enter");
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
+        await expect(name).toBeEnabled();
         await f.finish();
       }
       {
@@ -295,7 +293,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.reply(0);
         await expect(name).toBeDisabled();
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: "Save room name", exact: true })).toBeDisabled();
+        await expect(name).toBeEnabled();
         await f.finish();
       }
       for (const kind of kinds)
@@ -408,11 +406,18 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.finish();
       }
       for (const kind of ["name", "proposal"]) {
-        const f = await mount(strict, width);
+        const f = await mount(strict, width, { cleanName: kind === "name" });
+        if (kind === "name") {
+          await f.page.getByRole("button", { name: "About", exact: true }).click();
+          await f.page.getByRole("button", { name: "Edit", exact: true }).click();
+          await f.page.evaluate(() => window.h.edit({ name: " Draft A " }));
+        }
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
         if (kind === "proposal") await f.page.evaluate(() => window.h.proposal({ description: "Newer proposal" }));
-        else await f.page.getByRole("textbox", { name: "Venue name", exact: true }).fill(" Newer name ");
+        else {
+          await f.page.getByRole("textbox", { name: "Venue name", exact: true }).fill(" Newer name ");
+        }
         const before = await f.read();
         await f.reply(0);
         await settled(f, 0);

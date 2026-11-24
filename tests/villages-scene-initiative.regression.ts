@@ -90,7 +90,6 @@ for (const { id, input, review } of cases) {
     const garden = venueFixture({
       id: "garden",
       name: "Garden",
-      classes: ["community"],
       description,
       zones: [{ ...defaultVenueSpace("community"), id: "exterior", name: "Entrance", kind: "exterior", description }],
     });
@@ -103,7 +102,14 @@ for (const { id, input, review } of cases) {
       backgroundPace: development ? "balanced" : "off",
     });
     world.venues = [garden];
-    if (deadline) world.venues.push(venueFixture({ id: "boathouse", name: "Boathouse", classes: ["workplace"] }));
+    if (deadline)
+      world.venues.push(
+        venueFixture({
+          spaces: [{ id: "workplace", description: "A place in the community.", image: null }],
+          id: "boathouse",
+          name: "Boathouse",
+        }),
+      );
     world.villagers = cards.map((card) => {
       const hasCommitment = deadline && card.id === "ivo";
       return {

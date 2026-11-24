@@ -66,7 +66,6 @@ await withBrowser(browser, async () => {
         nightImage: { url: night, id: "header-night", ref: "header-night" },
         kind: "exterior",
         name: "Entrance",
-        venueClass: "community",
         seen: true,
         image: { url: old, id: "old-exterior", ref: "old-exterior" },
         connectedTo: ["workroom"],
@@ -75,7 +74,6 @@ await withBrowser(browser, async () => {
         id: "workroom",
         kind: "public",
         name: "Workroom",
-        venueClass: "community",
         seen: false,
         pictureGenerateAvailable: true,
         image: { url: old, id: "old", ref: "old" },
@@ -124,8 +122,9 @@ await withBrowser(browser, async () => {
         const zone = venue.zones.find((z) => z.id === body.zoneId);
         assert.ok(zone);
         if (req.method() === "PUT") {
-          zone.pictureReference = { id: "reference", ref: "global-gallery:reference", url: uploaded };
-          zone.referencePending = true;
+          zone.image = { id: "uploaded", ref: "global-gallery:uploaded", url: uploaded };
+          zone.freezePicture = true;
+          zone.nightImage = undefined;
         } else
           zone.image =
             req.method() === "DELETE"
@@ -168,8 +167,9 @@ await withBrowser(browser, async () => {
     };
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
-    await expect(page.getByRole("button", { name: "Generate artwork", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Generate Image", exact: true })).toBeEnabled();
     await expect(page.getByText("Artwork is out of date.", { exact: true })).toBeVisible();
+    await page.locator(".marinara-capability-villages-venue-navigation button").first().click();
     await page.getByRole("button", { name: "About", exact: true }).click();
     const photo = page.locator(".marinara-capability-villages-venue-photo img");
     await expect(photo).toHaveAttribute("src", night);
@@ -184,15 +184,15 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.setBackdropFounded(true));
     await expect(photo).toHaveAttribute("src", night);
     await openZonePicture();
-    await page.getByRole("button", { name: "Generate artwork", exact: true }).click();
+    await page.getByRole("button", { name: "Generate Image", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
-    await expect(page.getByRole("button", { name: "Generate artwork", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Generate Image", exact: true })).toBeEnabled();
     await expect(page.getByText("Artwork is out of date.", { exact: true })).toHaveCount(0);
     await returnToScene();
     await expect(backdrop).toHaveAttribute("src", generated);
     await expect(composer).toHaveValue("Keep this unsent Scene draft.");
     await openSettings();
-    await page.getByLabel(`Upload ${targetName} reference`).setInputFiles({
+    await page.getByLabel(`Upload ${targetName} image`).setInputFiles({
       name: "upload.png",
       mimeType: "image/png",
       buffer: Buffer.from(
@@ -201,14 +201,14 @@ await withBrowser(browser, async () => {
       ),
     });
     await expect.poll(() => mutations.length).toBe(2);
-    await expect(page.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Remove image", exact: true })).toBeEnabled();
     await returnToScene();
-    await expect(backdrop).toHaveAttribute("src", generated);
+    await expect(backdrop).toHaveAttribute("src", uploaded);
     await openSettings();
     await expect(page.getByRole("button", { name: "Refresh picture", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Remove artwork", exact: true }).click();
+    await page.getByRole("button", { name: "Remove image", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(3);
-    await expect(page.getByRole("button", { name: "Remove artwork", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Remove image", exact: true })).toBeDisabled();
     await returnToScene();
     await expect(backdrop).toHaveCount(0);
     assert.deepEqual(snapshot.sceneVenue, captured, "artwork does not replace captured source facts");

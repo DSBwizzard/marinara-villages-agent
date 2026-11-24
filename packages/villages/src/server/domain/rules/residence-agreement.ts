@@ -1,7 +1,9 @@
+import { MAX_VILLAGERS } from "./village-limits.js";
 import { createHash } from "node:crypto";
 import type { VillageResidence, VillageState, VillageVenue } from "../models/world.js";
 import { conflict, badGateway } from "./errors.js";
-import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
+import { venueResidentIds, venueSleepers } from "./venue-model.js";
+import { venueManagers, zoneManagers } from "./venue-access.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -19,26 +21,16 @@ export function accessibleSleepingRoute(
     if (actor === "player") provisional.occupancy.playerHome = true;
     else provisional.residentIds = [...new Set([...venueResidentIds(provisional), actor])];
   }
-  const zones = venueZones(provisional);
-  const sleeping = zones.find((zone) => zone.id === sleepZoneId);
-  if (sleeping?.kind === "private-residence" && !sleeping.ownerId) {
-    sleeping.ownerId = actor;
-    sleeping.access = {
-      mode: "permission-required",
-      managerIds: [actor],
-      memberIds: [actor],
-      memberRoles: [],
-      inviterIds: [],
-      visitorHours: "always",
-      accompanied: false,
-    };
-  }
+  provisional.destinations ??= {};
+  provisional.destinations[actor] = { ...provisional.destinations[actor], sleep: sleepZoneId };
   return accessibleVenueRoute(state, provisional, actor, sleepZoneId, at, founding);
 }
 
 export function householdIds(venue: VillageVenue): string[] {
   return [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])].sort();
 }
+
+const membersOfVenue = (venue: VillageVenue, actor: string) => householdIds(venue).includes(actor);
 
 export function readResidenceAgreement(value: unknown): NonNullable<VillageResidence["agreement"]> {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -57,7 +49,7 @@ export function readResidenceAgreement(value: unknown): NonNullable<VillageResid
     typeof row.sleepZoneId !== "string" ||
     !row.sleepZoneId ||
     !Array.isArray(row.householdIds) ||
-    row.householdIds.length > 4 ||
+    row.householdIds.length > MAX_VILLAGERS + 1 ||
     row.householdIds.some((id) => typeof id !== "string" || !id) ||
     new Set(row.householdIds).size !== row.householdIds.length ||
     !row.approvals ||
@@ -78,37 +70,16 @@ export function captureResidenceAgreement(
   at: string,
 ): NonNullable<VillageResidence["agreement"]> {
   const zones = venueZones(venue);
-  const shared = zones.filter((zone) => zone.kind === "shared-residence" && !zoneClosed(state, venue, zone));
+  const shared = zones.filter(
+    (zone) => zone.kind !== "exterior" && zone.kind !== "personal" && !zoneClosed(state, venue, zone),
+  );
   const sleep = zones.find((zone) => zone.id === (sleepZoneId || (shared.length === 1 ? shared[0].id : "")));
-  if (
-    !hasVenueClass(venue, "residence") ||
-    venue.constructionStatus === "worksite" ||
-    !sleep ||
-    sleep.kind === "exterior" ||
-    sleep.venueClass !== "residence" ||
-    zoneClosed(state, venue, sleep) ||
-    (sleep.ownerId && sleep.ownerId !== actor)
-  )
+  if (venue.constructionStatus === "worksite" || !sleep || sleep.kind === "exterior" || zoneClosed(state, venue, sleep))
     throw conflict("Choose an available sleeping Zone in this Residence.");
-  if (
-    sleep.access?.mode === "permission-required" &&
-    !sleep.access.memberRoles.includes("residents") &&
-    !sleep.access.memberIds.includes(actor) &&
-    sleep.ownerId !== actor &&
-    sleep.kind !== "private-residence"
-  )
-    throw conflict("The sleeping Zone must admit its resident.");
   if (
     venue.access?.bans.some((ban) => ban.active && ban.visitorId === actor && (!ban.zoneId || ban.zoneId === sleep.id))
   )
     throw conflict("The destination's access rules prevent this move.");
-  const reservations = state.residences.filter(
-    (move) => move.characterId !== actor && move.proposedVenueId === venue.id && move.status !== "current",
-  );
-  if (venueAssignedCount(venue) + reservations.length >= venueCapacity(venue))
-    throw conflict("This Residence has no unreserved resident place.");
-  if (sleep.kind === "private-residence" && reservations.some((move) => move.agreement?.sleepZoneId === sleep.id))
-    throw conflict("That private room is reserved for another move.");
   const members = householdIds(venue);
   if (!accessibleSleepingRoute(state, venue, actor, sleep.id, new ZonedDate(at, state.timeZone || "UTC")))
     throw conflict("No accessible route connects Entrance to this sleeping Zone.");
@@ -120,14 +91,17 @@ export function captureResidenceAgreement(
         venue.id,
         members,
         sleep.id,
+        venueSleepers(venue, sleep.id),
+        state.venues
+          .filter((row) => membersOfVenue(row, actor))
+          .map((row) => [row.id, row.destinations?.[actor]?.sleep]),
         sleep.ownerId ?? null,
         sleep.description,
         sleep.access,
-        [...(venue.access?.managerIds ?? [])].sort(),
+        [...venueManagers(venue), ...zoneManagers(venue, sleep)].sort(),
         venue.access?.bans.filter(
           (ban) => ban.active && ban.visitorId === actor && (!ban.zoneId || ban.zoneId === sleep.id),
         ),
-        venueCapacity(venue),
       ]),
     )
     .digest("hex");
@@ -136,7 +110,13 @@ export function captureResidenceAgreement(
     scope,
     householdIds: members,
     requiredIds: [
-      ...new Set([actor, ...members, ...(venue.access?.managerIds ?? []), ...(sleep.access?.managerIds ?? [])]),
+      ...new Set([
+        actor,
+        ...members,
+        ...venueManagers(venue),
+        ...zoneManagers(venue, sleep),
+        ...(sleep.ownerId ? [sleep.ownerId] : []),
+      ]),
     ].sort(),
     sleepZoneId: sleep.id,
     approvals: {},

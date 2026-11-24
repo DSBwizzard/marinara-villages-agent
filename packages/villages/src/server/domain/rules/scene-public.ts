@@ -168,7 +168,6 @@ const sceneFields = [
   "id",
   "placeId",
   "placeName",
-  "spaceClass",
   "zoneId",
   "area",
   "privateOwnerId",

@@ -74,7 +74,6 @@ export function personalSpaceDraft(): PrivateDraft {
     ownerId: "player",
     name: "Your personal space",
     purpose: "Personal space",
-    venueClass: "residence",
     description: "",
     image: null,
   };

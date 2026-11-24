@@ -8,7 +8,6 @@ import {
 import type {
   VillageState,
   VillageVenue,
-  VillageVenueClass,
   VillageVenueImage,
   VillageVenueZone,
   VillageZoneDraft,
@@ -76,9 +75,9 @@ export function applyVenueZoneLayout(
   venue.zoneLayout = positions;
   if (changed.length) {
     venue.zones = zones.map((zone) => ({ ...zone, connectedTo: contactNeighborIds(next, zone.id) }));
-    venue.spaces = venue.zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+    venue.spaces = venue.zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal");
     venue.privateSpaces = venue.zones
-      .filter((zone) => zone.kind === "private-residence")
+      .filter((zone) => zone.kind === "personal")
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
   }
 }
@@ -86,7 +85,6 @@ export function applyVenueZoneLayout(
 export const VENUE_LAYOUTS = ["exterior", "common", "private", "both"] as const;
 export function readBaseVenueLayout(
   value: unknown,
-  classes: VillageVenueClass[],
   residentId: string,
   image: (value: unknown) => VillageVenueImage | null,
   options: { founding?: boolean } = {},
@@ -134,15 +132,19 @@ export function readBaseVenueLayout(
   };
   const result: VillageVenueZone[] = [
     {
-      ...defaultVenueSpace(classes[0]!),
+      ...defaultVenueSpace("exterior"),
       ...daylight(row),
       id: "exterior",
-      name: "Entrance",
+      name:
+        asTrimmedString(
+          (Array.isArray(row.zones) ? row.zones.map(asRecord).find((zone) => zone.id === "exterior") : undefined)?.name,
+        ).slice(0, 100) || "Entrance",
       kind: "exterior",
       purpose: "Arrival and approach",
       description: asTrimmedString(row.description),
       image: image(asRecord(row.presentation).image),
       picture: picture(row, image(asRecord(row.presentation).image)),
+      freezePicture: row.freezePicture === true,
       seen: true,
     },
   ];
@@ -153,25 +155,20 @@ export function readBaseVenueLayout(
     const area = asRecord(raw);
     const id = asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base");
     if (Buffer.byteLength(id) > 160) throw badRequest("A Zone ID must fit within 160 UTF-8 bytes.");
-    const role = area.venueClass as VillageVenueClass;
-    if (!classes.includes(role)) throw badRequest("Choose one of this venue's Classes for each area.");
     const description = asTrimmedString(area.description);
     const roomSpecification = asTrimmedString(area.roomSpecification ?? (isPrivate ? area.description : ""));
     if (roomSpecification.length > 4000) throw badRequest("Room specification must be at most 4000 characters.");
     if (description.length > 4000 || (!isPrivate && !description))
       throw badRequest("Describe the Common Space in at most 4000 characters.");
-    const ownerId =
-      isPrivate && role === "residence"
-        ? (options.founding ? asTrimmedString(area.ownerId) : asTrimmedString(area.ownerId) || residentId) || undefined
-        : undefined;
+    const ownerId = isPrivate
+      ? (options.founding ? asTrimmedString(area.ownerId) : asTrimmedString(area.ownerId) || residentId) || undefined
+      : undefined;
     const prepareInterior = isPrivate && ownerId !== "player" && !options.founding;
     const controllers = Array.isArray(area.controllerIds)
       ? [...new Set(area.controllerIds.filter((id): id is string => typeof id === "string" && !!id))]
       : [];
-    if (area.access === undefined && isPrivate && !["residence", "workplace"].includes(role) && !controllers.length)
-      throw badRequest("Choose controllers for the Private Space.");
     result.push({
-      ...defaultVenueSpace(role, prepareInterior ? "" : description),
+      ...defaultVenueSpace(id, prepareInterior ? "" : description),
       ...daylight(area),
       ...(prepareInterior ? { roomSpecification } : {}),
       id,
@@ -182,18 +179,15 @@ export function readBaseVenueLayout(
         (isPrivate ? "Personal space" : "Shared and everyday activities"),
       access: area.access === undefined ? undefined : readZonePolicy(area.access),
       kind: isPrivate
-        ? role === "residence"
-          ? "private-residence"
-          : role === "workplace"
-            ? "staff"
-            : "restricted"
-        : role === "residence"
-          ? "shared-residence"
+        ? "personal"
+        : area.access && asRecord(area.access).mode === "permission-required"
+          ? "restricted"
           : "public",
       ownerId,
       controllerIds: controllers,
       image: image(area.image),
       picture: picture(area, image(area.image)),
+      freezePicture: area.freezePicture === true,
       seen: ownerId === "player",
       preparation: prepareInterior ? { status: "pending" } : undefined,
     });
@@ -207,12 +201,7 @@ export function readBaseVenueLayout(
   return connected;
 }
 
-export function validateLayoutZones(
-  venue: VillageVenue,
-  drafts: VillageZoneDraft[],
-  classes: VillageVenueClass[],
-  state: VillageState,
-): void {
+export function validateLayoutZones(venue: VillageVenue, drafts: VillageZoneDraft[], state: VillageState): void {
   if (drafts.length > 6) throw badRequest("A Venue may have at most six Zones besides Entrance.");
   if (new Set(drafts.map((zone) => zone.id)).size !== drafts.length)
     throw badRequest("Every physical zone must have a distinct ID.");
@@ -238,22 +227,9 @@ export function validateLayoutZones(
   const problem = connectionProblem(applyConnectionEdits(resolved, drafts));
   if (problem) throw badRequest(problem);
   for (const zone of drafts) {
-    if (zone.ownerId && zone.kind !== "private-residence")
-      throw badRequest("Only residential Private Spaces have assigned residents.");
+    if (zone.ownerId && zone.kind !== "personal") throw badRequest("Only personal rooms have assigned residents.");
     if (
-      !venue.access &&
-      ((zone.kind === "public" && zone.venueClass === "residence") ||
-        (zone.kind === "restricted" && ["residence", "workplace"].includes(zone.venueClass)))
-    )
-      throw badRequest("The area access must follow its associated Class.");
-    if (
-      !classes.includes(zone.venueClass) ||
-      ((zone.kind === "shared-residence" || zone.kind === "private-residence") && zone.venueClass !== "residence") ||
-      (zone.kind === "staff" && zone.venueClass !== "workplace")
-    )
-      throw badRequest("Each zone must be supported by its Venue Class.");
-    if (
-      zone.kind === "private-residence" &&
+      zone.kind === "personal" &&
       zone.ownerId &&
       !(venueResidentIds(venue).includes(zone.ownerId) || (zone.ownerId === "player" && venue.occupancy.playerHome))
     )
@@ -268,7 +244,7 @@ export function validateLayoutZones(
     )
       throw badRequest("Choose current residents as private-area controllers.");
   }
-  const owners = drafts.filter((zone) => zone.kind === "private-residence" && zone.ownerId).map((zone) => zone.ownerId);
+  const owners = drafts.filter((zone) => zone.kind === "personal" && zone.ownerId).map((zone) => zone.ownerId);
   if (!venue.access && new Set(owners).size !== owners.length)
     throw badRequest("A resident may be assigned one residential Private Space.");
 }
@@ -284,7 +260,7 @@ export function assertResidencePrivateDestination(
   if (
     !zone ||
     zoneClosed(state, venue, zone) ||
-    zone.kind !== "private-residence" ||
+    zone.kind !== "personal" ||
     (zone.ownerId && zone.ownerId !== characterId)
   )
     throw conflict("That residential Private Space is no longer vacant.");

@@ -194,7 +194,11 @@ async function main() {
       },
     ],
   }).villagers;
-  const venue = venueFixture({ id: "square", name: "Square", classes: ["community"] });
+  const venue = venueFixture({
+    spaces: [{ id: "community", description: "A place in the community.", image: null }],
+    id: "square",
+    name: "Square",
+  });
   contact.venues = [venue];
   const resident = { characterId: "mara", name: "Mara", doing: "Resting" };
   const scene = zoneEventScene(

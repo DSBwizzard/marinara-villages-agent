@@ -54,6 +54,8 @@ export type AccessChange = {
   sourceLineIds: string[];
 };
 export type VenueAccessState = {
+  work?: import("./venue-work.js").VenueWork[];
+  workOffers?: import("./venue-work.js").WorkOffer[];
   version: 1;
   revision: number;
   managerIds: string[];
@@ -100,6 +102,7 @@ export type ZoneAccessView = {
   canTrespass?: boolean;
   companions?: { id: string; name: string; staying?: true; trespass?: true }[];
   nextOpening?: string;
+  visitorHours?: Exclude<ZoneVisitorHours, "inherit">;
   canAllowAfterHours?: boolean;
   invitation?: {
     issuerId: string;
@@ -115,9 +118,12 @@ export type ZoneAccessView = {
   changes?: AccessChange[];
 };
 export type VenueAccessView = {
+  work?: import("./venue-work.js").VenueWork[];
+  workOffers?: import("./venue-work.js").WorkOfferView[];
   revision: number;
   canManage: boolean;
   canRecover?: boolean;
+  runnerIds?: string[];
   managerIds?: string[];
   visitorHours?: VisitorHours | null;
   bans?: AccessBan[];
@@ -129,8 +135,10 @@ export type AccessCommand = {
   expectedRevision: number;
   zoneId: string | null;
 } & (
+  | { action: "work-propose"; characterId: string; terms: import("./venue-work.js").VenueWork | null }
+  | { action: "work-decide"; offerId: string; accept: boolean }
   | { action: "recover-managers"; managerIds: string[] }
-  | { action: "venue-policy"; managerIds: string[]; visitorHours: VisitorHours | null }
+  | { action: "venue-policy"; managerIds: string[]; visitorHours?: VisitorHours | null }
   | { action: "zone-policy"; policy: ZoneAccessPolicy }
   | {
       action: "invite";
@@ -148,3 +156,33 @@ export type AccessCommand = {
   | { action: "lift-ban"; banId: string }
   | { action: "exception"; permissionId: string; banIds: string[] }
 );
+
+/** Explicit schedules count only when their combined intervals cover every day. */
+export function alwaysOpenVisitorHours(hours: VisitorHours | null): boolean {
+  if (hours === null) return true;
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const minute = (clock: string) => Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3));
+  return days.every((day, index) => {
+    const intervals: number[][] = [];
+    for (const row of hours) {
+      const start = minute(row.start),
+        end = minute(row.end);
+      if (row.days.includes(day)) intervals.push(start === end ? [0, 1440] : [start, start < end ? end : 1440]);
+      if (start > end && row.days.includes(days[(index + 6) % 7]!)) intervals.push([0, end]);
+    }
+    let through = 0;
+    for (const [start, end] of intervals.sort((a, b) => a[0]! - b[0]!)) {
+      if (start! > through) return false;
+      through = Math.max(through, end!);
+    }
+    return through === 1440;
+  });
+}
+
+/** Older saved Zones retain their effective schedule when the editor removes inheritance. */
+export function zoneVisitingHours(
+  hours: ZoneVisitorHours | undefined,
+  previousDefault: VisitorHours | null = null,
+): Exclude<ZoneVisitorHours, "inherit"> {
+  return hours === "inherit" ? (previousDefault ?? "always") : (hours ?? "always");
+}

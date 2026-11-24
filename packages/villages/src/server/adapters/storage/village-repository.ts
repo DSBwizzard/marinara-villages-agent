@@ -1,6 +1,4 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { assertSharedPlayspace } from "../../domain/rules/shared-playspace.js";
-import { villageNow } from "../time/clock-gate.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { coerceVillageState, defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { VillageMemoryWrite, VillageRepository } from "../../domain/models/world-repository.js";
@@ -142,7 +140,6 @@ export function createVillageRepository(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
             );
-            if (state.setupAt) assertSharedPlayspace(state, villageNow(state.clock?.advanceMs ?? 0));
             const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
             const stamp = new Date().toISOString();
             const data: ReturnType<typeof encodeRoot> & { sceneRetry?: unknown } = encodeRoot(state, nextHead);

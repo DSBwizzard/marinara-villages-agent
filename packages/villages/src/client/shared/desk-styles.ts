@@ -1,4 +1,5 @@
 import { STORYBOOK_DAY, STORYBOOK_NIGHT } from "./storybook-colors.js";
+import { VENUE_MANAGE_STYLES } from "./venue-manage-styles.js";
 const P = "marinara-capability-villages";
 
 export {
@@ -91,15 +92,11 @@ export const DESK_STYLES = `
 .${P}-sectioned-menu[data-page="visual"] .${P}-visual-setting + .${P}-visual-setting{border-top:1px solid var(--border);padding-top:10px;margin-top:6px}
 .${P}-sectioned-menu .villages-scenery-fields{display:grid;gap:8px;width:min(100%,42rem);min-width:0;margin:14px 0 0;padding:8px 0 0;border:0;border-top:1px solid var(--border);border-radius:0}
 .${P}-workspace-content .${P}-venue-profile{position:relative;isolation:isolate;display:flex;flex-direction:column;min-height:100%;max-width:none;margin:0;padding:clamp(16px,3cqw,42px);background:#302d47;color:inherit}
-.${P}-venue-navigation{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:8px;margin-bottom:clamp(18px,7cqh,68px)}
-.${P}-workspace-venue-header{padding:0 0 18px}
+.${P}-venue-navigation{display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:8px;margin-bottom:6px}
+.${P}-workspace-venue-header{padding:0 0 12px}
 .${P}-workspace-venue-header .${P}-storybook-heading{display:flex;align-items:center;gap:.35em;margin:0;font:600 clamp(27px,3.6cqw,58px)/1.12 var(--menu-font);letter-spacing:-.025em;overflow-wrap:anywhere}
-.${P}-workspace-venue-header .${P}-directory-flourish{flex:none;width:.85em;height:auto}
 .${P}-venue-profile:focus-within :is(button,a):focus-visible{outline:2px solid #f0dfbc;outline-offset:2px}
-.${P}-venue-metadata{display:flex;flex-wrap:wrap;gap:4px 10px;margin:8px 0 0;color:#d0c1b3;font-size:17px}
-.${P}-venue-metadata>div{display:flex;min-width:0;max-width:100%}.${P}-venue-metadata>div+div::before{content:"·";margin-right:10px}
-.${P}-venue-metadata dt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.${P}-venue-metadata dd{margin:0;overflow-wrap:anywhere}
-.${P}-workspace-content .${P}-venue-back{flex:none;min-height:44px;padding:4px 0;border:0;background:transparent;color:#f0dfbc;font:400 20px/1.3 var(--menu-font);cursor:pointer}
+.${P}-workspace-content .${P}-venue-back{flex:none;min-height:44px;margin:0;padding:4px 0;border:0;background:transparent;color:#f0dfbc;font:400 20px/1.3 var(--menu-font);cursor:pointer}
 .${P}-workspace-content .${P}-venue-back:is(:hover,:focus,:active){background:transparent;color:#fff0d5}
 .${P}-workspace-content .${P}-venue-sections{display:flex;flex-wrap:wrap;gap:clamp(6px,1.5cqw,20px);padding:0;border:0;border-bottom:1px solid var(--border);background:transparent}
 .${P}-workspace-content .${P}-venue-sections button{min-width:0;min-height:44px;flex:0 1 auto;padding:6px 4px;background:transparent;color:inherit;border:0;border-bottom:3px solid transparent;border-radius:0;font:400 clamp(16px,2cqw,23px)/1.3 var(--menu-font);cursor:pointer}
@@ -110,7 +107,7 @@ export const DESK_STYLES = `
 .${P}-workspace-content .${P}-venue-profile[data-storybook-daylight]{background:#b7d5e2;color:#213e36;--venue-ink:#213e36;--venue-muted:#3d5b53;--venue-accent:#41674f;--venue-surface:#e7efdc;--venue-selected:#b9d0b1;--border:#668d8170}
 .${P}-venue-profile[data-storybook-daylight]::before{content:"";background:linear-gradient(90deg,#e3eee4fa 0%,#d4e7dfee 34%,#d4e7dfa8 47%,transparent 72%)}
 .${P}-venue-profile[data-storybook-daylight] .${P}-storybook-heading{border-color:var(--venue-accent)}
-.${P}-venue-profile[data-storybook-daylight] :is(.${P}-venue-metadata,.${P}-venue-zone-picker small,.${P}-venue-assignments small){color:var(--venue-muted)}
+.${P}-venue-profile[data-storybook-daylight] :is(.${P}-venue-zone-picker small,.${P}-venue-assignments small){color:var(--venue-muted)}
 .${P}-workspace-content .${P}-venue-profile[data-storybook-daylight] :is(.${P}-venue-back,.${P}-venue-sections button[aria-pressed="true"],.${P}-venue-zone-caption>span){color:var(--venue-ink)}
 .${P}-venue-profile[data-storybook-daylight] .${P}-venue-zone-picker button[aria-current="true"]{border-inline-start-color:var(--venue-accent);background:var(--venue-selected)}
 .${P}-venue-profile[data-storybook-daylight] :is(.${P}-venue-name-field,.${P}-venue-zone-thumb){background:var(--venue-surface);color:var(--venue-ink)}
@@ -130,14 +127,15 @@ export const DESK_STYLES = `
 .${P}-venue-zone-navigation{display:grid;grid-template-columns:minmax(0,1fr);overflow:clip;overflow-clip-margin:4px}
 .${P}-venue-zone-navigation>section{grid-area:1/1;min-width:0;align-self:start;transition:translate .22s ease}
 .${P}-venue-zone-navigation>section[inert]{height:0;visibility:hidden;transition:translate .22s ease,visibility 0s .22s}
-.${P}-venue-zone-picker[inert]{translate:-100%}
+.${P}-venue-zone-list[inert]{translate:-100%}
 .${P}-venue-zone-editor[inert]{translate:100%}
 @media(prefers-reduced-motion:reduce){.${P}-venue-zone-navigation>section,.${P}-venue-zone-navigation>section[inert]{transition:none}}
 .${P}-venue-zone-picker{display:grid;max-width:22rem}
 .${P}-venue-zone-picker button{position:relative;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:2px 12px;min-height:44px;padding:8px 34px 8px 12px;border:0;border-bottom:1px solid var(--border);border-inline-start:3px solid transparent;border-radius:0;background:transparent;color:inherit;font:inherit;text-align:left;overflow-wrap:anywhere;cursor:pointer}
 .${P}-venue-zone-picker button[aria-current="true"]{border-inline-start-color:#d29399;background:#514157aa}
 .${P}-venue-zone-chevron{position:absolute;inset-inline-end:10px;top:50%;translate:0 -50%;font-size:1.3em}
-.${P}-venue-zone-toolbar{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:10px}
+.${P}-venue-zone-toolbar{display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:10px}
+.${P}-venue-zone-toolbar>.${P}-venue-back{justify-self:start}
 .${P}-venue-zone-toolbar h2{margin:0;font:inherit;overflow-wrap:anywhere}
 .${P}-venue-zone-toolbar .${P}-venue-name-field{margin-top:0}
 .${P}-venue-zone-thumb{display:none}
@@ -168,9 +166,6 @@ export const DESK_STYLES = `
 .${P}-venue-connection-choices legend{padding:0}
 .${P}-venue-connection-choices label{display:flex;align-items:center;gap:8px;min-height:44px;overflow-wrap:anywhere}
 .${P}-venue-connection-choices input{flex:none;margin:0;accent-color:#969b7e}
-.${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{flex:1 1 auto;padding:4px 8px;font:400 15px/1.2 var(--menu-font,Georgia,serif);text-align:center}
-.${P}-workspace-content .${P}-zone-artwork-actions .${P}-zone-view-image{background:#a5ac8b;color:#292938;border-color:#bdc2a8}
-.${P}-workspace-content .${P}-zone-artwork-actions .${P}-zone-view-image:hover{background:#b9bf9e}
 .villages-founding-dialog.${P}-zone-image-viewer[open]{position:fixed;inset:0;display:block;width:min(44rem,calc(100vw - 2rem));height:fit-content;max-height:calc(100dvh - 2rem);margin:auto;padding:0;border:1px solid #8a7084;border-radius:14px;background:#2d2235;color:#f0dfbc;box-shadow:0 12px 36px #160e22a6;font-family:var(--menu-font,"village-letter-lora",Georgia,serif)}
 .${P}-zone-image-viewer::backdrop{background:#17111c66}
 .${P}-zone-image-viewer[open]>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:8px 10px 6px 14px;background:transparent}
@@ -253,7 +248,6 @@ export const DESK_STYLES = `
  .${P}-workspace-venue-header{padding-bottom:6px}
  .${P}-workspace-venue-header .${P}-storybook-heading{font-size:clamp(24px,6.5cqw,32px)}
  .${P}-workspace-venue-header .${P}-directory-flourish{display:none}
- .${P}-venue-metadata{margin-top:4px;font-size:15px}
  .${P}-workspace-content .${P}-venue-sections{gap:clamp(10px,4cqw,18px)}
  .${P}-workspace-content .${P}-venue-sections button{flex:none;min-width:44px;padding:6px 0;font-size:clamp(16px,4.5cqw,19px);text-align:left}
  .${P}-workspace-content .${P}-venue-profile-body{padding-top:8px}
@@ -278,11 +272,8 @@ export const DESK_STYLES = `
  .${P}-venue-manage-heading h2{font-size:19px}
  .${P}-workspace-content .${P}-venue-manage-heading .${P}-venue-back{font-size:16px}
  .${P}-workspace-content .${P}-venue-zone-toolbar .${P}-venue-back{font-size:16px}
+ .${P}-venue-zone-toolbar{gap:0}
  .${P}-venue-zone-details{gap:6px}
- .${P}-zone-artwork-actions{gap:4px}
- .${P}-workspace-content .${P}-zone-artwork-actions .${P}-button{flex:1 1 0;padding-inline:2px;font-size:clamp(12px,3.4cqw,15px)}
- .${P}-workspace-content .${P}-zone-artwork-actions .${P}-zone-view-image{flex-grow:1.8}
- .${P}-workspace-content .${P}-zone-artwork-actions:has(.${P}-zone-artwork-retry) .${P}-button{flex-basis:auto}
  .${P}-zone-artwork-footer>p{font-size:12px}
  .${P}-venue-summary .${P}-venue-primary{min-width:8rem}
  .${P}-desk-workspace[data-venue="true"] .${P}-workspace-sidebar{display:none}
@@ -312,4 +303,5 @@ export const DESK_STYLES = `
  .${P}-desk-nav svg{width:20px;height:20px}
  .${P}-desk-workspace:not([data-desk="none"])>.${P}-desk-stage{padding-top:10px;padding-bottom:0;margin-bottom:calc(38px + var(--villages-exploration-inset,0px))}
 }}
+${VENUE_MANAGE_STYLES}
 `;

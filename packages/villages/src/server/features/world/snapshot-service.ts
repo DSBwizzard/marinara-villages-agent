@@ -311,7 +311,10 @@ export function createVillageSnapshot({
             }
           : undefined,
       })),
-      residences: village.residences,
+      residences: village.residences.flatMap((move) => {
+        if (move.status === "current") return [{ ...move, agreement: undefined, proposedPrivateZoneId: undefined }];
+        return move.requestedBy === "player" || move.agreement?.requiredIds.includes("player") ? [move] : [];
+      }),
       villagers,
       ...(visitors?.length ? { visitors } : {}),
       ...(visit

@@ -23,7 +23,6 @@ const publicZones = Array.from({ length: 3 }, (_, i) => ({
   id: "garden-" + i,
   name: "Garden " + i,
   purpose: "Open air gathering",
-  venueClass: "community",
   description: "An outdoor meeting space.",
   connectedTo: ["exterior"],
 }));
@@ -31,7 +30,6 @@ const privateZones = Array.from({ length: 3 }, (_, i) => ({
   id: "quiet-" + i,
   name: "Quiet room " + i,
   purpose: "Private reflection",
-  venueClass: "community",
   description: "A private interior.",
   controllerIds: ["a"],
   connectedTo: ["exterior"],
@@ -43,7 +41,6 @@ const plan = {
   exteriorDescription: "The garden gate.",
   spaces: publicZones,
   privateSpaces: privateZones,
-  capacity: 4,
 };
 assert.equal(readProjectPlan(plan, target).spaces.length + readProjectPlan(plan, target).privateSpaces.length, 6);
 assert.throws(
@@ -54,7 +51,6 @@ const founding = venueFixture({
   residentIds: [null].filter((id) => typeof id === "string" && !!id),
   id: "founding",
   name: "Garden Pavilion",
-  classes: ["community"],
   category: "public-center",
   description: "The garden gate.",
   presentation: { image: null, x: 0.5, y: 0.5 },
@@ -85,7 +81,7 @@ initializeVenueAccess(saved.venues[0]);
 assert.equal(coerceVillageState(saved).venues[0].zones!.length, 7, "Entrance is extra");
 saved.venues[0].zones!.push({ ...saved.venues[0].zones![1], id: "seventh" });
 assert.throws(() => coerceVillageState(saved), /six Zones/);
-await assert.rejects(f.service.saveProjectPlan(id, f.body(id, { ...plan, capacity: 5 })), /one to four/);
+await assert.doesNotReject(f.service.saveProjectPlan(id, f.body(id, { ...plan })));
 const distinct = fixture(),
   distinctId = await distinct.newProject("Workshop", "a", { x: 0.7, y: 0.7 }, "r".repeat(200));
 const physicalDesign = "A timber hall with sheltered work tables, wide windows and a shared gathering space. "

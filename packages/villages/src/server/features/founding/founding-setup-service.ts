@@ -22,7 +22,7 @@ import {
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
 import { initialOpening } from "../../domain/rules/opening-project.js";
-import { sharedPlayspace } from "../../domain/rules/shared-playspace.js";
+import { openingPlayspace } from "../../domain/rules/opening-playspace.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
@@ -32,7 +32,7 @@ import { initialIdentityDescription } from "../../domain/rules/resident-descript
 import { readFoundingCircumstances, seedFoundingCircumstances } from "../../domain/rules/founding-circumstances.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
-import { validVenueClasses, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { readBool } from "../../domain/rules/village-projections.js";
 import { loreText } from "../../domain/rules/lore-context.js";
 import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
@@ -149,7 +149,22 @@ export function createFoundingSetup({
     if (!Array.isArray(input.venues)) throw badRequest("The setup needs the places you put on the map.");
     const cards = await listVillagerCards();
     const cardNames = new Map(cards.map((card) => [card.id, card.name]));
-    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, villageNow());
+    if (Array.isArray(input.foundingCharacterIds)) {
+      const homes = (input.venues as unknown[]).map(asRecord);
+      for (const id of input.foundingCharacterIds) {
+        if (!homes.some((home) => Array.isArray(home.residentIds) && home.residentIds.includes(id)))
+          throw badRequest(`Assign a Home to ${cardNames.get(String(id)) ?? "each selected Villager"} on Venues.`);
+      }
+      if (!homes.some((home) => asRecord(home.occupancy).playerHome === true))
+        throw badRequest("Assign your Home on Venues.");
+    }
+    const places = parsePlaces(
+      input.venues,
+      new Set(cardNames.keys()),
+      true,
+      villageNow(),
+      typeof input.timeZone === "string" ? input.timeZone : undefined,
+    );
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
     );
@@ -166,9 +181,9 @@ export function createFoundingSetup({
     if (assignedResidents.has(PROFESSOR_MARI_ID))
       throw badRequest("Professor Mari will visit after founding. Choose another founding Villager.");
     const circumstances = readFoundingCircumstances(input.circumstances, places, villageNow().toISOString());
-    const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
     if (input.foundingCharacterIds !== undefined)
       validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
+    const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
     if (privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
       throw badRequest("Choose founding villagers as room controllers.");
     const initialResidentIds = [...assignedResidents];
@@ -198,9 +213,8 @@ export function createFoundingSetup({
         ...place,
         layoutVersion: prior?.layoutVersion ?? place.layoutVersion,
         zoneLayout: place.zoneLayout,
-        classes: prior?.classes ?? place.classes,
         spaces: place.spaces,
-        residenceCapacity: prior?.residenceCapacity ?? place.residenceCapacity,
+
         residentIds: prior ? venueResidentIds(prior) : place.residentIds,
         zones: prior?.zones ?? place.zones,
         privateSpaces: prior?.privateSpaces ?? place.privateSpaces,
@@ -208,7 +222,7 @@ export function createFoundingSetup({
         imageContext: prior?.imageContext ?? place.imageContext,
 
         capabilities: prior?.capabilities ?? place.capabilities,
-        workerIds: prior?.workerIds ?? [],
+        workerIds: prior?.workerIds ?? place.workerIds,
         playerSeenPublic: prior?.playerSeenPublic,
         playerSeenShared: prior?.playerSeenShared,
         presentation: {
@@ -290,9 +304,11 @@ export function createFoundingSetup({
         addedResidents.push(card);
       }
       const at = state.setupAt;
-      const shared = sharedPlayspace(state, villageNow());
-      if (!shared.sufficient) throw badRequest("Provide public shared Zones in at least two Venues.");
-      const openingVenueId = shared.venues[Math.floor(openingRoll * shared.venues.length)]!.venueId;
+      const shared = openingPlayspace(state, [...assignedResidents], villageNow());
+      if (!shared.length) throw badRequest("Choose a starting Zone everyone can enter.");
+      const indoors = shared.filter((row) => row.zoneIds.some((id) => id !== "exterior"));
+      const hosts = indoors.length ? indoors : shared;
+      const openingVenueId = hosts[Math.floor(openingRoll * hosts.length)]!.venueId;
       state.opening = initialOpening([...assignedResidents], openingVenueId, randomUUID());
       seedFoundingCircumstances(state, circumstances, ["player", ...assignedResidents], at);
     });
@@ -333,7 +349,6 @@ export function createFoundingSetup({
       return {
         id: asTrimmedString(raw.id),
         name: asTrimmedString(raw.name),
-        classes: validVenueClasses(raw.classes) ? raw.classes : ["other"],
         homeKind: asTrimmedString(raw.homeKind),
       };
     });

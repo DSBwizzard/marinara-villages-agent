@@ -18,7 +18,7 @@ state.playerPersonaId = "persona";
 state.playerPersonaName = "Robin Hale";
 state.playerPersonaIdentity = "PRIVATE-PERSONA-IDENTITY";
 state.zonePictureEpoch = 73;
-const venue = venueDraft({ name: "Hall", description: "A public hall", classes: ["community"] }, null);
+const venue = venueDraft({ name: "Hall", description: "A public hall" }, null);
 venue.access = {
   version: 1,
   revision: 1,
@@ -45,7 +45,7 @@ const hidden: VillageVenueZone = {
   ...defaultVenueSpace("residence", "A resident room before the first visit"),
   id: "private",
   name: "Private room",
-  kind: "private-residence" as const,
+  kind: "personal" as const,
   ownerId: "resident",
   seen: false,
   image: { ref: "global-gallery:hidden", url: "/hidden.png", id: "hidden" },

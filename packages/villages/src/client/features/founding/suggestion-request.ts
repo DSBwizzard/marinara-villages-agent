@@ -6,6 +6,7 @@ import { FOUNDING_DRAFT_UNAVAILABLE } from "../../../shared/contracts/founding.j
 import type { FoundingState } from "./useFoundingState.js";
 
 export type FoundingSuggestionOptions = {
+  plan?: boolean;
   quickStart?: boolean;
   separateHomes?: boolean;
   venueId?: string;
@@ -48,17 +49,21 @@ export async function requestFoundingSuggestions(
     id: createVillagesClientId(),
     sourceKey: ports.setupBeginningSourceKey,
     quickStart: !!options?.quickStart,
-    ...(options?.separateHomes ? { separateHomes: true, sourceVenues: JSON.stringify(setupDraftData.venues) } : {}),
+    ...(options?.plan ? { plan: true } : {}),
+    ...(options?.separateHomes ? { separateHomes: true } : {}),
+    ...(options?.plan || options?.separateHomes ? { sourceVenues: JSON.stringify(setupDraftData.venues) } : {}),
     venueId: options?.venueId,
     ...(options?.fullVenue ? { fullVenue: true, draftEntranceImage: !!options.draftEntranceImage } : {}),
     ...(options?.draftSetting ? { draftSetting: true, settingReplacement: options.settingReplacement } : {}),
-    ...((!options?.quickStart && options?.venueId) || options?.separateHomes || options?.draftSetting
+    ...((!options?.quickStart && options?.venueId) || options?.plan || options?.separateHomes || options?.draftSetting
       ? { sourceInputs: JSON.stringify(input) }
       : {}),
   };
   // Recovery must use the original merge mode and target, regardless of which button was tapped.
   if (options) {
     options.quickStart = pending.quickStart;
+    if (pending.plan) options.plan = true;
+    else delete options.plan;
     if (pending.separateHomes) options.separateHomes = true;
     else delete options.separateHomes;
     options.venueId = pending.venueId;

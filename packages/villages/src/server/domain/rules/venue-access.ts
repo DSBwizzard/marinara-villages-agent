@@ -1,3 +1,7 @@
+import { zoneVisitingHours } from "../../../shared/helpers/venue-access.js";
+import { venueWorkSchema, workOfferSchema } from "../../../shared/helpers/venue-work.js";
+import { validateVenueWork } from "./venue-work.js";
+import { venueSleepers } from "./venue-model.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   AccessCommand,
@@ -58,6 +62,8 @@ export const banSchema = z.object({
   sourceLineIds: ids,
 });
 const stateSchema = z.object({
+  work: z.array(venueWorkSchema).max(100).optional(),
+  workOffers: z.array(workOfferSchema).max(100).optional(),
   version: z.literal(1),
   revision: z.number().int().nonnegative(),
   managerIds: ids,
@@ -90,6 +96,8 @@ const stateSchema = z.object({
 });
 const base = { operationId: id, expectedRevision: z.number().int().nonnegative(), zoneId: id.nullable() };
 const commandSchema = z.discriminatedUnion("action", [
+  z.object({ ...base, action: z.literal("work-propose"), characterId: id, terms: venueWorkSchema.nullable() }).strict(),
+  z.object({ ...base, action: z.literal("work-decide"), offerId: id, accept: z.boolean() }).strict(),
   z.object({ ...base, action: z.literal("recover-managers"), managerIds: ids }).strict(),
   z
     .object({
@@ -104,7 +112,12 @@ const commandSchema = z.discriminatedUnion("action", [
   z.object({ ...base, action: z.literal("refuse-entry"), visitorId: id, sceneId: id.optional() }).strict(),
   z.object({ ...base, action: z.literal("leave-now"), visitorId: id, sceneId: id.optional() }).strict(),
   z
-    .object({ ...base, action: z.literal("venue-policy"), managerIds: ids, visitorHours: hoursSchema.nullable() })
+    .object({
+      ...base,
+      action: z.literal("venue-policy"),
+      managerIds: ids,
+      visitorHours: hoursSchema.nullable().optional(),
+    })
     .strict(),
   z.object({ ...base, action: z.literal("zone-policy"), policy: zonePolicySchema }).strict(),
   z
@@ -144,28 +157,19 @@ export function readVenueAccess(value: unknown): VenueAccessState | undefined {
 export function defaultZonePolicy(venue: VillageVenue, zone: VillageVenueZone): ZoneAccessPolicy {
   const personal = zone.ownerId ? [zone.ownerId] : null;
   const managerIds = personal ?? (zone.controllerIds?.length ? zone.controllerIds : null);
-  const mode =
-    zone.venueClass === "residence" || ["staff", "restricted"].includes(zone.kind) ? "permission-required" : "public";
+  const mode = zone.kind === "personal" || zone.kind === "restricted" ? "permission-required" : "public";
   return {
     mode,
     managerIds,
     memberIds: personal ?? [],
-    memberRoles:
-      zone.ownerId || zone.kind === "private-residence"
-        ? []
-        : zone.venueClass === "residence"
-          ? ["residents"]
-          : zone.kind === "staff"
-            ? ["workers"]
-            : [],
+    memberRoles: [],
     inviterIds: [],
-    visitorHours: mode === "public" ? "inherit" : "always",
+    visitorHours: "always",
     accompanied: false,
   };
 }
 /** Initialize a new Venue before admitting it to saved authority. */
 export function initializeVenueAccess(venue: VillageVenue): void {
-  const created = !venue.access;
   venue.access ??= {
     version: 1,
     revision: 0,
@@ -178,15 +182,17 @@ export function initializeVenueAccess(venue: VillageVenue): void {
     visitDenials: [],
     receipts: {},
   };
-  if (created && !venue.access.managerIds.length) venue.access.managerIds = ["player"];
+
   for (const zone of venue.zones ?? []) {
     if (zone.kind === "exterior") {
-      zone.name = "Entrance";
+      if (!zone.name || zone.name === "Exterior") zone.name = "Entrance";
       zone.access = undefined;
       continue;
     }
     zone.access ??= defaultZonePolicy(venue, zone);
+    zone.access.visitorHours = structuredClone(zoneVisitingHours(zone.access.visitorHours, venue.access.visitorHours));
   }
+  venue.access.visitorHours = null;
   venue.destinations ??= {};
   for (const actor of [
     ...(venue.residentIds ?? []),
@@ -196,29 +202,47 @@ export function initializeVenueAccess(venue: VillageVenue): void {
     const suitable = (venue.zones ?? []).filter(
       (zone) => zone.kind !== "exterior" && (!zone.ownerId || zone.ownerId === actor),
     );
-    const home = suitable.filter((zone) => zone.venueClass === "residence");
+    const home = suitable;
     const owned = home.filter((zone) => zone.ownerId === actor),
       shared = home.filter((zone) => !zone.ownerId);
     const homeChoices = shared.length ? shared : home,
       sleepChoices = owned.length ? owned : home;
-    const work = suitable.filter((zone) => zone.venueClass === "workplace");
+    const work = suitable.filter((zone) => zone.kind !== "personal");
     venue.destinations[actor] ??= {};
-    if (homeChoices.length === 1) venue.destinations[actor].home ??= homeChoices[0].id;
-    if (sleepChoices.length === 1) venue.destinations[actor].sleep ??= sleepChoices[0].id;
-    if (work.length === 1) venue.destinations[actor].work ??= work[0].id;
+    const resident = venue.residentIds?.includes(actor) || (actor === "player" && venue.occupancy.playerHome);
+    if (resident && homeChoices.length === 1) venue.destinations[actor].home ??= homeChoices[0].id;
+    if (resident && sleepChoices.length === 1) venue.destinations[actor].sleep ??= sleepChoices[0].id;
+    if (venue.workerIds?.includes(actor) && work.length === 1) venue.destinations[actor].work ??= work[0].id;
   }
 }
+export function venueManagers(venue: VillageVenue): string[] {
+  return venue.access ? (venue.access.managerIds.length ? venue.access.managerIds : ["player"]) : [];
+}
+function assignedZoneManagers(venue: VillageVenue, zone: VillageVenueZone): string[] {
+  const sleepers = zone.kind === "personal" || zone.ownerId ? venueSleepers(venue, zone.id) : [];
+  if (sleepers.length) return [...new Set([...sleepers, ...(zone.ownerId ? [zone.ownerId] : [])])];
+  const assigned =
+    zone.kind !== "personal" && !zone.ownerId
+      ? [...new Set([...(venue.access?.managerIds ?? []), ...(zone.access?.managerIds ?? [])])]
+      : (zone.access?.managerIds ?? venue.access?.managerIds ?? []);
+  return assigned;
+}
 export function zoneManagers(venue: VillageVenue, zone: VillageVenueZone): string[] {
-  return zone.access?.managerIds ?? venue.access?.managerIds ?? [];
+  const assigned = assignedZoneManagers(venue, zone);
+  return assigned.length ? assigned : venue.access ? ["player"] : [];
 }
 export function managesAccess(venue: VillageVenue, zoneId: string | null, actor: string): boolean {
-  if (zoneId === null) return !!venue.access?.managerIds.includes(actor);
+  if (zoneId === null) return venueManagers(venue).includes(actor);
   const zone = venue.zones?.find((row) => row.id === zoneId);
-  return !!zone && zone.kind !== "exterior" && zoneManagers(venue, zone).includes(actor);
+  return (
+    !!zone &&
+    zone.kind !== "exterior" &&
+    (zoneManagers(venue, zone).includes(actor) || (!assignedZoneManagers(venue, zone).length && actor === "player"))
+  );
 }
 export function mayInvite(venue: VillageVenue, zone: VillageVenueZone, actor: string): boolean {
   return (
-    zone.kind !== "exterior" && (zoneManagers(venue, zone).includes(actor) || !!zone.access?.inviterIds.includes(actor))
+    zone.kind !== "exterior" && (managesAccess(venue, zone.id, actor) || !!zone.access?.inviterIds.includes(actor))
   );
 }
 function validGrantIssuer(venue: VillageVenue, zone: VillageVenueZone, grant: VenueAccessState["permissions"][number]) {
@@ -238,7 +262,6 @@ export function mayHostLodging(venue: VillageVenue, zone: VillageVenueZone, acto
   return (
     household.length === 1 &&
     household[0] === actor &&
-    zone.venueClass === "residence" &&
     (!zone.ownerId || zone.ownerId === actor) &&
     venue.destinations?.[actor]?.sleep !== zone.id &&
     !zone.access?.accompanied &&
@@ -246,15 +269,25 @@ export function mayHostLodging(venue: VillageVenue, zone: VillageVenueZone, acto
     zoneManagers(venue, zone).every((manager) => manager === actor)
   );
 }
-function members(venue: VillageVenue, zone: VillageVenueZone): string[] {
+function members(venue: VillageVenue, zone: VillageVenueZone, at?: Date): string[] {
   const policy = zone.access;
   return [
-    ...zoneManagers(venue, zone),
+    ...venueSleepers(venue, zone.id),
+    ...(venue.access?.work ?? [])
+      .filter(
+        (work) =>
+          work.accessZoneIds.includes(zone.id) &&
+          !!at &&
+          work.days.includes(days[at.getDay()]) &&
+          at.getHours() * 60 + at.getMinutes() >= work.startMinute &&
+          at.getHours() * 60 + at.getMinutes() < work.endMinute,
+      )
+      .map((work) => work.characterId),
+    ...assignedZoneManagers(venue, zone),
     ...(policy?.memberIds ?? []),
     ...(policy?.memberRoles.includes("residents")
       ? [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])]
       : []),
-    ...(policy?.memberRoles.includes("workers") ? (venue.workerIds ?? []) : []),
   ];
 }
 const minutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
@@ -278,7 +311,7 @@ function effectiveHours(venue: VillageVenue, zone: VillageVenueZone) {
   return hours === "inherit" ? (venue.access?.visitorHours ?? null) : Array.isArray(hours) ? hours : null;
 }
 function controlsHours(venue: VillageVenue, zone: VillageVenueZone, actor: string) {
-  return managesAccess(venue, zone.access?.visitorHours === "inherit" ? null : zone.id, actor);
+  return managesAccess(venue, zone.id, actor);
 }
 function nextOpening(hours: NonNullable<VenueAccessState["visitorHours"]>, at: Date): string | undefined {
   const today = at.getDay();
@@ -330,7 +363,7 @@ export function evaluateZoneAccess(
     ...extra,
   });
   if (zone.kind === "exterior")
-    return { ...result(true, "entrance", "Entrance · Unrestricted, 24/7."), available: true };
+    return { ...result(true, "entrance", "Entrance , Unrestricted, 24/7."), available: true };
   if (context.unavailable) return result(false, "unavailable", "This Zone is not physically available yet.");
   const ledger = venue.access,
     policy = zone.access;
@@ -368,7 +401,7 @@ export function evaluateZoneAccess(
   );
   if (bans.length && !permitted.length)
     return result(false, "banned", "Entry is prohibited. A manager of the ban's scope must approve an exception.");
-  const member = members(venue, zone).includes(actor);
+  const member = members(venue, zone, context.at).includes(actor);
   const hours = effectiveHours(venue, zone);
   const open = withinVisitorHours(hours, context.at ?? new Date());
   // A ban exception supplies only its exact invitation; it does not restore general membership.
@@ -409,7 +442,7 @@ export function evaluateZoneAccess(
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
     return restricted
-      ? !zoneManagers(venue, zone).length
+      ? !assignedZoneManagers(venue, zone).length
         ? result(
             true,
             "public",
@@ -458,6 +491,7 @@ export function applyAccessCommand(
   at: string,
   knownActors: string[],
   sourceLineIds: string[] = [],
+  eligibleWorkers = knownActors.filter((id) => id !== "player"),
 ): void {
   const ledger = venue.access;
   if (!ledger) throw conflict("This Venue has no native access record.");
@@ -484,15 +518,86 @@ export function applyAccessCommand(
     if (values.some((value) => !knownActors.includes(value)))
       throw badRequest("Choose people who belong to this Village.");
   };
+  const protectsPrivateScopes = () =>
+    command.zoneId === null &&
+    (venue.zones ?? []).some(
+      (room) =>
+        (room.kind === "personal" || room.ownerId) &&
+        venueSleepers(venue, room.id).length &&
+        !managesAccess(venue, room.id, actor),
+    );
+  const protectsHome = (id: string) =>
+    venue.residentIds?.includes(id) || (id === "player" && venue.occupancy.playerHome);
+  const workRequirements = (
+    characterId: string,
+    terms: import("../../../shared/helpers/venue-work.js").VenueWork | null,
+  ) => {
+    const previous = ledger.work?.find((row) => row.characterId === characterId);
+    const scopes = [...new Set([...(terms?.accessZoneIds ?? []), ...(previous?.accessZoneIds ?? [])])];
+    return [
+      ...new Set([
+        characterId,
+        ...venueManagers(venue),
+        ...scopes.flatMap((id) => {
+          const target = venue.zones?.find((row) => row.id === id);
+          return target ? zoneManagers(venue, target) : [];
+        }),
+      ]),
+    ].sort();
+  };
   switch (command.action) {
+    case "work-propose": {
+      if (command.zoneId !== null || (!manager && command.characterId !== actor && actor !== "player")) forbidden();
+      assertIds([command.characterId]);
+      if (!eligibleWorkers.includes(command.characterId)) throw badRequest("Choose a current Villager as the worker.");
+      if (command.terms) {
+        if (command.terms.characterId !== command.characterId)
+          throw badRequest("The worker must match the arrangement.");
+        validateVenueWork(venue, command.terms);
+      }
+      const requiredIds = workRequirements(command.characterId, command.terms);
+      ledger.workOffers = (ledger.workOffers ?? []).filter((row) => row.characterId !== command.characterId);
+      ledger.workOffers.push({
+        id: command.operationId,
+        proposerId: actor,
+        characterId: command.characterId,
+        terms: command.terms,
+        previous: ledger.work?.find((row) => row.characterId === command.characterId) ?? null,
+        requiredIds,
+        approvedIds: requiredIds.includes(actor) ? [actor] : [],
+      });
+      break;
+    }
+    case "work-decide": {
+      const offer = ledger.workOffers?.find((row) => row.id === command.offerId);
+      if (
+        command.zoneId !== null ||
+        !offer ||
+        (!offer.requiredIds.includes(actor) && !(offer.proposerId === actor && !command.accept))
+      )
+        forbidden();
+      if (!command.accept) {
+        ledger.workOffers = ledger.workOffers!.filter((row) => row !== offer);
+        break;
+      }
+      if (
+        JSON.stringify(offer!.previous) !==
+          JSON.stringify(ledger.work?.find((row) => row.characterId === offer!.characterId) ?? null) ||
+        JSON.stringify(offer!.requiredIds) !== JSON.stringify(workRequirements(offer!.characterId, offer!.terms))
+      )
+        throw conflict("Work or visitor rules changed. Propose the current terms again.");
+      if (offer!.terms) validateVenueWork(venue, offer!.terms);
+      offer!.approvedIds = [...new Set([...offer!.approvedIds, actor])];
+      break;
+    }
     case "recover-managers": {
-      const currentManagers = zone ? zoneManagers(venue, zone) : ledger.managerIds;
+      const currentManagers = zone ? assignedZoneManagers(venue, zone) : ledger.managerIds;
       if (
         currentManagers.some((id) => knownActors.includes(id)) ||
         (zone ? !managesAccess(venue, null, actor) : actor !== "player")
       )
         forbidden();
-      if (!command.managerIds.length) throw badRequest("Choose at least one manager.");
+      if (!command.managerIds.length) throw badRequest("Choose at least one person to change visitor rules.");
       assertIds(command.managerIds);
       if (zone) zone.access!.managerIds = command.managerIds;
       else ledger.managerIds = command.managerIds;
@@ -501,6 +606,9 @@ export function applyAccessCommand(
     case "destinations": {
       if (command.zoneId !== null || (!manager && command.visitorId !== actor)) forbidden();
       assertIds([command.visitorId]);
+      const currentSleep = venue.destinations?.[command.visitorId]?.sleep;
+      if (command.sleep !== undefined && command.sleep !== currentSleep)
+        throw conflict("Propose sleeping arrangements through Home.");
       const resident = [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])].includes(
         command.visitorId,
       );
@@ -514,19 +622,20 @@ export function applyAccessCommand(
         if (
           !target ||
           target.kind === "exterior" ||
-          target.venueClass !== (role === "work" ? "workplace" : "residence") ||
-          (target.ownerId && target.ownerId !== command.visitorId) ||
+          (role !== "sleep" && target.ownerId && target.ownerId !== command.visitorId) ||
           (role === "work" ? !venue.workerIds?.includes(command.visitorId) : !resident)
         )
           throw badRequest("Choose a suitable Zone in this person's assigned home or workplace.");
       }
       venue.destinations ??= {};
-      venue.destinations[command.visitorId] = { home: command.home, sleep: command.sleep, work: command.work };
+      venue.destinations[command.visitorId] = { home: command.home, sleep: currentSleep, work: command.work };
       break;
     }
     case "refuse-entry":
     case "leave-now":
       if (!zone || !manager || !command.sceneId) forbidden();
+      if (protectsHome(command.visitorId))
+        throw conflict("Change this person’s Home arrangement to remove their home access.");
       assertIds([command.visitorId]);
       ledger.visitDenials = [
         ...ledger.visitDenials.filter(
@@ -537,17 +646,23 @@ export function applyAccessCommand(
       break;
     case "venue-policy":
       if (command.zoneId !== null || !manager) forbidden();
-      if (!command.managerIds.length) throw badRequest("Choose at least one Venue manager.");
       assertIds(command.managerIds);
+      if (
+        command.visitorHours !== undefined &&
+        JSON.stringify(command.visitorHours) !== JSON.stringify(ledger.visitorHours)
+      )
+        throw badRequest("Set visiting hours for a specific Zone.");
       ledger.managerIds = command.managerIds;
-      ledger.visitorHours = command.visitorHours;
       break;
     case "zone-policy":
       if (!zone || !manager) forbidden();
       assertIds([...(command.policy.managerIds ?? []), ...command.policy.memberIds, ...command.policy.inviterIds]);
       if (command.policy.managerIds?.length === 0)
-        throw badRequest("Choose at least one manager or inherit Venue managers.");
-      zone!.access = command.policy;
+        throw badRequest("Choose a person to change visitor rules or use Venue visitor rules.");
+      zone!.access = {
+        ...command.policy,
+        visitorHours: structuredClone(zoneVisitingHours(command.policy.visitorHours, ledger.visitorHours)),
+      };
       break;
     case "invite":
       if (!zone || !mayInvite(venue, zone, actor)) forbidden();
@@ -581,7 +696,9 @@ export function applyAccessCommand(
       break;
     }
     case "ban":
-      if (!manager) forbidden();
+      if (!manager || protectsPrivateScopes()) forbidden();
+      if (protectsHome(command.visitorId))
+        throw conflict("Change this person’s Home arrangement to remove their home access.");
       assertIds([command.visitorId]);
       if (command.visitorId === actor) throw badRequest("You cannot ban yourself from the scope you manage.");
       ledger.bans.push({
@@ -628,6 +745,18 @@ export function applyAccessCommand(
       break;
     }
   }
+  for (const offer of ledger.workOffers ?? []) {
+    if (!offer.requiredIds.every((id) => offer.approvedIds.includes(id))) continue;
+    ledger.work = (ledger.work ?? []).filter((row) => row.characterId !== offer.characterId);
+    venue.workerIds = (venue.workerIds ?? []).filter((id) => id !== offer.characterId);
+    if (offer.terms) {
+      ledger.work.push(offer.terms);
+      venue.workerIds.push(offer.characterId);
+      venue.destinations ??= {};
+      venue.destinations[offer.characterId] = { ...venue.destinations[offer.characterId], work: offer.terms.zoneId };
+    } else if (venue.destinations?.[offer.characterId]) delete venue.destinations[offer.characterId].work;
+    ledger.workOffers = ledger.workOffers!.filter((row) => row !== offer);
+  }
   reconcileVenueAccess(venue);
   ledger.revision++;
   ledger.changes.push({
@@ -655,6 +784,11 @@ export function projectVenueAccess(venue: VillageVenue, actor: string) {
   return {
     revision: venue.access.revision,
     canManage,
+    runnerIds: venue.access.managerIds,
+    work: (venue.access.work ?? []).filter((row) => canManage || row.characterId === actor),
+    workOffers: (venue.access.workOffers ?? [])
+      .filter((row) => canManage || row.requiredIds.includes(actor) || row.proposerId === actor)
+      .map(({ previous: _previous, ...row }) => row),
     canRecover: actor === "player" && !venue.access.managerIds.length,
     ...(canManage
       ? {
@@ -666,6 +800,7 @@ export function projectVenueAccess(venue: VillageVenue, actor: string) {
             .filter(
               (grant) =>
                 !grant.revoked &&
+                managesAccess(venue, grant.zoneId, actor) &&
                 venue.access!.bans.some(
                   (ban) => ban.active && ban.zoneId === null && ban.visitorId === grant.visitorId,
                 ),
@@ -679,7 +814,7 @@ export function projectZoneAccess(venue: VillageVenue, zone: VillageVenueZone, a
   const decision = evaluateZoneAccess(venue, zone, actor, context);
   const { permissionId: _permission, accompaniedBy: _escort, ...safeDecision } = decision;
   safeDecision.canRecover =
-    !zoneManagers(venue, zone).length && managesAccess(venue, null, actor) && zone.kind !== "exterior";
+    !assignedZoneManagers(venue, zone).length && managesAccess(venue, null, actor) && zone.kind !== "exterior";
   const hours = effectiveHours(venue, zone);
   const grant =
     venue.access?.permissions.find((row) => row.id === decision.permissionId) ??
@@ -693,6 +828,13 @@ export function projectZoneAccess(venue: VillageVenue, zone: VillageVenueZone, a
     );
   return {
     decision: safeDecision,
+    visitorHours:
+      decision.mode === "public" || decision.canManage || decision.canInvite
+        ? zoneVisitingHours(zone.access?.visitorHours, venue.access?.visitorHours)
+        : undefined,
+    ...(decision.mode === "public" || decision.canManage || decision.canInvite
+      ? { visitorHours: zoneVisitingHours(zone.access?.visitorHours, venue.access?.visitorHours) }
+      : {}),
     nextOpening:
       decision.reason === "outside-hours" && hours && context.at ? nextOpening(hours, context.at) : undefined,
     canAllowAfterHours: decision.canInvite && hours !== null && controlsHours(venue, zone, actor),
@@ -714,7 +856,12 @@ export function projectZoneAccess(venue: VillageVenue, zone: VillageVenueZone, a
       : {}),
     ...(decision.canManage
       ? {
-          policy: zone.access,
+          policy: zone.access
+            ? {
+                ...zone.access,
+                visitorHours: zoneVisitingHours(zone.access.visitorHours, venue.access?.visitorHours ?? null),
+              }
+            : undefined,
           permissions: venue.access?.permissions.filter((row) => row.zoneId === zone.id),
           bans: venue.access?.bans.filter((row) => row.zoneId === zone.id),
           changes: venue.access?.changes.filter((row) => row.zoneId === zone.id),

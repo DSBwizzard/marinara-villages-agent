@@ -1,3 +1,4 @@
+import { assertWorkSchedules, validateVenueWork } from "./venue-work.js";
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import type { VillageVenue, VillageVenueImage } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -6,14 +7,13 @@ import { validateStartingVenue } from "./founding-template.js";
 import { isGlobalGalleryRef, MAX_VENUE_IMAGE_URL_LENGTH, MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readPlaceDescription } from "./prompt-preset.js";
-import { defaultZonePolicy, initializeVenueAccess, readVenueAccess } from "./venue-access.js";
+import { initializeVenueAccess, readVenueAccess } from "./venue-access.js";
 import { readPlacePosition } from "./venue-authoring.js";
 import { readBaseVenueLayout } from "./venue-layout.js";
-import { validVenueClasses } from "./venue-model.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import { assertSharedPlayspace } from "./shared-playspace.js";
+import { openingPlayspace } from "./opening-playspace.js";
 import { captureZoneObservation } from "./zone-observation.js";
 
 export function foundingImage(value: unknown): VillageVenueImage | null {
@@ -56,25 +56,14 @@ export function parsePlace(value: unknown): VillageVenue {
     throw badRequest("Describe what each Venue looks like in at most 2,000 characters.");
   const description = readPlaceDescription(row.description).trim();
   if (!description) throw badRequest("Describe each Venue's Entrance before founding.");
-  if (!validVenueClasses(row.classes)) throw badRequest("Choose one or two Venue Classes.");
   if (typeof occupancy.playerHome !== "boolean") throw badRequest("Choose whether this is the player's home.");
   const playerHome = occupancy.playerHome,
     residentIds = ids(row.residentIds, "residents"),
     workerIds = ids(row.workerIds ?? [], "workers");
   const household = [...residentIds, ...(playerHome ? ["player"] : [])];
-  if (
-    !Number.isInteger(row.residenceCapacity) ||
-    Number(row.residenceCapacity) < 1 ||
-    Number(row.residenceCapacity) > 4 ||
-    household.length > Number(row.residenceCapacity)
-  )
-    throw badRequest("A Residence holds one to four people; household assignments must fit its capacity.");
-  if (household.length && !row.classes.includes("residence"))
-    throw badRequest("An assigned home needs the Residence Class.");
-  if (workerIds.length && !row.classes.includes("workplace")) throw badRequest("Assigned workers need a Workplace.");
   if (row.layoutVersion !== 1) throw badRequest("Choose an explicit Venue layout before founding.");
   validateStartingVenue(row);
-  const zones = readBaseVenueLayout(row, row.classes, "", foundingImage, {
+  const zones = readBaseVenueLayout(row, "", foundingImage, {
     founding: true,
   });
   if (zones.some((zone) => zone.ownerId && !household.includes(zone.ownerId)))
@@ -86,16 +75,15 @@ export function parsePlace(value: unknown): VillageVenue {
     name,
     form,
     description,
-    classes: row.classes,
     layoutVersion: 1,
     zones,
-    spaces: zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind)),
+    spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal"),
     privateSpaces: zones
-      .filter((zone) => zone.kind === "private-residence")
+      .filter((zone) => zone.kind === "personal")
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! })),
     residentIds,
     workerIds,
-    residenceCapacity: Number(row.residenceCapacity),
+
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     access: readVenueAccess(row.access),
     destinations: {},
@@ -117,14 +105,7 @@ export function parsePlace(value: unknown): VillageVenue {
     if (!layout) throw badRequest("Zone positions must be valid and distinct.");
     result.zoneLayout = layout;
   }
-  if (!household.length && !workerIds.length)
-    for (const zone of zones)
-      if (zone.kind !== "exterior" && !zone.access)
-        zone.access = { ...defaultZonePolicy(result, zone), mode: "public" };
   initializeVenueAccess(result);
-  for (const zone of zones)
-    if (zone.ownerId && JSON.stringify(zone.access?.managerIds) !== JSON.stringify([zone.ownerId]))
-      throw badRequest("A private room must remain controlled by its assigned person.");
   for (const [actor, raw] of Object.entries(asRecord(row.destinations))) {
     if (!result.destinations![actor]) throw badRequest("Choose destinations only for assigned residents or workers.");
     const selected = asRecord(raw);
@@ -135,13 +116,17 @@ export function parsePlace(value: unknown): VillageVenue {
       if (
         !zone ||
         zone.kind === "exterior" ||
-        zone.venueClass !== (role === "work" ? "workplace" : "residence") ||
-        (zone.ownerId && zone.ownerId !== actor)
+        !(role === "work" ? workerIds.includes(actor) : household.includes(actor)) ||
+        (role === "work" && zone.ownerId && zone.ownerId !== actor)
       )
         throw badRequest("Choose a suitable Zone for each destination.");
       result.destinations![actor][role] = target;
     }
   }
+  for (const work of result.access?.work ?? []) validateVenueWork(result, work);
+  result.knownSleepDestinations = Object.fromEntries(
+    household.flatMap((id) => (result.destinations?.[id]?.sleep ? [[id, result.destinations[id].sleep!]] : [])),
+  );
   for (const zone of zones) zone.observed = captureZoneObservation(result, zone, zone.description);
   return result;
 }
@@ -150,9 +135,10 @@ export function parsePlaces(
   residents: ReadonlySet<string>,
   founding: true,
   at = new Date(),
+  timeZone?: string,
 ): VillageVenue[] {
   if (!founding) throw badRequest("Establish starting Venues through Founding.");
-  if (!Array.isArray(value) || value.length > 16) throw badRequest("Founding supports at most sixteen Venues.");
+  if (!Array.isArray(value) || value.length > 6) throw badRequest("Founding supports at most six Venues.");
   const venues = value.map(parsePlace),
     assigned = new Set<string>(),
     seen = new Set<string>(),
@@ -179,23 +165,37 @@ export function parsePlaces(
   for (const venue of venues) {
     if (
       venue.workerIds?.some((id) => !assigned.has(id)) ||
+      venue.access?.managerIds.some((id) => id !== "player" && !assigned.has(id)) ||
+      venue.zones?.some(
+        (zone) =>
+          zone.access &&
+          [...(zone.access.managerIds ?? []), ...zone.access.memberIds, ...zone.access.inviterIds].some(
+            (id) => id !== "player" && !assigned.has(id),
+          ),
+      ) ||
       venue.zones?.some((zone) => zone.controllerIds?.some((id) => id !== "player" && !assigned.has(id)))
     )
       throw badRequest("Choose founding residents as workers and controllers.");
     for (const actor of [...venue.residentIds!, ...(venue.occupancy.playerHome ? ["player"] : [])]) {
       const sleep = venue.zones!.find((zone) => zone.id === venue.destinations?.[actor]?.sleep);
+      const home = venue.destinations?.[actor]?.home;
+      if (home && !accessibleVenueRoute({ projects: [] }, venue, actor, home, at, true))
+        throw badRequest("Every household member needs an accessible home destination.");
       if (!sleep || !accessibleVenueRoute({ projects: [] }, venue, actor, sleep.id, at, true))
         throw badRequest("Every household member needs an accessible sleeping destination and a route from Entrance.");
     }
   }
   const sharedWorld = {
+    timeZone,
     venues,
     villagers: [...assigned].map((characterId) => ({
       characterId,
     })) as import("../models/world.js").VillageState["villagers"],
     projects: [],
   };
-  assertSharedPlayspace(sharedWorld, at);
+  assertWorkSchedules(venues, [...assigned]);
+  if (!openingPlayspace(sharedWorld, [...assigned], at).length)
+    throw badRequest("Choose a starting Zone everyone can enter.");
   return venues;
 }
 

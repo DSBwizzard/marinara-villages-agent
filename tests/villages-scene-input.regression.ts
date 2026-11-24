@@ -13,7 +13,11 @@ import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zon
 import { venueFixture } from "./helpers/venues.fixture.js";
 
 const at = "2026-11-10T12:00:00.000Z";
-const venue = venueFixture({ id: "cafe", name: "Cafe", classes: ["community"] });
+const venue = venueFixture({
+  spaces: [{ id: "community", description: "A place in the community.", image: null }],
+  id: "cafe",
+  name: "Cafe",
+});
 const actor = { characterId: "resident", name: "Mara", doing: "Reading" };
 const scene = zoneEventScene(
   coerceSession({

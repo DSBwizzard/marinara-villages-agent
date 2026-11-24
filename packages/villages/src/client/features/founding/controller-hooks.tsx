@@ -434,7 +434,7 @@ export function useFoundingSetupBlocker(ports: {
 
       const shapeProblem = foundingVenueShapeProblem(setupVenues);
       if (!snapshot?.isFounded && shapeProblem) return shapeProblem;
-      const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
+      const residences = setupVenues.filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length);
       const villagerHomes = residences;
       if (
         setupFoundingVillagerIds.length < SETUP_MIN_VILLAGER_COUNT ||
@@ -442,7 +442,7 @@ export function useFoundingSetupBlocker(ports: {
       ) {
         return "Place one to three homes for initial villagers.";
       }
-      if (!residences.some((venue) => venue.occupancy.playerHome)) return "One Residence has to be yours.";
+      if (!residences.some((venue) => venue.occupancy.playerHome)) return "Assign your Home on Venues.";
       if (
         setupVenues.some(
           (venue) =>
@@ -460,28 +460,25 @@ export function useFoundingSetupBlocker(ports: {
         !snapshot?.isFounded &&
         (occupants.length !== setupHomeCount || occupants.some((id) => !setupFoundingVillagerIds.includes(id)))
       )
-        return "Assign every villager chosen on People to one Residence.";
+        return `Assign a Home to ${
+          setupFoundingVillagerIds
+            .filter((id) => !occupants.includes(id))
+            .map((id) => catalog?.find((person) => person.id === id)?.name ?? "the selected Villager")
+            .join(", ") || "each selected Villager"
+        } on Venues.`;
       if (
         setupVenues.some((venue) =>
           venue.privateSpaces?.some(
             (room) =>
               !room.access &&
-              (!room.name?.trim() ||
-                !room.purpose?.trim() ||
-                (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
+              (!room.name?.trim() || !room.purpose?.trim() || (!room.ownerId && !room.controllerIds?.length)),
           ),
         )
       )
         return "Give each Private Space a name, purpose, and controller on Venues.";
       if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
         return "A chosen villager is no longer in your character cards. Choose another villager on People.";
-      if (setupVenues.length > 16) return "A Village supports at most 16 Venues.";
-      if (
-        residences.some(
-          (home) => (home.residentIds?.length ?? 0) + Number(home.occupancy.playerHome) > (home.residenceCapacity ?? 1),
-        )
-      )
-        return "Household assignments exceed a Residence’s capacity.";
+      if (!snapshot?.isFounded && setupVenues.length > 6) return "Keep at most six starting Venues.";
       return "";
     },
     [

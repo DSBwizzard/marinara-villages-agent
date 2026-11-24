@@ -1,3 +1,5 @@
+import { newFoundingPlanSources } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import { manualHomesFixture } from "./helpers/founding-homes.fixture.js";
 import { createFoundingWithSetupImage } from "../packages/villages/src/client/features/founding/image-controller.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
@@ -20,13 +22,9 @@ import {
   foundingVenueDraftSource,
 } from "../packages/villages/src/shared/helpers/founding-venue-draft.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
-import {
-  assignFoundingPrivateZone,
-  assignFoundingHome,
-  reconcileFoundingRoster,
-} from "../packages/villages/src/client/features/founding/founding-homes.js";
+import { assignFoundingHome } from "../packages/villages/src/client/features/founding/founding-homes.js";
 
-let homes = reconcileFoundingRoster(
+let homes = manualHomesFixture(
   [],
   [
     { id: "player", name: "You" },
@@ -37,12 +35,21 @@ let homes = reconcileFoundingRoster(
 );
 homes = assignFoundingHome(homes, "founding-home:player", "ada", true);
 let home = homes.find((row) => row.id === "founding-home:player")!;
-home = assignFoundingPrivateZone(addFoundingZone(home, true, "ada-room"), "ada-room", "ada");
+home = addFoundingZone(home, true, "ada-room");
+home.privateSpaces!.find((row) => row.id === "ada-room")!.ownerId = "ada";
+home.privateSpaces!.find((row) => row.id === "ada-room")!.access!.managerIds = ["ada"];
+home.privateSpaces!.find((row) => row.id === "ada-room")!.access!.memberIds = ["ada"];
+home.destinations!.ada.sleep = "ada-room";
 home.spaces![0].image = { id: "kept", ref: "global-gallery:kept", url: "/kept.webp" };
 home.spaces![0].state = { revision: 5, updatedAt: "2026-11-03T12:00:00.000Z", recent: null };
 const now = new Date("2026-11-03T14:00:00.000Z");
 const original = structuredClone(home);
 const source = readFoundingVenueDraftSource(foundingVenueDraftSource(home));
+assert.deepEqual(
+  source.privateSpaces!.find((zone) => zone.id === "private:base")!.connectedTo,
+  home.privateSpaces!.find((zone) => zone.id === "private:base")!.connectedTo,
+  "Source context keeps actual passages, not validation placeholders",
+);
 const raw = {
   id: home.id,
   name: "The Tide House",
@@ -100,7 +107,7 @@ assert.throws(
   /daylight decision/,
 );
 
-for (const key of ["residentIds", "occupancy", "residenceCapacity", "destinations", "presentation"] as const)
+for (const key of ["residentIds", "occupancy", "destinations", "presentation"] as const)
   assert.deepEqual(drafted[key], home[key], key);
 for (const old of [...home.spaces!, ...home.privateSpaces!]) {
   const next = [...drafted.spaces!, ...drafted.privateSpaces!].find((zone) => zone.id === old.id)!;
@@ -108,13 +115,21 @@ for (const old of [...home.spaces!, ...home.privateSpaces!]) {
     assert.deepEqual(next[key], old[key], key + " survives drafting");
 }
 assert.equal(drafted.spaces!.at(-1)!.name, "Kitchen");
+// Incomplete manual Work never blocks physical drafting or gains new authority.
+const unfinished = structuredClone(home);
+unfinished.workerIds = ["ada"];
+unfinished.access = { work: [{ characterId: "ada", zoneId: "missing", accessZoneIds: [] }] } as any;
+assert.doesNotThrow(() => readFoundingVenueDraftSource(unfinished));
+const oldOwner = structuredClone(home);
+delete oldOwner.privateSpaces![0].access;
+assert.deepEqual(readFoundingVenueDraftSource(oldOwner).privateSpaces![0].access!.managerIds, ["player"]);
 const disconnected = structuredClone(home);
 [...disconnected.spaces!, ...disconnected.privateSpaces!].forEach((zone) => (zone.connectedTo = []));
 assert.doesNotThrow(
   () => parseFoundingVenueDraft({ venues: [raw] }, readFoundingVenueDraftSource(disconnected), ["new-kitchen"], now),
   "Drafting repairs a disconnected source",
 );
-const mixed = { ...home, classes: ["workplace", "residence"] as ("workplace" | "residence")[] };
+const mixed = { ...home };
 const mixedReply = structuredClone(raw);
 mixedReply.zones.push({
   id: "new-bedroom",
@@ -132,8 +147,9 @@ const mixedPlan = parseFoundingVenueDraft(
   now,
 );
 assert.equal(
-  applyFoundingVenueDraft(mixed, mixedPlan).privateSpaces!.find((zone) => zone.id === "new-bedroom")!.venueClass,
-  "residence",
+  applyFoundingVenueDraft(mixed, mixedPlan).privateSpaces!.find((zone) => zone.id === "new-bedroom")!.ownerId,
+  "",
+  "A new bedroom stays unassigned until the player assigns a Home",
 );
 assert.deepEqual(
   foundingVenueDraftSource({ ...home, presentation: { ...home.presentation, x: 0.9, y: 0.8 } }),
@@ -149,26 +165,63 @@ bad((row) => {
   row.zones.pop();
   row.zones.pop();
 }, /every existing Zone/);
-bad((row) => {
-  row.zones.find((zone) => zone.id === "ada-room")!.ownerId = "player";
-}, /ownership/);
-bad((row) => {
-  row.zones.at(-1)!.id = "foreign-zone";
-}, /ownership/);
-bad((row) => {
-  row.zones[0].connectedTo = ["ada-room"];
-  row.zones.find((zone) => zone.id === "private:base")!.connectedTo = ["common:base"];
-  row.zones.find((zone) => zone.id === "ada-room")!.connectedTo = ["exterior"];
-}, /accessible sleeping/);
-bad((row) => {
-  row.zones.forEach((zone) => (zone.connectedTo = []));
-}, /Unreachable/);
+const drift = structuredClone(raw);
+Object.assign(
+  drift.zones.find((zone) => zone.id === "ada-room")!,
+  { ownerId: "player", private: false },
+);
+const retained = parseFoundingVenueDraft({ venues: [drift] }, source, ["new-kitchen"], now);
+assert.equal(retained.zones!.find((zone) => zone.id === "ada-room")!.ownerId, "ada");
+assert.equal(retained.zones!.find((zone) => zone.id === "ada-room")!.private, true);
+const aliased = structuredClone(raw);
+aliased.zones.at(-1)!.id = "kitchen-label";
+const aliasedPlan = parseFoundingVenueDraft(
+  {
+    venues: [
+      {
+        ...aliased,
+        people: {
+          residentIds: ["ada"],
+          playerHome: true,
+          managerIds: [],
+          work: [
+            {
+              characterId: "kitchen-label",
+              activity: "Cooking",
+              zoneId: "kitchen-label",
+              accessZoneIds: ["common:base", "kitchen-label"],
+              days: ["Monday"],
+              startMinute: 540,
+              endMinute: 1020,
+            },
+          ],
+          destinations: { ...home.destinations, "kitchen-label": { work: "kitchen-label" } },
+        },
+      },
+    ],
+  },
+  source,
+  ["new-kitchen"],
+  now,
+  ["player", "ada", "kitchen-label"],
+);
+assert.equal(aliasedPlan.zones!.at(-1)!.id, "new-kitchen");
+assert.equal("people" in aliasedPlan, false, "AI assignment data never enters the result");
+assert.deepEqual(home, original);
+assert.throws(() => parseFoundingVenueDraft({ venues: [aliased] }, source, [], now), /more Zones/);
+// Existing passages survive Redraft even if the model omits them.
+const noLinks = structuredClone(raw);
+noLinks.zones.forEach((zone) => (zone.connectedTo = []));
+noLinks.zones.at(-1).connectedTo = ["exterior"];
+assert.doesNotThrow(() => parseFoundingVenueDraft({ venues: [noLinks] }, source, ["new-kitchen"], now));
 bad((row) => {
   row.zones.push(row.zones[0]);
-}, /exactly once/);
+}, /distinct/);
 assert.throws(() => readFoundingZoneIds(["common:base"], source), /distinct/);
 
 let textCalls = 0;
+let venueReply: unknown = { venues: [raw] };
+let modelInput: any;
 const writer = createFoundingDrafts({
   findVillagerCard: async (id: string) =>
     readVillagerCard({ id, comment: "", data: { name: "Ada", description: "A careful cook" } }),
@@ -181,9 +234,10 @@ const writer = createFoundingDrafts({
       fitContext: (messages: unknown[], options: any) => ({ messages, maxTokens: options.maxTokens }),
     }),
   }),
-  completeWithRoom: async () => {
+  completeWithRoom: async (_model: unknown, messages: any[]) => {
     textCalls++;
-    return { content: JSON.stringify({ venues: [raw] }), finishReason: "stop" };
+    modelInput = JSON.parse(messages.at(-1).content);
+    return { content: JSON.stringify(venueReply), finishReason: "stop" };
   },
 } as any);
 const input = {
@@ -202,7 +256,6 @@ const input = {
       name: home.name,
       form: home.form,
       description: home.description,
-      venueClass: "residence",
       residentIds: ["ada"],
       playerHome: true,
     },
@@ -211,7 +264,6 @@ const input = {
       name: "Meeting place",
       form: "Courtyard",
       description: "A public courtyard",
-      venueClass: "other",
       residentIds: [],
       playerHome: false,
     },
@@ -221,6 +273,58 @@ await assert.rejects(writer.suggestStartingVenues({ ...input, actionId: undefine
 assert.equal(textCalls, 0);
 assert.deepEqual((await writer.suggestStartingVenues(input)).venues[0].zones, plan.zones);
 assert.equal(textCalls, 1);
+assert.ok(!modelInput.targetVenue.zones.some((zone: any) => zone.id === "exterior"));
+assert.equal("people" in modelInput.responseTemplate.venues[0], false);
+assert.ok(modelInput.targetVenue.zones.every((zone: any) => !("ownerId" in zone)));
+
+const slots = newFoundingPlanSources();
+const incomplete = {
+  ...input,
+  mode: "draft-plan",
+  targetVenueId: undefined,
+  foundingCharacterIds: ["ada", "unhoused"],
+  foundingResidentAdmissions: {
+    ada: { homeworld: "", startingSituation: "" },
+    unhoused: { homeworld: "", startingSituation: "" },
+  },
+  sourceVenues: slots.map(foundingVenueDraftSource),
+  newZoneIdsByVenue: Object.fromEntries(slots.map((row) => [row.id, ["room"]])),
+  venues: slots.map((row) => ({ id: row.id, name: "", form: "", description: "", residentIds: [], playerHome: false })),
+};
+venueReply = {
+  venues: [0, 1, 2].map((index) => ({
+    ...raw,
+    name: "Venue " + index,
+    zones: [
+      {
+        id: "bedroom",
+        name: "Bedroom",
+        purpose: "Rest",
+        description: "A quiet room.",
+        private: true,
+        connectedTo: ["exterior"],
+      },
+    ],
+  })),
+};
+const clean = await writer.suggestStartingVenues(incomplete);
+assert.equal(clean.venues.length, 3);
+assert.deepEqual(
+  clean.venues.map((row) => row.id),
+  slots.slice(0, 3).map((row) => row.id),
+);
+assert.ok(clean.venues.every((row) => !("people" in row) && row.zones.every((zone) => !zone.ownerId)));
+assert.deepEqual(modelInput.foundingCharacterIds, ["ada", "unhoused"]);
+assert.equal((await writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: undefined })).venues.length, 3);
+const beforeInvalid = textCalls;
+await assert.rejects(
+  writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: ["ada"] }),
+  /Starting situations/,
+);
+assert.equal(textCalls, beforeInvalid);
+venueReply = { venues: [raw] };
+await assert.rejects(writer.suggestStartingVenues(incomplete), /three or four/);
+venueReply = { venues: [raw] };
 
 const tick = () => new Promise<void>((done) => setImmediate(done));
 function harness() {
@@ -471,8 +575,12 @@ try {
     assert.deepEqual([posts, gets], [1, 1], "Reload recovery only reads the original attempt");
     if (edit === "map") {
       assert.equal(venues[0].presentation.x, 0.87);
-      assert.equal(venues[0].presentation.image!.id, "saved-image");
-      assert.equal(venues[0].spaces!.find((zone) => zone.id === admitted.newZoneIds[0])!.name, "Kitchen");
+      assert.equal(workspace.venueReview!.venues[0].presentation.image!.id, "saved-image");
+      assert.deepEqual(venues, before, "A saved result waits for explicit Use changes");
+      assert.equal(
+        workspace.venueReview!.venues[0].spaces!.find((zone) => zone.id === admitted.newZoneIds[0])!.name,
+        "Kitchen",
+      );
       assert.equal(problem, "");
     } else {
       assert.deepEqual(venues, before);

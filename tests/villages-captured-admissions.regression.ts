@@ -53,7 +53,13 @@ function world(seed = "captured-admissions") {
     foundedAt: setupAt,
     timeZone: "UTC",
     venues: [
-      ...[venueFixture({ id: "square", name: "Village square", classes: ["community"] })],
+      ...[
+        venueFixture({
+          spaces: [{ id: "community", description: "A place in the community.", image: null }],
+          id: "square",
+          name: "Village square",
+        }),
+      ],
       ...sharedVenuesFixture(),
     ],
     villagers: ["ada", "bea"].map((id) => ({

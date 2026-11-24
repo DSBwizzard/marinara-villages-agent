@@ -7,6 +7,8 @@ import type { VenuesState } from "./useVenuesState.js";
 
 /** Values and actions used by VenueScreen; independent of shell implementation. */
 export type VenueScreenController = {
+  readonly setSnapshot: (value: import("../../../shared/contracts/village.js").VillageSnapshot) => void;
+  readonly portraits: import("../../shared/types.js").PortraitMap;
   readonly loadSnapshot: () => Promise<unknown>;
   readonly beginPlaceAdmission: (place: import("../../../shared/contracts/places.js").PlaceSummary) => void;
   readonly goHome: () => void;
@@ -14,7 +16,10 @@ export type VenueScreenController = {
   readonly openPlace: (place: VillageVenue) => void;
   readonly venueSection: VenuesState["venueSection"];
   readonly setVenueSection: VenuesState["setVenueSection"];
-  readonly planVenueRenovation: (place: VillageVenue) => void;
+  readonly planVenueRenovation: (
+    place: VillageVenue,
+    draft?: import("../../shared/zone-renovation.js").ZoneRenovationDraft,
+  ) => void;
   readonly openVenueProject: (id: string) => void;
   readonly openVenueRequests: (venueId: string) => void;
   readonly busy: boolean;

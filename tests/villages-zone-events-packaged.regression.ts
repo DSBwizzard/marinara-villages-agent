@@ -53,7 +53,6 @@ const placeId = "harbour",
 const venue = venueFixture({
   id: placeId,
   name: "The Harbour Terrace",
-  classes: ["other"],
   zones: [
     {
       ...defaultVenueSpace("other", "An outdoor approach."),

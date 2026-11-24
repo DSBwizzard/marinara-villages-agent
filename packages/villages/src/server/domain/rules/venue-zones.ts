@@ -1,62 +1,27 @@
+import { venueSleepers } from "./venue-model.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
-import type {
-  VillageState,
-  VillageVenue,
-  VillageVenueClass,
-  VillageVenueZone,
-  VillageZoneKind,
-} from "../models/world.js";
+import type { VillageState, VillageVenue, VillageVenueZone, VillageZoneKind } from "../models/world.js";
 import { conflict } from "./errors.js";
 import { evaluateZoneAccess, mayInvite, zoneManagers } from "./venue-access.js";
 
-export const ZONE_KINDS: readonly VillageZoneKind[] = [
-  "exterior",
-  "public",
-  "shared-residence",
-  "private-residence",
-  "staff",
-  "restricted",
-];
-export function effectiveVenueClasses(venue: VillageVenue): VillageVenueClass[] {
-  return venue.classes ?? ["other"];
-}
+export const ZONE_KINDS: readonly VillageZoneKind[] = ["exterior", "public", "personal", "restricted"];
 export function venueZones(venue: VillageVenue): VillageVenueZone[] {
   return venue.zones ?? [];
 }
 export function resolveVenueZone(venue: VillageVenue, zoneId: string): VillageVenueZone | undefined {
   return venueZones(venue).find((zone) => zone.id === zoneId);
 }
-export function defaultVenueZoneId(
-  venue: VillageVenue,
-  area: string,
-  spaceClass?: VillageVenueClass,
-  ownerId = "",
-): string {
+export function defaultVenueZoneId(venue: VillageVenue, area: string, ownerId = ""): string {
   if (area === "outside") return "exterior";
   if (area === "private") {
-    const choices = venueZones(venue).filter((zone) => zone.kind === "private-residence" && zone.ownerId === ownerId);
+    const choices = venueZones(venue).filter((zone) => zone.kind === "personal" && zone.ownerId === ownerId);
     const sleep = venue.destinations?.[ownerId]?.sleep;
     return choices.find((zone) => zone.id === sleep)?.id ?? (choices.length === 1 ? choices[0].id : "");
   }
-  spaceClass ??=
-    area === "shared" ? "residence" : (venue.classes?.find((entry) => entry !== "residence") ?? venue.classes?.[0]);
-  return (
-    venueZones(venue).find(
-      (zone) =>
-        zone.kind !== "exterior" &&
-        ["public", "shared-residence"].includes(zone.kind) &&
-        zone.venueClass === spaceClass,
-    )?.id ?? "exterior"
-  );
+  return venueZones(venue).find((zone) => zone.kind !== "exterior" && !zone.ownerId)?.id ?? "exterior";
 }
 export function zoneArea(zone: VillageVenueZone): "outside" | "public" | "shared" | "private" {
-  return zone.kind === "exterior"
-    ? "outside"
-    : zone.kind === "shared-residence"
-      ? "shared"
-      : zone.kind === "private-residence"
-        ? "private"
-        : "public";
+  return zone.kind === "exterior" ? "outside" : zone.kind === "personal" ? "private" : "public";
 }
 export function canOccupyZone(
   venue: VillageVenue,
@@ -123,17 +88,8 @@ export function chooseAgendaZone(
     return (
       eligible.find((zone) => zone.kind === "exterior") ?? venueZones(venue).find((zone) => zone.kind === "exterior")!
     );
-  const preferred = /sleep|bed|dress|wash|private|personal|journal/i.test(activity)
-    ? "private-residence"
-    : /breakfast|supper|meal|eat|home|house|tidy/i.test(activity)
-      ? "shared-residence"
-      : /work|repair|build|shift|help/i.test(activity)
-        ? "staff"
-        : "public";
   return (
-    eligible.find((zone) => zone.kind === preferred) ??
-    (preferred === "private-residence" ? eligible.find((zone) => zone.kind === "shared-residence") : undefined) ??
-    eligible.find((zone) => zone.kind === "public") ??
+    eligible.find((zone) => zone.kind !== "exterior" && (!zone.ownerId || zone.ownerId === actorId)) ??
     eligible.find((zone) => zone.kind === "exterior") ??
     venueZones(venue).find((zone) => zone.kind === "exterior")!
   );
@@ -153,10 +109,10 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
     for (const zone of venue.zones ?? [])
       if (zone.access) {
         const old = previous.zones?.find((row) => row.id === zone.id);
-        if (old?.ownerId && !zone.ownerId) {
-          zone.access.managerIds = null;
-          zone.access.memberIds = [];
-          zone.access.inviterIds = [];
+        if (old?.ownerId && !zone.ownerId && !venueSleepers(venue, zone.id).length) {
+          zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== old.ownerId) ?? null;
+          zone.access.memberIds = zone.access.memberIds.filter((id) => id !== old.ownerId);
+          zone.access.inviterIds = zone.access.inviterIds.filter((id) => id !== old.ownerId);
         }
         if (zone.ownerId && old?.ownerId !== zone.ownerId) {
           zone.access.managerIds = [zone.ownerId];
@@ -174,20 +130,21 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
   }
   const zones = venue.zones ?? [];
   venue.zones = zones;
-  venue.classes = effectiveVenueClasses(venue);
   const exterior = zones.find((zone) => zone.kind === "exterior");
   if (exterior) {
     venue.presentation.image = exterior.image;
     venue.description = exterior.description;
   }
-  venue.spaces = zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+  venue.spaces = zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal");
   venue.privateSpaces = zones
-    .filter((zone) => zone.kind === "private-residence")
+    .filter((zone) => zone.kind === "personal")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
-  venue.playerSeenShared = zones.some((zone) => zone.kind === "shared-residence" && zone.seen);
-  venue.playerSeenPublic = zones.some((zone) => zone.kind === "public" && zone.seen);
+  venue.playerSeenShared = zones.some((zone) => zone.kind !== "exterior" && zone.kind !== "personal" && zone.seen);
+  venue.playerSeenPublic = zones.some(
+    (zone) => zone.kind !== "exterior" && zone.kind !== "personal" && zone.access?.mode === "public" && zone.seen,
+  );
   venue.playerSeenPrivateIds = zones
-    .filter((zone) => zone.kind === "private-residence" && zone.seen)
+    .filter((zone) => zone.kind === "personal" && zone.seen)
     .map((zone) => zone.ownerId!);
 }
 

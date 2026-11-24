@@ -162,10 +162,7 @@ await runCase("native-continuity/authored-paragraphs", async () => {
       daylightReady: true,
       pictureContext: JSON.stringify({ description: zone.description, form: "Brick studio" }),
     };
-    assert.equal(
-      readBaseVenueLayout(design, ["other"], "", (value) => (value === art ? art : null))[0].picture?.dirty,
-      false,
-    );
+    assert.equal(readBaseVenueLayout(design, "", (value) => (value === art ? art : null))[0].picture?.dirty, false);
     assert.throws(
       () =>
         retainNativeFact(

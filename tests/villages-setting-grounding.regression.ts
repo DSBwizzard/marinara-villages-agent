@@ -264,7 +264,6 @@ async function main() {
           id: "common-room",
           name: "Farmhouse",
           form: "Farmhouse",
-          classes: ["community"],
           description: "A farmhouse with a leaking roof",
           spaces: [common],
           playerSeenPublic: true,
@@ -306,7 +305,6 @@ async function main() {
     const farmPrompt = await currentScenePrompt(savedFarm, card, "chat", "How is the farmhouse?", {
       zoneId: zone.id,
       area: "public",
-      spaceClass: "community",
     });
     assert.ok(farmPrompt.includes("The repaired roof is watertight"));
     assert.ok(farmPrompt.includes(savedFarm.setting), "the complete authored background remains intact");

@@ -1,3 +1,4 @@
+import { manualHomesFixture } from "./helpers/founding-homes.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -5,10 +6,7 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { startingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
-import {
-  assignFoundingHome,
-  reconcileFoundingRoster,
-} from "../packages/villages/src/client/features/founding/founding-homes.js";
+import { assignFoundingHome } from "../packages/villages/src/client/features/founding/founding-homes.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import {
   readFoundingCircumstances,
@@ -44,7 +42,7 @@ const actors = [
   { id: "c", name: "Cleo" },
 ];
 function drafts(assignments: Record<string, string> = {}) {
-  let rows = reconcileFoundingRoster(
+  let rows = manualHomesFixture(
     [],
     actors,
     actors.map((actor) => actor.id),
@@ -53,10 +51,12 @@ function drafts(assignments: Record<string, string> = {}) {
   for (const [actor, home] of Object.entries(assignments))
     rows = assignFoundingHome(rows, `founding-home:${home}`, actor, true);
   return rows
-    .filter((venue) => !venue.classes?.includes("residence") || venue.occupancy.playerHome || venue.residentIds?.length)
+    .filter((venue) => venue.category === "public-center" || venue.occupancy.playerHome || venue.residentIds?.length)
     .map((venue, index) => ({
       ...venue,
-      ...(venue.classes?.includes("residence") ? { layout: "both", privateSpaces: [startingZone(venue, true)] } : {}),
+      ...(venue.occupancy.playerHome || !!venue.residentIds?.length
+        ? { layout: "both", privateSpaces: [startingZone(venue, true)] }
+        : {}),
       presentation: { ...venue.presentation, x: 0.1 + index * 0.15, y: 0.5 },
     }));
 }
@@ -97,13 +97,13 @@ for (const [groups, count] of [
   assert.deepEqual(community.access!.managerIds, []);
   const common = community.zones!.find((zone) => zone.kind === "public")!;
   for (const actor of actors) assert.equal(evaluateZoneAccess(community, common, actor.id).allowed, true);
-  for (const home of state.venues.filter((venue) => venue.classes!.includes("residence")))
+  for (const home of state.venues.filter((venue) => venue.occupancy.playerHome || !!venue.residentIds?.length))
     for (const actor of [...home.residentIds!, ...(home.occupancy.playerHome ? ["player"] : [])])
       assert.ok(home.destinations![actor].sleep);
 }
 
 {
-  let rows = reconcileFoundingRoster(
+  let rows = manualHomesFixture(
     [],
     actors,
     actors.map((actor) => actor.id),
@@ -132,7 +132,7 @@ for (const [groups, count] of [
     "common:base",
     "Reoccupying a vacated home establishes an explicit accessible sleeping destination",
   );
-  const fresh = newSetupVenue("empty-home", "residence", 0.2, 0.7);
+  const fresh = newSetupVenue("empty-home", 0.2, 0.7);
   fresh.name = "Empty cottage";
   rows = assignFoundingHome([...rows, fresh], fresh.id, "a", true);
   const founded = restorePlaces(
@@ -140,22 +140,22 @@ for (const [groups, count] of [
   );
   assert.equal(founded.find((row) => row.id === fresh.id)!.destinations!.a.sleep, "common:base");
   const withoutHome = assignFoundingHome(rows, fresh.id, "a", false);
-  const retained = reconcileFoundingRoster(withoutHome, actors, [], "community");
+  const retained = manualHomesFixture(withoutHome, actors, [], "community");
   assert.ok(
     retained.every((row) => !row.residentIds?.includes("a")),
     "Reconciliation never recreates an intentionally cleared assignment",
   );
   assert.equal(retained.find((row) => row.id === fresh.id)!.name, "Empty cottage");
   assert.deepEqual(
-    assignFoundingHome(retained, "community", "a", true),
-    retained,
-    "A Venue without Residence class cannot become a home through assignment",
+    assignFoundingHome(retained, "community", "a", true).find((row) => row.id === "community")!.residentIds,
+    ["a"],
+    "Any Venue can be given an explicit home assignment in Founding",
   );
 }
 
 {
   const state = world();
-  const mall = newSetupVenue("mall-one", "other", 0.4, 0.4);
+  const mall = newSetupVenue("mall-one", 0.4, 0.4);
   mall.name = "Abandoned mall";
   mall.description = "A derelict mall with a boarded entrance.";
   mall.spaces![0].description = "A damaged public atrium with a sound roof.";
@@ -167,7 +167,7 @@ for (const [groups, count] of [
   };
   state.venues = restorePlaces([...drafts(), mall, second]);
   const first = state.venues.find((venue) => venue.id === mall.id)!;
-  assert.deepEqual(first.access!.managerIds, ["player"]);
+  assert.deepEqual(first.access!.managerIds, []);
   first.zones!.find((zone) => zone.kind === "public")!.description =
     "The atrium floor is repaired; the shopfronts remain boarded.";
   const restarted = coerceVillageState(state);
@@ -263,7 +263,7 @@ for (const [groups, count] of [
 async function housing() {
   let state = world({ a: "a", b: "a" });
   const target = state.venues.find((venue) => venue.residentIds?.includes("a"))!;
-  target.residenceCapacity = 4;
+
   const service = createResidences({
     mutateVillageState: async (update) => {
       const next = structuredClone(state);
@@ -310,7 +310,7 @@ await housing();
 {
   const state = world({ a: "a", b: "a" }),
     target = state.venues.find((venue) => venue.residentIds?.includes("a"))!;
-  target.residenceCapacity = 4;
+
   const move = residenceProposal(state, "c", target, "player", at, "", "stale-move");
   for (const id of move.agreement!.requiredIds) move.agreement!.approvals[id] = true;
   move.status = "moving";
@@ -351,8 +351,8 @@ await housing();
   ];
   const access = evaluateZoneAccess(target, zone, "player", { environment: state.narrative, at: new Date(at) });
   assert.equal(access.allowed, true);
-  assert.equal(access.canManage, false);
-  assert.equal(access.canInvite, false);
+  assert.equal(access.canManage, true);
+  assert.equal(access.canInvite, true);
   assert.match(access.explanation, /inspection/i);
   assert.equal(
     accessibleVenueRoute(state, target, "player", zone.id, new Date(at)),
@@ -432,7 +432,7 @@ await housing();
   const lounge = { ...structuredClone(bedroom), id: "lounge", name: "Lounge", connectedTo: ["exterior"] };
   home.zones!.push(lounge);
   home.zones![0].connectedTo!.push(lounge.id);
-  const design = { detail: "Rework the home.", classes: home.classes, capacity: home.residenceCapacity };
+  const design = { detail: "Rework the home." };
   const interiors = () => home.zones!.filter((zone) => zone.kind !== "exterior");
   assert.throws(
     () =>
@@ -449,23 +449,20 @@ await housing();
       ),
     /sleeping destination/,
   );
-  assert.throws(
-    () =>
-      readRenovationChange(
-        state,
-        home,
-        {
-          ...design,
-          classes: ["residence", "community"],
-          zones: interiors().map((zone) =>
-            zone.id === bedroom.id ? { ...zone, kind: "public", venueClass: "community" } : zone,
-          ),
-        },
-        new Date(at),
-      ),
-    /sleeping destination/,
+  assert.doesNotThrow(() =>
+    readRenovationChange(
+      state,
+      home,
+      {
+        ...design,
+        zones: interiors().map((zone) => (zone.id === bedroom.id ? { ...zone, kind: "public" } : zone)),
+      },
+      new Date(at),
+    ),
   );
   lounge.access = { ...lounge.access!, managerIds: ["a"], memberIds: ["a"], memberRoles: [] };
+  lounge.kind = "personal";
+  lounge.ownerId = "a";
   assert.throws(
     () =>
       readRenovationChange(
@@ -483,6 +480,8 @@ await housing();
     /sleeping destination/,
     "a private intermediate room cannot block another housemate's sleep",
   );
+  lounge.kind = "public";
+  delete lounge.ownerId;
   lounge.access = structuredClone(bedroom.access);
   const project = draftRenovationProject(state, home.id, {
     ...design,
@@ -504,7 +503,7 @@ console.log(
 );
 
 {
-  const initial = reconcileFoundingRoster(
+  const initial = manualHomesFixture(
     [],
     actors,
     actors.map((actor) => actor.id),
@@ -530,11 +529,11 @@ console.log(
   assert.equal(
     evaluateZoneAccess(
       vacant,
-      vacant.zones!.find((zone) => zone.kind === "shared-residence")!,
+      vacant.zones!.find((zone) => zone.kind !== "exterior" && zone.kind !== "personal")!,
       "b",
     ).allowed,
-    true,
-    "A retained vacant home starts open",
+    false,
+    "Vacating a home preserves its authored access rules",
   );
 }
 
@@ -598,19 +597,19 @@ console.log(
 }
 
 {
-  const initial = reconcileFoundingRoster(
-      [],
-      actors,
-      actors.map((actor) => actor.id),
-      "community",
-    ),
-    home = initial.find((row) => row.residentIds?.includes("b"))!;
-  home.residenceCapacity = 4;
-  home.foundingCapacity = 4;
+  const initial = manualHomesFixture(
+    [],
+    actors,
+    actors.map((actor) => actor.id),
+    "community",
+  );
+
   assert.equal(
-    assignFoundingHome(initial, "founding-home:player", "b", true).find((row) => row.id === home.id)?.residenceCapacity,
-    4,
-    "Moving a starting resident retains capacity-only edits",
+    assignFoundingHome(initial, "founding-home:player", "b", true)
+      .find((row) => row.id === "founding-home:player")
+      ?.residentIds?.includes("b"),
+    true,
+    "Starting residents can share an existing home",
   );
   const state = world();
   state.setting += " " + Array.from({ length: 75 }, (_, i) => "Farm " + i).join(", ");
@@ -642,7 +641,7 @@ console.log(
     state.maps = maps;
     state.villagers = villagers;
   });
-  const replacement = newSetupVenue("replacement-common", "other", 0.3, 0.6);
+  const replacement = newSetupVenue("replacement-common", 0.3, 0.6);
   replacement.name = "Replacement square";
   const parsed = restorePlaces([...drafts(), replacement]).find((row) => row.id === replacement.id)!;
   await f.mutate((state) => {
@@ -653,11 +652,9 @@ console.log(
     requestId: "repurpose-community",
     title: "A new use",
     detail: "Convert this gathering room into an unused residence",
-    classes: ["residence"],
-    capacity: 2,
-    zones: target
-      .zones!.filter((z) => z.kind !== "exterior")
-      .map((z) => ({ ...z, venueClass: "residence", kind: "shared-residence" })),
+    form: "A home with a shared gathering room.",
+
+    zones: target.zones!.filter((z) => z.kind !== "exterior").map((z) => ({ ...z, kind: "public" })),
   });
   const id = f
     .state()
@@ -667,20 +664,23 @@ console.log(
   await f.service.debugCompleteProjectConstruction(id, f.body(id));
   const loaded = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
   assert.deepEqual(
-    loaded.venues.find((v) => v.id === target.id)!.classes,
-    ["residence"],
+    Object.hasOwn(
+      loaded.venues.find((v) => v.id === target.id)!,
+      "classes",
+    ),
+    false,
     "A Community Venue can be repurposed without a designation",
   );
 }
 {
   let state = world({ a: "a", b: "a" });
   const target = state.venues.find((v) => v.residentIds?.includes("a"))!;
-  target.residenceCapacity = 4;
+
   const source = target.zones!.find((z) => z.kind !== "exterior")!;
   target.zones!.push({
     ...structuredClone(source),
     id: "guest-room",
-    kind: "private-residence",
+    kind: "personal",
     name: "Guest room",
     ownerId: undefined,
     connectedTo: ["exterior"],
@@ -706,7 +706,12 @@ console.log(
   await service.movePlayerToResidence(target.id, "guest-room");
   let move = state.residences.find((row) => row.characterId === "player")!;
   const scope = move.agreement!.scope;
-  await assert.rejects(service.proposeVillageResidence("c", target.id, "player", "", "guest-room"), /reserved/);
+  await service.proposeVillageResidence("c", target.id, "player", "", "guest-room");
+  assert.equal(
+    state.residences.find((row) => row.characterId === "c")!.status,
+    "pending",
+    "Two people can propose sharing a bedroom without a quota",
+  );
   for (const id of ["a", "b"]) decideResidenceMove(state, "player", true, "villager", id, scope, new Date());
   assert.equal(
     state.venues.find((v) => v.id === target.id)!.occupancy.playerHome,
@@ -719,11 +724,10 @@ console.log(
     false,
     "Withdrawal cancels the reservation",
   );
-  await service.proposeVillageResidence("c", target.id, "player", "", "guest-room");
   assert.equal(
     state.residences.find((row) => row.characterId === "c")!.status,
     "pending",
-    "Cancellation releases the exact room for another proposed move",
+    "Cancellation leaves the other person’s shared-bedroom proposal intact",
   );
   assert.equal(
     state.venues.find((v) => v.id === target.id)!.zones!.find((z) => z.id === "guest-room")!.ownerId,
@@ -770,9 +774,9 @@ console.log(
     "A singular stale field cannot invent a household member",
   );
   assert.equal(
-    isHouse({ classes: ["other"], occupancy: { playerHome: true, residentCharacterId: "stale" } } as any),
-    false,
-    "Residence class is explicit",
+    isHouse({ occupancy: { playerHome: true, residentCharacterId: "stale" } } as any),
+    true,
+    "The player’s explicit home assignment identifies their home",
   );
 }
 

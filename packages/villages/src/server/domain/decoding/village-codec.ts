@@ -23,7 +23,6 @@ import type {
   VillageState,
   VillageTownMapView,
   VillageVenue,
-  VillageVenueClass,
   VillageVenueImage,
   VillageVenueZone,
   VillageVillager,
@@ -82,7 +81,7 @@ import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-mana
 import { withMariSpriteDefaults } from "../rules/professor-mari.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
-import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
+import { defaultVenueSpace, venueResidentIds } from "../rules/venue-model.js";
 import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
 import { VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
@@ -478,14 +477,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
   if (Array.isArray(original.zones) && original.zones.filter((value) => asRecord(value).id !== "exterior").length > 6)
     throw new Error("A Venue may have at most six Zones besides Entrance.");
   const raw = original;
-  if (
-    raw.layoutVersion !== 1 ||
-    !Array.isArray(raw.zones) ||
-    !Array.isArray(raw.residentIds) ||
-    !validVenueClasses(raw.classes) ||
-    !raw.access
-  )
-    throw new Error("Saved Venues need explicit fresh-format Zones, classes, residents and access policies.");
+  if (raw.layoutVersion !== 1 || !Array.isArray(raw.zones) || !Array.isArray(raw.residentIds) || !raw.access)
+    throw new Error("Saved Venues need explicit fresh-format Zones, residents and access policies.");
   const name = boundText(raw.name, MAX_VENUE_NAME_LENGTH);
   const description = readPlaceDescription(raw.description);
   const category = boundText(raw.category, MAX_VENUE_NOTE_LENGTH);
@@ -501,17 +494,9 @@ function coerceVenue(value: unknown): VillageVenue | null {
   const y = asFraction(presentation.y);
   const playerHome = occupancy.playerHome === true;
   const homeKind = isHomeBuildingKind(occupancy.homeKind) ? occupancy.homeKind : null;
-  const classes: VillageVenueClass[] = raw.classes as VillageVenueClass[];
   const residentIds = coerceVenueIds(raw.residentIds);
   if (residentIds.length !== raw.residentIds.length || residentIds.includes("player"))
     throw new Error("Saved resident IDs must be distinct non-player people.");
-  if (
-    !Number.isInteger(raw.residenceCapacity) ||
-    Number(raw.residenceCapacity) < 1 ||
-    Number(raw.residenceCapacity) > 4 ||
-    residentIds.length + Number(playerHome) > Number(raw.residenceCapacity)
-  )
-    throw new Error("Saved household membership must fit explicit residential capacity.");
   const privateSpaceFor = (ownerId: string, value: unknown) => {
     const row = asRecord(value);
     return {
@@ -571,6 +556,11 @@ function coerceVenue(value: unknown): VillageVenue | null {
     return null;
   }
   const venue: VillageVenue = {
+    knownSleepDestinations: Object.fromEntries(
+      Object.entries(asRecord(raw.knownSleepDestinations)).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string" && !!entry[1],
+      ),
+    ),
     access: readVenueAccess(raw.access),
     venueType: boundText(raw.venueType, 100),
     destinations: Object.fromEntries(
@@ -595,16 +585,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
         : undefined,
     name,
     form: boundText(raw.form, MAX_PHYSICAL_DESIGN_LENGTH),
-    classes,
     discovered: raw.discovered === true,
     layoutVersion: 1,
     spaces,
-    residenceCapacity:
-      Number.isInteger(raw.residenceCapacity) &&
-      Number(raw.residenceCapacity) >= 1 &&
-      Number(raw.residenceCapacity) <= 4
-        ? Number(raw.residenceCapacity)
-        : 1,
+
     residentIds,
     privateSpaces,
     playerSeenShared: raw.playerSeenShared === true,
@@ -646,7 +630,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     const ownerId = asTrimmedString(row.ownerId);
     if (
       !archived &&
-      row.kind === "private-residence" &&
+      row.kind === "personal" &&
       !!ownerId &&
       !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome))
     )
@@ -677,7 +661,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
       connectedTo: Array.isArray(row.connectedTo) ? (row.connectedTo as string[]) : undefined,
       name: boundText(row.name, MAX_VENUE_NAME_LENGTH) || "Zone",
       kind: row.kind as VillageVenueZone["kind"],
-      venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
       description: readPlaceDescription(row.description),
       ...(typeof row.roomSpecification === "string"
         ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
@@ -750,9 +733,9 @@ function coerceVenue(value: unknown): VillageVenue | null {
       venue.presentation.image = exterior.image;
       venue.description = exterior.description;
     }
-    venue.spaces = venue.zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+    venue.spaces = venue.zones.filter((zone) => ["public"].includes(zone.kind));
     venue.privateSpaces = venue.zones
-      .filter((zone) => zone.kind === "private-residence")
+      .filter((zone) => zone.kind === "personal")
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
   }
   if (raw.zoneLayout !== undefined) {
@@ -787,12 +770,7 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
       id = asTrimmedString(row.id),
       name = boundText(row.name, MAX_VENUE_NAME_LENGTH),
       description = readPlaceDescription(row.description);
-    if (
-      !id ||
-      !name ||
-      !["public", "shared-residence", "private-residence", "staff", "restricted"].includes(String(row.kind))
-    )
-      return [];
+    if (!id || !name || !["public", "personal", "restricted"].includes(String(row.kind))) return [];
     return [
       {
         id,
@@ -801,14 +779,13 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         ...(typeof row.roomSpecification === "string"
           ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
           : {}),
-        purpose: boundText(row.purpose, 240),
+        ...(row.purpose !== undefined ? { purpose: boundText(row.purpose, 240) } : {}),
         controllerIds: coerceVenueIds(row.controllerIds),
         ownerId: asTrimmedString(row.ownerId) || undefined,
         connectedTo: Array.isArray(row.connectedTo)
           ? row.connectedTo.filter((id): id is string => typeof id === "string")
           : undefined,
         kind: row.kind as VillageZoneDraft["kind"],
-        venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
       },
     ];
   });
@@ -993,8 +970,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       throw new Error("Invalid Project deadline.");
     if (["working", "paused"].includes(String(raw.status)) && !order) throw new Error("Missing Project deadline.");
     const position = asRecord(draft.position);
-    if (raw.kind === "new-venue" && (!validVenueClasses(draft.classes) || !asTrimmedString(draft.name)))
-      throw new Error("Invalid Project Venue.");
+    if (raw.kind === "new-venue" && !asTrimmedString(draft.name)) throw new Error("Invalid Project Venue.");
     const change = asRecord(flow.change),
       zones = flow.change === null ? undefined : coerceZoneDrafts(change.zones),
       roomEdits = projectRoomEditsSchema.parse(change.roomEdits === undefined ? [] : change.roomEdits),
@@ -1017,11 +993,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       throw new Error("Invalid Project Room basis.");
     if (
       raw.kind === "renovation" &&
-      (!validVenueClasses(change.classes) ||
-        (change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
-        !Number.isInteger(change.capacity) ||
-        Number(change.capacity) < 1 ||
-        Number(change.capacity) > 4 ||
+      ((change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
         !Array.isArray(change.zones) ||
         !zones ||
         zones.length !== change.zones.length ||
@@ -1047,7 +1019,6 @@ function coerceProjects(value: unknown): VillageProject[] {
         ? {
             venueDraft: {
               name: String(draft.name),
-              classes: draft.classes as VillageVenueClass[],
               description: asTrimmedString(draft.description),
               position: {
                 ...(asTrimmedString(asRecord(draft.position).mapId)
@@ -1078,10 +1049,6 @@ function coerceProjects(value: unknown): VillageProject[] {
         flow.change === null
           ? null
           : {
-              classes: validVenueClasses(asRecord(flow.change).classes)
-                ? (asRecord(flow.change).classes as VillageVenue["classes"])
-                : undefined,
-              capacity: Number(asRecord(flow.change).capacity),
               zones,
               detail: asTrimmedString(asRecord(flow.change).detail),
               ...(asRecord(flow.change).form !== undefined
@@ -1128,9 +1095,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       });
       const problem = connectionProblem([{ id: "exterior", connectedTo: [] }, ...interiors]);
       if (problem) throw new Error(`The saved Project plan needs explicit connections: ${problem}`);
-      project.plan = readProjectPlan(raw.plan, {
-        classes: validVenueClasses(draft.classes) ? draft.classes : ["other"],
-      } as VillageVenue);
+      project.plan = readProjectPlan(raw.plan, {} as VillageVenue);
     }
     return project;
   });
@@ -1148,7 +1113,6 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       const kinds = ["residence", "project", "venue", "departure", "other"] as const;
       const draft = asRecord(raw.venueDraft);
       const requestName = boundText(draft.name, MAX_VENUE_NAME_LENGTH);
-      const requestClasses = validVenueClasses(draft.classes) ? draft.classes : [];
       if (raw.kind === "venue")
         memoryRequire(
           asTrimmedString(raw.requesterCharacterId) && asTrimmedString(raw.requesterIncarnation),
@@ -1168,11 +1132,10 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
             raw.status === "approved" || raw.status === "denied" || raw.status === "countered"
               ? raw.status
               : ("pending" as const),
-          ...(requestName && requestClasses.length
+          ...(requestName
             ? {
                 venueDraft: {
                   name: requestName,
-                  classes: requestClasses,
                   description: readPlaceDescription(draft.description),
                   category: "",
                   position: { x: null, y: null },

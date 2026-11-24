@@ -85,7 +85,7 @@ export function sceneryCharacterContext(village: VillageState, venue: VillageVen
 
 export function sceneryImageKey(village: VillageState, venue: VillageVenue, at: string, zoneId = "exterior"): string {
   const zone = resolveVenueZone(venue, zoneId);
-  const ownerId = zone?.kind === "private-residence" ? zone.ownerId : "";
+  const ownerId = zone?.kind === "personal" ? zone.ownerId : "";
   const personality =
     !!ownerId || (venue.imageContext?.useAssignedVillagerContext ?? village.personalizeVenueImagesByDefault);
   const ids = ownerId ? [ownerId] : [...(venue.residentIds ?? []), ...(venue.workerIds ?? [])];
@@ -115,7 +115,7 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, at: 
     venue.venueType,
     venue.form,
     venue.layoutVersion,
-    venue.zones?.map((area) => [area.id, area.kind, area.venueClass]),
+    venue.zones?.map((area) => [area.id, area.kind]),
     venue.residentIds,
     venue.workerIds,
     venue.imageContext,

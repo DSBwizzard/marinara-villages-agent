@@ -26,7 +26,6 @@ async function main() {
         id: "venue",
         name: "Test",
         layoutVersion: 1,
-        classes: ["community"],
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
         residentIds: [],
         zones: [

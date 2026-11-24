@@ -41,7 +41,6 @@ const place = (id, x, y) =>
     residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id,
     name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-    classes: id === "mill" ? ["workplace", "community"] : ["other"],
     category: "destination",
     description: "A village place.",
     capabilities: [],
@@ -66,8 +65,8 @@ export function venueSnapshotFixture(input) {
     access: undefined,
     accessView: projectVenueAccess(venue, "player"),
     zones,
-    spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
-    privateSpaces: zones.filter((zone) => zone.kind === "private-residence"),
+    spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal"),
+    privateSpaces: zones.filter((zone) => zone.kind === "personal"),
   };
 }
 const snapshot = {

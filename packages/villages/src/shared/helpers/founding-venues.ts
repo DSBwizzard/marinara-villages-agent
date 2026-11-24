@@ -1,28 +1,5 @@
 import type { VillageVenue } from "../contracts/village.js";
-
+export const FOUNDING_VENUE_LIMIT = 6;
 export function foundingVenueShapeProblem(venues: readonly VillageVenue[]): string {
-  if (!venues.length || venues.length > 16) return "Provide between one and sixteen starting Venues.";
-  if (venues.filter((venue) => venue.classes?.includes("residence")).length > 4)
-    return "Founding supports at most four Residences.";
-  if (venues.some((venue) => !venue.classes?.length || venue.classes.length > 2))
-    return "Choose one or two Venue Classes.";
-  if (
-    venues.filter((venue) =>
-      venue.spaces?.some(
-        (zone) =>
-          zone.venueClass !== "residence" &&
-          (!zone.access || (zone.access.mode === "public" && !zone.access.accompanied)),
-      ),
-    ).length < 2
-  )
-    return "Provide public shared Zones in at least two Venues.";
-  if (
-    venues.some(
-      (venue) =>
-        venue.classes?.includes("residence") &&
-        Number(venue.occupancy.playerHome) + (venue.residentIds?.length ?? 0) !== 1,
-    )
-  )
-    return "Each starting Residence needs one assigned resident.";
-  return "";
+  return !venues.length || venues.length > FOUNDING_VENUE_LIMIT ? "Keep one to six starting Venues." : "";
 }

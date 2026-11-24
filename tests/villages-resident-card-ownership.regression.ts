@@ -185,11 +185,8 @@ prose.state.villagers[0]!.identityDescription = {
   initialGenerationComplete: true,
 };
 prose.card.description = "Changed authored prose";
-const firstVenue = venueDraft({ name: "First Venue", description: "A community place", classes: ["community"] }, null);
-const retryVenue = venueDraft(
-  { name: "Retry Venue", description: "A changed community place", classes: ["community"] },
-  null,
-);
+const firstVenue = venueDraft({ name: "First Venue", description: "A community place" }, null);
+const retryVenue = venueDraft({ name: "Retry Venue", description: "A changed community place" }, null);
 prose.state.venues = [firstVenue];
 prose.retryWith((state) => {
   state.venues = [retryVenue];

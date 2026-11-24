@@ -1,5 +1,4 @@
 import { FOUNDING_STEP, savedFoundingStep } from "./founding-steps.js";
-import { upgradeUntouchedStartingLayout } from "./quick-start-drafts.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 
@@ -212,8 +211,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       ) ||
       data.workspace.unusedHomes?.some(
         (row) =>
-          row.classes?.length !== 1 ||
-          row.classes[0] !== "residence" ||
           data.venues.some((venue) => venue.id === row.id) ||
           data.workspace.unusedHomes!.filter((venue) => venue.id === row.id).length !== 1 ||
           Number(row.occupancy.playerHome) + (row.residentIds?.length ?? 0) !== 1,
@@ -246,13 +243,7 @@ export function createFoundingRestoreSetupDraft(ports: {
         ? { households: data.context.households }
         : {}),
     });
-    const preserveLayout =
-      data.workspace.suggestionRequest ||
-      data.mapRequest ||
-      data.interruptedGeneration ||
-      data.editorOriginal ||
-      Object.keys(data.zoneDrafts).length;
-    setSetupVenues(preserveLayout ? data.venues : data.venues.map(upgradeUntouchedStartingLayout));
+    setSetupVenues(data.venues);
     setupZoneDrafts.current = data.zoneDrafts;
     setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);

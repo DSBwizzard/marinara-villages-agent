@@ -37,7 +37,7 @@ assert.equal(f.get(second).status, "complete");
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 2)));
 assert.equal(f.state().projects.filter((p) => p.status === "complete").length, 2, "completion is exactly once");
 const r = await renovation(f),
-  r2 = await renovation(f, { capacity: 4 });
+  r2 = await renovation(f, {});
 await f.agree(r);
 await f.agree(r2, "b");
 await f.service.startProjectConstruction(r, f.body(r), now);
@@ -59,12 +59,10 @@ assert.deepEqual(coerceVillageState(fresh).projects, []);
 const exterior = fixture();
 await exterior.mutate((state) => {
   const site = state.venues[0];
-  site.classes = ["residence", "workplace"];
   site.residentIds = ["b"];
   site.destinations = { b: { home: "common", sleep: "common" } };
   site.workerIds = ["c"];
-  site.zones![1].kind = "shared-residence";
-  site.zones![1].venueClass = "residence";
+  site.zones![1].kind = "public";
   seedObservedProjectRoom(state, site, "exterior", "A stone arch.");
 });
 const repairs = [{ zoneId: "exterior", text: "A repaired entrance with clean glass doors." }];

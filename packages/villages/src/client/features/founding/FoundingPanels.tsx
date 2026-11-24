@@ -23,53 +23,22 @@ export const SETUP_MIN_VILLAGER_COUNT = 1;
 
 export const SETUP_MAX_VILLAGER_COUNT = 3;
 
-export function newSetupVenue(
-  id: string,
-  venueClass: "residence" | "community" | "workplace" | "other",
-  x: number,
-  y: number,
-  playerHome = false,
-  index = 1,
-): SetupVenueDraft {
-  const name =
-    venueClass === "community"
-      ? index === 1
-        ? "Meeting place"
-        : `Shared space ${index}`
-      : venueClass !== "residence"
-        ? "New Venue"
-        : playerHome
-          ? "Your residence"
-          : `Residence ${index}`;
+export function newSetupVenue(id: string, x: number, y: number, playerHome = false, _index = 1): SetupVenueDraft {
   const venue: SetupVenueDraft = {
     id,
-    name,
-    form:
-      venueClass === "residence" ? "Residence" : venueClass === "community" ? "Community place" : "Existing structure",
-    classes: [venueClass],
+    name: playerHome ? "Your home" : "New Venue",
+    form: "Existing structure",
     layoutVersion: 1,
     spaces: [],
-    residenceCapacity: 1,
-    ...(venueClass === "residence" ? { foundingCapacity: null } : {}),
-    residentIds: [],
 
-    description:
-      venueClass === "residence"
-        ? "A residence in the Village."
-        : venueClass === "community"
-          ? "A place where the community gathers."
-          : "An existing place in the community.",
-    category: venueClass === "community" ? "public-center" : "",
+    residentIds: [],
+    description: "An existing place in the Village.",
+    category: "",
     presentation: { mapId: "", image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
   };
-  return {
-    ...venue,
-    layout: "common",
-    spaces: [{ ...startingZone(venue, false), ...(venueClass === "residence" ? { access: undefined } : {}) }],
-    privateSpaces: [],
-  };
+  return { ...venue, layout: "common", spaces: [startingZone(venue, false)], privateSpaces: [] };
 }
 
 export async function requestSetupMapReceipt(path: string, init?: RequestInit): Promise<SetupMapReceipt> {

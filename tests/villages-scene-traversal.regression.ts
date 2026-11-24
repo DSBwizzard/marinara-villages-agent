@@ -22,7 +22,12 @@ import { retainAuthoredNote } from "./helpers/continuity.fixture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 
 const at = "2026-11-11T00:00:00.000Z";
-const venue = venueFixture({ id: "square", name: "Square", classes: ["community"], description: "A paved square." });
+const venue = venueFixture({
+  spaces: [{ id: "community", description: "A paved square.", image: null }],
+  id: "square",
+  name: "Square",
+  description: "A paved square.",
+});
 const state = coerceVillageState({
   ...defaultVillageState(),
   seed: "scene-traversal",

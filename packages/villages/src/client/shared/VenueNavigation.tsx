@@ -3,7 +3,7 @@ import { ArtworkImage } from "./ArtworkImage.js";
 import { ELEMENT_TAG as P } from "./constants.js";
 import { VillageIcon } from "./VillageIcon.js";
 
-const SECTIONS = ["about", "zones", "manage"] as const;
+const SECTIONS = ["about", "zones", "arrangements"] as const;
 export type VenueSection = (typeof SECTIONS)[number];
 
 export function VenueSections({
@@ -11,15 +11,20 @@ export function VenueSections({
   disabled,
   onSelect,
   manage = true,
+  hidden = false,
+  zone = false,
 }: {
   section: VenueSection;
   disabled?: boolean;
   manage?: boolean;
+  hidden?: boolean;
+  zone?: boolean;
   onSelect(section: VenueSection): void;
 }) {
+  if (hidden || zone) return null;
   return (
     <nav className={`${P}-venue-sections`} aria-label="Venue sections">
-      {SECTIONS.filter((entry) => entry !== "manage" || manage).map((entry) => (
+      {SECTIONS.filter((entry) => manage || entry !== "arrangements").map((entry) => (
         <button
           type="button"
           key={entry}
@@ -27,7 +32,7 @@ export function VenueSections({
           aria-pressed={section === entry}
           onClick={() => onSelect(entry)}
         >
-          {entry[0]!.toUpperCase() + entry.slice(1)}
+          {entry === "arrangements" ? "Assignments" : entry[0]!.toUpperCase() + entry.slice(1)}
         </button>
       ))}
     </nav>

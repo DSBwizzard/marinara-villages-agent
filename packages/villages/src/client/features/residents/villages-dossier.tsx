@@ -13,7 +13,8 @@ import type { ResidentSprite } from "../../../shared/contracts/village.js";
 import { ResidentArtwork } from "./ResidentArtwork.js";
 import { WeeklyAgenda } from "./WeeklyAgenda.js";
 
-export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
+export type DossierSection =
+  "overview" | "relationships" | "wishes" | "memories" | "arrangements" | "agenda" | "venues";
 type ProfileSection = DossierSection | "tools";
 export type DossierNavigation = {
   actorId: string;
@@ -32,12 +33,13 @@ function readingArea(content: HTMLElement | null) {
       ? book
       : content;
 }
-const sections: DossierSection[] = ["overview", "relationships", "wishes", "memories"];
+const sections: DossierSection[] = ["overview", "relationships", "wishes", "memories", "arrangements"];
 const titles: Record<ProfileSection, string> = {
   overview: "Overview",
   relationships: "Relationships",
   wishes: "Wishes",
   memories: "Memories",
+  arrangements: "Assignments",
   agenda: "Agenda",
   venues: "Venues",
   tools: "Character Tools",
@@ -52,7 +54,7 @@ export type DossierVenue = {
 export type DossierLink = { id: string; title: string; detail: string; onOpen: () => void; playerVisible?: boolean };
 
 export function DossierIcon({ name }: { name: DossierSection | "inspect" }) {
-  if (name === "venues" || name === "overview") return <VillageIcon name="places" />;
+  if (name === "arrangements" || name === "venues" || name === "overview") return <VillageIcon name="places" />;
   const paths = {
     relationships: (
       <>
@@ -133,6 +135,7 @@ export function VillagerDossier({
   links,
   controls,
   spriteManager,
+  arrangements,
   inspectors,
   onInspectSection,
   onVenue,
@@ -160,6 +163,7 @@ export function VillagerDossier({
   links: DossierLink[];
   controls: ReactNode;
   spriteManager?: ReactNode;
+  arrangements?: ReactNode;
   inspectors: Partial<Record<DossierSection, ReactNode>>;
   onInspectSection: (section: DossierSection | null) => void;
   onVenue: (id: string) => void;
@@ -171,7 +175,7 @@ export function VillagerDossier({
   const showingSprites = !!spriteManager;
   const canReadProfile = !visitor || visitor.met;
   const visibleSections = visitor
-    ? sections.filter((tab) => tab !== "wishes" && (canReadProfile || tab === "overview"))
+    ? sections.filter((tab) => tab !== "wishes" && tab !== "arrangements" && (canReadProfile || tab === "overview"))
     : sections;
   const [section, setSection] = useState<ProfileSection>(
     navigation.section ?? (navigation.wishId ? "wishes" : "overview"),
@@ -549,6 +553,11 @@ export function VillagerDossier({
                             }}
                           />
                         </RetainedView>
+                      </RetainedView>
+                    ) : null}
+                    {visited.includes("arrangements") ? (
+                      <RetainedView active={section === "arrangements"} label="Arrangements content">
+                        {arrangements}
                       </RetainedView>
                     ) : null}
                     {visited.includes("memories") ? (

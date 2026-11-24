@@ -47,7 +47,6 @@ await withBrowser(browser, async () => {
           venueFixture({
             id: "hall",
             name: "Hall",
-            classes: ["community"],
             description,
             layoutVersion: 1,
             zones: [
@@ -55,7 +54,6 @@ await withBrowser(browser, async () => {
                 id: "exterior",
                 name: "Entrance",
                 kind: "exterior",
-                venueClass: "community",
                 description,
                 image: null,
               },
@@ -63,7 +61,6 @@ await withBrowser(browser, async () => {
                 id: "tool-room",
                 name: "Tool room",
                 kind: "restricted",
-                venueClass: "community",
                 description: "Tools on shelves.",
                 image: null,
                 connectedTo: ["exterior"],

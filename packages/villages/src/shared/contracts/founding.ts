@@ -1,6 +1,7 @@
 import type { VillageVenueImage } from "./village.js";
 export const FOUNDING_DRAFT_UNAVAILABLE = "FOUNDING_DRAFT_UNAVAILABLE";
 export type FoundingDraftZone = {
+  access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
   dayNight?: boolean;
   id: string;
   name: string;

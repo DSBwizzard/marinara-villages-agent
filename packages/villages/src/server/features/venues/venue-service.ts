@@ -8,7 +8,7 @@ import { boundText, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-pres
 import { keepAgendaPlaces } from "../../domain/rules/resident-agenda.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
 import { applyAccessCommand, readAccessCommand } from "../../domain/rules/venue-access.js";
-import { hasVenueClass, venueAssignedCount, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueAssignedCount, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { readVenueImageContext } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
@@ -164,6 +164,7 @@ export function createVenueCommands({
           villageNow().toISOString(),
           ["player", ...sceneActorIds(state)],
           [],
+          state.villagers.map((row) => row.characterId),
         );
       },
       { memories: true },
@@ -229,8 +230,8 @@ export function createVenueCommands({
       const venue = state.venues.find((entry) => entry.id === venueId);
       const zone = venue && resolveVenueZone(venue, zoneId);
       if (!zone) throw notFound("That Zone is no longer here.");
-      if (zone.kind === "exterior") throw badRequest("Exterior is always named Exterior.");
       zone.name = (row.name as string).trim();
+      if (zone.observed) zone.observed.name = zone.name;
     });
     return buildVillageSnapshot();
   }
@@ -246,8 +247,7 @@ export function createVenueCommands({
       if (!current) throw notFound("That Venue no longer exists.");
       if (current.buildProjectId)
         throw conflict("A project-built venue requires an explicit future demolition project.");
-      if (hasVenueClass(current, "residence") && venueAssignedCount(current) > 0)
-        throw conflict("Move every resident before deleting this Residence.");
+      if (venueAssignedCount(current) > 0) throw conflict("Move every resident before deleting this Residence.");
       state.venues = state.venues.filter((venue) => venue.id !== venueId);
       keepAgendaPlaces(state);
       state.residences = state.residences.filter(

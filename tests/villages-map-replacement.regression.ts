@@ -67,7 +67,6 @@ projects.state.projects.push({
   lifecycle: lifecycle(),
   venueDraft: {
     name: "Garden",
-    classes: ["community"],
     description: "A garden",
     position: { mapId: "map-house", x: 0.7, y: 0.8 },
   },

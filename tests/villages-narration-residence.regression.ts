@@ -138,12 +138,12 @@ await runCase("narration-residence/authority", () => {
   }
 });
 await runCase("narration-residence/stale", () => {
-  for (const kind of ["request", "capacity", "ban"]) {
+  for (const kind of ["request", "household", "ban"]) {
     const f = fixture();
     f.pending();
     const turn = f.prepare({ type: "residence.decide", by: "a", person: "b", venue: "home", approved: true }, "a");
     if (kind === "request") f.state.residences[0].agreement!.requestId = "replacement-request";
-    if (kind === "capacity") f.home.residenceCapacity = 1;
+    if (kind === "household") f.home.residentIds!.push("new-housemate");
     if (kind === "ban")
       f.home.access!.bans.push({
         id: "ban",
@@ -160,12 +160,13 @@ await runCase("narration-residence/stale", () => {
   }
   const f = fixture(),
     turn = f.prepare({ type: "residence.request", by: "b", venue: "home" });
-  f.home.residenceCapacity = 1;
-  assert.equal(turn.accept().held, true, "a captured vacancy cannot survive a capacity change");
+
+  f.home.residentIds!.push("new-housemate");
+  assert.equal(turn.accept().held, true, "A captured arrangement cannot survive a household change");
 });
 await runCase("narration-residence/venue-request", async () => {
   const f = fixture(),
-    turn = f.prepare({ type: "venue.request", by: "b", name: "Tea workshop", classes: ["workplace"] });
+    turn = f.prepare({ type: "venue.request", by: "b", name: "Tea workshop" });
   assert.equal(turn.accept().held, false);
   assert.equal(f.state.pendingDecisions.length, 1);
   assert.equal(f.state.pendingDecisions[0].requesterCharacterId, "b");
@@ -173,24 +174,23 @@ await runCase("narration-residence/venue-request", async () => {
     !f.state.venues.some((venue) => venue.name === "Tea workshop"),
     "a request does not establish a Venue or service",
   );
-  const duplicate = f.prepare(
-    { type: "venue.request", by: "b", name: "Tea workshop", classes: ["workplace"] },
-    "b",
-    "duplicate",
-  );
+  const duplicate = f.prepare({ type: "venue.request", by: "b", name: "Tea workshop" }, "b", "duplicate");
   duplicate.raw.commands[0].independent = true;
   delete duplicate.raw.segments[0].requires;
   const result = duplicate.accept();
   assert.equal(result.held, false);
   assert.equal(result.episode!.commandReceipts.length, 0);
   assert.equal(f.state.pendingDecisions.length, 1);
-  for (const classes of [["invented-service"], ["workplace", "workplace"]]) {
+  for (const removedClasses of [["invented-service"], ["workplace", "workplace"]]) {
     const g = fixture();
-    assert.equal(g.prepare({ type: "venue.request", by: "b", name: "Tea workshop", classes }).accept().held, true);
+    assert.equal(
+      g.prepare({ type: "venue.request", by: "b", name: "Tea workshop", classes: removedClasses }).accept().held,
+      true,
+    );
     assert.equal(g.state.pendingDecisions.length, 0);
   }
   const g = fixture(),
-    privateTurn = g.prepare({ type: "venue.request", by: "b", name: "Secret teahouse", classes: ["workplace"] });
+    privateTurn = g.prepare({ type: "venue.request", by: "b", name: "Secret teahouse" });
   privateTurn.raw.segments[0].text = "PRIVATE ONLY: I ask for the secret teahouse.";
   privateTurn.raw.segments[0].delivery = "whisper";
   privateTurn.raw.segments[0].targetId = "a";
@@ -283,7 +283,7 @@ await runCase("narration-residence/private-room", () => {
       ...structuredClone(common),
       id,
       name: id + " bedroom",
-      kind: "private-residence",
+      kind: "personal",
       connectedTo: ["common"],
       description: "PRIVATE ROOM CONTENTS " + id,
     });
@@ -291,7 +291,7 @@ await runCase("narration-residence/private-room", () => {
   const turn = f.prepare({ type: "residence.decide", by: "a", person: "b", venue: "home", approved: true }, "a");
   const prompt = narrationResidencePrompt(turn.readset.residence);
   assert(prompt.includes("blue bedroom"));
-  assert(prompt.includes("private-residence"));
+  assert(prompt.includes("personal"));
   assert(!prompt.includes("green bedroom"));
   assert(!prompt.includes("PRIVATE ROOM CONTENTS"));
   assert.deepEqual(turn.readset.residence.requests[0].householdIds, ["a"]);

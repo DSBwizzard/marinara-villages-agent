@@ -30,14 +30,13 @@ const { applyVillageVenueDecision } = createVenueRequests({
   draftNewVenueProject,
 });
 const at = "2026-09-22T12:00:00.000Z";
-const core = { name: "The Glasshouse", classes: ["community"] as ["community"] };
+const core = { name: "The Glasshouse" };
 const venue = (name: string): VillageVenue => {
   const draft = venueRequestDraft({ ...core, name });
   return venueFixture({
     residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: `draft-${name}`,
     name: draft.name,
-    classes: draft.classes,
     description: "A glasshouse where neighbours grow herbs together.",
     category: draft.category,
     presentation: { image: null, x: null, y: null },
@@ -57,8 +56,8 @@ const requester: VillageVillager = {
 };
 const state = { ...defaultVillageState(), seed: "requests", setupAt: at, foundedAt: at, villagers: [requester] };
 
-assert.deepEqual(readVenueRequestCore({ name: "", classes: ["community"] }), null);
-assert.deepEqual(readVenueRequestCore({ name: "Glasshouse", classes: ["unknown"] }), null);
+assert.deepEqual(readVenueRequestCore({ name: "" }), null);
+assert.deepEqual(readVenueRequestCore({ name: "Glasshouse" }), { name: "Glasshouse" });
 assert.deepEqual(readVenueRequestCore(core), core);
 assert.deepEqual(normalizeVillageSnapshot({ settings: { venues: [] }, venueRequests: undefined }).venueRequests, []);
 assert.deepEqual(
@@ -93,7 +92,7 @@ assert.equal(persisted.venues.length, 0, "approval begins planning without creat
 assert.equal(persisted.projects[0]?.kind, "new-venue");
 assert.equal(persisted.projects[0]?.status, "planning");
 assert.equal(persisted.projects[0]?.lifecycle?.phase, "planning");
-assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["community"]);
+assert.equal(Object.hasOwn(persisted.projects[0]?.venueDraft ?? {}, "classes"), false);
 assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
 function decisionFacts(actorId: string) {
   return continuityViews(persisted.continuity, continuityActor(persisted, actorId)!, at, new Set()).map(
@@ -128,7 +127,7 @@ assert.equal(competing.projects[0]?.status, "planning", "Start rechecks the live
 
 const full = defaultVillageState();
 full.venues = Array.from({ length: 16 }, (_, index) => venue(`Place ${index}`));
-assert.throws(() => assertCanAddVillageVenue(full, ["community"]), /maximum 16/u);
+assert.throws(() => assertCanAddVillageVenue(full), /maximum 16/u);
 
 const drafts = defaultVillageState();
 drafts.setupAt = drafts.foundedAt = at;

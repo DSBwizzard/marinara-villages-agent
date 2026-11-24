@@ -199,7 +199,6 @@ async function main() {
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           form: "where the grain is ground",
@@ -222,7 +221,6 @@ async function main() {
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           form: "grain",
@@ -255,7 +253,6 @@ async function main() {
         venues: [
           venueFixture({
             residentIds: [null].filter((id) => typeof id === "string" && !!id),
-            classes: false || null ? ["residence"] : ["other"],
             id: "mill",
             name: "the mill pond",
             form: "",
@@ -276,7 +273,6 @@ async function main() {
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "square",
           name: "market square",
           form: "trade",
@@ -290,7 +286,6 @@ async function main() {
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           form: "a stone watermill",
@@ -300,7 +295,6 @@ async function main() {
             {
               id: "common",
               name: "Mill",
-              venueClass: "community",
               description: "A private interior repair. A hidden cabinet. A Private Space fact.",
               image: null,
             },
@@ -328,17 +322,16 @@ async function main() {
       wishSystemVersion: 3,
       venues: [
         venueFixture({
+          spaces: [{ id: "residence", description: "a brick porch beneath ivy", image: null }],
           id: "home",
           name: "Bob's home",
           form: "a brick cottage",
-          classes: ["residence"],
           residentIds: ["bob"],
           description: "a brick porch beneath ivy",
           privateSpaces: [
             {
               id: "private:bob",
               ownerId: "bob",
-              venueClass: "residence",
               description: "A secret interior leak. A hidden room chest. Private Space fact.",
               image: null,
             },
@@ -359,7 +352,6 @@ async function main() {
         venues: [
           venueFixture({
             residentIds: [null].filter((id) => typeof id === "string" && !!id),
-            classes: false || null ? ["residence"] : ["other"],
             id: "mill",
             name: "the mill pond",
             form: "   ",
@@ -384,7 +376,6 @@ async function main() {
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           form: "",
@@ -412,7 +403,6 @@ async function main() {
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           presentation: { image },
@@ -460,9 +450,9 @@ async function main() {
   const placesOf = (entries: unknown[]) => coerceVillageState({ ...defaultVillageState(), venues: entries }).venues;
   const house = (id: string, residentIds: string[] = [], playerHome = false) =>
     venueFixture({
+      spaces: [{ id: "residence", description: "A place in the community.", image: null }],
       id,
       name: id,
-      classes: ["residence"],
       residentIds,
       occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     });
@@ -740,7 +730,7 @@ async function main() {
       worldRules: "",
       playerPersonaId: "persona-robin",
       venues: [
-        { ...newSetupVenue("garden", "community", 0.8, 0.6), name: "Shared garden" },
+        { ...newSetupVenue("garden", 0.8, 0.6), name: "Shared garden" },
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
           id: "player-home",
@@ -749,7 +739,6 @@ async function main() {
           privateSpaces: [
             {
               id: "private:player",
-              venueClass: "residence",
               description: "A personal sleeping nook",
               name: "Your Private Space",
               purpose: "Personal space",
@@ -758,11 +747,9 @@ async function main() {
           ],
           name: "Robin's Diner",
           form: "A converted diner",
-          classes: ["residence"],
           description: "A modest home for the player.",
           spaces: [
             {
-              venueClass: "residence",
               name: "Hearth room",
               purpose: "Meals",
               description: "A warm room with tables and a small hearth.",
@@ -779,7 +766,6 @@ async function main() {
           privateSpaces: [
             {
               id: "private:character-millie",
-              venueClass: "residence",
               name: "Private Space",
               purpose: "Personal space",
               description: "An existing sleeping nook",
@@ -788,11 +774,9 @@ async function main() {
           ],
           name: "Millie's Pod",
           form: "A sleeping pod",
-          classes: ["residence"],
           description: "Millie's small home.",
           spaces: [
             {
-              venueClass: "residence",
               name: "Common room",
               purpose: "Rest",
               description: "A compact room with a woven mat.",
@@ -808,11 +792,9 @@ async function main() {
           layout: "common",
           name: "Village square",
           form: "An open square",
-          classes: ["community"],
           description: "A public square where neighbours meet.",
           spaces: [
             {
-              venueClass: "community",
               name: "Square",
               purpose: "Conversation",
               description: "An open central yard with benches.",
@@ -845,7 +827,9 @@ async function main() {
       "Founding preserves reviewed physical details",
     );
     assert.equal(
-      founded.json().settings.venues.filter((venue: any) => venue.classes.includes("community")).length,
+      founded
+        .json()
+        .settings.venues.filter((venue: any) => !(venue.occupancy.playerHome || !!venue.residentIds?.length)).length,
       2,
       "founding creates two public venues",
     );
@@ -867,7 +851,6 @@ async function main() {
         ...founded.json().settings.venues,
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           form: "where the grain is ground",
@@ -875,7 +858,6 @@ async function main() {
         }),
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
-          classes: false || null ? ["residence"] : ["other"],
           id: "ridge",
           name: "the ridge path",
           form: "A path along the ridge",
@@ -928,9 +910,9 @@ async function main() {
       kept
         .json()
         .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
-        .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").pictureReference ?? null),
+        .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").image ?? null),
       [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
-      "the picture is kept as a reference and no other place is touched",
+      "the upload replaces the Zone image and leaves the other place untouched",
     );
     assert.equal(draws().length, 0, "choosing a picture the player already has never asks the Engine to draw");
 
@@ -955,7 +937,7 @@ async function main() {
       second
         .json()
         .settings.venues.find((venue: any) => venue.id === "ridge")
-        .zones.find((zone: any) => zone.id === "exterior").pictureReference.ref,
+        .zones.find((zone: any) => zone.id === "exterior").image.ref,
       "global-gallery:gallery-3",
     );
     assert.deepEqual(
@@ -1117,7 +1099,7 @@ async function main() {
     for (const body of [
       { venueId: "mill", privateOwnerId: "owner" },
       { venueId: "mill", privateSpaceId: "exterior" },
-      { venueId: "mill", spaceClass: "community" },
+      { venueId: "mill" },
       { venueId: "mill", zoneId: 7 },
     ]) {
       for (const method of ["POST", "PUT", "DELETE"]) {
@@ -1149,7 +1131,7 @@ async function main() {
       removed
         .json()
         .settings.venues.find((venue: any) => venue.id === "ridge")
-        .zones.find((zone: any) => zone.id === "exterior").pictureReference,
+        .zones.find((zone: any) => zone.id === "exterior").image,
       "and the other place keeps its own",
     );
     assert.equal(
@@ -1253,10 +1235,6 @@ async function main() {
       3,
       "the tab reaches the three picture routes and nothing else",
     );
-    assert.ok(
-      /onClick=\{\(\) => void drawPlaceImage\(place\.id, zone\.id\)\}/.test(client),
-      "and wired to a click on the screen that stands in a place",
-    );
 
     const foundingVenue = {
       id: "founding-home",
@@ -1264,7 +1242,6 @@ async function main() {
       form: "A stone cottage",
       description: "Blue slate roof above the harbor.",
       spaceDescription: "A copper stove beside a low table.",
-      venueClass: "residence",
       residentCharacterId: "",
     };
     const foundingImageInput = {
@@ -1449,7 +1426,6 @@ async function mediaConnectionOwnership() {
         venues: [
           venueFixture({
             residentIds: [null].filter((id) => typeof id === "string" && !!id),
-            classes: false || null ? ["residence"] : ["other"],
             id: "equal-venue",
             name: `${label} place`,
             layoutVersion: 1,
@@ -1751,12 +1727,9 @@ async function mediaConnectionOwnership() {
         );
       if (operation === "store" && !["failure", "disposed"].includes(variant)) {
         b.scope.run(() =>
-          assert.equal(
-            a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.picture?.reference?.id,
-            "A-image",
-          ),
+          assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image"),
         );
-        b.scope.run(() => assert.equal(a.world().venues[0]!.presentation.image, null));
+        b.scope.run(() => assert.equal(a.world().venues[0]!.presentation.image?.id, "A-image"));
       }
       if (variant === "cas")
         b.scope.run(() =>

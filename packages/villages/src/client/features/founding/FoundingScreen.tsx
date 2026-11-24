@@ -1,6 +1,10 @@
+import { FoundingVenueReview } from "./FoundingVenueReview.js";
+import { FoundingArrangements } from "./FoundingArrangements.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
+import { newSetupVenue } from "./FoundingPanels.js";
 import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { simpleFoundingMap } from "./simple-map.js";
-import { foundingHomeMembers, selectFoundingHomes } from "./founding-homes.js";
+import { selectFoundingHomes } from "./founding-homes.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
@@ -289,6 +293,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   const [reviewSettingSection, setReviewSettingSection] = useState<ReviewSettingSection>("Map");
   useLetterFont(screen === "setup" ? "lora" : undefined);
   const [openVenueFromMap, setOpenVenueFromMap] = useState<{ id: string }>();
+  const [redraftVenueId, setRedraftVenueId] = useState<string>();
   const rootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLElement>(null);
   const mariMoveFrom = useRef<{ element: HTMLElement; bounds: DOMRect }[]>([]);
@@ -526,6 +531,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     };
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
       id,
+      portrait: controller.portraits[id],
       name: catalog?.find((person) => person.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
     }));
     const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);
@@ -549,11 +555,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     };
     const mapReady = !setupMapBusy;
     const venueShapeProblem = foundingVenueShapeProblem(setupVenues);
-    const standardHomes = setupVenues.every(
-      (venue) => !venue.classes?.includes("residence") || foundingHomeMembers(venue).length === 1,
-    );
-    const missingSharedVenue =
-      standardHomes && setupVenues.filter((venue) => !venue.classes?.includes("residence")).length < 2;
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
         {setupMapProblem ? (
@@ -656,34 +657,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         setSetupWorkspace((workspace) => ({ ...workspace, unusedHomes: homes.unusedHomes }));
       }
       setSetupFoundingVillagerIds(ids);
-      setSetupMapReviewed(false);
-      setSetupProblem("");
-    };
-    const replaceLegacyHomes = async () => {
-      const id = setupContext.openingVenueId;
-      const retained = setupVenues.filter((venue) => !venue.classes?.includes("residence"));
-      if (
-        !(await confirmStarterHomes(
-          "Replace the old Residences and their room details and artwork with one starter home per resident?",
-          { cancel: "Cancel", confirm: "Replace Residences" },
-        ))
-      )
-        return;
-      const homes = selectFoundingHomes(
-        retained,
-        setupWorkspace.unusedHomes ?? [],
-        [{ id: "player", name: "Your" }, ...wizardVillagers],
-        id,
-      );
-      const replacedIds = new Set(setupVenues.filter((venue) => !retained.includes(venue)).map((venue) => venue.id));
-      setSetupContext((context) => ({
-        ...context,
-        circumstances: context.circumstances.filter((row) => row.scope !== "zone" || !replacedIds.has(row.venueId)),
-      }));
-      setSetupVenues(arrangeQuickStartVenues(homes.venues));
-      setSetupWorkspace((workspace) => ({ ...workspace, unusedHomes: homes.unusedHomes }));
-      setSelectedSetupVenueId(null);
-      setSetupFocusIssue(null);
       setSetupMapReviewed(false);
       setSetupProblem("");
     };
@@ -978,6 +951,72 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     );
     const venuesPanel = (
       <div className="villages-founding-places">
+        {redraftVenueId && (
+          <FoundingDialog title="Redraft Venue" compact onClose={() => setRedraftVenueId(undefined)}>
+            <label>
+              Venue ideas
+              <textarea
+                autoComplete="off"
+                rows={3}
+                maxLength={4096}
+                value={setupWorkspace.venueBriefs?.[redraftVenueId] ?? ""}
+                onChange={(event) =>
+                  setSetupWorkspace((state) => ({
+                    ...state,
+                    venueBriefs: { ...state.venueBriefs, [redraftVenueId]: event.target.value },
+                  }))
+                }
+              />
+            </label>
+            <footer>
+              <button type="button" onClick={() => setRedraftVenueId(undefined)}>
+                Back
+              </button>
+              <button
+                type="button"
+                className="villages-forging-primary"
+                disabled={chapterDisabled}
+                onClick={() => {
+                  void suggestSetupVenues({ venueId: redraftVenueId, fullVenue: true });
+                  setRedraftVenueId(undefined);
+                }}
+              >
+                Draft Venue
+              </button>
+            </footer>
+          </FoundingDialog>
+        )}
+        {setupWorkspace.venueReview && (
+          <FoundingVenueReview
+            review={setupWorkspace.venueReview}
+            sourceKey={controller.setupBeginningSourceKey}
+            current={setupVenues}
+            onUse={(venues) => {
+              setSetupVenues(venues);
+              if (setupWorkspace.venueReview?.replaceAll) {
+                setSelectedSetupVenueId(null);
+                setMovingSetupVenueId(null);
+                setSetupMapReviewed(false);
+                setSetupContext((state) => ({
+                  ...state,
+                  openingVenueId: venues[0]?.id ?? "",
+                  circumstances: state.circumstances.filter((row) => row.scope !== "zone"),
+                }));
+                setSetupWorkspace((state) => ({
+                  ...state,
+                  unusedHomes: [],
+                  view: "map",
+                  paused: false,
+                  sections: {},
+                  zones: {},
+                  inactive: {},
+                }));
+              }
+            }}
+            onDismiss={() => setSetupWorkspace((state) => ({ ...state, venueReview: undefined }))}
+            onProblem={setSetupProblem}
+          />
+        )}
         <QuickStartVenues
           daylight={storybookDaylight}
           mobile={phone}
@@ -986,8 +1025,74 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           venues={setupVenues}
           locationName={setupLocationName}
           onRetrySaving={() => void retrySetupSaving()}
+          onRedraft={reviewingMap ? undefined : (venue) => setRedraftVenueId(venue.id)}
+          onRemove={
+            reviewingMap
+              ? undefined
+              : async (venue) => {
+                  if (
+                    chapterDisabled ||
+                    !(await confirmStarterHomes(
+                      `Remove ${venue.name || "this Venue"}, its Zones, assignments and local circumstances?`,
+                      { cancel: "Cancel", confirm: "Remove Venue" },
+                    ))
+                  )
+                    return false;
+                  setSetupVenues((rows) => rows.filter((row) => row.id !== venue.id));
+                  setSetupWorkspace((state) => ({ ...state, venueReview: undefined }));
+                  setSetupContext((state) => ({
+                    ...state,
+                    openingVenueId:
+                      state.openingVenueId === venue.id
+                        ? (setupVenues.find((row) => row.id !== venue.id)?.id ?? "")
+                        : state.openingVenueId,
+                    circumstances: state.circumstances.filter(
+                      (row) => row.scope !== "zone" || row.venueId !== venue.id,
+                    ),
+                  }));
+                  if (selectedSetupVenueId === venue.id) setSelectedSetupVenueId(null);
+                  if (movingSetupVenueId === venue.id) setMovingSetupVenueId(null);
+                  setSetupMapReviewed(false);
+                  setSetupFocusIssue(null);
+                  setSetupProblem("");
+                  return true;
+                }
+          }
           actions={
             <>
+              {!reviewingMap && (
+                <label>
+                  Venue ideas
+                  <textarea
+                    autoComplete="off"
+                    maxLength={4096}
+                    rows={2}
+                    disabled={chapterDisabled}
+                    value={setupWorkspace.venueBrief ?? ""}
+                    placeholder="A café with Rowan living upstairs and working weekdays…"
+                    onChange={(e) => setSetupWorkspace((state) => ({ ...state, venueBrief: e.target.value }))}
+                  />
+                </label>
+              )}
+              {!reviewingMap && (
+                <button
+                  type="button"
+                  disabled={chapterDisabled || setupVenues.length >= 6}
+                  onClick={() => {
+                    const id = "venue:" + createVillagesClientId();
+                    const row = newSetupVenue(id, 0.5, 0.5);
+                    setSetupVenues((rows) => [
+                      ...rows,
+                      { ...row, presentation: { ...row.presentation, x: null, y: null } },
+                    ]);
+                    setSelectedSetupVenueId(id);
+                    setOpenVenueFromMap({ id });
+                  }}
+                >
+                  Add Venue
+                </button>
+              )}
+              {!reviewingMap && <span>Venues {setupVenues.length}/6</span>}
               {phone ? modelButton : null}
               {reviewingMap ? (
                 <details
@@ -1018,12 +1123,12 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               ) : (
                 <QuickStartButton
                   busy={busy || setupSuggestionsBusy}
-                  disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting}
+                  disabled={setupVenueBusy || !!setupMapRequest || !!pendingSetting || !!setupWorkspace.venueReview}
                   pending={
                     !!setupWorkspace.suggestionRequest && !pendingSetting && !setupWorkspace.suggestionRequest.failure
                   }
                   failed={!!setupWorkspace.suggestionRequest?.failure && !setupWorkspace.suggestionRequest.draftSetting}
-                  onGenerate={() => void suggestSetupVenues({ quickStart: true, separateHomes: true })}
+                  onGenerate={() => void suggestSetupVenues({ plan: true })}
                 />
               )}
             </>
@@ -1036,23 +1141,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           saveError={draftSaveError || undefined}
           problem={setupProblem || venueShapeProblem}
           problemAction={
-            venueShapeProblem && (missingSharedVenue || !standardHomes) ? (
-              <button
-                type="button"
-                disabled={
-                  busy ||
-                  !!draftSaveError ||
-                  setupVenueBusy ||
-                  setupSuggestionsBusy ||
-                  (!!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure)
-                }
-                onClick={() =>
-                  missingSharedVenue ? chooseRoster(setupFoundingVillagerIds) : void replaceLegacyHomes()
-                }
-              >
-                {missingSharedVenue ? "Add shared Venue" : "Use starter homes"}
-              </button>
-            ) : venueConnectionUnavailable ? (
+            venueConnectionUnavailable ? (
               <button type="button" onClick={openConnectionPicker}>
                 Check Model Connections
               </button>
@@ -1161,7 +1250,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           }
         >
           {setupStep === FOUNDING_STEP.Venues && (phone || explainingStarters)
-            ? "A new Village starts with 2 public locations, and each of you gets a home with two rooms to start. Don't worry, you can cram everyone into the same house later if you want to. I won't judge."
+            ? "Add or draft your Venues. Open Assignments to choose Homes and Work."
             : setupStep === FOUNDING_STEP.Review
               ? reviewStage === "confirm"
                 ? "Ready to found " + setupName + "?"
@@ -1428,7 +1517,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           {setupStep === FOUNDING_STEP.Review && (reviewStage === "people" || reviewStage === "setting") ? (
             <FoundingReview section={reviewStage} actions={reviewReplies}>
               {reviewStage === "people" ? (
-                peoplePanel
+                <>
+                  {peoplePanel}
+                  <FoundingArrangements venues={setupVenues} people={wizardVillagers} />
+                </>
               ) : (
                 <FoundingReviewSetting
                   controller={controller}

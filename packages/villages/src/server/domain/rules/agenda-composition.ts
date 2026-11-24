@@ -1,6 +1,6 @@
 import type { AgendaReservation } from "../models/agenda-reservation.js";
 import type { VillageAgendaBlock } from "../models/world.js";
-import { flexibleAgendaBlock } from "./agenda-flexibility.js";
+import { flexibleAgendaBlock, restingAgendaBlock } from "./agenda-flexibility.js";
 
 /** Reservations share one composition rule; their owners decide admission and cancellation. */
 export function composeAgenda(
@@ -11,6 +11,7 @@ export function composeAgenda(
   for (const reservation of reservations) {
     const replaceable = (block: VillageAgendaBlock) =>
       reservation.replaces === "flexible" ? flexibleAgendaBlock(block) : !block.essential && !block.commitmentId;
+    const work = reservation.source === "work";
     let covered = reservation.startMinute;
     for (const block of blocks.filter(
       (part) => part.endMinute > reservation.startMinute && part.startMinute < reservation.endMinute,
@@ -18,11 +19,11 @@ export function composeAgenda(
       if (block.startMinute > covered || !replaceable(block)) break;
       covered = Math.max(covered, block.endMinute);
     }
-    if (covered < reservation.endMinute) continue;
+    if (!work && covered < reservation.endMinute) continue;
     blocks = blocks.flatMap((block) => {
       const start = Math.max(block.startMinute, reservation.startMinute);
       const end = Math.min(block.endMinute, reservation.endMinute);
-      if (start >= end) return [block];
+      if (start >= end || (work && (!replaceable(block) || restingAgendaBlock(block)))) return [block];
       return [
         ...(block.startMinute < start ? [{ ...block, endMinute: start }] : []),
         {
@@ -31,7 +32,7 @@ export function composeAgenda(
           venueId: reservation.venueId,
           zoneId: reservation.zoneId,
           activity: reservation.activity,
-          commitmentId: reservation.id,
+          ...(work ? {} : { commitmentId: reservation.id }),
           flexible: false,
         },
         ...(block.endMinute > end ? [{ ...block, startMinute: end }] : []),

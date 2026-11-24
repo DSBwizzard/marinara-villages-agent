@@ -48,7 +48,6 @@ export function parseFoundingVenueSuggestions(
   ids: readonly string[],
   template?: readonly {
     id: string;
-    venueClass: string;
     residentIds?: string[];
     playerHome?: boolean;
   }[],
@@ -75,7 +74,7 @@ export function parseFoundingVenueSuggestions(
     };
     const layout = row.layout;
     const venue = template?.find((venue) => venue.id === id);
-    if (venue && venue.venueClass === "residence" && layout === "exterior")
+    if (venue && (venue.playerHome || !!venue.residentIds?.length) && layout === "exterior")
       throw badRequest("Residences require Common or Private Space.");
     if (!["exterior", "common", "private", "both"].includes(String(layout)))
       throw badRequest("Choose a valid suggested Zone layout.");
@@ -145,7 +144,6 @@ export type DraftRow = {
   form: string;
   description: string;
   spaceDescription: string;
-  venueClass: "residence" | "community" | "workplace" | "other";
   residentIds: string[];
   playerHome: boolean;
   layout?: string;
@@ -161,9 +159,6 @@ export function rowsOf(value: unknown): DraftRow[] {
     throw badRequest("Choose one to sixteen founding Venues.");
   return value.map((raw) => {
     const row = record(raw);
-    const venueClass = row.venueClass;
-    if (!["residence", "community", "workplace", "other"].includes(String(venueClass)))
-      throw badRequest("Choose a founding Venue Class.");
     const id = asTrimmedString(row.id).slice(0, 100);
     if (!id) throw badRequest("A founding venue needs an id.");
     if ([row.description, row.spaceDescription].some((value) => typeof value === "string" && value.length > 4000))
@@ -175,7 +170,6 @@ export function rowsOf(value: unknown): DraftRow[] {
       form: asTrimmedString(row.form).slice(0, 2000),
       description: asTrimmedString(row.description),
       spaceDescription: asTrimmedString(row.spaceDescription),
-      venueClass: venueClass as DraftRow["venueClass"],
       residentIds:
         Array.isArray(row.residentIds) && row.residentIds.every((id) => typeof id === "string" && id.trim())
           ? (row.residentIds as string[])

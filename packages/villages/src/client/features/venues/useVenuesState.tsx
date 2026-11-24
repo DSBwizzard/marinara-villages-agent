@@ -1,4 +1,4 @@
-import type { VenueClass, VillageVenue } from "../../../shared/contracts/village.js";
+import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
@@ -15,7 +15,7 @@ export function useVenuesState() {
   const [venueId, setVenueId] = useState<string | null>(null);
 
   const [venuePage, setVenuePage] = useState<"view" | "edit" | "proposal">("view");
-  const [venueSection, setVenueSection] = useState<"about" | "zones" | "manage">("about");
+  const [venueSection, setVenueSection] = useState<"about" | "zones" | "arrangements">("about");
   const [venueReturnTo, setVenueReturnTo] = useState<"home" | "menu" | "room" | "person">("home");
   const [housingVenueId, setHousingVenueId] = useState("");
 
@@ -24,9 +24,6 @@ export function useVenuesState() {
   const [venueEditDraft, setVenueEditDraft] = useState<VillageVenue | null>(null);
 
   const [venueProposalDraft, setVenueProposalDraft] = useState<{
-    classes: VenueClass[];
-    capacity: number;
-
     title: string;
     description: string;
   } | null>(null);

@@ -257,7 +257,7 @@ await runCase("project-cancellation/remove-room", async () => {
   );
   await assert.rejects(
     renovation(f, {
-      zones: [{ id: "common", name: "New room", kind: "public", venueClass: "community", description: "A new room." }],
+      zones: [{ id: "common", name: "New room", kind: "public", description: "A new room." }],
     }),
     /removed Zone ID cannot be reused/,
   );

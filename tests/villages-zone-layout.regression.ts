@@ -149,11 +149,19 @@ zone.access = {
   visitorHours: "inherit",
   accompanied: false,
 };
+assert.doesNotThrow(
+  () => applyVenueZoneLayout(state, structuredClone(venue), unauthorized),
+  "Venue operators can rewire general Zones with legacy delegates",
+);
+zone.kind = "personal";
+zone.ownerId = "other";
 assert.throws(
   () => applyVenueZoneLayout(state, venue, unauthorized),
   /managers/,
   "A Venue manager cannot rewire independently managed private boundaries",
 );
+zone.kind = "public";
+delete zone.ownerId;
 zone.access = {
   mode: "public",
   managerIds: ["player"],
@@ -191,7 +199,7 @@ assert.equal(
   undefined,
   "Removed structural IDs are pruned without discarding remaining positions",
 );
-const home = newSetupVenue("home", "residence", 0.2, 0.3, true);
+const home = newSetupVenue("home", 0.2, 0.3, true);
 home.layout = "both";
 home.privateSpaces = [startingZone(home, true)];
 home.form = "Cottage";
@@ -226,7 +234,7 @@ assert.deepEqual(
   "All references can be cleared for an actor",
 );
 assert.doesNotThrow(() => parsePlace(removed, true), "Removing a moved Zone prunes positions and incoming links");
-const legacy = newSetupVenue("legacy", "residence", 0.2, 0.3, true);
+const legacy = newSetupVenue("legacy", 0.2, 0.3, true);
 legacy.layout = "both";
 legacy.privateSpaces = [startingZone(legacy, true)];
 const removedHub = removeFoundingZone(legacy, legacy.spaces![0].id);

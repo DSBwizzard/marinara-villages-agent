@@ -701,10 +701,10 @@ async function main() {
       false,
     );
     const safeVenue = venueFixture({
+      spaces: [{ id: "other", description: "A place in the community.", image: null }],
       residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id: "library",
       name: "Library",
-      classes: ["other"],
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       presentation: { image: null, x: 0.2, y: 0.2 },
     });

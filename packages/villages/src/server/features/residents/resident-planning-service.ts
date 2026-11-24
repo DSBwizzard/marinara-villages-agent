@@ -48,7 +48,8 @@ import {
   socialContinuationValid,
   socialPlanCandidates,
 } from "../../domain/rules/social-rules.js";
-import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueZones } from "../../domain/rules/venue-zones.js";
+import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
@@ -129,10 +130,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               destinations: state.venues
                 .filter(
                   (venue) =>
-                    hasVenueClass(venue, "residence") &&
                     venue.constructionStatus !== "worksite" &&
                     !venue.occupancy.playerHome &&
                     !venueResidentIds(venue).length &&
+                    venueZones(venue).some((zone) => zone.kind !== "exterior") &&
                     !state.residences.some(
                       (row) => row.proposedVenueId === venue.id && ["pending", "moving"].includes(row.status),
                     ),
@@ -181,7 +182,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         opportunity.actorIds.every((id) => {
           const old = historical.villagers.find((row) => row.characterId === id),
             live = state.villagers.find((row) => row.characterId === id);
-          return old && live && sameReturnResident(old, live, at, historical);
+          return old && live && sameReturnResident(old, live, at, historical, state);
         }),
         "historical resident changed",
       );
@@ -617,10 +618,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         const venue = next.venues.find((row) => row.id === request.venueId);
         memoryRequire(
           venue &&
-            hasVenueClass(venue, "residence") &&
             venue.constructionStatus !== "worksite" &&
             !venue.occupancy.playerHome &&
             !venueResidentIds(venue).length &&
+            venueZones(venue).some((zone) => zone.kind !== "exterior") &&
             !next.residences.some(
               (row) =>
                 row.status !== "current" &&

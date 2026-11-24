@@ -3,7 +3,6 @@ import type { SceneView, VillagerAgendaView, VillageSnapshot, VillageVenue } fro
 import { ELEMENT_TAG } from "./constants.js";
 import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
 import { villageConnectionCategory } from "../../shared/helpers/connection-category.js";
-import { isHouse, venueClassesFor, venueSpaceFor } from "./venue.js";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
 
 /**
@@ -57,7 +56,7 @@ export function venuePictureOf(venues: readonly VillageVenue[], room: SceneView)
   if (room.area === "outside") return venue.presentation.image?.url ?? "";
   if (room.area === "private")
     return venue.privateSpaces?.find((entry) => entry.ownerId === room.privateOwnerId)?.image?.url ?? "";
-  return (room.spaceClass ? venueSpaceFor(venue, room.spaceClass).image : null)?.url ?? "";
+  return "";
 }
 
 /** Engine list metadata used to identify saved connections in the picker. */
@@ -96,7 +95,7 @@ export function connectionOptionsFrom(rows: readonly EngineConnectionRow[]): Vil
  * Two of the six marks are the ENGINE'S OWN element and get no class at all:
  * `**bold**` is a `<strong>` and `*italic*` is an `<em>`, and the theme's fonts
  * already say what those mean. The rest need a word of styling the browser does
- * not supply on its own — see the sheet, where the three classes are one short
+ * not supply on its own — see the sheet, where Venue roles are one short
  * block and where the Engine's own version of them lives (scoped there to
  * `.mari-message-content`, which is what keeps it from being reused as-is).
  *
@@ -224,7 +223,7 @@ function drawVillagesStyled(node: VillagesStyledNode, at: string) {
 
 /** And the other half of the same list: everywhere a villager can be sent. */
 export function destinationPlaces(places: readonly VillageVenue[]): VillageVenue[] {
-  return places.filter((place) => !isHouse(place) || venueClassesFor(place).some((item) => item !== "residence"));
+  return places.filter((place) => place.constructionStatus !== "worksite");
 }
 
 /** Four decimal places is finer than a pixel on any map and keeps stored numbers readable. */

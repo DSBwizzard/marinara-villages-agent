@@ -72,7 +72,7 @@ await withBrowser(browser, async () => {
         y: null,
         report: false,
         visited: false,
-        classified: false,
+        prepared: false,
         venue: false,
         location: {
           ...snapshot.settings.venues[0],
@@ -159,10 +159,11 @@ await withBrowser(browser, async () => {
       await page.getByLabel("Search locations", { exact: true }).fill(" Lantern ");
       await expect(page.getByRole("button", { name: "The Lantern", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "The Lantern", exact: true }).click();
-      const profile = page.getByRole("region", { name: "Location", exact: true });
+      const profile = page.locator(".marinara-capability-villages-venue-profile");
       await expect(profile).toBeVisible();
       await expect(profile.getByText(place.description, { exact: true })).toHaveCount(1);
-      await expect(profile.getByRole("button", { name: "Manage", exact: true })).toHaveCount(0);
+      await expect(profile.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
+      await expect(profile.getByRole("button", { name: "Access", exact: true })).toHaveCount(0);
       await expect(profile.getByText("Assigned villagers", { exact: true })).toHaveCount(0);
       await profile.getByRole("button", { name: "Zones", exact: true }).click();
       await profile.getByRole("button", { name: /Dining room/ }).click();
@@ -172,6 +173,7 @@ await withBrowser(browser, async () => {
         profile.getByRole("button", { name: /Generate artwork|Upload reference|Retry artwork/ }),
       ).toHaveCount(0);
       await expect(profile.getByRole("switch")).toHaveCount(0);
+      await profile.getByRole("button", { name: "← The Lantern", exact: true }).click();
       await profile.getByRole("button", { name: "About", exact: true }).click();
       await expect(profile.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
       await profile.getByRole("button", { name: "Visit location", exact: true }).click();
@@ -187,7 +189,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Add as Venue", exact: true })).toHaveCount(0);
       assert(!paths.some((path) => path.endsWith("/prepare")), "Visit delegates first arrival to ordinary Scene entry");
       place.visited = true;
-      place.classified = true;
+      place.prepared = true;
       await page.evaluate(() => window.reopen());
       await expect(profile.getByRole("button", { name: "Add as Venue", exact: true })).toBeVisible();
       assert(detailReads() > hiddenReads, "Reopening the retained page reads current admission eligibility");

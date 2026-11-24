@@ -14,10 +14,11 @@ import { createVenueCommands } from "../packages/villages/src/server/features/ve
 
 const at = "2026-10-29T12:00:00.000Z";
 const source = defaultVillageState();
-const home = venueDraft({ name: "Home", description: "A blue door", classes: ["residence"] }, null);
+const home = venueDraft({ name: "Home", description: "A blue door" }, null);
 home.id = "home";
 home.layoutVersion = 1;
 home.residentIds = ["resident"];
+
 home.zones = [
   {
     ...defaultVenueSpace("residence", "A blue door"),
@@ -30,7 +31,7 @@ home.zones = [
     ...defaultVenueSpace("residence", "An oak desk beside a green bed."),
     id: "room",
     name: "Bedroom",
-    kind: "private-residence",
+    kind: "personal",
     ownerId: "resident",
     seen: false,
     connectedTo: ["exterior"],

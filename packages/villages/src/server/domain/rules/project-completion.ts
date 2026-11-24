@@ -37,14 +37,12 @@ export function completeProject(state: VillageState, project: VillageProject, at
     const plan = readProjectPlan(project.plan, venue);
     const zones = readBaseVenueLayout(
       { ...plan, description: plan.exteriorDescription, presentation: { image: plan.exteriorImage } },
-      venue.classes ?? ["other"],
       "",
       validImage,
     );
     validateLayoutZones(
       venue,
       zones.filter((zone) => zone.kind !== "exterior"),
-      venue.classes ?? ["other"],
       state,
     );
     const oldEntrance = venue.zones?.find((zone) => zone.kind === "exterior");
@@ -62,7 +60,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
     venue.imageContext = plan.imageContext;
     venue.description = plan.exteriorDescription;
     venue.presentation.image = zones[0].image;
-    venue.residenceCapacity = plan.capacity;
     completeWorksiteEntrance(state, venue, project.id, at);
     venue.constructionStatus = "complete";
   } else {
@@ -86,16 +83,20 @@ export function completeProject(state: VillageState, project: VillageProject, at
         const previous = old.find((zone) => zone.id === draft.id);
         if (previous && !flow.changedZoneIds.includes(draft.id)) return previous;
         const zone: VillageVenueZone = {
-          ...defaultVenueSpace(draft.venueClass),
+          ...defaultVenueSpace(draft.id),
           ...previous,
           ...draft,
           description: previous ? previous.description : draft.description,
+          purpose: draft.purpose ?? previous?.purpose,
           roomSpecification: draft.roomSpecification ?? previous?.roomSpecification,
-          access: previous?.access,
+          access:
+            previous && (previous.kind !== draft.kind || previous.ownerId !== draft.ownerId)
+              ? undefined
+              : previous?.access,
           image: previous?.image ?? null,
           seen: previous?.seen ?? draft.ownerId === "player",
           preparation:
-            !previous && ["private-residence", "staff", "restricted"].includes(draft.kind) && draft.ownerId !== "player"
+            !previous && ["personal", "restricted"].includes(draft.kind) && draft.ownerId !== "player"
               ? { status: "pending" }
               : previous?.preparation,
         };
@@ -108,8 +109,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
     if (change.form !== undefined) {
       venue.form = change.form;
     }
-    venue.classes = change.classes ?? venue.classes;
-    venue.residenceCapacity = change.capacity ?? venue.residenceCapacity;
   }
   venue.layoutVersion = 1;
   initializeVenueAccess(venue);
@@ -119,9 +118,9 @@ export function completeProject(state: VillageState, project: VillageProject, at
       initializeRoomContinuity(state, venue.id, zone.id, zone.description, project.id + ":complete", at);
     if (zone.seen) zone.observed = captureZoneObservation(venue, zone, zone.description);
   }
-  venue.spaces = venue.zones!.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+  venue.spaces = venue.zones!.filter((zone) => ["public"].includes(zone.kind));
   venue.privateSpaces = venue
-    .zones!.filter((zone) => zone.kind === "private-residence")
+    .zones!.filter((zone) => zone.kind === "personal")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
   flow.phase = "complete";
   flow.completedAt = at;
@@ -143,31 +142,26 @@ export function completeProject(state: VillageState, project: VillageProject, at
     { about: flow.builderId ? [flow.builderId] : [] },
   );
 }
-export function readProjectPlan(value: unknown, venue: VillageVenue): NonNullable<VillageProject["plan"]> {
+export function readProjectPlan(value: unknown, _venue: VillageVenue): NonNullable<VillageProject["plan"]> {
   const row = asRecord(value);
   const form = boundText(row.form, MAX_PHYSICAL_DESIGN_LENGTH).trim();
   const exteriorDescription = readPlaceDescription(row.exteriorDescription).trim();
   if (!form || !exteriorDescription || row.layoutVersion !== 1)
     throw badRequest("Define the Physical design, layout and Entrance before work starts.");
-  const capacity = Number(row.capacity ?? 1);
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 4)
-    throw badRequest("Residence capacity must be from one to four.");
   const zones = readBaseVenueLayout(
     { ...row, description: exteriorDescription, presentation: { image: row.exteriorImage } },
-    venue.classes ?? ["other"],
     "",
     validImage,
   );
   return {
-    capacity: Number(row.capacity ?? 1),
     imageContext: readVenueImageContext(row.imageContext),
     form,
     venueType: boundText(row.venueType, 100),
     exteriorDescription,
     layoutVersion: 1,
     layout: row.layout as NonNullable<VillageProject["plan"]>["layout"],
-    spaces: zones.filter((zone) => zone.kind !== "exterior" && ["public", "shared-residence"].includes(zone.kind)),
-    privateSpaces: zones.filter((zone) => !["exterior", "public", "shared-residence"].includes(zone.kind)),
+    spaces: zones.filter((zone) => zone.kind !== "exterior" && ["public"].includes(zone.kind)),
+    privateSpaces: zones.filter((zone) => !["exterior", "public", "public"].includes(zone.kind)),
     exteriorImage: validImage(row.exteriorImage),
   };
 }

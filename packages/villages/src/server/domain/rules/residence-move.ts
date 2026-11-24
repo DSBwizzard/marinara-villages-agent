@@ -1,8 +1,10 @@
+import { accessibleVenueRoute } from "./venue-path.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageState } from "../models/world.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { keepAgendaPlaces } from "./resident-agenda.js";
 import { personalDestinationSpace } from "./venue-authoring.js";
-import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
+import { venueResidentIds, venueSleepers } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { assertResidenceAgreement, residenceProposal } from "./residence-agreement.js";
 import { initializeVenueAccess } from "./venue-access.js";
@@ -22,29 +24,51 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
     return false;
   }
   const destination = state.venues.find((venue) => venue.id === residence.proposedVenueId);
-  if (
-    !destination ||
-    !hasVenueClass(destination, "residence") ||
-    venueAssignedCount(destination) >= venueCapacity(destination)
-  )
-    throw conflict("The new venue is no longer available for this move.");
+  if (!destination) throw conflict("The new venue is no longer available for this move.");
   const old = state.venues.find((venue) =>
     characterId === "player" ? venue.occupancy.playerHome : venueResidentIds(venue).includes(characterId),
   );
+  const known = residence.requestedBy === "player" || residence.agreement?.approvals.player === true;
+  const remember = () => {
+    if (!known) return;
+    for (const venue of state.venues)
+      if (venue.knownSleepDestinations) delete venue.knownSleepDestinations[characterId];
+    destination.knownSleepDestinations ??= {};
+    destination.knownSleepDestinations[characterId] = residence.agreement!.sleepZoneId;
+  };
+  if (old === destination) {
+    destination.destinations ??= {};
+    destination.destinations[characterId] = {
+      ...destination.destinations[characterId],
+      sleep: residence.agreement!.sleepZoneId,
+    };
+    initializeVenueAccess(destination);
+    const homeZone = destination.destinations[characterId].home;
+    if (
+      homeZone &&
+      !accessibleVenueRoute(
+        state,
+        destination,
+        characterId,
+        homeZone,
+        new ZonedDate(now.toISOString(), state.timeZone || "UTC"),
+      )
+    )
+      destination.destinations[characterId].home = residence.agreement!.sleepZoneId;
+    destination.access!.revision++;
+    remember();
+    residence.proposedVenueId = "";
+    residence.status = "current";
+    residence.completesAt = "";
+    keepAgendaPlaces(state);
+    return true;
+  }
   destination.layoutVersion = 1;
   destination.zones ??= venueZones(destination);
   if (old) {
     old.zones ??= venueZones(old);
     old.layoutVersion = 1;
   }
-  const previousHouseholds = new Map(
-    [old, destination]
-      .filter((venue) => !!venue)
-      .map((venue) => [
-        venue.id,
-        [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])].sort(),
-      ]),
-  );
   const archivedAt = new Date(now).toISOString();
   const oldPrivate = old && personalDestinationSpace(old, characterId);
   if (old) {
@@ -54,6 +78,7 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
         ...(old.archivedPrivateSpaces ?? []),
         ...allOwned
           .sort((a, b) => Number(b.id === oldPrivate?.id) - Number(a.id === oldPrivate?.id))
+          .filter((space) => !venueSleepers(old, space.id).some((id) => id !== characterId))
           .map((space) => ({
             ownerId: characterId,
             archivedAt,
@@ -69,7 +94,9 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
     old.residentIds = venueResidentIds(old).filter((id) => id !== characterId);
     old.playerSeenPrivateIds = (old.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
     old.occupancy.residentCharacterId = old.residentIds[0] ?? null;
-    if (old.destinations) delete old.destinations[characterId];
+    if (old.destinations?.[characterId]?.work)
+      old.destinations[characterId] = { work: old.destinations[characterId].work };
+    else if (old.destinations) delete old.destinations[characterId];
   }
   if (characterId === "player") {
     for (const venue of state.venues)
@@ -82,7 +109,11 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
   } else destination.residentIds = [...venueResidentIds(destination), characterId];
   destination.playerSeenPrivateIds = (destination.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
   const zone = destination.zones!.find((zone) => zone.id === residence.agreement!.sleepZoneId)!;
-  if (zone.kind === "private-residence") {
+  if (
+    zone.kind === "personal" &&
+    !zone.ownerId &&
+    !venueSleepers(destination, zone.id).some((id) => id !== characterId)
+  ) {
     if (zone.image || zone.seen)
       destination.archivedZones = [
         ...(destination.archivedZones ?? []),
@@ -90,18 +121,17 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
       ].slice(-64);
     changeRoomOwner(destination, zone, characterId);
     destination.destinations ??= {};
-    destination.destinations[characterId] = { sleep: zone.id };
+    destination.destinations[characterId] = { ...destination.destinations[characterId], sleep: zone.id };
   }
   destination.destinations ??= {};
-  destination.destinations[characterId] = { sleep: zone.id };
+  destination.destinations[characterId] = { ...destination.destinations[characterId], sleep: zone.id };
   for (const venue of [old, destination].filter((venue) => !!venue)) {
     initializeVenueAccess(venue);
-    if (JSON.stringify([...venue.access!.managerIds].sort()) === JSON.stringify(previousHouseholds.get(venue.id)))
-      venue.access!.managerIds = [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])];
     venue.access!.revision++;
   }
   destination.occupancy.residentCharacterId = destination.residentIds[0] ?? null;
   residence.venueId = destination.id;
+  remember();
   residence.proposedVenueId = "";
   residence.status = "current";
   residence.completesAt = "";
@@ -114,7 +144,17 @@ function changeRoomOwner(
   zone: import("../models/world.js").VillageVenueZone,
   ownerId: string | undefined,
 ): void {
+  const previousOwner = zone.ownerId;
   zone.ownerId = ownerId;
+  const roommates = venueSleepers(venue, zone.id).filter((id) => id !== previousOwner);
+  if (!ownerId && roommates.length) {
+    if (zone.access) {
+      zone.access.managerIds = zone.access.managerIds?.filter((id) => id !== previousOwner) ?? null;
+      zone.access.memberIds = zone.access.memberIds.filter((id) => id !== previousOwner);
+      zone.access.inviterIds = zone.access.inviterIds.filter((id) => id !== previousOwner);
+    }
+    return;
+  }
   zone.access = {
     mode: "permission-required",
     managerIds: ownerId ? [ownerId] : null,
@@ -142,14 +182,8 @@ export function requestResidenceMove(
   }
   const destination = state.venues.find((venue) => venue.id === proposedVenueId);
   if (!destination) throw notFound("That place is no longer in the village.");
-  if (!hasVenueClass(destination, "residence")) throw badRequest("Choose a Residence for this move.");
   if (destination.constructionStatus === "worksite") throw conflict("This Residence is still under construction.");
   const current = state.residences.find((residence) => residence.characterId === characterId);
-  const currentVenueId =
-    state.venues.find((venue) =>
-      characterId === "player" ? venue.occupancy.playerHome : venueResidentIds(venue).includes(characterId),
-    )?.id ?? "";
-  if (currentVenueId === proposedVenueId) throw badRequest("That villager already lives there.");
   if (current && current.status !== "current" && !current.holdReason) {
     let stale = false;
     try {

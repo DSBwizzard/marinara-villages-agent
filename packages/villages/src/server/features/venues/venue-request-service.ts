@@ -62,18 +62,13 @@ export function createVenueRequests({
     const requester = state.villagers.find(
       (row) => row.characterId === decision.requesterCharacterId && row.incarnation === decision.requesterIncarnation,
     );
-    if (
-      approved &&
-      edits &&
-      (edits.name !== decision.venueDraft.name ||
-        JSON.stringify(edits.classes) !== JSON.stringify(decision.venueDraft.classes))
-    ) {
-      throw badRequest("Changing the requested name or Classes is not available yet.");
+    if (approved && edits && edits.name !== decision.venueDraft.name) {
+      throw badRequest("Keep the requested Venue name.");
     }
     if (approved) {
       draftNewVenueProject(
         state,
-        { ...core, classes: core.classes, description, requestQuote: decision.requestQuote },
+        { ...core, description, requestQuote: decision.requestQuote },
         requester?.characterId,
         `request:${requestId}`,
       );

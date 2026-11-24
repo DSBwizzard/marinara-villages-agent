@@ -190,7 +190,6 @@ const home = coerceVillageState({
         layout: "private",
         name: "Home",
         form: "Cabin",
-        classes: ["residence"],
         description: "A cabin",
         occupancy: { playerHome: false, residentCharacterId: "same", homeKind: null },
         residentIds: ["same"],
@@ -244,9 +243,13 @@ assert.deepEqual(vacant.preparation, { status: "ready" });
 assert.equal(vacant.seen, true);
 assert.equal(vacant.description, "Secret writing", "vacancy preserves established physical truth");
 assert.equal(vacant.image, null);
-assert.deepEqual(vacant.access!.managerIds, null);
+assert.deepEqual(
+  vacant.access!.managerIds,
+  [],
+  "Departure requires explicit manager recovery instead of granting new private-room authority",
+);
 assert.deepEqual(vacant.access!.inviterIds, []);
-assert.deepEqual(vacant.access!.memberIds, []);
+assert.deepEqual(vacant.access!.memberIds, ["guest"], "Departure preserves other people’s explicit room access");
 assert.deepEqual(vacant.controllerIds, ["other"]);
 assert.deepEqual(emptied.workerIds, ["other"]);
 assert(

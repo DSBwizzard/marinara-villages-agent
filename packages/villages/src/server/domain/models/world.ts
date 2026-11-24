@@ -209,9 +209,8 @@ export type VillageVenueImage = {
  * the places a villager's week is translated against.
  */
 /** A durable place where the player or a villager can literally be. */
-export type VillageVenueClass = "residence" | "workplace" | "community" | "other";
 
-/** One class contributes one enterable scene. The venue remains one map place. */
+/** A Zone keeps its own physical presentation. */
 export type ZonePicture = {
   base: VillageVenueImage | null;
   reference?: VillageVenueImage;
@@ -236,14 +235,13 @@ export type VillageVenueSpace = {
   pictureRevision?: number;
   connectedTo?: string[];
   id: string;
-  venueClass: VillageVenueClass;
   /** Known authored constraints, separate from the prepared interior. */
   roomSpecification?: string;
   description: string;
   image: VillageVenueImage | null;
 };
 
-export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
+export type VillageZoneKind = "exterior" | "public" | "personal" | "restricted";
 export type PrivateSpacePreparation = {
   lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   status: "pending" | "ready" | "failed";
@@ -286,16 +284,7 @@ export type ZoneObservation = {
 };
 export type VillageZoneDraft = Pick<
   VillageVenueZone,
-  | "id"
-  | "name"
-  | "kind"
-  | "description"
-  | "roomSpecification"
-  | "venueClass"
-  | "purpose"
-  | "controllerIds"
-  | "ownerId"
-  | "connectedTo"
+  "id" | "name" | "kind" | "description" | "roomSpecification" | "purpose" | "controllerIds" | "ownerId" | "connectedTo"
 >;
 
 export type VillagePrivateSpace = VillageVenueSpace & {
@@ -313,6 +302,7 @@ export type VillageVenue = {
   access?: import("../../../shared/helpers/venue-access.js").VenueAccessState;
   accessView?: import("../../../shared/helpers/venue-access.js").VenueAccessView;
   destinations?: Record<string, { home?: string; sleep?: string; work?: string }>;
+  knownSleepDestinations?: Record<string, string>;
   /** Explicit layouts never synthesize absent interiors. */
   layoutVersion?: 1;
   imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
@@ -324,13 +314,10 @@ export type VillageVenue = {
   name: string;
   /** The literal form of this unique place, such as sleeping pod or converted diner. */
   form?: string;
-  /** One or two mechanical roles. There is no shared venue-type catalogue. */
-  classes?: VillageVenueClass[];
   spaces?: VillageVenueSpace[];
   zones?: VillageVenueZone[];
   archivedZones?: { zone: VillageVenueZone; archivedAt: string }[];
-  /** Direct residence capacity, up to four people. */
-  residenceCapacity?: number;
+
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
   privateSpaces?: VillagePrivateSpace[];
@@ -348,7 +335,7 @@ export type VillageVenue = {
     x: number | null;
     y: number | null;
   };
-  /** A venue may house the player or one villager, but never both. */
+  /** Home assignments are independent of a place’s other uses. */
   occupancy: {
     playerHome: boolean;
     residentCharacterId: string | null;
@@ -372,7 +359,6 @@ export type VillageVenuePosition = {
  */
 export type VillageVenueDraft = {
   name: string;
-  classes: VillageVenueClass[];
   description: string;
   category: string;
   position: VillageVenuePosition & { mapId?: string };
@@ -424,8 +410,7 @@ export type VillageProjectPhase = "planning" | "working" | "paused" | "complete"
 export type VillageProjectChange = {
   form?: string;
   roomEdits?: ProjectRoomEdit[];
-  classes?: VillageVenueClass[];
-  capacity?: number;
+
   zones?: VillageZoneDraft[];
   detail: string;
 };
@@ -477,7 +462,6 @@ export type VillageProjectLifecycle = {
 export type VillageProject = {
   place?: VillageVenue;
   plan?: {
-    capacity: number;
     form: string;
     venueType: string;
     exteriorDescription: string;
@@ -505,7 +489,6 @@ export type VillageProject = {
   kind: "new-venue" | "renovation";
   venueDraft?: {
     name: string;
-    classes: VillageVenueClass[];
     description: string;
     position: { mapId?: string; x: number | null; y: number | null };
   };

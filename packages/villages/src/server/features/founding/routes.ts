@@ -7,7 +7,6 @@ import { resetVenueSessions } from "../scenes/archive.js";
 import { draftVenueDescriptions, runVillageSetup } from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, uploadFoundingVenueImage } from "./founding-drafts.js";
-import { asRecord } from "../../domain/rules/coerce.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import { peekVillageAuthority } from "../world/village-store.js";
@@ -74,8 +73,8 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
   });
   app.post<{ Body: unknown }>("/setup/venues/suggest", async (request, reply) => {
     try {
-      if (asRecord(request.body).mode === "draft-setting" && isVillageFounded(await peekVillageAuthority()))
-        throw conflict("This Village is already founded. Use World Configuration.");
+      if (isVillageFounded(await peekVillageAuthority()))
+        throw conflict("Draft Venues only during Founding. Manage this Village through its Venue profiles.");
       return await requestFoundingSuggestions(request.body);
     } catch (error) {
       return fail(reply, error, "requesting a Founding draft");

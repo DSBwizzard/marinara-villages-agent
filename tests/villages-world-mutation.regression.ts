@@ -7,7 +7,12 @@ import { normalizeVillageMutation } from "../packages/villages/src/server/domain
 
 const at = "2026-11-10T12:00:00.000Z";
 const venue = (index: number) =>
-  venueFixture({ id: "venue-" + index, name: "Venue " + index, classes: ["residence"], description: "A usable room." });
+  venueFixture({
+    spaces: [{ id: "residence", description: "A usable room.", image: null }],
+    id: "venue-" + index,
+    name: "Venue " + index,
+    description: "A usable room.",
+  });
 
 await runCase("world-mutation/identity", () => {
   const world = defaultVillageState(),

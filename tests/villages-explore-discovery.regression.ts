@@ -32,7 +32,6 @@ const host = await packagedSceneServer({
         {
           name,
           description: "An existing location.",
-          classes: ["other"],
           people: [{ ref: "keeper", name: "Keeper of " + name, characterization: "A careful local keeper." }],
         },
         id,

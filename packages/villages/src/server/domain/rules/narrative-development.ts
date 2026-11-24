@@ -1,4 +1,3 @@
-import { sharedPlayspace } from "./shared-playspace.js";
 import type { VillageState } from "../models/world.js";
 import type {
   NarrativeAdmission,
@@ -172,9 +171,7 @@ export function admitNarrative(
           zoneId: zone.id,
           name: venue.name + " / " + zone.name,
           exterior: zone.kind === "exterior",
-          ordinaryUseRestrictionAllowed:
-            zone.kind !== "exterior" &&
-            sharedPlayspace(state, new Date(at), { venueId: venue.id, zoneId: zone.id }).sufficient,
+          ordinaryUseRestrictionAllowed: zone.kind !== "exterior",
           structure: narrativeStructure(venue, zone),
           controllers: [...zoneControllerIds(venue, zone)].sort(),
           correctiveActorIds: correctiveActors(state, venue, zone, at),

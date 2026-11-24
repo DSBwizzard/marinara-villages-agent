@@ -6,7 +6,6 @@ export function shape(zone: VillageZoneDraft) {
     zone.name,
     zone.purpose ?? "",
     zone.kind,
-    zone.venueClass,
     zone.ownerId ?? "",
     [...(zone.controllerIds ?? [])].sort(),
     [...(zone.connectedTo ?? [])].sort(),
@@ -25,6 +24,7 @@ export function changedZoneIds(venue: VillageVenue, change?: VillageProjectChang
     const previous = old.find((saved) => saved.id === zone.id);
     return {
       ...zone,
+      purpose: zone.purpose ?? previous?.purpose,
       roomSpecification: zone.roomSpecification ?? previous?.roomSpecification,
     };
   });
@@ -45,8 +45,6 @@ export function venueDesignHash(
     .update(
       JSON.stringify([
         ...(change?.form !== undefined ? [venue.form ?? ""] : []),
-        [...(venue.classes ?? [])].sort(),
-        venue.residenceCapacity,
         (venue.zones ?? []).map((zone) => zone.id).sort(),
         zoneIds
           .slice()
@@ -54,7 +52,7 @@ export function venueDesignHash(
           .map((id) => {
             const zone = venue.zones?.find((zone) => zone.id === id);
             if (!zone) return [id, null];
-            const privateInterior = ["private-residence", "staff", "restricted"].includes(zone.kind);
+            const privateInterior = ["personal", "restricted"].includes(zone.kind);
             return structuralShape(privateInterior ? { ...zone, name: "" } : zone);
           }),
       ]),

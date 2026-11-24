@@ -8,7 +8,7 @@ export function venueDisplayZones(place: VillageVenue) {
     const allowed = !zone.closed && (zone.accessView?.decision.allowed ?? false);
     return {
       ...zone,
-      name: exterior ? "Entrance" : zone.name,
+      name: exterior && zone.name === "Exterior" ? "Entrance" : zone.name,
       allowed,
       accessLabel: zoneAccessLabel(zone, place),
     };

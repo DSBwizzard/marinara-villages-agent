@@ -9,20 +9,19 @@ import {
   MAX_VENUE_NOTE_LENGTH,
 } from "../../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { venueFieldText, venueStringList } from "../../packages/villages/src/server/domain/rules/venue-authoring.js";
-import { validVenueClasses, venueResidentIds } from "../../packages/villages/src/server/domain/rules/venue-model.js";
+import { venueResidentIds } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { randomVillageSeed } from "../../packages/villages/src/server/domain/rules/village-clock.js";
-import type { VillageVenueClass } from "../../packages/villages/src/server/domain/models/world.js";
 import { initializeVenueAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
 import { materializeConnections } from "../../packages/villages/src/shared/helpers/zone-contact.js";
+import { draftZonePolicy } from "../../packages/villages/src/shared/helpers/founding-zone-policy.js";
 
 /** Author complete fresh-format test Venues; production decoding never fills missing layouts. */
 export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
   const venue = {
     description: "A place in the community.",
     residentIds: [],
-    classes: ["other"],
-    residenceCapacity: Math.max(1, (input.residentIds?.length ?? 0) + Number(!!input.occupancy?.playerHome)),
+
     spaces: [],
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { mapId: "", image: null, x: null, y: null },
@@ -30,7 +29,7 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
     layoutVersion: 1,
   } as VillageVenue;
   const entrance: VillageVenueZone = {
-    ...defaultVenueSpace(venue.classes![0]!),
+    ...defaultVenueSpace("common"),
     id: "exterior",
     name: "Entrance",
     purpose: "Arrival",
@@ -44,19 +43,19 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
       ? venue.spaces
       : ["private", "exterior"].includes(String((venue as any).layout))
         ? []
-        : venue.classes!.map((role) => defaultVenueSpace(role, venue.description))
+        : [defaultVenueSpace("other", venue.description)]
   ).map((space) => ({
     ...space,
     name: "Common Space",
     purpose: "Everyday activities",
-    kind: space.venueClass === "residence" ? ("shared-residence" as const) : ("public" as const),
+    kind: "public" as const,
     seen: true,
   }));
   const personal = (venue.privateSpaces ?? []).map((space) => ({
     ...space,
     name: "Private Space",
     purpose: "Personal activities",
-    kind: "private-residence" as const,
+    kind: "personal" as const,
     seen: space.ownerId === "player",
   }));
   venue.zones = materializeConnections(
@@ -69,10 +68,27 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
   venue.zones = venue.zones.map((zone) =>
     zone.kind !== "exterior" && zone.connectedTo?.length === 0 ? { ...zone, connectedTo: ["exterior"] } : zone,
   );
-  venue.spaces = venue.zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+  venue.spaces = venue.zones.filter((zone) => ["public", "public"].includes(zone.kind));
   venue.privateSpaces = venue.zones
-    .filter((zone) => zone.kind === "private-residence")
+    .filter((zone) => zone.kind === "personal")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
+  for (const zone of venue.zones)
+    if (zone.kind !== "exterior")
+      zone.access ??=
+        zone.kind === "restricted"
+          ? {
+              ...draftZonePolicy(venue, zone),
+              mode: "permission-required",
+              managerIds: zone.controllerIds?.length ? zone.controllerIds : null,
+              memberRoles: ["workers"],
+            }
+          : {
+              ...draftZonePolicy(venue, zone, zone.kind === "personal"),
+              // These fixtures author private homes explicitly; production no longer infers Entry from residency.
+              ...((venue.occupancy.playerHome || venue.residentIds?.length) && venue.category !== "public-center"
+                ? { mode: "permission-required" as const }
+                : {}),
+            };
   initializeVenueAccess(venue);
   return venue;
 }
@@ -97,22 +113,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
   if (!description) throw badRequest("Approve a description before saving this venue.");
   const category = venueFieldText(record.category, existing?.category ?? "", MAX_VENUE_NOTE_LENGTH).trim();
   const form = venueFieldText(record.form, existing?.form ?? "", MAX_VENUE_NOTE_LENGTH).trim();
-  if (record.classes !== undefined && !validVenueClasses(record.classes))
-    throw badRequest("Choose one or two different Venue Classes.");
-  if (existing && record.classes !== undefined && JSON.stringify(record.classes) !== JSON.stringify(existing.classes))
-    throw badRequest("Changing Classes requires a Venue proposal.");
-  const classes: VillageVenueClass[] =
-    existing?.classes ?? (validVenueClasses(record.classes) ? record.classes : ["other"]);
-  const requestedCapacity = record.residenceCapacity;
-  if (existing && requestedCapacity !== undefined && requestedCapacity !== existing.residenceCapacity)
-    throw badRequest("Changing residence capacity requires a Venue proposal.");
-  if (
-    requestedCapacity !== undefined &&
-    (!Number.isInteger(requestedCapacity) || Number(requestedCapacity) < 1 || Number(requestedCapacity) > 4)
-  )
-    throw badRequest("A Residence holds between one and four people.");
-  const residenceCapacity =
-    existing?.residenceCapacity ?? (typeof requestedCapacity === "number" ? requestedCapacity : 1);
   const presentationValue = record.presentation;
   const presentation =
     presentationValue && typeof presentationValue === "object" && !Array.isArray(presentationValue)
@@ -121,27 +121,16 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
   const x = presentation.x === undefined ? (existing?.presentation.x ?? null) : presentation.x;
   const y = presentation.y === undefined ? (existing?.presentation.y ?? null) : presentation.y;
   const position = readPlacePosition({ x, y });
-  const priorSpaces = existing
-    ? (existing.spaces ?? [])
-    : classes.map((venueClass) => defaultVenueSpace(venueClass, description));
-  const editableSpaceClasses = existing?.layoutVersion === 1 ? priorSpaces.map((space) => space.venueClass) : classes;
+  const priorSpaces = existing?.spaces ??
+    (Array.isArray(record.spaces) ? (record.spaces as VillageVenue["spaces"]) : undefined) ?? [
+      defaultVenueSpace("other", description),
+    ];
   const postedSpaces = record.spaces;
-  if (
-    postedSpaces !== undefined &&
-    (!Array.isArray(postedSpaces) || postedSpaces.length !== editableSpaceClasses.length)
-  )
-    throw badRequest("Provide one scene for each Venue Class.");
-  const spaces = editableSpaceClasses.map((venueClass) => {
-    const prior =
-      priorSpaces.find((space) => space.venueClass === venueClass) ?? defaultVenueSpace(venueClass, description);
-    const posted = Array.isArray(postedSpaces)
-      ? postedSpaces.find((space) => typeof space === "object" && space !== null && space.venueClass === venueClass)
-      : null;
-    const row = posted && typeof posted === "object" ? (posted as Record<string, unknown>) : {};
-    const nextDescription = venueFieldText(row.description, prior.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
+  const spaces = priorSpaces.map((prior) => {
+    const posted = Array.isArray(postedSpaces) ? postedSpaces.find((row) => row?.id === prior.id) : null;
     return {
       ...prior,
-      description: nextDescription,
+      description: venueFieldText(posted?.description, prior.description, MAX_VENUE_DESCRIPTION_LENGTH).trim(),
     };
   });
   if (spaces.some((space) => !space.description)) throw badRequest("Approve a description for every Venue space.");
@@ -154,9 +143,7 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     id: (existing?.id ?? asTrimmedString(record.id)) || randomVillageSeed(),
     name,
     form,
-    classes,
     spaces,
-    residenceCapacity,
     residentIds: existing ? venueResidentIds(existing) : venueStringList(record.residentIds, []),
     privateSpaces: existing?.privateSpaces,
     archivedPrivateSpaces: existing?.archivedPrivateSpaces,
@@ -187,9 +174,9 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
 export function sharedVenuesFixture(residents = 8) {
   return [1, 2].map((index) => {
     const venue = venueFixture({
+      spaces: [{ id: "community", description: "A place in the community.", image: null }],
       id: "fixture-public-" + index,
       name: "Fixture commons " + index,
-      classes: ["community"],
     });
     const zone = venue.zones!.find((zone) => zone.kind === "public")!;
     venue.zones!.push(

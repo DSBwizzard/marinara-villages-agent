@@ -20,6 +20,8 @@
 - Main promotion and numbered publication require explicit authorization. Upstream communications/contributions, deliberate paid model/gameplay requests, Engine source/build/upgrades, and personal Marinara operations require their separate authorization. Never use personal installations or data for development. Preserve explicit runtime pauses and unresolved recovery holds.
 - Keep preview worlds independent. Never overwrite their progress implicitly. Checkpoint before consequential saved-data changes and retain rollback. New previews use a verified saved checkpoint without stopping the source environment. Machine-specific runtime commands, credentials, and private data stay outside product Git.
 - Product UI defaults to short labels, controls, values, and necessary results/errors. Remove redundant explanatory copy in touched areas; do not move it into help controls. Preserve user-authored content. Verify real layout on desktop and phone.
+- Never use interpuncts (Unicode U+00B7) in assistant-authored Villages UI, mockups, documentation or responses. Use line breaks, commas or natural phrasing instead.
+- Use active voice in UI copy and responses. Keep overview entries to short labels; show people, schedules and other details after the user opens the relevant section.
 
 A Location is any playable destination; Venue is a status admitting it to village mechanics. Locations reuse Zones and one Scene across Zone movement. New Scenes follow current Village time, attendance and circumstances between exchanges; residents can leave for commitments while the player remains. Each admitted request preserves its exact source, positions and witnesses through recovery. Later arrivals cannot hear earlier dialogue, and unseen attendance stays private.
 

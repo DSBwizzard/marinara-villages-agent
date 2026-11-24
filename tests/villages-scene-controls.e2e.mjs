@@ -32,13 +32,11 @@ await withBrowser(browser, async () => {
       const home = count % 2 === 1;
       const fixture = structuredClone(snapshot);
       fixture.settings.venues[0].occupancy.playerHome = home;
-      fixture.settings.venues[0].classes = home ? ["residence"] : ["workplace"];
       const session = {
         version: 2,
         id: "scene-controls",
         placeId: "mill",
         placeName: "The Mill",
-        spaceClass: home ? "residence" : "workplace",
         area: "public",
         zoneId: "exterior",
         startedAt: now,
@@ -76,7 +74,7 @@ await withBrowser(browser, async () => {
         {
           id: "request",
           requesterName: "Mara",
-          venueDraft: { name: "Workshop", category: "destination", classes: ["workplace"] },
+          venueDraft: { name: "Workshop", category: "destination" },
         },
       ];
       let turns = 0;
@@ -254,7 +252,7 @@ await withBrowser(browser, async () => {
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
       const venueProfile = page.locator("." + tag + "-venue-profile");
       await expect(venueProfile).toBeVisible();
-      for (const section of ["About", "Zones", "Manage"]) {
+      for (const section of ["About", "Zones", "Assignments"]) {
         await page
           .getByRole("navigation", { name: "Venue sections" })
           .getByRole("button", { name: section, exact: true })

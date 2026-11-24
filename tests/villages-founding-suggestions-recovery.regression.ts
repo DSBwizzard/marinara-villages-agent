@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import Fastify from "fastify";
+import { configureVillageStateService } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureFoundingSuggestions } from "../packages/villages/src/server/features/founding/founding-suggestions.js";
 import { configureFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts.js";
 import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
@@ -182,6 +184,8 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
 }
 {
   const app = Fastify();
+  const village = defaultVillageState();
+  const releaseState = configureVillageStateService({ peekVillageAuthority: async () => village } as any);
   const releaseSuggestions = configureFoundingSuggestions(createFoundingSuggestions(ports));
   const releaseDrafts = configureFoundingDrafts({
     suggestStartingVenues: async () => {
@@ -200,6 +204,16 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     assert.equal(response.statusCode, 400, response.body);
     assert.equal(calls, 0, "A missing durable action ID cannot dispatch either suggestion path");
     assert.equal(JSON.stringify([...records]), before, "A refused request creates no saved claim");
+    village.setupAt = "2026-11-23T12:00:00Z";
+    for (const mode of ["draft-plan", "draft-venue", "draft-setting"]) {
+      const refused = await app.inject({
+        method: "POST",
+        url: "/setup/venues/suggest",
+        payload: { actionId: "no-game-drafting", sourceKey: input.sourceKey, mode },
+      });
+      assert.equal(refused.statusCode, 409, refused.body);
+    }
+    assert.equal(calls, 0, "Gameplay cannot admit Draft or Redraft requests");
     const missing = await app.inject({ method: "GET", url: "/setup/venues/suggestions/missing-attempt" });
     assert.equal(missing.statusCode, 404);
     assert.equal(missing.json().code, FOUNDING_DRAFT_UNAVAILABLE);
@@ -209,6 +223,7 @@ const input = { actionId: "suggestion-attempt-1", sourceKey: "setting-1" };
     await app.close();
     releaseDrafts();
     releaseSuggestions();
+    releaseState();
   }
 }
 // Receipt returns while the provider is still blocked, with one durable claim.

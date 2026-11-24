@@ -184,7 +184,6 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
             venue: {
               ...source,
               ...plan,
-              venueClass: Array.isArray(source.classes) ? source.classes[0] : "other",
               playerHome: asRecord(source.occupancy).playerHome,
               spaceDescription: plan.commonDescription,
             },

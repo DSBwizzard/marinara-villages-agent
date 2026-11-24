@@ -62,18 +62,18 @@ export function socialWorldFixture() {
     ...profiles.map(([id, name]) => {
       const v = venueDraft(
         {
+          spaces: [{ id: "residence", description: "A simple home.", image: null }],
           id: `home-${id}`,
           name: `${name}'s home`,
           description: "A simple home.",
-          classes: ["residence"],
-          residenceCapacity: 2,
+
           residentIds: [id],
         },
         null,
       );
       v.residentIds = [id!];
       v.occupancy.residentCharacterId = id!;
-      v.residenceCapacity = 2;
+
       v.destinations = { [id]: { home: "residence", sleep: "residence" } };
       initializeVenueAccess(v);
       return v;

@@ -204,12 +204,7 @@ export function beginProject(
           ? "The Venue design changed. Cancel this Project and plan the current layout."
           : "The Venue design changed. Revise the draft.",
       );
-    if (
-      !flow.changedZoneIds.length &&
-      JSON.stringify([...(flow.change!.classes ?? [])].sort()) === JSON.stringify([...(venue.classes ?? [])].sort()) &&
-      flow.change!.capacity === (venue.residenceCapacity ?? 1)
-    )
-      throw conflict("Choose a physical change before Start.");
+    if (!flow.changedZoneIds.length) throw conflict("Choose a physical change before Start.");
     validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds), now);
     stageProjectRoomEdits(state, venue, flow, project.id, at);
   } else {
@@ -220,7 +215,7 @@ export function beginProject(
     const shell = plannedVenue(project);
     readProjectPlan(project.plan, shell);
     if (!resume) {
-      assertCanAddVillageVenue(state, project.venueDraft!.classes, project.id);
+      assertCanAddVillageVenue(state, project.id);
       if (state.venues.some((venue) => venue.name.toLocaleLowerCase() === project.title.toLocaleLowerCase()))
         throw conflict("That Venue name is already in use.");
       if (

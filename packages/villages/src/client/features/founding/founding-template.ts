@@ -12,7 +12,7 @@ export type InactiveFoundingZones = {
 
 export function startingZone(venue: VillageVenue, personal: boolean) {
   const community = venue.category === "public-center";
-  const role = venue.classes?.[0] ?? (community ? "community" : "residence");
+  const home = venue.occupancy.playerHome || !!venue.residentIds?.length;
   const ownerId = personal ? (venue.occupancy.playerHome ? "player" : (venue.residentIds?.[0] ?? "")) : "";
   return {
     ...personalSpaceDraft(),
@@ -22,20 +22,19 @@ export function startingZone(venue: VillageVenue, personal: boolean) {
       ? "Rest and personal activities"
       : community
         ? "Community gatherings"
-        : role === "residence"
+        : home
           ? "Daily life and sleeping"
           : "Everyday activities",
     description: personal
       ? "A private space for rest."
       : community
         ? "A shared space for the community."
-        : role === "residence"
+        : home
           ? "A shared space in the residence."
           : "A shared space in this Venue.",
     ownerId,
-    venueClass: role,
     access: {
-      ...draftZonePolicy(venue, { ownerId, venueClass: role }, personal),
+      ...draftZonePolicy(venue, { ownerId }, personal),
       ...(personal && community ? { managerIds: ["player"], memberIds: ["player"] } : {}),
     },
   };

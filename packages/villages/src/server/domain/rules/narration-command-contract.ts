@@ -99,7 +99,6 @@ export const nativeCommand = z.discriminatedUnion("type", [
       type: z.literal("venue.request"),
       by: id,
       name: z.string().min(1).max(MAX_VENUE_NAME_LENGTH),
-      classes: z.array(z.string()).min(1).max(2),
     })
     .strict(),
   z
@@ -165,7 +164,7 @@ export const NARRATION_NATIVE =
   'move {who,to,trespass?:true} records one resident crossing at its narration ID. Cite the crossing segment with perceive:{kind:"seen",by:["player"]}. The crossing applies before that segment. move.request {to,actors} records an explicit request to the entire named local group. It gives no consent or movement. Give each crossing its own move. trespass:true is explicit unauthorized entry for a supplied eligible actor across one usable adjacent connection; it never grants permission or bypasses bans, refusals, closures or capacity. move.request may use trespass:true for an actual Player request to enter without permission. move.decide {who,agrees,to?,trespass?:true} records ordinary following: own heard agreement or actual player-seen following narration. Omit to for ongoing following during this same uninterrupted Scene outing; supplying to limits the decision to ONE adjacent crossing. agrees:false stops or withdraws. Ongoing trespass:true needs that actor’s own complete heard commitment to sneaking together for the outing, never merely observed following or one unauthorized crossing. No request, proximity, friendship or invitation establishes following. It moves nobody; use ordinary Move to travel together. depart {who} records an observed resident exit. contact.end {who} ends an admitted cross-Zone contact.\n' +
   NARRATION_NPC_COMMANDS +
   "\n" +
-  'place.discover {existingId} or {place:{name,description,form?,report?,controllers?,zones?,people?:[{ref,existingId,role}]}} discovers existing infrastructure using established people only. venue.request {by,name,classes} records a villager request. appointment {by,when:{dayOffset}|{weekday,afterToday?}|{date:"YYYY-MM-DD"},minute?} uses current spoken agreement and the supplied calendar.';
+  'place.discover {existingId} or {place:{name,description,form?,report?,controllers?,zones?,people?:[{ref,existingId,role}]}} discovers existing infrastructure using established people only. venue.request {by,name} records a villager request. appointment {by,when:{dayOffset}|{weekday,afterToday?}|{date:"YYYY-MM-DD"},minute?} uses current spoken agreement and the supplied calendar.';
 
 export const NARRATION_ACCESS_COMMANDS =
   'Access commands use supplied venue and zone IDs: permission.grant or permission.revoke {by,visitor,venue,zone}; access.decide {by,venue,zone,decision:{outcome:"invite-now|invite-later|invite-outside-hours|refuse|dismiss|ban-zone|ban-venue",visitor,accompanies?} or {outcome:"access-management",management:exact native action fields without operationId, expectedRevision, zoneId or sceneId}}. Cite deciding words. Only accompaniment is an allowed access condition.';

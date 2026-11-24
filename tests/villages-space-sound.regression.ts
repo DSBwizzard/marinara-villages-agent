@@ -67,7 +67,7 @@ assert.notEqual(connectionProblem(draft), "");
 const initialized = materializeConnections(draft);
 assert.deepEqual(
   initialized.map((entry: any) => entry.connectedTo),
-  [["kitchen"], ["kitchen"], ["exterior", "bedroom"]],
+  [["bedroom", "kitchen"], ["exterior"], ["exterior"]],
 );
 assert.equal(connectionProblem(initialized), "");
 assert.deepEqual(materializeConnections(initialized), initialized);
@@ -86,7 +86,6 @@ world.venues = [
     id: "house",
     name: "House",
     layoutVersion: 1,
-    classes: ["other"],
     description: "Outside",
     form: "A building",
     category: "",
@@ -94,7 +93,7 @@ world.venues = [
     residentIds: [],
     workerIds: [],
     improvements: [null, null],
-    residenceCapacity: 1,
+
     capabilities: [],
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { image: null, x: 0, y: 0 },
@@ -189,7 +188,6 @@ const privateLayout = readBaseVenueLayout(
       {
         id: "a",
         name: "A",
-        venueClass: "other",
         description: "A",
         controllerIds: ["player"],
         connectedTo: ["exterior"],
@@ -197,14 +195,12 @@ const privateLayout = readBaseVenueLayout(
       {
         id: "b",
         name: "B",
-        venueClass: "other",
         description: "B",
         controllerIds: ["player"],
         connectedTo: ["exterior"],
       },
     ],
   },
-  ["other"],
   "",
   () => null,
 );

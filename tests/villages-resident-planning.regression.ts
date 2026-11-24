@@ -218,9 +218,19 @@ await runCase("resident-planning/housing", async () => {
 
   await f.service.reconcile(f.now);
   const input = readResidentPlanningInput(f.queued[0].input);
-  assert.deepEqual(input.context.housing, [{ characterId: "mara", destinations: [{ id: "open", name: "open" }] }]);
+  assert.deepEqual(input.context.housing, [
+    {
+      characterId: "mara",
+      destinations: [
+        { id: "square", name: "Square" },
+        { id: "fixture-public-1", name: "Fixture commons 1" },
+        { id: "fixture-public-2", name: "Fixture commons 2" },
+        { id: "open", name: "open" },
+      ],
+    },
+  ]);
   const housingRequests = [{ characterId: "mara", venueId: "open" }];
-  for (const venueId of ["occupied", "unfinished", "reserved", "square"]) {
+  for (const venueId of ["occupied", "unfinished", "reserved"]) {
     assert.throws(
       () => readResidentPlanningProposal({ housingRequests: [{ characterId: "mara", venueId }] }, input.context),
       /housing choice was not offered/,
@@ -731,8 +741,9 @@ await runCase("resident-planning/strict-input", async () => {
   const f = fixture(),
     home = homeFixture("home", "residence"),
     secret = "REMOTE_ROOM_SENTINEL_774";
-  home.zones!.find((zone) => zone.kind === "shared-residence")!.description = secret;
+  home.zones!.find((zone) => zone.kind === "public")!.description = secret;
   home.residentIds = ["mara"];
+
   home.occupancy.residentCharacterId = "mara";
   home.access!.managerIds = ["mara"];
   f.state.venues.push(home);

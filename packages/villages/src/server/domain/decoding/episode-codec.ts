@@ -113,7 +113,6 @@ const episode = z
                 zoneId: id,
                 segment: z.number().int().min(0).max(23),
                 path: ids.min(2).max(64),
-                spaceClass: z.enum(["residence", "workplace", "community", "other"]),
                 area: z.enum(["outside", "public", "shared", "private"]),
                 privateOwnerId: z.string().max(160),
                 trespass: z.enum(["permission-required", "outside-hours", "accompaniment-required"]).optional(),

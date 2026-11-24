@@ -1,20 +1,17 @@
-function initialContactNeighborIds(
-  zones: readonly { id: string; kind: string; venueClass?: string }[],
-  zoneId: string,
-): string[] {
+function initialContactNeighborIds(zones: readonly { id: string; kind: string }[], zoneId: string): string[] {
   const hubs = zones
-    .filter((zone) => zone.kind === "public" || zone.kind === "shared-residence")
+    .filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal")
     .sort((a, b) => a.id.localeCompare(b.id));
   const edges: [string, string][] = hubs.map((zone) => ["exterior", zone.id]);
   for (const zone of zones) {
     if (zone.kind === "exterior" || hubs.includes(zone)) continue;
-    const hub = hubs.find((entry) => entry.venueClass === zone.venueClass) ?? hubs[0];
+    const hub = hubs[0];
     edges.push([hub?.id ?? "exterior", zone.id]);
   }
   return edges.flatMap(([a, b]) => (a === zoneId ? [b] : b === zoneId ? [a] : []));
 }
 
-export type ConnectedSpace = { id: string; kind?: string; venueClass?: string; connectedTo?: string[] };
+export type ConnectedSpace = { id: string; kind?: string; connectedTo?: string[] };
 
 /** Connections are two-way routes. The surroundings establish their physical form. */
 export function contactNeighborIds(zones: readonly ConnectedSpace[], zoneId: string): string[] {
@@ -46,7 +43,7 @@ export function materializeConnections<T extends ConnectedSpace>(zones: readonly
   return zones.map((zone) => ({
     ...zone,
     connectedTo: initialize
-      ? initialContactNeighborIds(zones as readonly { id: string; kind: string; venueClass?: string }[], zone.id)
+      ? initialContactNeighborIds(zones as readonly { id: string; kind: string }[], zone.id)
       : [...(zone.connectedTo ?? [])],
   }));
 }

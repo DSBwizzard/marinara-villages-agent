@@ -1,3 +1,4 @@
+import { venueManagers } from "./venue-access.js";
 import { narrationWitnesses } from "./narration-sources.js";
 import { z } from "zod";
 import type { VillageState } from "../models/world.js";
@@ -5,7 +6,6 @@ import type { NarrationReadset } from "../models/narration-model.js";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
-import { hasVenueClass } from "./venue-model.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { requestResidenceMove, decideResidenceMove } from "./residence-move.js";
@@ -17,14 +17,20 @@ import { householdIds } from "./residence-agreement.js";
 export function narrationResidenceContext(state: VillageState, actors: string[]) {
   return {
     homes: state.venues
-      .filter((venue) => hasVenueClass(venue, "residence") && venue.constructionStatus !== "worksite")
+      .filter(
+        (venue) =>
+          venue.constructionStatus !== "worksite" &&
+          venueZones(venue).some(
+            (zone) => zone.kind !== "exterior" && zone.kind !== "personal" && !zoneClosed(state, venue, zone),
+          ),
+      )
       .map((venue) => ({
         id: venue.id,
         name: venue.name,
         householdIds: householdIds(venue),
-        managerIds: [...(venue.access?.managerIds ?? [])],
+        managerIds: [...venueManagers(venue)],
         sleepZones: venueZones(venue)
-          .filter((zone) => zone.kind === "shared-residence" && !zoneClosed(state, venue, zone))
+          .filter((zone) => zone.kind !== "exterior" && zone.kind !== "personal" && !zoneClosed(state, venue, zone))
           .map((zone) => ({ id: zone.id, name: zone.name, kind: zone.kind, managerIds: zone.access?.managerIds })),
         fingerprint: memoryHash([venue, state.residences.filter((move) => move.proposedVenueId === venue.id)]),
       })),
@@ -58,7 +64,7 @@ const id = z.string().min(1).max(200),
   ids = z.array(id).max(100),
   digest = z.string().regex(/^[a-f0-9]{64}$/);
 const sleepZoneSchema = z
-  .object({ id, name: z.string().max(200), kind: z.enum(["shared-residence", "private-residence"]) })
+  .object({ id, name: z.string().max(200), kind: z.enum(["public", "personal", "restricted"]) })
   .strict();
 export const narrationResidenceContextSchema = z
   .object({
@@ -127,7 +133,7 @@ export function narrationResidencePrompt(context: ReturnType<typeof narrationRes
 type Request =
   | { type: "residence.request"; by: string; venue: string }
   | { type: "residence.decide"; by: string; person: string; venue: string; approved: boolean }
-  | { type: "venue.request"; by: string; name: string; classes: string[] };
+  | { type: "venue.request"; by: string; name: string };
 export function applyNarrationResidence(
   state: VillageState,
   before: VillageState,
@@ -170,13 +176,7 @@ export function applyNarrationResidence(
       kind: "venue-request",
       targetId: decision.id,
       revision: 0,
-      text:
-        command.by +
-        " requested " +
-        core.name +
-        " (" +
-        core.classes.join(", ") +
-        "). This is not an established Venue or service.",
+      text: command.by + " requested " + core.name + ". This is not an established Venue or service.",
       witnesses,
     };
   }
