@@ -2653,7 +2653,10 @@ export async function verifyFoundingLayout(group) {
           assert.equal(await row.evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true);
         }
         const arrangements = overview.getByRole("region", { name: "Home and work arrangements", exact: true });
-        await arrangements.locator("h3").last().scrollIntoViewIfNeeded();
+        await arrangements
+          .locator("h3")
+          .last()
+          .evaluate((node) => node.scrollIntoView({ block: "center" }));
         await expect(arrangements.locator("h3").last()).toBeInViewport({ ratio: 1 });
         await expect(overview.getByRole("button", { name: "Next", exact: true })).toBeInViewport({ ratio: 1 });
         if (view.width === 320 || view.width === 1366) {
