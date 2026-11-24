@@ -19,7 +19,7 @@ const venue = venueFixture({
       name: "Living room",
       purpose: "Sharing meals",
       description: "A table by the window",
-      access: { mode: "permission-required" },
+      access: { mode: "permission-required", memberRoles: ["residents"] },
       image: null,
     },
   ],
