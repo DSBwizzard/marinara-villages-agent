@@ -25,6 +25,7 @@ await withBrowser(browser, async () => {
       { id: "private:mara", kind: "personal", name: "Secret bedroom", seen: false },
     ];
     const nativeVenue = venueFixture({ ...snapshot.settings.venues[0], access: undefined, residentIds: ["mara"] });
+    nativeVenue.access.managerIds = ["mara"];
     const projectAccess = () => {
       snapshot.settings.venues[0].zones = snapshot.settings.venues[0].zones.map((zone) => ({
         ...zone,
