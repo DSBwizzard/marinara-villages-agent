@@ -103,9 +103,14 @@ async function main() {
   assert.deepEqual(defaultVillageState().maps, []);
   assert.match(
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
-    /Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish/,
+    /Make outdoor spaces, entrances and connecting routes easy to distinguish/,
   );
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /16:9 landscape canvas/);
+  assert.ok(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.length <= MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /wide, zoomed-out/);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /complete, opaque roofs and exterior walls/);
+  assert.doesNotMatch(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Use cutaways only where needed/);
+  assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /cutaways/);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Do not draw outlined lots or a zoning grid/);
   const fixtures = [
     "A forest settlement of timber cabins and clearings.",
@@ -165,6 +170,7 @@ async function main() {
   assert.equal(buildTownMapNegativePrompt("   "), "");
   assert.equal(buildTownMapNegativePrompt(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
   assert.throws(() => buildTownMapPrompt(undefined, "   "), /cannot be blank/);
+  assert.throws(() => buildTownMapPrompt("", "forest"), /Map details cannot be blank/);
   assert.throws(() => buildTownMapPrompt(" ".repeat(3), "forest"), /cannot be blank/);
   assert.throws(() => buildTownMapPrompt("x".repeat(MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH + 1), "forest"), /at most/);
   const png = new Uint8Array(24);
