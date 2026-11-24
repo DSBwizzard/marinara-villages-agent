@@ -249,6 +249,29 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const planZoneIds = new Map(
       planSources.map((source) => [source.id, readFoundingZoneIds(record(input.newZoneIdsByVenue)[source.id], source)]),
     );
+    const draftContexts = (draftSource ? [draftSource] : planSources).map((source) => ({
+      id: source.id,
+      name: source.name,
+      form: source.form,
+      description: source.description,
+      residentIds: source.residentIds,
+      playerHome: source.occupancy.playerHome,
+      managerIds: source.access?.managerIds ?? [],
+      work: source.access?.work ?? [],
+      destinations: source.destinations ?? {},
+      zones: source
+        .zones!.filter((zone) => zone.kind !== "exterior")
+        .map((zone) => ({
+          id: zone.id,
+          name: zone.name,
+          purpose: zone.purpose,
+          description: zone.description,
+          private: source.privateSpaces!.some((room) => room.id === zone.id),
+          ownerId: zone.ownerId ?? "",
+          access: zone.access,
+          connectedTo: zone.connectedTo,
+        })),
+    }));
     const worldRules = asTrimmedString(context.rules);
     const currentCircumstances = Array.isArray(context.circumstances)
       ? context.circumstances.map((row) => asTrimmedString(record(row).summary)).filter(Boolean)
@@ -316,7 +339,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             ZONE_DAY_NIGHT_INSTRUCTION +
               " At Venue level dayNight describes Entrance; commonDayNight and privateDayNight describe their respective spaces.",
             fullDraft
-              ? 'Draft the complete selected Venue. Preserve every supplied existing Zone id and its physical condition. Keep existing assigned rooms and their routes even when proposing moves. Preserve private/shared use and owner unless Venue ideas explicitly request a change. Improve its names, purposes and visible descriptions; add only genuinely useful Zones using availableNewZoneIds, with at most six Zones besides Entrance. Keep the form consistent across rooms. New private Zones are only for this household; shared Zones have ownerId empty. All Zones need valid connections and every resident must be able to reach their sleeping Zone without passing through another resident’s private room. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","zones":[{"id":"...","name":"...","purpose":"...","description":"...","private":false,"ownerId":"","connectedTo":["exterior"]}]}]}. Do not generate images or map positions.'
+              ? 'Draft the complete selected Venue. Preserve every supplied existing Zone id and its physical condition. Keep existing assigned rooms and their routes even when proposing moves. Keep existing room privacy and ownership; propose Home and Work changes through people. Repair invalid or disconnected passages. Improve its names, purposes and visible descriptions; add only genuinely useful Zones using availableNewZoneIds, with at most six Zones besides Entrance. Keep the form consistent across rooms. Return indoor Zones only; Entrance uses the Venue description. New bedrooms start unassigned with ownerId empty. Propose sleeping assignments through people.destinations, never through ownerId alone. In a whole-plan draft, availableNewZoneIds maps each Venue id to its own allowed new ids. Each person has at most one proposed Home across the plan. All Zones need valid connections and every resident must be able to reach their sleeping Zone without passing through another resident’s private room. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","zones":[{"id":"...","name":"...","purpose":"...","description":"...","private":false,"ownerId":"","connectedTo":["exterior"]}]}]}. Do not generate images or map positions.'
               : 'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
             'Mixed use is explicit. When Venue ideas request it, include people: {residentIds:[chosen character ids],playerHome:boolean,managerIds:[chosen character ids],work:[{characterId,activity,zoneId,accessZoneIds:[only necessary Zone ids],days:["Monday","Tuesday","Wednesday","Thursday","Friday"],startMinute:540,endMinute:1020}],destinations:{characterId:{home:zoneId,sleep:zoneId,work:zoneId}}}. Copy the supplied managerIds unchanged; the player assigns operators manually. Use only the player and chosen founding Villagers as job participants. Never infer a worker schedule solely from a place name. Work ends later on the same day; no overnight shifts. All assigned residents need an accessible sleeping Zone. A cafe owner may live in a private upstairs bedroom, set visitor rules, and work in its public cafe floor. For full Venue drafts, each Zone may include access:{mode:"public"|"permission-required",managerIds:null|[character ids],memberIds:[],memberRoles:["residents"|"workers"],inviterIds:[],visitorHours:"always"|[{days:["Monday"],start:"09:00",end:"17:00"}],accompanied:false}. Give each Zone its own explicit visiting hours, with no Venue-wide default. Keep shop floors public when requested, even when somebody lives upstairs. Default personal-room visitor rules to their owner and residents able to reach home outside visitor hours. Keep accessible, always-public shared Zones in at least two Venues for village life; a weekday cafe alone does not satisfy this. Without requested people changes omit people and preserve the supplied arrangements.',
             'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
@@ -340,36 +363,19 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         openingVenueId,
         worldRules,
         currentCircumstances,
+        foundingCharacterIds: residents,
         venues: rows,
-        ...(planDraft ? { sourceVenues: planSources, availableNewZoneIds: Object.fromEntries(planZoneIds) } : {}),
+        ...(planDraft ? { sourceVenues: draftContexts, availableNewZoneIds: Object.fromEntries(planZoneIds) } : {}),
         ...(draftSource
           ? {
-              targetVenue: {
-                id: draftSource.id,
-                residentIds: draftSource.residentIds,
-                playerHome: draftSource.occupancy.playerHome,
-
-                managerIds: draftSource.access?.managerIds,
-                work: draftSource.access?.work ?? [],
-                destinations: draftSource.destinations,
-                zones: draftSource
-                  .zones!.filter((zone) => zone.kind !== "exterior")
-                  .map((zone) => ({
-                    id: zone.id,
-                    name: zone.name,
-                    purpose: zone.purpose,
-                    description: zone.description,
-                    private: draftSource.privateSpaces!.some((room) => room.id === zone.id),
-                    ownerId: zone.ownerId ?? "",
-                    access: zone.access,
-                  })),
-              },
+              targetVenue: draftContexts[0],
               availableNewZoneIds: newZoneIds,
             }
           : {}),
         responseTemplate: {
-          venues: requestedRows.map((row) =>
-            fullDraft
+          venues: requestedRows.map((row) => {
+            const source = draftContexts.find((source) => source.id === row.id);
+            return fullDraft
               ? {
                   id: row.id,
                   name: "",
@@ -377,20 +383,23 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   form: "",
                   description: "",
                   dayNight: false,
-                  zones: (draftSource ?? planSources.find((source) => source.id === row.id))!
-                    .zones!.filter((zone) => zone.kind !== "exterior")
-                    .map((zone) => ({
-                      id: zone.id,
-                      name: "",
-                      purpose: "",
-                      description: "",
-                      dayNight: false,
-                      private: (draftSource ?? planSources.find((source) => source.id === row.id))!.privateSpaces!.some(
-                        (room) => room.id === zone.id,
-                      ),
-                      ownerId: zone.ownerId ?? "",
-                      connectedTo: zone.connectedTo ?? [],
-                    })),
+                  people: {
+                    residentIds: source!.residentIds,
+                    playerHome: source!.playerHome,
+                    managerIds: source!.managerIds,
+                    work: source!.work,
+                    destinations: source!.destinations,
+                  },
+                  zones: source!.zones.map((zone) => ({
+                    id: zone.id,
+                    name: "",
+                    purpose: "",
+                    description: "",
+                    dayNight: false,
+                    private: zone.private,
+                    ownerId: zone.ownerId ?? "",
+                    connectedTo: zone.connectedTo ?? [],
+                  })),
                 }
               : {
                   id: row.id,
@@ -415,8 +424,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   privatePurpose: "",
                   privateDescription: "",
                   privateDayNight: false,
-                },
-          ),
+                };
+          }),
         },
       }),
       Math.min(model.maxOutputTokens ?? 4000, 4000),

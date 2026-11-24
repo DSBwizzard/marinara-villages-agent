@@ -46,6 +46,11 @@ home.spaces![0].state = { revision: 5, updatedAt: "2026-11-03T12:00:00.000Z", re
 const now = new Date("2026-11-03T14:00:00.000Z");
 const original = structuredClone(home);
 const source = readFoundingVenueDraftSource(foundingVenueDraftSource(home));
+assert.deepEqual(
+  source.privateSpaces!.find((zone) => zone.id === "private:base")!.connectedTo,
+  home.privateSpaces!.find((zone) => zone.id === "private:base")!.connectedTo,
+  "Source context keeps actual passages, not validation placeholders",
+);
 const raw = {
   id: home.id,
   name: "The Tide House",
@@ -136,7 +141,8 @@ const mixedPlan = parseFoundingVenueDraft(
 );
 assert.equal(
   applyFoundingVenueDraft(mixed, mixedPlan).privateSpaces!.find((zone) => zone.id === "new-bedroom")!.ownerId,
-  "player",
+  "",
+  "A new bedroom stays unassigned until the player accepts a Home proposal",
 );
 assert.deepEqual(
   foundingVenueDraftSource({ ...home, presentation: { ...home.presentation, x: 0.9, y: 0.8 } }),
@@ -152,12 +158,92 @@ bad((row) => {
   row.zones.pop();
   row.zones.pop();
 }, /every existing Zone/);
-bad((row) => {
-  row.zones.find((zone) => zone.id === "ada-room")!.ownerId = "player";
-}, /ownership/);
-bad((row) => {
-  row.zones.at(-1)!.id = "foreign-zone";
-}, /ownership/);
+const drift = structuredClone(raw);
+Object.assign(
+  drift.zones.find((zone) => zone.id === "ada-room")!,
+  { ownerId: "player", private: false },
+);
+const retained = parseFoundingVenueDraft({ venues: [drift] }, source, ["new-kitchen"], now);
+assert.equal(retained.zones!.find((zone) => zone.id === "ada-room")!.ownerId, "ada");
+assert.equal(retained.zones!.find((zone) => zone.id === "ada-room")!.private, true);
+const aliased = structuredClone(raw);
+aliased.zones.at(-1)!.id = "kitchen-label";
+const aliasedPlan = parseFoundingVenueDraft(
+  {
+    venues: [
+      {
+        ...aliased,
+        people: {
+          residentIds: ["ada"],
+          playerHome: true,
+          managerIds: [],
+          work: [
+            {
+              characterId: "kitchen-label",
+              activity: "Cooking",
+              zoneId: "kitchen-label",
+              accessZoneIds: ["common:base", "kitchen-label"],
+              days: ["Monday"],
+              startMinute: 540,
+              endMinute: 1020,
+            },
+          ],
+          destinations: { ...home.destinations, "kitchen-label": { work: "kitchen-label" } },
+        },
+      },
+    ],
+  },
+  source,
+  ["new-kitchen"],
+  now,
+  ["player", "ada", "kitchen-label"],
+);
+assert.equal(aliasedPlan.zones!.at(-1)!.id, "new-kitchen");
+assert.equal(aliasedPlan.people!.work[0].characterId, "kitchen-label", "Zone remapping never changes an actor ID");
+assert.equal(aliasedPlan.people!.work[0].zoneId, "new-kitchen");
+assert.deepEqual(aliasedPlan.people!.work[0].accessZoneIds, ["common:base", "new-kitchen"]);
+assert.equal(aliasedPlan.people!.destinations["kitchen-label"].work, "new-kitchen");
+assert.deepEqual(home, original, "Reply normalization leaves the current draft and artwork untouched");
+const proposedBedroom = structuredClone(mixedReply);
+proposedBedroom.zones.at(-1)!.id = "upstairs-label";
+proposedBedroom.zones.at(-1)!.ownerId = "unhoused";
+proposedBedroom.zones[0].connectedTo.push("upstairs-label");
+const physicalOnly = parseFoundingVenueDraft(
+  { venues: [proposedBedroom] },
+  source,
+  ["new-kitchen", "new-bedroom"],
+  now,
+  ["player", "ada", "unhoused"],
+);
+assert.equal(
+  physicalOnly.zones!.at(-1)!.ownerId,
+  "",
+  "A room owner field never silently moves someone into this Venue",
+);
+const homeProposal = parseFoundingVenueDraft(
+  {
+    venues: [
+      {
+        ...proposedBedroom,
+        people: {
+          residentIds: ["ada", "unhoused"],
+          playerHome: true,
+          managerIds: [],
+          work: [],
+          destinations: { ...home.destinations, unhoused: { home: "upstairs-label", sleep: "upstairs-label" } },
+        },
+      },
+    ],
+  },
+  source,
+  ["new-kitchen", "new-bedroom"],
+  now,
+  ["player", "ada", "unhoused"],
+);
+assert.equal(homeProposal.people!.destinations.unhoused.home, "new-bedroom");
+assert.equal(homeProposal.people!.destinations.unhoused.sleep, "new-bedroom");
+assert.ok(homeProposal.zones![0].connectedTo.includes("new-bedroom"));
+assert.throws(() => parseFoundingVenueDraft({ venues: [aliased] }, source, [], now), /more Zones/);
 bad((row) => {
   row.zones[0].connectedTo = ["ada-room"];
   row.zones.find((zone) => zone.id === "private:base")!.connectedTo = ["common:base"];
@@ -168,11 +254,12 @@ bad((row) => {
 }, /Unreachable/);
 bad((row) => {
   row.zones.push(row.zones[0]);
-}, /exactly once/);
+}, /distinct/);
 assert.throws(() => readFoundingZoneIds(["common:base"], source), /distinct/);
 
 let textCalls = 0;
 let venueReply: unknown = { venues: [raw] };
+let modelInput: any;
 const writer = createFoundingDrafts({
   findVillagerCard: async (id: string) =>
     readVillagerCard({ id, comment: "", data: { name: "Ada", description: "A careful cook" } }),
@@ -185,8 +272,9 @@ const writer = createFoundingDrafts({
       fitContext: (messages: unknown[], options: any) => ({ messages, maxTokens: options.maxTokens }),
     }),
   }),
-  completeWithRoom: async () => {
+  completeWithRoom: async (_model: unknown, messages: any[]) => {
     textCalls++;
+    modelInput = JSON.parse(messages.at(-1).content);
     return { content: JSON.stringify(venueReply), finishReason: "stop" };
   },
 } as any);
@@ -223,6 +311,8 @@ await assert.rejects(writer.suggestStartingVenues({ ...input, actionId: undefine
 assert.equal(textCalls, 0);
 assert.deepEqual((await writer.suggestStartingVenues(input)).venues[0].zones, plan.zones);
 assert.equal(textCalls, 1);
+assert.ok(!modelInput.targetVenue.zones.some((zone: any) => zone.id === "exterior"));
+assert.deepEqual(modelInput.responseTemplate.venues[0].people.destinations, source.destinations);
 const incomplete = {
   ...input,
   mode: "draft-plan",
@@ -241,6 +331,8 @@ assert.equal(
   home.id,
   "Selected people need no Home to draft",
 );
+assert.ok(!modelInput.sourceVenues[0].zones.some((zone: any) => zone.id === "exterior"));
+assert.deepEqual(modelInput.foundingCharacterIds, ["ada", "unhoused"]);
 assert.equal(
   (await writer.suggestStartingVenues({ ...incomplete, foundingCharacterIds: undefined })).venues.length,
   1,
