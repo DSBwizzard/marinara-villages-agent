@@ -30,7 +30,10 @@ export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, failFast
     for (let index = 0; index < pending.length && active.size < jobs && !exclusive;) {
       const row = pending[index];
       if (!row.test.parallelSafe) {
-        if (active.size) break;
+        if (active.size) {
+          index++;
+          continue;
+        }
         exclusive = true;
       } else if (row.test.group === "browser" && browsers >= browserJobs) {
         index++;
