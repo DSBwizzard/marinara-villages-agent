@@ -27,7 +27,6 @@ const venue = venueFixture({
   ],
 });
 initializeVenueAccess(venue);
-venue.access!.managerIds = ["operator"];
 venue.destinations = { a: { sleep: "bed" }, b: { sleep: "bed" }, friend: { sleep: "floor" } };
 venue.access!.work = [
   {
@@ -53,6 +52,21 @@ const command = (actor: string, value: Omit<AccessCommand, "operationId" | "expe
     at.toISOString(),
     known,
   );
+assert.deepEqual(projectVenueAccess(venue, "player")!.runnerIds, [], "A new household has no Venue operator");
+for (const resident of venue.residentIds!) {
+  assert.equal(managesAccess(venue, null, resident), false, "Residents do not manage their Venue");
+  assert.equal(managesAccess(venue, "floor", resident), false, "Residents do not control general spaces");
+}
+assert.equal(managesAccess(venue, "bed", "a"), true);
+assert.equal(managesAccess(venue, "bed", "b"), true, "Shared-bedroom privacy survives without a Venue operator");
+assert.equal(managesAccess(venue, "bed", "player"), false, "Fallback Venue editing never takes over a bedroom");
+assert.equal(evaluateZoneAccess(venue, venue.zones![2]!, "player", { at }).allowed, false);
+const bedroomPolicy = structuredClone(venue.zones![2]!.access);
+command("player", { action: "venue-policy", zoneId: null, managerIds: ["operator"] });
+assert.deepEqual(projectVenueAccess(venue, "player")!.runnerIds, ["operator"]);
+assert.deepEqual(venue.zones![2]!.access, bedroomPolicy, "Appointing an operator preserves room privacy");
+initializeVenueAccess(venue);
+assert.deepEqual(venue.access!.managerIds, ["operator"], "Initialization preserves explicit saved management");
 assert.equal(managesAccess(venue, "floor", "operator"), true);
 venue.zones![1]!.access!.managerIds = ["a"];
 assert.equal(managesAccess(venue, "floor", "operator"), true, "Legacy Zone delegates do not displace the operator");

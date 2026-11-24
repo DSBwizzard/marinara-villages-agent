@@ -20,7 +20,7 @@ export function reachableFoundingZones(
         if (zone.kind === "exterior" || zone.id === sleep) return true;
         const area = zone as NonNullable<SetupVenueDraft["spaces"]>[number];
         const access = area.access ?? draftZonePolicy(venue, area, zone.kind === "personal");
-        const operators = venue.access?.managerIds ?? members;
+        const operators = venue.access?.managerIds ?? [];
         const sleepers = members.filter((id) => venue.destinations?.[id]?.sleep === zone.id);
         const managers =
           zone.kind === "personal" || area.ownerId

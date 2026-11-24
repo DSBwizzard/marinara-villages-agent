@@ -173,7 +173,7 @@ export function initializeVenueAccess(venue: VillageVenue): void {
   venue.access ??= {
     version: 1,
     revision: 0,
-    managerIds: [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])],
+    managerIds: [],
     visitorHours: null,
     permissions: [],
     bans: [],
