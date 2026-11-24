@@ -1985,13 +1985,39 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
         await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(phone ? 0 : view.count + 3);
-        if (view.width === 390 && view.height === 844) {
+        if (view.width === 1366 || view.width === 320 || (view.width === 390 && view.height === 844)) {
           const keptVenues = await page.evaluate(() => structuredClone(window.featureController.setupVenues));
           await page.evaluate(() => window.featureController.setSetupVenues([]));
           await expect(button("Draft Venues")).toBeEnabled();
-          await page.evaluate((rows) => window.featureController.setSetupVenues(rows), keptVenues);
+          const existingVenues = keptVenues.slice(0, 5);
+          await page.evaluate((rows) => window.featureController.setSetupVenues(rows), existingVenues);
           const selectedPeople = await page.evaluate(() => window.featureController.setupFoundingVillagerIds);
           await button("Add Venue").click();
+          await expect(sheet).toBeVisible();
+          const added = await page.evaluate(() => window.featureController.setupVenues.at(-1));
+          assert.ok(added.presentation.x !== null && added.presentation.y !== null, "Added Venues get map pins");
+          assert.ok(
+            existingVenues.every(
+              (row) =>
+                Math.abs(row.presentation.x - added.presentation.x) >= 0.15 ||
+                Math.abs(row.presentation.y - added.presentation.y) >= 0.15,
+            ),
+            "The new pin has a separate position",
+          );
+          await closeVenue();
+          await showVenuePin(added.id);
+          const addedPin = root.locator(`[data-pin-id="${added.id}"]`);
+          await expect(addedPin).toBeInViewport();
+          await addedPin.press("ArrowRight");
+          assert.equal(
+            await page.evaluate(
+              (id) => window.featureController.setupVenues.find((row) => row.id === id).presentation.x,
+              added.id,
+            ),
+            added.presentation.x + 0.01,
+            "The new pin can be moved",
+          );
+          await addedPin.click();
           await expect(sheet).toBeVisible();
           await sheet.getByRole("button", { name: "Redraft Venue", exact: true }).click();
           const redraft = page.getByRole("dialog", { name: "Redraft Venue", exact: true });
@@ -2006,13 +2032,14 @@ export async function verifyFoundingLayout(group) {
           await expect(sheet).toBeHidden();
           assert.deepEqual(
             await page.evaluate(() => window.featureController.setupVenues),
-            keptVenues,
+            existingVenues,
             "Removing a manual Venue preserves other places",
           );
           assert.deepEqual(
             await page.evaluate(() => window.featureController.setupFoundingVillagerIds),
             selectedPeople,
           );
+          await page.evaluate((rows) => window.featureController.setSetupVenues(rows), keptVenues);
         }
         await expect(settingNext()).toBeInViewport({ ratio: 1 });
         await expect(root.getByRole("button", { name: "Next Venues page", exact: true })).toHaveCount(0);
