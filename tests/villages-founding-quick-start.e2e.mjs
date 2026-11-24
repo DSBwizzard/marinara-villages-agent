@@ -910,6 +910,7 @@ await withBrowser(browser, async () => {
       await page.getByRole("button", { name: "Use changes", exact: true }).click();
       await expect.poll(() => page.evaluate(() => window.quickState.problem)).toContain("Founding choices changed");
       await page.getByRole("button", { name: "Discard", exact: true }).click();
+      assert.equal(await page.evaluate(() => window.quickState.problem), "", "Discard clears its stale-review error");
       await page.screenshot({ path: ".build-tmp/page-three-" + viewport.width + ".png" });
       await context.close();
     });

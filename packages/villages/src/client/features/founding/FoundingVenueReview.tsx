@@ -128,12 +128,19 @@ export function FoundingVenueReview({
                 : row;
             }),
           );
+          onProblem("");
           onDismiss();
         }}
       >
         Use changes
       </button>
-      <button type="button" onClick={onDismiss}>
+      <button
+        type="button"
+        onClick={() => {
+          onProblem("");
+          onDismiss();
+        }}
+      >
         Discard
       </button>
     </section>
