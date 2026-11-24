@@ -62,4 +62,77 @@ assert.deepEqual(
   orderedResults.map((row) => row.path),
   ordered.map((row) => row.path),
 );
-console.log("Scheduler bounds, exclusive barriers, complete inventory, ordering and failures passed.");
+
+const firstDone = Promise.withResolvers();
+const laterDone = Promise.withResolvers();
+const running = new Set();
+const backfillStarts = [];
+const backfill = scheduleTests(
+  [
+    { path: "first", parallelSafe: true, resources: ["shared"] },
+    { path: "exclusive", parallelSafe: false },
+    { path: "conflict", parallelSafe: true, resources: ["shared"] },
+    { path: "later", parallelSafe: true },
+  ],
+  {
+    jobs: 3,
+    browserJobs: 1,
+    async run(test) {
+      if (test.path === "exclusive") assert.equal(running.size, 0);
+      else assert.ok(!running.has("exclusive"));
+      if (test.path === "conflict") assert.ok(!running.has("first"));
+      running.add(test.path);
+      backfillStarts.push(test.path);
+      if (test.path === "first") await firstDone.promise;
+      if (test.path === "later") {
+        await laterDone.promise;
+      }
+      running.delete(test.path);
+      return { path: test.path, code: 0 };
+    },
+  },
+);
+await new Promise(setImmediate);
+assert.deepEqual(backfillStarts, ["first", "later"], "Isolated work fills idle slots past a waiting exclusive");
+firstDone.resolve();
+laterDone.resolve();
+const backfilled = await backfill;
+assert.ok(
+  backfilled.every((result) => result.code === 0),
+  JSON.stringify(backfilled),
+);
+assert.deepEqual(
+  backfilled.map((result) => result.path),
+  ["first", "exclusive", "conflict", "later"],
+);
+assert.equal(new Set(backfillStarts).size, 4, "Keep-going executes every suite exactly once");
+
+const drain = Promise.withResolvers();
+const activeStarted = Promise.withResolvers();
+const failed = scheduleTests(
+  [
+    { path: "failure", parallelSafe: true },
+    { path: "active", parallelSafe: true },
+    { path: "pending", parallelSafe: false },
+  ],
+  {
+    jobs: 2,
+    browserJobs: 1,
+    failFast: true,
+    async run(test) {
+      assert.notEqual(test.path, "pending");
+      if (test.path === "active") {
+        activeStarted.resolve();
+        await drain.promise;
+      }
+      return { path: test.path, code: test.path === "failure" ? 1 : 0 };
+    },
+  },
+);
+await activeStarted.promise;
+drain.resolve();
+const failureResults = await failed;
+assert.equal(failureResults[0].code, 1);
+assert.equal(failureResults[1].code, 0, "Fail-fast drains work already running");
+assert.equal(failureResults[2].skipped, true, "Fail-fast never certifies pending work");
+console.log("Scheduler bounds, exclusive resources, backfill, complete inventory and failure handling passed.");
