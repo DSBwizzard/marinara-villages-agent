@@ -624,6 +624,7 @@ await runCase("relationships/identity-labels", () => {
 await runCase("relationships/native-access", () => {
   const f = fixture(),
     venue = venueFixture({ id: "home", residentIds: ["mara"] });
+  venue.access!.managerIds = ["mara"];
   const zone = venue.zones!.find((zone) => zone.kind !== "exterior")!;
   zone.seen = true;
   f.state.venues = [venue];
