@@ -17,9 +17,10 @@ import type { SceneRetryCapture } from "../../domain/models/scene-retry.js";
 import { savedOperationReference } from "../../adapters/storage/operation-evidence.js";
 import { retryableEpisode, sceneRetryAuthority } from "../../domain/rules/scene-retry.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
-import { badGateway, safeFailureMessage, VillagesRequestError } from "../../domain/rules/errors.js";
+import { safeFailureMessage, VillagesRequestError } from "../../domain/rules/errors.js";
 import { ZodError } from "zod";
 import { findLocation } from "../../domain/rules/places.js";
+import { sceneReplyFailure } from "./error-details.js";
 
 export interface SceneProgressPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
@@ -197,7 +198,7 @@ export function createSceneProgress({
             if (marker && saved.operation?.id === turn.id && saved.operation.status !== "complete") {
               saved.operation.status = "complete";
               saved.operation.stage = "reply";
-              saved.operation.error = "The reply was interrupted. Choose Retry to try again.";
+              saved.operation.error = "The reply was interrupted.";
             }
             return;
           }
@@ -290,6 +291,10 @@ export function createSceneProgress({
             state,
           );
         });
+      if (marker && accepted?.held)
+        throw sceneReplyFailure(turn, "The reply could not be saved.", {
+          reasons: accepted.rejected.map(({ reason }) => reason),
+        });
     } catch (error) {
       try {
         await changeSession(scene.id, (saved) => {
@@ -301,7 +306,7 @@ export function createSceneProgress({
           ) {
             entry.progressError =
               marker && validationFailure === error
-                ? "The reply contradicted the Scene rules. Choose Retry to try again."
+                ? "The reply contradicted the Scene rules."
                 : String(error).slice(0, 300);
             if (validationFailure === error)
               entry.acceptance = marker
@@ -319,10 +324,13 @@ export function createSceneProgress({
           String(bookkeepingError),
         );
       }
-      if (marker && validationFailure === error && !(error instanceof VillagesRequestError)) {
-        if (error instanceof ZodError) throw badGateway("The reply used an invalid format. Choose Retry to try again.");
+      if (marker && validationFailure === error) {
+        if (error instanceof ZodError)
+          throw sceneReplyFailure(turn, "The reply used an invalid format.", { issues: error.issues });
+        if (error instanceof VillagesRequestError && error.statusCode === 502)
+          throw sceneReplyFailure(turn, error.message, { reasons: [error.message] });
         if (error instanceof Error && error.message.startsWith("Memory: "))
-          throw badGateway(safeFailureMessage(error).slice(8) + ". Choose Retry to try again.");
+          throw sceneReplyFailure(turn, safeFailureMessage(error).slice(8) + ".", { reasons: [error.message] });
       }
       throw error;
     }

@@ -36,7 +36,7 @@ import type { Context, VenueOperationContext } from "../adapters/operations/oper
 import type { VenueOperation } from "../domain/models/operation-model.js";
 import { safeFailureMessage, VillagesRequestError } from "../domain/rules/errors.js";
 import { sceneRevision } from "../domain/rules/scene-revision.js";
-import { coerceWorkFailure } from "../domain/rules/work-failure.js";
+import { coerceWorkFailure, sceneFailureMetadata } from "../domain/rules/work-failure.js";
 import { randomUUID } from "node:crypto";
 export interface VenueCoordinatorPorts {
   operations: VenueOperationContext;
@@ -824,12 +824,14 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               }
               return result;
             } catch (error) {
+              const failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
               try {
                 villagesLogger().warn(
-                  "[villages] scene=%s stage=%s failed: %s",
+                  "[villages] scene=%s stage=%s failed: %s %s",
                   sessionId,
                   operation.stage,
                   safeFailureMessage(error),
+                  failure ? JSON.stringify(sceneFailureMetadata(failure)) : "",
                 );
               } catch {
                 /* Diagnostics cannot replace the request failure. */
@@ -874,7 +876,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                     operation.checkpoints = {};
                     operation.attempts = {};
                   }
-                  operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
+                  operation.failure = failure;
                   data.operation = await operationEvidenceStore(documents).encode(
                     retryRefused ? { ...operation, token: randomUUID() } : operation,
                     data as unknown as VenueScene,

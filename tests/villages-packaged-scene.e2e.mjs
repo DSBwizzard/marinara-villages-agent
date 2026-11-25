@@ -94,7 +94,7 @@ await withBrowser({ close: server.stop }, async () => {
           segments: [
             {
               kind: "dialogue",
-              speakerId: "mara",
+              speakerId: rejected === "format" ? 99 : "mara",
               text: "Private model narration.",
               ...(rejected === "format" ? { requires: ["private-effect-id"] } : {}),
             },
@@ -198,12 +198,15 @@ await withBrowser({ close: server.stop }, async () => {
       if (edit) {
         await chip.click();
         await expect(page.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
-        await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
+        await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
         await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
         await expect(page.getByText("Anonymous report copied.")).toBeVisible();
         const report = await page.evaluate(() => window.sceneReport);
         assert.match(report, /Server build: [a-f0-9]{16}/);
         assert.match(report, /Result: HTTP 502/);
+        assert.match(report, /Cause: invalid_reply\nPhase: reply validation/);
+        assert.match(report, /Validator: invalid_type at segments\.0\.speakerId \(expected string\)/);
+        assert.match(report, /parse complete.*finish stop.*token output limit/);
         assert.doesNotMatch(report, /reply held|writing-completion/);
         assert(!report.includes(failed));
         assert.doesNotMatch(
@@ -263,11 +266,12 @@ await withBrowser({ close: server.stop }, async () => {
     const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
     await expect(chip).toHaveAccessibleName("1 Scene error");
     await chip.click();
-    await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
     await expect(page.getByText("Anonymous report copied.")).toBeVisible();
     const droppedReport = await page.evaluate(() => window.sceneReport);
     assert.match(droppedReport, /Result: No HTTP response · NETWORK_ERROR/);
+    assert.match(droppedReport, /Validator: continuity_evidence_not_witnessed at source/);
     assert.doesNotMatch(droppedReport, /reply held|writing-completion/);
     assert(!droppedReport.includes(turns.at(-1).input.submissionId));
     assert.doesNotMatch(droppedReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);

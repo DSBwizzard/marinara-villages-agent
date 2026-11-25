@@ -83,7 +83,23 @@ await runCase("scene-narration/fresh-reply", async () => {
     const saved = readNarrationSubmission(turn);
     assert.equal(saved.narration, undefined);
     if (outcome === "invalid")
-      await assert.rejects(f.service.processSavedExchange(scene.id, turn.id, false, publication), /Choose Retry/);
+      await assert.rejects(f.service.processSavedExchange(scene.id, turn.id, false, publication), {
+        statusCode: 502,
+        failure: {
+          cause: "invalid_reply",
+          stage: "reply-validation",
+          message: "Scene cannot invent a player or an actor's words.",
+          diagnostic: {
+            checks: [{ code: "invalid_scene_speaker", path: ["segments", "speakerId"] }],
+            rejected: 1,
+            parseStatus: undefined,
+            finishReason: undefined,
+            responseLength: undefined,
+            requestedOutputTokens: undefined,
+            modelAttempts: undefined,
+          },
+        },
+      });
     if (outcome === "lost-ack") {
       f.failScene();
       await assert.rejects(

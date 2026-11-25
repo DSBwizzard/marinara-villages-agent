@@ -126,9 +126,15 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                     : (operationSignal ?? options.signal),
               })
               .catch((error) => {
-                if (!options.responseFormat || operationSignal?.aborted || options.signal?.aborted) throw error;
+                if (
+                  (!options.responseFormat && !options.freshSceneReply) ||
+                  operationSignal?.aborted ||
+                  options.signal?.aborted
+                )
+                  throw error;
                 const message = safeFailureMessage(error);
                 const unsupported =
+                  !!options.responseFormat &&
                   /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(message) &&
                   /unsupported|not support|invalid|unknown|not allowed|unrecognized/iu.test(message);
                 const failure = new WorkFailureError({

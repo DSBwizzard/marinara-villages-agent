@@ -16,7 +16,12 @@ export function SceneErrorChip({ items, open, onOpen, context }: SceneChipProps)
   const trigger = useRef<HTMLButtonElement>(null);
   const [shareState, setShareState] = useState<"idle" | "copied" | "manual">("idle");
   const copyOwner = useRef(0);
-  const errorKey = items.map((item) => `${item.id}:${item.message}:${JSON.stringify(item.diagnostic)}`).join("\n");
+  const errorKey = items
+    .map(
+      (item) =>
+        `${item.id}:${item.message}:${JSON.stringify(item.diagnostic ?? item.operation?.diagnostic ?? item.trace?.failure?.diagnostic)}`,
+    )
+    .join("\n");
   useEffect(() => {
     copyOwner.current++;
     setShareState("idle");

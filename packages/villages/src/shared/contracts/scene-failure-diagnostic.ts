@@ -17,6 +17,10 @@ const validationCodes = new Set([
   "room_outcome_unverified",
   "missing_continuity_text",
   "missing_private_state_evidence",
+  "scene_capacity",
+  "invalid_scene_speaker",
+  "invalid_scene_invitation",
+  "past_scene_appointment",
 ]);
 const schemaFields = new Set([
   "segment",
@@ -61,7 +65,20 @@ const schemaFields = new Set([
   "name",
   "label",
   "localKey",
+  "existingId",
+  "targetId",
+  "arrivalId",
+  "delivery",
+  "presentation",
+  "visit",
+  "option",
+  "escort",
+  "class",
+  "owner",
+  "about",
+  "profile",
 ]);
+const schemaTypes = new Set(["string", "number", "int", "boolean", "object", "array", "null"]);
 const finishReasons = new Set([
   "stop",
   "length",
@@ -74,12 +91,19 @@ const finishReasons = new Set([
 const parseStatuses = new Set(["complete", "salvaged", "invalid"]);
 
 export type SceneFailureDiagnostic = {
-  checks: { code: string; path: (string | number)[] }[];
+  checks: { code: string; path: (string | number)[]; expected?: string }[];
   rejected: number;
   parseStatus?: string;
   finishReason?: string;
   responseLength?: number;
+  requestedOutputTokens?: number;
   modelAttempts?: number;
+};
+
+export type SceneFailureMetadata = {
+  failureCause?: string;
+  failureStage?: string;
+  diagnostic?: SceneFailureDiagnostic;
 };
 
 /** Admit only known codes and schema fields at both the HTTP and clipboard boundaries. */
@@ -89,7 +113,7 @@ export function sceneFailureDiagnostic(value: unknown): SceneFailureDiagnostic |
   const count = (value: unknown) =>
     typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
   const rejected = count(row.rejected);
-  if (!rejected) return;
+  if (rejected === undefined) return;
   const checks: SceneFailureDiagnostic["checks"] = [];
   for (const check of Array.isArray(row.checks) ? row.checks.slice(0, 12) : []) {
     if (!check || !validationCodes.has(check.code) || !Array.isArray(check.path)) continue;
@@ -103,7 +127,11 @@ export function sceneFailureDiagnostic(value: unknown): SceneFailureDiagnostic |
             : "?",
       );
     if (checks.some((prior) => prior.code === check.code && prior.path.join(".") === path.join("."))) continue;
-    checks.push({ code: check.code, path });
+    checks.push({
+      code: check.code,
+      path,
+      ...(check.expected && schemaTypes.has(check.expected) ? { expected: check.expected } : {}),
+    });
     if (checks.length === 3) break;
   }
   return {
@@ -112,6 +140,7 @@ export function sceneFailureDiagnostic(value: unknown): SceneFailureDiagnostic |
     parseStatus: row.parseStatus && parseStatuses.has(row.parseStatus) ? row.parseStatus : undefined,
     finishReason: row.finishReason && finishReasons.has(row.finishReason) ? row.finishReason : undefined,
     responseLength: count(row.responseLength),
+    requestedOutputTokens: count(row.requestedOutputTokens),
     modelAttempts: count(row.modelAttempts),
   };
 }

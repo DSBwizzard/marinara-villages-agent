@@ -32,7 +32,7 @@ import { NpcSprite, SceneFace } from "./SceneFace.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
 import { isSceneConnectionError } from "./scene-error-message.js";
-import type { SceneFailure } from "./scene-error-report.js";
+import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
 import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { useReadingPages } from "../../shared/useReadingPages.js";
 import { DialogueReader } from "../../shared/DialogueReader.js";
@@ -158,9 +158,11 @@ export async function completedRoomAfterFailure(
   }
 }
 
-export function openingFailureMessage(cause: unknown): string {
-  const message = messageFrom(cause, "The scene opening could not be prepared.");
-  return /timeout|timed out|exceeded 28 seconds/iu.test(message) ? "The scene opening took too long." : message;
+export function openingFailure(cause: unknown): SceneFailure {
+  const failure = sceneFailure(cause, "The scene opening could not be prepared.", "greet");
+  if (/timeout|timed out|exceeded 28 seconds/iu.test(failure.message))
+    failure.message = "The scene opening took too long.";
+  return failure;
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */

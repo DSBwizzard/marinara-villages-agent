@@ -16,12 +16,12 @@ import {
   completedGreetingAfterFailure,
   completedRoomAfterFailure,
   currentRoom,
-  openingFailureMessage,
+  openingFailure,
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
 import { sceneSubmissionText, useTurnRecovery } from "./turn-recovery.js";
-import { sceneFailure, type SceneFailure } from "./scene-error-report.js";
+import { sceneFailure, type SceneFailure, type SceneGreetingFailure } from "./scene-error-report.js";
 import type { ContactRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
@@ -796,7 +796,7 @@ export function useGreetRoom(ports: {
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
-  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<SceneGreetingFailure>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
 }) {
   const {
@@ -856,7 +856,7 @@ export function useGreetRoom(ports: {
           setRoomGreetingError((current) => (current?.sessionId === sessionId ? null : current));
         } else
           setRoomGreetingError((current) =>
-            current && current.sessionId !== sessionId ? current : { sessionId, message: openingFailureMessage(cause) },
+            current && current.sessionId !== sessionId ? current : { sessionId, ...openingFailure(cause) },
           );
       } finally {
         if (claim && lifetime.finish(claim)) setRoomBusy(false);
@@ -962,7 +962,7 @@ export function useRetrySavedScene(ports: {
   setRoomDraft: React.Dispatch<SetStateAction<string>>;
   setRoomEnded: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string | SceneFailure>>;
-  setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
+  setRoomGreetingError: React.Dispatch<SetStateAction<SceneGreetingFailure>>;
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<SetStateAction<string>>;
 }) {

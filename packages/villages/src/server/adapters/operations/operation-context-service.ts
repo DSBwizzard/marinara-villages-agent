@@ -2,6 +2,7 @@ import type { VenueOperation } from "../../domain/models/operation-model.js";
 import { VillagesRequestError } from "../../domain/rules/errors.js";
 import type { CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { sceneFailureMetadata } from "../../domain/rules/work-failure.js";
 export type { VenueOperation } from "../../domain/models/operation-model.js";
 export type Context = {
   sessionId: string;
@@ -21,14 +22,11 @@ export function operationSummary(operation?: VenueOperation) {
     id: operation.id,
     kind: operation.kind,
     ...(operation.freshReply ? { freshReply: true as const } : {}),
-    ...(operation.kind === "turn" && operation.input.mode === "chat" && !operation.input.trespassReaction
-      ? { retryableReply: true as const }
-      : {}),
     recoverable: operation.kind === "greet" && Object.hasOwn(operation.checkpoints, "greeting-reply"),
     attemptId: operation.attemptId,
     status: operation.status,
     stage: operation.stage,
-    ...(operation.failure ? { failureCause: operation.failure.cause } : {}),
+    ...sceneFailureMetadata(operation.failure),
     error: operation.error,
   };
 }

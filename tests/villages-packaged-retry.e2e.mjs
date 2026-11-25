@@ -145,7 +145,7 @@ await withBrowser({ close: server.stop }, async () => {
     const sceneError = phone.getByRole("button", { name: /Scene errors?/ });
     await sceneError.click();
     const retry = phone.getByRole("button", { name: "Retry", exact: true });
-    await expect(retry).toBeEnabled();
+    await expect(retry).toHaveCount(0);
     await expect(phoneComposer).toHaveValue("Should we wait for the rain?");
     assert.equal(attempts, 1);
     const failed = turns.at(-1).input;
@@ -159,10 +159,12 @@ await withBrowser({ close: server.stop }, async () => {
     await phone.reload();
     await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
     await sceneError.click();
-    await expect(retry).toBeEnabled();
+    await expect(retry).toHaveCount(0);
+    await expect(phoneComposer).toHaveValue(failed.message);
     assert.equal(attempts, 1, "reload does not retry a paid reply");
     failedRetryExpected = false;
-    await retry.click();
+    await phone.getByRole("button", { name: "Close Scene errors" }).click();
+    await phone.getByRole("button", { name: "Send", exact: true }).click();
     await expect(phone.getByRole("region", { name: "Current paragraph" })).toContainText(
       "Let's wait for the shower to pass.",
     );

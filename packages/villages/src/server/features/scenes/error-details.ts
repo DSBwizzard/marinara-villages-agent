@@ -10,14 +10,23 @@ import {
 } from "../../domain/rules/continuity.js";
 import { ACTOR_MEMORY_TARGETS_ROOM } from "../../domain/rules/narration-acceptance.js";
 import { MISSING_CONTINUITY_TEXT } from "../../domain/rules/narration-contract.js";
+import { badGateway } from "../../domain/rules/errors.js";
+import { sceneFailureMetadata, type WorkFailure } from "../../domain/rules/work-failure.js";
 
-const continuityChecks = new Map([
+const ruleChecks = new Map([
   [UNWITNESSED_CONTINUITY_SUPPORT, { code: "continuity_evidence_not_witnessed", path: ["source"] }],
   ["continuity actor was not admitted", { code: "continuity_actor_not_admitted", path: ["for"] }],
   [ACTOR_MEMORY_TARGETS_ROOM, { code: "room_target_in_actor_memory", path: ["for"] }],
   [MISSING_CONTINUITY_TEXT, { code: "missing_continuity_text", path: ["text"] }],
   [MISSING_PRIVATE_STATE_EVIDENCE, { code: "missing_private_state_evidence", path: ["source"] }],
   [ROOM_OUTCOME_UNVERIFIED, { code: "room_outcome_unverified", path: ["source"] }],
+  [
+    "Scene cannot invent a player or an actor's words",
+    { code: "invalid_scene_speaker", path: ["segments", "speakerId"] },
+  ],
+  ["The invitation needs a listed option and its spoken line.", { code: "invalid_scene_invitation", path: ["visit"] }],
+  ["The reply would overcrowd a Zone. Your draft is preserved.", { code: "scene_capacity", path: [] }],
+  ["an appointment cannot be in the past of its admitted Scene", { code: "past_scene_appointment", path: ["when"] }],
 ]);
 
 function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknown[] {
@@ -25,7 +34,7 @@ function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknow
   return value.slice(0, 4).flatMap((value) => {
     const issue = asRecord(value);
     const path = [...parent, ...(Array.isArray(issue.path) ? issue.path.slice(0, 6) : [])].slice(0, 6);
-    const check = { code: issue.code, path };
+    const check = { code: issue.code, path, expected: issue.expected };
     if (depth < 2 && issue.code === "invalid_union" && Array.isArray(issue.errors)) {
       const nested = issue.errors.slice(0, 4).flatMap((branch) => schemaChecks(branch, depth + 1, path));
       return [...nested, check];
@@ -38,8 +47,8 @@ function schemaChecks(value: unknown, depth = 0, parent: unknown[] = []): unknow
 
 function rejectionChecks(reason: string): unknown[] {
   if (typeof reason !== "string" || reason.length > 2000) return [];
-  const continuityCheck = continuityChecks.get(reason.replace(/^(?:Error:\s*)?(?:Memory:\s*)?/u, ""));
-  if (continuityCheck) return [continuityCheck];
+  const ruleCheck = ruleChecks.get(reason.replace(/^(?:(?:VillagesRequestError|Error):\s*)?(?:Memory:\s*)?/u, ""));
+  if (ruleCheck) return [ruleCheck];
   if (reason.startsWith("Tentative movement routing failed:")) return [{ code: "invalid_movement_route", path: [] }];
   if (reason === "The required effect is missing.") return [{ code: "missing_required_effect", path: [] }];
   if (/^Required effect .+ did not validate\.$/u.test(reason)) return [{ code: "invalid_effect_dependency", path: [] }];
@@ -55,14 +64,37 @@ function rejectionChecks(reason: string): unknown[] {
 
 export function describeHeldSceneReply(turn: VenueSubmission) {
   // Older saves already contain the fallback validator receipts as strings.
+  return describeReplyFailure(
+    turn,
+    turn.acceptance.rejected.slice(0, 12).flatMap(({ reason }) => rejectionChecks(reason)),
+    turn.acceptance.rejected.length,
+  );
+}
+
+function describeReplyFailure(turn: VenueSubmission, checks: unknown[], rejected: number) {
   return sceneFailureDiagnostic({
-    checks: turn.acceptance.rejected.slice(0, 12).flatMap(({ reason }) => rejectionChecks(reason)),
-    rejected: turn.acceptance.rejected.length,
+    checks,
+    rejected,
     parseStatus: turn.responseDiagnostics?.parseStatus,
     finishReason: turn.responseDiagnostics?.finishReason,
     responseLength: turn.responseDiagnostics?.responseLength,
+    requestedOutputTokens: turn.responseDiagnostics?.requestedOutputTokens,
     modelAttempts: turn.requestMetrics?.length,
   });
+}
+
+export function sceneReplyFailure(
+  turn: VenueSubmission,
+  message: string,
+  details: { issues: readonly unknown[] } | { reasons: readonly string[] },
+) {
+  const diagnostic = describeReplyFailure(
+    turn,
+    "issues" in details ? schemaChecks(details.issues) : details.reasons.slice(0, 12).flatMap(rejectionChecks),
+    "issues" in details ? details.issues.length : details.reasons.length,
+  );
+  const failure: WorkFailure = { cause: "invalid_reply", stage: "reply-validation", message, diagnostic };
+  return Object.assign(badGateway(message), { failure });
 }
 
 export const sceneChangeDiagnosticId = (turn: VenueSubmission) => turn.id + ":narration:" + memoryHash(turn.acceptance);
@@ -92,6 +124,8 @@ export function sceneErrorDetails(scene: VenueScene) {
       sceneRevision: operation.sceneRevision,
       error: operation.error,
       cause: operation.failure?.cause,
+      failureStage: operation.failure?.stage,
+      diagnostic: sceneFailureMetadata(operation.failure)?.diagnostic,
     });
   const rejected = scene.submissions.filter(
     (turn) => turn.acceptance.status === "held" || turn.acceptance.rejected.length,

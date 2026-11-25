@@ -6,7 +6,7 @@ The extractor requires one complete current object and a normal finish, optional
 
 ## Failed replies and Retry
 
-New player chat and contact turns save the submitted request identity and draft. The fitted prompt and provider completion stay in memory. A failed reply leaves no model prose or inferred effects in the story. Retry buys a new reply for the saved input after checking that the prior attempt did not commit. The composer restores unsaved input if the player has made no newer edits.
+New player chat and contact turns save the submitted request identity and draft. The fitted prompt and provider completion stay in memory. A failed reply leaves no model prose or inferred effects in the story. After a failed chat reply, the composer restores unsaved input if the player has made no newer edits. Send checks whether the prior attempt committed and requests a fresh reply when it did not.
 
 An accepted Episode and its effects commit together in the Village. A compact Scene record binds that commit to the admitted world, turn and input. If the server stops before it commits, the player can retry. If it stops after the commit, Villages publishes the saved Episode without buying another reply or applying effects twice.
 
@@ -20,7 +20,7 @@ Current nonverbal sounds use metadata on an ordinary narration segment. Full nar
 
 Consequential input citations bind exact excerpts and, when necessary, their occurrence. The submitted text establishes the source. Code checks the claimed communication or perception against captured positions and eligible witnesses. The full input remains private GM chronology with an empty resident audience. Generated segment labels and fitted source references bind accepted effects to the evidence the GM actually received.
 
-Ordinary responses omit private provider evidence and request checkpoints. Copy Discord report exports the package version, action, route template, HTTP result, elapsed time and available recovery state. It includes only recognized error codes and fixed descriptions. The report excludes player and place names, identifiers, dialogue, raw errors and provider details. Copying starts no server requests or recovery actions. The Changes evidence panel reads its own scoped diagnostics.
+Ordinary responses omit private provider evidence and request checkpoints. Copy Discord report includes the package version, action, route template, HTTP result, elapsed time, failure phase and available recovery state. Validator details use recognized codes, schema paths and expected types. The report excludes player and place names, identifiers, dialogue, raw errors and provider details. Copying starts no server requests or recovery actions. The Changes evidence panel reads its own scoped diagnostics.
 
 ## Response timings and validation
 

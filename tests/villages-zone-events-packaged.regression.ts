@@ -594,7 +594,7 @@ try {
     keep: [rejectedKeep],
   });
   const rejected = await request("/rooms/turn", held, 502);
-  assert.equal(rejected.error, "The reply could not be saved. Choose Retry to try again.");
+  assert.equal(rejected.error, "The reply could not be saved.");
   assert.equal(turnOf(held.submissionId)?.acceptance.status, "abandoned");
   assert.equal(turnOf(held.submissionId)?.message, held.message);
   assert.equal(turnOf(held.submissionId)?.narration, undefined);
