@@ -432,7 +432,7 @@ export function createSceneWriting({
           : "",
         npcIntroduction
           ? tagged
-            ? "Use the public role until the NPC reveals their name. On the witnessed reveal line use [speaker-id] [name Exact Saved Name]: text."
+            ? "Use the public role until the NPC says their name to the player. The exact saved name in their words is enough for a direct introduction. You can also mark that line [speaker-id] [name Exact Saved Name]: text."
             : 'For an unnamed NPC, use a distinct public role label like "Pastry seller" at admission. When their name becomes public, put speakerLabel:"Name" on their dialogue line heard by the player. Copy their exact saved name. Leave speakerLabel out while their name stays private.'
           : "",
       ]),

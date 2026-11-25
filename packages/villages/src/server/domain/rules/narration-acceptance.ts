@@ -218,20 +218,22 @@ export function acceptNarrationContinuity(
     movementDependencies.every((id) => native.effects.some((effect) => effect.id === id)),
     "movement has no owning native effect",
   );
+  const { nameReveals, ...routed } = narrationLines(
+    reply,
+    scene,
+    readset.source.episodeId,
+    readset.capturedAt,
+    native.moves,
+    native.playerMoves,
+    readset.presentation,
+    (id) => findNpc(state, id),
+    readset.taggedSceneReply,
+  );
   const source: NarrationSourceContext = {
     ...readset.source,
     scene,
     actors,
-    ...narrationLines(
-      reply,
-      scene,
-      readset.source.episodeId,
-      readset.capturedAt,
-      native.moves,
-      native.playerMoves,
-      readset.presentation,
-      (id) => findNpc(state, id),
-    ),
+    ...routed,
     moves: [
       ...native.moves,
       ...native.playerMoves.map((move) => ({ characterId: "player", zoneId: move.zoneId, segment: move.segment })),
@@ -942,29 +944,20 @@ export function acceptNarrationContinuity(
   const nameDependencies: Record<string, string[]> = {};
   const nameSources: ContinuityEvidence[] = [];
   const nameReceipts: string[] = [];
-  for (const [index, row] of reply.segments.entries()) {
-    if (row.kind !== "dialogue" || !row.speakerLabel || namesRecorded.has(row.speakerId)) continue;
-    const npc = findNpc(state, row.speakerId);
+  for (const [index, name] of nameReveals) {
     const line = source.lines[index];
-    if (
-      !npc ||
-      npc.label === npc.name ||
-      row.speakerLabel !== npc.name ||
-      line.name !== npc.name ||
-      line.contactHidden ||
-      !line.heardBy.includes("player")
-    )
-      continue;
+    if (namesRecorded.has(line.speakerId) || line.name !== name) continue;
+    const row = reply.segments[index];
     const proof = bindNarrationSource({ segment: row.id }, source);
     if (!proof.perceptions.some(({ actorId, channel }) => actorId === "player" && channel === "words")) continue;
     const id = "native-" + memoryHash([source.episodeId, "npc-speaker-label", row.id]).slice(0, 40);
-    namesRecorded.add(npc.id);
+    namesRecorded.add(line.speakerId);
     const receipt = {
       id,
       kind: "npc-introduction" as const,
-      targetId: npc.id,
+      targetId: line.speakerId,
       revision: readset.sceneRevision,
-      text: npc.name,
+      text: name,
       witnesses: ["player"],
     };
     nameSources.push(proof, bindNarrationReceipt(receipt, source));

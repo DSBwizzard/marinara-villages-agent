@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ContinuityEvidence } from "../models/continuity-model.js";
 import type { NpcIdentity } from "../models/places.js";
-import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
+import type { VenueLine, VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { badGateway } from "./errors.js";
 import { findLocation, findNpc, readNpc } from "./places.js";
@@ -19,6 +19,30 @@ export const npcAdmissionFields = {
 };
 export type NpcAdmissionRequest = z.infer<z.ZodObject<typeof npcAdmissionFields>>;
 export const DEFAULT_NPC_LABEL = "Stranger";
+export function revealsNpcName(
+  line: Pick<VenueLine, "kind" | "heardBy" | "contactHidden" | "content">,
+  name: string,
+  firstAtAdmission: boolean,
+  speakerLabel?: unknown,
+  allowSpokenName = true,
+): boolean {
+  if (
+    (line.kind !== "dialogue" && line.kind !== "whisper" && line.kind !== "side") ||
+    line.contactHidden ||
+    !line.heardBy.includes("player")
+  )
+    return false;
+  if (speakerLabel === name) return true;
+  if (!allowSpokenName) return false;
+  const namePattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const introduction = "(?:[Ii](?:['’]m| am)|[Mm]y name is|[Yy]ou can call me|[Cc]all me)\\s+";
+  const text = line.content.trim();
+  return (
+    new RegExp(`(?:^|[.!?]\\s+)${introduction}${namePattern}(?=[.!?](?:\\s|$)|[,–—]|$)`, "u").test(text) ||
+    (firstAtAdmission && new RegExp(`^${namePattern}(?:[.!](?:\\s|$)|$)`, "u").test(text))
+  );
+}
+
 export function witnessedNpcName(source: ContinuityEvidence, actorId: string, name: string): boolean {
   if (!name.trim() || name !== name.trim() || name.length > 100 || /[\r\n]/.test(name)) return false;
   const pattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

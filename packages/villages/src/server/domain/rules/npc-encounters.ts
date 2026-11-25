@@ -1,13 +1,40 @@
 import type { VillageState } from "../models/world.js";
 import type { NpcPage, VillageNpcView } from "../../../shared/contracts/village.js";
-import { actorEpisodeViews } from "./episodes.js";
+import { actorEpisodeView, actorEpisodeViews } from "./episodes.js";
+import type { NpcIdentity } from "../models/places.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuitySourceUnit } from "./continuity.js";
 import { memoryHash } from "./memory-integrity.js";
 import { npcNameKey } from "./npc-index.js";
-import { DEFAULT_NPC_LABEL } from "./npc-participation.js";
+import { DEFAULT_NPC_LABEL, revealsNpcName } from "./npc-participation.js";
 import { villageWorldScope } from "./village-identity.js";
 import { badRequest, conflict } from "./errors.js";
+
+/** Recover a previously heard introduction when the saved public label still predates it. */
+export function savedNpcNameReveal(state: VillageState, npc: NpcIdentity) {
+  const player = continuityActor(state, "player");
+  if (!player) return undefined;
+  for (const episode of state.episodes.records) {
+    const admission = episode.commandReceipts.find((receipt) => receipt.admission?.npc.id === npc.id)?.admission;
+    const first =
+      admission &&
+      episode.segments.findIndex(
+        (line, index) =>
+          index > admission.segment &&
+          line.speakerId === npc.id &&
+          !line.contactHidden &&
+          line.heardBy.includes("player"),
+      );
+    const lines = episode.segments.filter(
+      (line, index) =>
+        line.role === "assistant" && line.speakerId === npc.id && revealsNpcName(line, npc.name, index === first),
+    );
+    if (!lines.length) continue;
+    const view = actorEpisodeView(episode, state.continuity, player, state.episodes);
+    const heard = lines.find((line) => view?.segments.some(({ id, channel }) => id === line.id && channel === "words"));
+    if (heard) return { sceneId: episode.sceneId, lineId: heard.id };
+  }
+}
 
 /** Surviving Player encounters gate the authored NPC overview; private Memories remain separate. */
 export function npcEncounterIndex(state: VillageState) {

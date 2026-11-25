@@ -9,6 +9,7 @@ import {
   prepareNpcAdmission,
   bindNpcReferences,
   fenceIntroductionWitnesses,
+  revealsNpcName,
 } from "../packages/villages/src/server/domain/rules/npc-participation.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
@@ -32,7 +33,11 @@ import {
 } from "../packages/villages/src/server/adapters/storage/continuity-pages.js";
 import { readAcceptedEpisode } from "../packages/villages/src/server/domain/decoding/episode-codec.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
-import { npcEncounterIndex, readNpcPeople } from "../packages/villages/src/server/domain/rules/npc-encounters.js";
+import {
+  npcEncounterIndex,
+  readNpcPeople,
+  savedNpcNameReveal,
+} from "../packages/villages/src/server/domain/rules/npc-encounters.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import {
   pruneTaggedSceneReply,
@@ -141,7 +146,7 @@ await runCase("npc-admission/tagged-turn", () => {
       admitted
         ? '[command]: {"type":"npc.admit","localKey":"new:baker","name":"Emil Rye","label":"Baker","characterization":"A patient baker."}'
         : '[command]: {"type":"npc.admit","localKey":"new:baker","existingId":"npc:unfitted"}',
-      "[new:baker] [name Emil Rye]: I'm Emil Rye. I hope to see the garden.",
+      "[new:baker]: Emil Rye. I hope to see the garden.",
       '[keep]: {"owner":"new:baker","for":["new:baker","player"],"class":"desire","current":true,"text":"Emil hopes to see the garden."}',
       '[KeEp]: {"text":"Private broken note"',
       "Narration: This could be a continuation of the private note.",
@@ -166,6 +171,17 @@ await runCase("npc-admission/tagged-turn", () => {
       Object.values(f.state.worldPlaces.npcs).some((row) => row.name === "Emil Rye"),
       admitted,
     );
+    const introduction = episode.commandReceipts.find((receipt) => receipt.kind === "npc-introduction");
+    if (admitted) {
+      assert(introduction);
+      assert.equal(introduction.text, "Emil Rye");
+      assert.equal(f.state.worldPlaces.npcs[introduction.targetId].label, "Emil Rye");
+      applyAcceptedSceneDelta(f.scene, episode);
+      assert.equal(
+        f.scene.participants.find((person) => person.characterId === introduction.targetId)?.name,
+        "Emil Rye",
+      );
+    } else assert.equal(introduction, undefined);
     assert(result.rejected.length > 0);
     const save = memoryHash(f.state);
     assert(acceptNarration(f.state, publication, "tagged", at).replayed);
@@ -760,6 +776,34 @@ await runCase("npc-admission/fences", () => {
 });
 
 await runCase("npc-admission/name", () => {
+  const heard = { kind: "dialogue" as const, heardBy: ["player"] };
+  for (const text of ["I'm Rasha Dunmore's neighbor.", "I am not Rasha Dunmore.", "The person to ask? Rasha Dunmore."])
+    assert.equal(revealsNpcName({ ...heard, content: text }, "Rasha Dunmore", true), false, text);
+  assert(revealsNpcName({ ...heard, content: "I'm Rasha Dunmore, the baker." }, "Rasha Dunmore", false));
+  assert(!revealsNpcName({ ...heard, content: "Rasha Dunmore. Please come in." }, "Rasha Dunmore", false));
+  assert(
+    !revealsNpcName(
+      { ...heard, heardBy: ["npc:listener"], content: "My name is Rasha Dunmore." },
+      "Rasha Dunmore",
+      true,
+    ),
+  );
+  assert(
+    !revealsNpcName({ ...heard, contactHidden: true, content: "My name is Rasha Dunmore." }, "Rasha Dunmore", true),
+  );
+  const saved = fixture(),
+    savedReply = rawArrival();
+  saved.existing.name = "Rasha Dunmore";
+  savedReply.segments[1].text = "Rasha Dunmore. A pleasure.";
+  const earlier = acceptNarration(saved.state, saved.publication(savedReply), "earlier-name", at).episode!;
+  const savedNpc = saved.state.worldPlaces.npcs[earlier.commandReceipts[0].targetId];
+  assert.equal(savedNpc.label, "Mara");
+  assert.deepEqual(savedNpcNameReveal(saved.state, savedNpc), {
+    sceneId: earlier.sceneId,
+    lineId: earlier.segments[1].id,
+  });
+  assert.equal(earlier.segments[1].name, "Mara", "recovering the public name leaves the saved line intact");
+
   for (const label of ["Rasha Dunmore", "Another Name", 17]) {
     const f = fixture(),
       raw = rawArrival();

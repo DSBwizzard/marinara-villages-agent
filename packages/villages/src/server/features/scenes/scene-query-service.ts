@@ -7,7 +7,7 @@ import {
   type ScenePlaybackMoment,
 } from "../../../shared/contracts/scene-playback.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import { publicSceneAuthority, publicSceneLiveReply } from "../../domain/rules/scene-public.js";
+import { publicSceneAuthority, publicSceneLiveReply, sceneTurnPublished } from "../../domain/rules/scene-public.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { operationSummary } from "../../adapters/operations/operation-context.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
@@ -21,6 +21,7 @@ import {
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { findNpc } from "../../domain/rules/places.js";
+import { savedNpcNameReveal } from "../../domain/rules/npc-encounters.js";
 import {
   readSceneTranscriptHead,
   readSceneTranscriptPositions,
@@ -232,25 +233,42 @@ export function createSceneQueryService({
       ...(active ? reply.lines.map((line) => line.speakerId) : participants.map((person) => person.characterId)),
     ]);
     const people = scene.participants.filter((person) => cast.has(person.characterId));
-    // A reviewed public name correction can update the live display without rewriting any saved lines.
-    const corrected = new Map<string, string>();
+    // Apply public names to the live display while keeping the saved transcript intact.
+    const corrected = new Map<string, { name: string; from: number }>();
     const npcs = active ? people.filter(({ characterId }) => characterId.startsWith("npc:")) : [];
     const stale = npcs.filter(({ characterId, name }) => {
       const captured = scene.continuity?.facts.worldPlaces?.npcs[characterId];
       return !captured || captured.name !== name || captured.label !== name;
     });
+    const positions = new Map(stale.length ? scene.lines.map((line, index) => [line.id, index]) : []);
     if (stale.length) {
       const world = await readVillageState({ memories: true });
       if (villageWorldScope(world) === owner.scope)
         for (const person of stale) {
           const npc = findNpc(world, person.characterId);
-          if (npc && npc.label === npc.name && npc.label !== person.name) corrected.set(npc.id, npc.label);
+          if (!npc || npc.name === person.name) continue;
+          if (npc.label === npc.name) {
+            corrected.set(npc.id, { name: npc.name, from: 0 });
+            continue;
+          }
+          const reveal = savedNpcNameReveal(world, npc);
+          if (!reveal) continue;
+          const currentScene = reveal.sceneId === scene.id;
+          const from = currentScene ? positions.get(reveal.lineId) : 0;
+          if (
+            from !== undefined &&
+            (!currentScene ||
+              scene.submissions.some((turn) => sceneTurnPublished(turn) && turn.replyLineIds?.includes(reveal.lineId)))
+          )
+            corrected.set(npc.id, { name: npc.name, from });
         }
     }
     const currentLines = corrected.size
       ? reply.lines.map((line) => {
-          const name = corrected.get(line.speakerId);
-          return name ? { ...line, name } : line;
+          const correction = corrected.get(line.speakerId);
+          return correction && (positions.get(line.id) ?? -1) >= correction.from
+            ? { ...line, name: correction.name }
+            : line;
         })
       : reply.lines;
     return {
@@ -259,7 +277,7 @@ export function createSceneQueryService({
       lines: active ? currentLines : lines,
       playback,
       participants: corrected.size
-        ? people.map((person) => ({ ...person, name: corrected.get(person.characterId) ?? person.name }))
+        ? people.map((person) => ({ ...person, name: corrected.get(person.characterId)?.name ?? person.name }))
         : people,
       operation: operationSummary(scene.operation),
       retryReply: await retryTarget?.(scene),
