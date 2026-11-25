@@ -55,6 +55,8 @@ export type VillageDayView = {
 export type VillageCardCharacter = {
   incarnation: string;
   relationshipScene?: { id: string; endedAt: string; answerSceneId?: string };
+  perceptionDue?: { id: string; at: string };
+  perceptionAssessed?: string;
   letterFontId: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;

@@ -348,7 +348,7 @@ export function createSceneWriting({
       format: blocksFor([
         nativeCommands ? SCENE_NARRATION_FORMAT : ORDINARY_SCENE_FORMAT,
         nativeCommands ? SCENE_NARRATION_KEEP : ORDINARY_SCENE_KEEP,
-        nativeCommands && scoredRelationships ? RELATIONSHIP_DIRECTION : "",
+        scoredRelationships ? RELATIONSHIP_DIRECTION : "",
         scoredRelationships ? (nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP) : "",
       ]),
       metadata: blocksFor([

@@ -197,12 +197,13 @@ await withBrowser(browser, async () => {
           characterId === "mara"
             ? [
                 {
-                  person: { id: "player", name: "You" },
+                  person: { id: "player", name: "Rowan" },
                   score: 3,
                   romanticInterest: 7,
                   answer: "I enjoy when you visit.",
                 },
-                { person: { id: "eli", name: secondName }, score: -10, romanticInterest: 0 },
+                { person: { id: "eli", name: secondName }, score: -10, romanticInterest: -16 },
+                { person: { id: "mina", name: "Mina" }, score: 0, romanticInterest: 0 },
               ]
             : [],
         entries: [
@@ -1242,20 +1243,42 @@ await withBrowser(browser, async () => {
     await chooseSection("Venues");
     await expect(profile.getByText(/Agenda destination/)).toBeVisible();
     await chooseSection("Relationships");
-    await expect(profile.getByRole("meter", { name: "Toward you", exact: true })).toHaveAttribute("aria-valuenow", "3");
-    await expect(profile.getByRole("meter", { name: "Toward " + secondName, exact: true })).toHaveAttribute(
+    const relationshipCards = profile.locator(".villages-relationship-scores > article");
+    await expect(relationshipCards).toHaveCount(2);
+    await expect(relationshipCards.nth(0).getByRole("heading", { name: "Rowan", exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("I enjoy when you visit.", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("Warmth", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("Romantic interest", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByRole("heading", { name: secondName, exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByRole("heading", { name: "Mina", exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByText("Warmth", { exact: true })).toHaveCount(0);
+    await expect(relationshipCards.nth(1).getByText("Romantic interest", { exact: true })).toHaveCount(0);
+    await expect(profile.getByRole("meter", { name: "Warmth toward Rowan", exact: true })).toHaveAttribute(
+      "aria-valuenow",
+      "3",
+    );
+    await expect(profile.getByRole("meter", { name: "Warmth toward " + secondName, exact: true })).toHaveAttribute(
       "aria-valuenow",
       "-10",
     );
-    const hearts = profile.getByRole("meter", { name: "Romantic interest toward you", exact: true });
-    await expect(hearts).toHaveAttribute("aria-valuenow", "7");
-    await expect(hearts.locator("[data-fill=full]")).toHaveCount(3);
-    await expect(hearts.locator("[data-fill=half]")).toHaveCount(1);
-    await expect(hearts.locator("[data-fill=empty]")).toHaveCount(6);
-    const emptyHearts = profile.getByRole("meter", { name: "Romantic interest toward " + secondName, exact: true });
-    await expect(emptyHearts.locator("[data-fill=empty]")).toHaveCount(10);
+    const romance = profile.getByRole("meter", { name: "Romantic interest toward Rowan", exact: true });
+    await expect(romance).toHaveAttribute("aria-valuemin", "-20");
+    await expect(romance).toHaveAttribute("aria-valuemax", "20");
+    await expect(romance).toHaveAttribute("aria-valuenow", "7");
+    await expect(romance.locator("[data-fill=full]")).toHaveCount(3);
+    await expect(romance.locator("[data-fill=half]")).toHaveCount(1);
+    const negativeRomance = profile.getByRole("meter", { name: "Romantic interest toward " + secondName, exact: true });
+    await expect(negativeRomance).toHaveAttribute("aria-valuenow", "-16");
+    await expect(negativeRomance).toHaveAttribute("data-negative", "true");
+    await expect(negativeRomance.locator("[data-fill=full]")).toHaveCount(8);
+    await expect(negativeRomance.locator(".villages-romantic-value")).toHaveCSS("white-space", "nowrap");
+    const neutralRomance = relationshipCards
+      .nth(1)
+      .getByRole("meter", { name: "Romantic interest toward Mina", exact: true });
+    await expect(neutralRomance).toHaveAttribute("aria-valuetext", "Neutral");
+    await expect(neutralRomance.locator("[data-fill=empty]")).toHaveCount(10);
     assert(
-      await emptyHearts.evaluate(
+      await negativeRomance.evaluate(
         (node) =>
           node.lastElementChild.getBoundingClientRect().right <= node.parentElement.getBoundingClientRect().right + 1,
       ),

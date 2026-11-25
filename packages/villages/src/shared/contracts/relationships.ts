@@ -1,5 +1,13 @@
 import type { MemoryListEntry, MemoryPerson } from "./village.js";
 
+export const WARMTH_THRESHOLDS = [25, 60, 85] as const;
+export const ROMANCE_THRESHOLDS = [4, 10, 16] as const;
+export const ROMANCE_LIMIT = 20;
+
+export function relationshipBehaviorBand(score: number, thresholds: readonly number[]): number {
+  return Math.sign(score) * thresholds.filter((threshold) => Math.abs(score) >= threshold).length;
+}
+
 export type RelationshipEntry = MemoryListEntry & {
   current: boolean;
   owner?: MemoryPerson;

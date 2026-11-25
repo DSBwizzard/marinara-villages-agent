@@ -11,6 +11,12 @@ import type {
   RelationshipImpact,
 } from "../models/continuity-model.js";
 import { memoryHash, memoryKnowerId, memoryRequire, memoryString, memoryTimestamp } from "./memory-integrity.js";
+import {
+  ROMANCE_LIMIT,
+  ROMANCE_THRESHOLDS,
+  WARMTH_THRESHOLDS,
+  relationshipBehaviorBand,
+} from "../../../shared/contracts/relationships.js";
 
 export const CONTINUITY_TEXT_BYTES = 2400;
 export const ROOM_CONTINUITY_TEXT_BYTES = 16000;
@@ -623,6 +629,7 @@ export function applyContinuityWrite(
   let romanticDay: ContinuityVersion["romanticDay"];
   let relationshipDay: ContinuityVersion["relationshipDay"];
   let relationshipMilestone: true | undefined;
+  let perceptionChanged = false;
   let relationshipAnswer: string | undefined;
   let relationshipAnswerScore: number | undefined;
   let ownerAnswer = false;
@@ -651,22 +658,23 @@ export function applyContinuityWrite(
       "relationship change needs a current villager-owned perspective about one person",
     );
     const experienced = sources.filter(isRelationshipEvent);
-    const { impact, romance } = write.relationship;
+    const { impact, romance, perception } = write.relationship;
     ownerAnswer = write.holders.length === 1;
     memoryRequire(
       experienced.some((source) => source.episodeId === context.episodeId) ||
         (!impact &&
           !romance &&
+          !perception &&
           ownerAnswer &&
           sources.some((source) => source.episodeId === context.episodeId && source.kind === "self")),
       "relationship change needs a current experienced event",
     );
-    memoryRequire(impact || romance || write.relationship.answer, "empty relationship update");
+    memoryRequire(impact || romance || perception || write.relationship.answer, "empty relationship update");
     if (write.relationship.answer !== undefined) {
       if (isRelationshipAnswer(write.relationship.answer)) relationshipAnswer = write.relationship.answer;
       else
         memoryRequire(
-          impact || romance,
+          impact || romance || perception,
           `relationship answer must be one sentence of at most ${RELATIONSHIP_ANSWER_WORD_LIMIT} words`,
         );
     }
@@ -712,6 +720,10 @@ export function applyContinuityWrite(
         relationshipScore = score - lost;
       }
       if (relationshipScore !== score && (turningPoint || impact === "turning-negative")) relationshipMilestone = true;
+      perceptionChanged =
+        !!relationshipMilestone ||
+        relationshipBehaviorBand(score, WARMTH_THRESHOLDS) !==
+          relationshipBehaviorBand(relationshipScore, WARMTH_THRESHOLDS);
     }
     if (romance) {
       memoryRequire(
@@ -739,11 +751,41 @@ export function applyContinuityWrite(
       if (!previous || date >= previous.date) {
         const score = latest?.romanticInterest ?? 0;
         const gained = previous?.date === date && previous.gained;
-        const delta = romance === "grows" ? (gained ? 0 : 1) : romance === "fades" ? -1 : -3;
-        romanticInterest = Math.min(20, Math.max(0, score + delta));
+        if (romance === "grows" || romance === "eases") {
+          const applies = romance === "grows" ? score >= 0 : score < 0;
+          romanticInterest = Math.min(ROMANCE_LIMIT, score + Number(applies && !gained));
+        } else if (romance === "fades" || romance === "drops") {
+          romanticInterest = score > 0 ? Math.max(0, score - (romance === "fades" ? 1 : 3)) : score;
+        } else {
+          romanticInterest = Math.max(-ROMANCE_LIMIT, score - (romance === "unwelcome" ? 1 : 3));
+        }
         romanticDay = { date, gained: gained || romanticInterest > score };
+        perceptionChanged ||=
+          (score === 0 && romanticInterest !== 0) ||
+          relationshipBehaviorBand(score, ROMANCE_THRESHOLDS) !==
+            relationshipBehaviorBand(romanticInterest, ROMANCE_THRESHOLDS);
       }
     }
+    if (perception) {
+      memoryRequire(
+        ownerAnswer && subject.id === "player" && write.text,
+        "Perception needs a private new impression of the player",
+      );
+      const text = write.text.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en");
+      const currentVersions = new Set(
+        collection.records.flatMap((root) => {
+          const head = root.heads[continuityHolderKey(owner)];
+          return head?.current ? [head.versionId] : [];
+        }),
+      );
+      perceptionChanged ||= !collection.versions.some(
+        (version) =>
+          currentVersions.has(version.id) &&
+          version.about[0]?.id === subject.id &&
+          version.text.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en") === text,
+      );
+    }
+    perceptionChanged &&= subject.id === "player";
     if (relationshipAnswer !== undefined) {
       memoryRequire(
         subject.id === "player" &&
@@ -786,7 +828,8 @@ export function applyContinuityWrite(
   if (owner && !original)
     memoryRequire(
       sources.some((source) => source.actorId === owner.id || source.kind === "native") ||
-        (write.holders.length === 1 && (relationshipScore !== undefined || romanticInterest !== undefined)),
+        (write.holders.length === 1 &&
+          (relationshipScore !== undefined || romanticInterest !== undefined || perceptionChanged)),
       MISSING_PRIVATE_STATE_EVIDENCE,
     );
   for (const { key, holder, head, version: prior } of before) {
@@ -810,6 +853,7 @@ export function applyContinuityWrite(
         ? { relationshipScore, relationshipDay, ...(relationshipMilestone ? { relationshipMilestone } : {}) }
         : {}),
       ...(romanticInterest !== undefined && owner && same(holder, owner) ? { romanticInterest, romanticDay } : {}),
+      ...(perceptionChanged && owner && same(holder, owner) ? { perceptionChanged: true as const } : {}),
       ...(holder.kind === "actor" &&
       (ownerAnswer ? holder.id === owner?.id : holder.id === "player") &&
       relationshipAnswer
@@ -1174,6 +1218,7 @@ export function protectContinuity(
       delete version.relationshipAnswerScore;
       delete version.relationshipAnswerScene;
       delete version.relationshipMilestone;
+      delete version.perceptionChanged;
       created.push(version);
       head.versionId = version.id;
       head.revision++;

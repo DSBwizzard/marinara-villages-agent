@@ -5,6 +5,7 @@ export type ContinuityClass =
   "experience" | "information" | "perspective" | "desire" | "motivation" | "commitment" | "open-matter";
 
 export type RelationshipImpact = `${"small" | "meaningful" | "turning"}-${"positive" | "negative"}`;
+export const ROMANCE_SHIFTS = ["grows", "fades", "drops", "unwelcome", "strong-aversion", "eases"] as const;
 
 /** A source is supplied by code after exact-source and perception binding. */
 export type ContinuityEvidence = {
@@ -45,6 +46,7 @@ export type ContinuityVersion = {
   relationshipAnswerScore?: number;
   relationshipAnswerScene?: string;
   relationshipMilestone?: true;
+  perceptionChanged?: true;
   about: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: "reason" | "attention" | "approach" | "connection" | "stance" | "expectation" | "concern" | "boundary";
@@ -126,7 +128,12 @@ export type ContinuityWrite = {
   class?: ContinuityClass;
   agenda?: ContinuityVersion["agenda"];
   current?: boolean;
-  relationship?: { impact?: RelationshipImpact; romance?: "grows" | "fades" | "drops"; answer?: string };
+  relationship?: {
+    impact?: RelationshipImpact;
+    romance?: (typeof ROMANCE_SHIFTS)[number];
+    perception?: true;
+    answer?: string;
+  };
   about?: { id: string; incarnation: string }[];
   parentId?: string;
   facet?: ContinuityVersion["facet"];

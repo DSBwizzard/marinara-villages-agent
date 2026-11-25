@@ -18,8 +18,9 @@ import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { zoneActivityFits } from "./venue-presence.js";
 import { projectAgendaReservations } from "./project-focus.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { WARMTH_THRESHOLDS } from "../../../shared/contracts/relationships.js";
 
-export const AGENDA_SHARED_WARMTH = 60;
+export const AGENDA_SHARED_WARMTH = WARMTH_THRESHOLDS[1];
 const dateAt = (world: VillageState, instant: Date) =>
   new ZonedDate(instant, world.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 const dayOffset = (now: ZonedDate, offset: number) => {

@@ -14,6 +14,7 @@ import {
   RELATIONSHIP_KEEP,
   residentReflectionSchema,
 } from "./narration-contract.js";
+import { isRelationshipAnswer } from "./continuity.js";
 import { memoryRequire } from "./memory-integrity.js";
 import { readNarrationNativeCommand } from "./narration-command-contract.js";
 import { narrationAccessPrompt } from "./narration-access.js";
@@ -29,6 +30,7 @@ import type {
 } from "../models/world.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { venueZones } from "./venue-zones.js";
+import type { perceptionPrompt } from "./continuity-library.js";
 
 import { PERSONAL_LETTER_INSTRUCTION } from "./personal-letter.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
@@ -135,6 +137,7 @@ export type ResidentPlanningContext = {
   housing: { characterId: string; destinations: { id: string; name: string }[] }[];
   plans: SocialPlan[];
   activity?: { purpose?: string; recentKeepsake?: true; moments: { id: string; text: string }[] };
+  perception?: ReturnType<typeof perceptionPrompt>;
   narration: ResidentNarrationCapture;
 };
 const id = z.string().min(1).max(160),
@@ -176,6 +179,14 @@ const proposal = z
   })
   .strict();
 export type ResidentPlanningProposal = z.infer<typeof proposal>;
+export const unchangedPerception = z.object({ owner: id, unchanged: z.literal(true) }).strict();
+const newPerception = z
+  .object({
+    owner: id,
+    answer: z.array(z.string().refine(isRelationshipAnswer)).length(1),
+    protection: z.unknown().optional(),
+  })
+  .strict();
 
 /** One common fictional source; native scheduling and housing remain explicit code-owned proposals. */
 export function buildResidentPlanningMessages(context: ResidentPlanningContext): CapabilityLanguageModelMessage[] {
@@ -210,7 +221,15 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
         const id = resident.characterId;
         return {
           ...resident,
-          warmth: relationships?.find((row) => row.for === id && row.about === "player")?.score ?? 0,
+          warmth:
+            context.perception?.find((row) => row.id === id)?.warmth ??
+            relationships?.find((row) => row.for === id && row.about === "player")?.score ??
+            0,
+          romance:
+            context.perception?.find((row) => row.id === id)?.romance ??
+            relationships?.find((row) => row.for === id && row.about === "player")?.romanticInterest ??
+            0,
+          previous: context.perception?.find((row) => row.id === id)?.previous,
           remembered: entries.filter(
             (row) => row.for === id && Array.isArray(row.about) && row.about.includes("player"),
           ),
@@ -231,9 +250,9 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
       {
         role: "system",
         content: [
-          "Catch-up has reached the present. Write only private relationship blurbs about the player. Return JSON {keep:[{owner:resident ID,answer:[three alternative strings]}]}. The game shows one line per listed resident.",
+          "Write only private Perception blurbs about the player. Return JSON {keep:[{owner:resident ID,answer:[one sentence]}]}. If the previous line still fits, return {owner:resident ID,unchanged:true} for that Villager.",
           RELATIONSHIP_ANSWER_STYLE,
-          "Use the card, the current relationship score and what each resident personally knows. Address the player directly. Treat private knowledge as belonging only to its named holder. Base every impression on existing history.",
+          "Consider both the final Warmth and signed Romance scores, the card, and what each Villager personally knows, including prior answers and boundaries. Zero is neutral. Address the player directly without reciting scores or unrelated private facts. Use only each Villager's own known history.",
           'When protectionRequired is true, include protection:{roots:[applicable supplied protected root IDs, or an empty array],disposition:"clear"} only after checking the lines against the resident’s memory protections.',
         ].join("\n\n"),
       },
@@ -340,6 +359,19 @@ export function readResidentPlanningProposal(
         value.keep.length <= 4,
       "relationship catch-up accepts only private blurbs",
     );
+    if (context.perception) {
+      const offered = new Map(context.perception.map((row) => [row.id, row]));
+      for (const raw of value.keep) {
+        const change = newPerception.or(unchangedPerception).parse(raw);
+        const resident = offered.get(change.owner);
+        memoryRequire(
+          resident && (!("unchanged" in change) || resident.previous),
+          "Perception result needs one offered Villager and an existing line to keep",
+        );
+        offered.delete(change.owner);
+      }
+      memoryRequire(!offered.size, "Perception result needs a response for each offered Villager");
+    }
     return value;
   }
   memoryRequire(
@@ -434,6 +466,23 @@ const contextSchema = z
       )
       .max(4),
     plans: z.array(socialPlanSchema).max(6),
+    perception: z
+      .array(
+        z
+          .object({
+            id,
+            incarnation: id,
+            basis: z.string().regex(/^[a-f0-9]{64}$/),
+            fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+            warmth: z.number().int().min(-100).max(100),
+            romance: z.number().int().min(-20).max(20),
+            previous: z.string().max(320).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(4)
+      .optional(),
     activity: z
       .object({
         purpose: z.string().min(1).max(240).optional(),
@@ -481,10 +530,21 @@ export function readResidentPlanningInput(raw: unknown): ResidentPlanningInput {
         (!value.catchup && !value.socialPlan && !context.housing.length && !context.plans.length)) &&
       !!capture.historical === (!!value.catchup && !relationship) &&
       (!relationship ||
-        (value.catchup?.until === capture.context.at &&
+        ((!value.catchup
+          ? !!context.perception && value.reviewBasis !== undefined
+          : value.catchup.until === capture.context.at) &&
           !value.socialPlan &&
           !context.housing.length &&
           !context.plans.length)) &&
+      (!context.perception ||
+        (relationship &&
+          context.perception.length === capture.relationshipAnswerIds?.length &&
+          new Set(context.perception.map(({ id }) => id)).size === context.perception.length &&
+          context.perception.every(
+            (row) =>
+              capture.relationshipAnswerIds?.includes(row.id) &&
+              capture.actors.some((actor) => actor.id === row.id && actor.incarnation === row.incarnation),
+          ))) &&
       (!value.catchup ||
         (value.catchup.world.seed === capture.context.seed && value.catchup.world.setupAt === capture.context.setupAt)),
     "resident planning changed historical world",

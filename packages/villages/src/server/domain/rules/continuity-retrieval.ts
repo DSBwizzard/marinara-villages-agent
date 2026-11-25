@@ -49,8 +49,8 @@ export function relationshipAttitudes(
     .sort(
       (a, b) =>
         Number(b.about === "player") - Number(a.about === "player") ||
-        Math.max(Math.abs(b.score ?? 0), (b.romanticInterest ?? 0) * 5) -
-          Math.max(Math.abs(a.score ?? 0), (a.romanticInterest ?? 0) * 5),
+        Math.max(Math.abs(b.score ?? 0), Math.abs(b.romanticInterest ?? 0) * 5) -
+          Math.max(Math.abs(a.score ?? 0), Math.abs(a.romanticInterest ?? 0) * 5),
     )
     .slice(0, 16);
 }

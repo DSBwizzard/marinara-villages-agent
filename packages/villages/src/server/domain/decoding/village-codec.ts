@@ -200,10 +200,18 @@ function coerceCardCharacter(value: unknown, applySpriteDefaults: boolean): Vill
     throw new Error("This saved resident needs a current writing-style assignment.");
   const relationshipScene = asRecord(raw.relationshipScene);
   const relationshipSceneEndedAt = asIsoString(relationshipScene.endedAt);
+  const perceptionDue = asRecord(raw.perceptionDue);
+  const perceptionAt = asIsoString(perceptionDue.at);
   const savedSprites = coerceSpriteManager(raw.spriteManager);
   const spriteManager = applySpriteDefaults ? withMariSpriteDefaults(characterId, savedSprites) : savedSprites;
   return {
     incarnation: raw.incarnation,
+    ...(perceptionAt && typeof perceptionDue.id === "string" && /^[a-f0-9]{64}$/.test(perceptionDue.id)
+      ? { perceptionDue: { id: perceptionDue.id, at: perceptionAt } }
+      : {}),
+    ...(typeof raw.perceptionAssessed === "string" && /^[a-f0-9]{64}$/.test(raw.perceptionAssessed)
+      ? { perceptionAssessed: raw.perceptionAssessed }
+      : {}),
     ...(relationshipSceneEndedAt && typeof relationshipScene.id === "string" && relationshipScene.id.length <= 180
       ? {
           relationshipScene: {
