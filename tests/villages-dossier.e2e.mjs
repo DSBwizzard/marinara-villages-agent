@@ -1245,7 +1245,7 @@ await withBrowser(browser, async () => {
     await chooseSection("Relationships");
     const relationshipCards = profile.locator(".villages-relationship-scores > article");
     await expect(relationshipCards).toHaveCount(2);
-    await expect(relationshipCards.nth(0).getByRole("heading", { name: "Rowan", exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("Rowan", { exact: true })).toHaveCount(0);
     await expect(relationshipCards.nth(0).getByText("I enjoy when you visit.", { exact: true })).toBeVisible();
     await expect(relationshipCards.nth(0).getByText("Warmth", { exact: true })).toBeVisible();
     await expect(relationshipCards.nth(0).getByText("Romantic interest", { exact: true })).toBeVisible();
@@ -1253,7 +1253,30 @@ await withBrowser(browser, async () => {
     await expect(relationshipCards.nth(1).getByRole("heading", { name: "Mina", exact: true })).toBeVisible();
     await expect(relationshipCards.nth(1).getByText("Warmth", { exact: true })).toHaveCount(0);
     await expect(relationshipCards.nth(1).getByText("Romantic interest", { exact: true })).toHaveCount(0);
-    await expect(profile.getByRole("meter", { name: "Warmth toward Rowan", exact: true })).toHaveAttribute(
+    assert(
+      await relationshipCards
+        .nth(0)
+        .locator(".villages-relationship-meters")
+        .evaluate((node) => {
+          const panel = node.getBoundingClientRect();
+          const [warmthLabel, warmth, romanceLabel, romance] = Array.from(node.children, (child) =>
+            child.getBoundingClientRect(),
+          );
+          return [
+            [warmthLabel, warmth],
+            [romanceLabel, romance],
+          ].every(
+            ([label, meter]) =>
+              panel.left < label.left &&
+              label.right <= meter.left &&
+              meter.right < panel.right &&
+              label.top < meter.bottom &&
+              meter.top < label.bottom,
+          );
+        }),
+      "Both player labels and meters fit side by side in the inset panel",
+    );
+    await expect(profile.getByRole("meter", { name: "Warmth toward you", exact: true })).toHaveAttribute(
       "aria-valuenow",
       "3",
     );
@@ -1261,7 +1284,7 @@ await withBrowser(browser, async () => {
       "aria-valuenow",
       "-10",
     );
-    const romance = profile.getByRole("meter", { name: "Romantic interest toward Rowan", exact: true });
+    const romance = profile.getByRole("meter", { name: "Romantic interest toward you", exact: true });
     await expect(romance).toHaveAttribute("aria-valuemin", "-20");
     await expect(romance).toHaveAttribute("aria-valuemax", "20");
     await expect(romance).toHaveAttribute("aria-valuenow", "7");
@@ -1271,12 +1294,12 @@ await withBrowser(browser, async () => {
     await expect(negativeRomance).toHaveAttribute("aria-valuenow", "-16");
     await expect(negativeRomance).toHaveAttribute("data-negative", "true");
     await expect(negativeRomance.locator("[data-fill=full]")).toHaveCount(8);
-    await expect(negativeRomance.locator(".villages-romantic-value")).toHaveCSS("white-space", "nowrap");
     const neutralRomance = relationshipCards
       .nth(1)
       .getByRole("meter", { name: "Romantic interest toward Mina", exact: true });
     await expect(neutralRomance).toHaveAttribute("aria-valuetext", "Neutral");
     await expect(neutralRomance.locator("[data-fill=empty]")).toHaveCount(10);
+    for (const hearts of [romance, negativeRomance, neutralRomance]) await expect(hearts).toHaveText(/^[♥\s]+$/u);
     assert(
       await negativeRomance.evaluate(
         (node) =>

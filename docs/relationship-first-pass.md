@@ -1,6 +1,6 @@
 # Relationship first pass
 
-Warmth and Romance are separate, directional scores. A Villager has their own scores toward each person. The player decides how their own Persona feels. Zero is neutral on either score. In People, the player’s Persona has a named card with labeled meters and the Perception line. Other Villagers appear as named rows with the same bar and hearts in a separate card. Positive interest fills hearts, negative interest fills broken hearts, and neutral shows empty hearts. Each Villager's card, history, and circumstances determine how they express a preference. The bands describe when an attitude can change a decision in play.
+Warmth and Romance are separate, directional scores. A Villager has their own scores toward each person. The player decides how their own Persona feels. Zero is neutral on either score. In People, the player’s card groups the labeled Warmth bar and hearts in an inset panel, with the Perception line underneath. Other Villagers appear as named rows with compact meters in a separate card. Positive interest fills hearts, negative interest fills broken hearts, and neutral shows empty hearts. Each Villager's card, history, and circumstances determine how they express a preference. The bands describe when an attitude can change a decision in play.
 
 ## Warmth
 
