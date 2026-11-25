@@ -1,5 +1,6 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { readModelJsonObject } from "./json-reply.js";
+import { readSceneJsonIssue, type SceneJsonIssue } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
 /** Bounded metadata only; response text and private evidence remain in privileged saved records. */
 export type ResponseDiagnostics = {
@@ -9,6 +10,7 @@ export type ResponseDiagnostics = {
   requestedOutputTokens: number;
   responseLength: number;
   parseStatus: "complete" | "salvaged" | "invalid";
+  jsonIssue?: SceneJsonIssue;
 };
 
 export function responseDiagnostics(
@@ -34,6 +36,7 @@ export function responseDiagnostics(
 export function coerceResponseDiagnostics(value: unknown): ResponseDiagnostics | undefined {
   const raw = asRecord(value);
   if (!["complete", "salvaged", "invalid"].includes(String(raw.parseStatus))) return undefined;
+  const jsonIssue = raw.parseStatus === "invalid" ? readSceneJsonIssue(raw.jsonIssue) : undefined;
   return {
     model: asTrimmedString(raw.model).slice(0, 160),
     connectionId: asTrimmedString(raw.connectionId).slice(0, 160),
@@ -41,5 +44,6 @@ export function coerceResponseDiagnostics(value: unknown): ResponseDiagnostics |
     requestedOutputTokens: Math.max(0, Math.floor(Number(raw.requestedOutputTokens) || 0)),
     responseLength: Math.max(0, Math.floor(Number(raw.responseLength) || 0)),
     parseStatus: raw.parseStatus as ResponseDiagnostics["parseStatus"],
+    ...(jsonIssue ? { jsonIssue } : {}),
   };
 }

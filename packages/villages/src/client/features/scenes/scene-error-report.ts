@@ -3,6 +3,7 @@ import { messageFrom, VillageApiError, villageRequestFailure } from "../../share
 import { sceneErrorCategory, sceneErrorCause } from "./scene-error-message.js";
 import {
   sceneFailureDiagnostic,
+  sceneJsonIssues,
   type SceneFailureDiagnostic,
   type SceneFailureMetadata,
 } from "../../../shared/contracts/scene-failure-diagnostic.js";
@@ -243,6 +244,8 @@ export function anonymousSceneErrorReport(items: SceneErrorReportItem[], context
       if (phase && failureStages.has(phase)) lines.push(`Phase: ${phase.replaceAll("-", " ")}`);
       else if (diagnostic && item.held) lines.push("Phase: reply validation");
       if (diagnostic) {
+        if (diagnostic.jsonIssue)
+          lines.push(`JSON parser: ${sceneJsonIssues[diagnostic.jsonIssue]} (${diagnostic.jsonIssue})`);
         if (diagnostic.rejected && !diagnostic.checks.length) lines.push("Validator details: unavailable");
         for (const { code, path, expected } of diagnostic.checks)
           lines.push(

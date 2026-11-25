@@ -90,10 +90,27 @@ const finishReasons = new Set([
 ]);
 const parseStatuses = new Set(["complete", "salvaged", "invalid"]);
 
+export const sceneJsonIssues = {
+  missing_object: "no JSON object found",
+  incomplete_json: "incomplete JSON object or string",
+  unexpected_envelope: "unexpected content around the JSON object",
+  duplicate_key: "duplicate object key",
+  invalid_syntax: "invalid JSON syntax",
+  parser_limits: "response exceeded parser limits",
+  unsupported_finish: "completion ended in a mode the parser cannot use",
+} as const;
+
+export type SceneJsonIssue = keyof typeof sceneJsonIssues;
+
+export function readSceneJsonIssue(value: unknown): SceneJsonIssue | undefined {
+  return typeof value === "string" && Object.hasOwn(sceneJsonIssues, value) ? (value as SceneJsonIssue) : undefined;
+}
+
 export type SceneFailureDiagnostic = {
   checks: { code: string; path: (string | number)[]; expected?: string }[];
   rejected: number;
   parseStatus?: string;
+  jsonIssue?: SceneJsonIssue;
   finishReason?: string;
   responseLength?: number;
   requestedOutputTokens?: number;
@@ -138,6 +155,7 @@ export function sceneFailureDiagnostic(value: unknown): SceneFailureDiagnostic |
     rejected,
     checks,
     parseStatus: row.parseStatus && parseStatuses.has(row.parseStatus) ? row.parseStatus : undefined,
+    ...(row.parseStatus === "invalid" ? { jsonIssue: readSceneJsonIssue(row.jsonIssue) } : {}),
     finishReason: row.finishReason && finishReasons.has(row.finishReason) ? row.finishReason : undefined,
     responseLength: count(row.responseLength),
     requestedOutputTokens: count(row.requestedOutputTokens),

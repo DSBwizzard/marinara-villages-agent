@@ -46,6 +46,17 @@ for (const text of [
   assert.equal(read(text).value, null, text.slice(0, 100));
 for (const reason of ["length", "max_tokens", "content_filter", "tool_calls", "unknown"])
   assert.equal(read(malformed, reason).value, null, reason);
+for (const [text, issue] of [
+  ["No reply object.", "missing_object"],
+  ['{"text":"Unclosed private text}', "incomplete_json"],
+  ['[{"text":"Private text"}]', "unexpected_envelope"],
+  ['{"text":"Private text","\\u0074ext":"Private replacement"}', "duplicate_key"],
+  ['{"text":undefined}', "invalid_syntax"],
+  ['{"text":"' + "x".repeat(MODEL_JSON_MAX_CHARACTERS) + '"}', "parser_limits"],
+]) {
+  const result = read(text);
+  assert.deepEqual(result, { value: null, repaired: false, edits: 0, jsonIssue: issue });
+}
 for (const suffix of [' {"other":', " [", ', "action": null']) {
   assert.equal(completeSceneObject('{"segments":[],"heardPlayerBy":[]}' + suffix, "stop"), null);
   assert.equal(completeSceneObject('{"segments":[],"heardPlayerBy":[]}' + suffix, "stop"), null);

@@ -59,6 +59,11 @@ await withBrowser({ close: server.stop }, async () => {
       if (!rejectFirstReply) return complete(...args);
       const rejected = rejectFirstReply;
       rejectFirstReply = undefined;
+      if (rejected === "json")
+        return {
+          finishReason: "stop",
+          content: '{"segments":[{"kind":"narration","text":"Private parser text","text":"Private replacement"}]}',
+        };
       if (rejected === "continuity")
         return {
           finishReason: "stop",
@@ -275,6 +280,31 @@ await withBrowser({ close: server.stop }, async () => {
     assert.doesNotMatch(droppedReport, /reply held|writing-completion/);
     assert(!droppedReport.includes(turns.at(-1).input.submissionId));
     assert.doesNotMatch(droppedReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);
+    await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
+    const draft = "Private draft for JSON failure.";
+    await composer.fill(draft);
+    rejectFirstReply = "json";
+    const nextTurn = turns.length + 1;
+    await send.click();
+    await expect.poll(() => turns.length).toBe(nextTurn);
+    const malformed = turns.at(-1);
+    assert.equal(malformed.response.statusCode, 502);
+    assert.equal(malformed.response.json().sceneFailure.diagnostic.jsonIssue, "duplicate_key");
+    assert.equal(server.scene().operation.failure.responseDiagnostics.jsonIssue, "duplicate_key");
+    assert.doesNotMatch(JSON.stringify(server.scene().operation), /Private parser text|Private replacement/);
+    await expect(composer).toHaveValue(draft);
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(composer).toHaveValue(draft);
+    await expect(chip).toHaveAccessibleName("1 Scene error");
+    await chip.click();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
+    await expect(page.getByText("Anonymous report copied.")).toBeVisible();
+    const parserReport = await page.evaluate(() => window.sceneReport);
+    assert.match(parserReport, /JSON parser: duplicate object key \(duplicate_key\)/);
+    assert.doesNotMatch(parserReport, /Private parser text|Private replacement|Private draft|Mara|The Mill/i);
+    assert.equal(turns.length, nextTurn, "reload never submits the failed reply");
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");

@@ -705,6 +705,12 @@ export function createSceneWriting({
           stage: "scene-response",
           message: "The Scene response was not complete JSON.",
         };
+        if (failure.cause === "invalid_json")
+          diagnostics.jsonIssue =
+            parsed.jsonIssue ??
+            (["stop", "end_turn"].includes(completion.finishReason ?? "")
+              ? "unexpected_envelope"
+              : "unsupported_finish");
         if (!freshReply)
           await rejectVenueCompletion(
             { ...request.model, reason: "invalid-gm-response" },
