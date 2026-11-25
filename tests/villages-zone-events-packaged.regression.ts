@@ -593,14 +593,16 @@ try {
     segments: [{ id: "news", kind: "dialogue", speakerId: "aqua", text: validKeep.text, requires: ["discard"] }],
     keep: [rejectedKeep],
   });
-  await request("/rooms/turn", held, 500);
-  assert.equal(turnOf(held.submissionId)?.acceptance.status, "held");
-  assert.equal(turnOf(held.submissionId)?.narration?.readset.source.input, held.message);
+  const rejected = await request("/rooms/turn", held, 502);
+  assert.equal(rejected.error, "The reply could not be saved. Choose Retry to try again.");
+  assert.equal(turnOf(held.submissionId)?.acceptance.status, "abandoned");
+  assert.equal(turnOf(held.submissionId)?.message, held.message);
+  assert.equal(turnOf(held.submissionId)?.narration, undefined);
   assert.equal(episodeOf(held.submissionId), undefined);
   await restart();
   await request(roomUrl + "/changes/replay", {});
-  assert.equal(turnOf(held.submissionId)?.acceptance.status, "held");
-  assert.equal(completions, beforeHeld + 1, "A held reply survives restart and replay without another purchase");
+  assert.equal(turnOf(held.submissionId)?.acceptance.status, "abandoned");
+  assert.equal(completions, beforeHeld + 1, "Restart and refresh do not buy another reply");
   const replacement = { ...submit("replacement"), replaceOfOperationId: held.submissionId };
   await request("/rooms/turn", { ...replacement, retryOfAttemptId: "wrong-attempt" }, 409);
   assert.equal(completions, beforeHeld + 1);
@@ -772,13 +774,26 @@ try {
       await request("/rooms/turn", payload, 500);
       assert.equal(fault, undefined, "The intended storage boundary was exercised");
       assert.equal(completions, before + 1);
-      assert.equal(!!episodeOf(id), owner === "world" && time === "after");
+      const committed = owner === "world" && time === "after";
+      assert.equal(!!episodeOf(id), committed);
       await restart();
-      await request("/rooms/turn", { ...payload, retryOfAttemptId: savedScene().operation?.attemptId });
-      assert.equal(completions, before + 1, "Storage recovery reuses the purchased response");
+      assert.equal(completions, before + 1, "Restart does not buy another reply");
+      const saved = savedScene();
+      const acceptedId = committed ? id : id + "-retry";
+      if (!committed) provide({ segments: [{ kind: "narration", text }] });
+      await request("/rooms/turn", {
+        ...payload,
+        expectedSceneRevision: saved.sceneRevision,
+        retryOfAttemptId: saved.operation?.attemptId,
+        ...(committed ? {} : { submissionId: acceptedId, replaceOfOperationId: id }),
+      });
+      assert.equal(completions, before + (committed ? 1 : 2), "Only a lost reply needs a new completion");
       assert.equal(savedScene().lines.filter((line) => line.content === text).length, 1);
-      assert.equal(savedScene().submissions.filter((entry) => entry.id === id).length, 1);
-      assert.equal(storedVillage(records).episodes.records.filter((entry) => entry.submissionId === id).length, 1);
+      assert.equal(savedScene().submissions.filter((entry) => entry.id === acceptedId).length, 1);
+      assert.equal(
+        storedVillage(records).episodes.records.filter((entry) => entry.submissionId === acceptedId).length,
+        1,
+      );
     }
   }
 } finally {

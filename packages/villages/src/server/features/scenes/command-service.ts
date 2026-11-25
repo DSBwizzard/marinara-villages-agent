@@ -264,10 +264,7 @@ export function createSceneCommands({
     const published = await readSession(scene.id),
       turn = published.submissions.find((turn) => turn.id === input.submissionId)!;
     if (turn.acceptance.status !== "applied") {
-      if (fresh)
-        throw badGateway(
-          ["The reply could not be saved.", turn.progressError, "Choose Retry to try again."].filter(Boolean).join(" "),
-        );
+      if (fresh) throw badGateway("The reply could not be saved. Choose Retry to try again.");
       throw new WorkFailureError(metadataFailure("The saved narration needs recovery."));
     }
     return published;

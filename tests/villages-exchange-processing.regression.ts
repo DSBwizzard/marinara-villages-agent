@@ -110,16 +110,40 @@ for (const fault of ["before-world", "after-world", "before-scene", "after-scene
           payload.message,
           "the admitted original survives interrupted publication",
         );
-      const retry = await host.app.inject({
+      const lostBeforeCommit = fault === "before-world";
+      assert.equal(noteCount, lostBeforeCommit ? 0 : 1, "Only a world commit makes the reply recoverable");
+      const duplicate = await host.app.inject({
         method: "POST",
         url: "/api/villages/rooms/turn",
         payload: { ...payload, retryOfAttemptId: host.scene().operation?.attemptId },
       });
-      assert.equal(retry.statusCode, 200, retry.body);
+      assert.equal(duplicate.statusCode, lostBeforeCommit ? 502 : 200, duplicate.body);
+      assert.equal(calls, 1, "A duplicate does not purchase a reply");
+      const committedInput = lostBeforeCommit
+        ? { ...payload, submissionId: "b2222222-2222-4222-8222-222222222222" }
+        : payload;
+      if (lostBeforeCommit) {
+        const saved = host.scene();
+        assert.equal(saved.submissions[0].acceptance.status, "abandoned");
+        assert.equal(saved.submissions[0].narration, undefined);
+        const retry = await host.app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/turn",
+          payload: {
+            ...committedInput,
+            replaceOfOperationId: payload.submissionId,
+            retryOfAttemptId: saved.operation?.attemptId,
+            expectedSceneRevision: saved.sceneRevision,
+          },
+        });
+        assert.equal(retry.statusCode, 200, retry.body);
+      }
       const scene = host.scene(),
         world = fixtureVillageState(host.records.get("villages-village").data, host.records);
-      assert.equal(scene.submissions.length, 1);
-      assert.equal(scene.submissions[0].acceptance.status, "applied");
+      assert.deepEqual(
+        scene.submissions.filter((entry) => entry.acceptance.status === "applied").map((entry) => entry.id),
+        [committedInput.submissionId],
+      );
       assert.equal(world.episodes.records.filter((episode) => episode.sceneId === "browser").length, 1);
       assert.equal(
         world.venues[0].access!.permissions.filter((permission) => permission.visitorId === "player").length,
@@ -132,9 +156,13 @@ for (const fault of ["before-world", "after-world", "before-scene", "after-scene
           ).length,
           1,
         );
-      const replay = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      const replay = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: committedInput,
+      });
       assert.equal(replay.statusCode, 200, replay.body);
-      assert.equal(calls, 1, "recovery never repurchases a saved valid reply");
+      assert.equal(calls, lostBeforeCommit ? 2 : 1, "Only Retry after a lost reply purchases again");
     } finally {
       await host.stop();
     }
