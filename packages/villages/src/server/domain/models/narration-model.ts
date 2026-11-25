@@ -28,7 +28,8 @@ export type NarrationReadset = {
   sceneResidentMovement?: true;
   sceneFollowing?: true | 2;
   automaticTrespass?: true;
-  sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string }[];
+  sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string; afterHours?: true }[];
+  strictSceneReply?: true;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;

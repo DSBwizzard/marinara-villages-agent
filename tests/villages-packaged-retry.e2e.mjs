@@ -47,7 +47,7 @@ const moved = await server.app.inject({
   },
 });
 assert.equal(moved.statusCode, 200, moved.body);
-assert.ok(moved.json().session.zoneArrivalId, "Retry keeps the replacement's first paragraph after an actual Move");
+assert.ok(moved.json().session.zoneArrivalId, "The saved Scene retains an actual Move before an ordinary reply");
 assert.equal(server.calls(), 0, "Arrival does not purchase narration");
 await withBrowser({ close: server.stop }, async () => {
   const browser = await chromium.launch({ headless: true });
@@ -73,7 +73,11 @@ await withBrowser({ close: server.stop }, async () => {
         ...(payload ? { payload } : {}),
       });
       if (url.pathname.endsWith("/rooms/turn")) turns.push({ input: request.postDataJSON(), response });
-      const expectedStatus = failedRetryExpected && url.pathname.endsWith("/rooms/retry") ? 500 : 200;
+      const expectedStatus = url.pathname.endsWith("/rooms/browser/recovery")
+        ? 404
+        : failedRetryExpected && url.pathname.endsWith("/rooms/turn")
+          ? 500
+          : 200;
       assert.equal(response.statusCode, expectedStatus, `${request.method()} ${url.pathname}: ${response.body}`);
       await fulfill(route, { status: response.statusCode, headers: response.headers, body: response.rawPayload });
     });
@@ -85,17 +89,6 @@ await withBrowser({ close: server.stop }, async () => {
     await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(desktopRetry).toBeVisible();
     await expect(desktopRetry).toBeDisabled();
-    const checkRetryPlacement = async (page, button) => {
-      if (!(await button.isVisible())) await page.getByRole("button", { name: "Venue actions" }).click();
-      await expect(page.getByRole("menu", { name: "Venue actions" }).getByRole("menuitem")).toHaveCount(8);
-      await expect(
-        page.locator(".marinara-capability-villages-chat-vn").getByRole("button", { name: "Retry Turn" }),
-      ).toHaveCount(0);
-      assert.equal((await button.boundingBox()).width, 44);
-      await expect(button).toHaveText("");
-      await expect(button.locator("svg path")).toHaveCount((await button.isDisabled()) ? 2 : 1);
-    };
-    await checkRetryPlacement(page, desktopRetry);
     await expect(composer).toBeVisible();
     await composer.fill("Hello from browser");
     await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -128,123 +121,61 @@ await withBrowser({ close: server.stop }, async () => {
       .toContain("Hello there.");
     assert.equal(server.calls(), 1, "reload restores saved output without dispatch");
 
-    let retries = 0;
-    const firstRetry = Promise.withResolvers();
-    const firstReply =
-      "Good to see you by the window. I just set out a fresh pot of tea, and there is an extra cup on the bench.";
+    let attempts = 0;
     server.model.chatComplete = async () => {
-      const attempt = ++retries;
-      if (attempt === 1) await firstRetry.promise;
-      if (attempt === 3) throw Error("fixture provider disconnected");
+      attempts++;
+      if (attempts === 1) throw Error("Fixture provider disconnected");
       return {
         content: JSON.stringify({
-          segments:
-            attempt === 1
-              ? [{ kind: "dialogue", speakerId: "mara", text: firstReply, delivery: "normal", textNote: "" }]
-              : attempt === 2
-                ? [
-                    { kind: "narration", text: "Rain patters on the mill roof." },
-                    { kind: "dialogue", speakerId: "mara", text: "Let's wait for the shower to pass." },
-                  ]
-                : [
-                    { kind: "narration", text: "The rain eases over the mill." },
-                    ...Array.from({ length: 23 }, (_, index) => ({
-                      kind: "narration",
-                      text: `Passage ${index + 1}. ${"霧".repeat(1900)}`,
-                    })),
-                  ],
+          segments: [{ kind: "dialogue", speakerId: "mara", text: "Let's wait for the shower to pass." }],
         }),
         finishReason: "stop",
       };
     };
-    await composer.fill("Keep this unsent draft");
-    const current = page.getByRole("region", { name: "Current paragraph" });
-    await checkRetryPlacement(page, desktopRetry);
-    await expect(desktopRetry).toBeEnabled();
-    try {
-      await desktopRetry.click();
-      await expect(current).toHaveText("Retrying reply…");
-      await checkRetryPlacement(page, desktopRetry);
-      await expect(desktopRetry).toBeDisabled();
-      await expect(page.getByRole("menuitem", { name: "Retry Turn", exact: true })).toHaveCount(1);
-      await expect(desktopRetry).toHaveText("");
-      await expect(page.getByText("Hello there.", { exact: true })).toHaveCount(0);
-    } finally {
-      firstRetry.resolve();
-    }
-
-    await expect(current).toContainText(firstReply);
-    await expect(composer).toHaveValue("Keep this unsent draft");
-    assert.equal(retries, 1);
-
     const phone = await context.newPage();
     await phone.setViewportSize({ width: 390, height: 844 });
     await phone.emulateMedia({ reducedMotion: "reduce" });
     await phone.goto("http://villages.test/");
     await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
-    const retryReply = phone.getByRole("menuitem", { name: "Retry Turn", exact: true });
-    const phoneCurrent = phone.getByRole("region", { name: "Current paragraph" });
-    const phoneNext = phone.getByRole("button", { name: "Next paragraph", exact: true });
-    await checkRetryPlacement(phone, retryReply);
-    await expect
-      .poll(async () => {
-        if (await retryReply.isEnabled()) return true;
-        if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
-          await phoneNext.click();
-        await checkRetryPlacement(phone, retryReply);
-        return retryReply.isEnabled();
-      })
-      .toBe(true);
-    await expect(retryReply).toBeInViewport();
-    await checkRetryPlacement(phone, retryReply);
-    assert.equal((await retryReply.boundingBox()).height, 44);
-    await retryReply.click();
-    await expect(phoneCurrent).toHaveText("Rain patters on the mill roof.");
-    await checkRetryPlacement(phone, retryReply);
-    await expect(retryReply).toBeDisabled();
-    await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
-    await phoneNext.click();
-    await checkRetryPlacement(phone, retryReply);
-    await expect(retryReply).toBeEnabled();
-    await expect(phoneCurrent).toHaveAttribute("aria-busy", "false");
-    await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
-    assert.equal(retries, 2);
-
     const phoneComposer = phone.getByRole("textbox", { name: "Message at The Mill" });
-    await phoneComposer.fill("Keep talking after a failed retry");
+    await expect(phoneComposer).toBeVisible();
+    await phoneComposer.fill("Should we wait for the rain?");
     failedRetryExpected = true;
-    await checkRetryPlacement(phone, retryReply);
-    await retryReply.click();
-    await checkRetryPlacement(phone, retryReply);
-    await expect(retryReply).toBeEnabled();
-    failedRetryExpected = false;
-    await expect(phoneCurrent).toContainText("Let's wait for the shower to pass.");
-    await expect(phone.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-    await expect(phone.getByRole("menuitem", { name: "Retry Turn", exact: true })).toHaveCount(1);
-    await expect(retryReply).toHaveText("");
-    assert.equal(retries, 3);
+    await phone.getByRole("button", { name: "Send", exact: true }).click();
+    const sceneError = phone.getByRole("button", { name: /Scene errors?/ });
+    await sceneError.click();
+    const retry = phone.getByRole("button", { name: "Retry", exact: true });
+    await expect(retry).toBeEnabled();
+    await expect(phoneComposer).toHaveValue("Should we wait for the rain?");
+    assert.equal(attempts, 1);
+    const failed = turns.at(-1).input;
+    assert(!server.scene().lines.some((line) => line.inputOf === failed.submissionId));
+    const failedScene = server.records.get(saved.id).data;
+    assert.deepEqual(failedScene.operation.checkpoints, {});
+    assert.deepEqual(failedScene.operation.attempts, {});
+    assert.equal(failedScene.operation.snapshot, null);
+    const receipts = () => [...server.records.keys()].filter((key) => key.startsWith("villages-generation-response-"));
+    assert.deepEqual(receipts(), []);
     await phone.reload();
     await phone.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await checkRetryPlacement(phone, retryReply);
-    await expect
-      .poll(async () => {
-        if (await retryReply.isEnabled()) return true;
-        if ((await phoneNext.isVisible()) && (await phoneNext.count()) > 0 && (await phoneNext.isEnabled()))
-          await phoneNext.click();
-        await checkRetryPlacement(phone, retryReply);
-        return retryReply.isEnabled();
-      })
-      .toBe(true);
-    await retryReply.click();
-    await expect(phoneCurrent).toContainText("The rain eases over the mill.");
-    assert.equal(retries, 4);
-    const active = await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
-    const { session } = active.json();
-    assert.ok(session.retryStart, "the retried reply has a public reading anchor");
-    assert.ok(
-      session.lines.length === 24 && session.lines[0].content === "The rain eases over the mill.",
-      "the live reply includes the entire replacement, beyond the old playback window",
+    await sceneError.click();
+    await expect(retry).toBeEnabled();
+    assert.equal(attempts, 1, "reload does not retry a paid reply");
+    failedRetryExpected = false;
+    await retry.click();
+    await expect(phone.getByRole("region", { name: "Current paragraph" })).toContainText(
+      "Let's wait for the shower to pass.",
     );
+    await expect(retry).toHaveCount(0);
+    assert.equal(attempts, 2);
+    const retried = turns.at(-1).input;
+    assert.notEqual(retried.submissionId, failed.submissionId);
+    assert.equal(retried.replaceOfOperationId, failed.submissionId);
+    assert.equal(retried.message, failed.message);
+    assert.equal(server.scene().lines.filter((line) => line.content === failed.message).length, 1);
+    assert.deepEqual(receipts(), []);
+    const active = await server.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(active.json().session.retryReply, undefined);
   });
 });
-console.log("Packaged browser send, persistence, replay, reload and desktop/phone Retry passed.");
+console.log("Packaged browser send, duplicate acknowledgment, reload and failed-reply Retry passed.");

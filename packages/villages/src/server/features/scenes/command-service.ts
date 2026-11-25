@@ -21,7 +21,7 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
-import { badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
+import { badGateway, badRequest, conflict, notFound, VillagesRequestError } from "../../domain/rules/errors.js";
 import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { completeOpeningGathering, matchesOpeningGathering } from "../../domain/rules/opening-project.js";
 import { captureSceneAttendance, sameSceneRoutine, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
@@ -209,13 +209,16 @@ export function createSceneCommands({
     trace?: GreetingTrace,
   ) {
     const prior = scene.submissions.find((turn) => turn.id === input.submissionId);
+    const fresh = scene.operation?.freshReply === true;
+    let transient: Awaited<ReturnType<typeof generate>> | undefined;
     if (prior) {
       if (prior.acceptance.status === "abandoned")
         throw conflict("That saved request was abandoned. Send a new message.");
       if (prior.requestFingerprint !== requestFingerprint(input))
         throw conflict("This submission ID belongs to different input.");
     } else {
-      const generated = await generate(scene, input.message, mode, signal, trace);
+      const generated = await generate(scene, input.message, mode, signal, trace, undefined, fresh);
+      if (fresh) transient = generated;
       assertVenueOwnership();
       signal?.throwIfAborted();
       await changeSession(scene.id, (saved) => {
@@ -228,7 +231,7 @@ export function createSceneCommands({
           return;
         }
         if (saved.sceneRevision !== generated.readset.sceneRevision)
-          throw conflict("This Scene changed; the purchased response is retained.");
+          throw conflict("The Scene changed before the reply could be saved.");
         saved.submissions.push({
           id: input.submissionId,
           message: input.message,
@@ -237,21 +240,36 @@ export function createSceneCommands({
           requestFingerprint: requestFingerprint(input),
           at: generated.readset.capturedAt,
           acceptance: { status: "pending", rejected: [] },
-          narration: { raw: generated.raw, readset: generated.readset, responseDigest: generated.responseDigest },
+          ...(fresh
+            ? {
+                replyCommit: {
+                  episodeId: generated.readset.source.episodeId,
+                  digest: memoryHash([generated.responseDigest, generated.raw, generated.readset]),
+                  setupAt: generated.readset.setupAt,
+                },
+              }
+            : {
+                narration: { raw: generated.raw, readset: generated.readset, responseDigest: generated.responseDigest },
+              }),
           lore: generated.lore,
           responseDiagnostics: generated.responseDiagnostics,
-          requestMetrics: venueRequestMetrics(),
+          requestMetrics: fresh ? (generated.requestMetrics ?? null) : venueRequestMetrics(),
           timing: saved.operation?.timing,
           zoneIdAtTurn: generated.readset.source.scene.zoneId,
           activeIdsAtTurn: [...generated.readset.source.scene.activeIds],
         });
       });
     }
-    await processSavedExchange(scene.id, input.submissionId);
+    await processSavedExchange(scene.id, input.submissionId, false, transient);
     const published = await readSession(scene.id),
       turn = published.submissions.find((turn) => turn.id === input.submissionId)!;
-    if (turn.acceptance.status !== "applied")
+    if (turn.acceptance.status !== "applied") {
+      if (fresh)
+        throw badGateway(
+          ["The reply could not be saved.", turn.progressError, "Choose Retry to try again."].filter(Boolean).join(" "),
+        );
       throw new WorkFailureError(metadataFailure("The saved narration needs recovery."));
+    }
     return published;
   }
   function serializedNavigation<T>(operation: () => Promise<T>): Promise<T> {
@@ -1413,7 +1431,11 @@ export function createSceneCommands({
       input.expectedSceneRevision,
       input.retryOfAttemptId,
       () => sendVenueTurnOnce(input),
-      { replay: !!prior, replaceOfOperationId: prior ? undefined : input.replaceOfOperationId },
+      {
+        replay: !!prior,
+        replaceOfOperationId: prior ? undefined : input.replaceOfOperationId,
+        ...(!prior && !input.trespassReaction && input.mode !== "leave" ? { freshReply: true as const } : {}),
+      },
     );
   }
   /** Generate a final beat once, then use the ordinary visit filing path. */

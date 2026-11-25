@@ -75,10 +75,7 @@ export function zoneEventScene(
   );
   // Delivery is never capped. Only the cast offered a reaction/initiative beat is bounded.
   const neighbors = contactNeighbors(venue, scene.zoneId ?? "exterior", scene);
-  const near = occupants.filter(
-    (person) =>
-      !scene.activeIds.includes(person.characterId) && neighbors.includes(contactPosition(scene, person.characterId)),
-  );
+  const near = occupants.filter((person) => neighbors.includes(contactPosition(scene, person.characterId)));
   const move = scene.navigationReceipts?.at(-1);
   const previous = move && scene.submissions.findLast((turn) => turn.acceptance.status === "applied");
   const previousSpeakers = new Set<string>();
@@ -116,9 +113,44 @@ export function zoneEventScene(
     : [];
   const calling = /\b(?:shout|yell|call out)\b/u.test(input);
   const named = addressedSceneResidents(intent.message ?? "", near, occupants, intent.targetId);
+  const established = near.filter((person) =>
+    scene.doorwayContacts?.some(
+      (contact) =>
+        contact.characterId === person.characterId &&
+        contact.playerZoneId === scene.zoneId &&
+        contact.characterZoneId === contactPosition(scene, person.characterId),
+    ),
+  );
+  // Knocking can get an answer from an adjacent public entrance. It never grants sight or entry.
+  const action = (intent.message ?? "").replace(/"[^"]*"|“[^”]*”/gu, "");
+  const knocked =
+    (scene.zoneId === "exterior" || scene.area === "outside" || intent.zoneId) &&
+    /\bknock(?:s|ed|ing)?\b/iu.test(action)
+      ? near.filter((person) =>
+          venueZones(sceneLayoutVenue(venue, scene)).some(
+            (zone) =>
+              zone.id === contactPosition(scene, person.characterId) &&
+              zone.kind === "public" &&
+              !zone.closed &&
+              (!intent.zoneId || zone.id === intent.zoneId),
+          ),
+        )
+      : [];
+  const hosts = knocked.filter(({ characterId }) => venue.access?.managerIds.includes(characterId));
+  const opening = hosts.length === 1 ? hosts : knocked.length === 1 ? knocked : [];
+  const doorwayVoice = [
+    ...new Set(
+      [
+        ...established,
+        ...opening,
+        ...named.filter(({ characterId }) => characterId === intent.targetId || calling),
+      ].map(({ characterId }) => characterId),
+    ),
+  ];
   const candidates = [
     ...named.filter((person) => person.characterId === intent.targetId),
     ...named,
+    ...opening,
     ...near.filter(
       (person) =>
         contactPosition(scene, person.characterId) === intent.zoneId ||
@@ -159,6 +191,7 @@ export function zoneEventScene(
       instruction: "",
       localIds: scene.activeIds,
       remoteIds: offered.map((person) => person.characterId).filter((id) => selected.includes(id)),
+      ...(doorwayVoice.length ? { doorwayVoiceIds: doorwayVoice.filter((id) => selected.includes(id)) } : {}),
       ...(actorIds ? { actorIds } : {}),
     },
   };
@@ -240,13 +273,21 @@ export function routeZoneEvents(
         throw badGateway("A whisper needs a recipient in the same Zone. Your draft is preserved.");
       line.heardBy = local.filter((id) => id === actor || id === line.targetId);
     }
+    const doorwayVoice =
+      spoken &&
+      playerNear &&
+      origin !== playerZone &&
+      line.targetId === "player" &&
+      !!scene.contactGeneration?.doorwayVoiceIds?.includes(actor);
     const playerWords =
-      speechDelivery(line) === "whisper" ? line.targetId === "player" : (loud ? near : [origin]).includes(playerZone);
+      speechDelivery(line) === "whisper"
+        ? line.targetId === "player"
+        : doorwayVoice || (loud ? near : [origin]).includes(playerZone);
     if (line.kind === "narration" || playerWords) line.heardBy.push("player");
     if (line.kind !== "narration") {
       line.viaDoorway = origin !== playerZone;
       line.contactHidden =
-        (!loud && spoken ? origin !== playerZone : !playerNear) ||
+        (!loud && spoken ? origin !== playerZone && !doorwayVoice : !playerNear) ||
         (speechDelivery(line) === "whisper" && line.targetId !== "player");
     }
     if (row.sound !== undefined) {

@@ -287,13 +287,25 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     fingerprint: string,
     work: (signal?: AbortSignal) => Promise<T>,
     beforeDispatch?: () => Promise<void>,
+    freshReply?: true,
   ): Promise<T> {
     const current = context.getStore();
     if (!current) {
+      if (freshReply) throw venueRefusal("OPERATION_INTERRUPTED", "The Scene reply has no admitted request.");
       await beforeDispatch?.();
       return work();
     }
     assertVenueOwnership();
+    if (freshReply) {
+      if (!current.operation.freshReply || !current.allowPaid || current.counts.has("fresh reply"))
+        throw venueRefusal("OPERATION_INTERRUPTED", "Choose Retry to request another reply.");
+      current.counts.set("fresh reply", 1);
+      await beforeDispatch?.();
+      assertVenueOwnership();
+      const result = await work(current.controller.signal);
+      assertVenueOwnership();
+      return result;
+    }
     const index = current.counts.get(current.scope) ?? 0;
     current.counts.set(current.scope, index + 1);
     const key = `${current.scope}:${index}:${fingerprint}`;
@@ -510,6 +522,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     retryOfAttemptId: string | undefined,
     work: () => Promise<T>,
     options: {
+      freshReply?: true;
       replay?: boolean;
       recovery?: boolean;
       replaceOfOperationId?: string;
@@ -584,6 +597,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             throw venueRefusal("OPERATION_INTERRUPTED", "That request was abandoned. Send a new message.");
           if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
             throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
+          if (prior?.id === id && prior.freshReply && prior.error && !options.replay && !options.recovery)
+            throw venueRefusal("OPERATION_INTERRUPTED", "Choose Retry to request another reply.");
           let abandoned = false;
           if (options.abandonOfOperationId) {
             if (
@@ -665,6 +680,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               "SCENE_STALE",
               "The situation changed. Your message has not been sent. Review who is here and send again.",
             );
+          if (!abandoned && !options.replaceOfOperationId && prior?.freshReply && prior.error && prior.id !== id)
+            retainAbandonedOperation(data);
           const rejectedTerminal =
             prior?.status === "complete" &&
             !!prior.error &&
@@ -713,7 +730,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               stage: "admission",
               startedAt: new Date().toISOString(),
               sceneRevision: sceneRevision(data),
-              snapshot,
+              snapshot: options.freshReply ? null : snapshot,
+              ...(options.freshReply ? { freshReply: true as const } : {}),
               checkpoints: reuseAttention
                 ? Object.fromEntries(Object.entries(prior.checkpoints).filter(([stage]) => stage === "scene-layout"))
                 : {},
@@ -839,9 +857,19 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                         )
                       ? "interrupted"
                       : "complete";
+                  if (
+                    operation.freshReply &&
+                    !submissions.some(
+                      (entry) =>
+                        entry.id === id &&
+                        (entry.acceptance.status === "pending" || entry.acceptance.status === "applied"),
+                    )
+                  )
+                    operation.status = "complete";
                   operation.error = retryRefused ? "" : safeFailureMessage(error);
-                  if (retryRefused) {
-                    operation.stage = "complete";
+                  if (retryRefused || operation.freshReply) {
+                    if (operation.freshReply) operation.stage = "reply";
+                    else operation.stage = "complete";
                     operation.snapshot = null;
                     operation.checkpoints = {};
                     operation.attempts = {};
@@ -1104,6 +1132,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           op.status = "interrupted";
           op.error = "The generation was interrupted. Its outcome may be unknown. No automatic retry was made.";
         });
+        if (current.freshReply) return;
         await recover(sceneId, current).catch((error) =>
           villagesLogger().warn("[villages] operation recovery deferred %s: %s", current.id, String(error)),
         );

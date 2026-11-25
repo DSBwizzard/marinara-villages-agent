@@ -40,9 +40,9 @@ Unsupported saved formats fail without conversion. Deterministic navigation and 
 
 ## Scene outcome boundaries
 
-Cards and lore establish identity and abilities, not authority over time, attendance, access or construction. The Scene GM first tries to continue in character. If an unsupported outcome cannot be avoided while preserving what the player explicitly declared, the GM can return a halt reason and source references, including an exact unspoken input excerpt. The original input and response remain held for recovery; no assistant fiction, common meaning, native change or accepted Episode is published.
+Cards and lore establish identity and abilities. Code owns time, attendance, access and construction. The Scene GM first tries to continue in character. If an unsupported outcome cannot be avoided while preserving what the player explicitly declared, the GM can return a halt reason and source references, including an exact unspoken input excerpt. Villages keeps the submitted input and publishes no reply, effects or accepted Episode.
 
-Code checks fresh identities, protection and provenance, then binds every cited halt source. The public notice is fixed text for the validated reason. Saved replies can still contain a legacy message field, which is discarded when interpreting the result. Invalid citations and an in-flight Correct or Forget remain validation failures. A valid halt uses the existing intentional request-error channel and held-reply lifecycle. Saved replay uses the server notice without purchasing another response.
+Code checks identities, protection and provenance, then binds every cited halt source. The public notice is fixed text for the validated reason. Invalid citations and an in-flight Correct or Forget remain validation failures. An explicit Retry on an ordinary failed turn asks for a fresh reply after checking for an existing commit.
 
 ## Resident access actions
 

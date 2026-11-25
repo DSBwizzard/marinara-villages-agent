@@ -68,6 +68,7 @@ import {
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
 import { addressedSceneResidents, zoneEventHearingContext, zoneEventScene } from "../../domain/rules/zone-events.js";
+import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
 import type { ContinuityEvidence } from "../../domain/models/continuity-model.js";
@@ -132,12 +133,13 @@ export function createSceneWriting({
     mode: "greet" | "chat" | "leave",
     signal?: AbortSignal,
     trace?: GreetingTrace,
+    freshReply = false,
   ) {
     assertCurrentSceneGeneration(original);
     signal?.throwIfAborted();
     const started = performance.now();
     const key = requestKey(original, input, mode),
-      saved = venueSavedCheckpoint?.<Request>("writing-request:" + key);
+      saved = freshReply ? undefined : venueSavedCheckpoint?.<Request>("writing-request:" + key);
     if (saved) {
       assertRequestIdentity(saved, original, input);
       const model = await capturedModel(saved);
@@ -277,10 +279,19 @@ export function createSceneWriting({
           );
     const showAccess = context.access.length > 0 && (mode !== "chat" || sceneAccessDiscussed(scene, venue, input));
     const localVisitZones = (sceneLayoutVenue(venue, scene).zones ?? [])
-      .filter((zone) => showAccess || zone.seen || zone.id === scene.zoneId)
+      .filter(
+        (zone) =>
+          showAccess ||
+          zone.seen ||
+          zone.id === scene.zoneId ||
+          (zone.kind === "public" &&
+            scene.contactGeneration?.doorwayVoiceIds?.some((id) => contactPosition(scene, id) === zone.id)),
+      )
       .map((zone) => zone.id);
     const visitOptions =
-      mode === "chat" ? sceneVisitOptions(context.access, scene.placeId, scene.activeIds, localVisitZones) : [];
+      mode === "chat"
+        ? sceneVisitOptions(context.access, scene.placeId, selectedIds, localVisitZones, calendar, venue)
+        : [];
     const canInviteForVisit = visitOptions.length > 0;
     const residentMovesInReply = mode === "chat";
     const positions = !nativeCommands && !context.memoryChange;
@@ -379,8 +390,14 @@ export function createSceneWriting({
           : "",
         nativeCommands ? NARRATION_RESPONSE : ordinarySceneCitationIds(positions),
         nativeCommands ? "" : ordinarySceneKeepSources(positions),
+        freshReply ? "Use the supplied calendar for the current time. Past exchanges cannot change it." : "",
+        scene.contactGeneration?.doorwayVoiceIds?.length
+          ? 'Doorway dialogue to the player: use targetId:"player" with these IDs: ' +
+            JSON.stringify(scene.contactGeneration.doorwayVoiceIds) +
+            ". They stay in their Zone. Hearing grants no sight or entry."
+          : "",
         canInviteForVisit
-          ? 'Write "visit" first whenever a resident grants entry to a listed Zone, including this Venue. Use "visit":{"option":1,"segment":2,"escort":false} with the actual option number and one-based index of their invitation dialogue. Same-Venue entry lasts for this Scene; remote entry is for the next visit. Use that speaker\'s option. A group invitation gets the same entry when it includes the player. Set escort true only when they agree to lead. Omit visit for tentative plans, refusals, or unmet conditions. End before the player starts moving.'
+          ? 'Entry needs a spoken invitation and "visit":{"option":1,"segment":2,"escort":false}. Use the speaker’s option and dialogue position. A group invite counts if it includes the player. Omit tentative or unmet terms. afterHours means admission despite the schedule. Escort only if offered. Leave movement to the player.'
           : "",
         residentMovesInReply
           ? 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
@@ -570,15 +587,17 @@ export function createSceneWriting({
         ...(!scene.visitorIntroduction && scene.trespassReaction?.id === venueOperationId()
           ? { automaticTrespass: true as const }
           : {}),
-        ...(!nativeCommands ? { retryEpisodeRevision: authority.episodes.revision } : {}),
+        ...(!nativeCommands && !freshReply ? { retryEpisodeRevision: authority.episodes.revision } : {}),
+        ...(freshReply ? { strictSceneReply: true as const } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
         ...(canInviteForVisit
           ? {
-              sceneVisitOptions: visitOptions.map(({ actorId, venueId, zoneId }) => ({
+              sceneVisitOptions: visitOptions.map(({ actorId, venueId, zoneId, afterHours }) => ({
                 actorId,
                 venueId,
                 zoneId,
+                ...(afterHours ? { afterHours } : {}),
               })),
             }
           : {}),
@@ -591,13 +610,17 @@ export function createSceneWriting({
         ...(positions
           ? {
               ordinaryDialogue: true,
-              ordinaryReplyRecovery: true,
               positionedSceneSources: true,
               stripSceneHistoryDecoration: true,
-              ordinaryFormatRecovery: 6,
               quotedSceneSources: true,
-              splitKeepRecovery: 2,
-              explicitSceneReplacement: true,
+              ...(!freshReply
+                ? {
+                    ordinaryReplyRecovery: true as const,
+                    ordinaryFormatRecovery: 6 as const,
+                    splitKeepRecovery: 2 as const,
+                    explicitSceneReplacement: true as const,
+                  }
+                : {}),
               coalesceOfferDecisions: true,
               stripOfferContributionEcho: true,
               recognizeDirectOfferSpeech: 5,
@@ -611,7 +634,7 @@ export function createSceneWriting({
       // Plain transport lets local validation see replies that JSON mode can return as spaces.
       ...(plainJson ? { plainJson: true } : {}),
     };
-    const retained = await venueCheckpoint("writing-request:" + key, async () => request);
+    const retained = freshReply ? request : await venueCheckpoint("writing-request:" + key, async () => request);
     assertRequestIdentity(retained, original, input);
     trace?.("preparation and context fit", performance.now() - started);
     return { ...retained, resolvedModel: await capturedModel(retained, model) };
@@ -624,13 +647,16 @@ export function createSceneWriting({
     signal?: AbortSignal,
     trace?: GreetingTrace,
     retry?: { request: Request; beforeDispatch: () => Promise<void> },
+    freshReply = false,
   ) {
     assertCurrentSceneGeneration(scene);
     return measurePipeline("Scene narration", { sceneId: scene.id, mode }, async () => {
       const key = requestKey(scene, input, mode),
         completionStage = "writing-completion:" + key;
-      const savedRequest = venueSavedCheckpoint?.<Request>("writing-request:" + key);
-      const savedCompletion = venueSavedCheckpoint?.<Awaited<ReturnType<typeof completeWithRoom>>>(completionStage);
+      const savedRequest = freshReply ? undefined : venueSavedCheckpoint?.<Request>("writing-request:" + key);
+      const savedCompletion = freshReply
+        ? undefined
+        : venueSavedCheckpoint?.<Awaited<ReturnType<typeof completeWithRoom>>>(completionStage);
       let request: Request, completion: Awaited<ReturnType<typeof completeWithRoom>>;
       if (savedRequest && savedCompletion) {
         assertRequestIdentity(savedRequest, scene, input);
@@ -639,15 +665,22 @@ export function createSceneWriting({
       } else {
         const prepared = retry
           ? await prepareRetryRequest(retry.request, scene, input, key)
-          : await prepareVenueTurnMessages(scene, input, mode, signal, trace);
+          : await prepareVenueTurnMessages(scene, input, mode, signal, trace, freshReply);
         request = prepared;
         signal?.throwIfAborted();
         await recordLoreUse(request.fitted.lore, `Scene · ${scene.placeName || "Exchange"}`);
         trace?.("model request", 0, `${prepared.resolvedModel.model} (${prepared.resolvedModel.connectionId})`);
-        completion = await venueCheckpoint(completionStage, async () => {
+        const complete = async () => {
           if (retry) await retry.beforeDispatch();
-          return requestCompletion(prepared.resolvedModel, request, signal, mode === "greet" && !!scene.visitEvent);
-        });
+          return requestCompletion(
+            prepared.resolvedModel,
+            request,
+            signal,
+            mode === "greet" && !!scene.visitEvent,
+            freshReply,
+          );
+        };
+        completion = freshReply ? await complete() : await venueCheckpoint(completionStage, complete);
       }
       const parsed = readModelJsonObject(completion);
       const raw = completeSceneObject(
@@ -672,16 +705,23 @@ export function createSceneWriting({
           stage: "scene-response",
           message: "The Scene response was not complete JSON.",
         };
-        await rejectVenueCompletion({ ...request.model, reason: "invalid-gm-response" }, { stages: [completionStage] });
+        if (!freshReply)
+          await rejectVenueCompletion(
+            { ...request.model, reason: "invalid-gm-response" },
+            { stages: [completionStage] },
+          );
         if (retry)
           throw new VillagesRequestError(
             409,
             "The alternate reply could not be read. Your reply is kept.",
             "SCENE_RETRY_UNAVAILABLE",
           );
-        throw Object.assign(badGateway(failure.message + " Your input and purchased response are retained."), {
-          failure: { ...failure, responseDiagnostics: diagnostics },
-        });
+        throw Object.assign(
+          badGateway(failure.message + (freshReply ? "" : " Your input and purchased response are retained.")),
+          {
+            failure: { ...failure, responseDiagnostics: diagnostics },
+          },
+        );
       }
       runtimeDebug("Scene writing contract", {
         sceneId: scene.id,
@@ -694,6 +734,17 @@ export function createSceneWriting({
         responseDigest: memoryHash([completion.content, completion.finishReason]),
         lore: request.fitted.lore,
         responseDiagnostics: diagnostics,
+        ...(freshReply
+          ? {
+              requestMetrics: [
+                {
+                  stage: "reply",
+                  status: "complete" as const,
+                  usage: completion.usage ?? null,
+                },
+              ],
+            }
+          : {}),
       };
     });
   }
@@ -748,11 +799,13 @@ export function createSceneWriting({
     request: Request,
     signal?: AbortSignal,
     visitEvent = false,
+    freshReply = false,
   ) {
     return completeWithRoom(model, request.fitted.messages, request.fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, {
       ...(request.plainJson ? {} : { responseFormat: { type: "json_object" } }),
       temperature: 0.85,
       usagePurpose: "conversation",
+      ...(freshReply ? { freshSceneReply: true as const } : {}),
       reasoningEffort: null,
       verbosity: null,
       debugMode: false,

@@ -20,6 +20,10 @@ export function operationSummary(operation?: VenueOperation) {
   return {
     id: operation.id,
     kind: operation.kind,
+    ...(operation.freshReply ? { freshReply: true as const } : {}),
+    ...(operation.kind === "turn" && operation.input.mode === "chat" && !operation.input.trespassReaction
+      ? { retryableReply: true as const }
+      : {}),
     recoverable: operation.kind === "greet" && Object.hasOwn(operation.checkpoints, "greeting-reply"),
     attemptId: operation.attemptId,
     status: operation.status,
@@ -49,7 +53,7 @@ export function createVenueOperationContext(villagesLogger: () => CapabilityRunt
     return context.getStore()?.operation.id ?? "uncoordinated";
   }
   function venueRequestMetrics(operation = context.getStore()?.operation) {
-    if (!operation) return null;
+    if (!operation || operation.freshReply) return null;
     return Object.entries(operation.attempts).map(([stage, attempt]) => ({
       stage,
       status: attempt.status,

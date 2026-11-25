@@ -162,6 +162,10 @@ const saved = z
       .strict()
       .optional(),
     episodeId: id.optional(),
+    replyCommit: z
+      .object({ episodeId: id, digest: z.string().regex(/^[a-f0-9]{64}$/), setupAt: at })
+      .strict()
+      .optional(),
     lore: z.array(z.unknown()).optional(),
     replyLineIds: z.array(id).max(24).optional(),
     zoneIdAtTurn: id.optional(),
@@ -181,9 +185,15 @@ const saved = z
 export function readNarrationSubmission(value: unknown): VenueSubmission {
   const row = saved.parse(value);
   memoryRequire(
-    row.acceptance.status === "applied" ? row.episodeId && row.progressProcessedAt : row.narration,
+    row.acceptance.status === "applied"
+      ? row.episodeId && row.progressProcessedAt
+      : row.narration ||
+          (row.replyCommit &&
+            row.mode !== "leave" &&
+            (row.acceptance.status === "pending" || row.acceptance.status === "abandoned")),
     "saved narration has no pending purchase or accepted episode",
   );
+  memoryRequire(!row.replyCommit || !row.narration, "Scene reply commit cannot retain a narration purchase");
   memoryRequire(
     !row.narration || row.narration.readset.source.input === row.message,
     "saved private submission changed",

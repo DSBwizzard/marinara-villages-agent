@@ -196,8 +196,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                       : "The saved request was interrupted. Retry it when you are ready."
                     : ""),
                 actions:
-                  room.operation?.status === "interrupted" &&
-                  room.operation.kind !== "turn" &&
+                  room.operation?.status !== "running" &&
+                  room.operation &&
+                  (room.operation.status === "interrupted" || !!room.operation.error) &&
+                  (room.operation.kind !== "turn" || room.operation.retryableReply) &&
                   room.status !== "opening" &&
                   room.operation.kind !== "retry" ? (
                     <button
@@ -205,7 +207,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                       disabled={roomBusy || contactReviewBusy}
                       onClick={() => void retrySavedScene()}
                     >
-                      Retry saved request
+                      Retry
                     </button>
                   ) : undefined,
               },

@@ -180,8 +180,8 @@ for (const scenario of [
       if (calls === 1) {
         const prompt = messages.map(({ content }) => content).join("\n");
         assert.match(prompt, /Visit invitations available.*Willow Hotel/);
-        assert.match(prompt, /Write "visit" first/);
-        assert.match(prompt, /A group invitation gets the same entry when it includes the player/);
+        assert.match(prompt, /Entry needs a spoken invitation/);
+        assert.match(prompt, /A group invite counts if it includes the player/);
       }
       if (follow) {
         const prompt = messages.map(({ content }) => content).join("\n");
@@ -234,7 +234,7 @@ for (const scenario of [
             segments: [
               { kind: "dialogue", speakerId: "mara", text: "I'll go check on something." },
               ...(residentCrossing
-                ? [{ kind: "dialogue", speakerId: "ella", text: "Bring us something good.", delivery: "aside" }]
+                ? [{ kind: "dialogue", speakerId: "ella", text: "Bring us something good.", presentation: "aside" }]
                 : []),
               residentCrossing
                 ? { kind: "crossing", who: "mara", to: "exterior", text: "Gidget slips out through the door." }
@@ -501,7 +501,7 @@ for (const scenario of [
           "walk-out",
           scenario === "departure-rejected" ? departure : walk,
         );
-        assert.equal(local.statusCode, 500, local.body);
+        assert.equal(local.statusCode, 502, local.body);
         const recovered = await getActive();
         const source = recovered.json().session;
         assert.equal(source.id, before.id);
@@ -509,7 +509,7 @@ for (const scenario of [
         assert.equal(source.status, "active");
         assert.equal(calls, 1);
         assert.equal(source.latestTurn.published, false);
-        assert.equal(host.scene().submissions[0].acceptance.status, "held");
+        assert.equal(host.scene().submissions[0].acceptance.status, "abandoned");
         assert(!host.scene().navigationReceipts?.length);
         assert(!recovered.body.includes("You step out of the Mill."));
         return;
@@ -561,10 +561,18 @@ for (const scenario of [
         "ask-hotel",
         "Gidget, could you take me to your room at Willow Hotel?",
       );
+      if (scenario === "overheard") {
+        assert.equal(request.statusCode, 502, request.body);
+        assert(!request.body.includes("both of you"));
+        const saved = await createVillageRepository(() => host.documents as never).readAuthority();
+        assert.deepEqual(saved.venues.find((row) => row.id === "hotel")?.access?.permissions, []);
+        assert.equal(calls, 1);
+        return;
+      }
       assert.equal(request.statusCode, 200, request.body);
       const source = request.json().session;
       assert.equal(source.placeId, "mill");
-      if (scenario === "prose-only" || scenario === "overheard") {
+      if (scenario === "prose-only") {
         assert.equal(source.travel, undefined);
         const saved = await createVillageRepository(() => host.documents as never).readAuthority();
         assert.deepEqual(saved.venues.find((row) => row.id === "hotel")?.access?.permissions, []);
@@ -752,6 +760,12 @@ await runCase("scene-travel/local-permission", async () => {
         expectedSceneRevision: before.sceneRevision,
       };
       const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: input });
+      if (mode === "unlisted" || mode === "whisper") {
+        assert.equal(response.statusCode, 502, response.body);
+        const world = await createVillageRepository(() => host.documents as never).readAuthority();
+        assert.equal(world.venues[0].access!.permissions.length, 0);
+        continue;
+      }
       assert.equal(response.statusCode, 200, response.body);
       const scene = response.json().session;
       assert.equal(scene.id, before.id);

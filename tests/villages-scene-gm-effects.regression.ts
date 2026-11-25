@@ -505,8 +505,8 @@ for (const scenario of scenarios)
         scene = host.scene(),
         turn = scene.submissions.at(-1)!;
       if (held) {
-        assert.equal(turn.acceptance.status, "held");
-        assert.deepEqual(turn.narration!.raw, raw, "the purchased response remains available for recovery");
+        assert.equal(turn.acceptance.status, "abandoned");
+        assert.equal(turn.narration, undefined, "a failed reply does not retain the provider output");
         assert.equal(
           scene.lines.filter((line) => line.role === "assistant").length,
           0,
@@ -514,29 +514,24 @@ for (const scenario of scenarios)
         );
         assert.equal(world.episodes.records.filter((episode) => episode.sceneId === "browser").length, 0);
         if (scenario === "capacity") {
-          assert(
-            turn.acceptance.rejected.some((row) => /overcrowd/.test(row.reason)),
-            "the actual capacity rule holds this reply",
-          );
+          assert(/overcrowd/.test(response.body), "the actual capacity rule holds this reply");
           for (const id of ["mara", "bryn"])
             assert.equal(
               scene.accompanying!.find((row) => row.characterId === id)!.zoneId,
               "common",
               "over-capacity movement applies no partial result",
             );
-        } else if (scenario === "past-appointment")
-          assert(turn.acceptance.rejected.some((row) => /past|nonexistent/.test(row.reason)));
+        } else if (scenario === "past-appointment") assert.match(response.body, /past|nonexistent/);
         else {
           assert.equal(response.statusCode, 409);
           const notice = response.json().error;
           assert.match(notice, /^HALT · Village time/);
-          assert(turn.acceptance.rejected.some((row) => row.reason.includes(notice)));
           const status = await host.app.inject({
             method: "GET",
             url: `/api/villages/rooms/browser/operations/${payload.submissionId}`,
           });
           assert.equal(status.statusCode, 200, status.body);
-          assert.equal(status.json().operation.acceptance, "held");
+          assert.equal(status.json().operation.acceptance, "abandoned");
           assert.equal(status.json().operation.input.message, payload.message);
           assert.equal(status.json().operation.error, notice);
           const details = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/error-details" });
@@ -544,8 +539,7 @@ for (const scenario of scenarios)
           assert(!details.body.includes(raw.halt.message));
           const replay = await host.app.inject({ method: "POST", url, payload });
           assert.equal(replay.statusCode, 409, replay.body);
-          assert.equal(replay.json().error, notice);
-          assert.equal(calls, 1, "saved HALT replay uses the existing GM response");
+          assert.equal(calls, 1, "duplicate HALT submission buys no reply");
           assert.deepEqual(world.clock, before.clock, "a native halt changes no Village time");
         }
       } else {

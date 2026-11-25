@@ -695,6 +695,8 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  freshReply?: true;
+  retryableReply?: true;
   failureCause?: string;
   acceptance?: "pending" | "held" | "applied" | "abandoned";
   committed?: boolean;

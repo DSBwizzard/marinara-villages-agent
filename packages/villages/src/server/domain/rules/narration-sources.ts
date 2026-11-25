@@ -667,10 +667,21 @@ export function bindNarrationSource(
           "whisper target is not local",
         );
       for (const actorId of ground.to) {
+        const actorZone = position(context, actorId, moment);
+        const doorway =
+          ground.kind === "spoken" &&
+          ground.delivery !== "whisper" &&
+          context.scene.doorwayContacts?.some(
+            (contact) =>
+              contact.characterId === actorId &&
+              contact.playerZoneId === origin &&
+              contact.characterZoneId === actorZone &&
+              contactNeighbors(context.venue, origin, context.scene).includes(actorZone),
+          );
         memoryRequire(
           context.actors.some((actor) => actor.id === actorId) &&
-            position(context, actorId, moment) &&
-            words.includes(position(context, actorId, moment)) &&
+            actorZone &&
+            (words.includes(actorZone) || doorway) &&
             !(
               ground.kind === "spoken" &&
               ground.delivery === "whisper" &&
