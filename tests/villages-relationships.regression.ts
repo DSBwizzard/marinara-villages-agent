@@ -25,6 +25,8 @@ import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-
 import {
   continuityRelationships,
   dueRelationshipAnswers,
+  perceptionPrompt,
+  recordLetterPerception,
   inspectContinuityRelationships,
   continuityMemoryLibrary,
   inspectContinuityMemory,
@@ -462,6 +464,14 @@ await runCase("relationships/romantic-interest", () => {
   assert.deepEqual(scoped.prompt.relationships, [{ for: "mara", about: "leo", score: 9, romanticInterest: 1 }]);
   const unrelated = captureContinuityContext(f.state, ["player", "leo"], "", at);
   assert.equal(unrelated.prompt.relationships, undefined);
+  change("marked-aversion", { romance: "strong-aversion" });
+  assert.equal(towards("mara", "leo").romanticInterest, 1, "an earlier saved day cannot revise Romance");
+  change("current-aversion", { romance: "strong-aversion" }, "2026-11-11T12:00:00.000Z");
+  change("cooling-without-attraction", { romance: "drops" }, "2026-11-11T12:01:00.000Z");
+  f.cold();
+  assert.equal(towards("mara", "leo").romanticInterest, -2);
+  change("easing", { romance: "eases" }, "2026-11-12T12:00:00.000Z");
+  assert.equal(towards("mara", "leo").romanticInterest, -1);
   f.state.villagers[0].incarnation = "replacement";
   assert.equal(towards("mara", "leo").romanticInterest, 0);
 });
@@ -483,20 +493,22 @@ await runCase("relationships/answer-cadence", () => {
     text: "I’m curious about you.",
     relationship: { answer: "I’m curious about you." },
   });
-  const shift = (day: number, impact: "meaningful-positive" | "turning-negative") =>
-    f.keep(
-      { ...directed, id: impact + day, text: "A change in trust.", relationship: { impact } },
-      mara.id,
-      undefined,
-      f.state.continuity.revision,
-      calendar(day).instant,
-    );
-  shift(9, "meaningful-positive");
-  shift(10, "meaningful-positive");
-  assert.equal(due(10), 0, "twelve points alone cannot refresh within one Village day");
-  assert.equal(due(11), 1, "twelve points and two Village days qualify");
-  shift(10, "turning-negative");
-  assert.equal(due(10), 1, "a serious breach qualifies even with little net drift");
+  const exchange = (id: string, relationship: NonNullable<ContinuityWrite["relationship"]>, text: string) => {
+    const revision = f.state.continuity.revision;
+    f.keep({ ...directed, id, text, relationship }, mara.id);
+    recordLetterPerception(f.state, mara.id, id, at, true, revision);
+  };
+  exchange("slightly-warmer", { impact: "small-positive" }, "Mara enjoys the conversation.");
+  assert.equal(due(25), 0, "time and ordinary within-band drift leave the existing line alone");
+  const boundary = "Mara wants to keep this platonic.";
+  exchange("boundary", { perception: true }, boundary);
+  const pending = perceptionPrompt(f.state, [mara.id])[0]!;
+  assert.equal(pending.warmth, 3, "a new boundary can qualify without a score change");
+  assert.equal(pending.romance, 0);
+  f.state.villagers[0].perceptionAssessed = pending.basis;
+  assert.equal(due(9), 0, "an assessed trigger does not spend allowance a second time");
+  exchange("repeated-boundary", { perception: true }, boundary);
+  assert.equal(due(9), 0);
 });
 
 await runCase("relationships/shared-terms", () => {

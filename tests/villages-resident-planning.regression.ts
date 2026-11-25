@@ -1,6 +1,6 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
-// Test cases: resident-planning/one-gm, resident-planning/housing, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/catchup-relationship, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
+// Test cases: resident-planning/one-gm, resident-planning/housing, resident-planning/reflection, resident-planning/mail, resident-planning/pre-spend, resident-planning/paid-hold, resident-planning/independent, resident-planning/catchup, resident-planning/catchup-relationship, resident-planning/live-perception, resident-planning/strict-input, resident-planning/protected-context, resident-planning/live-scene, resident-planning/mail-initiative, resident-planning/delayed-meeting, resident-planning/background-recovery
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -15,7 +15,10 @@ import {
   appendReturnRelationshipRefresh,
   discoverReturnBatch,
 } from "../packages/villages/src/server/domain/rules/return-catchup-state.js";
-import { continuityRelationships } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import {
+  continuityRelationships,
+  perceptionPrompt,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import {
   readResidentPlanningInput,
@@ -421,6 +424,45 @@ await runCase("resident-planning/catchup", async () => {
   assert.equal(f.calls.length, 1);
   assert.equal(coerceVillageState(f.state).returnCatchup!.capture!.episodeRevision, f.state.episodes.revision);
 });
+await runCase("resident-planning/live-perception", async () => {
+  const f = fixture();
+  for (const resident of f.state.villagers) resident.relationshipScene = { id: "closed-together", endedAt: f.at };
+  await f.service.reconcile(f.now);
+  const job = f.queued.at(-1)!;
+  const input = job.input;
+  assert.equal(job.subjectId, "relationship");
+  assert.equal(job.automaticDate, f.at.slice(0, 10));
+  assert.deepEqual(
+    input.context.perception.map(({ id }: { id: string }) => id),
+    ["mara", "leo"],
+  );
+  const line = "I feel at ease when you are here.";
+  f.payload({
+    keep: [
+      { owner: "mara", answer: [line] },
+      { owner: "leo", answer: ["I am curious about you."] },
+    ],
+  });
+  const result = await f.service.handler.generate(input);
+  assert.equal(f.calls.length, 1);
+  const paused = structuredClone(f.state);
+  paused.backgroundPace = "off";
+  assert.equal(f.service.handler.valid(paused, input), false);
+  f.service.handler.apply(paused, input, result, { retrying: false });
+  assert(!paused.processedActionIds.includes(input.context.narration.opportunity.id));
+  assert.equal(perceptionPrompt(paused, ["mara", "leo"]).length, 2);
+  f.service.handler.apply(f.state, input, result, { retrying: false });
+  assert.equal(continuityRelationships(f.state, f.at)[0].scores[0].answer, line);
+  assert.equal(perceptionPrompt(f.state, ["mara", "leo"]).length, 0);
+  f.state.villagers[0].perceptionDue = { id: "b".repeat(64), at: f.at };
+  await f.service.reconcile(f.now);
+  const refresh = f.queued.at(-1)!.input;
+  f.payload({ keep: [{ owner: "mara", unchanged: true }] });
+  const unchanged = await f.service.handler.generate(refresh);
+  f.service.handler.apply(f.state, refresh, unchanged, { retrying: false });
+  assert.equal(perceptionPrompt(f.state, ["mara"]).length, 0);
+  assert.equal(continuityRelationships(coerceVillageState(f.state), f.at)[0].scores[0].answer, line);
+});
 await runCase("resident-planning/catchup-relationship", async () => {
   const returned = new Date(),
     f = fixture(new Date(returned.getTime() - 2 * 60 * 60_000));
@@ -470,13 +512,8 @@ await runCase("resident-planning/catchup-relationship", async () => {
     keep: [
       {
         owner: "mara",
-        answer: [
-          "Honestly? You made my evening.",
-          "I like the way your curiosity makes me notice the little things I usually walk past.",
-          line,
-        ],
+        answer: [line],
       },
-      { owner: "leo", answer: ["I had fun with you."] },
     ],
   });
   reserveEventAttempt(state, "paid-final", batch.budgetDate, returned.getTime(), batch.id);

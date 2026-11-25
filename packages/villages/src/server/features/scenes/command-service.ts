@@ -73,6 +73,7 @@ function visitEventHere(state: VillageState, placeId: string, zoneId: string, oc
 }
 
 export interface SceneCommandPorts {
+  activityChanged?(): void;
   preparePlace: typeof import("../places/services.js").generatePlace;
   rollVisitEvent?: () => "local" | "place" | "quiet";
   retry?: ReturnType<typeof import("./retry-service.js").createSceneRetry>;
@@ -135,6 +136,7 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  activityChanged,
   preparePlace,
   rollVisitEvent = () => {
     const roll = randomInt(9);
@@ -1648,6 +1650,7 @@ export function createSceneCommands({
         { memories: true },
       );
     await clearActivePointer(closed.id, true);
+    if (countsAsMeeting) activityChanged?.();
     return closed;
   }
   async function settleScene(id: string): Promise<void> {

@@ -798,6 +798,7 @@ export function acceptNarrationContinuity(
             owner &&
             changes.impact &&
             !changes.romance &&
+            !changes.perception &&
             answer &&
             !write.target &&
             !referenced.has(id) &&
@@ -807,7 +808,10 @@ export function acceptNarrationContinuity(
             keep.sources.some((proof) => proof.kind === "self" && proof.actorId === owner.id);
           if (privateScoreOnly) write = { ...write, holders: [owner], relationship: changes };
           if (write.relationship?.answer && closingEffect && !selection.acceptedIds.includes(closingEffect)) {
-            memoryRequire(changes.impact || changes.romance, "relationship answer needs the accepted Scene ending");
+            memoryRequire(
+              changes.impact || changes.romance || changes.perception,
+              "relationship answer needs the accepted Scene ending",
+            );
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);

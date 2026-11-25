@@ -14,7 +14,10 @@ import type {
   BackgroundSummary,
   Job,
 } from "../packages/villages/src/server/domain/models/background-model.js";
-import { continuityRelationships } from "../packages/villages/src/server/domain/rules/continuity-library.js";
+import {
+  continuityRelationships,
+  perceptionPrompt,
+} from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import { canAutomaticallyRetryBackgroundJob } from "../packages/villages/src/server/domain/rules/work-recovery.js";
 import { readPersonalMailInput } from "../packages/villages/src/server/domain/decoding/mailbox-codec.js";
@@ -231,6 +234,11 @@ await runCase("social-mail/romantic-interest", async () => {
   const profiles = continuityRelationships(saved, at);
   assert.equal(profiles[0].scores[0].romanticInterest, 1);
   assert.equal(profiles[0].scores[0].score, 0);
+  assert.equal(
+    perceptionPrompt(saved, ["ada"])[0]?.romance,
+    1,
+    "first answered correspondence makes the signed score ready for Perception",
+  );
   assert(!JSON.stringify(profiles).includes("PRIVATE"));
   assert.equal(f.requests, 1);
 });

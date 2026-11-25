@@ -202,7 +202,7 @@ await withBrowser(browser, async () => {
                   romanticInterest: 7,
                   answer: "I enjoy when you visit.",
                 },
-                { person: { id: "eli", name: secondName }, score: -10, romanticInterest: 0 },
+                { person: { id: "eli", name: secondName }, score: -10, romanticInterest: -16 },
               ]
             : [],
         entries: [
@@ -1247,15 +1247,14 @@ await withBrowser(browser, async () => {
       "aria-valuenow",
       "-10",
     );
-    const hearts = profile.getByRole("meter", { name: "Romantic interest toward you", exact: true });
-    await expect(hearts).toHaveAttribute("aria-valuenow", "7");
-    await expect(hearts.locator("[data-fill=full]")).toHaveCount(3);
-    await expect(hearts.locator("[data-fill=half]")).toHaveCount(1);
-    await expect(hearts.locator("[data-fill=empty]")).toHaveCount(6);
-    const emptyHearts = profile.getByRole("meter", { name: "Romantic interest toward " + secondName, exact: true });
-    await expect(emptyHearts.locator("[data-fill=empty]")).toHaveCount(10);
+    const romance = profile.getByRole("meter", { name: "Romance toward you", exact: true });
+    await expect(romance).toHaveAttribute("aria-valuemin", "-20");
+    await expect(romance).toHaveAttribute("aria-valuemax", "20");
+    await expect(romance).toHaveAttribute("aria-valuenow", "7");
+    const negativeRomance = profile.getByRole("meter", { name: "Romance toward " + secondName, exact: true });
+    await expect(negativeRomance).toHaveAttribute("aria-valuenow", "-16");
     assert(
-      await emptyHearts.evaluate(
+      await negativeRomance.evaluate(
         (node) =>
           node.lastElementChild.getBoundingClientRect().right <= node.parentElement.getBoundingClientRect().right + 1,
       ),

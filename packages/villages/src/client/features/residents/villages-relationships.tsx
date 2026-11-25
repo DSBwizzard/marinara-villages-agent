@@ -3,6 +3,7 @@ import { useVillageActivity } from "../../shared/activity.js";
 import { invalidatesRead } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useEffect, useRef, useState } from "react";
+import { ROMANCE_LIMIT } from "../../../shared/contracts/relationships.js";
 import type {
   RelationshipEntry,
   RelationshipInspectView,
@@ -73,45 +74,28 @@ export function RelationshipEntries({
   );
 }
 
-function RelationshipBar({ score, label }: { score: number; label: string }) {
+function RelationshipBar({ score, label, limit = 100 }: { score: number; label: string; limit?: number }) {
+  const percent = (score / limit) * 50;
   return (
     <div
       className="villages-relationship-bar"
+      data-romance={limit === ROMANCE_LIMIT}
       role="meter"
       aria-label={label}
-      aria-valuemin={-100}
-      aria-valuemax={100}
+      aria-valuemin={-limit}
+      aria-valuemax={limit}
       aria-valuenow={score}
     >
       <span
         data-negative={score < 0}
-        style={{ left: 50 + Math.min(0, score) / 2 + "%", width: Math.abs(score) / 2 + "%" }}
+        style={{ left: 50 + Math.min(0, percent) + "%", width: Math.abs(percent) + "%" }}
       />
     </div>
   );
 }
 
-function RomanticInterest({ score, target }: { score: number; target: string }) {
-  return (
-    <div
-      className="villages-romantic-interest"
-      role="meter"
-      aria-label={"Romantic interest toward " + target}
-      aria-valuemin={0}
-      aria-valuemax={20}
-      aria-valuenow={score}
-      title={score + " of 20"}
-    >
-      {Array.from({ length: 10 }, (_, index) => {
-        const filled = score - index * 2;
-        return (
-          <span key={index} aria-hidden="true" data-fill={filled >= 2 ? "full" : filled === 1 ? "half" : "empty"}>
-            ♥
-          </span>
-        );
-      })}
-    </div>
-  );
+function RomanceBar({ score, target }: { score: number; target: string }) {
+  return <RelationshipBar score={score} label={"Romance toward " + target} limit={ROMANCE_LIMIT} />;
 }
 
 function RelationshipScores({ scores }: { scores: RelationshipScore[] }) {
@@ -124,8 +108,8 @@ function RelationshipScores({ scores }: { scores: RelationshipScore[] }) {
           <h4>Toward you</h4>
           <RelationshipBar score={player.score} label="Toward you" />
           <div className="villages-romantic-interest-label">
-            <span>Romantic interest</span>
-            <RomanticInterest score={player.romanticInterest ?? 0} target="you" />
+            <span>Romance</span>
+            <RomanceBar score={player.romanticInterest ?? 0} target="you" />
           </div>
           {player.answer ? <p>{player.answer}</p> : null}
         </article>
@@ -140,7 +124,7 @@ function RelationshipScores({ scores }: { scores: RelationshipScore[] }) {
                   <span>{person.name}</span>
                   <div className="villages-relationship-meters">
                     <RelationshipBar score={score} label={"Toward " + person.name} />
-                    <RomanticInterest score={romanticInterest ?? 0} target={person.name} />
+                    <RomanceBar score={romanticInterest ?? 0} target={person.name} />
                   </div>
                 </div>
                 {answer ? <p>{answer}</p> : null}
@@ -227,14 +211,12 @@ export function VillagesRelationships({
       .villages-relationship-scores li {padding:.4rem 0;border-top:1px solid #a39b8460}
       .villages-relationship-scores li > div {display:grid;grid-template-columns:minmax(4rem,1fr) 2fr;gap:.65rem;align-items:center}
       .villages-relationship-meters {display:grid;gap:.28rem;min-width:0}
-      .villages-romantic-interest-label {display:flex;flex-wrap:wrap;gap:.2rem .65rem;align-items:center;margin-top:.55rem;font-size:.875em}
-      .villages-romantic-interest {display:grid;grid-template-columns:repeat(10,minmax(0,1fr));inline-size:min(100%,9rem);container-type:inline-size;font:1rem/1 "Segoe UI Symbol","DejaVu Sans",sans-serif}
-      .villages-romantic-interest > span {justify-self:center;font-size:min(1rem,10cqi);--heart-empty:#2a2238;--heart-full:#ed9db4;color:var(--heart-empty);-webkit-text-stroke:.65px #d1a0b3}
-      .villages-romantic-interest > [data-fill=full] {color:var(--heart-full)}
-      .villages-romantic-interest > [data-fill=half] {background:linear-gradient(90deg,var(--heart-full) 50%,var(--heart-empty) 50%);background-clip:text;color:transparent}
+      .villages-romantic-interest-label {display:grid;gap:.35rem;margin-top:.55rem;font-size:.875em}
       .villages-relationship-bar {position:relative;height:.5rem;background:#1c192b;border-radius:3px}
       .villages-relationship-bar > span {position:absolute;inset-block:0;background:#9ea680;border-radius:2px}
       .villages-relationship-bar > span[data-negative=true] {background:#c38887}
+      .villages-relationship-bar[data-romance=true] > span {background:#e09bb8}
+      .villages-relationship-bar[data-romance=true] > span[data-negative=true] {background:#a68ac3}
       .villages-relationship-bar::after {content:"";position:absolute;left:50%;inset-block:-2px;width:1px;background:#f0dfbc}
     `}</style>
       {error ? <p role="alert">{error}</p> : null}

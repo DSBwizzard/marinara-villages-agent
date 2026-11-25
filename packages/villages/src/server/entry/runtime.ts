@@ -506,6 +506,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseLiveScenes = configureLiveScenes(
     createLiveScenes({
+      activityChanged: requestVillageRefresh,
       readActive,
       readSession,
       changeSession,
@@ -554,6 +555,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      activityChanged: requestVillageRefresh,
       preparePlace: generatePlace,
       retry: sceneRetry,
       prepareIntroductionVisitor: (state, at) =>

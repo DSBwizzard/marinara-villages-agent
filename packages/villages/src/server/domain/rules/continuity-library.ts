@@ -5,7 +5,7 @@ import type {
   MemoryForgetRequest,
   MemoryCorrectRequest,
 } from "../../../shared/contracts/village.js";
-import type { VillageState } from "../models/world.js";
+import type { VillageCardCharacter, VillageState } from "../models/world.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { ContinuityHolder, ContinuityEvidence, ContinuityVersion } from "../models/continuity-model.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
@@ -244,7 +244,8 @@ function relationshipAnswers(state: VillageState, residentIds?: readonly string[
     )?.relationshipScene;
     if (
       !(includePending && version.relationshipAnswerScene) &&
-      (!concluded || (version.relationshipAnswerScene && concluded.answerSceneId !== version.relationshipAnswerScene))
+      version.relationshipAnswerScene &&
+      concluded?.answerSceneId !== version.relationshipAnswerScene
     )
       continue;
     let blocked = blockedByHolder.get(holderKey);
@@ -277,9 +278,89 @@ function relationshipSceneParticipants(state: VillageState, sceneId: string) {
   );
 }
 
+function queuePerception(resident: VillageCardCharacter, id: string, at: string) {
+  if (resident.perceptionDue?.id !== id && (!resident.perceptionDue || resident.perceptionDue.at <= at))
+    resident.perceptionDue = { id, at };
+}
+
+function changedPerceptionOwners(state: VillageState, versions: readonly ContinuityVersion[]) {
+  const changedRoots = new Set(
+    versions.filter((version) => version.perceptionChanged).map((version) => version.rootId),
+  );
+  return new Set(
+    state.continuity.records.flatMap(({ id, owner }) =>
+      owner && changedRoots.has(id) ? [relationshipKey(owner, continuityActor(state, "player")!)] : [],
+    ),
+  );
+}
+
+export function recordLetterPerception(
+  state: VillageState,
+  residentId: string,
+  mailId: string,
+  at: string,
+  hasReply: boolean,
+  priorRevision: number,
+) {
+  const resident = state.villagers.find(({ characterId }) => characterId === residentId);
+  if (!resident) return;
+  const actor = continuityActor(state, residentId)!;
+  const key = relationshipKey(actor, continuityActor(state, "player")!);
+  const changed = changedPerceptionOwners(
+    state,
+    state.continuity.versions.filter(({ createdRevision }) => createdRevision > priorRevision),
+  );
+  const first = hasReply && !resident.relationshipScene && !resident.perceptionDue && !resident.perceptionAssessed;
+  if (first || changed.has(key)) queuePerception(resident, memoryHash(["letter", mailId, actor.incarnation]), at);
+}
+
+export function perceptionBasis(resident: VillageCardCharacter, hasAnswer: boolean): string | undefined {
+  const due =
+    resident.perceptionDue?.id ??
+    (!hasAnswer && resident.relationshipScene
+      ? memoryHash(["scene", resident.relationshipScene.id, resident.incarnation])
+      : undefined);
+  return due !== resident.perceptionAssessed ? due : undefined;
+}
+
+export function perceptionPrompt(state: VillageState, residentIds: readonly string[]) {
+  const answers = relationshipAnswers(state, residentIds);
+  const scores = latestRelationshipScores(state.continuity);
+  const romance = latestRomanticInterests(state.continuity);
+  const player = continuityActor(state, "player")!;
+  return state.villagers.flatMap((resident) => {
+    if (!residentIds.includes(resident.characterId)) return [];
+    const actor = { id: resident.characterId, incarnation: resident.incarnation };
+    const key = relationshipKey(actor, player);
+    const answer = answers.get(key)?.relationshipAnswer;
+    const basis = perceptionBasis(resident, !!answer);
+    return basis
+      ? [
+          {
+            ...actor,
+            basis,
+            fingerprint: continuityContextRevision(state, actor.id),
+            warmth: scores.get(key)?.relationshipScore ?? 0,
+            romance: romance.get(key)?.romanticInterest ?? 0,
+            ...(answer ? { previous: answer } : {}),
+          },
+        ]
+      : [];
+  });
+}
+
 export function recordClosedRelationshipScene(state: VillageState, scene: { id: string; endedAt: string }) {
   const participants = relationshipSceneParticipants(state, scene.id);
-  if (!participants.size) return;
+  const episodeVersions = new Set(
+    state.episodes.records
+      .filter(({ sceneId }) => sceneId === scene.id)
+      .flatMap(({ continuityVersionIds }) => continuityVersionIds),
+  );
+  const changed = changedPerceptionOwners(
+    state,
+    state.continuity.versions.filter(({ id }) => episodeVersions.has(id)),
+  );
+  if (!participants.size && !changed.size) return;
   const roots = new Map(state.continuity.records.map(({ id, owner }) => [id, owner]));
   const answerOwners = new Set(
     state.continuity.versions.flatMap((version) => {
@@ -289,6 +370,14 @@ export function recordClosedRelationshipScene(state: VillageState, scene: { id: 
   );
   for (const resident of knownCardCharacters(state)) {
     const key = continuityHolderKey({ kind: "actor", id: resident.characterId, incarnation: resident.incarnation });
+    const direction = relationshipKey(
+      { id: resident.characterId, incarnation: resident.incarnation },
+      continuityActor(state, "player")!,
+    );
+    const first =
+      participants.has(key) && !resident.relationshipScene && !resident.perceptionDue && !resident.perceptionAssessed;
+    if (state.villagers.some((row) => row === resident) && (first || changed.has(direction)))
+      queuePerception(resident, memoryHash(["scene", scene.id, resident.incarnation]), scene.endedAt);
     if (!participants.has(key) || (resident.relationshipScene && resident.relationshipScene.endedAt >= scene.endedAt))
       continue;
     const answerSceneId = answerOwners.has(key) ? scene.id : resident.relationshipScene?.answerSceneId;
@@ -307,6 +396,8 @@ export function dueRelationshipAnswers(
   const participants = sceneId ? relationshipSceneParticipants(state, sceneId) : undefined;
   for (const actor of currentParticipants) participants?.add(continuityHolderKey({ kind: "actor", ...actor }));
   const answers = relationshipAnswers(state, residentIds, true);
+  if (!sceneId)
+    return { owners: perceptionPrompt(state, residentIds).map(({ id, incarnation }) => ({ id, incarnation })) };
   const scores = latestRelationshipScores(state.continuity);
   const player = continuityActor(state, "player")!;
   const owners = cardCharacters(state).flatMap((resident) => {
