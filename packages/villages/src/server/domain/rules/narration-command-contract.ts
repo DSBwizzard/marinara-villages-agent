@@ -157,12 +157,27 @@ export const nativeCommand = z.discriminatedUnion("type", [
 export function readNarrationNativeCommand(raw: unknown) {
   return nativeCommand.parse(raw);
 }
-export const NARRATION_NPC_COMMANDS =
-  'NPC arrival: commands:[{type:"npc.admit",at:"arrival",localKey:"new:person",existingId,source:[{segment:"arrival",perceive:{kind:"seen",by:["player"]}}]}]. For one new NPC use name and short characterization in place of existingId. Optional label is public. Use localKey after arrival.';
+export function narrationNpcCommands(positions = false) {
+  const at = positions ? 1 : "arrival";
+  return (
+    "NPC arrival: commands:[" +
+    JSON.stringify({
+      type: "npc.admit",
+      at,
+      localKey: "new:person",
+      name: "Mira",
+      characterization: "A baker.",
+      source: [{ segment: at, perceive: { kind: "seen", by: ["player"] } }],
+    }) +
+    "]. at/source.segment cite observed arrival narration by " +
+    (positions ? "one-based position" : "segment ID") +
+    ". For returning NPCs replace name/characterization with supplied existingId; otherwise omit it. localKey: new:[a-z0-9-]+; copy as speakerId after arrival. label is public."
+  );
+}
 export const NARRATION_NATIVE =
   "Native changes use commands:[{type,id?,at:segment ID,source:[exact current evidence],requires?,independent?,...fields}]. Mark prose asserting a change with requires:[command ID]. Use commands for actions that actually occur.\n" +
   'move {who,to,trespass?:true} records one resident crossing at its narration ID. Cite the crossing segment with perceive:{kind:"seen",by:["player"]}. The crossing applies before that segment. move.request {to,actors} records an explicit request to the entire named local group. It gives no consent or movement. Give each crossing its own move. trespass:true is explicit unauthorized entry for a supplied eligible actor across one usable adjacent connection; it never grants permission or bypasses bans, refusals, closures or capacity. move.request may use trespass:true for an actual Player request to enter without permission. move.decide {who,agrees,to?,trespass?:true} records ordinary following: own heard agreement or actual player-seen following narration. Omit to for ongoing following during this same uninterrupted Scene outing; supplying to limits the decision to ONE adjacent crossing. agrees:false stops or withdraws. Ongoing trespass:true needs that actor’s own complete heard commitment to sneaking together for the outing, never merely observed following or one unauthorized crossing. No request, proximity, friendship or invitation establishes following. It moves nobody; use ordinary Move to travel together. depart {who} records an observed resident exit. contact.end {who} ends an admitted cross-Zone contact.\n' +
-  NARRATION_NPC_COMMANDS +
+  narrationNpcCommands() +
   "\n" +
   'place.discover {existingId} or {place:{name,description,form?,report?,controllers?,zones?,people?:[{ref,existingId,role}]}} discovers existing infrastructure using established people only. venue.request {by,name} records a villager request. appointment {by,when:{dayOffset}|{weekday,afterToday?}|{date:"YYYY-MM-DD"},minute?} uses current spoken agreement and the supplied calendar.';
 

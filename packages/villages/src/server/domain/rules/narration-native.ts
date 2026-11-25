@@ -4,6 +4,7 @@ import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { readNarrationEffectHeader } from "./narration-contract.js";
 import {
   bindNarrationSource,
+  bindSceneSourcePositions,
   assertNarrationSourceOrder,
   readSceneNarrationReply,
   type NarrationSourceContext,
@@ -53,6 +54,8 @@ export function prepareNarrationNative(
   at: string,
   excluded = new Map<string, string>(),
 ) {
+  if (readset.positionedSceneSources)
+    raw = bindSceneSourcePositions(raw, readset.quotedSceneSources === true, readset.recognizeDirectOfferSpeech);
   for (const row of readset.npcCandidates)
     memoryRequire(
       memoryHash(findNpc(state, row.npc.id)) === memoryHash(row.npc),

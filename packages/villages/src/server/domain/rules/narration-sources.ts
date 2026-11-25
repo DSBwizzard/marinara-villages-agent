@@ -120,17 +120,12 @@ function ordinaryReplyLayout(raw: Record<string, unknown>, positions: boolean, q
   };
 }
 
-function bindSceneSourcePositions(
+export function bindSceneSourcePositions(
   raw: Record<string, unknown>,
   quotes: boolean,
   directOffers?: NarrationReadset["recognizeDirectOfferSpeech"],
 ) {
-  if (
-    !Array.isArray(raw.segments) ||
-    (Object.hasOwn(raw, "commands") &&
-      (!Array.isArray(raw.commands) || raw.commands.some((command) => asRecord(command).type !== "npc.introduce")))
-  )
-    return raw;
+  if (!Array.isArray(raw.segments)) return raw;
   const labels = raw.segments.map((value, index) => asRecord(value).id ?? "segment-" + index);
   const label = (position: unknown) =>
     typeof position === "number" && Number.isSafeInteger(position) && position >= 1
@@ -202,6 +197,14 @@ function bindSceneSourcePositions(
   };
   return {
     ...raw,
+    ...(Array.isArray(raw.commands)
+      ? {
+          commands: raw.commands.map((value) => {
+            const command = asRecord(resolveSources(value));
+            return { ...command, at: label(command.at) };
+          }),
+        }
+      : {}),
     ...(Array.isArray(raw.keep) ? { keep: raw.keep.map(resolveSources) } : {}),
     ...(Object.hasOwn(raw, "halt") ? { halt: resolveSources(raw.halt) } : {}),
   };

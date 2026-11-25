@@ -1,4 +1,4 @@
-// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/compact, npc-admission/passerby, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory, npc-admission/overview-eligibility
+// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/compact, npc-admission/passerby, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory, npc-admission/overview-eligibility, npc-admission/ordinary-references
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -220,53 +220,103 @@ await runCase("npc-admission/native", () => {
   assert.throws(() => readAcceptedEpisode(forged, f.state.seed), /NPC admission/);
 });
 await runCase("npc-admission/moving-arrival", () => {
-  for (const dropped of [false, true]) {
+  for (const positions of [false, true]) {
+    for (const dropped of [false, true]) {
+      const f = fixture(),
+        parlor = f.venue.zones!.find((zone) => zone.id === "parlor")!;
+      parlor.connectedTo = [...(parlor.connectedTo ?? []), "garden"];
+      f.venue.zones!.push({
+        ...structuredClone(parlor),
+        id: "garden",
+        name: "Garden",
+        description: "Flowers.",
+        connectedTo: ["parlor"],
+      });
+      initializeVenueAccess(f.venue);
+      f.scene.sceneAttendance!.layout = captureSceneLayout(f.venue);
+      const raw = rawArrival(),
+        input = "I walk to the garden.";
+      raw.segments[0].text = dropped ? "A traveler joins you." : "You walk into the garden as a traveler arrives.";
+      if (!dropped) raw.segments[0].requires.push("move");
+      raw.commands.push({
+        id: "move",
+        type: "move",
+        who: "player",
+        to: "garden",
+        at: "arrive",
+        ...(dropped ? { independent: true } : {}),
+        source: [
+          {
+            input,
+            ground: dropped ? { kind: "private", at: "start" } : { kind: "visible-action", to: [], at: "start" },
+          },
+          { segment: "arrive", perceive: { kind: "seen", by: ["player"] } },
+        ],
+      });
+      if (positions) {
+        raw.commands.forEach((command: any) => {
+          command.at = 1;
+          command.source.forEach((source: any) => {
+            if (source.segment) source.segment = 1;
+          });
+        });
+        raw.keep = [
+          {
+            for: ["player"],
+            text: "I saw a traveler arrive.",
+            source: [{ segment: 1, perceive: { kind: "seen", by: ["player"] } }],
+          },
+        ];
+      }
+      const publication = f.publication(raw, input);
+      if (positions) publication.readset.positionedSceneSources = true;
+      const result = acceptNarration(f.state, publication, "moving-arrival", at);
+      assert.equal(result.held, false, JSON.stringify(result.rejected));
+      const ep = result.episode!,
+        arrival = ep.commandReceipts.find((receipt) => receipt.kind === "npc")!;
+      const destination = dropped ? "parlor" : "garden";
+      assert.equal(arrival.admission!.zoneId, destination);
+      assert.equal(
+        ep.commandReceipts.some((receipt) => receipt.kind === "movement"),
+        !dropped,
+      );
+      assert.deepEqual(ep.segments[0].physicalIdsAfter, [arrival.targetId]);
+      applyAcceptedSceneDelta(f.scene, ep);
+      assert.equal(f.scene.zoneId, destination);
+      assert(f.scene.activeIds.includes(arrival.targetId));
+      assert.equal(
+        f.scene.sceneAttendance!.occupants.find((row) => row.characterId === arrival.targetId)!.zoneId,
+        destination,
+      );
+    }
+  }
+});
+await runCase("npc-admission/ordinary-references", () => {
+  for (const position of [0, -1, 1.5, 3, "missing", "1"]) {
     const f = fixture(),
-      parlor = f.venue.zones!.find((zone) => zone.id === "parlor")!;
-    parlor.connectedTo = [...(parlor.connectedTo ?? []), "garden"];
-    f.venue.zones!.push({
-      ...structuredClone(parlor),
-      id: "garden",
-      name: "Garden",
-      description: "Flowers.",
-      connectedTo: ["parlor"],
-    });
-    initializeVenueAccess(f.venue);
-    f.scene.sceneAttendance!.layout = captureSceneLayout(f.venue);
-    const raw = rawArrival(),
-      input = "I walk to the garden.";
-    raw.segments[0].text = dropped ? "A traveler joins you." : "You walk into the garden as a traveler arrives.";
-    if (!dropped) raw.segments[0].requires.push("move");
-    raw.commands.push({
-      id: "move",
-      type: "move",
-      who: "player",
-      to: "garden",
-      at: "arrive",
-      ...(dropped ? { independent: true } : {}),
-      source: [
-        { input, ground: dropped ? { kind: "private", at: "start" } : { kind: "visible-action", to: [], at: "start" } },
-        { segment: "arrive", perceive: { kind: "seen", by: ["player"] } },
-      ],
-    });
-    const result = acceptNarration(f.state, f.publication(raw, input), "moving-arrival", at);
-    assert.equal(result.held, false, JSON.stringify(result.rejected));
-    const ep = result.episode!,
-      arrival = ep.commandReceipts.find((receipt) => receipt.kind === "npc")!;
-    const destination = dropped ? "parlor" : "garden";
-    assert.equal(arrival.admission!.zoneId, destination);
-    assert.equal(
-      ep.commandReceipts.some((receipt) => receipt.kind === "movement"),
-      !dropped,
-    );
-    assert.deepEqual(ep.segments[0].physicalIdsAfter, [arrival.targetId]);
-    applyAcceptedSceneDelta(f.scene, ep);
-    assert.equal(f.scene.zoneId, destination);
-    assert(f.scene.activeIds.includes(arrival.targetId));
-    assert.equal(
-      f.scene.sceneAttendance!.occupants.find((row) => row.characterId === arrival.targetId)!.zoneId,
-      destination,
-    );
+      raw = rawArrival();
+    raw.commands[0].at = position;
+    raw.commands[0].source[0].segment = position;
+    const publication = f.publication(raw);
+    publication.readset.positionedSceneSources = true;
+    const before = memoryHash(f.state);
+    assert.throws(() => acceptNarration(f.state, publication, "invalid-position", at));
+    assert.equal(memoryHash(f.state), before);
+  }
+  for (const source of [
+    { input: "Hello.", ground: { kind: "spoken", to: ["new:visitor"], at: { before: 2 } } },
+    { segment: 1, perceive: { kind: "seen", by: ["new:visitor"] } },
+  ]) {
+    const f = fixture(),
+      raw = rawArrival();
+    raw.segments.unshift({ kind: "narration", text: "An earlier private moment." });
+    raw.commands[0].at = raw.commands[0].source[0].segment = 2;
+    raw.keep = [{ for: ["new:visitor"], text: "I learned an earlier secret.", source: [source] }];
+    const publication = f.publication(raw);
+    publication.readset.positionedSceneSources = true;
+    const before = memoryHash(f.state);
+    assert(acceptNarration(f.state, publication, "before-arrival", at).held);
+    assert.equal(memoryHash(f.state), before);
   }
 });
 await runCase("npc-admission/returning", () => {

@@ -48,7 +48,7 @@ import {
   NARRATION_CIRCUMSTANCE_COMMANDS,
   NARRATION_HOUSING_COMMANDS,
   NARRATION_NATIVE,
-  NARRATION_NPC_COMMANDS,
+  narrationNpcCommands,
   NARRATION_PROJECT_COMMANDS,
 } from "../../domain/rules/narration-command-contract.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
@@ -324,10 +324,9 @@ export function createSceneWriting({
     const playerZone = location.player.zone;
     const speakers = selectedIds.filter((id) => id !== "player");
     const attendanceDirection =
-      "Use current dialogueSpeakers for dialogue. Past speech does not prove presence. " +
-      (nativeCommands ? "Named newcomers need a witnessed arrival before their dialogue. " : "") +
+      "Use dialogueSpeakers or a newcomer admitted before speaking. History proves no presence. " +
       (!nativeCommands && !speakers.length
-        ? "The current cast has nobody who can hear or answer the player. Ground the reply in the current place and the player's submission. "
+        ? "No established speaker is present. Ground arrivals in the current place and input. "
         : "");
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
@@ -386,7 +385,7 @@ export function createSceneWriting({
         residentMovesInReply
           ? 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
           : "",
-        scene.visitorIntroduction ? "" : nativeCommands ? NARRATION_NATIVE : NARRATION_NPC_COMMANDS,
+        scene.visitorIntroduction ? "" : nativeCommands ? NARRATION_NATIVE : narrationNpcCommands(positions),
         !nativeCommands && !scene.visitorIntroduction
           ? "Agreement to accompany: dialogue follow:{agrees:true}, also on spoken asides. Memory alone does not enable following. trespass:true needs explicit outing-wide sneaking consent. Omit to for ongoing following; to limits one adjacent crossing. agrees:false stops. Questions/conditions grant no consent. Use one form per decision. Observed following uses native move.decide with player-seen evidence."
           : "",
@@ -394,7 +393,7 @@ export function createSceneWriting({
           ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."
           : "",
         npcIntroduction
-          ? 'On a heard NPC self-introduction, add commands:[{type:"npc.introduce",who:"npc-id or localKey",name:"canonical name",at:"speech-id",source:["speech-id"],independent:true}]. Keep role labels until heard.'
+          ? `Name reveal: commands:[{type:"npc.introduce",who:"NPC ID/localKey",name:"heard name",at:${positions ? "2,source:[{segment:2}]" : '"speech-id",source:["speech-id"]'},independent:true}]. Cite actual self-introduction speech; keep role labels until heard.`
           : "",
       ]),
       identity: blocksFor([
@@ -536,7 +535,7 @@ export function createSceneWriting({
           ? "Finish the departure and end before arrival. "
           : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. End crossing attempts before entry despite prior prose. `) +
         attendanceDirection +
-        'Treat input as intent; show local outcomes and leave the next choice open. Return "segments" and any "keep" in one JSON object.',
+        'Return "segments" and any "keep" or "commands" in one JSON object.',
     );
     if (loreInspection) {
       const included = new Set((fitted.lore ?? []).map(({ bookId, id }) => JSON.stringify([bookId, id])));

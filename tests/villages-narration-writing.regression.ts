@@ -1,4 +1,4 @@
-// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner
+// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner, narration-writing/empty-cast-npc
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -24,6 +24,7 @@ import {
   applyContinuityWrite,
   continuityHolderKey,
   continuityVersionUnit,
+  continuityViews,
   protectContinuity,
 } from "../packages/villages/src/server/domain/rules/continuity.js";
 import {
@@ -45,6 +46,8 @@ import {
   readFoundingCircumstances,
 } from "../packages/villages/src/server/domain/rules/founding-circumstances.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
+import { npcEncounterIndex } from "../packages/villages/src/server/domain/rules/npc-encounters.js";
+import { applyAcceptedSceneDelta } from "../packages/villages/src/server/domain/rules/scene-delta.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
@@ -103,6 +106,7 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
   const checkpoints = new Map<string, unknown>(),
     calls = { purchases: 0, resolutions: 0, reads: 0 };
   const formats: unknown[] = [];
+  let response: Record<string, unknown> | undefined;
   let operationId = "operation";
   let messages: any[] = [],
     unavailable = false,
@@ -155,9 +159,11 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
       messages = structuredClone(input);
       formats.push(options.responseFormat);
       return {
-        content: JSON.stringify({
-          segments: [{ kind: "dialogue", speakerId: scene.activeIds[0] ?? id, text: "Because it matters to me." }],
-        }),
+        content: JSON.stringify(
+          response ?? {
+            segments: [{ kind: "dialogue", speakerId: scene.activeIds[0] ?? id, text: "Because it matters to me." }],
+          },
+        ),
         finishReason: "stop",
       };
     },
@@ -176,6 +182,9 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
     calls,
     formats,
     writing,
+    respondWith: (raw: Record<string, unknown>) => {
+      response = raw;
+    },
     messages: () => messages,
     disable: () => {
       unavailable = true;
@@ -198,6 +207,78 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
     },
   };
 }
+
+await runCase("narration-writing/empty-cast-npc", async () => {
+  for (const positions of [true, false]) {
+    const f = fixture();
+    f.scene.activeIds = [];
+    f.scene.participants = [];
+    f.scene.sceneAttendance!.occupants = [];
+    const raw: any = {
+      segments: [
+        { kind: "narration", text: "A baker steps up beside you with a basket." },
+        { kind: "dialogue", speakerId: "new:person", text: "I'm Mira. I'd like to share today's bread." },
+      ],
+      commands: [
+        {
+          type: "npc.admit",
+          at: 1,
+          localKey: "new:person",
+          name: "Mira",
+          characterization: "A friendly local baker.",
+          source: [{ segment: 1, perceive: { kind: "seen", by: ["player"] } }],
+        },
+        { type: "npc.introduce", at: 2, who: "new:person", name: "Mira", source: [{ segment: 2 }] },
+      ],
+      keep: [
+        {
+          for: ["new:person"],
+          owner: "new:person",
+          class: "desire",
+          text: "I want to share today's bread.",
+          source: [{ segment: 2 }],
+        },
+      ],
+    };
+    if (!positions) {
+      raw.segments[0].id = "arrival";
+      raw.segments[1].id = "greeting";
+      raw.commands[0].at = raw.commands[0].source[0].segment = "arrival";
+      raw.commands[1].at = raw.commands[1].source[0].segment = "greeting";
+      raw.keep[0].source[0].segment = "greeting";
+    }
+    f.respondWith(raw);
+    const publication = await f.writing.generate(
+      f.scene,
+      positions ? '"Hello, is anyone here?"' : '"Please remember that I like bread."',
+      "chat",
+    );
+    assert.equal(publication.readset.positionedSceneSources === true, positions);
+    const result = acceptNarration(f.state, publication, "first-meeting", publication.readset.capturedAt);
+    assert.equal(result.held, false, JSON.stringify(result.rejected));
+    const episode = result.episode!,
+      npc = episode.commandReceipts.find((row) => row.kind === "npc")!.admission!.npc;
+    assert.equal(npc.name, "Mira");
+    assert.equal(npcEncounterIndex(f.state).get(npc.id)?.personality, "A friendly local baker.");
+    assert.equal(episode.segments[1].speakerId, npc.id);
+    assert.equal(episode.segments[1].content, raw.segments[1].text);
+    assert.equal(
+      continuityViews(f.state.continuity, continuityActor(f.state, npc.id)!, at, new Set())[0].version.text,
+      "I want to share today's bread.",
+    );
+    readAcceptedEpisode(episode, f.state.seed);
+    applyAcceptedSceneDelta(f.scene, episode);
+    assert(f.scene.activeIds.includes(npc.id));
+    assert.deepEqual(publication.raw, raw, "position binding leaves the received response unchanged");
+    const prompt = f
+      .messages()
+      .map(({ content }) => content)
+      .join("\n");
+    assert.doesNotMatch(prompt, /nobody who can hear or answer|Return narration only/u);
+    assert.match(prompt, /newcomer/u);
+    assert.equal(f.calls.purchases, 1);
+  }
+});
 
 await runCase("narration-writing/connection-failure", async () => {
   for (const id of ["missing-gm", null]) {
@@ -383,8 +464,8 @@ await runCase("narration-writing/departed-speaker", async () => {
   const publication = await f.writing.generate(f.scene, '"Definitely seventeen."', "chat");
   const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
   assert.match(frame.content, /"dialogueSpeakers":\[\]/u);
-  assert.match(f.messages().at(-1).content, /Use current dialogueSpeakers for dialogue/u);
-  const emptyCast = "The current cast has nobody who can hear or answer the player.";
+  assert.match(f.messages().at(-1).content, /Use dialogueSpeakers or a newcomer admitted before speaking/u);
+  const emptyCast = "No established speaker is present.";
   assert(f.messages().at(-1).content.includes(emptyCast));
   assert.throws(
     () => readSceneNarrationReply(publication.raw, [], publication.readset, f.state.continuity),
