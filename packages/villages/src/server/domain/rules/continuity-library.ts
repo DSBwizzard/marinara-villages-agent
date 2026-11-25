@@ -479,7 +479,10 @@ export function continuityRelationships(state: VillageState, at: string): Relati
           const key = relationshipKey(actor, other);
           const answer = answers.get(key)?.relationshipAnswer;
           return {
-            person: person(state, other.id),
+            person:
+              other.id === "player" && state.playerPersonaName
+                ? { id: other.id, name: state.playerPersonaName }
+                : person(state, other.id),
             score: scores.get(key)?.relationshipScore ?? 0,
             romanticInterest: interests.get(key)?.romanticInterest ?? 0,
             ...(answer ? { answer } : {}),

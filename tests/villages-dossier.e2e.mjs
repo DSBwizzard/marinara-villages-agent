@@ -197,7 +197,7 @@ await withBrowser(browser, async () => {
           characterId === "mara"
             ? [
                 {
-                  person: { id: "player", name: "You" },
+                  person: { id: "player", name: "Rowan" },
                   score: 3,
                   romanticInterest: 7,
                   answer: "I enjoy when you visit.",
@@ -1242,17 +1242,27 @@ await withBrowser(browser, async () => {
     await chooseSection("Venues");
     await expect(profile.getByText(/Agenda destination/)).toBeVisible();
     await chooseSection("Relationships");
-    await expect(profile.getByRole("meter", { name: "Toward you", exact: true })).toHaveAttribute("aria-valuenow", "3");
-    await expect(profile.getByRole("meter", { name: "Toward " + secondName, exact: true })).toHaveAttribute(
+    await expect(profile.getByRole("heading", { name: "Rowan", exact: true })).toBeVisible();
+    await expect(profile.getByRole("heading", { name: secondName, exact: true })).toBeVisible();
+    await expect(profile.getByRole("meter", { name: "Warmth toward Rowan", exact: true })).toHaveAttribute(
+      "aria-valuenow",
+      "3",
+    );
+    await expect(profile.getByRole("meter", { name: "Warmth toward " + secondName, exact: true })).toHaveAttribute(
       "aria-valuenow",
       "-10",
     );
-    const romance = profile.getByRole("meter", { name: "Romance toward you", exact: true });
+    const romance = profile.getByRole("meter", { name: "Romantic interest toward Rowan", exact: true });
     await expect(romance).toHaveAttribute("aria-valuemin", "-20");
     await expect(romance).toHaveAttribute("aria-valuemax", "20");
     await expect(romance).toHaveAttribute("aria-valuenow", "7");
-    const negativeRomance = profile.getByRole("meter", { name: "Romance toward " + secondName, exact: true });
+    await expect(romance.locator("[data-fill=full]")).toHaveCount(3);
+    await expect(romance.locator("[data-fill=half]")).toHaveCount(1);
+    const negativeRomance = profile.getByRole("meter", { name: "Romantic interest toward " + secondName, exact: true });
     await expect(negativeRomance).toHaveAttribute("aria-valuenow", "-16");
+    await expect(negativeRomance).toHaveAttribute("data-negative", "true");
+    await expect(negativeRomance.locator("[data-fill=full]")).toHaveCount(8);
+    await expect(negativeRomance.locator(".villages-romantic-value")).toHaveCSS("white-space", "nowrap");
     assert(
       await negativeRomance.evaluate(
         (node) =>
