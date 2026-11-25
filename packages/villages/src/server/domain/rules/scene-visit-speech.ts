@@ -77,13 +77,19 @@ export function sceneVisitCommand(
 ) {
   if (value === undefined) return undefined;
   const refuse = () => {
-    if (readset.strictSceneReply) throw badGateway("The invitation needs a listed option and its spoken line.");
+    if (readset.strictSceneReply && !readset.taggedSceneReply)
+      throw badGateway("The invitation needs a listed option and its spoken line.");
     return undefined;
   };
   if (!readset.sceneVisitOptions || reply.halt) return refuse();
   if (!readset.strictSceneReply && reply.commands.some((row) => asRecord(row).type !== "npc.introduce"))
     return undefined;
-  const parsed = visitReply.safeParse(value);
+  const tagged = readset.taggedSceneReply ? asRecord(value) : undefined;
+  const parsed = visitReply.safeParse(
+    tagged && typeof tagged.segment === "string"
+      ? { ...tagged, segment: reply.segments.findIndex((line) => line.id === tagged.segment) + 1 }
+      : value,
+  );
   if (!parsed.success) return refuse();
   const choice = readset.sceneVisitOptions[parsed.data.option - 1];
   const line = reply.segments[parsed.data.segment - 1];

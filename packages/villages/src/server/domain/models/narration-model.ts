@@ -30,6 +30,7 @@ export type NarrationReadset = {
   automaticTrespass?: true;
   sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string; afterHours?: true }[];
   strictSceneReply?: true;
+  taggedSceneReply?: true;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;

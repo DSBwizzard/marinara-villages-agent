@@ -1,4 +1,4 @@
-// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/compact, npc-admission/passerby, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory, npc-admission/overview-eligibility, npc-admission/ordinary-references
+// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/compact, npc-admission/passerby, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory, npc-admission/overview-eligibility, npc-admission/ordinary-references, npc-admission/tagged-turn
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -34,6 +34,10 @@ import { readAcceptedEpisode } from "../packages/villages/src/server/domain/deco
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { npcEncounterIndex, readNpcPeople } from "../packages/villages/src/server/domain/rules/npc-encounters.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
+import {
+  pruneTaggedSceneReply,
+  readTaggedSceneReply,
+} from "../packages/villages/src/server/domain/rules/tagged-scene-reply.js";
 const at = "2026-11-10T08:00:00.000Z";
 function fixture() {
   const state = { ...defaultVillageState(), seed: "npc-world", setupAt: at, foundedAt: at };
@@ -125,6 +129,75 @@ const rawArrival = (existingId?: string): any => ({
       source: [{ segment: "arrive", perceive: { kind: "seen", by: ["player"] } }],
     },
   ],
+});
+await runCase("npc-admission/tagged-turn", () => {
+  for (const admitted of [true, false]) {
+    const f = fixture();
+    const original = f.publication({});
+    const readset = { ...original.readset, taggedSceneReply: true as const, ordinaryDialogue: true as const };
+    const content = [
+      "Narration: Rain taps the glass.",
+      "Narration!: A baker comes inside.",
+      admitted
+        ? '[command]: {"type":"npc.admit","localKey":"new:baker","name":"Emil Rye","label":"Baker","characterization":"A patient baker."}'
+        : '[command]: {"type":"npc.admit","localKey":"new:baker","existingId":"npc:unfitted"}',
+      "[new:baker] [name Emil Rye]: I'm Emil Rye. I hope to see the garden.",
+      '[keep]: {"owner":"new:baker","for":["new:baker","player"],"class":"desire","current":true,"text":"Emil hopes to see the garden."}',
+      '[KeEp]: {"text":"Private broken note"',
+      "Narration: This could be a continuation of the private note.",
+    ].join("\n");
+    const raw = readTaggedSceneReply(content, readset);
+    assert(raw);
+    const publication = { raw, readset, responseDigest: memoryHash(content) };
+    const result = acceptNarration(f.state, publication, "tagged", at);
+    assert(!result.held, JSON.stringify(result.rejected));
+    const episode = readAcceptedEpisode(result.episode!, f.state.seed);
+    assert.equal(
+      episode.segments.some(({ name }) => name === "Emil Rye"),
+      admitted,
+    );
+    assert.deepEqual(episode.segments.map((line) => line.content).slice(0, 1), ["Rain taps the glass."]);
+    assert.equal(episode.segments.length, admitted ? 3 : 1);
+    assert.equal(
+      f.state.continuity.versions.some((row) => row.text === "Emil hopes to see the garden."),
+      admitted,
+    );
+    assert.equal(
+      Object.values(f.state.worldPlaces.npcs).some((row) => row.name === "Emil Rye"),
+      admitted,
+    );
+    assert(result.rejected.length > 0);
+    const save = memoryHash(f.state);
+    assert(acceptNarration(f.state, publication, "tagged", at).replayed);
+    assert.equal(memoryHash(f.state), save);
+  }
+  const f = fixture(),
+    readset = f.publication({}).readset;
+  const raw = readTaggedSceneReply(
+    [
+      "Narration: Before crossing.",
+      "Narration!: Someone crosses.",
+      '[command]: {"id":"crossing","type":"move","who":"one","to":"next"}',
+      '[command]: {"id":"bad","type":"appointment","by":"one"}',
+      "Narration: From the new position.",
+    ].join("\n"),
+    readset,
+  )!;
+  const privateTail = readTaggedSceneReply(
+    "Narration: You hear rain.\n[keep] [aside]: {\nNarration: This could be an unfinished private note.",
+    readset,
+  )!;
+  assert.deepEqual(
+    (privateTail.segments as { text: string }[]).map((line) => line.text),
+    ["You hear rain."],
+  );
+  assert.equal(readTaggedSceneReply("[command]: {\nNarration: Private control continuation.", readset), null);
+  assert.equal(readTaggedSceneReply("[ !keep: {\nNarration: Private control continuation.", readset), null);
+  const pruned = pruneTaggedSceneReply(raw, new Set(["bad"]))!;
+  assert.deepEqual(
+    (pruned.segments as { text: string }[]).map((line) => line.text),
+    ["Before crossing."],
+  );
 });
 await runCase("npc-admission/native", () => {
   const f = fixture(),

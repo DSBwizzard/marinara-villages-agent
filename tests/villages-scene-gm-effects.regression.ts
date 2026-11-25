@@ -47,10 +47,6 @@ const supplied = (messages: { content: string }[]) =>
 await runCase("gm-effects/provider-reply", async () => {
   const host = await packagedSceneServer();
   const note = "Mara likes the morning light because it reveals hairline cracks.";
-  const segments = [
-    { ...said("I'll tell you why I prefer this spot."), id: "intro", requires: ["light"] },
-    { ...said(note), delivery: "ordinary", requires: ["light"] },
-  ];
   const keep = [
     {
       id: "light",
@@ -60,14 +56,22 @@ await runCase("gm-effects/provider-reply", async () => {
       facet: "stance",
       text: note,
       source: [
-        { segment: "intro", perceive: { kind: "private", by: ["mara"] } },
-        { segment: "said", perceive: { kind: "words", by: ["mara"] } },
+        { segment: 1, perceive: { kind: "private", by: ["mara"] } },
+        { segment: 2, perceive: { kind: "words", by: ["mara"] } },
       ],
     },
   ];
   let calls = 0;
   host.model.chatComplete = async () => ({
-    content: ++calls === 1 ? JSON.stringify({ segments }) + "\n,keep:" + JSON.stringify(keep) + "}" : " ".repeat(149),
+    content:
+      ++calls === 1
+        ? [
+            "[mara]: I'll tell you why I prefer this spot.",
+            "[mara]: " + note,
+            "[keep]: " + JSON.stringify(keep[0]),
+            '[keep]: {"text":"Private malformed field"',
+          ].join("\n")
+        : " ".repeat(149),
     finishReason: "stop",
     usage: { inputTokens: 10, outputTokens: 10 },
   });
@@ -90,6 +94,8 @@ await runCase("gm-effects/provider-reply", async () => {
     const response = await send("provider-reply");
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(host.scene().submissions.at(-1)?.acceptance.status, "applied");
+    assert.equal(host.scene().submissions.at(-1)?.acceptance.rejected.length, 1);
+    assert(!JSON.stringify(response.json().session.lines).includes("Private malformed field"));
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
     const kept = views(world, "mara").find((row) => row.version.text === note)?.version;
     assert(kept);

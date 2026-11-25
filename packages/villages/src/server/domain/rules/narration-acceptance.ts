@@ -27,7 +27,7 @@ import {
   readSceneNarrationReply,
   type NarrationSourceContext,
 } from "./narration-sources.js";
-import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
+import { MAX_SCENE_REJECTIONS, selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
 import { findLocation, findNpc } from "./places.js";
@@ -155,6 +155,8 @@ export function acceptNarrationContinuity(
   publication: NarrationPublication,
   submissionId: string,
   acceptedAt: string,
+  raw = publication.raw,
+  discarded: { id: string; reason: string }[] = [],
 ) {
   const { readset, native } = publication;
   const digest = memoryHash([publication.responseDigest, publication.raw, readset]);
@@ -201,7 +203,7 @@ export function acceptNarrationContinuity(
       ]),
     ];
   const reply = readSceneNarrationReply(
-    bindNpcReferences(publication.raw, native.admissions),
+    bindNpcReferences(raw, native.admissions),
     scene.contactGeneration?.actorIds ?? scene.activeIds,
     readset,
     state.continuity,
@@ -236,6 +238,18 @@ export function acceptNarrationContinuity(
     ],
     native: Object.fromEntries(Object.entries(native.receipts).map(([id, receipt]) => ["native:" + id, receipt])),
   };
+  if (
+    readset.taggedSceneReply &&
+    !reply.halt &&
+    !source.lines.some((line) => (!line.contactHidden && line.heardBy?.includes("player")) || line.soundOnly?.player)
+  )
+    return {
+      held: true as const,
+      rejected: [{ id: "visible-reply", reason: "The reply contained no lines the player could see or hear." }],
+      usableIds: [],
+      acceptedIds: [],
+      episode: undefined,
+    };
   memoryRequire(
     source.lines.length === reply.segments.length &&
       source.lines.every(
@@ -1070,6 +1084,11 @@ export function acceptNarrationContinuity(
     holderDependencies,
     ...(readset.admission.room ? { room: readset.admission.room } : {}),
   };
+  const rejected = [...new Map([...selection.rejected, ...discarded].map((row) => [row.id, row])).values()].slice(
+    0,
+    MAX_SCENE_REJECTIONS,
+  );
+  if (rejected.length) episode.rejectedEffects = rejected;
   const episodes = appendEpisode(state.episodes, episode, state.seed);
   assertContinuityRetention(continuity, episodes);
   state.continuity = continuity;
@@ -1084,5 +1103,5 @@ export function acceptNarrationContinuity(
   }
   state.residentPlans = scheduledWorld.residentPlans;
   state.villagers = scheduledWorld.villagers;
-  return { ...selection, episode: episodes.records.at(-1)! };
+  return { ...selection, rejected, episode: episodes.records.at(-1)! };
 }

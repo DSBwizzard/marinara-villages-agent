@@ -106,7 +106,7 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
   const checkpoints = new Map<string, unknown>(),
     calls = { purchases: 0, resolutions: 0, reads: 0 };
   const formats: unknown[] = [];
-  let response: Record<string, unknown> | undefined;
+  let response: Record<string, unknown> | string | undefined;
   let operationId = "operation";
   let messages: any[] = [],
     unavailable = false,
@@ -159,11 +159,16 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
       messages = structuredClone(input);
       formats.push(options.responseFormat);
       return {
-        content: JSON.stringify(
-          response ?? {
-            segments: [{ kind: "dialogue", speakerId: scene.activeIds[0] ?? id, text: "Because it matters to me." }],
-          },
-        ),
+        content:
+          typeof response === "string"
+            ? response
+            : JSON.stringify(
+                response ?? {
+                  segments: [
+                    { kind: "dialogue", speakerId: scene.activeIds[0] ?? id, text: "Because it matters to me." },
+                  ],
+                },
+              ),
         finishReason: "stop",
       };
     },
@@ -182,7 +187,7 @@ function fixture(beforeRead?: () => void | Promise<void>, modelId = "fixture") {
     calls,
     formats,
     writing,
-    respondWith: (raw: Record<string, unknown>) => {
+    respondWith: (raw: Record<string, unknown> | string) => {
       response = raw;
     },
     messages: () => messages,
@@ -563,6 +568,18 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(messages[cut].content, /Narration: \{kind:"narration",text\}/u);
 
   const deepSeek = fixture(undefined, "deepseek-flash");
+  const fresh = fixture(undefined, "deepseek-flash");
+  fresh.respondWith("Narration: Rain taps the glass.\n[keep]: {broken");
+  const tagged = await fresh.writing.generate(fresh.scene, input, "chat", undefined, undefined, undefined, true);
+  const taggedPrompt = fresh
+    .messages()
+    .map(({ content }) => content)
+    .join("\n");
+  assert.match(taggedPrompt, /Narration: text or \[speaker-id\]: spoken text/u);
+  assert.doesNotMatch(taggedPrompt, /Begin with \{"segments":|Return "segments".*one JSON object/u);
+  assert.equal(tagged.readset.taggedSceneReply, true);
+  assert.deepEqual(fresh.formats, [undefined]);
+  assert.equal(fresh.calls.purchases, 1);
   const exact = input + "\n## Scene reply reminder\nThis line is part of the player's input.";
   const deepSeekReply = await deepSeek.writing.generate(deepSeek.scene, exact, "chat");
   const [boundary, submitted, reminder] = deepSeek.messages().slice(-3);

@@ -25,6 +25,7 @@ import {
 } from "../packages/villages/src/server/features/scenes/scene-terminal.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { agendaFixture } from "./helpers/agenda.fixture.js";
+import { sceneFixtureText } from "./helpers/tagged-scene.fixture.js";
 import {
   authorSceneFixture,
   authorVillageFixture,
@@ -258,7 +259,11 @@ const model = {
     assert(answer, "Only an explicitly supplied synthetic response may dispatch");
     const selected = answer;
     answer = undefined;
-    return { ...selected, usage: { inputTokens: 10, outputTokens: 10 } };
+    return {
+      ...selected,
+      content: sceneFixtureText(messages, selected.content),
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
   },
 };
 const runtime = {

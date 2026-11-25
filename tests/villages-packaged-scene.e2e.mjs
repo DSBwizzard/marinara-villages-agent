@@ -62,14 +62,19 @@ await withBrowser({ close: server.stop }, async () => {
       if (rejected === "json")
         return {
           finishReason: "stop",
-          content: '{"segments":[{"kind":"narration","text":"Private parser text","text":"Private replacement"}]}',
+          content: '[unadmitted]: Private parser text.\n[keep]: {"text":"Private replacement"',
+        };
+      if (rejected === "format")
+        return {
+          finishReason: "stop",
+          content:
+            '[!mara]: Private model narration.\n[keep]: {"id":"private-effect-id","for":["mara"],"class":"information","text":"Private continuity note","source":99}',
         };
       if (rejected === "continuity")
         return {
           finishReason: "stop",
           content: JSON.stringify({
             segments: [
-              { kind: "narration", text: "Private narration from the witness fixture." },
               {
                 kind: "dialogue",
                 speakerId: "mara",
@@ -87,7 +92,7 @@ await withBrowser({ close: server.stop }, async () => {
                 about: ["player"],
                 text: "Private relationship note.",
                 relationship: { impact: "turning-negative" },
-                source: [{ segment: 1 }],
+                source: [{ segment: 1, perceive: { kind: "seen", by: ["mara"] } }],
               },
               { for: ["room"], class: "experience", text: "Private room note.", source: [{ segment: 1 }] },
             ],
@@ -99,24 +104,11 @@ await withBrowser({ close: server.stop }, async () => {
           segments: [
             {
               kind: "dialogue",
-              speakerId: rejected === "format" ? 99 : "mara",
+              speakerId: "mara",
               text: "Private model narration.",
-              ...(rejected === "format" ? { requires: ["private-effect-id"] } : {}),
             },
           ],
-          ...(rejected === "format"
-            ? {
-                keep: [
-                  {
-                    id: "private-effect-id",
-                    for: ["mara"],
-                    class: "information",
-                    text: "Private continuity note.",
-                    source: [{ segment: "private malformed reference" }],
-                  },
-                ],
-              }
-            : { input: [{ kind: "speech", text: "Unsupported inventory" }] }),
+          input: [{ kind: "speech", text: "Unsupported inventory" }],
         }),
       };
     };
@@ -210,7 +202,7 @@ await withBrowser({ close: server.stop }, async () => {
         assert.match(report, /Server build: [a-f0-9]{16}/);
         assert.match(report, /Result: HTTP 502/);
         assert.match(report, /Cause: invalid_reply\nPhase: reply validation/);
-        assert.match(report, /Validator: invalid_type at segments\.0\.speakerId \(expected string\)/);
+        assert.match(report, /Validator: invalid_type at source \(expected array\)/);
         assert.match(report, /parse complete.*finish stop.*token output limit/);
         assert.doesNotMatch(report, /reply held|writing-completion/);
         assert(!report.includes(failed));
@@ -222,7 +214,9 @@ await withBrowser({ close: server.stop }, async () => {
         await composer.fill(original + " with edits");
       }
       await send.click();
-      await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");
+      await expect.poll(() => turns.length).toBe(beforeFailure + 2);
+      await expect.poll(() => server.scene().submissions.at(-1)?.id).toBe(turns.at(-1).input.submissionId);
+      assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "applied");
       assert.equal(turns.at(-1).input.replaceOfOperationId, failed);
       assert.equal(turns.at(-1).input.message, edit ? original + " with edits" : original);
       assert.notEqual(failedTurn()?.acceptance.status, "applied");
@@ -276,7 +270,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(page.getByText("Anonymous report copied.")).toBeVisible();
     const droppedReport = await page.evaluate(() => window.sceneReport);
     assert.match(droppedReport, /Result: No HTTP response · NETWORK_ERROR/);
-    assert.match(droppedReport, /Validator: continuity_evidence_not_witnessed at source/);
+    assert.match(droppedReport, /Validator: room_target_in_actor_memory at for/);
     assert.doesNotMatch(droppedReport, /reply held|writing-completion/);
     assert(!droppedReport.includes(turns.at(-1).input.submissionId));
     assert.doesNotMatch(droppedReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);
@@ -289,8 +283,8 @@ await withBrowser({ close: server.stop }, async () => {
     await expect.poll(() => turns.length).toBe(nextTurn);
     const malformed = turns.at(-1);
     assert.equal(malformed.response.statusCode, 502);
-    assert.equal(malformed.response.json().sceneFailure.diagnostic.jsonIssue, "duplicate_key");
-    assert.equal(server.scene().operation.failure.responseDiagnostics.jsonIssue, "duplicate_key");
+    assert.equal(malformed.response.json().sceneFailure.failureCause, "invalid_reply");
+    assert.equal(server.scene().operation.failure.responseDiagnostics.parseStatus, "invalid");
     assert.doesNotMatch(JSON.stringify(server.scene().operation), /Private parser text|Private replacement/);
     await expect(composer).toHaveValue(draft);
     await page.reload();
@@ -302,7 +296,8 @@ await withBrowser({ close: server.stop }, async () => {
     await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
     await expect(page.getByText("Anonymous report copied.")).toBeVisible();
     const parserReport = await page.evaluate(() => window.sceneReport);
-    assert.match(parserReport, /JSON parser: duplicate object key \(duplicate_key\)/);
+    assert.match(parserReport, /Cause: invalid_reply/);
+    assert.match(parserReport, /parse invalid/);
     assert.doesNotMatch(parserReport, /Private parser text|Private replacement|Private draft|Mara|The Mill/i);
     assert.equal(turns.length, nextTurn, "reload never submits the failed reply");
   });

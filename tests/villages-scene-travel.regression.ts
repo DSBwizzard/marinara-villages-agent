@@ -1,4 +1,4 @@
-// Test cases: scene-travel/prepared-place, scene-travel/unprepared-place, scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move, scene-travel/local-permission
+// Test cases: scene-travel/prepared-place, scene-travel/unprepared-place, scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move, scene-travel/local-permission, scene-travel/doorway-after-hours
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -228,7 +228,7 @@ for (const scenario of [
         };
       }
       if (residentCrossing || residentDeparture) {
-        assert.match(messages.map(({ content }) => content).join("\n"), /"kind":"crossing".*"kind":"departure"/);
+        assert.match(messages.map(({ content }) => content).join("\n"), /"type":"move".*type:"depart"/);
         return {
           content: JSON.stringify({
             segments: [
@@ -468,7 +468,7 @@ for (const scenario of [
           assert.equal(aside?.presentation, "aside");
           assert.equal(aside.asideFor, saved.lines.find((line) => line.content === "I'll go check on something.")?.id);
           assert.deepEqual(aside.heardBy.toSorted(), ["ella", "mara", "player"]);
-          assert.equal(saved.submissions.at(-1)?.acceptance.rejected[0]?.id, "keep-1");
+          assert.equal(saved.submissions.at(-1)?.acceptance.rejected.length, 1);
           assert(!outcome.body.includes("A remark only heard outside."));
           assert(
             !saved.lines.find((line) => line.content === "A remark only heard outside.")?.heardBy.includes("player"),
@@ -719,8 +719,8 @@ await runCase("scene-travel/local-permission", async () => {
       assert(option, "The actual fitted reply includes the host's same-Venue invitation option");
       assert.match(
         messages.at(-1)!.content,
-        /grants entry to any listed Zone/,
-        "The final reminder must allow local permission, too",
+        /each lasting change on its own tag line/,
+        "The final reminder uses one proposal line per change",
       );
       if (mode === "unrelated")
         assert(
@@ -728,24 +728,18 @@ await runCase("scene-travel/local-permission", async () => {
           "Unrelated ordinary chat does not list unseen local Zones",
         );
       return {
-        content: JSON.stringify({
-          ...(["conditional", "unrelated"].includes(mode)
-            ? {}
-            : { visit: { option: mode === "unlisted" ? 12 : option, segment: 1, escort: false } }),
-          segments: [
-            {
-              kind: "dialogue",
-              speakerId: "mara",
-              text:
-                mode === "conditional"
-                  ? "Ask me after lunch first."
-                  : mode === "unrelated"
-                    ? "Just a quiet afternoon."
-                    : "Yes, go take a look at the Airstrip.",
-              ...(mode === "whisper" ? { delivery: "whisper", targetId: "leo" } : {}),
-            },
-          ],
-        }),
+        content:
+          mode === "conditional"
+            ? "[mara]: Ask me after lunch first."
+            : mode === "unrelated"
+              ? "[mara]: Just a quiet afternoon."
+              : [
+                  "Narration: A breeze stirs the grass.",
+                  mode === "whisper"
+                    ? "[!mara] [whisper leo]: Yes, go take a look at the Airstrip."
+                    : "[!mara]: Yes, go take a look at the Airstrip.",
+                  "[visit]: " + (mode === "unlisted" ? 12 : option),
+                ].join("\n"),
         finishReason: "stop",
         usage: { inputTokens: 10, outputTokens: 10 },
       };
@@ -761,7 +755,11 @@ await runCase("scene-travel/local-permission", async () => {
       };
       const response = await host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: input });
       if (mode === "unlisted" || mode === "whisper") {
-        assert.equal(response.statusCode, 502, response.body);
+        assert.equal(response.statusCode, 200, response.body);
+        assert.deepEqual(
+          response.json().session.lines.map((line: { content: string }) => line.content),
+          ["A breeze stirs the grass."],
+        );
         const world = await createVillageRepository(() => host.documents as never).readAuthority();
         assert.equal(world.venues[0].access!.permissions.length, 0);
         continue;
@@ -802,5 +800,94 @@ await runCase("scene-travel/local-permission", async () => {
     } finally {
       await host.stop();
     }
+  }
+});
+
+await runCase("scene-travel/doorway-after-hours", async () => {
+  const host = await packagedSceneServer({
+    configure(world, now) {
+      const venue = world.venues[0];
+      venue.access!.managerIds = ["mara"];
+      const weekday = new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(new Date(now));
+      venue.zones!.find((zone) => zone.id === "common")!.access!.visitorHours = [
+        { days: [weekday === "Monday" ? "Tuesday" : "Monday"], start: "07:00", end: "16:00" },
+      ];
+    },
+    configureScene(scene) {
+      scene.zoneId = "exterior";
+      scene.activeIds = [];
+      scene.participants = [];
+      scene.accompanying = [];
+    },
+  });
+  let calls = 0;
+  host.model.chatComplete = async (messages, options) => {
+    calls++;
+    assert.equal((options as { responseFormat?: unknown }).responseFormat, undefined);
+    const prompt = messages.map(({ content }) => content).join("\n");
+    const choices = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]);
+    const choice = choices.find(
+      (row: { actorId: string; zoneId: string }) => row.actorId === "mara" && row.zoneId === "common",
+    );
+    assert(choice?.afterHours);
+    return {
+      content: [
+        "Narration: Water drips from the eaves.",
+        "[!mara] [to player]: Come into the Common room.",
+        "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
+      ].join("\n"),
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
+  };
+  const world = () => createVillageRepository(() => host.documents as never).readAuthority();
+  const input = () => ({
+    sessionId: "browser",
+    mode: "chat",
+    targetId: "",
+    message: 'I knock and call to Mara, "May I come in?"',
+    expectedSceneRevision: host.scene().sceneRevision,
+  });
+  const send = (id: string, payload = input()) =>
+    host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: { ...payload, submissionId: id },
+    });
+  try {
+    const initial = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(initial.statusCode, 200, initial.body);
+    assert.deepEqual(initial.json().session.activeIds, []);
+    const declined = await send("invalid-doorway-invitation");
+    assert.equal(declined.statusCode, 200, declined.body);
+    assert.deepEqual(
+      declined.json().session.lines.map((line: { content: string }) => line.content),
+      ["Water drips from the eaves."],
+    );
+    assert.deepEqual((await world()).venues[0].access!.permissions, []);
+    const invitation = input();
+    const spoken = await send("valid-doorway-invitation", invitation);
+    assert.equal(spoken.statusCode, 200, spoken.body);
+    assert.equal(spoken.json().session.zoneId, "exterior");
+    assert(
+      spoken.json().session.lines.some((line: { content: string }) => line.content === "Come into the Common room."),
+    );
+    assert.equal((await world()).venues[0].access!.permissions[0]?.outsideHours, true);
+    assert.equal((await send("valid-doorway-invitation", invitation)).statusCode, 200);
+    const moved = await host.app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/zone",
+      payload: {
+        sessionId: "browser",
+        zoneId: "common",
+        operationId: "move-after-invitation",
+        expectedSceneRevision: host.scene().sceneRevision,
+      },
+    });
+    assert.equal(moved.statusCode, 200, moved.body);
+    assert.equal(moved.json().session.zoneId, "common");
+    assert.equal(calls, 2);
+  } finally {
+    await host.stop();
   }
 });

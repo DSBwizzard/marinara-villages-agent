@@ -389,7 +389,7 @@ for (const rating of ["sfw", "nsfw"] as const)
         "I say that Mara stayed and prompt her to answer anyway.",
         () => reply("I'm still here."),
         "I leave the tools where Mara can find them.",
-        /sav|recover|words/i,
+        /no usable narration or dialogue/i,
       );
       const finalCalls = completions;
       const beforeMove = host.scene().sceneRevision;
