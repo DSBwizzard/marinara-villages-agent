@@ -1247,8 +1247,12 @@ await withBrowser(browser, async () => {
     await expect(relationshipCards).toHaveCount(2);
     await expect(relationshipCards.nth(0).getByRole("heading", { name: "Rowan", exact: true })).toBeVisible();
     await expect(relationshipCards.nth(0).getByText("I enjoy when you visit.", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("Warmth", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("Romantic interest", { exact: true })).toBeVisible();
     await expect(relationshipCards.nth(1).getByRole("heading", { name: secondName, exact: true })).toBeVisible();
     await expect(relationshipCards.nth(1).getByRole("heading", { name: "Mina", exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByText("Warmth", { exact: true })).toHaveCount(0);
+    await expect(relationshipCards.nth(1).getByText("Romantic interest", { exact: true })).toHaveCount(0);
     await expect(profile.getByRole("meter", { name: "Warmth toward Rowan", exact: true })).toHaveAttribute(
       "aria-valuenow",
       "3",

@@ -130,12 +130,17 @@ function RomanticInterest({ score, target }: { score: number; target: string }) 
   );
 }
 
-function RelationshipMeters({ person, score, romanticInterest }: RelationshipScore) {
+function RelationshipMeters({
+  person,
+  score,
+  romanticInterest,
+  labeled = false,
+}: RelationshipScore & { labeled?: boolean }) {
   return (
-    <div className="villages-relationship-meters">
-      <span>Warmth</span>
+    <div className="villages-relationship-meters" data-labeled={labeled}>
+      {labeled ? <span>Warmth</span> : null}
       <WarmthMeter score={score} target={person.name} />
-      <span>Romantic Interest</span>
+      {labeled ? <span>Romantic interest</span> : null}
       <RomanticInterest score={romanticInterest ?? 0} target={person.name} />
     </div>
   );
@@ -149,7 +154,7 @@ function RelationshipScores({ scores }: { scores: RelationshipScore[] }) {
       {player ? (
         <article>
           <h4>{player.person.name}</h4>
-          <RelationshipMeters {...player} />
+          <RelationshipMeters {...player} labeled />
           {player.answer ? <p>{player.answer}</p> : null}
         </article>
       ) : null}
@@ -243,7 +248,8 @@ export function VillagesRelationships({
       .villages-relationship-scores li {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2.2fr);gap:.4rem .8rem;align-items:center}
       .villages-relationship-scores li + li {margin-top:.65rem;padding-top:.65rem;border-top:1px solid #a39b8460}
       .villages-relationship-scores li h4 {margin:0;font-weight:normal}
-      .villages-relationship-meters {display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.55rem .8rem;align-items:center;min-width:0;font-size:.9em}
+      .villages-relationship-meters {display:grid;grid-template-columns:minmax(0,1fr);gap:.35rem .8rem;align-items:center;min-width:0;font-size:.9em}
+      .villages-relationship-meters[data-labeled=true] {grid-template-columns:max-content minmax(0,1fr);row-gap:.55rem}
       .villages-relationship-bar {position:relative;height:.5rem;background:#1c192b;border-radius:3px}
       .villages-relationship-bar > span {position:absolute;inset-block:0;background:#9ea680;border-radius:2px}
       .villages-relationship-bar > span[data-negative=true] {background:#c38887}
@@ -256,11 +262,11 @@ export function VillagesRelationships({
       .villages-romantic-hearts > [data-fill=half] {background:linear-gradient(90deg,var(--heart-filled) 50%,var(--heart-empty) 50%);background-clip:text;color:transparent}
       .villages-romantic-interest[data-negative=true] [data-fill]:not([data-fill=empty]) {clip-path:polygon(0 0,48% 0,40% 39%,55% 46%,43% 82%,65% 41%,51% 34%,58% 0,100% 0,100% 100%,0 100%)}
       .villages-romantic-value {flex:none;min-inline-size:3ch;white-space:nowrap;text-align:end;font-variant-numeric:tabular-nums;font-size:.88em}
-      @container (width < 545px) {
+      @container (width < 395px) {
         .villages-relationship-scores li {grid-template-columns:minmax(0,1fr)}
       }
       @container (width < 330px) {
-        .villages-relationship-meters {grid-template-columns:minmax(0,1fr);gap:.35rem}
+        .villages-relationship-meters[data-labeled=true] {grid-template-columns:minmax(0,1fr);gap:.35rem}
         .villages-relationship-bar {margin-bottom:.25rem}
       }
     `}</style>
