@@ -22,6 +22,7 @@ import { readNarrationEffectHeader } from "./narration-contract.js";
 import { prepareNarrationKeep } from "./narration-keep.js";
 import {
   assertNarrationSourceOrder,
+  bindNarrationReceipt,
   bindNarrationSource,
   readSceneNarrationReply,
   type NarrationSourceContext,
@@ -227,6 +228,7 @@ export function acceptNarrationContinuity(
       native.moves,
       native.playerMoves,
       readset.presentation,
+      (id) => findNpc(state, id),
     ),
     moves: [
       ...native.moves,
@@ -920,6 +922,42 @@ export function acceptNarrationContinuity(
     );
   }
   const commandReceipts = selection.acceptedIds.flatMap((id) => (native.receipts[id] ? [native.receipts[id]] : []));
+  const namesRecorded = new Set(
+    commandReceipts.filter(({ kind }) => kind === "npc-introduction").map(({ targetId }) => targetId),
+  );
+  const nameDependencies: Record<string, string[]> = {};
+  const nameSources: ContinuityEvidence[] = [];
+  const nameReceipts: string[] = [];
+  for (const [index, row] of reply.segments.entries()) {
+    if (row.kind !== "dialogue" || !row.speakerLabel || namesRecorded.has(row.speakerId)) continue;
+    const npc = findNpc(state, row.speakerId);
+    const line = source.lines[index];
+    if (
+      !npc ||
+      npc.label === npc.name ||
+      row.speakerLabel !== npc.name ||
+      line.name !== npc.name ||
+      line.contactHidden ||
+      !line.heardBy.includes("player")
+    )
+      continue;
+    const proof = bindNarrationSource({ segment: row.id }, source);
+    if (!proof.perceptions.some(({ actorId, channel }) => actorId === "player" && channel === "words")) continue;
+    const id = "native-" + memoryHash([source.episodeId, "npc-speaker-label", row.id]).slice(0, 40);
+    namesRecorded.add(npc.id);
+    const receipt = {
+      id,
+      kind: "npc-introduction" as const,
+      targetId: npc.id,
+      revision: readset.sceneRevision,
+      text: npc.name,
+      witnesses: ["player"],
+    };
+    nameSources.push(proof, bindNarrationReceipt(receipt, source));
+    nameDependencies["native:" + id] = [continuitySourceUnit(proof)];
+    nameReceipts.push(id);
+    commandReceipts.push(receipt);
+  }
   const sceneEffects = (native.sceneEffects ?? []).filter((effect) => selection.acceptedIds.includes(effect.effectId));
   memoryRequire(
     sceneEffects.every(
@@ -945,6 +983,7 @@ export function acceptNarrationContinuity(
     ...readOnlyKnowledge,
     ...acceptedKeeps.flatMap((keep) => keep.sources),
     ...selection.acceptedIds.flatMap((id) => native.sources[id] ?? []),
+    ...nameSources,
     ...selection.acceptedIds
       .filter((id) => native.receipts[id])
       .map((id) => bindNarrationSource("native:" + id, source)),
@@ -1017,17 +1056,17 @@ export function acceptNarrationContinuity(
         .map((row) => ({ holder: source.actors.find((actor) => actor.id === row.npc.id)!, ids: row.offered })),
     ],
     commandReceipts,
-    ...(sceneEffects.length
+    ...(sceneEffects.length || nameReceipts.length
       ? {
           sceneDelta: {
             expectedRevision: readset.sceneRevision,
             contactEndedIds: [...new Set(sceneEffects.flatMap((effect) => effect.contactEndedIds))],
             ...(sceneEffects.some((effect) => effect.closed) ? { closed: true as const } : {}),
-            receiptIds: sceneEffects.map((effect) => native.receipts[effect.effectId].id),
+            receiptIds: [...sceneEffects.map((effect) => native.receipts[effect.effectId].id), ...nameReceipts],
           },
         }
       : {}),
-    dependencies,
+    dependencies: { ...dependencies, ...nameDependencies },
     holderDependencies,
     ...(readset.admission.room ? { room: readset.admission.room } : {}),
   };

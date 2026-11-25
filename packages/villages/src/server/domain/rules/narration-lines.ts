@@ -1,4 +1,5 @@
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
+import type { NpcIdentity } from "../models/places.js";
 import { coerceSession } from "../decoding/scene-codec.js";
 import type { readNarrationReply } from "./narration-contract.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
@@ -16,6 +17,7 @@ export function narrationLines(
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: { zoneId: string; segment: number }[] = [],
   presentation?: SpriteSelectionContext,
+  npcIdentity?: (id: string) => Pick<NpcIdentity, "name" | "label"> | undefined,
 ) {
   memoryRequire(scene.contactGeneration?.venue, "narration needs its captured routing scope");
   const ids = reply.segments.map((row) => "line-" + memoryHash([episodeId, row.id]).slice(0, 32));
@@ -44,17 +46,32 @@ export function narrationLines(
       ]),
     ).values(),
   ];
+  const publicNames = new Map<string, string>();
   const canonical = coerceSession({
     version: 5,
     participants: cast,
     lines: lines.map((line, index) => {
       const person = cast.find((person) => person.characterId === line.speakerId);
       memoryRequire(line.kind === "narration" || person, "narration speaker has no captured identity");
+      const row = reply.segments[index];
+      const npc = row.kind === "dialogue" ? npcIdentity?.(line.speakerId) : undefined;
+      if (
+        npc &&
+        row.kind === "dialogue" &&
+        row.speakerLabel === npc.name &&
+        line.heardBy.includes("player") &&
+        !line.contactHidden
+      )
+        publicNames.set(line.speakerId, npc.name);
       return {
         ...line,
         id: ids[index],
         role: "assistant",
-        name: person?.name ?? "Narration",
+        name:
+          publicNames.get(line.speakerId) ??
+          (npc && npc.label === npc.name ? npc.label : undefined) ??
+          person?.name ??
+          "Narration",
         at,
         ...(line.anchorIndex !== undefined ? { asideFor: ids[line.anchorIndex] } : {}),
       };

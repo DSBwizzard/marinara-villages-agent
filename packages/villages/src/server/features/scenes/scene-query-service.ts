@@ -20,6 +20,7 @@ import {
 } from "../../adapters/storage/scene-history.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { findNpc } from "../../domain/rules/places.js";
 import {
   readSceneTranscriptHead,
   readSceneTranscriptPositions,
@@ -230,12 +231,36 @@ export function createSceneQueryService({
       ...scene.activeIds,
       ...(active ? reply.lines.map((line) => line.speakerId) : participants.map((person) => person.characterId)),
     ]);
+    const people = scene.participants.filter((person) => cast.has(person.characterId));
+    // A reviewed public name correction can update the live display without rewriting any saved lines.
+    const corrected = new Map<string, string>();
+    const npcs = active ? people.filter(({ characterId }) => characterId.startsWith("npc:")) : [];
+    const stale = npcs.filter(({ characterId, name }) => {
+      const captured = scene.continuity?.facts.worldPlaces?.npcs[characterId];
+      return !captured || captured.name !== name || captured.label !== name;
+    });
+    if (stale.length) {
+      const world = await readVillageState({ memories: true });
+      if (villageWorldScope(world) === owner.scope)
+        for (const person of stale) {
+          const npc = findNpc(world, person.characterId);
+          if (npc && npc.label === npc.name && npc.label !== person.name) corrected.set(npc.id, npc.label);
+        }
+    }
+    const currentLines = corrected.size
+      ? reply.lines.map((line) => {
+          const name = corrected.get(line.speakerId);
+          return name ? { ...line, name } : line;
+        })
+      : reply.lines;
     return {
       ...publicSceneAuthority(scene),
       ...(active ? { liveReplyId: reply.id } : {}),
-      lines: active ? reply.lines : lines,
+      lines: active ? currentLines : lines,
       playback,
-      participants: scene.participants.filter((person) => cast.has(person.characterId)),
+      participants: corrected.size
+        ? people.map((person) => ({ ...person, name: corrected.get(person.characterId) ?? person.name }))
+        : people,
       operation: operationSummary(scene.operation),
       retryReply: await retryTarget?.(scene),
       ...(retryStart ? { retryStart } : {}),

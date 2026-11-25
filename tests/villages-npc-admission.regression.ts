@@ -687,6 +687,27 @@ await runCase("npc-admission/fences", () => {
 });
 
 await runCase("npc-admission/name", () => {
+  for (const label of ["Rasha Dunmore", "Another Name", 17]) {
+    const f = fixture(),
+      raw = rawArrival();
+    f.existing.name = "Rasha Dunmore";
+    Object.assign(raw.segments[1], { text: "Glad to meet you.", speakerLabel: label });
+    raw.segments.push({ kind: "dialogue", speakerId: "new:visitor", text: "Have a seat." });
+    const publication = f.publication(raw);
+    const result = acceptNarration(f.state, publication, "speaker-label", at);
+    assert.equal(result.held, false, JSON.stringify(result.rejected));
+    const episode = readAcceptedEpisode(result.episode!, f.state.seed);
+    const id = episode.commandReceipts[0].targetId;
+    const visibleName = label === "Rasha Dunmore" ? label : "Mara";
+    assert.deepEqual(
+      episode.segments.slice(1).map((line) => line.name),
+      [visibleName, visibleName],
+    );
+    assert.equal(f.state.worldPlaces.npcs[id].label, visibleName);
+    applyAcceptedSceneDelta(f.scene, episode);
+    assert.equal(f.scene.participants[0].name, visibleName);
+    assert(acceptNarration(f.state, publication, "speaker-label", at).replayed);
+  }
   const prepareName = (f: ReturnType<typeof fixture>) => {
     f.existing.name = "Rasha Dunmore";
     return f;
@@ -753,7 +774,12 @@ await runCase("npc-admission/name", () => {
   whispered.segments.push({ ...raw.segments[0], id: "second", requires: ["second-admission"] });
   whispered.segments[1] = raw.segments[1];
   [whispered.segments[1], whispered.segments[2]] = [whispered.segments[2], whispered.segments[1]];
-  whispered.segments[2] = { ...whispered.segments[2], delivery: "whisper", targetId: "new:second" };
+  whispered.segments[2] = {
+    ...whispered.segments[2],
+    delivery: "whisper",
+    targetId: "new:second",
+    speakerLabel: "Rasha Dunmore",
+  };
   other.state.worldPlaces.npcs["npc:second"] = {
     ...structuredClone(other.existing),
     id: "npc:second",
@@ -775,6 +801,9 @@ await runCase("npc-admission/name", () => {
   assert.equal(privateResult.held, false, JSON.stringify(privateResult.rejected));
   assert(privateResult.rejected.some((row) => row.reason.includes("heard by the Player")));
   assert.equal(other.state.worldPlaces.npcs[other.existing.id].label, "Mara");
+  const privateEpisode = readAcceptedEpisode(privateResult.episode!, other.state.seed);
+  assert(!privateEpisode.commandReceipts.some((receipt) => receipt.kind === "npc-introduction"));
+  assert(!privateEpisode.segments.some((line) => line.name === "Rasha Dunmore"));
   assert(
     !JSON.stringify(readNpcPeople(other.state, { scope: villageWorldScope(other.state) })).includes(
       "My name is Rasha Dunmore.",

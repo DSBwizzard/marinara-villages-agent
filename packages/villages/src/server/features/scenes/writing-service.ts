@@ -410,7 +410,7 @@ export function createSceneWriting({
           ? "scene.end can cite an actual player departure stated in this submission. Use the final segment."
           : "",
         npcIntroduction
-          ? `Name reveal: commands:[{type:"npc.introduce",who:"NPC ID/localKey",name:"heard name",at:${positions ? "2,source:[{segment:2}]" : '"speech-id",source:["speech-id"]'},independent:true}]. Cite actual self-introduction speech; keep role labels until heard.`
+          ? 'For an unnamed NPC, use a distinct public role label like "Pastry seller" at admission. When their name becomes public, put speakerLabel:"Name" on their dialogue line heard by the player. Copy their exact saved name. Leave speakerLabel out while their name stays private.'
           : "",
       ]),
       identity: blocksFor([
