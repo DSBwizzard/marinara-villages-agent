@@ -1258,6 +1258,7 @@ await withBrowser(browser, async () => {
         .nth(0)
         .locator(".villages-relationship-meters")
         .evaluate((node) => {
+          const panel = node.getBoundingClientRect();
           const [warmthLabel, warmth, romanceLabel, romance] = Array.from(node.children, (child) =>
             child.getBoundingClientRect(),
           );
@@ -1265,10 +1266,15 @@ await withBrowser(browser, async () => {
             [warmthLabel, warmth],
             [romanceLabel, romance],
           ].every(
-            ([label, meter]) => label.right <= meter.left && label.top < meter.bottom && meter.top < label.bottom,
+            ([label, meter]) =>
+              panel.left < label.left &&
+              label.right <= meter.left &&
+              meter.right < panel.right &&
+              label.top < meter.bottom &&
+              meter.top < label.bottom,
           );
         }),
-      "Both player labels sit beside their respective meters",
+      "Both player labels and meters fit side by side in the inset panel",
     );
     await expect(profile.getByRole("meter", { name: "Warmth toward you", exact: true })).toHaveAttribute(
       "aria-valuenow",
