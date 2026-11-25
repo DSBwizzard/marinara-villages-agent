@@ -383,8 +383,9 @@ await runCase("narration-writing/departed-speaker", async () => {
   const publication = await f.writing.generate(f.scene, '"Definitely seventeen."', "chat");
   const frame = f.messages().find((row) => row.content.includes("## Current Scene reference"));
   assert.match(frame.content, /"dialogueSpeakers":\[\]/u);
-  assert.match(f.messages().at(-1).content, /Only current dialogueSpeakers may speak/u);
-  assert.match(f.messages().at(-1).content, /Return narration only/u);
+  assert.match(f.messages().at(-1).content, /Use current dialogueSpeakers for dialogue/u);
+  const emptyCast = "The current cast has nobody who can hear or answer the player.";
+  assert(f.messages().at(-1).content.includes(emptyCast));
   assert.throws(
     () => readSceneNarrationReply(publication.raw, [], publication.readset, f.state.continuity),
     /cannot invent/u,
@@ -400,7 +401,7 @@ await runCase("narration-writing/departed-speaker", async () => {
   assert.equal(f.calls.purchases, purchases, "a captured invalid reply is retained without a second purchase");
   const present = fixture();
   const request = await present.writing.prepareVenueTurnMessages(present.scene, "Hello?", "chat");
-  assert(!request.fitted.messages.at(-1)!.content.includes("Return narration only"));
+  assert(!request.fitted.messages.at(-1)!.content.includes(emptyCast));
 });
 await runCase("narration-writing/single-request", async () => {
   const f = fixture(),
