@@ -514,15 +514,18 @@ for (const scenario of scenarios)
         );
         assert.equal(world.episodes.records.filter((episode) => episode.sceneId === "browser").length, 0);
         if (scenario === "capacity") {
-          assert(/overcrowd/.test(response.body), "the actual capacity rule holds this reply");
+          assert.equal(response.statusCode, 502);
+          assert.match(turn.progressError ?? "", /overcrowd/, "the actual capacity rule holds this reply");
           for (const id of ["mara", "bryn"])
             assert.equal(
               scene.accompanying!.find((row) => row.characterId === id)!.zoneId,
               "common",
               "over-capacity movement applies no partial result",
             );
-        } else if (scenario === "past-appointment") assert.match(response.body, /past|nonexistent/);
-        else {
+        } else if (scenario === "past-appointment") {
+          assert.equal(response.statusCode, 502);
+          assert.match(turn.progressError ?? "", /past|nonexistent/);
+        } else {
           assert.equal(response.statusCode, 409);
           const notice = response.json().error;
           assert.match(notice, /^HALT · Village time/);
