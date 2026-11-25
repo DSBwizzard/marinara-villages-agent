@@ -218,6 +218,7 @@ for (const mode of ["greet", "chat", "leave"] as const) {
   assert.deepEqual(scenePromptPacket(prompt, "location").location.residents, []);
   assert(!prompt.includes(card.description), "an absent resident's profile cannot supply an invented response");
   assert.doesNotMatch(prompt, /HIDDEN ROOM NAME|HIDDEN OCCUPANT|HIDDEN ACTIVITY/);
+  assert.match(prompt, /Quote a local passerby's one-off remark in observable narration/u);
 }
 console.log(
   "Scene writing locations match captured/current positions across doorway contact, movement and reload without revealing unseen rooms or occupants (provider-free).",

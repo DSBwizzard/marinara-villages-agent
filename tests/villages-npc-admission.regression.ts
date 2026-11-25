@@ -1,4 +1,4 @@
-// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory, npc-admission/overview-eligibility
+// Test cases: npc-admission/identity, npc-admission/references, npc-admission/existing, npc-admission/fences, npc-admission/native, npc-admission/returning, npc-admission/late-arrival, npc-admission/authority, npc-admission/moving-arrival, npc-admission/unused-context, npc-admission/name, npc-admission/improvised, npc-admission/compact, npc-admission/passerby, npc-admission/improvised-limit, npc-admission/improvised-collision, npc-admission/premature-action, npc-admission/directory, npc-admission/overview-eligibility
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -312,10 +312,15 @@ await runCase("npc-admission/returning", () => {
   assert(text.includes("Mara wants to restore a pond."));
   assert(!text.includes("Mara privately wants to tend a garden."));
   assert(context.protections.some((row) => row.for === holder.id && row.corrected === "Mara wants to restore a pond."));
+  const registryBefore = memoryHash(f.state.worldPlaces);
   const result = acceptNarration(f.state, publication, "return", at);
   assert.equal(result.held, false, JSON.stringify(result.rejected));
   assert.equal(result.episode!.commandReceipts[0].targetId, f.existing.id);
   assert.equal(Object.keys(f.state.worldPlaces.npcs).length, 1);
+  assert.equal(memoryHash(f.state.worldPlaces), registryBefore, "a return visit changes only encounter history");
+  assert.equal(readNpcPeople(f.state, { scope: villageWorldScope(f.state) }).items[0]?.characterId, f.existing.id);
+  assert(acceptNarration(f.state, publication, "return", at).replayed);
+  assert.equal(memoryHash(f.state.worldPlaces), registryBefore);
   const race = fixture(),
     pending = race.publication(rawArrival(race.existing.id));
   race.existing.revision++;
@@ -837,6 +842,45 @@ await runCase("npc-admission/improvised", () => {
     assert.equal(directory.items[0]?.name, "Tomas Reed");
     assert.equal(directory.items[0]?.role, label, "a seen silent arrival unlocks the authored overview");
   }
+});
+await runCase("npc-admission/compact", () => {
+  for (const label of [undefined, "Baker"]) {
+    const f = fixture(),
+      raw = rawArrival();
+    delete raw.commands[0].existingId;
+    Object.assign(raw.commands[0], {
+      name: "Mira",
+      characterization: "A friendly baker.",
+      ...(label ? { label } : {}),
+    });
+    raw.segments[0].text = "A baker sets her tray down beside you.";
+    const publication = f.publication(raw),
+      result = acceptNarration(f.state, publication, "compact-npc", at);
+    assert.equal(result.held, false, JSON.stringify(result.rejected));
+    const npc = result.episode!.commandReceipts[0].admission!.npc;
+    assert.deepEqual(readAcceptedEpisode(result.episode, f.state.seed).commandReceipts[0].admission!.npc, npc);
+    assert.equal(npc.label, label ?? "Stranger");
+    assert.equal(npc.appearance, undefined);
+    const person = readNpcPeople(f.state, { scope: villageWorldScope(f.state) }).items[0];
+    assert.equal(person?.personality, "A friendly baker.");
+    assert.equal(person?.role, label ?? "");
+    assert(acceptNarration(f.state, publication, "compact-npc", at).replayed);
+  }
+});
+await runCase("npc-admission/passerby", () => {
+  const f = fixture(),
+    registryBefore = memoryHash(f.state.worldPlaces),
+    text = 'A passing baker calls, "We close at six," and heads back inside.',
+    publication = f.publication({ segments: [{ kind: "narration", text }] }),
+    result = acceptNarration(f.state, publication, "passerby", at);
+  assert.equal(result.held, false, JSON.stringify(result.rejected));
+  assert.equal(result.episode?.segments[0].content, text);
+  assert.equal(result.episode?.commandReceipts.length, 0);
+  assert.equal(memoryHash(f.state.worldPlaces), registryBefore);
+  assert.equal(npcEncounterIndex(f.state).size, 0);
+  const replay = acceptNarration(f.state, publication, "passerby", at);
+  assert(replay.replayed);
+  assert.equal(replay.episode?.segments[0].id, result.episode?.segments[0].id);
 });
 await runCase("npc-admission/improvised-limit", () => {
   const f = fixture(),

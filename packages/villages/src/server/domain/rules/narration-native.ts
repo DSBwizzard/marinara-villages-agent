@@ -326,8 +326,10 @@ export function prepareNarrationNative(
           ),
         "NPC admission needs the actual Player-seen introduction",
       );
-      candidate.worldPlaces.npcs[arrival.npc.id] = structuredClone(arrival.npc);
-      candidate.worldPlaces.revision++;
+      if (!command.existingId) {
+        candidate.worldPlaces.npcs[arrival.npc.id] = structuredClone(arrival.npc);
+        candidate.worldPlaces.revision++;
+      }
       return {
         receipt: {
           id: receiptId,

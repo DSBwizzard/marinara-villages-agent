@@ -5,6 +5,7 @@ import { continuityActor } from "./continuity-actors.js";
 import { continuitySourceUnit } from "./continuity.js";
 import { memoryHash } from "./memory-integrity.js";
 import { npcNameKey } from "./npc-index.js";
+import { DEFAULT_NPC_LABEL } from "./npc-participation.js";
 import { villageWorldScope } from "./village-identity.js";
 import { badRequest, conflict } from "./errors.js";
 
@@ -58,7 +59,8 @@ export function npcEncounterIndex(state: VillageState) {
       const npc = state.worldPlaces.npcs[id];
       if (!npc || (people.get(id)?.at ?? "") > episode.capturedAt) continue;
       const usefulRole = (role: string) =>
-        !!role.trim() && ![npcNameKey(npc.name), "encountered here"].includes(npcNameKey(role));
+        !!role.trim() &&
+        ![npcNameKey(npc.name), npcNameKey(DEFAULT_NPC_LABEL), "encountered here"].includes(npcNameKey(role));
       const role = usefulRole(npc.label)
         ? npc.label
         : (npc.associations.find((row) => row.placeId === episode.room?.placeId && usefulRole(row.role))?.role ?? "");

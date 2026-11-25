@@ -18,6 +18,7 @@ export const npcAdmissionFields = {
   characterization: z.string().trim().min(1).max(1000).optional(),
 };
 export type NpcAdmissionRequest = z.infer<z.ZodObject<typeof npcAdmissionFields>>;
+export const DEFAULT_NPC_LABEL = "Stranger";
 export function witnessedNpcName(source: ContinuityEvidence, actorId: string, name: string): boolean {
   if (!name.trim() || name !== name.trim() || name.length > 100 || /[\r\n]/.test(name)) return false;
   const pattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -63,21 +64,18 @@ export function prepareNpcAdmission(
     );
     npc = structuredClone(captured);
   } else {
-    memoryRequire(
-      request.name && request.label && request.appearance && request.characterization,
-      "an improvised NPC needs a compact complete identity and appearance",
-    );
+    memoryRequire(request.name, "a new NPC needs a name");
     assertDistinctNpcName(state, request.name);
-    assertDistinctNpcName(state, request.label);
+    if (request.label) assertDistinctNpcName(state, request.label);
     const id = "npc:" + memoryHash([state.seed, scene.id, operationId, request.localKey]);
     memoryRequire(!state.worldPlaces.npcs[id], "replay the accepted NPC introduction");
     npc = readNpc({
       id,
       revision: 1,
       name: request.name,
-      label: request.label,
+      label: request.label ?? DEFAULT_NPC_LABEL,
       appearance: request.appearance,
-      characterization: request.characterization,
+      characterization: request.characterization ?? "",
       mapId: findLocation(state, scene.placeId)?.presentation.mapId,
       listed: false,
       facts: [],

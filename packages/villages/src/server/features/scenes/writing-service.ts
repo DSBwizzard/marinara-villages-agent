@@ -324,12 +324,10 @@ export function createSceneWriting({
     const playerZone = location.player.zone;
     const speakers = selectedIds.filter((id) => id !== "player");
     const attendanceDirection =
-      "Only current dialogueSpeakers may speak; past speech does not prove presence. " +
-      (nativeCommands
-        ? "New supporting characters require a supplied native introduction command before speaking. "
-        : "") +
+      "Use current dialogueSpeakers for dialogue. Past speech does not prove presence. " +
+      (nativeCommands ? "Named newcomers need a witnessed arrival before their dialogue. " : "") +
       (!nativeCommands && !speakers.length
-        ? "Nobody else can hear or answer the player here. Return narration only, grounded in the current place and the player's submission. "
+        ? "The current cast has nobody who can hear or answer the player. Ground the reply in the current place and the player's submission. "
         : "");
     const openOffers = context.parts.flatMap(({ openOffer, block }) =>
       openOffer && block.evidenceId ? [block.evidenceId] : [],
