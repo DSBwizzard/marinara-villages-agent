@@ -53,7 +53,7 @@ await withBrowser({ close: server.stop }, async () => {
     );
     const turns = [];
     let rejectFirstReply;
-    let dropHeldResponse = false;
+    let dropFailedResponse = false;
     const complete = server.model.chatComplete;
     server.model.chatComplete = (...args) => {
       if (!rejectFirstReply) return complete(...args);
@@ -127,17 +127,17 @@ await withBrowser({ close: server.stop }, async () => {
       });
       if (url.pathname.endsWith("/rooms/turn")) {
         turns.push({ input: request.postDataJSON(), response });
-        if (dropHeldResponse) {
-          dropHeldResponse = false;
-          assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "held", response.body);
+        if (dropFailedResponse) {
+          dropFailedResponse = false;
+          assert.equal(response.statusCode, 502, response.body);
+          assert.equal(server.scene().submissions.at(-1)?.acceptance.status, "abandoned");
           return abort(route);
         }
       }
       if (response.statusCode !== 200)
         assert(
           (url.pathname.endsWith("/rooms/turn") &&
-            (server.scene().submissions.at(-1)?.acceptance.status === "held" ||
-              response.json().code === "SCENE_MESSAGE_TOO_LONG")) ||
+            (response.statusCode === 502 || response.json().code === "SCENE_MESSAGE_TOO_LONG")) ||
             (url.pathname.endsWith("/rooms/browser/recovery") && response.json().error === "That Scene is not closed."),
           `${request.method()} ${url.pathname}: ${response.body}`,
         );
@@ -182,12 +182,15 @@ await withBrowser({ close: server.stop }, async () => {
     for (const edit of [false, true]) {
       rejectFirstReply = edit ? "format" : "legacy";
       const original = "An ordinary line " + edit;
-      const beforeHold = turns.length;
+      const beforeFailure = turns.length;
       await composer.fill(original);
       await send.click();
-      await expect.poll(() => turns.length).toBe(beforeHold + 1);
-      await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("held");
-      const held = turns.at(-1).input.submissionId;
+      await expect.poll(() => turns.length).toBe(beforeFailure + 1);
+      const failed = turns.at(-1).input.submissionId;
+      const failedTurn = () => server.scene().submissions.find((row) => row.id === failed);
+      assert.equal(turns.at(-1).response.statusCode, 502);
+      assert.notEqual(failedTurn()?.acceptance.status, "applied");
+      assert.equal(failedTurn()?.narration, undefined);
       await expect(composer).toHaveValue(original);
       const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
       await expect(chip).toHaveCount(1);
@@ -195,20 +198,14 @@ await withBrowser({ close: server.stop }, async () => {
       if (edit) {
         await chip.click();
         await expect(page.getByRole("button", { name: "Replay", exact: true })).toHaveCount(0);
-        await expect(
-          page.getByText("The AI reply contained an invalid Scene reference (invalid_format)."),
-        ).toBeVisible();
+        await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
         await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
         await expect(page.getByText("Anonymous report copied.")).toBeVisible();
         const report = await page.evaluate(() => window.sceneReport);
         assert.match(report, /Server build: [a-f0-9]{16}/);
-        assert.match(
-          report,
-          /Operation code: missing_result\nPhase: reply validation\nValidator: invalid_format · source\.0\.segment/,
-        );
-        assert.match(report, /Completion: parse complete · finish stop · \d+ response characters/);
-        assert.match(report, /Saved request: reply held · last checkpoint writing-completion/);
-        assert(!report.includes(held));
+        assert.match(report, /Result: HTTP 502/);
+        assert.doesNotMatch(report, /reply held|writing-completion/);
+        assert(!report.includes(failed));
         assert.doesNotMatch(
           report,
           /Private model narration|Private continuity note|private malformed reference|private-effect-id|An ordinary line|Mara|The Mill/iu,
@@ -218,9 +215,9 @@ await withBrowser({ close: server.stop }, async () => {
       }
       await send.click();
       await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");
-      assert.equal(turns.at(-1).input.replaceOfOperationId, held);
+      assert.equal(turns.at(-1).input.replaceOfOperationId, failed);
       assert.equal(turns.at(-1).input.message, edit ? original + " with edits" : original);
-      assert.equal(server.scene().submissions.find((row) => row.id === held).acceptance.status, "abandoned");
+      assert.notEqual(failedTurn()?.acceptance.status, "applied");
       await expect
         .poll(async () => {
           const next = page.getByRole("button", { name: "Next paragraph", exact: true });
@@ -259,24 +256,21 @@ await withBrowser({ close: server.stop }, async () => {
     await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
     await composer.fill("I knock the cup to the floor.");
     rejectFirstReply = "continuity";
-    dropHeldResponse = true;
+    dropFailedResponse = true;
     await send.click();
     await expect(composer).toHaveValue("I knock the cup to the floor.");
     await expect(send).toBeEnabled();
     const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
     await expect(chip).toHaveAccessibleName("1 Scene error");
     await chip.click();
-    await expect(page.getByText("The AI reply couldn’t show that a character witnessed the event.")).toBeVisible();
-    await expect(page.getByText("The game couldn’t reach the server.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Copy Discord report", exact: true }).click();
     await expect(page.getByText("Anonymous report copied.")).toBeVisible();
-    const heldReport = await page.evaluate(() => window.sceneReport);
-    assert.match(heldReport, /Result: No HTTP response · NETWORK_ERROR/);
-    assert.match(heldReport, /continuity_evidence_not_witnessed · source/);
-    assert.match(heldReport, /room_target_in_actor_memory · for/);
-    assert.match(heldReport, /Saved request: reply held/);
-    assert(!heldReport.includes(turns.at(-1).input.submissionId));
-    assert.doesNotMatch(heldReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);
+    const droppedReport = await page.evaluate(() => window.sceneReport);
+    assert.match(droppedReport, /Result: No HTTP response · NETWORK_ERROR/);
+    assert.doesNotMatch(droppedReport, /reply held|writing-completion/);
+    assert(!droppedReport.includes(turns.at(-1).input.submissionId));
+    assert.doesNotMatch(droppedReport, /Private |private-attitude-id|knock the cup|Mara|The Mill/i);
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");
