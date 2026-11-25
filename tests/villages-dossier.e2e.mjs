@@ -203,6 +203,7 @@ await withBrowser(browser, async () => {
                   answer: "I enjoy when you visit.",
                 },
                 { person: { id: "eli", name: secondName }, score: -10, romanticInterest: -16 },
+                { person: { id: "mina", name: "Mina" }, score: 0, romanticInterest: 0 },
               ]
             : [],
         entries: [
@@ -1242,8 +1243,12 @@ await withBrowser(browser, async () => {
     await chooseSection("Venues");
     await expect(profile.getByText(/Agenda destination/)).toBeVisible();
     await chooseSection("Relationships");
-    await expect(profile.getByRole("heading", { name: "Rowan", exact: true })).toBeVisible();
-    await expect(profile.getByRole("heading", { name: secondName, exact: true })).toBeVisible();
+    const relationshipCards = profile.locator(".villages-relationship-scores > article");
+    await expect(relationshipCards).toHaveCount(2);
+    await expect(relationshipCards.nth(0).getByRole("heading", { name: "Rowan", exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("I enjoy when you visit.", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByRole("heading", { name: secondName, exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByRole("heading", { name: "Mina", exact: true })).toBeVisible();
     await expect(profile.getByRole("meter", { name: "Warmth toward Rowan", exact: true })).toHaveAttribute(
       "aria-valuenow",
       "3",
@@ -1263,6 +1268,11 @@ await withBrowser(browser, async () => {
     await expect(negativeRomance).toHaveAttribute("data-negative", "true");
     await expect(negativeRomance.locator("[data-fill=full]")).toHaveCount(8);
     await expect(negativeRomance.locator(".villages-romantic-value")).toHaveCSS("white-space", "nowrap");
+    const neutralRomance = relationshipCards
+      .nth(1)
+      .getByRole("meter", { name: "Romantic interest toward Mina", exact: true });
+    await expect(neutralRomance).toHaveAttribute("aria-valuetext", "Neutral");
+    await expect(neutralRomance.locator("[data-fill=empty]")).toHaveCount(10);
     assert(
       await negativeRomance.evaluate(
         (node) =>
