@@ -7,6 +7,7 @@ import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { conflict } from "./errors.js";
 import { sceneFailureDiagnostic } from "../../../shared/contracts/scene-failure-diagnostic.js";
 import { findLocation } from "./places.js";
+import { SCENE_EXPRESSION_REJECTION } from "./sprite-expressions.js";
 /** The ordinary change feed carries visible notices and recovery controls, never owner diagnostics. */
 export function publicSceneChanges(value: unknown) {
   const row = asRecord(value);
@@ -192,7 +193,11 @@ function authority(scene: VenueScene) {
   const replyTurn = scene.submissions.findLast(
     (turn) => sceneTurnPublished(turn) && turn.replyLineIds?.some((id) => replyIds.has(id)),
   );
+  const rejected = replyTurn?.acceptance.rejected ?? [];
   return {
+    ...(rejected.length
+      ? { replyWarning: rejected.every((row) => row.reason === SCENE_EXPRESSION_REJECTION) ? "expression" : "detail" }
+      : {}),
     ...Object.fromEntries(sceneFields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]])),
     ...(arrival && arrival.zoneId === scene.zoneId ? { zoneArrivalId: arrival.id } : {}),
     version: 1 as const,
