@@ -13,6 +13,9 @@ const browser = await chromium.launch({
 });
 const P = "marinara-capability-villages";
 const output = resolve(process.env.VILLAGES_VISUAL_OUTPUT || ".build-tmp/dossier");
+const avatarUrl = "/api/avatars/file/people-portrait.png?v=1";
+const avatarImage = readFileSync("packages/villages/mari-visitor-sprites/Neutral.png");
+const avatarCrop = { srcX: 0.35, srcY: 0.08, srcWidth: 0.3, srcHeight: 0.2 };
 mkdirSync(output, { recursive: true });
 let executedViewports = 0;
 await withBrowser(browser, async () => {
@@ -319,7 +322,12 @@ await withBrowser(browser, async () => {
       })),
     );
     await page.route("**/api/characters/summaries", (route) =>
-      fulfill(route, { contentType: "application/json", body: "[]" }),
+      fulfill(route, {
+        json: exerciseActions ? ["mara", "river-visitor"].map((id) => ({ id, avatarUrl, avatarCrop })) : [],
+      }),
+    );
+    await page.route("**/api/avatars/file/people-portrait.png?*", (route) =>
+      fulfill(route, { contentType: "image/png", body: avatarImage }),
     );
     await page.route("**/api/villages**", async (route) => {
       const request = route.request(),
@@ -643,15 +651,21 @@ await withBrowser(browser, async () => {
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     const bookBox = await page.locator(`.${P}-people-layout`).boundingBox();
     if (exerciseActions) {
-      const villagerTile = await selector.getByRole("button", { name: "Open Mara profile" }).boundingBox();
+      const villagerTile = selector.getByRole("button", { name: "Open Mara profile" });
+      const villagerPortrait = villagerTile.locator(`.${P}-avatar img`);
+      await expect(villagerPortrait).toHaveAttribute("src", avatarUrl);
+      await expect(villagerPortrait).toHaveJSProperty("naturalWidth", 1024);
+      await expect(villagerPortrait).toHaveCSS("object-fit", "fill");
+      const villagerBox = await villagerTile.boundingBox();
       await selector.getByRole("button", { name: "Visitors", exact: true }).click();
       const visitors = page.getByRole("main", { name: "Visitors directory" });
       const visitorTile = visitors.getByRole("button", { name: "Open River Visitor profile" });
       await expect(visitorTile).toBeVisible();
+      await expect(visitorTile.locator(`.${P}-avatar img`)).toHaveAttribute("src", avatarUrl);
       const visitorBox = await visitorTile.boundingBox();
       for (const dimension of ["x", "y", "width", "height"])
         assert(
-          Math.abs(visitorBox[dimension] - villagerTile[dimension]) < 1,
+          Math.abs(visitorBox[dimension] - villagerBox[dimension]) < 1,
           "Visitor and Villager tile geometry matches within pixel rounding.",
         );
       await visitors.getByRole("searchbox", { name: "Find a person" }).fill("missing");
@@ -707,6 +721,7 @@ await withBrowser(browser, async () => {
       await expect(visitorTile).toBeFocused();
       await visitors.getByRole("button", { name: "Villagers", exact: true }).click();
       await expect(selector).toBeVisible();
+      await villagerPortrait.evaluate((img) => img.decode());
     }
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     const search = selector.getByRole("searchbox", { name: "Find a person" });
