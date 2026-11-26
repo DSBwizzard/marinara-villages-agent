@@ -29,6 +29,7 @@ import {
 } from "./narration-sources.js";
 import { MAX_SCENE_REJECTIONS, selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
+import { SCENE_EXPRESSION_REJECTION } from "./sprite-expressions.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
 import { findLocation, findNpc } from "./places.js";
 import { venueDesignHash } from "./project-structure.js";
@@ -219,6 +220,7 @@ export function acceptNarrationContinuity(
     movementDependencies.every((id) => native.effects.some((effect) => effect.id === id)),
     "movement has no owning native effect",
   );
+  let expressionRejected = false;
   const { nameReveals, ...routed } = narrationLines(
     reply,
     scene,
@@ -229,6 +231,9 @@ export function acceptNarrationContinuity(
     readset.presentation,
     (id) => findNpc(state, id),
     readset,
+    () => {
+      expressionRejected = true;
+    },
   );
   const source: NarrationSourceContext = {
     ...readset.source,
@@ -817,6 +822,7 @@ export function acceptNarrationContinuity(
             owner &&
             changes.impact &&
             !changes.romance &&
+            !changes.perception &&
             answer &&
             !write.target &&
             !referenced.has(id) &&
@@ -826,7 +832,10 @@ export function acceptNarrationContinuity(
             keep.sources.some((proof) => proof.kind === "self" && proof.actorId === owner.id);
           if (privateScoreOnly) write = { ...write, holders: [owner], relationship: changes };
           if (write.relationship?.answer && closingEffect && !selection.acceptedIds.includes(closingEffect)) {
-            memoryRequire(changes.impact || changes.romance, "relationship answer needs the accepted Scene ending");
+            memoryRequire(
+              changes.impact || changes.romance || changes.perception,
+              "relationship answer needs the accepted Scene ending",
+            );
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
@@ -1056,7 +1065,6 @@ export function acceptNarrationContinuity(
     segments: source.lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((row) => row.id),
-    ...(selection.rejected.length ? { rejectedEffects: selection.rejected } : {}),
     offered: [
       ...readset.offered,
       ...readset.npcCandidates
@@ -1078,10 +1086,10 @@ export function acceptNarrationContinuity(
     holderDependencies,
     ...(readset.admission.room ? { room: readset.admission.room } : {}),
   };
-  const rejected = [...new Map([...selection.rejected, ...discarded].map((row) => [row.id, row])).values()].slice(
-    0,
-    MAX_SCENE_REJECTIONS,
-  );
+  const warnings = expressionRejected ? [{ id: "!sprite-expression", reason: SCENE_EXPRESSION_REJECTION }] : [];
+  const rejected = [
+    ...new Map([...selection.rejected, ...discarded, ...warnings].map((row) => [row.id, row])).values(),
+  ].slice(0, MAX_SCENE_REJECTIONS);
   if (rejected.length) episode.rejectedEffects = rejected;
   const episodes = appendEpisode(state.episodes, episode, state.seed);
   assertContinuityRetention(continuity, episodes);

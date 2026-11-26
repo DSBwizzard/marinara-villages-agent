@@ -9,7 +9,12 @@ import { messageFrom, request } from "../../shared/api.js";
 import { useFocusRevision } from "../../shared/activity.js";
 import { measureImage } from "../../shared/presentation.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
-import { requestSetupMapReceipt, SETUP_MAX_VILLAGER_COUNT, SETUP_MIN_VILLAGER_COUNT } from "./FoundingPanels.js";
+import {
+  FOUNDING_MAP_FAILED,
+  requestSetupMapReceipt,
+  SETUP_MAX_VILLAGER_COUNT,
+  SETUP_MIN_VILLAGER_COUNT,
+} from "./FoundingPanels.js";
 import { foundingZoneProblem } from "./villages-founding-zones";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -322,7 +327,9 @@ export function useFoundingMapReceipt(ports: {
         }
         if (receipt.status !== "complete" || !receipt.result) {
           setSetupMapProblem(
-            receipt.error || "The map request stopped without an image. Generate again only when you choose.",
+            receipt.status === "interrupted"
+              ? "Map generation stopped. This attempt may have been billed."
+              : FOUNDING_MAP_FAILED,
           );
           updateSetupMapRequest(null);
           setSetupMapBusy(false);
@@ -343,11 +350,9 @@ export function useFoundingMapReceipt(ports: {
         setSetupMapProblem("");
         updateSetupMapRequest(null);
         setSetupMapBusy(false);
-      } catch (cause) {
+      } catch {
         if (cancelled) return;
-        setSetupMapProblem(
-          `${messageFrom(cause, "Map status could not be retrieved.")} Check map status to retrieve this attempt without generating again.`,
-        );
+        setSetupMapProblem("Couldn’t check map status.");
         updateSetupMapRequest({ ...pending, phase: "paused" });
         setSetupMapBusy(false);
       }

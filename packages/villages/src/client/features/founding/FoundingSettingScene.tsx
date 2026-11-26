@@ -22,7 +22,7 @@ const script: Record<SettingBeat, readonly string[]> = {
   ],
   world: [`${worldQuestion} One sentence will do. If you haven’t decided, we can leave the horizon blurry.`],
   lorebooks: [
-    "Got Lorebooks? I’ll look up people and customs when I draft your setting. Villages can keep using those books for Scenes, new places, and daily routines.",
+    "Got Lorebooks? I’ll look up people and customs when I draft your setting. Villages can keep using those books for Scenes, new places, and Agendas.",
     "Which Lorebooks should I have on my desk?",
   ],
   "village-overview": [
@@ -54,6 +54,7 @@ export function FoundingSettingScene({
   editorOpen,
   enteringScene,
   title,
+  notices,
   villageNameField,
   villageInvalid,
   villageBriefError,
@@ -71,6 +72,7 @@ export function FoundingSettingScene({
   editorOpen: boolean;
   enteringScene: boolean;
   title: ReactNode;
+  notices: ReactNode;
   villageNameField: ReactNode;
   villageInvalid: boolean;
   villageBriefError: string;
@@ -325,6 +327,7 @@ export function FoundingSettingScene({
     >
       {title}
       <FoundingReader text={lines[lineIndex]!} lineRef={lineRef} hidden={!!title}>
+        {!inactive && !popup ? notices : null}
         {!phone && beat === "village" && lastLine ? <section aria-label="Your first Map">{mapFields}</section> : null}
         {!lastLine ? (
           <div className="villages-founding-replies">
@@ -454,6 +457,7 @@ export function FoundingSettingScene({
         <FoundingDialog title="Your first Map" headerContent={mapEditorHeader} onClose={closeEditor}>
           {mapFields}
           <footer className="villages-founding-replies">
+            {notices}
             <button type="button" disabled={controller.busy} onClick={closeEditor}>
               Back
             </button>
@@ -471,6 +475,7 @@ export function FoundingSettingScene({
         >
           <div className="villages-setting-fields">{worldField}</div>
           <footer>
+            {notices}
             <button type="button" onClick={closePopup}>
               Back
             </button>
@@ -489,6 +494,7 @@ export function FoundingSettingScene({
         <FoundingDialog title="Your Village" className="villages-setting-fields-dialog" scrollBody onClose={closePopup}>
           <div className="villages-setting-fields">{villageFields}</div>
           <footer>
+            {notices}
             <button type="button" onClick={closePopup}>
               Back
             </button>

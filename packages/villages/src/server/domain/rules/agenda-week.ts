@@ -1,5 +1,6 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageVenue } from "../models/world.js";
 import { composeAgenda } from "./agenda-composition.js";
+import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 import { routineDay } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
@@ -101,33 +102,39 @@ function fillFromFallback(fallback: VillageAgendaBlock[], start: number, end: nu
 export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
+  const influence = !agenda.calendarVersion ? agenda.scheduleInfluenceSnapshot : undefined;
   return agenda.activeDay?.dateKey === key
     ? agenda.activeDay.blocks
     : (agenda.plannedDays?.[key] ??
+        (agenda.calendarVersion && agenda.routineProfile?.baseWeek ? agenda.week?.[weekday] : undefined) ??
         (agenda.routineProfile
-          ? routineDay(
-              agenda.routineProfile,
-              agenda.generatedAt || agenda.routineSummary,
-              at,
-              agenda.scheduleInfluenceSnapshot,
-              {
-                version: 1,
-                enabled: agenda.scheduleInfluenceSnapshot?.enabled === true,
-                categories: {
-                  rhythm: true,
-                  busyFree: true,
-                  weekdayWeekend: true,
-                  interests: true,
-                  establishedEntities: true,
-                },
+          ? routineDay(agenda.routineProfile, agenda.generatedAt || agenda.routineSummary, at, influence, {
+              version: 1,
+              enabled: influence?.enabled === true,
+              categories: {
+                rhythm: true,
+                busyFree: true,
+                weekdayWeekend: true,
+                interests: true,
+                establishedEntities: true,
               },
-            )
+            })
           : undefined) ??
         agenda.week?.[weekday] ??
         agenda.day.map((entry) => ({
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
+}
+
+export function bookedAgendaDays(agenda: VillageAgenda, now: Date) {
+  const today = agendaDateKey(now);
+  const dates = new Set(
+    (agenda.reservations ?? [])
+      .filter((row) => row.source !== "work" && row.dateKey >= today)
+      .map((row) => row.dateKey),
+  );
+  return Object.fromEntries([...dates].map((key) => [key, ordinaryAgendaBlocksFor(agenda, calendarAt(now, key, 720))]));
 }
 
 export function agendaBlocksFor(agenda: VillageAgenda, at: Date): VillageAgendaBlock[] {

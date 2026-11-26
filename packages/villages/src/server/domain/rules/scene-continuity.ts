@@ -7,7 +7,12 @@ import { venueZones } from "./venue-zones.js";
 import { immutableMemoryValue } from "./memory-integrity.js";
 
 /** Current writer context, never evidence or a public attendance/room disclosure. */
-export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
+export function sceneLocationContext(
+  scene: VenueScene,
+  venue: VillageVenue,
+  actorIds: readonly string[],
+  activities: readonly { actorId: string; doing: string }[] = [],
+) {
   const current = sceneLayoutVenue(venue, scene);
   const zones = venueZones(current);
   const origin = requireSceneZoneId(scene);
@@ -24,6 +29,7 @@ export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, act
       .filter((id) => !scene.departedIds?.includes(id))
       .map((characterId) => {
         const position = contactPosition(scene, characterId) || (scene.activeIds.includes(characterId) ? origin : "");
+        const doing = activities.find((activity) => activity.actorId === characterId)?.doing;
         return {
           characterId,
           name: scene.participants.find((row) => row.characterId === characterId)?.name ?? characterId,
@@ -35,6 +41,7 @@ export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, act
                 ? "adjacent Zone, apart from player"
                 : "offstage, apart from player",
           ...(knownZone(position) ? { zone: knownZone(position) } : {}),
+          ...(doing ? { doing } : {}),
         };
       }),
   };

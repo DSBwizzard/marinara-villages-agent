@@ -42,6 +42,7 @@ export interface LiveScenePorts {
   withIdleSceneWork(id: string, work: () => Promise<void>): Promise<void>;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
+  activityChanged?(): void;
   settleVisitorAttendance?(state: VillageState, at: Date): VillageState | Promise<VillageState>;
   initializeCharacterSprites?(
     scope: string,
@@ -51,6 +52,7 @@ export interface LiveScenePorts {
 const ACTIVITY_WRITE_MS = 15 * 1000;
 /** Inert active-Scene lifecycle and attendance coordination with originating connections. */
 export function createLiveScenes({
+  activityChanged,
   readActive,
   readSession,
   changeSession,
@@ -169,6 +171,7 @@ export function createLiveScenes({
         recordSceneFollowup(state, session);
       }
     });
+    activityChanged?.();
   }
 
   async function requireLiveVenueSession(id: string): Promise<VenueScene> {

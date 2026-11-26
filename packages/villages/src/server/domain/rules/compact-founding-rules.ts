@@ -2,17 +2,10 @@ import type { VillagerCard } from "../models/catalog-model.js";
 import type { VillageAgenda, VillagePlayerBackground, VillageVenue } from "../models/world.js";
 import { extractModelJsonObject } from "./json-reply.js";
 import type { RoutineProfile } from "./owned-routine.js";
-import {
-  influenceSettings,
-  readPreparedInfluence,
-  routineDay,
-  scheduleSemanticSource,
-  validRoutineRhythm,
-} from "./owned-routine.js";
+import { routineDay, validRoutineRhythm } from "./owned-routine.js";
 import { boundText, MAX_ROUTINE_SUMMARY_LENGTH } from "./prompt-preset.js";
 import { generatedIdentityDescription } from "./resident-description.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
-import type { NativeWeekSchedule } from "./schedule-rules.js";
 import { backgroundRevision } from "./background-revision.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
@@ -49,10 +42,7 @@ export type CompactFoundingContext = {
   venues: readonly VillageVenue[];
   lore: readonly string[];
   wishes: readonly string[];
-  schedule: NativeWeekSchedule | null;
   characterId?: string;
-  influenceHints?: readonly string[];
-  influenceSettings?: import("./owned-routine.js").ScheduleInfluence;
 };
 
 export type CompactFoundingResult = {
@@ -109,7 +99,7 @@ export function compileRoutineDays(palette: readonly PaletteEntry[], residentId:
           ? [index]
           : [],
       );
-      if (!candidates.length) throw new RoutineResponseError("Routine activities must cover every daypart.");
+      if (!candidates.length) throw new RoutineResponseError("Agenda activities must cover every daypart.");
       return candidates[(seed + day * 2 + slot) % candidates.length]!;
     }),
   );
@@ -131,7 +121,7 @@ export function parseCompactFounding(
           row.duration > ROUTINE_CONTRACT.maxMinutes)
       )
         throw new RoutineResponseError(
-          `Routine activity ${index + 1} duration ${typeof row.duration === "number" && Number.isFinite(row.duration) ? row.duration : "non-numeric"}; expected ${ROUTINE_CONTRACT.minMinutes}–${ROUTINE_CONTRACT.maxMinutes} minutes.`,
+          `Agenda activity ${index + 1} duration ${typeof row.duration === "number" && Number.isFinite(row.duration) ? row.duration : "non-numeric"}; expected ${ROUTINE_CONTRACT.minMinutes}–${ROUTINE_CONTRACT.maxMinutes} minutes.`,
         );
       if (
         !row ||
@@ -146,14 +136,14 @@ export function parseCompactFounding(
         !row.parts.length ||
         row.parts.some((part) => !Number.isInteger(part) || part < 0 || part > 3)
       )
-        throw new RoutineResponseError("Routine activity fields are incomplete or invalid.");
+        throw new RoutineResponseError("Agenda activity fields are incomplete or invalid.");
       if (
         row.weekdays !== undefined &&
         (!Array.isArray(row.weekdays) ||
           !row.weekdays.length ||
           row.weekdays.some((day) => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 6))
       )
-        throw new RoutineResponseError("Routine weekday preferences must use Monday–Sunday indexes 0–6.");
+        throw new RoutineResponseError("Agenda weekday preferences must use Monday–Sunday indexes 0–6.");
       if (
         row.zoneId !== undefined &&
         (typeof row.zoneId !== "string" ||
@@ -161,17 +151,17 @@ export function parseCompactFounding(
             (zone) => zone.id === row.zoneId && ["exterior", "public"].includes(zone.kind),
           ))
       )
-        throw new RoutineResponseError("Routine activity has an unavailable Zone identifier.");
+        throw new RoutineResponseError("Agenda activity has an unavailable Zone identifier.");
     }
   const palette = checkedPalette(payload.palette, context.venues);
   if (!Array.isArray(payload.palette) || payload.palette.length > ROUTINE_CONTRACT.maxActivities)
-    throw new RoutineResponseError("Routine requires 6–8 activities.");
+    throw new RoutineResponseError("An Agenda requires 6–8 activities.");
   const days = compileRoutineDays(palette, context.card.id);
   if (typeof payload.routine !== "string" || !payload.routine.trim())
-    throw new RoutineResponseError("The model did not describe the villager's routine.");
+    throw new RoutineResponseError("The model did not describe the villager's Agenda.");
   const at = new Date().toISOString();
   if (!Array.isArray(payload.rhythm))
-    throw new RoutineResponseError("The routine must explicitly describe rest windows, or use an empty list.");
+    throw new RoutineResponseError("The Agenda must explicitly describe rest windows, or use an empty list.");
   const rhythm = payload.rhythm.map((value) => {
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new RoutineResponseError("Invalid resident rest pattern.");
@@ -198,65 +188,6 @@ export function parseCompactFounding(
     days,
     rhythm,
   };
-  const influence = payload.scheduleInfluence;
-  if (
-    context.schedule &&
-    context.influenceSettings?.enabled &&
-    (!influence || typeof influence !== "object" || Array.isArray(influence))
-  )
-    throw new RoutineResponseError("System schedule interpretation is missing.");
-  if (influence && typeof influence === "object" && !Array.isArray(influence)) {
-    const row = influence as Record<string, unknown>;
-    profile.influence = {
-      version: 1,
-      signature: backgroundRevision(influence),
-      available: !!context.schedule,
-      enabled: true,
-      rhythms: Array.isArray(row.rhythms)
-        ? row.rhythms.filter(
-            (item: any) =>
-              typeof item.weekday === "string" &&
-              Number.isInteger(item.startMinute) &&
-              Number.isInteger(item.endMinute) &&
-              item.startMinute >= 0 &&
-              item.endMinute <= 1440,
-          )
-        : [],
-      busy: Array.isArray(row.busy)
-        ? row.busy.filter(
-            (item: any) =>
-              typeof item.weekday === "string" &&
-              Number.isInteger(item.part) &&
-              item.part >= 0 &&
-              item.part <= 3 &&
-              typeof item.free === "boolean",
-          )
-        : [],
-      interests: Array.isArray(row.interests)
-        ? row.interests.filter(
-            (item: unknown) => typeof item === "string" && palette.some((activity) => activity.activity === item),
-          )
-        : [],
-      entities: Array.isArray(row.entities)
-        ? row.entities.filter(
-            (item: unknown) => typeof item === "string" && context.venues.some((venue) => venue.id === item),
-          )
-        : [],
-      adopted: [],
-      unresolved: [],
-    };
-    if (
-      !readPreparedInfluence(profile.influence) ||
-      ["rhythms", "busy", "interests", "entities"].some(
-        (key) => !Array.isArray(row[key]) || (row[key] as unknown[]).length !== (profile.influence as any)[key].length,
-      )
-    )
-      throw new RoutineResponseError("System schedule interpretation has invalid fields.");
-    profile.influenceSource = scheduleSemanticSource(
-      context.schedule,
-      context.influenceSettings ?? influenceSettings(undefined),
-    );
-  }
   const week = Object.fromEntries(
     VILLAGE_WEEKDAYS.map((weekday, index) => [
       weekday,
@@ -268,6 +199,7 @@ export function parseCompactFounding(
       ? { identityDescription: generatedIdentityDescription(payload.identityDescription) }
       : {}),
     agenda: {
+      calendarVersion: 1,
       routineProfile: profile,
       routineSummary: boundText(payload.routine, MAX_ROUTINE_SUMMARY_LENGTH),
       day: week[VILLAGE_WEEKDAYS[(new Date(at).getDay() + 6) % 7]!]!,
@@ -285,7 +217,7 @@ export function parseCompactFoundingCompletion(
 ): CompactFoundingResult {
   const payload = extractModelJsonObject(completion);
   if (completion.finishReason === "length")
-    throw new RoutineResponseError("Routine output was truncated. Retry deliberately with enough output room.");
+    throw new RoutineResponseError("Agenda output was truncated. Retry deliberately with enough output room.");
   if (!payload) throw new RoutineResponseError("The System model returned empty or invalid JSON for founding.");
   return parseCompactFounding(payload, context);
 }

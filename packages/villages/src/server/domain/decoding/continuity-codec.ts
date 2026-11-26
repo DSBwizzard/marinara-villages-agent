@@ -87,7 +87,7 @@ const version = z
     class: z.enum(["experience", "information", "perspective", "desire", "motivation", "commitment", "open-matter"]),
     agenda: agendaEvidence.optional(),
     relationshipScore: z.number().int().min(-100).max(100).optional(),
-    romanticInterest: z.number().int().min(0).max(20).optional(),
+    romanticInterest: z.number().int().min(-20).max(20).optional(),
     romanticDay: z
       .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), gained: z.boolean() })
       .strict()
@@ -108,6 +108,7 @@ const version = z
     relationshipAnswerScore: z.number().int().min(-100).max(100).optional(),
     relationshipAnswerScene: id.optional(),
     relationshipMilestone: z.literal(true).optional(),
+    perceptionChanged: z.literal(true).optional(),
     about: z
       .array(actorReference)
       .max(32)
@@ -243,6 +244,7 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
       entry.relationshipScore !== undefined ||
       entry.romanticInterest !== undefined ||
       entry.relationshipAnswer !== undefined ||
+      entry.perceptionChanged ||
       entry.relationshipDay
     ) {
       const owner = root.owner;
@@ -261,6 +263,8 @@ export function readContinuity(raw: unknown, seed?: string): ContinuityCollectio
         "invalid saved relationship update",
       );
       const ownerVersion = entry.id === continuityVersionId(evidenceSeed, entry.operationId, owner);
+      if (entry.perceptionChanged)
+        memoryRequire(ownerVersion && entry.about[0].id === "player", "Perception change needs its Villager owner");
       if (entry.relationshipScore !== undefined || entry.romanticInterest !== undefined)
         memoryRequire(ownerVersion, "relationship score belongs to its owner");
       if (entry.relationshipDay) {

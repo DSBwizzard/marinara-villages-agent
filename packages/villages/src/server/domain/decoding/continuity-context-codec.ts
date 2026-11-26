@@ -47,7 +47,7 @@ export const continuityCaptureSchema = z
                 for: id,
                 about: id,
                 score: z.number().int().min(-100).max(100).optional(),
-                romanticInterest: z.number().int().min(0).max(20).optional(),
+                romanticInterest: z.number().int().min(-20).max(20).optional(),
               })
               .strict()
               .refine((row) => row.score !== undefined || row.romanticInterest !== undefined),

@@ -8,6 +8,7 @@ export type VillageMemoryWrite = Omit<VillageMemoryRead, "memories"> & {
   memories?: boolean | ((state: VillageState) => boolean);
   /** Publication hints only: the repository rechecks the physical saved job under repair admission. */
   sourceJobs?: readonly { slot: string; id: string; instanceId: string; attempt: number; owner: string }[];
+  restoreCheckpoint?: true;
   captureSceneRetry?: () => SceneRetryCapture | null | undefined;
 };
 

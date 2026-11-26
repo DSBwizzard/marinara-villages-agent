@@ -20,15 +20,11 @@ async function agendaHttpAdmission() {
     async queuePendingAgendas(state) {
       return state;
     },
-    async refreshScheduleInfluence() {},
     async buildVillageAgendas() {
       return [];
     },
     async clearVillagerAgenda(characterId, actionId) {
       commands.push(["regenerate", characterId, actionId]);
-    },
-    async setVillagerScheduleInfluence(characterId, value) {
-      commands.push(["influence", characterId, value]);
     },
     agendaBackgroundHandler: {
       async generate() {
@@ -67,12 +63,8 @@ async function agendaHttpAdmission() {
     assert.equal(generated.statusCode, 200);
     assert.deepEqual(generated.json(), { villagers: [] });
     const influenced = await app.inject({ method: "PATCH", url: "/agendas/a/influence", payload: { enabled: false } });
-    assert.equal(influenced.statusCode, 200);
-    assert.deepEqual(influenced.json(), { villagers: [] });
-    assert.deepEqual(commands, [
-      ["regenerate", "a", "review-1"],
-      ["influence", "a", { enabled: false }],
-    ]);
+    assert.equal(influenced.statusCode, 404);
+    assert.deepEqual(commands, [["regenerate", "a", "review-1"]]);
   } finally {
     await app.close();
     release();

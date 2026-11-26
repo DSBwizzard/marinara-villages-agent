@@ -82,7 +82,6 @@ import {
   useLoadMemoryLibrary,
   usePreviewVillagerRefresh,
   useRewriteAgenda,
-  useSetScheduleInfluence,
 } from "../features/residents/actions.js";
 import { calculatePersonaPortraitId, calculatePortraitWanted } from "../features/residents/calculations.js";
 import { FOUNDING_STEP } from "../features/founding/founding-steps.js";
@@ -618,13 +617,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setError,
   });
 
-  const setScheduleInfluence = useSetScheduleInfluence({
-    currentSnapshotRef,
-    setAgendas,
-    setBusy,
-    setError,
-  });
-
   useInitialVillageLoad({ visible: visible && !snapshot?.isFounded, loadSnapshot });
 
   useSceneSelectionReset({ ...scenes, loadSnapshot, snapshot, room, screen, setRoom, setScreen });
@@ -716,7 +708,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const moveRoom = useMoveRoom({ ...scenes, isFounded: snapshot?.isFounded, loadSnapshot, room, setRoom });
 
-  const { sendRoom, turnRecovery, checkSavedReply, replyPending } = useSendRoom({
+  const { sendRoom, turnRecovery, replyPending } = useSendRoom({
     ...scenes,
     visible: visible && screen === "room",
     loadSnapshot,
@@ -1464,8 +1456,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     selectedSetupVenueId: founding.selectedSetupVenueId,
     sendRoom,
     turnRecovery,
-    checkSavedReply,
-    setScheduleInfluence,
     setBusy,
     setConnectionSetupProblem: founding.setConnectionSetupProblem,
     setError,

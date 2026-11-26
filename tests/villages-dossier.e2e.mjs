@@ -13,6 +13,9 @@ const browser = await chromium.launch({
 });
 const P = "marinara-capability-villages";
 const output = resolve(process.env.VILLAGES_VISUAL_OUTPUT || ".build-tmp/dossier");
+const avatarUrl = "/api/avatars/file/people-portrait.png?v=1";
+const avatarImage = readFileSync("packages/villages/mari-visitor-sprites/Neutral.png");
+const avatarCrop = { srcX: 0.35, srcY: 0.08, srcWidth: 0.3, srcHeight: 0.2 };
 mkdirSync(output, { recursive: true });
 let executedViewports = 0;
 await withBrowser(browser, async () => {
@@ -197,12 +200,13 @@ await withBrowser(browser, async () => {
           characterId === "mara"
             ? [
                 {
-                  person: { id: "player", name: "You" },
+                  person: { id: "player", name: "Rowan" },
                   score: 3,
                   romanticInterest: 7,
                   answer: "I enjoy when you visit.",
                 },
-                { person: { id: "eli", name: secondName }, score: -10, romanticInterest: 0 },
+                { person: { id: "eli", name: secondName }, score: -10, romanticInterest: -16 },
+                { person: { id: "mina", name: "Mina" }, score: 0, romanticInterest: 0 },
               ]
             : [],
         entries: [
@@ -318,7 +322,12 @@ await withBrowser(browser, async () => {
       })),
     );
     await page.route("**/api/characters/summaries", (route) =>
-      fulfill(route, { contentType: "application/json", body: "[]" }),
+      fulfill(route, {
+        json: exerciseActions ? ["mara", "river-visitor"].map((id) => ({ id, avatarUrl, avatarCrop })) : [],
+      }),
+    );
+    await page.route("**/api/avatars/file/people-portrait.png?*", (route) =>
+      fulfill(route, { contentType: "image/png", body: avatarImage }),
     );
     await page.route("**/api/villages**", async (route) => {
       const request = route.request(),
@@ -598,15 +607,14 @@ await withBrowser(browser, async () => {
         profile.knownWishes.find((wish) => path.includes("/" + wish.wishId + "/")).followed =
           request.postDataJSON().followed;
         value = { wishes: profile.knownWishes };
-      } else if (path.endsWith("/agendas/mara/influence")) {
+      } else if (path.endsWith("/agendas/mara/regenerate")) {
         if (heldAgenda) {
           const pending = heldAgenda;
           pending.started++;
           await pending.gate;
         }
-        agendas.villagers[0].scheduleInfluence.enabled = true;
         value = agendas;
-      } else if (path.endsWith("/agendas/mara/regenerate") || path.endsWith("/agendas")) value = agendas;
+      } else if (path.endsWith("/agendas")) value = agendas;
       else if (path.endsWith("/usage/preview")) value = { requests: { min: 1, max: 1 }, warnings: [] };
       else if (path.endsWith("/villagers/mara/refresh"))
         value =
@@ -642,15 +650,21 @@ await withBrowser(browser, async () => {
     await expect(page.locator(`.${P}-desk-workspace`)).toHaveAttribute("data-phase", "open");
     const bookBox = await page.locator(`.${P}-people-layout`).boundingBox();
     if (exerciseActions) {
-      const villagerTile = await selector.getByRole("button", { name: "Open Mara profile" }).boundingBox();
+      const villagerTile = selector.getByRole("button", { name: "Open Mara profile" });
+      const villagerPortrait = villagerTile.locator(`.${P}-avatar img`);
+      await expect(villagerPortrait).toHaveAttribute("src", avatarUrl);
+      await expect(villagerPortrait).toHaveJSProperty("naturalWidth", 1024);
+      await expect(villagerPortrait).toHaveCSS("object-fit", "fill");
+      const villagerBox = await villagerTile.boundingBox();
       await selector.getByRole("button", { name: "Visitors", exact: true }).click();
       const visitors = page.getByRole("main", { name: "Visitors directory" });
       const visitorTile = visitors.getByRole("button", { name: "Open River Visitor profile" });
       await expect(visitorTile).toBeVisible();
+      await expect(visitorTile.locator(`.${P}-avatar img`)).toHaveAttribute("src", avatarUrl);
       const visitorBox = await visitorTile.boundingBox();
       for (const dimension of ["x", "y", "width", "height"])
         assert(
-          Math.abs(visitorBox[dimension] - villagerTile[dimension]) < 1,
+          Math.abs(visitorBox[dimension] - villagerBox[dimension]) < 1,
           "Visitor and Villager tile geometry matches within pixel rounding.",
         );
       await visitors.getByRole("searchbox", { name: "Find a person" }).fill("missing");
@@ -696,7 +710,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Offer to host", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Turn visits off", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Agenda records", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Inspect Agenda", exact: true })).toHaveCount(0);
       if (width <= 700) await visitorBack.click();
       else
         await page
@@ -706,6 +720,8 @@ await withBrowser(browser, async () => {
       await expect(visitorTile).toBeFocused();
       await visitors.getByRole("button", { name: "Villagers", exact: true }).click();
       await expect(selector).toBeVisible();
+      await expect(villagerPortrait).toHaveJSProperty("naturalWidth", 1024);
+      await expect(villagerPortrait).toHaveJSProperty("complete", true);
     }
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     const search = selector.getByRole("searchbox", { name: "Find a person" });
@@ -888,7 +904,7 @@ await withBrowser(browser, async () => {
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
     const chooseSection = async (label) => {
       if (["Agenda", "Venues"].includes(label))
-        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+        return clickCharacterTool(page, label === "Agenda" ? "Inspect Agenda" : "Venue connections");
       return width <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : tabs.getByRole("button", { name: label, exact: true }).click();
@@ -1027,7 +1043,8 @@ await withBrowser(browser, async () => {
     relationships.starting.pending = false;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
-    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
+    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect")).length, 0);
+    if (width !== 1440) assert.equal(reads.filter((path) => path.endsWith("/agendas")).length, 0);
     await chooseSection("Venues");
     await expect(profile.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
@@ -1171,7 +1188,7 @@ await withBrowser(browser, async () => {
       });
       assert(position > 0, "Long mobile profiles scroll as one paper sheet");
       await expect(tabs.getByRole("button", { name: "Character Tools", exact: true })).toBeInViewport({ ratio: 0.99 });
-      await chooseSection("Agenda");
+      await chooseSection("Relationships");
       assert.equal(await paper.evaluate((node) => node.scrollTop), 0, "A new section starts at the top");
       await chooseSection("Overview");
       assert.equal(
@@ -1196,7 +1213,7 @@ await withBrowser(browser, async () => {
       await profile.getByRole("combobox", { name: "Section" }).focus();
       await expect(profile.getByRole("combobox", { name: "Section" })).toBeFocused();
     }
-    for (const label of ["Relationships", "Wishes", "Memories", "Agenda", "Venues"]) {
+    for (const label of ["Relationships", "Wishes", "Memories", "Overview", "Venues"]) {
       await chooseSection(label);
       await expect(profile.getByRole("heading", { name: "Mara", exact: true, level: 1 })).toBeVisible();
       await expect(profile.getByText(/PRIVATE/)).toHaveCount(0);
@@ -1220,11 +1237,8 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("PRIVATE MARA WISH", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI WISH", { exact: true })).toHaveCount(0);
     await chooseSection("Agenda");
-    await expect(profile.getByText("PRIVATE ROUTINE", { exact: true })).toBeVisible();
-    await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
-    await expect(profile.getByRole("checkbox", { name: "Schedule influence" })).toBeChecked();
-    assert.equal(writes.at(-1).path.endsWith("/agendas/mara/influence"), true);
-    await profile.getByRole("button", { name: "Regenerate agenda", exact: true }).click();
+    await expect(profile.getByRole("checkbox", { name: "Schedule influence" })).toHaveCount(0);
+    await profile.getByRole("button", { name: "Regenerate Agenda", exact: true }).click();
     try {
       await expect.poll(() => writes.at(-1).path.endsWith("/agendas/mara/regenerate")).toBe(true);
     } catch (cause) {
@@ -1240,22 +1254,67 @@ await withBrowser(browser, async () => {
       throw cause;
     }
     await chooseSection("Venues");
-    await expect(profile.getByText(/Agenda destination/)).toBeVisible();
+    await expect(profile.getByText(/Agenda destination/)).toHaveCount(0);
     await chooseSection("Relationships");
-    await expect(profile.getByRole("meter", { name: "Toward you", exact: true })).toHaveAttribute("aria-valuenow", "3");
-    await expect(profile.getByRole("meter", { name: "Toward " + secondName, exact: true })).toHaveAttribute(
+    const relationshipCards = profile.locator(".villages-relationship-scores > article");
+    await expect(relationshipCards).toHaveCount(2);
+    await expect(relationshipCards.nth(0).getByText("Rowan", { exact: true })).toHaveCount(0);
+    await expect(relationshipCards.nth(0).getByText("I enjoy when you visit.", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("Warmth", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(0).getByText("Romantic interest", { exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByRole("heading", { name: secondName, exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByRole("heading", { name: "Mina", exact: true })).toBeVisible();
+    await expect(relationshipCards.nth(1).getByText("Warmth", { exact: true })).toHaveCount(0);
+    await expect(relationshipCards.nth(1).getByText("Romantic interest", { exact: true })).toHaveCount(0);
+    assert(
+      await relationshipCards
+        .nth(0)
+        .locator(".villages-relationship-meters")
+        .evaluate((node) => {
+          const panel = node.getBoundingClientRect();
+          const [warmthLabel, warmth, romanceLabel, romance] = Array.from(node.children, (child) =>
+            child.getBoundingClientRect(),
+          );
+          return [
+            [warmthLabel, warmth],
+            [romanceLabel, romance],
+          ].every(
+            ([label, meter]) =>
+              panel.left < label.left &&
+              label.right <= meter.left &&
+              meter.right < panel.right &&
+              label.top < meter.bottom &&
+              meter.top < label.bottom,
+          );
+        }),
+      "Both player labels and meters fit side by side in the inset panel",
+    );
+    await expect(profile.getByRole("meter", { name: "Warmth toward you", exact: true })).toHaveAttribute(
+      "aria-valuenow",
+      "3",
+    );
+    await expect(profile.getByRole("meter", { name: "Warmth toward " + secondName, exact: true })).toHaveAttribute(
       "aria-valuenow",
       "-10",
     );
-    const hearts = profile.getByRole("meter", { name: "Romantic interest toward you", exact: true });
-    await expect(hearts).toHaveAttribute("aria-valuenow", "7");
-    await expect(hearts.locator("[data-fill=full]")).toHaveCount(3);
-    await expect(hearts.locator("[data-fill=half]")).toHaveCount(1);
-    await expect(hearts.locator("[data-fill=empty]")).toHaveCount(6);
-    const emptyHearts = profile.getByRole("meter", { name: "Romantic interest toward " + secondName, exact: true });
-    await expect(emptyHearts.locator("[data-fill=empty]")).toHaveCount(10);
+    const romance = profile.getByRole("meter", { name: "Romantic interest toward you", exact: true });
+    await expect(romance).toHaveAttribute("aria-valuemin", "-20");
+    await expect(romance).toHaveAttribute("aria-valuemax", "20");
+    await expect(romance).toHaveAttribute("aria-valuenow", "7");
+    await expect(romance.locator("[data-fill=full]")).toHaveCount(3);
+    await expect(romance.locator("[data-fill=half]")).toHaveCount(1);
+    const negativeRomance = profile.getByRole("meter", { name: "Romantic interest toward " + secondName, exact: true });
+    await expect(negativeRomance).toHaveAttribute("aria-valuenow", "-16");
+    await expect(negativeRomance).toHaveAttribute("data-negative", "true");
+    await expect(negativeRomance.locator("[data-fill=full]")).toHaveCount(8);
+    const neutralRomance = relationshipCards
+      .nth(1)
+      .getByRole("meter", { name: "Romantic interest toward Mina", exact: true });
+    await expect(neutralRomance).toHaveAttribute("aria-valuetext", "Neutral");
+    await expect(neutralRomance.locator("[data-fill=empty]")).toHaveCount(10);
+    for (const hearts of [romance, negativeRomance, neutralRomance]) await expect(hearts).toHaveText(/^[♥\s]+$/u);
     assert(
-      await emptyHearts.evaluate(
+      await negativeRomance.evaluate(
         (node) =>
           node.lastElementChild.getBoundingClientRect().right <= node.parentElement.getBoundingClientRect().right + 1,
       ),
@@ -1277,7 +1336,7 @@ await withBrowser(browser, async () => {
       await chooseSection("Agenda");
       const pendingAgenda = hold(() => true);
       heldAgenda = pendingAgenda;
-      await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
+      await profile.getByRole("button", { name: "Regenerate Agenda", exact: true }).click();
       await expect.poll(() => pendingAgenda.started).toBe(1);
       await chooseSection("Overview");
       await openCharacterTools(page);
@@ -1291,7 +1350,7 @@ await withBrowser(browser, async () => {
           .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
       ).toBeVisible();
       await expect(compare).toBeEnabled();
-      const finishedAgenda = page.waitForResponse((response) => response.url().endsWith("/agendas/mara/influence"));
+      const finishedAgenda = page.waitForResponse((response) => response.url().endsWith("/agendas/mara/regenerate"));
       pendingAgenda.release();
       heldAgenda = null;
       await (await finishedAgenda).finished();

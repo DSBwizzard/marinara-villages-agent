@@ -170,12 +170,14 @@ export function AvatarFace({
   portrait,
   name,
   className,
+  fullResolution = false,
   glyph = "initial",
 }: {
   portrait: Portrait | undefined;
   name: string;
   /** The frame this face is drawn in: the list's circle, or the drawer's own box. */
   className: string;
+  fullResolution?: boolean;
   /**
    * What to draw when there is no picture to draw.
    *
@@ -192,7 +194,7 @@ export function AvatarFace({
 }) {
   const [failedUrl, setFailedUrl] = useState("");
   let imageUrl = portrait?.url;
-  if (imageUrl?.startsWith("/api/avatars/file/")) {
+  if (!fullResolution && imageUrl?.startsWith("/api/avatars/file/")) {
     const thumbnail = new URL(imageUrl, window.location.origin);
     thumbnail.searchParams.set("w", "320");
     imageUrl = thumbnail.pathname + thumbnail.search + thumbnail.hash;

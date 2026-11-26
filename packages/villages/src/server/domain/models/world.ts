@@ -5,8 +5,11 @@ import type { HomeBuildingKind } from "../rules/prompt-preset.js";
 
 /** Owned routines and dated commitments. */
 export type VillageAgenda = {
+  /** Dated schedules derive solely from this Agenda in the current contract. */
+  calendarVersion?: 1;
+  recentChanges?: import("../decoding/agenda-codec.js").AgendaChange[];
   plannedDays?: Record<string, VillageAgendaBlock[]>;
-  /** Keep dated administrative corrections through routine and preference refreshes. */
+  /** Preserve dated corrections when the Agenda is regenerated. */
   repairedDays?: string[];
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
@@ -14,7 +17,7 @@ export type VillageAgenda = {
   reservations?: import("./agenda-reservation.js").AgendaReservation[];
   /** One line about an ordinary day for them, here. */
   routineSummary: string;
-  /** The village's repeating exact-time day when the Engine has no weekly schedule. */
+  /** Fallback for captured Agendas created before an exact week was saved. */
   day: { startMinute: number; endMinute: number; venueId: string; zoneId?: string; activity: string }[];
   /** Villages' own complete weekly plan, independent of Marinara schedules. */
   week?: Record<string, VillageAgendaBlock[]>;
@@ -39,22 +42,13 @@ export type VillageAgendaBlock = {
   venueId: string;
   zoneId?: string;
   activity: string;
-  /** The original schedule slot, when this block was informed by one. */
 };
-/** Calendar label for one Agenda day. */
-export type VillageDayView = {
-  /** The Engine's weekday name, one of `VILLAGE_WEEKDAYS`. */
-  weekday: string;
-  /** The village's own calendar date for this occurrence, e.g. "12 September". */
-  dateLabel: string;
-  /** Whether this is the day the listing was built on. Exactly one entry has it. */
-  isToday: boolean;
-};
-
 /** One library card the village has adopted. */
 export type VillageCardCharacter = {
   incarnation: string;
   relationshipScene?: { id: string; endedAt: string; answerSceneId?: string };
+  perceptionDue?: { id: string; at: string };
+  perceptionAssessed?: string;
   letterFontId: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
@@ -109,6 +103,7 @@ export type VillageVillager = VillageCardCharacter & {
    * retried on every part of every day forever.
    */
   agenda: VillageAgenda | null;
+  /** Historical Founding request identity and frozen calendar decoding. */
   scheduleInfluence?: import("../rules/owned-routine.js").ScheduleInfluence;
 };
 
@@ -1002,59 +997,7 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   isFounded: boolean;
   settings: VillageSettingsView;
 }>;
-/** Current routine and optional schedule-influence controls. */
-export type VillageAgendaView = {
-  canInterpretSchedule?: boolean;
-  effectiveDays?: Record<string, VillageAgendaBlock[]>;
-  characterId: string;
-  name: string;
-  /**
-   * Whether this villager's card is gone from the library.
-   *
-   * Always false when the library could not be read at all — see
-   * `weekUnreadable`. "Missing" is a claim about the player's cards, and a
-   * reader that never saw them is not entitled to make it.
-   */
-  missing: boolean;
-  /**
-   * Whether the character library could not be read, so this villager's week is
-   * UNKNOWN rather than absent.
-   *
-   * This field exists because the schedules listing used to have one way to say
-   * "there is nothing here for this villager", and it said it in the player's own
-   * terms: your card has no week on it, go and set one on the Engine's schedule
-   * screen. That is the right sentence for a card that genuinely has no week, and
-   * it was being shown to a player whose cards were fully scheduled — because the
-   * reader was calling a parser the runtime host does not offer and catching its
-   * own TypeError as "this card has no schedule". A week that could not be read
-   * and a week that does not exist need different sentences, because only one of
-   * them is the player's to fix.
-   */
-  weekUnreadable: boolean;
-  addedAt: string;
-  agenda: VillageAgenda | null;
-  scheduleInfluence: import("../rules/owned-routine.js").ScheduleInfluence;
-  nativeSchedule: {
-    weekStart: string;
-    days: Record<string, { time: string; activity: string }[]>;
-  } | null;
-  /**
-   * The Engine's whole week in order from today, each day of it joined to the
-   * stored translation.
-   *
-   * Always seven entries, always in order, always with today first — a listing
-   * whose length depends on whether the Engine has written a week is a listing
-   * the tab has to reason about, and the question this answers is "what does their
-   * week look like from here". Seven rather than a few days ahead because the
-   * Engine's week is a pattern rather than a calendar: a window was this listing
-   * deciding which of somebody's days were worth printing, and a card whose only
-   * hours were at the weekend then read as an empty card. A villager with no week
-   * at all gets seven days with no blocks in them, which the tab draws as seven
-   * empty days rather than as anything missing: there is nothing to show, and
-   * showing nothing is the honest render of that.
-   */
-  days: VillageDayView[];
-};
+export type VillageAgendaView = import("../../../shared/contracts/village.js").VillagerAgendaView;
 
 export type VillageMap = {
   id: string;

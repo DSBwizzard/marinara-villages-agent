@@ -45,12 +45,13 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
       ...facts,
       version: 20,
       setupAt: raw.setupAt,
+      simulatedThrough: raw.capturedAt,
       continuity: emptyContinuity(),
       episodes: emptyEpisodes(),
       mailbox: emptyMailbox(),
       startingHistory: emptyStartingHistory(),
     },
-    { applySpriteDefaults: false },
+    { applySpriteDefaults: false, preserveCapturedAgenda: true },
   );
   const keepCapturedLighting = (venue: import("../models/world.js").VillageVenue, value: unknown) => {
     const zones = asRecord(value).zones;

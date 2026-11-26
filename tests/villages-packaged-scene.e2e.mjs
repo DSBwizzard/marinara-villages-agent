@@ -70,6 +70,11 @@ await withBrowser({ close: server.stop }, async () => {
           content:
             '[!mara]: Private model narration.\n[keep]: {"id":"private-effect-id","for":["mara"],"class":"information","text":"Private continuity note","source":99}',
         };
+      if (rejected === "expression")
+        return {
+          finishReason: "stop",
+          content: '[mara]: I see.\n[cue]: {"expression":"unavailable-fixture-expression"}',
+        };
       if (rejected === "continuity")
         return {
           finishReason: "stop",
@@ -301,6 +306,30 @@ await withBrowser({ close: server.stop }, async () => {
     assert.match(parserReport, /parse invalid/);
     assert.doesNotMatch(parserReport, /Private parser text|Private replacement|Private draft|Mara|The Mill/i);
     assert.equal(turns.length, nextTurn, "reload never submits the failed reply");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Close Scene errors", exact: true }).click();
+    await composer.fill("Thanks for listening.");
+    rejectFirstReply = "expression";
+    await send.click();
+    await expect.poll(() => server.scene().submissions.at(-1)?.acceptance.status).toBe("applied");
+    await expect(page.getByText("I see.", { exact: true })).toBeVisible();
+    await expect(chip).toHaveAccessibleName("1 Scene error");
+    await expect(chip).toHaveAttribute("aria-expanded", "false");
+    await chip.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("Couldn’t show the expression.", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(chip).toBeFocused();
+    await expect(composer).toBeEditable();
+    assert.doesNotMatch(turns.at(-1).response.body, /unavailable-fixture-expression|captured sprite catalog/);
+    const beforeReload = turns.length;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(chip).toBeInViewport();
+    await chip.click();
+    await expect(page.getByText("Couldn’t show the expression.", { exact: true })).toBeInViewport();
+    assert.equal(turns.length, beforeReload, "Reload never purchases an optional effect again");
   });
 });
 console.log("Packaged browser send, native persistence, replay and reload passed.");

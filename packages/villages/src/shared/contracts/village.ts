@@ -772,6 +772,7 @@ export type SceneView = {
   lines: RoomLine[];
   /** Active lines contain one complete published reply, or the latest arrival. */
   liveReplyId?: string;
+  replyWarning?: "expression" | "detail";
   playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
   latestTurn?: { id: string; at: string; published: boolean };
   retryReply?: { token: string };
@@ -840,93 +841,9 @@ export type MemoryForgetRequest = {
 };
 export type MemoryCorrectRequest = MemoryForgetRequest & { text: string };
 
-export /**
- * What one villager is after, or null when the village has not written for them.
- *
- * Null and empty are two different things here and the panel says so: null is a
- * villager waiting to be written for, and an empty agenda is the village having
- * asked and had nothing to say. `source` records where the agenda overview came
- * from, and `generatedAt` is shown and never read.
- */
-type VillagerAgenda = {
-  routineSummary: string;
-  day: { startMinute: number; endMinute: number; venueId: string; activity: string }[];
-  week?: Record<string, AgendaBlock[]>;
-  scheduleInfluenceSnapshot?: { adopted: string[]; unresolved: string[]; available: boolean };
-  activeDay?: { dateKey: string; weekday: string; blocks: AgendaBlock[]; scheduleInformed: boolean };
-  personalizationPending?: boolean;
-  personalizationFailure?: string;
-  generatedAt: string;
-};
-export type AgendaBlock = {
-  startMinute: number;
-  endMinute: number;
-  venueId: string;
-  activity: string;
-};
-export /**
- * One day of somebody's week, as the panel shows it.
- *
- * The village's window onto a week the Engine keeps as a PATTERN: the Engine's
- * week is keyed by weekday name and holds no dates at all, so a day here is a
- * weekday plus the village's own date for the occurrence of it the panel is
- * showing, and the two are joined nowhere but on the server. Walking the weekday
- * names forward from the present one is what makes "today" and "the rest of this
- * week" answerable at all: Sunday's tomorrow is Monday, whose hours are whatever
- * the Engine wrote for a Monday.
- *
- * The whole week is carried — seven days, one per weekday, starting at the
- * present one — because this half of the panel is a timetable, and a timetable
- * with three of its days missing is a different claim about somebody's life than
- * the one the Engine is keeping. `weekday` is the Engine's own day, `dateLabel`
- * is the village's date for it, and `isToday` marks the day the clock is actually
- * on — exactly one entry of the seven has it.
- *
- * `blocks` is empty for a villager whose card carries no schedule at all, which
- * is the ordinary shape of "the Engine is keeping nothing" and is drawn as an
- * absence rather than as a busy day.
- */
-type VillageDayView = {
-  weekday: string;
-  dateLabel: string;
-  isToday: boolean;
-};
-/** Current routine and optional schedule-influence controls. */
 export type VillagerAgendaView = {
-  canInterpretSchedule?: boolean;
-  effectiveDays?: Record<string, AgendaBlock[]>;
   characterId: string;
-  name: string;
-  missing: boolean;
-  /**
-   * The character library could not be read, so this villager's week is unknown
-   * rather than absent.
-   *
-   * The server already keeps `missing` false in that case, and this is here
-   * because the two produce the same empty `days` and need different sentences
-   * underneath them: one is the player's to fix on the Engine's own schedule
-   * screen and the other is not theirs to fix at all.
-   */
-  weekUnreadable: boolean;
-  addedAt: string;
-  agenda: VillagerAgenda | null;
-  scheduleInfluence: { version: 1; enabled: boolean; categories: Record<string, boolean> };
-  nativeSchedule: {
-    weekStart: string;
-    days: Record<string, { time: string; activity: string }[]>;
-  } | null;
-  /**
-   * The Engine's whole week, beginning at today, each block by block, joined on
-   * the server against the stored translation.
-   *
-   * Always seven entries, one per weekday, and each one's `blocks` list is empty
-   * when the Engine is keeping nothing for that weekday — which is an ordinary
-   * answer rather than a missing day. The window is computed on the server because
-   * the Engine's week holds no dates: walking the weekday names forward from the
-   * present one is a decision about the CLOCK, and the panel should not be making
-   * its own.
-   */
-  days: VillageDayView[];
+  agenda: { personalizationPending?: boolean; personalizationFailure?: string } | null;
 };
 
 export type AgendaListResponse = {

@@ -614,10 +614,6 @@
       "path": "/agendas/:characterId/regenerate"
     },
     {
-      "method": "patch",
-      "path": "/agendas/:characterId/influence"
-    },
-    {
       "method": "get",
       "path": "/repair"
     },

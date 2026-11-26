@@ -3,7 +3,8 @@ import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { episodeSourceGraph } from "../decoding/episode-codec.js";
 import type { ContinuityEvidence, ContinuityWrite } from "../models/continuity-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
-import type { VillageState } from "../models/world.js";
+import { recentAgendaChanges } from "./agenda-changes.js";
+import type { VillageAgendaBlock, VillageState } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
@@ -18,8 +19,9 @@ import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { zoneActivityFits } from "./venue-presence.js";
 import { projectAgendaReservations } from "./project-focus.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { WARMTH_THRESHOLDS } from "../../../shared/contracts/relationships.js";
 
-export const AGENDA_SHARED_WARMTH = 60;
+export const AGENDA_SHARED_WARMTH = WARMTH_THRESHOLDS[1];
 const dateAt = (world: VillageState, instant: Date) =>
   new ZonedDate(instant, world.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 const dayOffset = (now: ZonedDate, offset: number) => {
@@ -51,39 +53,164 @@ function checkAppointmentReply(text: string, time: AgendaTime) {
   );
 }
 
-export function agendaSpeechOptions(world: VillageState, actorIds: readonly string[], now: Date, currentOnly: boolean) {
+function discussionWindow(now: ZonedDate, query: string) {
+  const weekday = query.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/iu)?.[0];
+  const weekdayIndex = VILLAGE_WEEKDAYS.findIndex((name) => name.toLowerCase() === weekday?.toLowerCase());
+  const date = query.match(/\b\d{4}-\d{2}-\d{2}\b/u)?.[0];
+  const offset = /\byesterday\b/iu.test(query)
+    ? -1
+    : /\btomorrow\b/iu.test(query)
+      ? 1
+      : weekdayIndex >= 0
+        ? (weekdayIndex - ((now.getDay() + 6) % 7) + 7) % 7
+        : 0;
+  const key = date ?? agendaDateKey(dayOffset(now, offset));
+  const candidate = date ? calendarAt(now, date, 720) : dayOffset(now, offset);
+  const day = agendaDateKey(candidate) === key ? candidate : undefined;
+  const [start, end] = /\bmorning\b/iu.test(query)
+    ? [0, 720]
+    : /\bafternoon\b/iu.test(query)
+      ? [720, 1080]
+      : /\b(?:evening|tonight)\b/iu.test(query)
+        ? [1080, 1440]
+        : [0, 1440];
+  return { day, key, start, end };
+}
+
+export function sceneAgendaContext(
+  world: VillageState,
+  speakers: readonly { characterId: string; doing: string }[],
+  now: Date,
+  query: string,
+  currentVenueId: string,
+  focusActorId?: string,
+) {
   const at = dateAt(world, now);
-  return world.villagers
-    .flatMap((resident) => {
-      if (!resident.agenda || !actorIds.includes(resident.characterId)) return [];
-      const agenda = resident.agenda;
-      const currentMinute = at.getHours() * 60 + at.getMinutes();
-      return Array.from({ length: currentOnly ? 1 : 7 }, (_, offset) => {
-        const day = dayOffset(at, offset);
-        return agendaBlocksFor(agenda, day)
-          .filter(
-            (block) =>
-              scheduledAgendaActivity(block) &&
-              !!block.venueId &&
-              (offset > 0 || block.endMinute > currentMinute) &&
-              (!currentOnly || block.startMinute <= currentMinute),
-          )
-          .map((block) => ({
-            actorId: resident.characterId,
-            activity: block.activity,
-            time: {
-              date: agendaDateKey(day),
-              startMinute: block.startMinute,
-              endMinute: block.endMinute,
-              venueId: block.venueId,
-              ...(block.zoneId ? { zoneId: block.zoneId } : {}),
-            },
-          }));
-      })
-        .flat()
-        .slice(0, currentOnly ? 1 : 6);
+  const minute = at.getHours() * 60 + at.getMinutes();
+  const today = agendaDateKey(at);
+  const window = query ? discussionWindow(at, query) : null;
+  const addressed = focusActorId ? speakers.filter((speaker) => speaker.characterId === focusActorId) : speakers;
+  const agendaOptions: { actorId: string; activity: string; time: AgendaTime }[] = [];
+  const activities = speakers.flatMap(({ characterId, doing }) => {
+    const agenda = world.villagers.find((row) => row.characterId === characterId)?.agenda;
+    if (!agenda) return doing ? [{ actorId: characterId, doing }] : [];
+    const current = agendaBlocksFor(agenda, at).find(
+      (block) =>
+        block.startMinute <= minute &&
+        block.endMinute > minute &&
+        block.venueId === currentVenueId &&
+        block.activity === doing,
+    );
+    const option = (block: VillageAgendaBlock, date: string) => ({
+      actorId: characterId,
+      activity: block.activity,
+      time: {
+        date,
+        startMinute: block.startMinute,
+        endMinute: block.endMinute,
+        venueId: block.venueId,
+        ...(block.zoneId ? { zoneId: block.zoneId } : {}),
+      },
+    });
+    if (current && (!window || window.key === today)) agendaOptions.push(option(current, today));
+    return !current || (window && window.key !== today) ? (doing ? [{ actorId: characterId, doing }] : []) : [];
+  });
+  const upcoming = (window ? addressed : speakers)
+    .flatMap(({ characterId }) => {
+      const agenda = world.villagers.find((row) => row.characterId === characterId)?.agenda;
+      const day = window ? window.day : at;
+      if (!agenda || !day || agendaDateKey(day) < today) return [];
+      const date = agendaDateKey(day);
+      const lower = Math.max(window?.start ?? 0, date === today ? minute : 0);
+      return agendaBlocksFor(agenda, day)
+        .filter(
+          (block) =>
+            scheduledAgendaActivity(block) &&
+            block.startMinute < (window?.end ?? minute + 45) &&
+            block.endMinute > lower &&
+            (date !== today || block.startMinute > minute) &&
+            (window ||
+              (agenda.reservations ?? []).some(
+                (booking) =>
+                  booking.dateKey === date &&
+                  booking.activity === block.activity &&
+                  booking.venueId === block.venueId &&
+                  booking.startMinute <= block.startMinute &&
+                  booking.endMinute >= block.endMinute,
+              )),
+        )
+        .slice(0, window ? 3 : 1)
+        .map((block) => ({
+          actorId: characterId,
+          activity: block.activity,
+          time: {
+            date,
+            startMinute: block.startMinute,
+            endMinute: block.endMinute,
+            venueId: block.venueId,
+            ...(block.zoneId ? { zoneId: block.zoneId } : {}),
+          },
+        }));
     })
-    .slice(0, 16);
+    .slice(0, 3);
+  agendaOptions.push(...upcoming.filter(({ time }) => !!time.venueId));
+  const homeActivities = upcoming
+    .filter(({ time }) => !time.venueId)
+    .map(({ actorId, activity, time }) => ({
+      actorId,
+      activity,
+      date: time.date,
+      startMinute: time.startMinute,
+      endMinute: time.endMinute,
+    }));
+  const available =
+    window?.day && window.key >= today && /\b(?:free|available|have time)\b/iu.test(query)
+      ? addressed
+          .flatMap(({ characterId }) => {
+            const agenda = world.villagers.find((row) => row.characterId === characterId)?.agenda;
+            const start = Math.max(window.start, window.key === today ? minute : 0);
+            const block =
+              agenda &&
+              agendaBlocksFor(agenda, window.day!).find(
+                (row) =>
+                  flexibleAgendaBlock(row) &&
+                  !restingAgendaBlock(row) &&
+                  Math.min(row.endMinute, window.end) > Math.max(row.startMinute, start),
+              );
+            if (!agenda || start >= window.end) return [];
+            return [
+              {
+                actorId: characterId,
+                date: window.key,
+                startMinute: block ? Math.max(block.startMinute, start) : start,
+                endMinute: block ? Math.min(block.endMinute, window.end) : window.end,
+                free: !!block,
+              },
+            ];
+          })
+          .slice(0, 1)
+      : [];
+  const recentChange =
+    window && /\b(?:changed?|cancell?ed|moved|rescheduled|supposed to|were(?:n't| not) you|why)\b/iu.test(query)
+      ? addressed.flatMap(({ characterId }) => {
+          const agenda = world.villagers.find((row) => row.characterId === characterId)?.agenda;
+          const change =
+            agenda &&
+            recentAgendaChanges(agenda, at).find(
+              (row) => row.date === window.key && row.startMinute < window.end && row.endMinute > window.start,
+            );
+          if (!change) return [];
+          const { changedAt: _changedAt, ...details } = change;
+          return [{ actorId: characterId, ...details }];
+        })[0]
+      : undefined;
+  return {
+    agendaOptions: agendaOptions.slice(0, 16),
+    ...(activities.length ? { activities } : {}),
+    ...(homeActivities.length ? { homeActivities } : {}),
+    ...(available.length ? { available } : {}),
+    ...(recentChange ? { recentChange } : {}),
+  };
 }
 
 export function agendaWeek(world: VillageState, actorId: string, now: Date, inspect: boolean): AgendaWeek {

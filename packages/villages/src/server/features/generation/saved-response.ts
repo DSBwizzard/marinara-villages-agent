@@ -103,10 +103,17 @@ function responseSlot(requestId: string, fingerprint = "") {
 }
 
 /** An exact authority key can reopen a validated result without resolving a provider. */
-export async function reopenSavedResponse(mutate: typeof mutateDocument, key: string): Promise<Completion | undefined> {
+export async function reopenSavedResponse(
+  mutate: typeof mutateDocument,
+  key: string,
+  messages?: unknown,
+): Promise<Completion | undefined> {
   let cached: Completion | undefined;
   const id = responseId(key);
-  await mutate(id, responseSlot(id), (receipt) => {
+  const fingerprint = messages === undefined ? undefined : digest(messages);
+  await mutate(id, responseSlot(id, fingerprint), (receipt) => {
+    if (fingerprint !== undefined && receipt.fingerprint !== fingerprint)
+      throw new Error("Saved generation inputs changed. The response is preserved.");
     cached = structuredClone((receipt.selected ?? receipt.candidate)?.result);
     if (!receipt.candidate) return false;
     receipt.selected = receipt.candidate;

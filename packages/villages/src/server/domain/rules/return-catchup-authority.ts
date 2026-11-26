@@ -29,8 +29,22 @@ export function sameReturnResident(
   const { agenda: newAgenda, ...newResident } = live;
   if (JSON.stringify(oldResident) !== JSON.stringify(newResident)) return false;
   if (!oldAgenda || !newAgenda) return oldAgenda === newAgenda;
-  const { activeDay: oldDay, plannedDays: oldPlans, repairedDays: _oldRepairs, ...oldRoutine } = oldAgenda;
-  const { activeDay: newDay, plannedDays: newPlans, repairedDays: _newRepairs, ...newRoutine } = newAgenda;
+  const {
+    activeDay: oldDay,
+    plannedDays: oldPlans,
+    repairedDays: _oldRepairs,
+    calendarVersion: _oldCalendarVersion,
+    recentChanges: _oldChanges,
+    ...oldRoutine
+  } = oldAgenda;
+  const {
+    activeDay: newDay,
+    plannedDays: newPlans,
+    repairedDays: _newRepairs,
+    calendarVersion: _newCalendarVersion,
+    recentChanges: _newChanges,
+    ...newRoutine
+  } = newAgenda;
   // Work dates are a derived query window; compare their accepted terms above instead.
   const withoutWork = (routine: typeof oldRoutine) => ({
     ...routine,

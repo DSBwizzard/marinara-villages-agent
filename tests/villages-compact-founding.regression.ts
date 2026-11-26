@@ -88,7 +88,7 @@ for (const endMinute of [360, 480]) {
   answer.palette[0].duration = 360;
   assert.throws(
     () => parseCompactFounding(answer, strictContext),
-    /Routine activity 1 .*duration 360; expected 30–240 minutes/,
+    /Agenda activity 1 .*duration 360; expected 30–240 minutes/,
   );
 }
 

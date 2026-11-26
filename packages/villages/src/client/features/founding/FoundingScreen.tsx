@@ -22,7 +22,12 @@ import { FoundingField } from "./FoundingField.js";
 import { FoundingGuide, foundingMariSprite } from "./FoundingGuide.js";
 import { FoundingHierarchy } from "./FoundingHierarchy.js";
 import { FoundingSettingScene, settingBeat } from "./FoundingSettingScene.js";
-import { FoundingPersonaSelector, FoundingVillagerPicker } from "./FoundingPanels.js";
+import {
+  FOUNDING_MAP_DETAILS_REQUIRED,
+  FOUNDING_MAP_FAILED,
+  FoundingPersonaSelector,
+  FoundingVillagerPicker,
+} from "./FoundingPanels.js";
 import { FOUNDING_STEP, SETUP_STEPS } from "./founding-steps.js";
 import { QuickStartButton } from "./QuickStartButton.js";
 import { QuickStartVenues } from "./QuickStartVenues.js";
@@ -227,7 +232,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       setupWorkspace.settingIntroPending === true &&
       !draftSaveError);
   const chooseConnections =
-    setupStep === FOUNDING_STEP.Setting && setupWorkspace.settingIntroPending === "connections" && !fading;
+    setupStep === FOUNDING_STEP.Setting &&
+    setupWorkspace.settingIntroPending === "connections" &&
+    !fading &&
+    !draftSaveError;
   const prelude = showTitle || chooseConnections || turning;
   const desktopMap =
     !phone &&
@@ -557,11 +565,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
     const venueShapeProblem = foundingVenueShapeProblem(setupVenues);
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
-        {setupMapProblem ? (
-          <p className={`${ELEMENT_TAG}-error`} role="alert">
-            {setupMapProblem}
-          </p>
-        ) : null}
         <div className={`${ELEMENT_TAG}-setup-map-viewport`} aria-label="Venue placement map">
           <MapStage
             src={setupMapSrc || simpleFoundingMap()}
@@ -884,6 +887,16 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         </section>
       </div>
     );
+    const pausedMapRequest = setupMapRequest?.phase === "paused";
+    // Drafts saved before this fix can still contain the original Engine error.
+    const mapProblem = setupMapProblem.startsWith("The Engine refused ")
+      ? pausedMapRequest
+        ? "Couldn’t check map status."
+        : FOUNDING_MAP_FAILED
+      : setupMapProblem;
+    const mapNotice =
+      (mapPromptValid && mapProblem === FOUNDING_MAP_DETAILS_REQUIRED ? "" : mapProblem) ||
+      (validatedFields.includes("map") && !setupMapSrc ? "Upload or generate a map image before continuing." : "");
     const mapArtworkPanel = (
       <section
         className="villages-forging-card villages-quick-map-panel villages-founding-map-artwork"
@@ -925,7 +938,9 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 ? "Generating map…"
                 : setupMapRequest?.phase === "paused"
                   ? "Check map status"
-                  : "Generate image"}
+                  : mapProblem === FOUNDING_MAP_FAILED
+                    ? "Generate again"
+                    : "Generate image"}
             </button>
             <button
               type="button"
@@ -949,23 +964,18 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
             />
           </>
         </div>
-        {validatedFields.includes("map") && !setupMapSrc ? (
+        {mapNotice ? (
           <p role="alert" className="villages-forging-map-warning" tabIndex={-1}>
-            Upload or generate a map image before continuing.
-          </p>
-        ) : null}
-        {!setupMapSrc && setupMapProblem ? (
-          <p className={`${ELEMENT_TAG}-error`} role="alert">
-            {setupMapProblem}
+            {mapNotice}
           </p>
         ) : null}
         {setupMapSrc ? (
           <section className="villages-quick-map" aria-label="Map artwork preview">
             {map(false)}
           </section>
-        ) : (
+        ) : !mapNotice ? (
           <p>Upload or generate your first Map.</p>
-        )}
+        ) : null}
       </section>
     );
     const venuesPanel = (
@@ -1293,6 +1303,32 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 ][setupStep]!}
         </FoundingGuide>
       ) : null;
+    const setupNotice =
+      setupProblem &&
+      !reviewScene &&
+      (!inlineProblem || setupStep === FOUNDING_STEP.Review) &&
+      !venueConnectionUnavailable &&
+      !(setupStep === FOUNDING_STEP.Venues && setupWorkspace.view === "details") ? (
+        <p className={`${ELEMENT_TAG}-error`} role="alert">
+          {setupProblem}
+        </p>
+      ) : null;
+    const draftSaveNotice =
+      draftSaveError && !reviewScene ? (
+        <div className="villages-forging-notice">
+          <p role="alert">{draftSaveError}</p>
+          <button type="button" onClick={() => void retrySetupSaving()}>
+            {draftNeedsReplacement ? "Replace unreadable draft" : "Retry saving draft"}
+          </button>
+        </div>
+      ) : null;
+    const notices = (
+      <>
+        {setupNotice}
+        {draftSaveNotice}
+        {settingsError ? <p role="alert">{settingsError}</p> : null}
+      </>
+    );
     return (
       <div
         data-mobile={phone ? "true" : "false"}
@@ -1537,6 +1573,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 editorOpen={settingEditorOpen && !prelude}
                 enteringScene={enteringScene}
                 title={title}
+                notices={notices}
                 villageNameField={villageNameField}
                 villageInvalid={villageNameError || !!villageBriefError}
                 villageBriefError={villageBriefError}
@@ -1581,40 +1618,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
               )}
             </FoundingReview>
           ) : null}
-          {setupProblem &&
-          (!inlineProblem || setupStep === FOUNDING_STEP.Review) &&
-          !venueConnectionUnavailable &&
-          !(setupStep === FOUNDING_STEP.Venues && setupWorkspace.view === "details") ? (
-            <p className={`${ELEMENT_TAG}-error`} role="alert">
-              {setupProblem}
-            </p>
-          ) : null}
-          {setupMapProblem && setupStep !== FOUNDING_STEP.Maps && setupStep !== FOUNDING_STEP.Review ? (
-            <p className={`${ELEMENT_TAG}-error`} role="alert">
-              {setupMapProblem}
-            </p>
-          ) : null}
-          {setupMapRequest?.phase === "paused" && setupStep !== FOUNDING_STEP.Maps ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSetupMapProblem("");
-                setSetupMapBusy(true);
-                updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
-              }}
-            >
-              Check map status
-            </button>
-          ) : null}
-          {draftSaveError ? (
-            <div role="alert" className="villages-forging-notice">
-              <p>{draftSaveError}</p>
-              <button type="button" onClick={() => void retrySetupSaving()}>
-                {draftNeedsReplacement ? "Replace unreadable draft" : "Retry saving draft"}
-              </button>
-            </div>
-          ) : null}
-          {settingsError ? <p role="alert">{settingsError}</p> : null}
+          {setupStep !== FOUNDING_STEP.Setting ? notices : null}
         </FoundingChapter>
       </div>
     );

@@ -191,7 +191,7 @@ export function villageSettings(
     foundingLore: [
       ...village.villagers.flatMap((resident) =>
         (["routine", "wish"] as const).map((kind) => ({
-          label: `${resident.cardSnapshot.name} · ${kind === "routine" ? "Personal routine" : "Initial Wish"}`,
+          label: `${resident.cardSnapshot.name} · ${kind === "routine" ? "Agenda" : "Initial Wish"}`,
           entries: readLoreUse(village.foundingPreparation?.tasks?.[resident.characterId]?.[kind]?.lore),
         })),
       ),

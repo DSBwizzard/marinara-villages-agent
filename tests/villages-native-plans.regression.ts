@@ -185,15 +185,24 @@ await runCase("native-plans/relationship-priority", () => {
   forward.relationshipScore = 25;
   assert.deepEqual(rankedPlans(), oneSided, "one-sided +100 warmth ranks like mutual +25 warmth");
   forward.relationshipScore = 100;
-  reverse.relationshipScore = -100;
+  reverse.relationshipScore = -56;
   const opposed = rankedPlans();
-  forward.relationshipScore = -50;
-  reverse.relationshipScore = -50;
-  assert.deepEqual(rankedPlans(), opposed, "opposed warmth at the extremes ranks like mutual -50 warmth");
+  forward.relationshipScore = -17;
+  reverse.relationshipScore = -17;
+  assert.deepEqual(rankedPlans(), opposed, "eligible opposed Warmth gives the cooler direction more weight");
+  forward.relationshipScore = 100;
+  reverse.relationshipScore = -60;
+  assert.equal(meetings(rankedPlans()), 0, "the cooler direction blocks new meetings at exactly −60");
   forward.relationshipScore = -100;
   reverse.relationshipScore = 100;
-  assert.deepEqual(rankedPlans(), opposed, "ranking gives the lower score more weight in either direction");
+  assert.equal(meetings(rankedPlans()), 0, "the cutoff applies in either direction");
   assert.deepEqual(state.residentPlans.plans, [], "candidate preference never books time on its own");
+  const earlier = oneSided.find((plan) => plan.kind === "meeting")!;
+  assert.throws(() => acceptSocialPlan(state, oneSided, earlier.id, now), /willingness.*changed/);
+  forward.relationshipScore = -59;
+  acceptSocialPlan(state, oneSided, earlier.id, now);
+  forward.relationshipScore = -60;
+  assert(socialPlanValid(state, state.residentPlans.plans[0]!, now), "the cutoff preserves an accepted plan");
 });
 
 await runCase("native-plans/attendance", () => {

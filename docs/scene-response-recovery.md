@@ -1,18 +1,24 @@
 # Scene response recovery
 
-Scene turns request JSON-object responses. The current Engine interface forwards the requested format without advertising strict-schema enforcement for an arbitrary selected endpoint. Villages does not change connection settings or purchase fallback requests.
+New ordinary Scene replies use tagged prose and separate records for optional effects. Plain narration can stand on its own. When a proposed effect fails, the server can keep independent playable prose and withhold any lines that depend on the effect.
 
-The extractor requires one complete current object and a normal finish, optionally enclosed in a Markdown fence. Bounded value-preserving punctuation recovery runs before schema, source, witness and effect validation. Duplicate keys, ambiguous quotation boundaries, missing required fields and truncation are rejected. Complete narration cannot be salvaged from an incomplete response. See [model JSON recovery](model-json-recovery.md).
+Scene operations with a JSON contract still need one complete object and a normal finish. Bounded punctuation recovery runs before schema, source, witness, and effect validation. See [model JSON recovery](model-json-recovery.md).
 
 ## Failed replies and Retry
 
-New player chat and contact turns save the submitted request identity and draft. The fitted prompt and provider completion stay in memory. A failed reply leaves no model prose or inferred effects in the story. After a failed chat reply, the composer restores unsaved input if the player has made no newer edits. Send checks whether the prior attempt committed and requests a fresh reply when it did not.
+New player chat and contact turns save the submitted request identity and draft. The fitted prompt and provider completion stay in memory. A failed reply leaves no model prose or inferred effects in the story. After a failed chat reply, the composer restores unsaved input if the player has made no newer edits. Send checks whether the prior attempt committed and requests a fresh reply when it did not. Each dispatch uses the selected connection once.
 
 An accepted Episode and its effects commit together in the Village. A compact Scene record binds that commit to the admitted world, turn and input. If the server stops before it commits, the player can retry. If it stops after the commit, Villages publishes the saved Episode without buying another reply or applying effects twice.
 
 A dropped browser connection can leave the server working. The client checks the exact request and saved reply with bounded reads. A duplicate request cannot buy or publish a second reply. Stop and Scene revision checks fence late results.
 
-Legacy retained requests still use their original evidence when necessary to establish what committed. The legacy alternate-reply control is available only for saved turns that already have a compatible retry record. Openings, departure and automatic events retain their own admission and recovery contracts.
+## Lost turn connections
+
+If the browser loses its connection, the server can still finish the turn. Villages checks the exact submitted text and ID, then refreshes the Scene when a committed reply becomes available. If Villages cannot confirm the reply, it restores the text without overwriting newer edits. A later Send checks the original ID. When the server has no receipt, Send reuses that ID so the delayed original and the new submission cannot both publish.
+
+The latest saved submission can establish publication even after its reply leaves the visible playback page or a later action replaces the operation. The client reconciles against that record and keeps the reading position when it displays a late reply.
+
+Legacy retained requests still use their original evidence to establish what committed. A saved turn with a compatible retry record can retain its alternate-reply control. Openings, departure and automatic events have their own admission and recovery contracts.
 
 ## Hearing evidence and citations
 

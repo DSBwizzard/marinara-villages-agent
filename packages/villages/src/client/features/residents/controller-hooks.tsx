@@ -10,13 +10,11 @@ export function useResidentInspection(ports: {
   screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
 }) {
   const { loadAgendas, personProfile, profileInspection, screen, visible } = ports;
-  const focusRevision = useFocusRevision(
-    visible && screen === "person" && ["agenda", "venues"].includes(profileInspection),
-  );
+  const focusRevision = useFocusRevision(visible && screen === "person" && profileInspection === "overview");
   useEffect(() => {
     if (!visible || screen !== "person" || !personProfile || !profileInspection) return;
     const controller = new AbortController();
-    if (["agenda", "venues"].includes(profileInspection)) {
+    if (profileInspection === "overview") {
       void loadAgendas(controller.signal);
     }
     return () => controller.abort();
@@ -35,7 +33,7 @@ export function useResidentAgendaPolling(ports: {
   const pending =
     screen === "person" &&
     !!profileInspection &&
-    ["agenda", "venues"].includes(profileInspection) &&
+    profileInspection === "overview" &&
     agendas?.some(
       (villager) =>
         villager.characterId === personProfile?.actorId &&

@@ -154,7 +154,7 @@ await withBrowser(browser, async () => {
       currentZoneId: "",
       privateSpacesReady: 4,
     };
-    await expect(details).toContainText("Waiting for Fixture System to write a Routine for Aqua");
+    await expect(details).toContainText("Waiting for Fixture System to write an Agenda for Aqua");
     snapshot.foundingPreparation = {
       status: "pending",
       canPlay: false,

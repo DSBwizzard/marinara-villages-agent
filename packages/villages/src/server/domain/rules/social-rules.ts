@@ -15,8 +15,19 @@ import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { latestRelationshipScores, relationshipKey } from "./continuity.js";
 import { retainNativeFact } from "./native-continuity.js";
 import { villagePresence } from "./village-projections.js";
+import { WARMTH_THRESHOLDS } from "../../../shared/contracts/relationships.js";
 const localDate = (state: VillageState, at: Date) =>
   new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+function pairingWarmth(
+  scores: ReturnType<typeof latestRelationshipScores>,
+  first: SocialPlan["actors"][number],
+  second: SocialPlan["actors"][number],
+) {
+  const forward = scores.get(relationshipKey(first, second))?.relationshipScore ?? 0;
+  const reverse = scores.get(relationshipKey(second, first))?.relationshipScore ?? 0;
+  return { lower: Math.min(forward, reverse), higher: Math.max(forward, reverse) };
+}
 
 export function canEnter(
   village: VillageState,
@@ -147,11 +158,14 @@ export function socialPlanCandidates(
   const residents = projected.villagers.filter(
     (resident) => resident.agenda && (!offeredActors || offeredActors.includes(resident.characterId)),
   );
+  const scores = latestRelationshipScores(village.continuity);
   const groups = residents.flatMap((resident, index) => [
     { kind: "avoidance" as const, actors: [resident] },
     ...residents.slice(index + 1).map((other) => ({ kind: "meeting" as const, actors: [resident, other] })),
   ]);
   for (const group of groups) {
+    const actors = group.actors.map(({ characterId: id, incarnation }) => ({ id, incarnation }));
+    if (actors[1] && pairingWarmth(scores, actors[0]!, actors[1]).lower <= -WARMTH_THRESHOLDS[1]) continue;
     const actorIds = group.actors.map((actor) => actor.characterId);
     const blocks = group.actors.map((actor) =>
       agendaBlocksFor(actor.agenda!, now).filter((block) => flexibleAgendaBlock(block) && !restingAgendaBlock(block)),
@@ -176,7 +190,7 @@ export function socialPlanCandidates(
             const plan: SocialPlan = {
               id: "",
               dateKey,
-              actors: group.actors.map((actor) => ({ id: actor.characterId, incarnation: actor.incarnation })),
+              actors,
               venueId: venue.id,
               zoneId: zone.id,
               startMinute,
@@ -191,13 +205,11 @@ export function socialPlanCandidates(
           }
       }
   }
-  const scores = latestRelationshipScores(village.continuity);
   const priority = (plan: SocialPlan) => {
     const [first, second] = plan.actors;
     if (plan.kind !== "meeting" || !first || !second) return hashString(plan.id);
-    const forward = scores.get(relationshipKey(first, second))?.relationshipScore ?? 0;
-    const reverse = scores.get(relationshipKey(second, first))?.relationshipScore ?? 0;
-    const warmth = 0.75 * Math.min(forward, reverse) + 0.25 * Math.max(forward, reverse);
+    const { lower, higher } = pairingWarmth(scores, first, second);
+    const warmth = 0.75 * lower + 0.25 * higher;
     return hashString(plan.id) - (warmth / 100) * 2 ** 30;
   };
   return (
@@ -276,6 +288,14 @@ export function acceptSocialPlan(
     );
     return;
   }
+  const [first, second] = plan.actors;
+  memoryRequire(
+    plan.kind !== "meeting" ||
+      !first ||
+      !second ||
+      pairingWarmth(latestRelationshipScores(village.continuity), first, second).lower > -WARMTH_THRESHOLDS[1],
+    "the Villagers' willingness to plan a casual meetup changed",
+  );
   memoryRequire(
     village.residentPlans.selectedDate < plan.dateKey &&
       village.backgroundPace !== "off" &&

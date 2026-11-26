@@ -12,6 +12,7 @@ import { mailSourceHash, type MailIdentity } from "./mail-evidence.js";
 import { asRecord } from "./coerce.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
 import { applyVisitPreference } from "./visitors.js";
+import { recordLetterPerception } from "./continuity-library.js";
 
 export type MailMeaning = { keep: unknown[]; requires: string[] };
 export class HeldMail extends Error {
@@ -263,6 +264,7 @@ export function acceptMailExchange(state: VillageState, exchange: MailExchange, 
   state.mailbox = candidate.mailbox;
   state.residentPlans = candidate.residentPlans;
   state.villagers = candidate.villagers;
+  recordLetterPerception(state, incoming.to.id, incoming.id, at, !!exchange.replyText, before.continuity.revision);
   const preference = exchange.visitPreference;
   const visitor = state.visitors?.find(
     (person) => person.characterId === incoming.to.id && person.incarnation === incoming.to.incarnation,

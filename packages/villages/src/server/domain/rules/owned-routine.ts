@@ -1,9 +1,7 @@
 import { accessibleVenueRoute } from "./venue-path.js";
-import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
+import type { VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
-import type { NativeWeekSchedule } from "./schedule-rules.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
-import { backgroundRevision } from "./background-revision.js";
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 
@@ -45,14 +43,6 @@ export type RoutineProfile = {
   /** Exact authored intervals for provisional and manually repaired routines. */
   baseWeek?: Record<string, VillageAgendaBlock[]>;
 };
-
-/** Weekly refresh dates are not authored schedule changes. */
-export const scheduleSemanticSource = (schedule: NativeWeekSchedule | null, settings: ScheduleInfluence) =>
-  backgroundRevision(
-    schedule && !Object.values(schedule.days ?? {}).some((blocks) => blocks?.length)
-      ? [schedule.characterId, schedule.days, settings, schedule.routineSummary?.trim()]
-      : [schedule?.characterId, schedule?.days, settings],
-  );
 
 export function readPreparedInfluence(value: unknown): InfluenceSnapshot | undefined {
   const raw = record(value);
@@ -126,118 +116,6 @@ export function influenceSettings(value: unknown): ScheduleInfluence {
       INFLUENCE_CATEGORIES.map((key) => [key, categories[key] !== false]),
     ) as ScheduleInfluence["categories"],
   };
-}
-
-export function canInterpretSchedule(agenda: VillageAgenda | null | undefined): boolean {
-  return (
-    agenda?.routineProfile?.semanticVersion === 2 && !agenda.personalizationPending && !agenda.personalizationFailure
-  );
-}
-
-export function nativeScheduleInfluence(schedule: NativeWeekSchedule | null, settings: ScheduleInfluence) {
-  const snapshot: InfluenceSnapshot = {
-    version: 1,
-    signature: scheduleSemanticSource(schedule, settings),
-    available: !!schedule,
-    enabled: settings.enabled,
-    rhythms: [],
-    busy: [],
-    interests: [],
-    entities: [],
-    adopted: [],
-    unresolved: [],
-  };
-  let complete =
-    !schedule?.routineSummary?.trim() || !(settings.categories.interests || settings.categories.establishedEntities);
-  const anyCategory = Object.values(settings.categories).some(Boolean);
-  for (const weekday of VILLAGE_WEEKDAYS) {
-    const blocks = schedule?.days?.[weekday];
-    if (!Array.isArray(blocks)) continue;
-    for (const block of blocks) {
-      if (!block || typeof block.time !== "string" || typeof block.activity !== "string") {
-        if (anyCategory) complete = false;
-        continue;
-      }
-      const { time, activity } = block;
-      const range = /^(\d{1,2}):([0-5]\d)\s*[-–]\s*(\d{1,2}):([0-5]\d)$/u.exec(time.trim());
-      const label = activity.trim().toLocaleLowerCase("en-US");
-      const sleep = label === "sleep" || label === "sleeping";
-      const availability = label === "free" || label === "free time" ? true : label === "busy" ? false : undefined;
-      const start = range ? Number(range[1]) * 60 + Number(range[2]) : -1;
-      const end = range ? Number(range[3]) * 60 + Number(range[4]) : -1;
-      if (
-        start < 0 ||
-        start >= 1440 ||
-        end < 0 ||
-        end > 1440 ||
-        start === end ||
-        (!sleep && availability === undefined)
-      ) {
-        if (anyCategory) complete = false;
-        continue;
-      }
-      if (sleep && settings.categories.rhythm) {
-        snapshot.rhythms.push({ weekday, startMinute: start, endMinute: end });
-      }
-      if (availability !== undefined && settings.categories.busyFree) {
-        if (start % 360 !== 0 || end - start !== 360) complete = false;
-        else snapshot.busy.push({ weekday, part: start / 360, free: availability });
-      }
-    }
-  }
-  const duplicate = (keys: string[]) => new Set(keys).size !== keys.length;
-  if (snapshot.rhythms.length > 7 || duplicate(snapshot.rhythms.map((row) => row.weekday))) {
-    snapshot.rhythms = [];
-    complete = false;
-  }
-  if (duplicate(snapshot.busy.map((row) => row.weekday + ":" + row.part))) {
-    snapshot.busy = [];
-    complete = false;
-  }
-  return { snapshot, complete };
-}
-
-export function deriveInfluence(schedule: NativeWeekSchedule | null, resident: VillageVillager): InfluenceSnapshot {
-  const settings = influenceSettings(resident.scheduleInfluence);
-  const profile = resident.agenda?.routineProfile;
-
-  const source = scheduleSemanticSource(schedule, settings);
-  const legacy = backgroundRevision([schedule?.characterId, schedule?.days, settings]);
-  const saved = profile && [source, legacy].includes(profile.influenceSource ?? "") ? profile.influence : undefined;
-  const native = nativeScheduleInfluence(settings.enabled ? schedule : null, settings);
-  const semantic = schedule && settings.enabled && !native.complete ? saved : undefined;
-  const weekdays = <T extends { weekday: string }>(rows: T[]) =>
-    settings.categories.weekdayWeekend
-      ? rows
-      : rows
-          .filter((row) => row.weekday === "Monday")
-          .flatMap((row) => VILLAGE_WEEKDAYS.map((weekday) => ({ ...row, weekday })));
-  const result: InfluenceSnapshot = {
-    ...(semantic ?? native.snapshot),
-    enabled: settings.enabled,
-    available: !!schedule,
-    rhythms: settings.categories.rhythm
-      ? weekdays([
-          ...(semantic?.rhythms ?? []).filter(
-            (row) => !native.snapshot.rhythms.some((exact) => exact.weekday === row.weekday),
-          ),
-          ...native.snapshot.rhythms,
-        ])
-      : [],
-    busy: settings.categories.busyFree
-      ? weekdays([
-          ...(semantic?.busy ?? []).filter(
-            (row) => !native.snapshot.busy.some((exact) => exact.weekday === row.weekday && exact.part === row.part),
-          ),
-          ...native.snapshot.busy,
-        ])
-      : [],
-    interests: settings.categories.interests ? (semantic?.interests ?? []) : [],
-    patterns: settings.categories.weekdayWeekend ? semantic?.patterns : [],
-    entities: settings.categories.establishedEntities ? (semantic?.entities ?? []) : [],
-    unresolved: semantic?.unresolved ?? (native.complete ? [] : ["Schedule interpretation pending"]),
-  };
-  return { ...result, signature: backgroundRevision([source, result]) };
 }
 
 export function routineProfileFromWeek(week: Record<string, VillageAgendaBlock[]>): RoutineProfile {
@@ -537,45 +415,4 @@ export function validateRoutineDay(
       };
     return { ...block, zoneId: zone.id };
   });
-}
-
-/** One bounded, optional future activity from an already-paid request. Never a world-state effect. */
-export function addRoutineIdea(
-  agenda: VillageAgenda,
-  value: unknown,
-  resident: VillageVillager,
-  state: VillageState,
-  now = new Date(),
-): boolean {
-  const row = record(value),
-    profile = agenda.routineProfile;
-  if (!profile || row.flexible !== true || !text(row.activity)) return false;
-  const candidate: RoutineActivity = {
-    activity: text(row.activity),
-    venueId: text(row.venueId),
-    zoneId: text(row.zoneId) || undefined,
-    flexible: true,
-    essential: false,
-    duration: 90,
-    parts: [1, 2, 3],
-  };
-  if (candidate.venueId) {
-    const checked = validateRoutineDay([{ ...candidate, startMinute: 0, endMinute: 90 }], resident, state, now)[0]!;
-    if (checked.venueId !== candidate.venueId) return false;
-  }
-  if (profile.activities.some((item) => item.activity.toLowerCase() === candidate.activity.toLowerCase())) return false;
-  let index = profile.activities.length;
-  if (index >= 16) {
-    index = profile.activities.findIndex((item, i) => !item.essential && !profile.days.some((day) => day.includes(i)));
-    if (index < 0) return false;
-    profile.activities[index] = candidate;
-  } else profile.activities.push(candidate);
-  // The seed routine remains intact; only optional alternatives evolve.
-  if (!profile.baseWeek)
-    for (const day of profile.days)
-      for (const part of candidate.parts) {
-        const at = part * 2 + 1;
-        if (!profile.activities[day[at] ?? 0]?.essential) day[at] = index;
-      }
-  return true;
 }

@@ -24,15 +24,12 @@ import { decodeVillageImageDataUrl, inspectVillageImage } from "../adapters/engi
 import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
 import { readLoreImageReferences } from "../adapters/engine/lore-image-references.js";
 import { readVillageImageLore, readVillageImageLoreEntries, readVillageLore } from "../adapters/engine/lorebooks.js";
-import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
-import { configureNativeSchedules, readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
 import {
   configureRuntimeHost,
   VILLAGES_PACKAGE_ID,
   villagesDebugAgentsEnabled,
   villagesDocuments,
   villagesLogger,
-  villagesResources,
   villagesRuntimeEpoch,
 } from "../adapters/engine/runtime-host.js";
 import { createSpriteFileRemoval } from "../adapters/engine/sprite-file-removal.js";
@@ -157,7 +154,6 @@ import {
   configureResidentAgendas,
   queueVillagerAgenda,
   readFoundingResidentContext,
-  refreshScheduleInfluence,
   rollActiveAgendas,
 } from "../features/residents/resident-agendas.js";
 import { createResidentCards } from "../features/residents/resident-card-service.js";
@@ -167,7 +163,6 @@ import { createResidentRoster } from "../features/residents/resident-roster-serv
 import { configureResidentRoster } from "../features/residents/resident-roster.js";
 import { createResidentSignatures } from "../features/residents/resident-signature-service.js";
 import { configureResidentSignatures } from "../features/residents/resident-signature.js";
-import { createScheduleInfluence } from "../features/residents/schedule-influence-service.js";
 import { prepareSignatureImage } from "../features/residents/signature-image.js";
 import { createSocialMail } from "../features/residents/social-mail-service.js";
 import { configureSocialMail } from "../features/residents/social-mail.js";
@@ -288,7 +283,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseMetrics = configureMetricsContext(createMetricsContext());
   const release = configureRuntimeHost(next, backendWork.repairAdmission);
   const releasePersonas = configurePersonaQueries(createPersonaQueries({ findPlayerPersona, listPlayerPersonas }));
-  const releaseNativeSchedules = configureNativeSchedules(createNativeSchedules({ villagesResources, villagesLogger }));
   const releaseGallery = configureGlobalGallery(createGlobalGallery({ villageEngineJson, villageEngineForm }));
   const background = createBackgroundContext();
   const releaseBackgroundContext = configureBackgroundContext(background);
@@ -506,6 +500,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseLiveScenes = configureLiveScenes(
     createLiveScenes({
+      activityChanged: requestVillageRefresh,
       readActive,
       readSession,
       changeSession,
@@ -554,6 +549,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      activityChanged: requestVillageRefresh,
       preparePlace: generatePlace,
       retry: sceneRetry,
       prepareIntroductionVisitor: (state, at) =>
@@ -656,16 +652,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       privatePreparationRooms,
     }),
   );
-  const scheduleInfluence = createScheduleInfluence({
-    readVillageState,
-    readNativeScheduleSnapshot,
-    queueBackgroundJob,
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-  });
   const residentAgendas = createResidentAgendas({
-    queueScheduleInfluence: scheduleInfluence.queue,
     readVillageState,
     mutateVillageState,
     reportFoundingProgress,
@@ -675,7 +662,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,
-    readNativeScheduleSnapshot,
   });
   const releaseResidentAgendas = configureResidentAgendas(residentAgendas);
   const residences = createResidences({ mutateVillageState, buildVillageSnapshot });
@@ -903,7 +889,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
     queuePendingAgendas,
-    refreshScheduleInfluence,
     preparePrivateSpaces,
     reconcileProjectLifecycles,
     rollActiveAgendas,
@@ -946,7 +931,17 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       tracksProviderDispatch,
       handlers: [
         ["starting-ties", startingTies.handler],
-        ["schedule-influence", scheduleInfluence.handler],
+        // Read historical receipts without admitting new work.
+        [
+          "schedule-influence",
+          {
+            valid: () => false,
+            generate: async () => {
+              throw new Error("Schedule influence was retired.");
+            },
+            apply: () => {},
+          },
+        ],
         ["wish", wishService.handler],
         ["personal-mail", personalMail.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
@@ -1061,7 +1056,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseOperations();
     releaseBackgroundContext();
     releaseGallery();
-    releaseNativeSchedules();
     releasePersonas();
     release();
     releaseMetrics();

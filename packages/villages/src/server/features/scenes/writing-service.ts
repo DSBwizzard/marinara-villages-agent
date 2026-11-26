@@ -3,7 +3,7 @@ import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { agendaSpeechOptions } from "../../domain/rules/agenda-overview.js";
+import { sceneAgendaContext } from "../../domain/rules/agenda-overview.js";
 import type { NarrationReadset, SceneSpeechAction } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
 import {
@@ -357,14 +357,50 @@ export function createSceneWriting({
     const memoryResident = JSON.stringify(requestedMemory?.recipientId ?? "resident-id");
     const memoryKeep = `{"id":"remember-fact","for":[${memoryResident}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${memoryResident}]}}]}`;
     const npcIntroduction = !context.codeRequestedMemory && !scene.visitorIntroduction;
-    const agendaDiscussed =
+    const schedulingMentioned = (text: string) =>
       /\b(?:agenda|schedule|free|available|tomorrow|tonight|meet|appointment|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|midnight|o['’]clock|\d{1,2}(?::\d{2}|\s*[ap]\.?m\.?))\b/iu.test(
-        input,
+        text,
       ) ||
       /\b(?:when (?:are|can|could|do|does|is|shall|should|will|would)|what (?:time|day|hours)|any plans|plans for|rest of your day|what(?: is|['’]s) on today|(?:doing|you do|up to|working|busy|hours|have time|plans?)\b[^.!?\r\n]{0,40}\btoday)\b/iu.test(
-        input,
+        text,
+      ) ||
+      /\b(?:yesterday|rescheduled|supposed to|were(?:n't| not) you|plans? chang(?:ed|e)|this (?:morning|afternoon|evening)|\d{4}-\d{2}-\d{2})\b/iu.test(
+        text,
       );
-    const agendaOptions = agendaSpeechOptions(village, selectedIds, new Date(calendar.instant), !agendaDiscussed);
+    const agendaSpeakers = leadSpeakerId ? cast.filter((row) => row.characterId === leadSpeakerId) : cast;
+    const followUp = /\b(?:what about|how about|why|instead|then)\b/iu.test(input);
+    const previousInput = followUp
+      ? (context.parts
+          .filter((part) => part.block.transcript)
+          .flatMap((part) => Object.values(part.sources))
+          .findLast(
+            (source) =>
+              source.kind === "speech" &&
+              source.actorId === "player" &&
+              agendaSpeakers.every(({ characterId }) =>
+                source.perceptions.some(
+                  (perception) => perception.actorId === characterId && perception.channel === "words",
+                ),
+              ),
+          )?.excerpt ?? "")
+      : "";
+    const agendaQuery = schedulingMentioned(input)
+      ? input
+      : followUp && schedulingMentioned(previousInput)
+        ? previousInput + " " + input
+        : "";
+    const agendaDiscussed = !!agendaQuery;
+    const agenda = sceneAgendaContext(
+      village,
+      cast.map(
+        (speaker) => scene.sceneAttendance?.occupants.find((row) => row.characterId === speaker.characterId) ?? speaker,
+      ),
+      new Date(calendar.instant),
+      agendaQuery,
+      scene.placeId,
+      leadSpeakerId,
+    );
+    const { agendaOptions, activities, ...agendaFacts } = agenda;
     const agendaVenues = agendaDiscussed
       ? [venue.id, ...places.filter(({ id }) => id !== venue.id).map(({ id }) => id)].slice(0, 10).flatMap((id) => {
           const destination = findLocation(village, id);
@@ -386,7 +422,7 @@ export function createSceneWriting({
         })
       : [];
     const agendaContext = "agenda-context";
-    const location = sceneLocationContext(scene, venue, selectedIds);
+    const location = sceneLocationContext(scene, venue, selectedIds, activities);
     const otherPeople = worldCharacterReferences(village, {
       placeId: scene.placeId,
       mapId: venue.presentation.mapId,
@@ -420,7 +456,7 @@ export function createSceneWriting({
           : nativeCommands
             ? SCENE_NARRATION_KEEP
             : ORDINARY_SCENE_KEEP,
-        nativeCommands && scoredRelationships ? RELATIONSHIP_DIRECTION : "",
+        scoredRelationships ? RELATIONSHIP_DIRECTION : "",
         scoredRelationships ? (nativeCommands ? RELATIONSHIP_KEEP : SCENE_RELATIONSHIP_KEEP) : "",
       ]),
       metadata: blocksFor([
@@ -613,17 +649,28 @@ export function createSceneWriting({
               : undefined,
           }),
         ]),
-        ...(agendaOptions.length || agendaVenues.length
+        ...(agendaOptions.length ||
+        agenda.homeActivities ||
+        agenda.available ||
+        agenda.recentChange ||
+        agendaVenues.length
           ? [
               {
                 text: [
-                  'Agenda discovery: information keep for:["player"],about:[actorId],agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Copy the supplied slot location and cite exact spoken activity/times or the witnessed activity in its Zone (captured minute through next minute).',
+                  ...(agenda.recentChange
+                    ? ["This change is known to its villager. Explain it only from what they know."]
+                    : []),
+                  ...(agendaOptions.length
+                    ? [
+                        'Agenda discovery: information keep for:["player"],about:[actorId],agenda:{actorId,kind:"told"|"seen",time:{date,startMinute,endMinute,venueId,zoneId?}}. Copy the supplied slot location and cite exact spoken activity/times or the witnessed activity in its Zone (captured minute through next minute).',
+                      ]
+                    : []),
                   ...(agendaDiscussed
                     ? [
                         'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite actual proposing and accepting words with act. Use a fitted alias for an existing offer.',
                       ]
                     : []),
-                  JSON.stringify({ agendaOptions, ...(agendaVenues.length ? { agendaVenues } : {}) }),
+                  JSON.stringify({ agendaOptions, ...agendaFacts, ...(agendaVenues.length ? { agendaVenues } : {}) }),
                 ].join("\n"),
                 evidenceId: agendaContext,
                 optional: "history" as const,

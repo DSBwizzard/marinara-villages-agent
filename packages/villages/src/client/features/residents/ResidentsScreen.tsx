@@ -2,7 +2,6 @@ import { PersonArrangements } from "../venues/PersonArrangements.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { agendaMinuteLabel, agendaUpdatePending, agendaPlaceName } from "../../shared/presentation.js";
 import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
 import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
 import { AvatarFace } from "./ResidentPanels.js";
@@ -46,7 +45,6 @@ export function ResidentsScreen({
     refreshPreviews,
     rewriteAgenda,
     screen,
-    setScheduleInfluence,
     setFocusedProjectId,
     setFocusedRequestId,
     setHousingVenueId,
@@ -88,10 +86,6 @@ export function ResidentsScreen({
       );
       if (controlled) connections.push("Owns or controls a space");
       if (venue.id === person?.place?.id) connections.push("Current location");
-      const agendaDestination = selectedAgendas.some((entry) =>
-        Object.values(entry.effectiveDays ?? {}).some((blocks) => blocks.some((block) => block.venueId === venue.id)),
-      );
-      if (connections.length === publicConnections.length && agendaDestination) connections.push("Agenda destination");
       return {
         id: venue.id,
         name: venue.name,
@@ -182,166 +176,22 @@ export function ResidentsScreen({
     const wishInspection = (
       <VillagerWishJournal request={request} characterId={personProfile.actorId} prefix={ELEMENT_TAG} inspect />
     );
+    const agendaStatus = selectedAgendas[0]?.agenda;
     const agendaInspection = (
-      <div className={`${ELEMENT_TAG}-overlay`}>
-        <div className={`${ELEMENT_TAG}-overlay-head`}>
-          <h2 className={`${ELEMENT_TAG}-panel-title`}>Villager agendas</h2>
-        </div>
-        {agendas === null ? (
-          <p className={`${ELEMENT_TAG}-empty`}>Loading agendas…</p>
-        ) : selectedAgendas.length === 0 ? (
-          <p className={`${ELEMENT_TAG}-empty`}>Nobody lives here yet.</p>
-        ) : (
-          <div className={`${ELEMENT_TAG}-agenda-list`}>
-            {selectedAgendas.map((villager) => (
-              <details key={villager.characterId} className={`${ELEMENT_TAG}-week`} open>
-                <summary className={`${ELEMENT_TAG}-week-toggle`}>
-                  <h3 className={`${ELEMENT_TAG}-week-head`}>
-                    {villager.name}
-                    {villager.agenda?.personalizationPending ? (
-                      <span className={`${ELEMENT_TAG}-badge`}>
-                        {villager.agenda.personalizationFailure ? "Personalization needs retry" : "Personalizing"}
-                      </span>
-                    ) : null}
-                    {villager.agenda?.personalizationFailure ? (
-                      <span className={`${ELEMENT_TAG}-badge`}>Personalization failed</span>
-                    ) : null}
-                    {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>Card missing</span> : null}
-                    {villager.nativeSchedule ? (
-                      <span className={`${ELEMENT_TAG}-badge`}>
-                        {villager.scheduleInfluence.enabled ? "Schedule influence enabled" : "Schedule available"}
-                      </span>
-                    ) : null}
-                    {agendaUpdatePending(villager) ? (
-                      <span className={`${ELEMENT_TAG}-badge`}>Earlier hours kept</span>
-                    ) : null}
-                  </h3>
-                </summary>
-                <div className={`${ELEMENT_TAG}-week-body`}>
-                  {villager.agenda?.routineSummary ? (
-                    <p className={`${ELEMENT_TAG}-story-meta`}>{villager.agenda.routineSummary}</p>
-                  ) : null}
-                  {villager.agenda?.personalizationFailure ? (
-                    <p className={`${ELEMENT_TAG}-empty`}>{villager.agenda.personalizationFailure}</p>
-                  ) : villager.agenda?.personalizationPending ? (
-                    <p className={`${ELEMENT_TAG}-story-scope`}>Personalizing this agenda in the background.</p>
-                  ) : null}
-                  <div className={`${ELEMENT_TAG}-agenda-actions`}>
-                    <label className={`${ELEMENT_TAG}-agenda-switch`}>
-                      <input
-                        autoComplete="off"
-                        type="checkbox"
-                        checked={villager.scheduleInfluence.enabled}
-                        disabled={busy}
-                        onChange={(event) => void setScheduleInfluence(villager.characterId, event.target.checked)}
-                      />
-                      Schedule influence
-                    </label>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => void rewriteAgenda(villager.characterId)}
-                    >
-                      Regenerate agenda
-                    </button>
-                    {villager.canInterpretSchedule ? (
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        disabled={busy || !villager.scheduleInfluence.enabled}
-                        onClick={() => void setScheduleInfluence(villager.characterId, true)}
-                      >
-                        Interpret schedule
-                      </button>
-                    ) : null}
-                    {Object.entries({
-                      rhythm: "Preferred sleep/wake rhythm",
-                      busyFree: "Broad busy/free periods",
-                      weekdayWeekend: "Weekday/weekend patterns",
-                      interests: "Compatible hobbies and interests",
-                      establishedEntities: "Established workplaces, vehicles and institutions",
-                    }).map(([key, label]) => (
-                      <label key={key} className={ELEMENT_TAG + "-agenda-switch"}>
-                        <input
-                          autoComplete="off"
-                          type="checkbox"
-                          checked={villager.scheduleInfluence?.categories[key] !== false}
-                          disabled={busy || !villager.scheduleInfluence.enabled}
-                          onChange={(event) =>
-                            void setScheduleInfluence(villager.characterId, villager.scheduleInfluence.enabled, {
-                              [key]: event.target.checked,
-                            })
-                          }
-                        />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                  {villager.scheduleInfluence.enabled ? (
-                    <ul>
-                      {(villager.agenda?.scheduleInfluenceSnapshot?.adopted ?? []).map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                      {(villager.agenda?.scheduleInfluenceSnapshot?.unresolved ?? []).map((line) => (
-                        <li key={line}>{line}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {villager.weekUnreadable ? (
-                    <p className={`${ELEMENT_TAG}-empty`}>
-                      Marinara schedules could not be read right now. The Villages agenda remains active.
-                    </p>
-                  ) : !villager.nativeSchedule ? (
-                    <p className={`${ELEMENT_TAG}-empty`}>No Marinara schedule. Villages uses its own agenda.</p>
-                  ) : null}
-                  <div className={`${ELEMENT_TAG}-agenda-days`}>
-                    {villager.days.map((day) => {
-                      const blocks = day.isToday
-                        ? (villager.effectiveDays?.[day.weekday] ??
-                          villager.agenda?.activeDay?.blocks ??
-                          villager.agenda?.week?.[day.weekday] ??
-                          [])
-                        : (villager.effectiveDays?.[day.weekday] ?? villager.agenda?.week?.[day.weekday] ?? []);
-                      return (
-                        <details
-                          key={`${day.weekday}-${day.dateLabel}`}
-                          className={`${ELEMENT_TAG}-agenda-day`}
-                          open={day.isToday || undefined}
-                        >
-                          <summary>
-                            {day.weekday} · {day.dateLabel}
-                            {day.isToday ? " · Today" : ""}
-                          </summary>
-                          <div className={`${ELEMENT_TAG}-agenda-compare`}>
-                            <section aria-label={`${day.weekday} Villages agenda`}>
-                              <h4>Villages agenda</h4>
-                              <ol className={`${ELEMENT_TAG}-agenda-blocks`}>
-                                {blocks.map((part, index) => (
-                                  <li key={`${part.startMinute}-${part.endMinute}-${index}`}>
-                                    <time>
-                                      {agendaMinuteLabel(part.startMinute)}–{agendaMinuteLabel(part.endMinute)}
-                                    </time>
-                                    <strong>{part.activity}</strong>
-                                    <span>
-                                      {part.venueId
-                                        ? agendaPlaceName(snapshot?.settings.venues ?? [], part.venueId)
-                                        : "Home"}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ol>
-                            </section>
-                          </div>
-                        </details>
-                      );
-                    })}
-                  </div>
-                </div>
-              </details>
-            ))}
-          </div>
-        )}
+      <div className={`${ELEMENT_TAG}-agenda-actions`}>
+        {agendaStatus?.personalizationFailure ? (
+          <p role="status">{agendaStatus.personalizationFailure}</p>
+        ) : agendaStatus?.personalizationPending ? (
+          <p role="status">Preparing Agenda…</p>
+        ) : null}
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-button`}
+          disabled={busy}
+          onClick={() => void rewriteAgenda(personProfile.actorId)}
+        >
+          {agendaStatus?.personalizationFailure ? "Retry Agenda" : "Regenerate Agenda"}
+        </button>
       </div>
     );
     return (
@@ -443,7 +293,7 @@ export function ResidentsScreen({
           }
           inspectors={{
             wishes: wishInspection,
-            agenda: agendaInspection,
+            overview: agendaInspection,
             memories: (
               <div className={`${ELEMENT_TAG}-dossier-sheet`}>
                 <VillagerMemoriesPanel

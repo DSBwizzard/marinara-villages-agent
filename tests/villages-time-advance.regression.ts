@@ -152,7 +152,6 @@ async function fixture() {
     preparePrivateSpaces: async () => {},
     retryResidencePrivateSpaceAdaptation: async () => {},
     queuePendingAgendas: async (value: VillageState) => value,
-    refreshScheduleInfluence: async () => {},
     listVillagerCards: async () => [],
   } as any);
   return {

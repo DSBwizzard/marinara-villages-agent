@@ -5,12 +5,11 @@ import type { Handler } from "../../domain/models/background-model.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { continuityActor } from "../../domain/rules/continuity-actors.js";
 import { activityMoments, keepsakeAvailable } from "../../domain/rules/activity-followup.js";
-import { dueRelationshipAnswers } from "../../domain/rules/continuity-library.js";
+import { dueRelationshipAnswers, perceptionPrompt } from "../../domain/rules/continuity-library.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { acceptResidentLetter } from "../../domain/rules/mail-delivery.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
 import { assertPersonalLetter } from "../../domain/rules/personal-letter.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residenceProposal } from "../../domain/rules/residence-agreement.js";
@@ -27,6 +26,7 @@ import {
   readResidentPlanningInput,
   readResidentPlanningProposal,
   residentPlanningOpportunity,
+  unchangedPerception,
   type ResidentPlanningContext,
   type ResidentPlanningInput,
 } from "../../domain/rules/resident-planning.js";
@@ -102,7 +102,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         now,
       }),
       narration = captureResidentNarration(state, opportunity, catchup),
-      limited = catchup || opportunity.kind === "relationship" || opportunity.kind === "activity";
+      limited = catchup || opportunity.kind === "relationship" || opportunity.kind === "activity",
+      perception = opportunity.kind === "relationship" ? perceptionPrompt(state, opportunity.actorIds) : [];
     return {
       format: 1,
       ...(catchup ? { catchup: true as const } : {}),
@@ -141,6 +142,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
                 .map(({ id, name }) => ({ id, name })),
             })),
       plans: limited ? [] : socialPlanCandidates(state, now, opportunity.actorIds),
+      ...(perception.length ? { perception } : {}),
       narration,
     };
   }
@@ -215,6 +217,11 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
   }
   function relationshipContextCurrent(state: VillageState, context: ResidentPlanningContext) {
     if (state.backgroundPace === "off" || context.setting !== villageCurrentSetting(state)) return false;
+    if (
+      context.perception &&
+      memoryHash(context.perception) !== memoryHash(perceptionPrompt(state, context.narration.opportunity.actorIds))
+    )
+      return false;
     try {
       assertResidentNarrationCurrent(state, context.narration);
       return true;
@@ -247,8 +254,26 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           plan.startMinute <= moment.minuteOfDay &&
           plan.endMinute > moment.minuteOfDay,
       );
+    const catchupStatus = state.returnCatchup?.batch?.status;
+    const used = state.eventAttempts?.attempts.filter((row) => row.date === dateKey).length || 0;
+    const pendingPerception =
+      !due && !dueOnly && (!catchupStatus || ["completed", "cancelled"].includes(catchupStatus))
+        ? perceptionPrompt(
+            state,
+            state.villagers.map(({ characterId }) => characterId),
+          ).slice(0, 4)
+        : [];
+    const priorPerception = pendingPerception.length
+      ? await ports.backgroundJobSnapshot("resident-planning", "relationship")
+      : undefined;
+    const refresh =
+      pendingPerception.length &&
+      !(
+        priorPerception?.seed === state.seed &&
+        ["queued", "running", "failed", "interrupted", "paused"].includes(priorPerception.status)
+      );
     let followup;
-    if (!due && !dueOnly) {
+    if (!due && !dueOnly && !refresh) {
       for (const row of Object.values(state.residentPlans.activities ?? {}).toReversed()) {
         if (
           row.outcome !== "pending" ||
@@ -265,8 +290,14 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       }
     }
     if (dueOnly && !due) return false;
-    const subjectId = due ? "social:" + due.id : followup ? "activity:" + followup.id : "village",
-      prior = await ports.backgroundJobSnapshot("resident-planning", subjectId);
+    const subjectId = due
+        ? "social:" + due.id
+        : refresh
+          ? "relationship"
+          : followup
+            ? "activity:" + followup.id
+            : "village",
+      prior = refresh ? priorPerception : await ports.backgroundJobSnapshot("resident-planning", subjectId);
     if (prior?.seed === state.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
       return;
     const opportunity = due
@@ -280,17 +311,27 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           zoneId: due.zoneId,
           facts: ["An accepted free-time plan is happening now."],
         }
-      : followup
+      : refresh
         ? {
-            id: followup.id,
-            kind: "activity" as const,
-            actorIds: [followup.resident.id],
+            id: "perception-" + memoryHash([dateKey, used, pendingPerception]).slice(0, 32),
+            kind: "relationship" as const,
             startsAt: now.toISOString(),
             endsAt: now.toISOString(),
+            actorIds: pendingPerception.map(({ id }) => id),
             venueId: "",
             facts: [],
           }
-        : residentPlanningOpportunity(state, moment, state.simulatedThrough, conflicts);
+        : followup
+          ? {
+              id: followup.id,
+              kind: "activity" as const,
+              actorIds: [followup.resident.id],
+              startsAt: now.toISOString(),
+              endsAt: now.toISOString(),
+              venueId: "",
+              facts: [],
+            }
+          : residentPlanningOpportunity(state, moment, state.simulatedThrough, conflicts);
     if (!opportunity || state.processedActionIds.includes(opportunity.id)) return;
     const context = contextFor(state, opportunity);
     if (followup)
@@ -307,14 +348,13 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       reviewBasis: state.eventAttempts?.lastAttemptAt || "",
       ...(due ? { socialPlan: due } : {}),
     });
-    const used = state.eventAttempts?.attempts.filter((row) => row.date === dateKey).length || 0;
     await ports.queueBackgroundJob({
       kind: "resident-planning",
       subjectId,
       seed: state.seed,
       revision: dateKey + ":" + used,
       finite: false,
-      label: followup ? "Activity follow-up" : "Resident activity",
+      label: refresh ? "Relationship blurbs" : followup ? "Activity follow-up" : "Resident activity",
       automaticDate: dateKey,
       input,
     });
@@ -389,8 +429,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       const input = readResidentPlanningInput(raw),
         state = await ports.readVillageState({ memories: true }),
         relationship = input.context.narration.opportunity.kind === "relationship";
-      assertCurrent(state, input);
-      if (relationship)
+      if (!input.context.perception || input.catchup) assertCurrent(state, input);
+      if (relationship && (!input.context.perception || input.catchup))
         memoryRequire(relationshipContextCurrent(state, input.context), "relationship refresh context changed");
       const active = await ports.activeVenueSession(),
         conflicts = absentPlayerConflicts(state, active, new Date(input.context.narration.context.at));
@@ -415,8 +455,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           checkpointId: "resident-planning:gm:" + input.context.narration.opportunity.id,
           beforeBackgroundDispatch: async () => {
             const latest = await ports.readVillageState({ memories: true });
-            assertCurrent(latest, input);
-            if (relationship)
+            if (!input.context.perception || input.catchup) assertCurrent(latest, input);
+            if (relationship && (!input.context.perception || input.catchup))
               memoryRequire(relationshipContextCurrent(latest, input.context), "relationship refresh context changed");
             const conflicts = absentPlayerConflicts(
               latest,
@@ -479,6 +519,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       if (input.context.activity && state.residentPlans.activities?.[id]?.outcome !== "pending")
         return !!state.residentPlans.activities?.[id];
       if (state.processedActionIds.includes(id)) return true;
+      if (input.context.perception && !input.catchup && !relationshipContextCurrent(state, input.context)) return false;
       assertCurrent(state, input);
       const capture = input.context.narration;
       if (
@@ -511,6 +552,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         capture = input.context.narration,
         opportunity = capture.opportunity,
         replayed = state.processedActionIds.includes(opportunity.id);
+      if (input.context.perception && !input.catchup && (replayed || !relationshipContextCurrent(state, input.context)))
+        return;
       if (input.context.activity && state.residentPlans.activities?.[opportunity.id]?.outcome !== "pending") return;
       memoryRequire(
         typeof saved.responseDigest === "string" && /^[a-f0-9]{64}$/.test(saved.responseDigest),
@@ -572,10 +615,18 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             target,
             new ZonedDate(capture.context.at, target.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
           );
+        const unchanged = new Set(
+          proposal.keep.flatMap((row) => {
+            const result = unchangedPerception.safeParse(row);
+            return result.success ? [result.data.owner] : [];
+          }),
+        );
         const fiction = {
             ...(proposal.encounter ? { encounter: proposal.encounter } : {}),
             ...(proposal.reflection ? { reflection: proposal.reflection } : {}),
-            keep: proposal.keep,
+            keep: input.context.perception
+              ? proposal.keep.filter((row) => !unchangedPerception.safeParse(row).success)
+              : proposal.keep,
             requires: proposal.requires,
             commands: proposal.commands,
           },
@@ -585,6 +636,25 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           "Resident activity held: " + accepted.rejected.map((row) => row.id + ": " + row.reason).join("; "),
         );
         next.continuity = target.continuity;
+        if (input.context.perception) {
+          const written = new Set(
+            next.continuity.versions
+              .filter((row) => row.createdRevision > state.continuity.revision && row.relationshipAnswer)
+              .map(({ rootId }) => rootId),
+          );
+          for (const row of input.context.perception) {
+            const resident = next.villagers.find(
+              ({ characterId, incarnation }) => characterId === row.id && incarnation === row.incarnation,
+            )!;
+            if (
+              unchanged.has(row.id) ||
+              next.continuity.records.some(
+                ({ id, owner }) => written.has(id) && owner?.id === row.id && owner.incarnation === row.incarnation,
+              )
+            )
+              resident.perceptionAssessed = row.basis;
+          }
+        }
         next.episodes = target.episodes;
       }
       if (replayed) return;
@@ -608,11 +678,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           opportunity.zoneId!,
           new ZonedDate(capture.context.at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
         );
-      }
-      if (proposal.routineIdea) {
-        const resident = next.villagers.find((row) => row.characterId === proposal.routineIdea!.characterId);
-        memoryRequire(resident?.agenda, "routine owner changed");
-        addRoutineIdea(resident.agenda, proposal.routineIdea, resident, next, now);
       }
       for (const request of proposal.housingRequests) {
         const venue = next.venues.find((row) => row.id === request.venueId);
@@ -647,7 +712,16 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         dateKey: input.dateKey,
         count: (next.planningUsage.dateKey === input.dateKey ? next.planningUsage.count : 0) + 1,
       };
-      next.processedActionIds = [...next.processedActionIds, opportunity.id].slice(-256);
+      if (
+        !input.context.perception ||
+        input.catchup ||
+        input.context.perception.some((row) =>
+          next.villagers.some(
+            (resident) => resident.characterId === row.id && resident.perceptionAssessed === row.basis,
+          ),
+        )
+      )
+        next.processedActionIds = [...next.processedActionIds, opportunity.id].slice(-256);
       if (input.catchup) {
         const tracking = next.returnCatchup,
           record = tracking?.batch?.records?.find((row) => row.opportunityId === opportunity.id);
