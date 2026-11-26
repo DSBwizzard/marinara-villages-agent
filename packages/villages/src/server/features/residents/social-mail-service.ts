@@ -24,7 +24,7 @@ import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import { venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
-import { assertPersonalLetter, PERSONAL_LETTER_INSTRUCTION } from "../../domain/rules/personal-letter.js";
+import { PERSONAL_LETTER_INSTRUCTION } from "../../domain/rules/personal-letter.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 import { RELATIONSHIP_DIRECTION, RELATIONSHIP_KEEP } from "../../domain/rules/narration-contract.js";
@@ -89,7 +89,6 @@ function parseReply(
   if (answer.finishReason === "length")
     throw new Error("Personal reply reached its output limit. The saved response is retained.");
   const raw = replySchema.parse(extractModelJsonObject(answer));
-  assertPersonalLetter(raw.reply.text, input.residentName);
   const proposed = visitPreference.safeParse(raw.reply.visitPreference);
   const preference =
     input.visitor &&
@@ -373,7 +372,6 @@ export function createSocialMail(ports: SocialMailPorts) {
     apply: (state, raw, savedResult: unknown) => {
       const input = readPersonalMailInput(raw),
         result = resultSchema.parse(savedResult) as PersonalMailResult;
-      assertPersonalLetter(result.replyText, input.residentName);
       acceptMailExchange(
         state,
         {
