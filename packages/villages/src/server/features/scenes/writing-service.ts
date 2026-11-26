@@ -329,7 +329,7 @@ export function createSceneWriting({
       scene.placeId,
       leadSpeakerId,
     );
-    const { agendaOptions } = agenda;
+    const { agendaOptions, activities, ...agendaFacts } = agenda;
     const agendaVenues = agendaDiscussed
       ? [venue.id, ...places.filter(({ id }) => id !== venue.id).map(({ id }) => id)].slice(0, 10).flatMap((id) => {
           const destination = findLocation(village, id);
@@ -351,7 +351,7 @@ export function createSceneWriting({
         })
       : [];
     const agendaContext = "agenda-context";
-    const location = sceneLocationContext(scene, venue, selectedIds);
+    const location = sceneLocationContext(scene, venue, selectedIds, activities);
     const otherPeople = worldCharacterReferences(village, {
       placeId: scene.placeId,
       mapId: venue.presentation.mapId,
@@ -536,7 +536,6 @@ export function createSceneWriting({
           }),
         ]),
         ...(agendaOptions.length ||
-        agenda.activities ||
         agenda.homeActivities ||
         agenda.available ||
         agenda.recentChange ||
@@ -557,7 +556,7 @@ export function createSceneWriting({
                         'For a joint plan use a commitment offer for both parties, about:[actorId], agenda:{actorId,kind:"offer",activity,time:{date,startMinute,endMinute,venueId,zoneId?}}. Use a supplied Venue/Zone. Cite actual proposing and accepting words with act. Use a fitted alias for an existing offer.',
                       ]
                     : []),
-                  JSON.stringify({ ...agenda, ...(agendaVenues.length ? { agendaVenues } : {}) }),
+                  JSON.stringify({ agendaOptions, ...agendaFacts, ...(agendaVenues.length ? { agendaVenues } : {}) }),
                 ].join("\n"),
                 evidenceId: agendaContext,
                 optional: "history" as const,

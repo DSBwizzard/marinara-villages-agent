@@ -185,7 +185,9 @@ await runCase("repair/agenda", async () => {
   assert.deepEqual((await f.api.inspect(neighbor!.id, person.id)).source, neighbor!.source);
   const undo = await f.api.undo(plan.id, "undo-day");
   await f.api.apply(undo.id, undo.token);
-  assert.deepEqual((await f.read()).villagers[0]!.agenda, start);
+  const { recentChanges, ...restoredAgenda } = (await f.read()).villagers[0]!.agenda!;
+  assert.deepEqual(restoredAgenda, start);
+  assert.equal(recentChanges?.[0]?.previous, "Arranging tools", "The resident can briefly recall an undone change");
   const todayRecord = dates[0]!;
   assert.deepEqual(todayRecord.agenda?.venues?.find((option) => option.value === "hall")?.zones, [
     { value: "exterior", label: "Entrance (1)" },

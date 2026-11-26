@@ -270,7 +270,7 @@ await withBrowser(browser, async () => {
         })),
       }),
     );
-    await chooseSection("Agenda");
+    await chooseSection("Relationships");
     await chooseSection("Overview");
     await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(position);
     await openCharacterTools(page);
