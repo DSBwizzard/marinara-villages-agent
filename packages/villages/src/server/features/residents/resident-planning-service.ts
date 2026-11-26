@@ -10,7 +10,6 @@ import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-at
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { acceptResidentLetter } from "../../domain/rules/mail-delivery.js";
 import { memoryHash, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
 import { assertPersonalLetter } from "../../domain/rules/personal-letter.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { residenceProposal } from "../../domain/rules/residence-agreement.js";
@@ -679,11 +678,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           opportunity.zoneId!,
           new ZonedDate(capture.context.at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
         );
-      }
-      if (proposal.routineIdea) {
-        const resident = next.villagers.find((row) => row.characterId === proposal.routineIdea!.characterId);
-        memoryRequire(resident?.agenda, "routine owner changed");
-        addRoutineIdea(resident.agenda, proposal.routineIdea, resident, next, now);
       }
       for (const request of proposal.housingRequests) {
         const venue = next.venues.find((row) => row.id === request.venueId);

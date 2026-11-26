@@ -13,8 +13,7 @@ import type { ResidentSprite } from "../../../shared/contracts/village.js";
 import { ResidentArtwork } from "./ResidentArtwork.js";
 import { WeeklyAgenda } from "./WeeklyAgenda.js";
 
-export type DossierSection =
-  "overview" | "relationships" | "wishes" | "memories" | "arrangements" | "agenda" | "venues";
+export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "arrangements" | "venues";
 type ProfileSection = DossierSection | "tools";
 export type DossierNavigation = {
   actorId: string;
@@ -40,7 +39,6 @@ const titles: Record<ProfileSection, string> = {
   wishes: "Wishes",
   memories: "Memories",
   arrangements: "Assignments",
-  agenda: "Agenda",
   venues: "Venues",
   tools: "Character Tools",
 };
@@ -67,12 +65,6 @@ export function DossierIcon({ name }: { name: DossierSection | "inspect" }) {
         <rect x="3" y="4" width="18" height="16" rx="1" />
         <circle cx="8" cy="9" r="1" />
         <path d="m3 17 6-6 5 5 3-3 4 4" />
-      </>
-    ),
-    agenda: (
-      <>
-        <rect x="3" y="5" width="18" height="16" rx="1" />
-        <path d="M7 2v6M17 2v6M3 10h18M7 14h2M15 14h2M7 18h2M15 18h2" />
       </>
     ),
     inspect: (
@@ -438,8 +430,8 @@ export function VillagerDossier({
                           </div>
                         ) : null}
                         {!visitor ? (
-                          <button type="button" onClick={() => choose("agenda")}>
-                            Agenda records
+                          <button type="button" onClick={() => choose("overview", true)}>
+                            Inspect Agenda
                           </button>
                         ) : null}
                         {canReadProfile ? (
@@ -485,6 +477,9 @@ export function VillagerDossier({
                                   onDate={setAgendaDate}
                                 />
                               ) : null}
+                              {!visitor && inspectedSection("overview") && viewing !== false
+                                ? inspectors.overview
+                                : null}
                               {knownInformation.length ? <RelationshipEntries entries={knownInformation} /> : null}
                             </div>
                           ) : null}
@@ -506,7 +501,6 @@ export function VillagerDossier({
                               )}
                             </Sheet>
                           ) : null}
-                          {inspectedSection("overview") ? inspectors.overview : null}
                         </div>
                       </RetainedView>
                     ) : null}
@@ -568,20 +562,6 @@ export function VillagerDossier({
                             <button type="button" onClick={() => setInspect(true)}>
                               Inspect memories
                             </button>
-                          </Sheet>
-                        ) : null}
-                      </RetainedView>
-                    ) : null}
-                    {visited.includes("agenda") ? (
-                      <RetainedView active={section === "agenda"} label="Agenda content">
-                        {inspectedSection("agenda") ? inspectors.agenda : null}
-                        {!inspect ? (
-                          <Sheet title="Known information" icon="agenda">
-                            <RelationshipEntries
-                              entries={(profile?.entries ?? []).filter((entry) =>
-                                ["information", "motivation", "commitment"].includes(entry.kind),
-                              )}
-                            />
                           </Sheet>
                         ) : null}
                       </RetainedView>

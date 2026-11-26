@@ -44,7 +44,7 @@ export function createUsagePreview({
   async function previewVillageBurst(raw: unknown): Promise<BurstPreviewResult> {
     const args = asRecord(raw),
       action = String(args.action);
-    if (!["agenda", "influence", "change", "images", "retry", "founding"].includes(action))
+    if (!["agenda", "change", "images", "retry", "founding"].includes(action))
       throw badRequest("Choose a supported generation preview.");
     // This inert estimator uses mechanical settings, never conversational history.
     const snapshot = await readVillageAuthority();

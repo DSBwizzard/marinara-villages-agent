@@ -159,7 +159,7 @@ export function trimProjectFocus(project: VillageProject, at: string): void {
 
 function planningAgenda(state: VillageState, residentId: string, projectId: string): VillageAgenda {
   const agenda = state.villagers.find((resident) => resident.characterId === residentId)?.agenda;
-  if (!agenda) throw conflict("This lead needs a Routine before starting work.");
+  if (!agenda) throw conflict("This lead needs an Agenda before starting work.");
   return {
     ...agenda,
     reservations: agenda.reservations?.filter((reservation) => reservation.id !== projectId),

@@ -128,16 +128,6 @@ function fixture(name: string) {
       }
       return { agenda: structuredClone(resident.agenda) } as any;
     },
-    async readNativeScheduleSnapshot() {
-      note("schedule");
-      return { cardsReadable: true, schedules: [] };
-    },
-    registerInitialWish() {
-      note("register-wish");
-    },
-    async correctResidentWish(characterId, wishId) {
-      note(`correct:${characterId}:${wishId}`);
-    },
   };
   const service = createResidentAgendas(ports);
   assert.deepEqual(calls, [], "Factory construction does not read storage, schedules or models.");
@@ -232,17 +222,10 @@ assert.equal(deliberate.jobs.length, 1, "Repeated explicit action IDs retain the
 assert.equal(deliberate.state.villagers[0]!.agendaGeneration, "one-action");
 await assert.rejects(deliberate.service.clearVillagerAgenda("absent", "action"), /does not live here/);
 const local = fixture("Local");
-await local.service.setVillagerScheduleInfluence("same", { enabled: true, categories: { rhythm: false } });
 await local.service.buildVillageAgendas();
 assert.equal(local.jobs.length, 0);
 assert.equal(local.generated, 0);
-assert.equal(local.state.villagers[0]!.scheduleInfluence!.categories.rhythm, false);
-const mutations = local.calls.filter((operation) => operation === "mutate").length;
-await assert.rejects(
-  local.service.setVillagerScheduleInfluence("same", { categories: { arbitrary: true } }),
-  /valid schedule/,
-);
-assert.equal(local.calls.filter((operation) => operation === "mutate").length, mutations);
+assert.deepEqual(local.calls, ["read"]);
 
 const manual = fixture("Manual repair");
 Object.assign(manual.state, coerceVillageState(manual.state));
@@ -459,7 +442,7 @@ await assert.rejects(
   /not configured/,
 );
 console.log(
-  "Resident Agenda ownership: inert ports, input/revision admission, recovery without regeneration, current-day preservation, independent owners and bound background callbacks passed (mocked storage, schedules and generation).",
+  "Resident Agenda ownership: inert ports, input/revision admission, recovery without regeneration, current-day preservation, independent owners and bound background callbacks passed (mocked storage and generation).",
 );
 
 const identity = fixture("Identity");

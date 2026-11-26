@@ -314,7 +314,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
   }
   async function assertFoundedVillageReady(): Promise<void> {
     if (!foundingReadyForPlay(await readVillageState()))
-      throw conflict("The Village needs usable places and local routines before entering.");
+      throw conflict("The Village needs usable places and Agendas before entering.");
   }
 
   async function initializeTasks(seed: string) {

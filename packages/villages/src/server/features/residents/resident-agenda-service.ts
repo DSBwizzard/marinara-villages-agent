@@ -1,20 +1,19 @@
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { continuityPreparationContext, continuityContextRevision } from "../../domain/rules/continuity-library.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
-import { calendarDate, copyDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
-import type { readNativeScheduleSnapshot } from "../../adapters/engine/native-schedules.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
-import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "../../domain/rules/agenda-week.js";
+import { agendaDateKey, bookedAgendaDays } from "../../domain/rules/agenda-week.js";
 import type { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
-import { badRequest, notFound } from "../../domain/rules/errors.js";
+import { notFound } from "../../domain/rules/errors.js";
 import {
   completeFoundingTask,
   foundingSlot,
@@ -22,29 +21,16 @@ import {
   ownsFoundingTask,
 } from "../../domain/rules/founding-tasks.js";
 
-import {
-  canInterpretSchedule,
-  deriveInfluence,
-  INFLUENCE_CATEGORIES,
-  influenceSettings,
-  validateRoutineDay,
-} from "../../domain/rules/owned-routine.js";
 import { routineVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
-import {
-  deriveVillageMoment,
-  randomVillageSeed,
-  VILLAGE_WEEKDAYS,
-  villageDateLabel,
-} from "../../domain/rules/village-clock.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type { backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/background-work.js";
 import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 export interface ResidentAgendaPorts {
-  queueScheduleInfluence?(characterId: string): Promise<void>;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   reportFoundingProgress: typeof reportFoundingProgress;
@@ -54,7 +40,6 @@ export interface ResidentAgendaPorts {
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
   parseCompactFoundingCompletion: typeof parseCompactFoundingCompletion;
   proposeCompactFounding: typeof proposeCompactFounding;
-  readNativeScheduleSnapshot: typeof readNativeScheduleSnapshot;
 }
 /** A resident Agenda owns its specific saved-world, schedule, job and generation connections. */
 export function createResidentAgendas(ports: ResidentAgendaPorts) {
@@ -68,7 +53,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,
-    readNativeScheduleSnapshot,
   } = ports;
   async function rollActiveAgendas(at?: Date, known?: VillageState, clockRevision?: number): Promise<boolean> {
     const clock = at ? undefined : await observeVillageClock();
@@ -106,15 +90,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         resident.agenda ??= unwrittenVillageAgenda(villageNow());
         resident.agenda.personalizationPending = false;
         resident.agenda.personalizationFailure =
-          "Character identity is unavailable. Keep the existing routine and retry deliberately after restoring the card.";
+          "Character identity is unavailable. Keep the existing Agenda and retry deliberately after restoring the card.";
       });
       return;
     }
     const agendaSetting = village.setting;
     await reportFoundingProgress(village.seed, { stage: "lore" }, characterId);
-    const native = villager.scheduleInfluence?.enabled
-      ? await readNativeScheduleSnapshot(villageNow(), [characterId])
-      : null;
     let loreInspection: LoreInspection | undefined;
     const continuity = continuityPreparationContext(village, characterId, villageNow().toISOString());
     const context = {
@@ -136,9 +117,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       },
       playerBackground: village.playerBackground,
       playerPersonaName: village.playerPersonaName,
-      schedule: native?.schedules.find((row) => row.characterId === characterId) ?? null,
-      influenceSettings: villager.scheduleInfluence,
-      influenceHints: villager.scheduleInfluence?.enabled ? villager.agenda?.scheduleInfluenceSnapshot?.unresolved : [],
       village: village.name,
       setting: [agendaSetting, village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : ""]
         .filter(Boolean)
@@ -170,7 +148,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ),
       venues: routineVenues(village.venues),
     };
-    return { ...context, loreUse: inspectedLoreUse(loreInspection, "Routine") };
+    return { ...context, loreUse: inspectedLoreUse(loreInspection, "Agenda") };
   }
   async function queueVillagerAgenda(characterId: string, finite = true, origin?: "founding"): Promise<void> {
     let village = await readVillageState({ memories: true });
@@ -180,7 +158,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     if (!context) throw new Error("Character identity is unavailable.");
     village = await readVillageState({ memories: true });
     if (context.sourceRevision !== foundingTaskRevision(village, characterId, "routine"))
-      throw new Error("Resident context changed. Retry routine.");
+      throw new Error("Resident context changed. Retry the Agenda.");
     const founding = origin === "founding";
     const revision = founding
       ? foundingTaskRevision(village, characterId, "routine")
@@ -196,7 +174,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
             marker.status !== "pending" ||
             context.sourceRevision !== foundingTaskRevision(state, characterId, "routine")
           )
-            throw new Error("Resident context changed. Retry routine.");
+            throw new Error("Resident context changed. Retry the Agenda.");
           marker.tasks ??= {};
           marker.tasks[characterId] ??= {};
           const old = marker.tasks[characterId].routine;
@@ -289,36 +267,27 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     }
     const previous = villager.agenda;
     const now = villageNow();
-    const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
-    const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek()[weekday]!;
+    const dayHasRolled = previous?.activeDay?.dateKey !== agendaDateKey(now);
     villager.agenda = {
       ...agenda,
-      plannedDays: Object.fromEntries(
-        Object.entries(previous?.plannedDays ?? {}).filter(
-          ([key]) =>
-            previous?.repairedDays?.includes(key) || previous?.reservations?.some((entry) => entry.dateKey === key),
+      calendarVersion: 1,
+      recentChanges: previous?.recentChanges,
+      plannedDays: {
+        ...(previous ? bookedAgendaDays(previous, now) : {}),
+        ...Object.fromEntries(
+          Object.entries(previous?.plannedDays ?? {}).filter(
+            ([key]) =>
+              previous?.repairedDays?.includes(key) || previous?.reservations?.some((entry) => entry.dateKey === key),
+          ),
         ),
-      ),
+      },
       repairedDays: previous?.repairedDays,
       reservations: previous?.reservations ?? [],
-      scheduleInfluenceSnapshot: previous?.scheduleInfluenceSnapshot,
-      activeDay:
-        previous?.activeDay?.dateKey === agendaDateKey(now)
-          ? previous.activeDay
-          : { dateKey: agendaDateKey(now), weekday, blocks: nextDay, scheduleInformed: false },
+      activeDay: dayHasRolled ? undefined : previous?.activeDay,
       personalizationAttemptDate: agendaDateKey(now),
     };
-    if (villager.agenda.week)
-      for (const weekday of VILLAGE_WEEKDAYS) {
-        const date = copyDate(now);
-        date.setDate(now.getDate() + ((VILLAGE_WEEKDAYS.indexOf(weekday) - ((now.getDay() + 6) % 7) + 7) % 7));
-        villager.agenda.week[weekday] = validateRoutineDay(villager.agenda.week[weekday]!, villager, state, date);
-      }
-    if (!previous?.activeDay || previous.activeDay.dateKey !== agendaDateKey(now)) {
-      villager.agenda.activeDay = undefined;
-      planRoutineDays(state, now);
-      activateVillagerDay(villager, now, state);
-    }
+    planRoutineDays(state, now);
+    if (dayHasRolled) activateVillagerDay(villager, now, state);
     projectAgendaReservations(state);
   }
 
@@ -329,78 +298,16 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     return readVillageState();
   }
 
-  /** Normalize preferences locally without altering today's persisted plan. */
-  async function refreshScheduleInfluence(village: VillageState, now: Date, only?: string): Promise<void> {
-    const snapshot = await readNativeScheduleSnapshot(
-      now,
-      village.villagers.map((resident) => resident.characterId),
-    );
-    if (!snapshot.cardsReadable) return;
-    const weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
-    await mutateVillageState((state) => {
-      for (const resident of state.villagers) {
-        if ((only && resident.characterId !== only) || !resident.agenda) continue;
-        const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident);
-        if (next.signature !== resident.agenda.scheduleInfluenceSnapshot?.signature) {
-          for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
-            if (
-              key === resident.agenda.activeDay?.dateKey ||
-              resident.agenda.repairedDays?.includes(key) ||
-              (resident.agenda.reservations ?? []).some((activity) => activity.dateKey === key)
-            )
-              continue;
-            delete resident.agenda.plannedDays![key];
-          }
-          resident.agenda.scheduleInfluenceSnapshot = next;
-        }
-      }
-      planRoutineDays(state, now);
-    });
-  }
-
-  /** Resolve owned days and refresh optional local preferences; no paid work is dispatched. */
   async function buildVillageAgendas(): Promise<VillageAgendaView[]> {
-    const now = villageNow(),
-      initial = await readVillageState();
-    await refreshScheduleInfluence(initial, now);
-    await rollActiveAgendas();
     const village = await readVillageState();
-    const snapshot = await readNativeScheduleSnapshot(
-      now,
-      village.villagers.map((resident) => resident.characterId),
-    );
-    const weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
-    const moment = deriveVillageMoment({
-      foundedAt: village.foundedAt,
-      environment: village.narrative,
-      seed: village.seed,
-      timeZone: village.timeZone || undefined,
-      now,
-    });
-    return village.villagers.map((resident) => ({
-      canInterpretSchedule: canInterpretSchedule(resident.agenda),
-      characterId: resident.characterId,
-      name: resident.cardSnapshot.name,
-      missing: false,
-      weekUnreadable: !snapshot.cardsReadable,
-      addedAt: resident.addedAt,
-      agenda: resident.agenda,
-      scheduleInfluence: influenceSettings(resident.scheduleInfluence),
-      nativeSchedule: weeks.has(resident.characterId) ? { weekStart: "", days: {} } : null,
-      effectiveDays: Object.fromEntries(
-        Array.from({ length: 7 }, (_, offset) => {
-          const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
-          return [
-            VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
-            resident.agenda ? agendaBlocksFor(resident.agenda, date) : [],
-          ];
-        }),
-      ),
-      days: Array.from({ length: 7 }, (_, offset) => ({
-        weekday: VILLAGE_WEEKDAYS[(((now.getDay() + 6) % 7) + offset) % 7]!,
-        dateLabel: villageDateLabel(village.foundedAt, moment.dayIndex + offset),
-        isToday: offset === 0,
-      })),
+    return village.villagers.map(({ characterId, agenda }) => ({
+      characterId,
+      agenda: agenda
+        ? {
+            personalizationPending: agenda.personalizationPending,
+            personalizationFailure: agenda.personalizationFailure,
+          }
+        : null,
     }));
   }
 
@@ -422,44 +329,13 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await queueVillagerAgenda(characterId);
   }
 
-  async function setVillagerScheduleInfluence(characterId: string, value: unknown): Promise<void> {
-    const raw = value as { enabled?: unknown; categories?: Record<string, unknown> };
-    if (
-      !raw ||
-      typeof raw !== "object" ||
-      (raw.enabled !== undefined && typeof raw.enabled !== "boolean") ||
-      (raw.categories !== undefined &&
-        (!raw.categories ||
-          typeof raw.categories !== "object" ||
-          Object.entries(raw.categories).some(
-            ([key, value]) =>
-              !INFLUENCE_CATEGORIES.includes(key as (typeof INFLUENCE_CATEGORIES)[number]) ||
-              typeof value !== "boolean",
-          )))
-    )
-      throw badRequest("Choose valid schedule influence settings.");
-    await mutateVillageState((state) => {
-      const resident = state.villagers.find((entry) => entry.characterId === characterId);
-      if (!resident) throw notFound("That villager does not live here.");
-      const previous = influenceSettings(resident.scheduleInfluence);
-      resident.scheduleInfluence = influenceSettings({
-        ...previous,
-        ...raw,
-        categories: { ...previous.categories, ...raw.categories },
-      });
-    });
-    await ports.queueScheduleInfluence?.(characterId);
-    await refreshScheduleInfluence(await readVillageState(), villageNow(), characterId);
-  }
   return {
     readFoundingResidentContext,
     rollActiveAgendas,
     queueVillagerAgenda,
     queuePendingAgendas,
-    refreshScheduleInfluence,
     buildVillageAgendas,
     clearVillagerAgenda,
-    setVillagerScheduleInfluence,
     agendaBackgroundHandler,
   };
 }

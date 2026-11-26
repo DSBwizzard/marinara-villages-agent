@@ -162,6 +162,7 @@ const proposal = z
     commands: z.array(z.unknown()).max(16).default([]),
     planId: id.optional(),
     planWishId: id.optional(),
+    // Old saved responses may still contain this field. Applying a response ignores it.
     routineIdea: z
       .object({
         characterId: id,
@@ -289,8 +290,8 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     "Only an actual encounter may use commands:[{id?:label,at:line label,source:[current spoken line labels],requires?:[effect IDs],independent?:true,...}]. Each deciding actor must speak its complete decision now, to an actual participant. Supported: permission.grant or permission.revoke with by,visitor,venue,zone; access.decide with by,venue,zone,decision (invite-later,invite-outside-hours,ban-zone,ban-venue with visitor and optional accompanies; or access-management with the existing supplied management action); residence.request with by,venue; residence.decide with by,person,venue,approved; appointment with by,when:{dayOffset}|{weekday,afterToday?}|{date},minute?. No current-visit action or Scene ID. Use native:effect ID as a keep source for its actual result. Native authority and required household approvals remain mandatory; no immediate relocation. Reflections and letters perform no native commands.",
     "Use keep and requires in this same object for consequential lasting meaning; no meaning object, separate Wish/relationship review or full input classification. requires lists effects necessary to the source's successful fiction. Only independent:true permits an unrelated optional effect to drop. Historical aliases remain scoped; self is only the portrayed non-player's own internal state. Native mechanics cannot be obtained through keep.",
     context.catchup
-      ? "This is a bounded past opportunity. Only encounter or private reflection is available; native commands may bind an actually spoken appointment date only. No current access, mail, plan, housing or routine changes."
-      : "Optional future native choices: planId selects one exact offered plan ID. Availability is not preference or consent. routineIdea:{characterId,activity,venueId,zoneId?,flexible:true} proposes an ordinary future routine for one offered resident at an accessible existing place. housingRequests:[{characterId,venueId}] proposes one offered move, never a completed relocation. These are proposals, not asserted native successes. No employment, asset creation or unseen physical work.",
+      ? "This is a bounded past opportunity. Only encounter or private reflection is available; native commands may bind an actually spoken appointment date only. No current access, mail, plan, housing or Agenda changes."
+      : "Optional future native choices: planId selects one exact offered plan ID. Availability is not preference or consent. housingRequests:[{characterId,venueId}] proposes one offered move, never a completed relocation. These are proposals, not asserted native successes. No employment, asset creation or unseen physical work.",
     ...(context.plans.some((plan) => plan.followThrough)
       ? [
           "A followThrough plan needs an encounter where both residents speak their agreement to that plan's time and place. Write the time and place in the proposal. If the second resident declines, omit planId. If the plan pursues a supplied current Wish of either resident, include its ID as planWishId. Attendance does not fulfill the Wish.",

@@ -18,6 +18,19 @@ export const agendaTime = z
   .strict()
   .refine((time) => time.endMinute > time.startMinute);
 
+export const agendaChange = z
+  .object({
+    changedAt: z.iso.datetime(),
+    date: z.iso.date(),
+    startMinute: z.number().int().min(0).max(1439),
+    endMinute: z.number().int().min(1).max(1440),
+    previous: z.string().min(1).max(240),
+    replacement: z.string().min(1).max(240).optional(),
+  })
+  .strict()
+  .refine((change) => change.endMinute > change.startMinute);
+export type AgendaChange = z.infer<typeof agendaChange>;
+
 export const agendaEvidence = z
   .object({
     actorId: id,

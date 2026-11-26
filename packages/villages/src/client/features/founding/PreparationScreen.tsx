@@ -32,7 +32,7 @@ export function PreparationScreen({
           ? "this private space"
           : preparation?.currentTask === "wish"
             ? "an Initial Wish"
-            : "a Routine";
+            : "an Agenda";
     const stageText =
       preparation?.stage === "reading"
         ? "Reading the character card"
@@ -107,7 +107,7 @@ export function PreparationScreen({
                     preparation?.status === "pending" &&
                     preparation.currentId === villager.characterId &&
                     preparation.currentTask === kind;
-                  const label = kind === "routine" ? "Personal routine" : "Initial Wish";
+                  const label = kind === "routine" ? "Agenda" : "Initial Wish";
                   const status =
                     entry?.status === "completed" ||
                     (!entry && preparation?.completedIds.includes(villager.characterId))
@@ -134,7 +134,7 @@ export function PreparationScreen({
                             })
                           }
                         >
-                          {kind === "routine" ? "Retry routine" : "Retry Wish"}
+                          {kind === "routine" ? "Retry Agenda" : "Retry Wish"}
                         </button>
                       ) : null}
                     </div>

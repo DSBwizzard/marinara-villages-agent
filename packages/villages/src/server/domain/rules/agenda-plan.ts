@@ -13,6 +13,7 @@ export function unwrittenVillageAgenda(now = new Date()): VillageAgenda {
   const week = workingAgendaWeek();
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
   return {
+    calendarVersion: 1,
     routineProfile: routineProfileFromWeek(week),
     routineSummary: "An ordinary day around the village.",
     day: structuredClone(week[weekday]!),

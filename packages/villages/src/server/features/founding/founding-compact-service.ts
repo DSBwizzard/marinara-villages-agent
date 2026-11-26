@@ -41,15 +41,15 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
       connectionId: await villagesConnectionIdFor("system"),
     });
     const requested = Math.min(model.maxOutputTokens ?? 2048, 2048);
-    if (requested < 1024) throw new Error("The System model has too little output room for a complete Routine.");
+    if (requested < 1024) throw new Error("The System model has too little output room for a complete Agenda.");
     const fitted = model.fitContext(messages, { maxTokens: requested });
     if (Math.min(fitted.maxTokens ?? requested, requested) < 1024)
-      throw new Error("The System model has too little output room for a complete Routine.");
+      throw new Error("The System model has too little output room for a complete Agenda.");
     if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
-      throw new Error("The System context cannot fit the complete Routine request.");
+      throw new Error("The System context cannot fit the complete Agenda request.");
     const debugMode = villagesDebugAgentsEnabled();
     await onModelStart(model.name);
-    await recordLoreUse(context.loreUse, `Routine · ${context.card.name}`);
+    await recordLoreUse(context.loreUse, `Agenda for ${context.card.name}`);
     const started = performance.now();
     const completion = await completeWithRoom(
       model,

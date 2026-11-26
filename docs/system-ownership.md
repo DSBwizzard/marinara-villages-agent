@@ -19,7 +19,7 @@ Opening Project proposals bind the current prepared idea through a server-create
 | Projects and resident requests | Consent, willingness, withdrawal and requests                        | Current design, required actors, explicit Start, elapsed time, capacity and atomic completion          |
 | Presentation                   | Optional expression IDs and attention                                | Frozen catalog, ownership, local visibility, concrete variant persistence and captured playback frames |
 
-Starting ties, Routine interpretation, Initial Wishes and planning remain separate bounded tasks. Resident encounters, correspondence replies and world developments return their own content and effects together. Each keeps its own source, spending and recovery boundaries. See [model responsibilities](model-responsibilities.md).
+Starting ties, Agenda generation, Initial Wishes and planning remain separate bounded tasks. Resident encounters, correspondence replies and world developments return their own content and effects together. Each keeps its own source, spending and recovery boundaries. See [model responsibilities](model-responsibilities.md).
 
 ## Failure, retry and recovery
 
@@ -37,6 +37,6 @@ Provider-free suites exercise current GM routing, source capture, witness privac
 
 ## Founding preparation
 
-Founding uses independent current Routine, Initial Wish and Opening Idea requests. Each task binds the admitted resident, source and contract, and commits its own receipt. A quiet Wish result is complete. Usable places and local routines allow entry while optional preparation finishes; an interior failure does not discard independent resident progress.
+Founding uses independent Agenda, Initial Wish and Opening Idea requests. Each task binds the admitted resident, source and contract, and commits its own receipt. A quiet Wish result is complete. Usable places and starter Agendas allow entry while optional preparation finishes; an interior failure does not discard independent resident progress.
 
 Existing finite admission, one settled-invalid-result retry allowance, output limits and explicit recovery remain. Saved valid results apply without another request. Unknown billing, changed sources, unsupported contracts and configuration failures remain held. Public preparation data contains statuses and receipts rather than frozen prompts or raw responses.

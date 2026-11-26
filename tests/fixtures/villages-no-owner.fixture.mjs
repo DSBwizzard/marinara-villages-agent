@@ -11,7 +11,6 @@ import { active } from "../../packages/villages/src/server/adapters/observabilit
 import { readUsageLedger } from "../../packages/villages/src/server/adapters/models/usage-ledger.js";
 import { readRuntimeDebug } from "../../packages/villages/src/server/adapters/observability/runtime-debug.js";
 import { ensureVillagesGalleryFolder } from "../../packages/villages/src/server/adapters/engine/global-gallery.js";
-import { readNativeScheduleSnapshot } from "../../packages/villages/src/server/adapters/engine/native-schedules.js";
 
 assert.equal(activationScope(), undefined);
 for (const api of [
@@ -22,7 +21,6 @@ for (const api of [
   ensureVillagesGalleryFolder,
 ])
   assert.throws(api, /not configured/);
-await assert.rejects(readNativeScheduleSnapshot(new Date()), /not configured/);
 assert.equal(active.getStore(), undefined, "unowned diagnostics have no counters");
 assert.throws(() => active.run({}, () => {}), /not configured/);
 const binding = createActivationBinding("Missing owned service");

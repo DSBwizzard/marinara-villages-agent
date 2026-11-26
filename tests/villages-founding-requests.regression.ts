@@ -228,7 +228,7 @@ assert.throws(
       },
       { ...context },
     ),
-  /Routine activity 1 duration 360; expected 30–240 minutes/,
+  /Agenda activity 1 duration 360; expected 30–240 minutes/,
 );
 
 const withDescription = { ...context, identityDescriptionRevision: "first-adoption" };

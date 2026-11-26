@@ -1,3 +1,5 @@
+import { agendaChangeSources, recordAgendaChanges } from "../../domain/rules/agenda-changes.js";
+import { villageNow } from "../time/clock-gate.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { coerceVillageState, defaultVillageState } from "../../domain/decoding/village-codec.js";
@@ -132,6 +134,9 @@ export function createVillageRepository(
           for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
             const { record, head, state, loaded } = await load(store, options);
             const identity = JSON.stringify([state.seed, state.setupAt]);
+            const beforeAgenda = agendaChangeSources(state);
+            const previousZone = state.timeZone;
+            const previousOffset = state.clock?.advanceMs;
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
@@ -140,6 +145,13 @@ export function createVillageRepository(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
             );
+            if (
+              !options?.restoreCheckpoint &&
+              identity === JSON.stringify([state.seed, state.setupAt]) &&
+              previousZone === state.timeZone &&
+              previousOffset === state.clock?.advanceMs
+            )
+              recordAgendaChanges(state, beforeAgenda, villageNow(state.clock?.advanceMs ?? 0));
             const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
             const stamp = new Date().toISOString();
             const data: ReturnType<typeof encodeRoot> & { sceneRetry?: unknown } = encodeRoot(state, nextHead);

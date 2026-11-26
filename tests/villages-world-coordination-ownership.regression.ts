@@ -112,10 +112,6 @@ function fixture(name: string) {
       times.push(now);
       return village;
     },
-    async refreshScheduleInfluence(_village, now) {
-      note("remaps");
-      times.push(now);
-    },
     async reconcileResidentPlanning(now) {
       note("resident-planning");
       times.push(now);

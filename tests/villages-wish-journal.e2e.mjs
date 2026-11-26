@@ -211,7 +211,7 @@ await withBrowser(browser, async () => {
     const nav = page.getByRole("navigation", { name: "Village exploration" });
     const chooseSection = async (label) => {
       if (["Agenda", "Venues"].includes(label))
-        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+        return clickCharacterTool(page, label === "Agenda" ? "Inspect Agenda" : "Venue connections");
       return width <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : page

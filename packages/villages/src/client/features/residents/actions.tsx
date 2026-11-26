@@ -162,7 +162,7 @@ export function useLoadAgendas(ports: {
       } catch (cause) {
         if (requestSignal.aborted || revision !== agendaRevision.current) return;
         if (invalidatesRead(cause)) setAgendas(null);
-        setError(messageFrom(cause, "Could not read what the villagers wish for."));
+        setError(messageFrom(cause, "Could not read the Agenda status."));
       }
     },
     [setAgendas, setError, worldScope, agendaRevision],
@@ -213,37 +213,6 @@ export function useRewriteAgenda(ports: {
       }
     },
     [currentSnapshotRef, retryWork, setAgendas, setBusy, setError],
-  );
-}
-
-export function useSetScheduleInfluence(ports: {
-  currentSnapshotRef: React.RefObject<VillageSnapshot>;
-  setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setError: React.Dispatch<SetStateAction<string>>;
-}) {
-  const { currentSnapshotRef, setAgendas, setBusy, setError } = ports;
-  return useCallback(
-    async (characterId: string, enabled: boolean, categories?: Record<string, boolean>) => {
-      const worldScope = currentSnapshotRef.current?.worldScope;
-      const access = villageAccessRevision();
-      const current = () => currentSnapshotRef.current?.worldScope === worldScope && villageAccessRevision() === access;
-      setBusy(true);
-      try {
-        const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/influence`, {
-          method: "PATCH",
-          body: JSON.stringify({ enabled, categories }),
-        });
-        if (!current()) return;
-        setAgendas(response.villagers);
-        setError("");
-      } catch (cause) {
-        if (current()) setError(messageFrom(cause, "Schedule use could not be changed."));
-      } finally {
-        if (current()) setBusy(false);
-      }
-    },
-    [currentSnapshotRef, setAgendas, setBusy, setError],
   );
 }
 
