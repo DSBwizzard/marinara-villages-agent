@@ -1106,7 +1106,7 @@ export const VILLAGES_FORGING_STYLES = `
 }
 .villages-forging-v2.villages-forging-preparing {
   --founding-shell-padding:clamp(.5rem,2cqw,1.5rem);
-  display:grid; align-content:safe center;
+  display:grid; align-content:safe center; box-sizing:border-box;
   overflow:auto; color:var(--founding-foreground);
 }
 .villages-forging-preparing>.villages-setting-dialogue {

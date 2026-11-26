@@ -2980,6 +2980,7 @@ export async function verifyFoundingLayout(group) {
         await button("Next").click();
         await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
         await expectPose("playful");
+        await expect(root.locator(".villages-setting-dialogue")).toBeInViewport({ ratio: 1 });
         await expect(button("Enter village")).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
