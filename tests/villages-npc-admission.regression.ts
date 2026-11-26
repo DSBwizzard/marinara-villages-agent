@@ -139,14 +139,19 @@ await runCase("npc-admission/tagged-turn", () => {
   for (const admitted of [true, false]) {
     const f = fixture();
     const original = f.publication({});
-    const readset = { ...original.readset, taggedSceneReply: true as const, ordinaryDialogue: true as const };
+    const readset = {
+      ...original.readset,
+      taggedSceneReply: true as const,
+      npcSpeakerNames: {},
+      ordinaryDialogue: true as const,
+    };
     const content = [
       "Narration: Rain taps the glass.",
       "Narration!: A baker comes inside.",
       admitted
         ? '[command]: {"type":"npc.admit","localKey":"new:baker","name":"Emil Rye","label":"Baker","characterization":"A patient baker."}'
         : '[command]: {"type":"npc.admit","localKey":"new:baker","existingId":"npc:unfitted"}',
-      "[new:baker]: Emil Rye. I hope to see the garden.",
+      admitted ? '[Emil Rye]: "Emil Rye." I hope to see the garden.' : "[new:baker]: I hope to see the garden.",
       '[keep]: {"owner":"new:baker","for":["new:baker","player"],"class":"desire","current":true,"text":"Emil hopes to see the garden."}',
       '[KeEp]: {"text":"Private broken note"',
       "Narration: This could be a continuation of the private note.",
@@ -894,6 +899,48 @@ await runCase("npc-admission/name", () => {
     lineId: earlier.segments[1].id,
   });
   assert.equal(earlier.segments[1].name, "Mara", "recovering the public name leaves the saved line intact");
+
+  const meeting = fixture();
+  const npc = meeting.existing;
+  npc.name = "Rasha Dunmore";
+  const arrival = acceptNarration(meeting.state, meeting.publication(rawArrival(npc.id)), "meeting", at).episode!;
+  applyAcceptedSceneDelta(meeting.scene, arrival);
+  const reply = (content: string, id: string, tagged = true) => {
+    const publication = meeting.publication({}, '"What should I call you?"', id);
+    const readset = tagged
+      ? { ...publication.readset, taggedSceneReply: true as const, npcSpeakerNames: { [npc.id]: npc.name } }
+      : publication.readset;
+    const raw = tagged
+      ? decodeTaggedSceneReply(content, readset).value
+      : { segments: [{ kind: "dialogue", speakerId: npc.id, text: content }] };
+    assert(raw);
+    const result = acceptNarration(meeting.state, { raw, readset, responseDigest: memoryHash(raw) }, id, at);
+    assert(!result.held, JSON.stringify(result.rejected));
+    return readAcceptedEpisode(result.episode!, meeting.state.seed);
+  };
+  const unspoken = reply("[Rasha Dunmore]: Take a seat.", "unspoken-label");
+  assert.equal(unspoken.segments[0].name, "Mara");
+  assert(!unspoken.commandReceipts.some(({ kind }) => kind === "npc-introduction"));
+
+  const savedQuote = reply('"Rasha Dunmore." She taps the glass.', "saved-quote", false);
+  assert.equal(savedQuote.segments[0].name, "Mara");
+  assert.deepEqual(savedNpcNameReveal(meeting.state, meeting.state.worldPlaces.npcs[npc.id]), {
+    sceneId: savedQuote.sceneId,
+    lineId: savedQuote.segments[0].id,
+  });
+
+  const spoken = reply('[Rasha Dunmore]: "Rasha Dunmore." She taps the glass.\n[Rasha Dunmore]: Take a seat.', "named");
+  assert.deepEqual(
+    spoken.segments.map(({ speakerId, name }) => [speakerId, name]),
+    [
+      [npc.id, npc.name],
+      [npc.id, npc.name],
+    ],
+  );
+  assert.equal(meeting.state.worldPlaces.npcs[npc.id].label, npc.name);
+  assert.equal(meeting.state.worldPlaces.npcs[npc.id].id, npc.id);
+  applyAcceptedSceneDelta(meeting.scene, spoken);
+  assert.equal(meeting.scene.participants[0].name, npc.name);
 
   for (const label of ["Rasha Dunmore", "Another Name", 17]) {
     const f = fixture(),

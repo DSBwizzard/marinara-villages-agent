@@ -173,6 +173,7 @@ export function createSceneWriting({
       return resident ? [readEffectiveVillagerCard(resident)] : [];
     });
     const scoredRelationships = cards.length > 0;
+    const npcSpeakerNames: Record<string, string> = {};
     const profiles = cast.map((person) => {
       const card = cards.find((row) => row.id === person.characterId);
       if (card) {
@@ -206,6 +207,7 @@ export function createSceneWriting({
       }
       const npc = findNpc(village, person.characterId);
       if (!npc) throw conflict("A captured character's authored identity is unavailable.");
+      npcSpeakerNames[npc.id] = npc.name;
       return npcProfile(npc);
     });
     const spontaneousOpening = mode === "greet" && (scene.visitEvent === "place" || scene.visitEvent === "opening");
@@ -495,7 +497,7 @@ export function createSceneWriting({
           : "",
         npcIntroduction
           ? tagged
-            ? "Use the public role until the NPC says their name to the player. The exact saved name in their words is enough for a direct introduction. You can also mark that line [speaker-id] [name Exact Saved Name]: text."
+            ? 'Use the NPC’s public role or ID until they give the player their name. Put their exact name in the speaker header on the line that reveals it, for example [Mira]: "Mira." For an ambiguous or reserved name, use [speaker-id] [name Mira]: "Mira."'
             : 'For an unnamed NPC, use a distinct public role label like "Pastry seller" at admission. When their name becomes public, put speakerLabel:"Name" on their dialogue line heard by the player. Copy their exact saved name. Leave speakerLabel out while their name stays private.'
           : "",
       ]),
@@ -689,7 +691,7 @@ export function createSceneWriting({
           : {}),
         ...(!nativeCommands && !freshReply ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         ...(freshReply || tagged ? { strictSceneReply: true as const } : {}),
-        ...(tagged ? { taggedSceneReply: true as const } : {}),
+        ...(tagged ? { taggedSceneReply: true as const, npcSpeakerNames } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
         ...(sceneSpeechActions.length ? { sceneSpeechActions } : {}),

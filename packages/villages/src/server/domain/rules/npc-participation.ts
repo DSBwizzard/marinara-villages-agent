@@ -19,6 +19,20 @@ export const npcAdmissionFields = {
 };
 export type NpcAdmissionRequest = z.infer<z.ZodObject<typeof npcAdmissionFields>>;
 export const DEFAULT_NPC_LABEL = "Stranger";
+const escapeNpcName = (name: string) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export function npcNameInText(text: string, name: string): boolean {
+  return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])${escapeNpcName(name)}(?![\\p{L}\\p{M}\\p{N}])`, "u").test(text);
+}
+
+export function playerHeardNpcSpeech(line: Pick<VenueLine, "kind" | "heardBy" | "contactHidden">): boolean {
+  return (
+    (line.kind === "dialogue" || line.kind === "whisper" || line.kind === "side") &&
+    !line.contactHidden &&
+    line.heardBy.includes("player")
+  );
+}
+
 export function revealsNpcName(
   line: Pick<VenueLine, "kind" | "heardBy" | "contactHidden" | "content">,
   name: string,
@@ -26,15 +40,10 @@ export function revealsNpcName(
   speakerLabel?: unknown,
   allowSpokenName = true,
 ): boolean {
-  if (
-    (line.kind !== "dialogue" && line.kind !== "whisper" && line.kind !== "side") ||
-    line.contactHidden ||
-    !line.heardBy.includes("player")
-  )
-    return false;
+  if (!playerHeardNpcSpeech(line)) return false;
   if (speakerLabel === name) return true;
   if (!allowSpokenName) return false;
-  const namePattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const namePattern = escapeNpcName(name);
   const introduction = "(?:[Ii](?:['’]m| am)|[Mm]y name is|[Yy]ou can call me|[Cc]all me)\\s+";
   const text = line.content.trim();
   return (
@@ -45,15 +54,11 @@ export function revealsNpcName(
 
 export function witnessedNpcName(source: ContinuityEvidence, actorId: string, name: string): boolean {
   if (!name.trim() || name !== name.trim() || name.length > 100 || /[\r\n]/.test(name)) return false;
-  const pattern = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return (
     source.kind === "speech" &&
     source.actorId === actorId &&
     source.perceptions.some(
-      (row) =>
-        row.actorId === "player" &&
-        row.channel === "words" &&
-        new RegExp(`(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, "u").test(row.text),
+      (row) => row.actorId === "player" && row.channel === "words" && npcNameInText(row.text, name),
     )
   );
 }

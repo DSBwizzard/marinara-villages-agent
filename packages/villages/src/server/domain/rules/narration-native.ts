@@ -259,7 +259,7 @@ export function prepareNarrationNative(
         planned.filter((move) => move.characterId === "player"),
         readset.presentation,
         (id) => findNpc(state, id) ?? admissions.find(({ npc }) => npc.id === id)?.npc,
-        readset.taggedSceneReply,
+        readset,
       ),
       native: {},
       moves: planned,

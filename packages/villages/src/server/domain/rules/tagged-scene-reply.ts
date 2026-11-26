@@ -67,13 +67,19 @@ export function decodeTaggedSceneReply(
   if (content.length > MODEL_JSON_MAX_CHARACTERS) return { value: null, issue: "reply_limits" };
   const scene = readset.source.scene;
   const speakers = new Set(scene.contactGeneration?.actorIds ?? scene.activeIds);
-  const aliases = new Map<string, string>();
+  const aliases = new Map<string, { id: string; name?: string }>();
   const ambiguous = new Set<string>();
+  const addAlias = (label: string, id: string, name?: string) => {
+    const key = aliasKey(label);
+    const previous = aliases.get(key);
+    if (!key || (previous && previous.id !== id)) ambiguous.add(key);
+    else if (!previous || name) aliases.set(key, { id, name });
+  };
   for (const { characterId, name } of scene.participants) {
     if (!speakers.has(characterId)) continue;
-    const alias = aliasKey(name);
-    if (!alias || (aliases.has(alias) && aliases.get(alias) !== characterId)) ambiguous.add(alias);
-    else aliases.set(alias, characterId);
+    addAlias(name, characterId);
+    const npcName = readset.npcSpeakerNames?.[characterId];
+    if (npcName) addAlias(npcName, characterId, npcName);
   }
   const resolveAlias = (alias: string) => {
     const key = aliasKey(alias);
@@ -111,7 +117,7 @@ export function decodeTaggedSceneReply(
     const quotedAlias = quotedSpeaker && !reservedControl(quotedSpeaker[1]) && resolveAlias(quotedSpeaker[1]);
     const header =
       /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*)\s*:\s*(.*)$/iu.exec(line) ??
-      (quotedAlias && quotedSpeaker ? [line, undefined, quotedAlias, "", quotedSpeaker[2]] : null);
+      (quotedAlias && quotedSpeaker ? [line, undefined, quotedSpeaker[1], "", quotedSpeaker[2]] : null);
     if (!header) {
       const malformed = line.startsWith("[") && reservedControl(line.slice(1));
       if (malformed && malformed !== "action") {
@@ -231,11 +237,17 @@ export function decodeTaggedSceneReply(
         ];
       }
       if (control === "command" && effect.type === "npc.admit") {
-        const returning = readset.npcCandidates.find(({ npc }) => npc.id === effect.existingId)?.npc.id;
+        const returning = readset.npcCandidates.find(({ npc }) => npc.id === effect.existingId)?.npc;
         if (returning && effect.localKey === undefined) effect.localKey = "new:returning-" + effectIndex;
         if (typeof effect.localKey === "string" && !newcomers.has(effect.localKey)) {
           newcomers.set(effect.localKey, id);
-          if (returning && !newcomers.has(returning)) newcomers.set(returning, id);
+          if (returning && !newcomers.has(returning.id)) newcomers.set(returning.id, id);
+          if (readset.npcSpeakerNames) {
+            const label = returning?.label ?? effect.label;
+            const name = returning?.name ?? effect.name;
+            if (typeof label === "string") addAlias(label, effect.localKey);
+            if (typeof name === "string") addAlias(name, effect.localKey, name);
+          }
         }
       }
       list.push(effect);
@@ -284,9 +296,10 @@ export function decodeTaggedSceneReply(
         issue = "invalid_action_option";
         continue;
       }
-      const admission = choice ? undefined : newcomers.get(token);
-      const speakerId = choice?.actorId ?? (speakers.has(token) || admission ? token : resolveAlias(token));
-      if (token === "player" || !speakerId || speakerId === "player") {
+      const alias = !choice && !speakers.has(token) && !newcomers.has(token) ? resolveAlias(token) : undefined;
+      const speakerId = choice?.actorId ?? alias?.id ?? token;
+      const admission = choice ? undefined : newcomers.get(speakerId);
+      if (token === "player" || speakerId === "player" || (!speakers.has(speakerId) && !admission)) {
         issue = "unknown_speaker";
         continue;
       }
@@ -326,6 +339,7 @@ export function decodeTaggedSceneReply(
         issue = "invalid_dialogue_tag";
         continue;
       }
+      if (alias?.name && !beat.speakerLabel) beat.speakerLabel = alias.name;
       if (choice) {
         if (choice.kind === "visit") {
           visit = { segment: id, option: choice.option, escort };

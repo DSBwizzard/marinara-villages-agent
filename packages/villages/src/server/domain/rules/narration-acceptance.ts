@@ -228,7 +228,7 @@ export function acceptNarrationContinuity(
     native.playerMoves,
     readset.presentation,
     (id) => findNpc(state, id),
-    readset.taggedSceneReply,
+    readset,
   );
   const source: NarrationSourceContext = {
     ...readset.source,

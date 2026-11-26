@@ -36,6 +36,7 @@ export type NarrationReadset = {
   sceneSpeechActions?: SceneSpeechAction[];
   strictSceneReply?: true;
   taggedSceneReply?: true;
+  npcSpeakerNames?: Record<string, string>;
   ordinaryReplyRecovery?: true;
   positionedSceneSources?: true;
   stripSceneHistoryDecoration?: true;
