@@ -6,7 +6,7 @@ import type { NarrationReadset } from "../models/narration-model.js";
 import { recentAgendaChanges } from "./agenda-changes.js";
 import type { VillageAgendaBlock, VillageState } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
-import { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
+import { generatedAgendaActivityLabel, restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityProtectionUnits, continuityViews, latestRelationshipScores, relationshipKey } from "./continuity.js";
@@ -247,6 +247,8 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
     return [{ ...fact, id: row.id, source: "agreed" as const }];
   });
   const at = dateAt(world, now);
+  const profile = resident.agenda?.routineProfile;
+  const generatedActivities = new Set(profile?.baseWeek ? [] : profile?.activities.map(({ activity }) => activity));
   return {
     visibility: inspect ? "inspect" : shared ? "shared" : "known",
     days: Array.from({ length: 7 }, (_, offset) => {
@@ -254,6 +256,11 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
         date = agendaDateKey(day);
       const visible = known.filter((row) => row.time.date === date);
       const effective = resident.agenda ? agendaBlocksFor(resident.agenda, day).filter(scheduledAgendaActivity) : [];
+      const authoredShifts = new Set(
+        resident.agenda?.reservations
+          ?.filter((row) => row.dateKey === date && row.source === "work")
+          .map(({ activity }) => activity),
+      );
       const times: (Omit<AgendaTime, "date"> & {
         activity: string;
         source?: "told" | "seen" | "agreed";
@@ -261,6 +268,13 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
         inspect || shared
           ? effective.map((block) => ({
               ...block,
+              activity:
+                !block.commitmentId &&
+                !resident.agenda?.repairedDays?.includes(date) &&
+                !authoredShifts.has(block.activity) &&
+                generatedActivities.has(block.activity)
+                  ? generatedAgendaActivityLabel(block.activity)
+                  : block.activity,
               source: visible.find(
                 (row) =>
                   row.source === "agreed" &&

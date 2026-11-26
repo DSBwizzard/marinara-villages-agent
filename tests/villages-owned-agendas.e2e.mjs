@@ -13,7 +13,11 @@ await withBrowser(browser, async () => {
     page.on("pageerror", (error) => errors.push(error.message));
     await mockEngineLookups(page);
     let paid = 0;
-    const block = { startMinute: 600, endMinute: 660, activity: "Reading by the window" };
+    const block = {
+      startMinute: 360,
+      endMinute: 480,
+      activity: "Patrolling the Hiking Trail, memorizing escape routes and testing footing on the uneven ground",
+    };
     const resident = { characterId: "mara", agenda: null };
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
@@ -60,19 +64,28 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true })
       .click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    await expect(page.getByText("Reading by the window", { exact: true })).toHaveCount(0);
+    const label = page.getByText(block.activity, { exact: true });
+    await expect(label).toHaveCount(0);
     await clickCharacterTool(page, "Inspect Agenda");
-    await expect(page.getByText("Reading by the window", { exact: true })).toBeVisible();
+    await expect(label).toBeVisible();
+    assert.ok(
+      await label.evaluate((node) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        return range.getClientRects().length > 1 && node.scrollWidth <= node.clientWidth;
+      }),
+      "The whole activity wraps within its column.",
+    );
     await expect(page.getByRole("checkbox", { name: "Schedule influence", exact: true })).toHaveCount(0);
     const update = page.getByRole("button", { name: "Regenerate Agenda", exact: true });
     await expect(update).toBeVisible();
     const box = await update.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
     assert.equal(paid, 0);
-    await clickCharacterTool(page, "Leave Inspect");
-    await expect(page.getByText("Reading by the window", { exact: true })).toHaveCount(0);
-    assert.deepEqual(errors, []);
     await page.screenshot({ path: resolve("artifacts/owned-agendas-" + width + ".png") });
+    await clickCharacterTool(page, "Leave Inspect");
+    await expect(label).toHaveCount(0);
+    assert.deepEqual(errors, []);
     await page.close();
   }
   console.log("The profile Agenda uses one calendar for known and inspected views on desktop and phones.");

@@ -82,7 +82,6 @@ export function AgendaPlanner<T extends Block>({
                   className={P + "-planner-block"}
                   data-source={block.source}
                   data-resting={block.resting}
-                  title={`${blockTime(block, true)} · ${block.activity}`}
                   aria-label={[
                     blockTime(block, true),
                     block.activity,
@@ -91,7 +90,7 @@ export function AgendaPlanner<T extends Block>({
                     block.source && sourceLabel[block.source],
                   ]
                     .filter(Boolean)
-                    .join(" · ")}
+                    .join(", ")}
                   aria-pressed={visibleSelection === block}
                   onClick={() => {
                     setSelection(!onActivity && visibleSelection === block ? undefined : { date: day.date, block });
@@ -115,7 +114,7 @@ export function AgendaPlanner<T extends Block>({
             visibleSelection.source && sourceLabel[visibleSelection.source],
           ]
             .filter(Boolean)
-            .join(" · ")}
+            .join(", ")}
         </p>
       ) : null}
       {onActivity && !day.blocks.length ? <p>No scheduled activities.</p> : null}
@@ -161,11 +160,9 @@ const agendaStyles = `
 .${P}-day-planner button.${P}-planner-block[data-resting=true]{--period-fill:var(--rest-fill);border-inline-start-color:var(--rest-edge)}
 .${P}-day-planner button.${P}-planner-block:is(:hover,[aria-pressed=true]){background:var(--period-fill)}
 .${P}-day-planner button.${P}-planner-block[data-source=agreed]{color:var(--plan-ink);border-inline-start-color:var(--plan-edge);background:var(--plan-fill)}
-.${P}-planner-time{font-size:12px;font-variant-numeric:tabular-nums}
+.${P}-planner-time{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.${P}-planner-block span:last-child{overflow-wrap:anywhere}
 .${P}-dossier-overview .${P}-planner-detail{margin:6px 0 0}
-@container village-desk (min-width:701px){
- .${P}-planner-block span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-}
 @container village-desk (max-width:700px){
  .${P}-planner-day{grid-template-columns:1fr}
  .${P}-planner-period+.${P}-planner-period{border-inline-start:0;padding:4px 0 0}

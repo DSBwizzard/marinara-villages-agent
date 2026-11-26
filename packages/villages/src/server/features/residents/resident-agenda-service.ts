@@ -205,7 +205,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         characterId,
         foundingContract: founding ? 1 : undefined,
         revision,
-        context,
+        context: { ...context, activityLabelFormat: 1 },
       },
     });
   }

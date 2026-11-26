@@ -112,6 +112,21 @@ async function main() {
     currentPayload,
     "Recovery leaves the purchased response unchanged",
   );
+  const narrated = {
+    ...currentPayload,
+    palette: [{ ...palette[0], activity: "Right now, you’re patrolling the Hiking Trail" }, ...palette.slice(1)],
+  };
+  const narratedReply = { content: JSON.stringify(narrated) };
+  assert.equal(
+    parseCompactFoundingCompletion(narratedReply, context(null)).agenda.routineProfile!.activities[0]!.activity,
+    narrated.palette[0]!.activity,
+    "An older saved reply retains its original schedule text.",
+  );
+  assert.equal(
+    parseCompactFoundingCompletion(narratedReply, { ...context(null), activityLabelFormat: 1 }).agenda.routineProfile!
+      .activities[0]!.activity,
+    "Patrolling the Hiking Trail",
+  );
   assert.throws(
     () => parseCompactFoundingCompletion({ ...savedResponse, finishReason: "length" }, context(null)),
     /truncated/,
@@ -176,7 +191,13 @@ async function main() {
       assert.equal(calls, before + 1, "one package-level request handles this villager's full founding plan");
     }
     for (const playerBackground of ["", "I arrived to help the harbor."]) {
-      const roleContext = { ...context(null), setting: "S".repeat(4000), playerBackground, playerPersonaName: "Robin" };
+      const roleContext = {
+        ...context(null),
+        setting: "S".repeat(4000),
+        playerBackground,
+        playerPersonaName: "Robin",
+        activityLabelFormat: 1 as const,
+      };
       const before = calls;
       answer = payload();
       await proposeCompactFounding(roleContext as any, async () => {});
@@ -187,6 +208,8 @@ async function main() {
       assert.equal(calls, before + 1, "role context adds no generation call");
     }
     assert.match(capturedPrompt, /Omit Wishes/);
+    assert.match(capturedPrompt, /short standalone activity labels/);
+    assert.doesNotMatch(capturedPrompt, /Right now you are/);
     assert.match(capturedPrompt, /30 to 240 inclusive/);
     assert.match(capturedPrompt, /independently of palette duration/);
     assert.doesNotMatch(

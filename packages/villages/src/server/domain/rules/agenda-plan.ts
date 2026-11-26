@@ -9,6 +9,11 @@ export const scheduledAgendaActivity = (block: VillageAgendaBlock) =>
 
 export { restingAgendaBlock } from "./agenda-flexibility.js";
 
+export function generatedAgendaActivityLabel(activity: string): string {
+  const label = activity.replace(/^right now,?\s+you(?:\s+are|['’]re)[\s,:-]+(?=\p{L})/iu, "");
+  return label === activity ? activity : label.replace(/^\p{L}/u, (letter) => letter.toUpperCase());
+}
+
 export function unwrittenVillageAgenda(now = new Date()): VillageAgenda {
   const week = workingAgendaWeek();
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;

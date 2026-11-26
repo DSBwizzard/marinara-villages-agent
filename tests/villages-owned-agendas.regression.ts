@@ -1,6 +1,7 @@
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
 import { applyWorldRepair, worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
 import { sameSceneRoutine } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
@@ -112,6 +113,29 @@ const raw = {
   ],
 };
 const records = new Map<string, any>();
+
+{
+  const activity = "Right now you are patrolling the Hiking Trail, memorizing escape routes.";
+  const world = coerceVillageState(raw);
+  const agenda = parseCompactFounding(
+    { ...payload, palette: [{ ...palette[0], activity }, ...palette.slice(1)] },
+    context,
+  ).agenda;
+  agenda.routineProfile!.activities[0]!.activity = activity;
+  agenda.activeDay = { dateKey, weekday, blocks: [{ ...block, activity }], scheduleInformed: true };
+  world.villagers[0]!.agenda = agenda;
+  assert.equal(
+    agendaWeek(world, "a", today, true).days[0]!.blocks[0]!.activity,
+    "Patrolling the Hiking Trail, memorizing escape routes.",
+  );
+  assert.equal(agenda.activeDay.blocks[0]!.activity, activity, "Inspection leaves the saved Agenda intact.");
+  agenda.repairedDays = [dateKey];
+  assert.equal(
+    agendaWeek(world, "a", today, true).days[0]!.blocks[0]!.activity,
+    activity,
+    "A dated Repair keeps the author's words.",
+  );
+}
 
 let calls = 0,
   fail = false,

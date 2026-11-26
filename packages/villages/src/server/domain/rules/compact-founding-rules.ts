@@ -8,6 +8,7 @@ import { generatedIdentityDescription } from "./resident-description.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import { backgroundRevision } from "./background-revision.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { generatedAgendaActivityLabel } from "./agenda-plan.js";
 
 export class RoutineResponseError extends Error {}
 
@@ -43,6 +44,7 @@ export type CompactFoundingContext = {
   lore: readonly string[];
   wishes: readonly string[];
   characterId?: string;
+  activityLabelFormat?: 1;
 };
 
 export type CompactFoundingResult = {
@@ -53,7 +55,7 @@ export type CompactFoundingResult = {
 const validIndex = (value: unknown, length: number): value is number =>
   Number.isInteger(value) && (value as number) >= 0 && (value as number) < length;
 
-function checkedPalette(value: unknown, venues: readonly VillageVenue[]): PaletteEntry[] {
+function checkedPalette(value: unknown, { venues, activityLabelFormat }: CompactFoundingContext): PaletteEntry[] {
   if (!Array.isArray(value) || value.length < 6 || value.length > 16)
     throw new RoutineResponseError("The model did not provide 6–16 village activities.");
   return value.map((raw, index) => {
@@ -69,7 +71,7 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
         `Village activity ${index + 1} needs a numeric venue index from 0 to ${venues.length}.`,
       );
     return {
-      activity,
+      activity: activityLabelFormat === 1 ? generatedAgendaActivityLabel(activity) : activity,
       ...(Array.isArray(row.weekdays) ? { weekdays: row.weekdays as number[] } : {}),
       duration: Math.max(
         ROUTINE_CONTRACT.minMinutes,
@@ -153,7 +155,7 @@ export function parseCompactFounding(
       )
         throw new RoutineResponseError("Agenda activity has an unavailable Zone identifier.");
     }
-  const palette = checkedPalette(payload.palette, context.venues);
+  const palette = checkedPalette(payload.palette, context);
   if (!Array.isArray(payload.palette) || payload.palette.length > ROUTINE_CONTRACT.maxActivities)
     throw new RoutineResponseError("An Agenda requires 6–8 activities.");
   const days = compileRoutineDays(palette, context.card.id);
