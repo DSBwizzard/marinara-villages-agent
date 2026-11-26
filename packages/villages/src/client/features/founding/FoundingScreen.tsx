@@ -25,6 +25,7 @@ import { FoundingSettingScene, settingBeat } from "./FoundingSettingScene.js";
 import {
   FOUNDING_MAP_DETAILS_REQUIRED,
   FOUNDING_MAP_FAILED,
+  foundingMapFailure,
   FoundingPersonaSelector,
   FoundingVillagerPicker,
 } from "./FoundingPanels.js";
@@ -888,11 +889,11 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       </div>
     );
     const pausedMapRequest = setupMapRequest?.phase === "paused";
-    // Drafts saved before this fix can still contain the original Engine error.
+    // Older drafts can still contain the original Engine error.
     const mapProblem = setupMapProblem.startsWith("The Engine refused ")
       ? pausedMapRequest
         ? "Couldn’t check map status."
-        : FOUNDING_MAP_FAILED
+        : foundingMapFailure(setupMapProblem)
       : setupMapProblem;
     const mapNotice =
       (mapPromptValid && mapProblem === FOUNDING_MAP_DETAILS_REQUIRED ? "" : mapProblem) ||
@@ -938,7 +939,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 ? "Generating map…"
                 : setupMapRequest?.phase === "paused"
                   ? "Check map status"
-                  : mapProblem === FOUNDING_MAP_FAILED
+                  : mapProblem.startsWith(FOUNDING_MAP_FAILED)
                     ? "Generate again"
                     : "Generate image"}
             </button>

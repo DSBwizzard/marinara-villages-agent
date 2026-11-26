@@ -159,7 +159,7 @@ export async function verifyFoundingLayout(group) {
               startedAt: new Date().toISOString(),
               status: failMapGeneration ? "failed" : "complete",
               error: failMapGeneration
-                ? `The Engine refused /api/characters/avatar-generation (500): ${"upstream error details ".repeat(25)}`
+                ? 'The Engine refused /api/characters/avatar-generation (500): OpenAI image generation failed (429): {"error":{"message":"upstream error details","code":"rate_limit_exceeded"}}'
                 : "",
               result: failMapGeneration ? null : { image: generationImage, width: 1536, height: 1024 },
             };
@@ -1872,8 +1872,9 @@ export async function verifyFoundingLayout(group) {
           await button("Generate image").click();
           const artwork = root.getByRole("region", { name: "Map artwork", exact: true });
           const mapFailure = artwork.getByRole("alert");
+          const failureText = "Couldn’t generate the map (rate_limit_exceeded).";
           const checkMapFailure = async () => {
-            await expect(mapFailure).toHaveText("Couldn’t generate the map.");
+            await expect(mapFailure).toHaveText(failureText);
             await expect(mapFailure).toBeInViewport({ ratio: 1 });
             for (const name of ["Generate again", "Upload image"]) {
               await expect(button(name)).toBeEnabled();
@@ -1883,14 +1884,18 @@ export async function verifyFoundingLayout(group) {
             await expect(root.getByText(/upstream error details/)).toHaveCount(0);
           };
           await checkMapFailure();
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `map-generation-error-${view.width}.png`),
+            });
           if (phone) await retreat(); // Close the Maps panel before leaving the chapter.
           await retreat();
           await expect(root).toHaveAttribute("data-step", "1");
-          await expect(root.getByText("Couldn’t generate the map.", { exact: true })).toHaveCount(0);
+          await expect(root.getByText(failureText, { exact: true })).toHaveCount(0);
           if (phone) await retreat();
           await retreat();
           await expect(root).toHaveAttribute("data-step", "0");
-          await expect(root.getByText("Couldn’t generate the map.", { exact: true })).toHaveCount(0);
+          await expect(root.getByText(failureText, { exact: true })).toHaveCount(0);
           await advance();
           await enterChapter();
           await advance();
@@ -1898,7 +1903,7 @@ export async function verifyFoundingLayout(group) {
           await checkMapFailure();
           await expect
             .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.mapProblem))
-            .toBe("Couldn’t generate the map.");
+            .toBe(failureText);
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await checkMapFailure();
