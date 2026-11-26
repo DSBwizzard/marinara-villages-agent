@@ -1,4 +1,5 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import { DisclosureSummary } from "../../shared/DisclosureSummary.js";
 import { clearFoundingAssignments } from "./quick-start-drafts.js";
 
 export function FoundingVenueReview({
@@ -23,7 +24,7 @@ export function FoundingVenueReview({
       <h2>{review.replaceAll ? "New Venue plan" : "Review Venue draft"}</h2>
       {review.venues.map((venue) => (
         <details key={venue.id}>
-          <summary>{venue.name}</summary>
+          <DisclosureSummary show={`Show details for ${venue.name}`} hide={`Hide details for ${venue.name}`} />
           <p>{venue.form}</p>
           {[...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].map((zone) => (
             <div key={zone.id}>

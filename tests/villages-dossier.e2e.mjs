@@ -1328,7 +1328,7 @@ await withBrowser(browser, async () => {
     await profile.getByRole("button", { name: "Retry unfinished work", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Retry unfinished work", exact: true })).toHaveCount(0);
     assert.equal(writes.findLast((row) => row.path.endsWith("/background/retry")).body.expectedAttempt, 1);
-    await profile.getByText("Sources", { exact: true }).click();
+    await profile.getByText("Show sources", { exact: true }).click();
     await expect(profile.locator("blockquote")).toContainText("I enjoyed talking.");
     await expect(profile.getByRole("spinbutton")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `relationships-${width}-${height}.png`) });

@@ -1,6 +1,7 @@
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import { useEffect, useRef, useState } from "react";
+import { DisclosureSummary } from "../../shared/DisclosureSummary.js";
+import { useEffect, useId, useRef, useState } from "react";
 import type { LoreDiagnostic, LoreInspection } from "../../../shared/contracts/lore.js";
 export function VillagesRuntimeDebug() {
   const [settings, setSettings] = useState<{
@@ -14,6 +15,7 @@ export function VillagesRuntimeDebug() {
   const [query, setQuery] = useState("");
   const [inspecting, setInspecting] = useState(false);
   const inspectionId = useRef(0);
+  const reportId = useId();
   const inspectLore = async (test = false) => {
     const id = ++inspectionId.current;
     setInspecting(true);
@@ -104,47 +106,52 @@ export function VillagesRuntimeDebug() {
             Test selection
           </button>
           {lore.map((report, index) => (
-            <details key={index} open={index === 0}>
-              <summary>
-                {report.purpose} · {report.stage === "prompt" ? "Final prompt" : "Selection only"} · {report.budget}{" "}
-                tokens
-              </summary>
-              {report.entries.length ? (
-                <ul>
-                  {report.entries.map((entry) => (
-                    <li key={`${entry.bookId}:${entry.id}`} style={{ overflowWrap: "anywhere" }}>
-                      {entry.name} ·{" "}
-                      {
+            <div key={index}>
+              <p className={ELEMENT_TAG + "-lore-report-title"} id={reportId + index}>
+                <strong>{report.purpose}</strong>
+                <small>
+                  {report.stage === "prompt" ? "Final prompt" : "Selection only"}, {report.budget} tokens
+                </small>
+              </p>
+              <details open={index === 0}>
+                <DisclosureSummary show="Show lore report" hide="Hide lore report" describedBy={reportId + index} />
+                {report.entries.length ? (
+                  <ul>
+                    {report.entries.map((entry) => (
+                      <li key={`${entry.bookId}:${entry.id}`} style={{ overflowWrap: "anywhere" }}>
+                        {entry.name},{" "}
                         {
-                          current: "Current message",
-                          recent: "Recent shared dialogue",
-                          setting: "Setting",
-                          constant: "Constant",
-                          none: "No match",
-                        }[entry.match]
-                      }{" "}
-                      ·{" "}
-                      {
+                          {
+                            current: "Current message",
+                            recent: "Recent shared dialogue",
+                            setting: "Setting",
+                            constant: "Constant",
+                            none: "No match",
+                          }[entry.match]
+                        }
+                        ,{" "}
                         {
-                          included: "Included",
-                          "no-match": "No key match",
-                          conditions: "Secondary conditions not met",
-                          disabled: "Disabled",
-                          "folder-disabled": "Folder disabled",
-                          unsupported: "Unsupported keys",
-                          budget: "Over lore budget",
-                          "entry-limit": "Entry limit",
-                          "context-limit": "Removed for prompt space",
-                        }[entry.status]
-                      }
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>{report.budget === 0 ? "Lore budget is zero." : "No eligible entries."}</p>
-              )}
-              {report.omittedDiagnostics ? <p>{report.omittedDiagnostics} additional entries</p> : null}
-            </details>
+                          {
+                            included: "Included",
+                            "no-match": "No key match",
+                            conditions: "Secondary conditions not met",
+                            disabled: "Disabled",
+                            "folder-disabled": "Folder disabled",
+                            unsupported: "Unsupported keys",
+                            budget: "Over lore budget",
+                            "entry-limit": "Entry limit",
+                            "context-limit": "Removed for prompt space",
+                          }[entry.status]
+                        }
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{report.budget === 0 ? "Lore budget is zero." : "No eligible entries."}</p>
+                )}
+                {report.omittedDiagnostics ? <p>{report.omittedDiagnostics} additional entries</p> : null}
+              </details>
+            </div>
           ))}
         </section>
       ) : null}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { DisclosureSummary } from "../../shared/DisclosureSummary.js";
 
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): ObjectValue =>
@@ -257,7 +258,7 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
       ) : null}
       {account !== undefined && copyStatus.startsWith("Copy unavailable") ? (
         <details open>
-          <summary>Raw JSON</summary>
+          <DisclosureSummary show="Show raw JSON" hide="Hide raw JSON" />
           <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(account, null, 2)}</pre>
         </details>
       ) : null}
