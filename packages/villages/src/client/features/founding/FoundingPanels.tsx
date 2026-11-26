@@ -41,6 +41,9 @@ export function newSetupVenue(id: string, x: number, y: number, playerHome = fal
   return { ...venue, layout: "common", spaces: [startingZone(venue, false)], privateSpaces: [] };
 }
 
+export const FOUNDING_MAP_FAILED = "Couldn’t generate the map.";
+export const FOUNDING_MAP_DETAILS_REQUIRED = "Enter Map details before generating its image.";
+
 export async function requestSetupMapReceipt(path: string, init?: RequestInit): Promise<SetupMapReceipt> {
   const controller = new AbortController();
   // Admission is small; a completed receipt can carry several MB over a phone connection.

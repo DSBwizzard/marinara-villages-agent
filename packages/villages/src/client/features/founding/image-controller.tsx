@@ -6,7 +6,7 @@ import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 
 import type { useFoundingSetupDraftData } from "./controller-hooks.js";
-import { requestSetupMapReceipt } from "./FoundingPanels.js";
+import { FOUNDING_MAP_DETAILS_REQUIRED, requestSetupMapReceipt } from "./FoundingPanels.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { personalSpaceDraft } from "./villages-founding-editor";
 import { useCallback } from "react";
@@ -57,7 +57,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
       return;
     }
     if (!setupMapPrompt.trim()) {
-      setSetupMapProblem("Enter Map details before generating its image.");
+      setSetupMapProblem(FOUNDING_MAP_DETAILS_REQUIRED);
       return;
     }
     setSetupMapBusy(true);
@@ -98,9 +98,9 @@ export function useFoundingGenerateSetupTownMap(ports: {
         startedAt: receipt.startedAt,
         phase: "waiting",
       });
-    } catch (cause) {
+    } catch {
       setSetupMapProblem(
-        `${messageFrom(cause, "The starting location map could not be requested.")}${dispatched ? " Check map status before starting another attempt." : ""}`,
+        dispatched ? "Couldn’t confirm the map request." : "Save your draft before generating the map.",
       );
       updateSetupMapRequest(dispatched ? { ...pending, phase: "paused" } : null);
       setSetupMapBusy(false);
