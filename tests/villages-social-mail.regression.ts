@@ -310,6 +310,8 @@ await runCase("social-mail/one-request", async () => {
     input = f.input();
   assert.equal(f.requests, 0);
   assert.equal(input.incoming.text, "  I appreciated your café garden. 🌼\n  ");
+  const letterText = "Ada walks each morning. The new route (looks promising!) runs by the garden.";
+  f.answer({ content: JSON.stringify({ reply: { text: letterText } }), finishReason: "stop" });
   const result = (await f.service.handler.generate(input)) as PersonalMailResult;
   assert.equal(f.requests, 1);
   const prompt = JSON.stringify(f.captured[0].messages);
@@ -337,7 +339,7 @@ await runCase("social-mail/one-request", async () => {
   );
   await f.service.readLetter(reply.thread.id, reply.message.id, f.scope, token);
   const opened = await f.service.getLetter(reply.thread.id, reply.message.id, f.scope, token);
-  assert.equal(opened.message.text, result.replyText);
+  assert.equal(opened.message.text, letterText);
   assert(opened.message.read);
   const state = await f.read();
   assert.equal(state.episodes.records.length, 4);
