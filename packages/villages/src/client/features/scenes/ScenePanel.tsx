@@ -1,3 +1,4 @@
+import { hasPublishedRoomSubmission } from "./villages-room-reading";
 import {
   useCallback,
   useEffect,
@@ -110,7 +111,7 @@ export async function completedGreetingAfterFailure(sessionId: string, owns = ()
 
 export async function refreshSceneAfterFailure(
   sessionId: string,
-  _submissionId?: string,
+  submissionId?: string,
   owns = () => true,
 ): Promise<SceneView | null> {
   try {
@@ -119,7 +120,11 @@ export async function refreshSceneAfterFailure(
       signal: AbortSignal.timeout(5_000),
     });
     if (!owns()) return null;
-    if (session?.id === sessionId) return session;
+    if (
+      session?.id === sessionId &&
+      (session.status !== "closed" || !submissionId || hasPublishedRoomSubmission(session, submissionId))
+    )
+      return session;
     const { visit } = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(sessionId)}/recovery`, {
       signal: AbortSignal.timeout(5_000),
     });
