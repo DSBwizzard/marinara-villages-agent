@@ -197,7 +197,7 @@ export function ResidentsScreen({
         {canRetryAgenda ? (
           <div className={`${ELEMENT_TAG}-agenda-warning-copy`} role="alert">
             <strong>Couldn’t refresh the Agenda</strong>
-            <p>{failureDetail ? `${failureDetail} ` : ""}Showing the saved plans.</p>
+            {failureDetail ? <p>{failureDetail}</p> : null}
           </div>
         ) : preparingAgenda ? (
           <p role="status">Preparing Agenda…</p>

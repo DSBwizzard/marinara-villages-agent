@@ -113,7 +113,8 @@ await withBrowser(browser, async () => {
     await page.screenshot({ path: resolve("artifacts/owned-agendas-" + width + ".png") });
     await update.click();
     const warning = page.getByRole("alert").filter({ hasText: "Couldn’t refresh the Agenda" });
-    await expect(warning).toContainText("The model’s reply was cut short. Showing the saved plans.");
+    await expect(warning).toContainText("The model’s reply was cut short.");
+    await expect(warning).not.toContainText("Showing the saved plans.");
     await expect(page.getByText("Response reached the output limit", { exact: false })).toHaveCount(0);
     await expect(label).toBeVisible();
     const retry = page.getByRole("button", { name: "Retry Agenda", exact: true });

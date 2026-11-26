@@ -250,7 +250,7 @@ export function createWeeklyAgenda(ports: {
     async generate(input: Input) {
       const model = await ports.models().resolveForRequest({ connectionId: await ports.connection("system") });
       const count = input.residents.reduce((sum, resident) => sum + resident.slots.length, 0);
-      const output = Math.min(model.maxOutputTokens ?? Infinity, 80 + count * 24);
+      const output = Math.min(model.maxOutputTokens ?? Infinity, Math.max(4_096, 1_024 + count * 48));
       const instruction = [
         "Plan the entire coming week of free time for every listed Village resident.",
         'Return only JSON {"plans":[[["Short activity",0]]]} with one array per resident and one [activity, place number] per slot, in the exact supplied order. Use 0 for home or a number from that resident\'s list.',

@@ -147,6 +147,8 @@ async function main() {
   let failWednesday = false;
   const agendaRequests: string[] = [];
   let weeklyResponses = 0;
+  let weeklyOutputLimit = 4096;
+  let minimumWeeklyReplyTokens = 0;
   let incompleteWeek = false;
   let repeatSameDay = false;
   const warnings: string[] = [];
@@ -173,14 +175,17 @@ async function main() {
           connectionId: "fixture",
           model: "fixture-model",
           maxContext: 8192,
-          maxOutputTokens: 4096,
+          maxOutputTokens: weeklyOutputLimit,
           fitContext(messages: any[], options: any) {
             return { messages, maxTokens: options?.maxTokens };
           },
-          async chatComplete(messages: any[]) {
+          async chatComplete(messages: any[], options: { maxTokens: number }) {
             modelCalls += 1;
             if (String(messages[0]?.content).includes("Plan the entire coming week")) {
               weeklyResponses++;
+              assert.ok(options.maxTokens <= weeklyOutputLimit, "The planner honors the model output limit.");
+              if (options.maxTokens < minimumWeeklyReplyTokens)
+                return { content: '{"plans":[', finishReason: "length" };
               const input = JSON.parse(String(messages.at(-1)?.content)) as {
                 residents: Array<{ name: string; slots: unknown[] }>;
               };
@@ -657,6 +662,7 @@ async function main() {
     );
     setToday(28);
     incompleteWeek = false;
+    minimumWeeklyReplyTokens = 2_000;
     await clearVillagerAgenda("Ari", "personal-week");
     await settleBackgroundWork();
     assert.equal(weeklyResponses, 4);
@@ -707,6 +713,31 @@ async function main() {
     assert.equal(firstDay.filter(({ activity }) => activity === "Ari pursuit 7/1").length, 1);
     assert.ok(firstDay.some(({ activity }) => activity === "Ari pursuit 7/3"));
     assert.ok(agendaBlocksFor(recoveredWeek, date(49)).some(({ activity }) => activity.startsWith("Ari pursuit 7/")));
+
+    setToday(43);
+    repeatSameDay = false;
+    weeklyOutputLimit = 1_040;
+    await clearVillagerAgenda("Ari", "limited-week");
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 8, "A truncated manual week uses one request.");
+    const truncated = (await backgroundWorkSummaries()).find(
+      (job) => job.kind === "agenda" && job.subjectId === "Ari",
+    )!;
+    assert.equal(truncated.failure?.cause, "output_limit");
+    assert.equal(truncated.failure?.requestedOutputTokens, 1_040);
+    assert.ok(
+      agendaBlocksFor((await readVillageState()).villagers[0]!.agenda!, date(44)).some(({ activity }) =>
+        activity.startsWith("Ari pursuit 7/"),
+      ),
+    );
+
+    weeklyOutputLimit = 4096;
+    await retryBackgroundJob(truncated.id, truncated.attempt, "retry-with-room", truncated.instanceId);
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 9, "One retry with sufficient room saves the entire week.");
+    const complete = (await readVillageState()).villagers[0]!.agenda!;
+    for (let day = 44; day <= 50; day++)
+      assert.ok(agendaBlocksFor(complete, date(day)).some(({ activity }) => activity.startsWith("Ari pursuit 9/")));
   } finally {
     Date.now = realNow;
     stopWork();
