@@ -207,6 +207,7 @@ await withBrowser(browser, async () => {
       await submit.click();
       await expect.poll(() => explorations.length).toBe(1);
       await expect(submit).toBeEnabled();
+      await expect(page.getByRole("alert")).toHaveText("Couldn’t explore this map.");
       await page.getByLabel("Discover somewhere new", { exact: true }).fill("A duck");
       await submit.click();
       await expect.poll(() => explorations.length).toBe(2);
