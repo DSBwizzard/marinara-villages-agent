@@ -35,6 +35,7 @@ export interface WorldCoordinationPorts {
   readVillageAuthority: typeof import("./village-store.js").readVillageAuthority;
   mutateMemoryAuthority: (update: (state: VillageState) => void) => Promise<void>;
   reconcileResidentPlanning?: (now: Date) => Promise<void>;
+  reconcileWeeklyAgenda?: (state: VillageState, now: Date, returning?: boolean) => Promise<void>;
   reconcileNarrative?: (now: Date) => Promise<void>;
   settleResidentAttendance?: (now: Date) => Promise<void>;
   readVillageState: typeof readVillageState;
@@ -54,6 +55,7 @@ export function createWorldCoordination({
   readVillageAuthority,
   mutateMemoryAuthority,
   reconcileResidentPlanning,
+  reconcileWeeklyAgenda,
   reconcileNarrative,
   settleResidentAttendance,
   readVillageState,
@@ -94,7 +96,8 @@ export function createWorldCoordination({
    * an unavailable model can never stop time, schedules or wishes.
    */
   let reconciliation: Promise<unknown> = Promise.resolve();
-  function reconcileVillage(options: { now?: Date; advanceTime?: VillageTimeAdvance } = {}): Promise<VillageSnapshot> {
+  type ReconcileOptions = { now?: Date; advanceTime?: VillageTimeAdvance; returning?: boolean };
+  function reconcileVillage(options: ReconcileOptions = {}): Promise<VillageSnapshot> {
     const result = reconciliation.then(async () => {
       try {
         return await reconcileAt(options);
@@ -105,7 +108,7 @@ export function createWorldCoordination({
     reconciliation = result.catch(() => {});
     return result;
   }
-  async function reconcileAt(options: { now?: Date; advanceTime?: VillageTimeAdvance }): Promise<VillageSnapshot> {
+  async function reconcileAt(options: ReconcileOptions): Promise<VillageSnapshot> {
     if (!options.advanceTime) await reconcileNarrative?.(options.now ?? villageNow());
     if (options.advanceTime) {
       const request = options.advanceTime;
@@ -179,7 +182,10 @@ export function createWorldCoordination({
     outsideVenueOperation(() => {
       void preparePrivateSpaces().catch(() => {});
     });
-    await queuePendingAgendas(await readVillageState(), now);
+    const ready = await queuePendingAgendas(await readVillageState(), now);
+    await reconcileWeeklyAgenda?.(ready, now, options.returning).catch((error) => {
+      villagesLogger().warn("[villages] could not queue weekly Agendas: %s", String(error));
+    });
     await reconcileResidentPlanning?.(now);
     return buildVillageSnapshot(now);
   }

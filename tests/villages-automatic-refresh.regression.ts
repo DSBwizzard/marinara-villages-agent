@@ -146,6 +146,8 @@ async function main() {
   let agendaMode = false;
   let failWednesday = false;
   const agendaRequests: string[] = [];
+  let weeklyResponses = 0;
+  let incompleteWeek = false;
   const warnings: string[] = [];
   const release = configureVillagesRuntime({
     logger: {
@@ -174,8 +176,19 @@ async function main() {
           fitContext(messages: any[], options: any) {
             return { messages, maxTokens: options?.maxTokens };
           },
-          async chatComplete(_messages: any[]) {
+          async chatComplete(messages: any[]) {
             modelCalls += 1;
+            if (String(messages[0]?.content).includes("Plan the entire coming week")) {
+              weeklyResponses++;
+              const input = JSON.parse(String(messages.at(-1)?.content)) as {
+                residents: Array<{ name: string; slots: unknown[] }>;
+              };
+              const plans = input.residents.map(({ name, slots }) =>
+                slots.map((_, index) => [`${name} pursuit ${weeklyResponses}/${index + 1}`, 0]),
+              );
+              if (incompleteWeek) plans[0]?.splice(2);
+              return { content: JSON.stringify({ plans }), finishReason: "stop" };
+            }
             if (agendaMode) {
               agendaRequests.push("Write routine profile.");
               if (failWednesday) throw new Error("Profile unavailable");
@@ -212,7 +225,7 @@ async function main() {
   } as any);
 
   const realNow = Date.now;
-  const wallOffset = 0;
+  let wallOffset = 0;
   Date.now = () => realNow() + wallOffset;
   const stopWork = startBackgroundWork();
   await villageBackgroundPresence("visible-story-fixture", true);
@@ -501,6 +514,141 @@ async function main() {
       (await readVillageState()).venues[0]?.occupancy.residentCharacterId,
       "housing-resident",
       "normal reconciliation completes a villager-requested move after 24 hours",
+    );
+    const { agendaBlocksFor, agendaDateKey } =
+      await import("../packages/villages/src/server/domain/rules/agenda-week.js");
+    const { ZonedDate } = await import("../packages/villages/src/shared/helpers/zoned-date.js");
+    const zone = "America/Los_Angeles";
+    const date = (day: number) => new ZonedDate(new Date(Date.UTC(2026, 10, day, 20)), zone);
+    const setToday = (day: number) => {
+      wallOffset = date(day).getTime() - realNow();
+    };
+    setToday(6);
+    await mutateVillageState(
+      (state) => {
+        const residents = ["Ari", "Mara"].map((name) => ({
+          ...state.villagers[0]!,
+          characterId: name,
+          incarnation: name + "-1",
+          agendaGeneration: undefined,
+          cardSnapshot: { ...state.villagers[0]!.cardSnapshot, id: name, name },
+          agenda: agendaFixture({
+            calendarVersion: 1,
+            generatedAt: date(1).toISOString(),
+            day: [
+              { startMinute: 0, endMinute: 480, venueId: "", activity: "Sleeping", essential: true },
+              { startMinute: 480, endMinute: 1320, venueId: "", activity: "Reading", flexible: true },
+              { startMinute: 1320, endMinute: 1440, venueId: "", activity: "Sleeping", essential: true },
+            ],
+          }),
+        }));
+        Object.assign(state, defaultVillageState(), {
+          setupAt: date(1).toISOString(),
+          foundedAt: date(1).toISOString(),
+          simulatedThrough: date(6).toISOString(),
+          timeZone: zone,
+          seed: "weekly-refresh-fixture",
+          backgroundPace: "quiet",
+          villagers: residents,
+        });
+        delete state.returnCatchup;
+        delete state.clock;
+        delete state.narrative;
+      },
+      { memories: true },
+    );
+    await reconcileVillage({ now: date(6) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 0, "The starter week is kept.");
+
+    setToday(7);
+    await Promise.all([reconcileVillage({ now: date(7) }), reconcileVillage({ now: date(7) })]);
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 1, "One batch prepares the Village's week, despite repeated reconciliation.");
+    const firstWeek = await readVillageState();
+    for (const resident of firstWeek.villagers) {
+      const agenda = resident.agenda!;
+      assert.equal(agenda.activeDay?.dateKey, agendaDateKey(date(7)));
+      assert.ok(!agenda.activeDay?.blocks.some(({ activity }) => activity.includes("pursuit")));
+      for (let day = 8; day <= 14; day++) {
+        const rows = agendaBlocksFor(agenda, date(day));
+        assert.equal(rows.filter(({ activity }) => activity === "Sleeping").length, 2);
+        assert.ok(rows.filter(({ activity }) => activity.startsWith(`${resident.characterId} pursuit 1/`)).length >= 3);
+      }
+    }
+
+    const { applyWeeklyAgenda, weeklyAgendaSlots } =
+      await import("../packages/villages/src/server/domain/rules/weekly-agenda.js");
+    const changed = structuredClone(firstWeek);
+    const resident = changed.villagers[0]!;
+    const offered = [date(9), date(10), date(11)].flatMap((day) => weeklyAgendaSlots(resident.agenda!, day));
+    resident.agenda!.repairedDays = [agendaDateKey(date(10))];
+    resident.agenda!.reservations = (["work", "project", "social", "appointment"] as const).map((source, index) => ({
+      source,
+      id: source,
+      dateKey: agendaDateKey(date(9)),
+      startMinute: 540 + index * 120,
+      endMinute: 600 + index * 120,
+      venueId: "",
+      activity: source,
+      replaces: "flexible",
+    }));
+    applyWeeklyAgenda(
+      changed,
+      resident,
+      date(8),
+      offered,
+      offered.map(({ date: key }) => ({
+        activity: "Work on a woodcut",
+        venueId: key === agendaDateKey(date(11)) ? "removed-venue" : "",
+      })),
+    );
+    const live = agendaBlocksFor(resident.agenda!, date(9));
+    for (const reserved of resident.agenda!.reservations) {
+      assert.ok(
+        live.some(
+          (row) =>
+            row.activity === reserved.activity &&
+            row.startMinute === reserved.startMinute &&
+            row.endMinute === reserved.endMinute,
+        ),
+      );
+    }
+    assert.ok(live.some(({ activity }) => activity === "Work on a woodcut"));
+    for (const day of [date(10), date(11)]) {
+      assert.deepEqual(agendaBlocksFor(resident.agenda!, day), agendaBlocksFor(firstWeek.villagers[0]!.agenda!, day));
+    }
+    setToday(8);
+    await reconcileVillage({ now: date(8) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 1, "A normal day change activates planned activities locally.");
+    assert.ok(
+      (await readVillageState()).villagers[0]!.agenda?.activeDay?.blocks.some(({ activity }) =>
+        activity.includes("pursuit 1/"),
+      ),
+    );
+
+    setToday(14);
+    await reconcileVillage({ now: date(14) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 2, "The last day of the current batch prepares the next seven days.");
+    const nextWeek = await readVillageState();
+    for (const resident of nextWeek.villagers) {
+      for (let day = 15; day <= 21; day++) {
+        const rows = agendaBlocksFor(resident.agenda!, date(day));
+        assert.ok(rows.filter(({ activity }) => activity.startsWith(`${resident.characterId} pursuit 2/`)).length >= 3);
+      }
+    }
+
+    incompleteWeek = true;
+    setToday(21);
+    await reconcileVillage({ now: date(21) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 3, "An incomplete reply spends only one automatic request.");
+    assert.ok(
+      !(await readVillageState()).villagers.some((resident) =>
+        agendaBlocksFor(resident.agenda!, date(22)).some(({ activity }) => activity.includes("pursuit 3/")),
+      ),
     );
   } finally {
     Date.now = realNow;

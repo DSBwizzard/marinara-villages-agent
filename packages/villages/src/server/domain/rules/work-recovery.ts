@@ -27,6 +27,7 @@ const kinds: Record<Job["kind"], true> = {
   "resident-planning": true,
   "world-development": true,
   agenda: true,
+  "weekly-agenda": true,
   wish: true,
   "personal-mail": true,
 };
@@ -111,6 +112,7 @@ export function canAutomaticallyRetryBackgroundJob(job: Job): boolean {
   const failed = job.failedStep === null ? undefined : job.steps[job.failedStep];
   return (
     job.kind !== "personal-mail" &&
+    job.kind !== "weekly-agenda" &&
     job.status === "failed" &&
     !job.automaticRetryUsed &&
     !job.connectionPaused &&

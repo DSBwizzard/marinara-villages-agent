@@ -122,7 +122,8 @@ export type BackgroundWork = {
     | "wish"
     | "personal-mail"
     | "starting-ties"
-    | "schedule-influence";
+    | "schedule-influence"
+    | "weekly-agenda";
   subjectId: string;
   label: string;
   status: "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";

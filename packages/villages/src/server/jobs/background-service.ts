@@ -45,6 +45,7 @@ import { agendaRequestCount, remainingRequests } from "../domain/rules/generatio
 import { localDateKey } from "../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { VILLAGE_WEEKDAYS } from "../domain/rules/village-clock.js";
+import { weeklyAgendaDue } from "../domain/rules/weekly-agenda.js";
 import { type WorkFailure, WorkFailureError } from "../domain/rules/work-failure.js";
 import {
   backgroundRecoveryState,
@@ -634,14 +635,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
-    if (job.kind === "world-development" && state.backgroundPace === "off")
+    if (["world-development", "weekly-agenda"].includes(job.kind) && state.backgroundPace === "off")
       throw new Paused("Pace is Off. The admitted world source is preserved.");
     const batchId = catchupBatchId(job),
       batch = state.returnCatchup?.batch;
     const holding = batch && !["completed", "cancelled"].includes(batch.status);
     if (batchId && (!holding || batch.id !== batchId || batch.status !== "running"))
       throw new Obsolete("This catch-up opportunity is no longer active.");
-    if (holding && !batchId && (!job.finite || job.kind === "resident-planning"))
+    if (holding && !batchId && (!job.finite || ["resident-planning", "weekly-agenda"].includes(job.kind)))
       throw new Paused("Waiting for Village catch-up.");
     if (
       superseded.has(job.instanceId) ||
@@ -715,6 +716,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             work.automaticDate <= previous.highWaterDate
           )
             return previous;
+          if (previous && work.kind === "weekly-agenda" && previous.seed === work.seed) {
+            if (running.has(id) || !weeklyAgendaDue(previous, work.seed, work.automaticDate ?? "")) return previous;
+            if (uncertainAttempt(previous)) {
+              previous.replacement = copyBackgroundWork(work);
+              return holdReplacement(previous);
+            }
+          }
           if (running.has(id) && previous) {
             superseded.add(previous.instanceId);
             previous.replacement = copyBackgroundWork(work);
@@ -918,7 +926,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           }));
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
-        checkCurrent(job!, await readForJob(job!));
+        const dispatchState = await readForJob(job!);
+        checkCurrent(job!, dispatchState);
         if (options.beforeBackgroundDispatch) {
           const fittedTokens = await options.beforeBackgroundDispatch();
           if (fittedTokens !== undefined) {
@@ -1016,6 +1025,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               throw new Obsolete("This catch-up opportunity is no longer active.");
             if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
               throw new Paused("Waiting until Villages is visible.");
+            if (
+              job!.kind === "weekly-agenda" &&
+              !job!.retrying &&
+              !handlers.get(job!.kind)!.valid(dispatchState, job!.input)
+            )
+              throw new Obsolete("The weekly Agenda window has already started.");
             pendingCatchupDispatch.delete(id);
             unsubmittedSteps.delete(job!.steps[index].responseClaim!.id);
             invoked = true;
@@ -1484,6 +1499,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const retired =
         job?.kind !== "resident-planning" &&
         job?.kind !== "world-development" &&
+        job?.kind !== "weekly-agenda" &&
         job?.kind !== "starting-ties" &&
         job?.kind !== "personal-mail" &&
         !state.villagers.some((resident) => resident.characterId === job?.subjectId);
@@ -1585,7 +1601,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const completedSteps =
         job.completedCount ||
         job.steps.filter((step, i) => step.status === "completed" && (i !== job.failedStep || recovered)).length;
-      const planned = job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : null;
+      const planned =
+        job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : job.kind === "weekly-agenda" ? 1 : null;
       previews.push({
         id: record.id,
         seed: job.seed,

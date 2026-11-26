@@ -54,7 +54,7 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
       const snapshot = await villageBackgroundPresence(request.body.sessionId, request.body.visible, {
         beforeResume: async () => {
           await prepareReturnCatchup(villageNow(), randomUUID());
-          return reconcileVillage();
+          return reconcileVillage({ returning: true });
         },
         onVisible: () => recordReturnVisibility(villageNow()),
         onHidden: () => recordReturnVisibility(villageNow(), false),

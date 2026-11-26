@@ -149,6 +149,7 @@ import { createRelationships } from "../features/residents/relationship-service.
 
 import { configureRelationships } from "../features/residents/relationships.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
+import { createWeeklyAgenda } from "../features/residents/weekly-agenda-service.js";
 import {
   queuePendingAgendas,
   configureResidentAgendas,
@@ -664,6 +665,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     proposeCompactFounding,
   });
   const releaseResidentAgendas = configureResidentAgendas(residentAgendas);
+  const weeklyAgenda = createWeeklyAgenda({
+    presence: hasVillagePresence,
+    job: backgroundJobSnapshot,
+    queue: queueBackgroundJob,
+    models: villagesLanguageModels,
+    connection: villagesConnectionIdFor,
+    complete: completeWithRoom,
+    now: villageNow,
+  });
   const residences = createResidences({ mutateVillageState, buildVillageSnapshot });
   const releaseResidences = configureResidences(residences);
   const releasePersonaCache = configurePersonaCache(
@@ -881,6 +891,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     // Manual history edits preserve current mechanics and do not reconcile the world.
     mutateMemoryAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     reconcileNarrative: narrative.reconcile,
+    reconcileWeeklyAgenda: weeklyAgenda.reconcile,
     settleResidentAttendance: residentPlanning.settleAttendance,
     readVillageState,
     mutateVillageState,
@@ -945,6 +956,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["wish", wishService.handler],
         ["personal-mail", personalMail.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
+        ["weekly-agenda", bindActivationService(weeklyAgenda.handler)],
         ["resident-planning", bindActivationService(residentPlanning.handler)],
         ["world-development", bindActivationService(narrative.handler)],
       ],

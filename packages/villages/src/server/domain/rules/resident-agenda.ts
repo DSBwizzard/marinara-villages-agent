@@ -5,6 +5,7 @@ import { agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
 import { influenceSettings, routineDay, validateRoutineDay } from "./owned-routine.js";
 import { routineVenues } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { AGENDA_WEEK_DAYS, shiftAgendaDate } from "./weekly-agenda.js";
 
 export function planRoutineDays(state: VillageState, now: Date): void {
   refreshWorkReservations(state, now);
@@ -40,9 +41,12 @@ export function planRoutineDays(state: VillageState, now: Date): void {
       agenda.plannedDays[key] = blocks;
     }
     const today = agendaDateKey(now);
-    for (const key of Object.keys(agenda.plannedDays)) if (key < today) delete agenda.plannedDays[key];
+    const oldest = agendaDateKey(shiftAgendaDate(now, -AGENDA_WEEK_DAYS));
+    for (const key of Object.keys(agenda.plannedDays)) if (key < oldest) delete agenda.plannedDays[key];
     if (agenda.repairedDays) {
-      agenda.repairedDays = agenda.repairedDays.filter((key) => Object.hasOwn(agenda.plannedDays!, key));
+      agenda.repairedDays = agenda.repairedDays.filter(
+        (key) => key >= today && Object.hasOwn(agenda.plannedDays!, key),
+      );
       if (!agenda.repairedDays.length) delete agenda.repairedDays;
     }
   }

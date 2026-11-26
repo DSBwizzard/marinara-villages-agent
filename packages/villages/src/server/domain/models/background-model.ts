@@ -9,6 +9,7 @@ export type BackgroundKind =
   | "resident-planning"
   | "world-development"
   | "agenda"
+  | "weekly-agenda"
   | "wish"
   | "personal-mail";
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
