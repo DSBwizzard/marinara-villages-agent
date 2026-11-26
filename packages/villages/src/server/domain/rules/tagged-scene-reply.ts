@@ -28,8 +28,8 @@ function plainNarration(content: string): { narration?: Beat[]; issue?: SceneRep
   const paragraphs: string[] = [];
   for (const paragraph of content.trim().split(/\r?\n(?:[^\S\r\n]*\r?\n)+/u)) {
     const text = paragraph.trim();
-    // Keep clear narration before a stand-alone untrusted speaker cue. Its entire tail stays hidden.
-    if (quotedSpeakerHeader.test(text)) {
+    // Keep clear narration before an unverified speech paragraph. Its entire tail stays hidden.
+    if (quotedSpeakerHeader.test(text) || /^["“'‘]/u.test(text.normalize("NFKC"))) {
       if (!paragraphs.length) return { issue: "structured_reply" };
       break;
     }
@@ -79,7 +79,7 @@ export function decodeTaggedSceneReply(
     return ambiguous.has(key) ? undefined : aliases.get(key);
   };
   const newcomers = new Map<string, string>();
-  const ids = new Set(["scene-visit", "remember-fact"]);
+  const ids = new Set(["scene-visit"]);
   const positions: string[] = [];
   const segments: Beat[] = [],
     keep: Record<string, unknown>[] = [],
@@ -185,7 +185,10 @@ export function decodeTaggedSceneReply(
       do {
         id = "effect-" + ++effectIndex;
       } while (ids.has(id));
-      if (isEffectLabel(suppliedId) && !ids.has(suppliedId) && !/^(missing|bad-visit)-/u.test(suppliedId))
+      const mayUseId =
+        suppliedId !== "remember-fact" ||
+        (control === "keep" && readset.requestedMemory && !readset.codeRequestedMemory);
+      if (mayUseId && isEffectLabel(suppliedId) && !ids.has(suppliedId) && !/^(missing|bad-visit)-/u.test(suppliedId))
         id = suppliedId;
       ids.add(id);
       const requires = proposal?.requires;
@@ -199,6 +202,15 @@ export function decodeTaggedSceneReply(
       if (control === "keep") effect.independent = true;
       if (anchor && control === "command") effect.at = anchor.id;
       if (anchor && proposal && !invalid) {
+        if (
+          control === "keep" &&
+          effect.class === "desire" &&
+          effect.for === undefined &&
+          effect.replace === undefined &&
+          anchor.kind === "dialogue" &&
+          effect.owner === anchor.speakerId
+        )
+          effect.for = [effect.owner];
         effect.source ??= [
           {
             segment: anchor.id,

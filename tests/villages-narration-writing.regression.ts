@@ -596,9 +596,13 @@ await runCase("narration-writing/single-request", async () => {
   );
   assert.equal(deepSeekReply.readset.positionedSceneSources, true);
   assert.equal(deepSeekReply.readset.source.input, exact);
-  deepSeek.respondWith("Rain taps the glass.");
+  deepSeek.respondWith('Rain taps the glass.\n\nFootsteps fade from the street.\n\n"Private words," someone says.');
   const opening = await deepSeek.writing.generate(deepSeek.scene, "", "greet");
   assert.equal(opening.readset.taggedSceneReply, true);
+  assert.deepEqual(
+    (opening.raw.segments as { text: string }[]).map(({ text }) => text),
+    ["Rain taps the glass.", "Footsteps fade from the street."],
+  );
   assert.deepEqual(deepSeek.formats, [undefined, undefined]);
   assert.equal(deepSeek.messages().at(-2).content, "");
   const greeting = deepSeek

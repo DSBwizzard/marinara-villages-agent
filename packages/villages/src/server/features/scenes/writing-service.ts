@@ -307,6 +307,8 @@ export function createSceneWriting({
     const residentMovesInReply = mode === "chat";
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
+    const memoryResident = JSON.stringify(requestedMemory?.recipientId ?? "resident-id");
+    const memoryKeep = `{"id":"remember-fact","for":[${memoryResident}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${memoryResident}]}}]}`;
     const npcIntroduction = !context.codeRequestedMemory && !scene.visitorIntroduction;
     const agendaDiscussed =
       /\b(?:agenda|schedule|free|available|tomorrow|tonight|meet|appointment|monday|tuesday|wednesday|thursday|friday|saturday|sunday|noon|midnight|o['’]clock|\d{1,2}(?::\d{2}|\s*[ap]\.?m\.?))\b/iu.test(
@@ -367,7 +369,7 @@ export function createSceneWriting({
       format: blocksFor([
         tagged ? TAGGED_SCENE_FORMAT : nativeCommands ? SCENE_NARRATION_FORMAT : ORDINARY_SCENE_FORMAT,
         tagged
-          ? 'Use an optional [keep]: {"for":["resident-id"],"class":"information","text":"Complete lasting meaning."} after its evidence. Keep only meaningful changes. A Wish uses class:"desire", its owner and actual knowers. Use supplied IDs to revise or close existing meanings. A promise alone does not fulfill a Wish. Private evidence cannot teach another person. Room facts use for:"room". Follow supplied Forget and Correct protections.'
+          ? 'Use an optional [keep]: {"for":["resident-id"],"class":"information","text":"Complete lasting meaning."} after its evidence. For a Wish spoken to the player: [keep]: {"owner":"resident-id","for":["resident-id","player"],"class":"desire","text":"What they want and any conditions."} List only actual knowers, and keep only meaningful changes. Use supplied IDs to revise or close existing meanings. A promise alone does not fulfill a Wish. Private evidence cannot teach another person. Room facts use for:"room". Follow supplied Forget and Correct protections.'
           : nativeCommands
             ? SCENE_NARRATION_KEEP
             : ORDINARY_SCENE_KEEP,
@@ -436,7 +438,7 @@ export function createSceneWriting({
               : narrationNpcCommands(positions),
         !nativeCommands && !scene.visitorIntroduction
           ? tagged
-            ? 'Following needs the resident’s heard decision. Follow their words with [command]: {"type":"move.decide","who":"resident-id","agrees":true}. Omit to for ongoing following; to limits one adjacent crossing. agrees:false stops. trespass:true needs explicit outing-wide sneaking consent.'
+            ? 'A decision to follow uses [!resident-id]: "I’ll come with you." then [command]: {"type":"move.decide","who":"resident-id","agrees":true}. The game moves followers only after a recorded decision. Discuss conditions or decline without starting to follow. Omit to for ongoing following; to limits one adjacent crossing. Use agrees:false to stop. trespass:true needs explicit outing-wide sneaking consent.'
             : "Agreement to accompany: dialogue follow:{agrees:true}, also on spoken asides. Memory alone does not enable following. trespass:true needs explicit outing-wide sneaking consent. Omit to for ongoing following; to limits one adjacent crossing. agrees:false stops. Questions/conditions grant no consent. Use one form per decision. Observed following uses native move.decide with player-seen evidence."
           : "",
         mode === "leave" && input.trim()
@@ -509,7 +511,10 @@ export function createSceneWriting({
               ? "The game records the exact requested fact. Use [speaker-id] [remember]: text to acknowledge it only if the record is accepted."
               : 'Code records the exact requested fact for the named resident. Omit a keep for that fact. To say it was saved, put "requires":["remember-fact"] inside that dialogue or narration segment.'
             : requestedMemory
-              ? `The player explicitly asked to save a fact. Add this required top-level keep entry: {"id":"remember-fact","for":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}],"class":"information","text":"Player said: <exact fact after the colon>","source":[{"input":"<exact fact after the colon>","ground":{"kind":"spoken","to":[${JSON.stringify(requestedMemory.recipientId ?? "resident-id")}]}}]}. Fill in the exact fact from the player submission. Use the ID of the resident who heard it. Put "remember-fact" in requires on any line claiming it was saved.`
+              ? (tagged
+                  ? `The player explicitly asked to save a fact. Use [keep]: ${memoryKeep}. Use [speaker-id] [remember]: text for acknowledgment.`
+                  : `The player explicitly asked to save a fact. Add this required top-level keep entry: ${memoryKeep}. Put "remember-fact" in requires on any line claiming it was saved.`) +
+                " Copy the exact fact from the player submission. Use the ID of the resident who heard it."
               : "",
           !nativeCommands && context.protections.length
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
