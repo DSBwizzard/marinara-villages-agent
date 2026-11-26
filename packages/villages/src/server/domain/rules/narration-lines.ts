@@ -16,6 +16,7 @@ export function narrationLines(
   moves: Pick<ContactMove, "characterId" | "zoneId" | "segment">[],
   playerMoves: { zoneId: string; segment: number }[] = [],
   presentation?: SpriteSelectionContext,
+  onExpressionRejected?: () => void,
 ) {
   memoryRequire(scene.contactGeneration?.venue, "narration needs its captured routing scope");
   const ids = reply.segments.map((row) => "line-" + memoryHash([episodeId, row.id]).slice(0, 32));
@@ -35,7 +36,7 @@ export function narrationLines(
   );
   routeZoneEvents(reply.segments, scene, lines, moves, playerMoves);
   if (scene.pendingNpcAdmissions?.length) fenceIntroductionWitnesses(lines, scene.pendingNpcAdmissions);
-  settleSceneSpriteCues(lines, presentation, episodeId);
+  if (settleSceneSpriteCues(lines, presentation, episodeId)) onExpressionRejected?.();
   const cast = [
     ...new Map(
       [...scene.participants, ...(scene.sceneAttendance?.occupants ?? [])].map((person) => [

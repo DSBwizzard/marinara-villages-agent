@@ -16,6 +16,9 @@ import type { VillageResidentSprite } from "../models/world.js";
 import { memoryHash } from "./memory-integrity.js";
 import { findCardCharacter } from "./visitors.js";
 
+export const SCENE_EXPRESSION_REJECTION =
+  "Villages couldn’t find the requested expression in the captured sprite catalog.";
+
 type SpriteEntry = VillageResidentSprite["expressions"][number];
 type SpriteCatalog = {
   defaultExpressionId?: string;
@@ -88,6 +91,9 @@ export function settleSceneSpriteCues(
     );
     return line;
   });
+  const expressions = visible
+    .flatMap((line) => ("staging" in line ? (line.staging ?? []) : []))
+    .filter((cue) => cue.expression);
   resolveSceneSpriteExpressions(
     visible,
     structuredClone(context?.state ?? {}),
@@ -96,6 +102,7 @@ export function settleSceneSpriteCues(
     (index, id, expression) =>
       Number.parseInt(memoryHash([episodeId, index, id, expression]).slice(0, 8), 16) / 0x1_0000_0000,
   );
+  return expressions.some((cue) => !cue.expression);
 }
 
 function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: boolean) {

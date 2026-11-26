@@ -510,6 +510,12 @@ export function RoomPanel({
           : [],
     [room.liveReplyId, room.lines, fallbackLine],
   );
+  if (replyId && room.replyWarning)
+    errorItems.push({
+      id: "optional:" + replyId,
+      title: "Scene detail",
+      message: room.replyWarning === "expression" ? "Couldn’t show the expression." : "Couldn’t apply a Scene detail.",
+    });
   const replyKey = JSON.stringify([worldScope, room.id, room.zoneArrivalId, replyId]);
   const steps = useMemo(
     () =>
