@@ -6,7 +6,7 @@ import { readVillagerCard } from "../packages/villages/src/server/adapters/engin
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
-import { ORDINARY_SCENE_DIRECTION } from "../packages/villages/src/server/domain/rules/narration-contract.js";
+import { ordinarySceneDirection } from "../packages/villages/src/server/domain/rules/narration-contract.js";
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
@@ -55,7 +55,6 @@ const cases = [
 const controlRevision = "064255fbcb5281a9d65f373248a7044121cd6d3e";
 const controlEnding =
   "Continue from the latest beat. Avoid echoing dialogue or recapping unchanged details unless the player asks or the current beat depends on them. When a resident chooses to act, let them follow through within their abilities and the Scene's rules. End when the player has a natural chance to act or speak. A line of dialogue can end the turn. Use a closing description only when it gives the player something new to respond to.";
-const controlDirection = ORDINARY_SCENE_DIRECTION.replace(/Continue from the latest beat\..*$/u, controlEnding);
 const before = "2026-11-09T09:57:00.000Z";
 const after = "2026-11-09T10:05:00.000Z";
 const commitment = "I promised to open the boathouse at ten. I should leave the garden just before ten.";
@@ -175,16 +174,14 @@ for (const { id, input, review } of cases) {
         "only the admitted resident gets his commitment",
       );
       assert.equal(prompt.includes(wish), id === "disagreement");
-      assert.notEqual(
-        controlDirection,
-        ORDINARY_SCENE_DIRECTION,
-        "the matched prompts must vary their ending guidance",
-      );
+      const direction = ordinarySceneDirection(readset.taggedSceneReply);
+      const controlDirection = direction.replace(/Continue from the latest beat\..*$/u, controlEnding);
+      assert.notEqual(controlDirection, direction, "the matched prompts must vary their ending guidance");
       const candidate = fitted.messages;
-      assert.equal(candidate.filter(({ content }) => content.includes(ORDINARY_SCENE_DIRECTION)).length, 1);
+      assert.equal(candidate.filter(({ content }) => content.includes(direction)).length, 1);
       const control = candidate.map((message) => ({
         ...message,
-        content: message.content.replace(ORDINARY_SCENE_DIRECTION, controlDirection),
+        content: message.content.replace(direction, controlDirection),
       }));
       pairs.push({ id, input, review, at, maxOutputTokens: fitted.maxTokens, control, candidate });
     } finally {
