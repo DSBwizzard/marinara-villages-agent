@@ -95,6 +95,10 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-overview>.${P}-dossier-sheet>h2>svg{display:none}
 .${P}-dossier-overview p,.${P}-dossier-overview ul{margin:0 0 8px}
 .${P}-dossier-warning{padding:10px;border:1px solid var(--menu-warning-line,#c88b8e);background:var(--menu-warning-surface,#593947);color:var(--menu-warning-ink,#ffe0d6)}
+.${P}-agenda-actions.${P}-dossier-warning{border-radius:.5rem}
+.${P}-agenda-warning-copy{flex:1 1 14rem;min-width:0;font-size:1rem;line-height:1.4;overflow-wrap:anywhere}
+.${P}-agenda-warning-copy p{margin:.15rem 0 0}
+.${P}-agenda-actions.${P}-dossier-warning>button{min-height:44px;max-width:100%;flex:none}
 .${P}-dossier-venues,.${P}-dossier-links{display:grid;gap:16px}
 .${P}-dossier-venues article{min-width:0;display:grid;grid-template-columns:110px minmax(0,1fr);gap:16px;align-items:start;border-bottom:1px solid var(--dossier-line);padding-bottom:16px}
 .${P}-dossier-venues article>div:last-child{min-width:0}.${P}-dossier-venues h3{font-size:24px;margin:0}

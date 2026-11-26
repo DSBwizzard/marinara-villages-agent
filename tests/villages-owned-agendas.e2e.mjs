@@ -24,6 +24,19 @@ await withBrowser(browser, async () => {
       endMinute: 960,
       activity: "Sorting the maps and cataloguing new trail markers for the next neighborhood walking tour",
     };
+    const failedAgenda = {
+      id: "agenda-job",
+      instanceId: "agenda-instance",
+      kind: "agenda",
+      subjectId: "mara",
+      status: "failed",
+      error: "Response reached the output limit; explicit retry required.",
+      failure: { cause: "output_limit", stage: "weekly-agenda", requestedOutputTokens: 1040 },
+      attempt: 1,
+      requests: 1,
+    };
+    let agendaJob;
+    let retryBody;
     const resident = { characterId: "mara", agenda: null };
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
@@ -35,6 +48,7 @@ await withBrowser(browser, async () => {
       const url = new URL(route.request().url());
       const path = url.pathname;
       let value = structuredClone(snapshot);
+      if (agendaJob) value.backgroundWork = [agendaJob];
       if (path.endsWith("/agendas") && url.searchParams.has("characterId")) {
         const inspect = url.searchParams.get("inspect") === "true";
         value = {
@@ -59,7 +73,15 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/lorebooks")) value = { books: [] };
       else if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false, verbose: false, effective: false };
-      else if (/generate|regenerate|remap/u.test(path)) paid++;
+      else if (path.endsWith("/agendas/mara/regenerate")) {
+        paid++;
+        agendaJob = failedAgenda;
+        value = { villagers: [resident] };
+      } else if (path.endsWith("/background/retry")) {
+        retryBody = route.request().postDataJSON();
+        agendaJob = { ...failedAgenda, status: "queued", error: "", failure: undefined };
+        value.backgroundWork = [agendaJob];
+      } else if (/generate|regenerate|remap/u.test(path)) paid++;
       await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://villages.test/");
@@ -89,6 +111,24 @@ await withBrowser(browser, async () => {
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
     assert.equal(paid, 0);
     await page.screenshot({ path: resolve("artifacts/owned-agendas-" + width + ".png") });
+    await update.click();
+    const warning = page.getByRole("alert").filter({ hasText: "Couldn’t refresh the Agenda" });
+    await expect(warning).toContainText("The model’s reply was cut short. Showing the saved plans.");
+    await expect(page.getByText("Response reached the output limit", { exact: false })).toHaveCount(0);
+    await expect(label).toBeVisible();
+    const retry = page.getByRole("button", { name: "Retry Agenda", exact: true });
+    await expect(retry).toBeVisible();
+    const retryBox = await retry.boundingBox();
+    assert.ok(retryBox && retryBox.height >= 44 && retryBox.x >= 0 && retryBox.x + retryBox.width <= width);
+    await page.screenshot({ path: resolve("artifacts/agenda-refresh-error-" + width + ".png") });
+    await retry.click();
+    await expect(page.getByRole("status").filter({ hasText: "Preparing Agenda…" })).toBeVisible();
+    await expect(warning).toHaveCount(0);
+    await expect(update).toBeDisabled();
+    assert.equal(paid, 1);
+    assert.equal(retryBody.id, failedAgenda.id);
+    assert.equal(retryBody.expectedInstanceId, failedAgenda.instanceId);
+    assert.equal(retryBody.expectedAttempt, failedAgenda.attempt);
     await label.click();
     await expect(page.getByRole("status").filter({ hasText: block.activity })).toBeVisible();
     await clickCharacterTool(page, "Leave Inspect");
