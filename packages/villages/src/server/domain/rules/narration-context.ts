@@ -52,6 +52,7 @@ import { nativeCircumstanceRoots } from "./native-continuity.js";
 import { sceneRepairOffers } from "./narration-circumstance.js";
 import { sceneSpriteSelection } from "./sprite-expressions.js";
 import { contactPosition } from "./venue-contact.js";
+import { badRequest } from "./errors.js";
 
 type Part = {
   block: VenueWritingBlock;
@@ -200,6 +201,7 @@ export function narrationContinuityContext(
   input: string,
   at: string,
   separateRecallFromEvidence = false,
+  allowExactAssent = false,
 ) {
   memoryRequire(state.seed === scene.villageSeed && scene.zoneId, "Scene continuity scope changed");
   const episodeId = sceneEpisodeId(state.seed, scene.id, operationId);
@@ -788,6 +790,44 @@ export function narrationContinuityContext(
     !/[*_[\]()`:]|^['‘]|\b(?:privately|to myself|in my head)\b/iu.test(fact) &&
     !protections.length &&
     !continuityConstraints(state.continuity, roomReferences).length;
+  let exactOfferAssent: NarrationReadset["exactOfferAssent"];
+  const acceptance = allowExactAssent && /^I accept:[ \t]+([^\r\n]+)$/iu.exec(recallQuery.trim());
+  if (acceptance) {
+    const localActors = actors.filter(({ id }) => local(id));
+    const resident = localActors.length === 1 ? localActors[0] : undefined;
+    const alternatives =
+      resident &&
+      addressed.length <= 1 &&
+      !protections.length &&
+      !continuityConstraints(state.continuity, roomReferences).length
+        ? views.filter(
+            (view) =>
+              view.holder.kind === "actor" &&
+              view.holder.id === "player" &&
+              view.version.text === acceptance[1] &&
+              !view.version.closed &&
+              view.offer?.state === "offered" &&
+              view.offer.proposer.id === resident.id &&
+              view.offer.proposer.incarnation === resident.incarnation &&
+              view.offer.participants.length === 2 &&
+              view.offer.participants.some(({ id }) => id === "player") &&
+              (!recipientId || recipientId === resident.id),
+          )
+        : [];
+    const version = alternatives.length === 1 ? alternatives[0].version.id : undefined;
+    const part =
+      version &&
+      bounded.find((row) =>
+        Object.values(row.sources).some((source) => source.unitId === version && source.actorId === "player"),
+      );
+    const entry =
+      part &&
+      Object.entries(part.sources).find(([, source]) => source.unitId === version && source.actorId === "player");
+    if (!entry || !part || !resident)
+      throw badRequest("Use the exact terms of one open offer while speaking with the resident who made it.");
+    delete part.block.optional;
+    exactOfferAssent = { replace: entry[0], residentId: resident.id };
+  }
   return {
     episodeId,
     actors,
@@ -807,6 +847,7 @@ export function narrationContinuityContext(
     memoryChange,
     requestedMemory,
     codeRequestedMemory,
+    exactOfferAssent,
     parts: bounded,
     recentLore: bounded
       .filter((part) => part.sharedLoreWords)
@@ -847,6 +888,10 @@ export function fittedNarrationReadset(
   const parts = context.parts.filter((part) => evidenceIds.includes(part.block.evidenceId!));
   const citable = parts.filter((part) => !part.readOnly);
   const historical = Object.assign({}, ...citable.map((part) => part.sources)) as Record<string, ContinuityEvidence>;
+  memoryRequire(
+    !context.exactOfferAssent || Object.hasOwn(historical, context.exactOfferAssent.replace),
+    "the exact offer must fit the retained Scene request",
+  );
   const readOnlyKnowledge = parts.filter((part) => part.readOnly).flatMap((part) => Object.values(part.sources));
   // Reserve the remaining episode slots for 32 keeps, 16 command proofs and their native receipts.
   memoryRequire(
@@ -905,6 +950,7 @@ export function fittedNarrationReadset(
     ...(readOnlyKnowledge.length ? { readOnlyKnowledge } : {}),
     ...(context.requestedMemory ? { requestedMemory: context.requestedMemory } : {}),
     ...(context.codeRequestedMemory ? { codeRequestedMemory: true as const } : {}),
+    ...(context.exactOfferAssent ? { exactOfferAssent: context.exactOfferAssent } : {}),
     admission: {
       seed: state.seed,
       // The Scene request ID is local to one visit. Common continuity uses its Episode identity.
