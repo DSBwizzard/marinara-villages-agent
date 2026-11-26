@@ -4,9 +4,10 @@ import { parseSceneObject } from "./scene-json-syntax.js";
 import { MODEL_JSON_MAX_CHARACTERS, modelJsonWithinBounds } from "./json-reply.js";
 import { bindSceneSourcePositions } from "./narration-sources.js";
 import type { NarrationReadset } from "../models/narration-model.js";
+import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
 export const TAGGED_SCENE_FORMAT = [
-  "Write one Scene beat per line. Narration: text or [speaker-id]: spoken text. Carry the fiction in these lines. Omit code fences.",
+  "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. Omit code fences.",
   "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
   "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
   "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
@@ -19,9 +20,46 @@ const isEffectLabel = (value: unknown): value is string =>
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
 type Beat = { id: string; kind: "narration" | "dialogue"; text: string; requires: string[] } & Record<string, unknown>;
 
-/** Only explicit narration and admitted dialogue can become visible. Control lines never become prose. */
-export function readTaggedSceneReply(content: string, readset: NarrationReadset): Record<string, unknown> | null {
-  if (content.length > MODEL_JSON_MAX_CHARACTERS) return null;
+function plainNarration(content: string): { narration?: Beat[]; issue?: SceneReplyIssue } {
+  const lines = content
+    .trim()
+    .split(/\r?\n/u)
+    .map((line) => line.trim());
+  // Only a wholly prose reply can use the default. Mixed or damaged structured replies never enter this path.
+  if (
+    /[\[\]{}<>\x60]/u.test(content.normalize("NFKC")) ||
+    lines.some((line) => {
+      const syntax = line
+        .normalize("NFKC")
+        .replace(/^(?:[-+*]|\d+[.)])\s+/u, "")
+        .replace(/[*_~]/gu, "")
+        .trim();
+      return /^[#"“'‘]|^[\p{L}\p{N}][\p{L}\p{M}\p{N} .'’()-]{0,55}:/u.test(syntax);
+    })
+  )
+    return { issue: "structured_reply" };
+  const paragraphs = lines
+    .join("\n")
+    .split(/\n{2,}/u)
+    .filter((text) => /\p{L}/u.test(text));
+  if (paragraphs.length > 24 || paragraphs.some((text) => text.length > NARRATION_SEGMENT_CHARACTERS))
+    return { issue: "reply_limits" };
+  if (!paragraphs.length) return {};
+  return {
+    narration: paragraphs.map((text, index) => ({ id: "beat-" + (index + 1), kind: "narration", text, requires: [] })),
+  };
+}
+
+/** Explicit controls and speaker labels never become untagged narration. */
+export function decodeTaggedSceneReply(
+  content: string,
+  readset: NarrationReadset,
+): {
+  value: Record<string, unknown> | null;
+  repaired?: true;
+  issue?: SceneReplyIssue;
+} {
+  if (content.length > MODEL_JSON_MAX_CHARACTERS) return { value: null, issue: "reply_limits" };
   const scene = readset.source.scene;
   const speakers = new Set(scene.contactGeneration?.actorIds ?? scene.activeIds);
   const newcomers = new Map<string, string>();
@@ -35,6 +73,12 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
   let anchor: Beat | undefined;
   let marked = false;
   let effectIndex = 0;
+  let issue: SceneReplyIssue | undefined;
+  const parsePrivateRecord = (text: string) => {
+    const record = modelJsonWithinBounds(text) ? parseSceneObject(text) : null;
+    if (!record) issue = "invalid_private_record";
+    return record;
+  };
   const bind = (beat: Beat, id: string) => {
     beat.requires = [...beat.requires.filter((value) => value !== "missing-" + beat.id), id];
   };
@@ -42,9 +86,12 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
     const line = value.trim();
     if (!line) continue;
     if (line.startsWith("```")) break;
-    const header = /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*):\s*(.*)$/iu.exec(line);
+    const header = /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*)\s*:\s*(.*)$/iu.exec(line);
     if (!header) {
-      if (line.startsWith("[") && controlPrefix.test(line.slice(1))) break;
+      if (line.startsWith("[") && controlPrefix.test(line.slice(1))) {
+        issue = "invalid_private_record";
+        break;
+      }
       anchor = undefined;
       continue;
     }
@@ -53,9 +100,12 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
     const control = speaker?.trim().toLowerCase();
     const reserved = controlPrefix.exec(speaker ?? "")?.[1].toLowerCase();
     if (reserved) {
-      if (control !== reserved || meta.length) break;
+      if (control !== reserved || meta.length) {
+        issue = "invalid_private_record";
+        break;
+      }
       if (control === "cue") {
-        const cue = modelJsonWithinBounds(text) ? parseSceneObject(text) : null;
+        const cue = parsePrivateRecord(text);
         if (!cue) break;
         if (
           anchor &&
@@ -74,7 +124,7 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
         continue;
       }
       if (control === "halt") {
-        const proposed = modelJsonWithinBounds(text) ? parseSceneObject(text) : null;
+        const proposed = parsePrivateRecord(text);
         if (!proposed) break;
         if (proposed) {
           try {
@@ -104,7 +154,7 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
         continue;
       }
       const list = control === "keep" ? keep : commands;
-      const proposal = modelJsonWithinBounds(text) ? parseSceneObject(text) : null;
+      const proposal = parsePrivateRecord(text);
       if (list.length >= (control === "keep" ? 32 : 16) || (!anchor && control === "command")) {
         if (!proposal) break;
         continue;
@@ -168,7 +218,10 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
     } else {
       const speakerId = marked ? speaker.slice(1) : speaker;
       const admission = newcomers.get(speakerId);
-      if (speakerId === "player" || (!speakers.has(speakerId) && !admission)) continue;
+      if (speakerId === "player" || (!speakers.has(speakerId) && !admission)) {
+        issue = "unknown_speaker";
+        continue;
+      }
       if (admission) requirements.push(admission);
       const beat: Beat = { id, kind: "dialogue", speakerId, text, requires: requirements };
       let valid = true;
@@ -195,10 +248,17 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
         else valid = false;
       }
       if (valid) anchor = beat;
+      else issue = "invalid_dialogue_tag";
     }
     if (anchor) segments.push(anchor);
   }
-  if (!segments.length && !halt) return null;
+  if (!segments.length && !halt) {
+    const plain = plainNarration(content);
+    const narration = plain.narration;
+    if (narration) return { value: { segments: narration }, repaired: true };
+    if (content.trimStart().startsWith("\x60\x60\x60")) issue = "fenced_reply";
+    return { value: null, issue: issue ?? plain.issue ?? "no_playable_lines" };
+  }
   // Bind positional citations before any invalid beat can be removed or change a later line's number.
   const all = positions.map((id) => segments.find((beat) => beat.id === id) ?? { id });
   const raw = bindSceneSourcePositions(
@@ -212,7 +272,7 @@ export function readTaggedSceneReply(content: string, readset: NarrationReadset)
     true,
     readset.recognizeDirectOfferSpeech,
   );
-  return { ...raw, segments };
+  return { value: { ...raw, segments } };
 }
 
 /** A failed crossing also invalidates later prose written against the tentative positions. */

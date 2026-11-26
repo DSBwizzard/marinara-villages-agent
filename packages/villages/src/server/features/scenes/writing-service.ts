@@ -71,7 +71,7 @@ import { addressedSceneResidents, zoneEventHearingContext, zoneEventScene } from
 import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
-import { readTaggedSceneReply, TAGGED_SCENE_FORMAT } from "../../domain/rules/tagged-scene-reply.js";
+import { decodeTaggedSceneReply, TAGGED_SCENE_FORMAT } from "../../domain/rules/tagged-scene-reply.js";
 import type { ContinuityEvidence } from "../../domain/models/continuity-model.js";
 
 export interface SceneWritingPorts {
@@ -407,7 +407,7 @@ export function createSceneWriting({
               ? "For dialogue to the player from these doorway speakers, add [to player]: "
               : 'Doorway dialogue to the player: use targetId:"player" with these IDs: ') +
             JSON.stringify(scene.contactGeneration.doorwayVoiceIds) +
-            ". They stay in their Zone. Hearing grants no sight or entry."
+            ". If they answer, put their words on that dialogue line. They stay in their Zone. Hearing, an open door, and gestures grant no sight or entry. Use a listed invitation option for permission."
           : "",
         canInviteForVisit
           ? tagged
@@ -582,7 +582,7 @@ export function createSceneWriting({
           : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. End crossing attempts before entry despite prior prose. `) +
         attendanceDirection +
         (tagged
-          ? "Use Narration: text or [speaker-id]: text. Put each lasting change on its own tag line."
+          ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Put each lasting change on its own tag line."
           : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );
     if (loreInspection) {
@@ -715,12 +715,14 @@ export function createSceneWriting({
         completion = freshReply ? await complete() : await venueCheckpoint(completionStage, complete);
       }
       const tagged = request.readset.taggedSceneReply === true;
+      const taggedReply =
+        tagged && ["stop", "end_turn"].includes(completion.finishReason ?? "")
+          ? decodeTaggedSceneReply(completion.content ?? "", request.readset)
+          : undefined;
       const parsed = tagged
         ? {
-            value: ["stop", "end_turn"].includes(completion.finishReason ?? "")
-              ? readTaggedSceneReply(completion.content ?? "", request.readset)
-              : null,
-            repaired: false,
+            value: taggedReply?.value ?? null,
+            repaired: !!taggedReply?.repaired,
             edits: 0,
             jsonIssue: undefined,
           }
@@ -757,6 +759,7 @@ export function createSceneWriting({
             (["stop", "end_turn"].includes(completion.finishReason ?? "")
               ? "unexpected_envelope"
               : "unsupported_finish");
+        if (failure.cause === "invalid_reply" && taggedReply?.issue) diagnostics.replyIssue = taggedReply.issue;
         if (!freshReply)
           await rejectVenueCompletion(
             { ...request.model, reason: "invalid-gm-response" },

@@ -845,7 +845,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     sessionId: "browser",
     mode: "chat",
     targetId: "",
-    message: 'I knock and call to Mara, "May I come in?"',
+    message: 'I call, "Mara, may I come in?"',
     expectedSceneRevision: host.scene().sceneRevision,
   });
   const send = (id: string, payload = input()) =>

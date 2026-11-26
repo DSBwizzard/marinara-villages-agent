@@ -41,7 +41,7 @@ import {
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import {
   pruneTaggedSceneReply,
-  readTaggedSceneReply,
+  decodeTaggedSceneReply,
 } from "../packages/villages/src/server/domain/rules/tagged-scene-reply.js";
 const at = "2026-11-10T08:00:00.000Z";
 function fixture() {
@@ -151,7 +151,7 @@ await runCase("npc-admission/tagged-turn", () => {
       '[KeEp]: {"text":"Private broken note"',
       "Narration: This could be a continuation of the private note.",
     ].join("\n");
-    const raw = readTaggedSceneReply(content, readset);
+    const raw = decodeTaggedSceneReply(content, readset).value;
     assert(raw);
     const publication = { raw, readset, responseDigest: memoryHash(content) };
     const result = acceptNarration(f.state, publication, "tagged", at);
@@ -189,7 +189,7 @@ await runCase("npc-admission/tagged-turn", () => {
   }
   const f = fixture(),
     readset = f.publication({}).readset;
-  const raw = readTaggedSceneReply(
+  const raw = decodeTaggedSceneReply(
     [
       "Narration: Before crossing.",
       "Narration!: Someone crosses.",
@@ -198,17 +198,38 @@ await runCase("npc-admission/tagged-turn", () => {
       "Narration: From the new position.",
     ].join("\n"),
     readset,
-  )!;
-  const privateTail = readTaggedSceneReply(
+  ).value!;
+  const privateTail = decodeTaggedSceneReply(
     "Narration: You hear rain.\n[keep] [aside]: {\nNarration: This could be an unfinished private note.",
     readset,
-  )!;
+  ).value!;
   assert.deepEqual(
     (privateTail.segments as { text: string }[]).map((line) => line.text),
     ["You hear rain."],
   );
-  assert.equal(readTaggedSceneReply("[command]: {\nNarration: Private control continuation.", readset), null);
-  assert.equal(readTaggedSceneReply("[ !keep: {\nNarration: Private control continuation.", readset), null);
+  assert.equal(decodeTaggedSceneReply("[command]: {\nNarration: Private control continuation.", readset).value, null);
+  assert.equal(decodeTaggedSceneReply("[ !keep: {\nNarration: Private control continuation.", readset).value, null);
+  const plain = decodeTaggedSceneReply("Light moves across the glass.\n\nA faint creak comes from the sign.", readset);
+  assert.equal(plain.repaired, true);
+  assert.deepEqual(
+    (plain.value?.segments as { kind: string; text: string }[]).map(({ kind, text }) => [kind, text]),
+    [
+      ["narration", "Light moves across the glass."],
+      ["narration", "A faint creak comes from the sign."],
+    ],
+  );
+  for (const [content, issue] of [
+    ["[unknown]: Private dialogue.\nA continuation.", "unknown_speaker"],
+    ['[keep]: {"text":"secret"\nA continuation.', "invalid_private_record"],
+    ['A safe-looking paragraph.\n{"commands":[]}', "structured_reply"],
+    ["Mara: Private dialogue.\nA continuation.", "structured_reply"],
+    ["**Mara**: Private dialogue.", "structured_reply"],
+    ["- Mara: Private dialogue.", "structured_reply"],
+    ["Mara：Private dialogue.", "structured_reply"],
+    ["**Mara (whispering):** Private dialogue.", "structured_reply"],
+    ["<think>Private notes.</think>", "structured_reply"],
+  ])
+    assert.deepEqual(decodeTaggedSceneReply(content, readset), { value: null, issue });
   const pruned = pruneTaggedSceneReply(raw, new Set(["bad"]))!;
   assert.deepEqual(
     (pruned.segments as { text: string }[]).map((line) => line.text),

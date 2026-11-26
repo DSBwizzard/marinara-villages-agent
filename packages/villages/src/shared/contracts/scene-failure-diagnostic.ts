@@ -106,11 +106,27 @@ export function readSceneJsonIssue(value: unknown): SceneJsonIssue | undefined {
   return typeof value === "string" && Object.hasOwn(sceneJsonIssues, value) ? (value as SceneJsonIssue) : undefined;
 }
 
+export const sceneReplyIssues = {
+  no_playable_lines: "no usable narration or dialogue",
+  fenced_reply: "the reply starts with a code fence",
+  structured_reply: "the reply contains unrecognized markup or structured data",
+  unknown_speaker: "dialogue uses a speaker the Scene did not admit",
+  invalid_dialogue_tag: "a dialogue tag or recipient was invalid",
+  invalid_private_record: "a private record was malformed",
+  reply_limits: "the reply exceeded parser limits",
+} as const;
+
+export type SceneReplyIssue = keyof typeof sceneReplyIssues;
+export function readSceneReplyIssue(value: unknown): SceneReplyIssue | undefined {
+  return typeof value === "string" && Object.hasOwn(sceneReplyIssues, value) ? (value as SceneReplyIssue) : undefined;
+}
+
 export type SceneFailureDiagnostic = {
   checks: { code: string; path: (string | number)[]; expected?: string }[];
   rejected: number;
   parseStatus?: string;
   jsonIssue?: SceneJsonIssue;
+  replyIssue?: SceneReplyIssue;
   finishReason?: string;
   responseLength?: number;
   requestedOutputTokens?: number;
@@ -155,7 +171,9 @@ export function sceneFailureDiagnostic(value: unknown): SceneFailureDiagnostic |
     rejected,
     checks,
     parseStatus: row.parseStatus && parseStatuses.has(row.parseStatus) ? row.parseStatus : undefined,
-    ...(row.parseStatus === "invalid" ? { jsonIssue: readSceneJsonIssue(row.jsonIssue) } : {}),
+    ...(row.parseStatus === "invalid"
+      ? { jsonIssue: readSceneJsonIssue(row.jsonIssue), replyIssue: readSceneReplyIssue(row.replyIssue) }
+      : {}),
     finishReason: row.finishReason && finishReasons.has(row.finishReason) ? row.finishReason : undefined,
     responseLength: count(row.responseLength),
     requestedOutputTokens: count(row.requestedOutputTokens),

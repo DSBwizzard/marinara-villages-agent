@@ -571,14 +571,13 @@ try {
   assert.equal(readyEntrance.visitEventOpening, true);
   assert.deepEqual(readyEntrance.activeIds, []);
   answer = {
-    content: 'Narration: A gust rattles the shutters.\n[keep]: {"text":\nNarration: PRIVATE PLACEHOLDER',
+    content: "A gust rattles the shutters.",
     finishReason: "stop",
   };
   const greetedEntrance = (await request("/rooms/greet", { sessionId: placeArrival.id })).session;
   assert.equal(greetedEntrance.status, "active");
   assert.equal(completions, beforeDisabled + 1);
   assert.match(JSON.stringify(greetedEntrance.lines), /gust rattles the shutters/);
-  assert.doesNotMatch(JSON.stringify(greetedEntrance.lines), /PRIVATE PLACEHOLDER/);
   assert.equal(greetedEntrance.zoneId, "exterior");
   await request("/rooms/greet", { sessionId: placeArrival.id });
   assert.equal(completions, beforeDisabled + 1, "the saved opening never dispatches again");

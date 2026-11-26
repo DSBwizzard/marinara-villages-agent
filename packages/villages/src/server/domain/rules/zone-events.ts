@@ -121,21 +121,18 @@ export function zoneEventScene(
         contact.characterZoneId === contactPosition(scene, person.characterId),
     ),
   );
-  // Knocking can get an answer from an adjacent public entrance. It never grants sight or entry.
+  // A knock or a direct address can get an answer at an adjacent public doorway.
+  const publicDoorway = new Set(
+    scene.zoneId === "exterior" || scene.area === "outside" || intent.zoneId
+      ? venueZones(sceneLayoutVenue(venue, scene))
+          .filter((zone) => zone.kind === "public" && !zone.closed && (!intent.zoneId || zone.id === intent.zoneId))
+          .map((zone) => zone.id)
+      : [],
+  );
+  const atPublicDoorway = ({ characterId }: { characterId: string }) =>
+    publicDoorway.has(contactPosition(scene, characterId));
   const action = (intent.message ?? "").replace(/"[^"]*"|“[^”]*”/gu, "");
-  const knocked =
-    (scene.zoneId === "exterior" || scene.area === "outside" || intent.zoneId) &&
-    /\bknock(?:s|ed|ing)?\b/iu.test(action)
-      ? near.filter((person) =>
-          venueZones(sceneLayoutVenue(venue, scene)).some(
-            (zone) =>
-              zone.id === contactPosition(scene, person.characterId) &&
-              zone.kind === "public" &&
-              !zone.closed &&
-              (!intent.zoneId || zone.id === intent.zoneId),
-          ),
-        )
-      : [];
+  const knocked = /\bknock(?:s|ed|ing)?\b/iu.test(action) ? near.filter(atPublicDoorway) : [];
   const hosts = knocked.filter(({ characterId }) => venue.access?.managerIds.includes(characterId));
   const opening = hosts.length === 1 ? hosts : knocked.length === 1 ? knocked : [];
   const doorwayVoice = [
@@ -143,7 +140,7 @@ export function zoneEventScene(
       [
         ...established,
         ...opening,
-        ...named.filter(({ characterId }) => characterId === intent.targetId || calling),
+        ...named.filter((person) => person.characterId === intent.targetId || calling || atPublicDoorway(person)),
       ].map(({ characterId }) => characterId),
     ),
   ];

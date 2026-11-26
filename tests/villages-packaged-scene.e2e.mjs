@@ -297,6 +297,7 @@ await withBrowser({ close: server.stop }, async () => {
     await expect(page.getByText("Anonymous report copied.")).toBeVisible();
     const parserReport = await page.evaluate(() => window.sceneReport);
     assert.match(parserReport, /Cause: invalid_reply/);
+    assert.match(parserReport, /Reply parser: a private record was malformed \(invalid_private_record\)/);
     assert.match(parserReport, /parse invalid/);
     assert.doesNotMatch(parserReport, /Private parser text|Private replacement|Private draft|Mara|The Mill/i);
     assert.equal(turns.length, nextTurn, "reload never submits the failed reply");
