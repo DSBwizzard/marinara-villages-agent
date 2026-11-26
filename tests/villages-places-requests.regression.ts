@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { packagedSceneServer } from "./fixtures/packaged-scene-server.fixture.js";
+import { authorVillageFixture, storedVillage } from "./helpers/village-storage.fixture.js";
 
 const fixture = await packagedSceneServer();
 try {
@@ -34,7 +35,7 @@ try {
       content: JSON.stringify(
         input.intent === "A duck"
           ? { place: null }
-          : { place: { name: "Nearby garden", description: "A public garden beside the road." } },
+          : { place: { name: input.intent || "Nearby garden", description: "A public garden beside the road." } },
       ),
       finishReason: "stop",
     } as any;
@@ -55,21 +56,30 @@ try {
   assert.equal(duck.json().placeId, "", "No location is a valid result");
   failures = 1;
   const beforeRetry = calls;
-  const retried = await explore("retry-once");
-  assert.equal(retried.json().status, "ready", retried.body);
-  assert.equal(calls, beforeRetry + 2, "One failed completion gets one automatic retry");
-  await explore("retry-once");
-  assert.equal(calls, beforeRetry + 2, "Replaying an admitted request makes no additional call");
+  const rejected = await explore("provider-failure");
+  assert.equal(rejected.json().status, "failed", rejected.body);
+  assert.equal(calls, beforeRetry + 1, "A provider failure does not dispatch Explore again");
+  await explore("provider-failure");
+  assert.equal(calls, beforeRetry + 1, "Replaying an admitted request makes no additional call");
+  const another = await explore("new-action", "A duck");
+  assert.equal(another.json().status, "ready", another.body);
+  assert.equal(calls, beforeRetry + 2, "A new Explore action can dispatch again");
   invalid = true;
   const beforeInvalid = calls;
-  const repaired = await explore("invalid-output");
-  assert.equal(repaired.json().status, "ready", repaired.body);
-  assert.equal(calls, beforeInvalid + 2, "An unusable answer also receives just one retry");
-  failures = 1;
+  const malformed = await explore("invalid-output");
+  assert.equal(malformed.json().status, "failed", malformed.body);
+  assert.equal(calls, beforeInvalid + 1, "An unusable answer receives no automatic retry");
   const beforeShared = calls;
-  const shared = await Promise.all([explore("shared-retry"), explore("shared-retry"), explore("shared-retry")]);
+  const shared = await Promise.all([
+    explore("shared", "A greenhouse"),
+    explore("shared", "A greenhouse"),
+    explore("shared", "A greenhouse"),
+  ]);
   for (const result of shared) assert.equal(result.json().status, "ready", result.body);
-  assert.equal(calls, beforeShared + 2, "Duplicate requests join the same successful retry");
+  const sharedIds = shared.map((result) => result.json().placeId);
+  assert.ok(sharedIds[0]);
+  assert.equal(new Set(sharedIds).size, 1, "Concurrent copies recover the same discovery");
+  assert.equal(calls, beforeShared + 1, "Duplicate requests share one dispatch");
   failures = 100;
   const beforeFailure = calls;
   const failed = await Promise.all([explore("give-up"), explore("give-up"), explore("give-up")]);
@@ -78,9 +88,38 @@ try {
     assert.equal(result.json().status, "failed");
     assert.doesNotMatch(result.body, /private provider|error/iu);
   }
-  assert.equal(calls, beforeFailure + 2, "Duplicate requests share the same two-dispatch budget");
+  assert.equal(calls, beforeFailure + 1, "Duplicate failed requests still share one dispatch");
   await explore("give-up");
-  assert.equal(calls, beforeFailure + 2, "Failed requests cannot resume or purchase a third response");
+  assert.equal(calls, beforeFailure + 1, "Failed requests cannot purchase another response");
+
+  const editOperation = (id: string, status: "started" | "failed", attempt: number) => {
+    const row = fixture.records.get("villages-village");
+    const world = storedVillage(fixture.records);
+    Object.assign(world.worldPlaces.operations[id], { status, attempt });
+    world.worldPlaces.revision++;
+    row.data = authorVillageFixture(fixture.records, world);
+    row.revision++;
+  };
+  editOperation("give-up", "started", 1);
+  assert.equal((await explore("give-up")).json().status, "failed", "An uncertain receipt cannot dispatch again");
+  editOperation("give-up", "started", 2);
+  assert.equal((await explore("give-up")).json().status, "failed", "An older second attempt can only recover a result");
+  assert.equal(calls, beforeFailure + 1);
+
+  editOperation("duck", "failed", 1);
+  fixture.model.fitContext = () => {
+    throw new Error("The saved result should bypass provider preparation");
+  };
+  assert.equal((await explore("duck", "A duck")).json().status, "ready", "A failed operation can adopt a saved result");
+
+  const rewound = storedVillage(fixture.records);
+  delete rewound.worldPlaces.operations.duck;
+  rewound.worldPlaces.revision++;
+  const rowAfterReplay = fixture.records.get("villages-village");
+  rowAfterReplay.data = authorVillageFixture(fixture.records, rewound);
+  rowAfterReplay.revision++;
+  assert.equal((await explore("duck", "A new grove")).json().status, "failed", "A rewind cannot rebind a paid result");
+  assert.equal(calls, beforeFailure + 1);
 } finally {
   await fixture.stop();
 }

@@ -28,6 +28,7 @@ import {
 } from "./narration-sources.js";
 import { selectSceneEffects, type SceneEffectResult } from "./scene-acceptance.js";
 import { narrationLines } from "./narration-lines.js";
+import { SCENE_EXPRESSION_REJECTION } from "./sprite-expressions.js";
 import { admitNpcParticipants, bindNpcReferences, type NpcAdmission } from "./npc-participation.js";
 import { findLocation, findNpc } from "./places.js";
 import { venueDesignHash } from "./project-structure.js";
@@ -215,6 +216,7 @@ export function acceptNarrationContinuity(
     movementDependencies.every((id) => native.effects.some((effect) => effect.id === id)),
     "movement has no owning native effect",
   );
+  let expressionRejected = false;
   const source: NarrationSourceContext = {
     ...readset.source,
     scene,
@@ -227,6 +229,9 @@ export function acceptNarrationContinuity(
       native.moves,
       native.playerMoves,
       readset.presentation,
+      () => {
+        expressionRejected = true;
+      },
     ),
     moves: [
       ...native.moves,
@@ -991,6 +996,9 @@ export function acceptNarrationContinuity(
       .filter((id) => native.receipts[id])
       .map((id) => ["native:" + native.receipts[id].id, (native.sources[id] ?? []).map(continuitySourceUnit)]),
   );
+  const rejected = expressionRejected
+    ? [...selection.rejected, { id: "!sprite-expression", reason: SCENE_EXPRESSION_REJECTION }]
+    : selection.rejected;
   const episode: AcceptedEpisode = {
     format: 1,
     id: source.episodeId,
@@ -1013,7 +1021,7 @@ export function acceptNarrationContinuity(
     segments: source.lines,
     grounding: [...grounding.values()],
     continuityVersionIds: versions.map((row) => row.id),
-    ...(selection.rejected.length ? { rejectedEffects: selection.rejected } : {}),
+    ...(rejected.length ? { rejectedEffects: rejected } : {}),
     offered: [
       ...readset.offered,
       ...readset.npcCandidates
@@ -1049,5 +1057,5 @@ export function acceptNarrationContinuity(
   }
   state.residentPlans = scheduledWorld.residentPlans;
   state.villagers = scheduledWorld.villagers;
-  return { ...selection, episode: episodes.records.at(-1)! };
+  return { ...selection, rejected, episode: episodes.records.at(-1)! };
 }
