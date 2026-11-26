@@ -7,7 +7,7 @@ import type {
   PlaceSummary,
 } from "../../../shared/contracts/places.js";
 import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
-import { request, messageFrom } from "../../shared/api.js";
+import { request, messageFrom, VillageApiError } from "../../shared/api.js";
 import { useVillageActivity } from "../../shared/activity.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
@@ -48,6 +48,7 @@ export function PlacesDirectory({
   const [cursor, setCursor] = useState("");
   const [result, setResult] = useState<{ key: string; page: PlaceDirectory } | null>(null);
   const [error, setError] = useState("");
+  const [exploreError, setExploreError] = useState("");
   const [intent, setIntent] = useState("");
   const [noNewPlace, setNoNewPlace] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -113,6 +114,7 @@ export function PlacesDirectory({
   const select = async (place: PlaceSummary) => {
     const ticket = ++owner.navigation;
     setError("");
+    setExploreError("");
     if (place.venue) {
       const venue = snapshot.settings.venues.find((row) => row.id === place.id);
       if (venue) onLocation(venue);
@@ -138,7 +140,9 @@ export function PlacesDirectory({
     const ticket = ++owner.navigation;
     setBusy(true);
     setError("");
+    setExploreError("");
     setNoNewPlace(false);
+    let opening = false;
     try {
       const result = await request<PlaceOperationView>("/places/explore", {
         method: "POST",
@@ -149,11 +153,16 @@ export function PlacesDirectory({
           intent,
         }),
       });
-      if (result.status !== "ready" || !owner.mounted) return;
+      if (!owner.mounted) return;
+      if (result.status !== "ready") {
+        if (ticket === owner.navigation) setExploreError("Couldn’t explore this map.");
+        return;
+      }
       setRefresh((n) => n + 1);
       if (ticket !== owner.navigation) return;
       if (!result.placeId) setNoNewPlace(true);
       else {
+        opening = true;
         const row = await request<PlaceDetail | { promoted: true; id: string }>(
           "/places/" + encodeURIComponent(result.placeId),
         );
@@ -161,8 +170,22 @@ export function PlacesDirectory({
         if ("promoted" in row) setNoNewPlace(true);
         else onLocation(row.location);
       }
-    } catch {
-      // Exploration returns to idle after the server's existing bounded retry.
+    } catch (cause) {
+      if (!owner.mounted) return;
+      const refused =
+        cause instanceof VillageApiError &&
+        cause.status >= 400 &&
+        cause.status < 500 &&
+        cause.code !== "RESPONSE_READ_FAILED";
+      if (!opening && !refused) setRefresh((n) => n + 1);
+      if (ticket === owner.navigation)
+        setExploreError(
+          opening
+            ? "Couldn’t open the location."
+            : refused
+              ? "Couldn’t explore this map."
+              : "Couldn’t confirm the discovery.",
+        );
     } finally {
       owner.exploring = false;
       if (owner.mounted) setBusy(false);
@@ -260,7 +283,7 @@ export function PlacesDirectory({
         </form>
         {busy ? <p role="status">Exploring…</p> : null}
         {noNewPlace ? <p role="status">No new location found.</p> : null}
-        {error ? <p role="alert">{error}</p> : null}
+        {exploreError || error ? <p role="alert">{exploreError || error}</p> : null}
         {!page && loading ? <p role="status">Loading…</p> : null}
         {page && page.total === 0 ? (
           <p role="status">{search || filterMap || kind !== "all" ? "No matching locations." : "No locations yet."}</p>

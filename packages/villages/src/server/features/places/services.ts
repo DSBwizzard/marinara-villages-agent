@@ -11,7 +11,8 @@ import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
-import { completeWithRoom } from "../generation/model-requests.js";
+import { completeWithRoom, reopenSavedResponse } from "../generation/model-requests.js";
+import { mutateDocument } from "../../adapters/storage/document-store.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { badRequest, conflict, notFound, safeFailureMessage } from "../../domain/rules/errors.js";
@@ -180,7 +181,8 @@ export async function generatePlace(value: unknown, placeId?: string) {
   const fingerprint = JSON.stringify([kind, placeId ?? "", input.mapId, input.intent, input.expectedRevision]);
   let operation = world.worldPlaces.operations[input.requestId];
   if (operation && operation.fingerprint !== fingerprint) throw conflict("This request ID was already used.");
-  if (operation && operation.status !== "started") return publicOperation(operation);
+  if (operation && (operation.status === "ready" || (kind === "prepare" && operation.status === "failed")))
+    return publicOperation(operation);
   if (!operation) {
     let inspection: LoreInspection | undefined;
     const lore = await readVillageLore(
@@ -247,6 +249,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
     );
   }
   let admitted = operation!;
+  if (admitted.status === "ready") return publicOperation(admitted);
   const packet = JSON.parse(admitted.messages[1].content) as {
     relatedPlaces: { id: string }[];
     knownPeople: { id: string }[];
@@ -287,45 +290,61 @@ export async function generatePlace(value: unknown, placeId?: string) {
     );
     return true;
   };
+  let canRecoverPublication = false;
   try {
-    if (admitted.attempt > 2) throw conflict("This exploration attempt has ended.");
-    const model = await villagesLanguageModels().resolveForRequest({ connectionId: admitted.connectionId });
-    const fitted = model.fitContext(admitted.messages, { maxTokens: 4096 });
-    if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(admitted.messages))
-      throw badRequest("The Place request does not fit the System context. No request was made.");
-    await recordLoreUse(admitted.lore, kind === "prepare" ? "Place preparation" : "Place discovery");
-    let completion;
-    for (;;) {
-      try {
-        completion = await completeWithRoom(model, admitted.messages, Math.min(4096, fitted.maxTokens ?? 4096), {
-          temperature: 0.3,
-          responseFormat: { type: "json_object" },
-          savedRequest: {
-            key: `place:${world.seed}:${admitted.id}:${admitted.attempt}`,
-            retry: false,
-            valid,
-          },
-        });
-        if (!valid(completion)) throw badRequest("Incomplete Place response.");
-        break;
-      } catch (error) {
-        if (admitted.attempt >= 2) throw error;
-        const attempt = admitted.attempt;
-        await mutateVillageState(
-          (state) => {
-            const saved = state.worldPlaces.operations[admitted.id];
-            if (state.seed !== world.seed || !saved) throw conflict("This request already changed.");
-            if (saved.attempt === attempt && saved.status === "started") {
-              saved.attempt++;
-              state.worldPlaces.revision++;
-            }
-            admitted = saved;
-          },
-          { memories: true },
-        );
-        if (admitted.status !== "started") return publicOperation(admitted);
-      }
+    let completion =
+      kind === "explore"
+        ? await reopenSavedResponse(
+            mutateDocument,
+            `place:${world.seed}:${admitted.id}:${admitted.attempt}`,
+            admitted.messages,
+          )
+        : undefined;
+    if (!completion && kind === "explore") {
+      if (admitted.status === "failed") return publicOperation(admitted);
+      // An older build could advance the attempt before reaching its provider.
+      if (admitted.attempt !== 1) throw conflict("This exploration attempt has ended.");
     }
+    if (!completion) {
+      if (admitted.attempt > 2) throw conflict("This exploration attempt has ended.");
+      const model = await villagesLanguageModels().resolveForRequest({ connectionId: admitted.connectionId });
+      const fitted = model.fitContext(admitted.messages, { maxTokens: 4096 });
+      if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(admitted.messages))
+        throw badRequest("The Place request does not fit the System context. No request was made.");
+      await recordLoreUse(admitted.lore, kind === "prepare" ? "Place preparation" : "Place discovery");
+      for (;;) {
+        try {
+          completion = await completeWithRoom(model, admitted.messages, Math.min(4096, fitted.maxTokens ?? 4096), {
+            temperature: 0.3,
+            responseFormat: { type: "json_object" },
+            savedRequest: {
+              key: `place:${world.seed}:${admitted.id}:${admitted.attempt}`,
+              retry: false,
+              valid,
+            },
+          });
+          if (!valid(completion)) throw badRequest("Incomplete Place response.");
+          break;
+        } catch (error) {
+          if (kind === "explore" || admitted.attempt >= 2) throw error;
+          const attempt = admitted.attempt;
+          await mutateVillageState(
+            (state) => {
+              const saved = state.worldPlaces.operations[admitted.id];
+              if (state.seed !== world.seed || !saved) throw conflict("This request already changed.");
+              if (saved.attempt === attempt && saved.status === "started") {
+                saved.attempt++;
+                state.worldPlaces.revision++;
+              }
+              admitted = saved;
+            },
+            { memories: true },
+          );
+          if (admitted.status !== "started") return publicOperation(admitted);
+        }
+      }
+    } else if (!valid(completion)) throw badRequest("Incomplete Place response.");
+    canRecoverPublication = kind === "explore";
     const raw = extractModelJsonObject(completion)!;
     await mutateVillageState(
       (state) => {
@@ -390,11 +409,16 @@ export async function generatePlace(value: unknown, placeId?: string) {
     );
     return publicOperation(operation!);
   } catch (error) {
+    if (canRecoverPublication) throw error;
     await mutateVillageState(
       (state) => {
         if (state.seed !== world.seed) return;
         const saved = state.worldPlaces.operations[admitted.id];
-        if (saved?.attempt === admitted.attempt && saved.status !== "ready") {
+        if (saved?.attempt === admitted.attempt && saved.status === "ready") {
+          operation = saved;
+          return;
+        }
+        if (saved?.attempt === admitted.attempt) {
           saved.status = "failed";
           saved.error = safeFailureMessage(error);
           state.worldPlaces.revision++;
@@ -402,6 +426,8 @@ export async function generatePlace(value: unknown, placeId?: string) {
       },
       { memories: true },
     );
-    return { ...publicOperation(admitted), status: "failed" as const };
+    return operation?.status === "ready"
+      ? publicOperation(operation)
+      : { ...publicOperation(admitted), status: "failed" as const };
   }
 }
