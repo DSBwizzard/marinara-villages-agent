@@ -2946,6 +2946,13 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-review-stage", "confirm");
         assert.equal(setupPosts, 0, "Review does not submit founding");
         const backdrop = await root.evaluate((node) => getComputedStyle(node).backgroundImage);
+        const readerStyle = () =>
+          root.locator(".villages-chapter-guide .villages-setting-dialogue").evaluate((reader) => {
+            const line = getComputedStyle(reader.querySelector("p[aria-live]"));
+            const footer = getComputedStyle(reader.querySelector(".villages-reader-footer"));
+            return [line.fontFamily, line.fontSize, line.lineHeight, footer.borderTopWidth];
+          });
+        const confirmationReaderStyle = await readerStyle();
         if (view.width === 320 || view.width === 1366) {
           await page.evaluate(() =>
             window.featureController.updateSetupMapRequest({
@@ -2975,10 +2982,19 @@ export async function verifyFoundingLayout(group) {
           foundedSnapshot.foundingPreparation.canPlay = true;
         }
         await expect(root.getByText(/Coastal Community is ready for you/)).toBeVisible();
+        assert.deepEqual(await readerStyle(), confirmationReaderStyle, "Mari's return uses the Founding reader style");
         await expectPose("presenting");
         await expect(button("Next")).toBeInViewport({ ratio: 1 });
-        await button("Next").click();
+        await button("Next").press("Enter");
         await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
+        await button("Back").press("Enter");
+        await expect(root.getByText(/Coastal Community is ready for you/)).toBeVisible();
+        await button("Next").click();
+        assert.deepEqual(
+          await readerStyle(),
+          confirmationReaderStyle,
+          "Mari's farewell uses the Founding reader style",
+        );
         await expectPose("playful");
         await expect(root.locator(".villages-setting-dialogue")).toBeInViewport({ ratio: 1 });
         await expect(button("Enter village")).toBeInViewport({ ratio: 1 });

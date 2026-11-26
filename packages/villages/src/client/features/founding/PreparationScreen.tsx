@@ -4,8 +4,7 @@ import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useLetterFont } from "../../shared/letter-font-css.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
-import { foundingMariSprite } from "./FoundingGuide.js";
-import { FoundingReader } from "./FoundingReader.js";
+import { FoundingGuide, foundingMariSprite } from "./FoundingGuide.js";
 import { StartingHistoryPreparation } from "./StartingHistoryPreparation.js";
 import type { PreparationScreenController } from "./screen-contracts.js";
 
@@ -34,7 +33,7 @@ export function PreparationScreen({
       className={`${ELEMENT_TAG}-root villages-forging-v2 villages-forging-preparing`}
       data-step="preparation"
       data-lighting={storybookDaylight ? "day" : "night"}
-      data-ready={ready || undefined}
+      data-review-scene={ready || undefined}
     >
       {ready ? (
         <>
@@ -51,25 +50,33 @@ export function PreparationScreen({
               transformOrigin="var(--shoe-center, 50%) bottom"
             />
           </div>
-          <FoundingReader
-            text={
-              playful
+          <div className="villages-founding-chapter" data-guided data-explanation>
+            <FoundingGuide
+              scene
+              lineRef={lineRef}
+              replies={
+                <>
+                  {playful ? (
+                    <button type="button" data-reader-direction="back" onClick={() => setPlayful(false)}>
+                      Back
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="villages-forging-primary villages-founding-next-reply"
+                    data-reader-direction="next"
+                    onClick={playful ? onEnter : () => setPlayful(true)}
+                  >
+                    {playful ? "Enter village" : "Next"}
+                  </button>
+                </>
+              }
+            >
+              {playful
                 ? "Maybe I'll see you there!"
-                : `Look at that. ${snapshot.village.name} is ready for you. Have fun! Professor’s orders.`
-            }
-            lineRef={lineRef}
-          >
-            <div className="villages-founding-replies">
-              <button
-                type="button"
-                className="villages-forging-primary"
-                data-reader-direction="next"
-                onClick={playful ? onEnter : () => setPlayful(true)}
-              >
-                {playful ? "Enter village" : "Next"}
-              </button>
-            </div>
-          </FoundingReader>
+                : `Look at that. ${snapshot.village.name} is ready for you. Have fun! Professor’s orders.`}
+            </FoundingGuide>
+          </div>
         </>
       ) : (
         <PreparationProgress controller={controller} />
