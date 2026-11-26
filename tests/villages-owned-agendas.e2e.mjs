@@ -119,7 +119,15 @@ await withBrowser(browser, async () => {
     const retry = page.getByRole("button", { name: "Retry Agenda", exact: true });
     await expect(retry).toBeVisible();
     const retryBox = await retry.boundingBox();
-    assert.ok(retryBox && retryBox.height >= 44 && retryBox.x >= 0 && retryBox.x + retryBox.width <= width);
+    assert.ok(
+      retryBox &&
+        retryBox.height >= 44 &&
+        retryBox.x >= 0 &&
+        retryBox.x + retryBox.width <= width &&
+        retryBox.y >= 0 &&
+        retryBox.y + retryBox.height <= 900,
+      "Retry fits on screen without scrolling past the Agenda.",
+    );
     await page.screenshot({ path: resolve("artifacts/agenda-refresh-error-" + width + ".png") });
     await retry.click();
     await expect(page.getByRole("status").filter({ hasText: "Preparing Agenda…" })).toBeVisible();

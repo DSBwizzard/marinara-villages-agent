@@ -1158,7 +1158,7 @@ ${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(-
 .${ELEMENT_TAG}-week-body { display: flex; flex-direction: column; margin-top: .5rem; }
 
 .${ELEMENT_TAG}-agenda-list { display: grid; gap: .5rem; }
-.${ELEMENT_TAG}-agenda-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin: .75rem 0 .25rem; }
+.${ELEMENT_TAG}-agenda-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin: 0 0 .625rem; }
 .${ELEMENT_TAG}-agenda-switch { display: inline-flex; align-items: center; gap: .4rem; font-size: .75rem; cursor: pointer; }
 .${ELEMENT_TAG}-agenda-switch input { accent-color: var(--primary); }
 .${ELEMENT_TAG}-agenda-days { display: grid; gap: .35rem; margin-top: .5rem; }
