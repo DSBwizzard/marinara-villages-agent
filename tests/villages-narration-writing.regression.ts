@@ -46,10 +46,8 @@ import {
   readFoundingCircumstances,
 } from "../packages/villages/src/server/domain/rules/founding-circumstances.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
-import {
-  npcEncounterIndex,
-  requestsNewNpcEncounter,
-} from "../packages/villages/src/server/domain/rules/npc-encounters.js";
+import { npcEncounterIndex } from "../packages/villages/src/server/domain/rules/npc-encounters.js";
+import { capturePlaceContext } from "../packages/villages/src/server/domain/rules/places.js";
 import { applyAcceptedSceneDelta } from "../packages/villages/src/server/domain/rules/scene-delta.js";
 import {
   createSceneWriting,
@@ -289,30 +287,16 @@ await runCase("narration-writing/empty-cast-npc", async () => {
 });
 
 await runCase("narration-writing/new-encounter", async () => {
-  const request = 'I walk across the market and meet a completely different stranger. "Hello!"';
-  for (const input of [
-    request,
-    "I meet someone entirely new.",
-    "Can I meet someone I haven’t met?",
-    "I look for somebody I’ve never met.",
-  ])
-    assert(requestsNewNpcEncounter(input), input);
-  for (const input of [
-    "I don’t want to meet someone new.",
-    "I wonder whether I should meet someone new.",
-    '"Would you like to meet a stranger?"',
-    'I read the line "I meet someone new."',
-    "I approach Mara.",
-  ])
-    assert(!requestsNewNpcEncounter(input), input);
+  const request = '"Point me toward a face I wouldn’t recognize," I say as I drift toward the row of carts.';
 
   const f = fixture();
-  const turn = async (id: string, input: string, content: string) => {
+  const turn = async (id: string, input: string, content: string, legacy = false) => {
     f.nextOperation(id);
     f.respondWith(content);
     const before = f.calls.purchases;
     const publication = await f.writing.generate(f.scene, input, "chat", undefined, undefined, undefined, true);
     assert.equal(f.calls.purchases, before + 1);
+    if (legacy) for (const candidate of publication.readset.npcCandidates) delete candidate.met;
     return {
       publication,
       prompt: f
@@ -335,28 +319,51 @@ await runCase("narration-writing/new-encounter", async () => {
 
   const newWithMaraPresent = await turn("mara-present", request, "Narration: Shoppers mill about.");
   assert(newWithMaraPresent.publication.readset.source.scene.contactGeneration?.actorIds?.includes(f.id));
-  assert.match(newWithMaraPresent.prompt, /The player wants to meet someone they have never met/u);
+  assert(newWithMaraPresent.prompt.includes(request));
+  assert.match(newWithMaraPresent.prompt, /If they seek an unfamiliar person/u);
 
   f.scene.activeIds = [];
   f.scene.participants = [];
   f.scene.sceneAttendance!.occupants = [];
   const repeated = await turn("not-new", request, admit({ existingId: f.id }, f.id));
-  assert(!repeated.publication.readset.npcCandidates.some(({ npc }) => npc.id === f.id));
+  assert.equal(repeated.publication.readset.npcCandidates.find(({ npc }) => npc.id === f.id)?.met, true);
+  assert.match(repeated.prompt, /"npcReturnCandidate":/u);
   assert(!repeated.result.held);
   assert.deepEqual(
     repeated.result.episode?.segments.map(({ content }) => content),
     ["The market is busy."],
   );
   assert(!repeated.result.episode?.commandReceipts.some(({ kind }) => kind === "npc"));
+  assert(repeated.result.rejected.some(({ reason }) => /explicit returning encounter/u.test(reason)));
 
   const newNpc = await turn(
     "new-invented",
-    "I meet someone entirely new.",
+    "None of these faces look familiar. I stop by the next cart to say hello.",
     admit({ localKey: "new:tess", name: "Tess", label: "Flower seller" }, "new:tess"),
   );
   assert(!newNpc.result.held);
   const tess = newNpc.result.episode?.commandReceipts.find(({ kind }) => kind === "npc")?.targetId;
   assert(tess && tess !== f.id && npcEncounterIndex(f.state).has(tess));
+
+  for (const name of ["Hale", "Brea"]) {
+    const id = "npc:" + name.toLowerCase();
+    f.state.worldPlaces.npcs[id] = {
+      ...structuredClone(f.state.worldPlaces.npcs[f.id]),
+      id,
+      name,
+      label: name,
+    };
+    f.scene.activeIds.push(id);
+    f.scene.participants.push({ characterId: id, name, doing: "Shopping" });
+    f.scene.sceneAttendance!.occupants.push({ characterId: id, name, doing: "Shopping", zoneId: "parlor" });
+  }
+  f.state.worldPlaces.revision++;
+  const greetings = await turn("met-shoppers", "I greet the people nearby.", "[Hale]: Hi.\n[Brea]: Morning.");
+  assert(!greetings.result.held);
+  assert.equal(npcEncounterIndex(f.state).size, 4);
+  f.scene.activeIds = [];
+  f.scene.participants = [];
+  f.scene.sceneAttendance!.occupants = [];
 
   const unseenId = "npc:unmet";
   f.state.worldPlaces.npcs[unseenId] = {
@@ -364,22 +371,29 @@ await runCase("narration-writing/new-encounter", async () => {
     id: unseenId,
     name: "Nell",
     label: "Nell",
+    updatedAt: "2026-01-01T00:00:00.000Z",
   };
   f.state.worldPlaces.revision++;
   assert(!npcEncounterIndex(f.state).has(unseenId));
+  const ranked = Object.keys(capturePlaceContext(f.state, f.scene.placeId, [], request).npcs);
+  assert(!ranked.slice(0, 4).includes(unseenId), "the fixture needs the stranger ranked behind four familiar NPCs");
+  const falseReturn = await turn("false-return", request, admit({ existingId: unseenId, returning: true }, unseenId));
+  assert(falseReturn.result.rejected.some(({ reason }) => /has not met the Player/u.test(reason)));
   const firstMeeting = await turn("new-existing", request, admit({ existingId: unseenId }, unseenId));
   assert(!firstMeeting.result.held);
-  assert.deepEqual(
-    firstMeeting.publication.readset.npcCandidates.map(({ npc }) => npc.id),
-    [unseenId],
-  );
+  assert.equal(firstMeeting.publication.readset.npcCandidates.length, 4);
+  assert.equal(firstMeeting.publication.readset.npcCandidates.find(({ npc }) => npc.id === unseenId)?.met, false);
+  assert.match(firstMeeting.prompt, /"npcArrivalCandidate":/u);
   assert.equal(firstMeeting.result.episode?.commandReceipts.find(({ kind }) => kind === "npc")?.targetId, unseenId);
   assert(npcEncounterIndex(f.state).has(unseenId));
 
-  const returning = await turn("returning", "I look for Mara.", admit({ existingId: f.id }, f.id));
+  const returning = await turn("returning", "I look for Mara.", admit({ existingId: f.id, returning: true }, f.id));
   assert(!returning.result.held);
   assert(returning.publication.readset.npcCandidates.some(({ npc }) => npc.id === f.id));
   assert.equal(returning.result.episode?.commandReceipts.find(({ kind }) => kind === "npc")?.targetId, f.id);
+
+  const savedReturn = await turn("old-return", "I look for Mara.", admit({ existingId: f.id }, f.id), true);
+  assert.equal(savedReturn.result.episode?.commandReceipts.find(({ kind }) => kind === "npc")?.targetId, f.id);
 });
 
 await runCase("narration-writing/connection-failure", async () => {

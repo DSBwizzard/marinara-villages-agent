@@ -131,6 +131,12 @@ const saved = z
             Array.isArray(row.offered) &&
             Array.isArray(row.npcCandidates) &&
             row.npcCandidates.length <= 4 &&
+            row.npcCandidates.every(
+              (candidate) =>
+                candidate &&
+                typeof candidate === "object" &&
+                (candidate.met === undefined || typeof candidate.met === "boolean"),
+            ) &&
             z.array(z.string().min(1).max(160)).max(32).optional().safeParse(row.visitorIds).success &&
             agendaOptions.optional().safeParse(row.agendaOptions).success &&
             agendaVenues.optional().safeParse(row.agendaVenues).success &&

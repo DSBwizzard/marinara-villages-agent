@@ -54,7 +54,7 @@ export type NarrationReadset = {
   requestedMemory?: { start: number; end: number; recipientId?: string };
   codeRequestedMemory?: true;
   offered: AcceptedEpisode["offered"];
-  npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[] }[];
+  npcCandidates: { npc: import("./places.js").NpcIdentity; incarnation: string; offered: string[]; met?: boolean }[];
   circumstance: import("./narrative-model.js").NarrativeAdmission | null;
   repairs: { id: string; revision: number; entries: string[] }[];
   projects: import("../rules/project-interpretation.js").ProjectSpeechContext[];

@@ -117,6 +117,13 @@ export function prepareNarrationNative(
           return index >= 0 && index <= segment ? [{ segment: index, zoneId: command.to }] : [];
         })
         .sort((a, b) => a.segment - b.segment);
+      const fitted = readset.npcCandidates.find(({ npc }) => npc.id === command.existingId);
+      memoryRequire(!command.returning || command.existingId, "a returning encounter needs a supplied NPC identity");
+      if (fitted?.met !== undefined)
+        memoryRequire(
+          fitted.met === (command.returning === true),
+          fitted.met ? "a familiar NPC needs an explicit returning encounter" : "that NPC has not met the Player",
+        );
       const arrival = prepareNpcAdmission(
         {
           ...state,
@@ -134,7 +141,7 @@ export function prepareNarrationNative(
         segment,
         crossings.at(-1)?.zoneId ?? scene.zoneId!,
         intro.text,
-        readset.npcCandidates.find((row) => row.npc.id === command.existingId)?.npc,
+        fitted?.npc,
       );
       memoryRequire(!actors.some((actor) => actor.id === arrival.npc.id), "NPC identity is already in this reply");
       memoryRequire(

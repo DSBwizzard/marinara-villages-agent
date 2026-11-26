@@ -12,6 +12,7 @@ export type NpcAdmission = { localKey: string; npc: NpcIdentity; segment: number
 export const npcAdmissionFields = {
   localKey: z.string().regex(/^new:[a-z0-9-]{1,60}$/),
   existingId: z.string().min(1).max(160).optional(),
+  returning: z.literal(true).optional(),
   name: z.string().trim().min(1).max(100).optional(),
   label: z.string().trim().min(1).max(100).optional(),
   appearance: z.string().trim().min(1).max(1000).optional(),

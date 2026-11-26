@@ -235,6 +235,7 @@ export function createSceneWriting({
       input,
       villageNow(authority.clock?.advanceMs ?? 0).toISOString(),
       !nativeCommands,
+      tagged,
     );
     let loreInspection: LoreInspection | undefined;
     let loreRequirements: number[][][] = [];
@@ -424,9 +425,6 @@ export function createSceneWriting({
       ]),
       metadata: blocksFor([
         scene.visitorIntroduction ? "Public Village name: " + JSON.stringify(village.name) : "",
-        context.newNpcEncounter
-          ? "The player wants to meet someone they have never met. Introduce a plausible NPC from the supplied arrival candidates, or introduce one new named NPC if none fits. Keep familiar people in the Scene where they already are. The new encounter needs its own NPC admission and a visible arrival."
-          : "",
         scene.contactGeneration?.instruction ?? "",
         scene.trespass?.zoneId === scene.zoneId && scene.trespass
           ? "The player is here without permission. Reactions depend on what each person can observe or already knows. The crossing established no consent."
@@ -486,7 +484,7 @@ export function createSceneWriting({
         !npcIntroduction
           ? ""
           : tagged
-            ? 'For a new named person, write Narration!: A baker steps into view. Then [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."}. Afterwards [new:baker]: text. If a supplied returning NPC appears, write their visible arrival as Narration!: text, then [command]: {"type":"npc.admit","existingId":"supplied-id"} and [supplied-id]: text. Copy their actual supplied ID in both lines. A candidate is not already present. A passerby can appear briefly in narration.'
+            ? 'Follow the player’s intent in narration or dialogue. If they seek an unfamiliar person, use an npcArrivalCandidate they have not met or create one new named NPC. Reserve npcReturnCandidate for a familiar encounter that fits the turn. Show the visible arrival with Narration!: text. Then use [command]: {"type":"npc.admit","existingId":"supplied-id"} and [supplied-id]: text for a supplied candidate. Add "returning":true to that command only for an npcReturnCandidate. For a new named person, use [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."} and [new:baker]: text. A candidate is not already present. A passerby can appear briefly in narration.'
             : nativeCommands
               ? NARRATION_NATIVE
               : narrationNpcCommands(positions),
