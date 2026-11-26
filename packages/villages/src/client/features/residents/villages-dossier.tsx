@@ -430,7 +430,13 @@ export function VillagerDossier({
                           </div>
                         ) : null}
                         {!visitor ? (
-                          <button type="button" onClick={() => choose("overview", true)}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              positions.current.overview = 0;
+                              choose("overview", true);
+                            }}
+                          >
                             Inspect Agenda
                           </button>
                         ) : null}
