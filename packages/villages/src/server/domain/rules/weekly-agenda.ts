@@ -119,7 +119,7 @@ export function applyWeeklyAgenda(
   resident: VillageVillager,
   now: Date,
   offered: readonly WeeklyAgendaSlot[],
-  choices: readonly WeeklyAgendaChoice[],
+  choices: readonly (WeeklyAgendaChoice | null)[],
   preserveThrough = "",
 ): number {
   const agenda = resident.agenda;

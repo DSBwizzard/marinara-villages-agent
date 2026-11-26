@@ -148,6 +148,7 @@ async function main() {
   const agendaRequests: string[] = [];
   let weeklyResponses = 0;
   let incompleteWeek = false;
+  let repeatSameDay = false;
   const warnings: string[] = [];
   const release = configureVillagesRuntime({
     logger: {
@@ -187,6 +188,7 @@ async function main() {
                 slots.map((_, index) => [`${name} pursuit ${weeklyResponses}/${index + 1}`, 0]),
               );
               if (incompleteWeek) plans[0]?.splice(2);
+              if (repeatSameDay) plans[0]![1] = plans[0]![0]!;
               return { content: JSON.stringify({ plans }), finishReason: "stop" };
             }
             if (agendaMode) {
@@ -691,6 +693,20 @@ async function main() {
     await villageBackgroundPresence("visible-story-fixture", true);
     await settleBackgroundWork();
     assert.equal(weeklyResponses, 6, "A stale automatic job cannot buy a reply for dates already planned manually.");
+
+    setToday(42);
+    repeatSameDay = true;
+    await reconcileVillage({ now: date(42) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 7, "Same-day repetition uses only the scheduled request.");
+    const repeated = (await backgroundWorkSummaries()).find((job) => job.kind === "weekly-agenda")!;
+    assert.equal(repeated.status, "completed");
+    assert.equal(repeated.requests, 1);
+    const recoveredWeek = (await readVillageState()).villagers[0]!.agenda!;
+    const firstDay = agendaBlocksFor(recoveredWeek, date(43));
+    assert.equal(firstDay.filter(({ activity }) => activity === "Ari pursuit 7/1").length, 1);
+    assert.ok(firstDay.some(({ activity }) => activity === "Ari pursuit 7/3"));
+    assert.ok(agendaBlocksFor(recoveredWeek, date(49)).some(({ activity }) => activity.startsWith("Ari pursuit 7/")));
   } finally {
     Date.now = realNow;
     stopWork();
