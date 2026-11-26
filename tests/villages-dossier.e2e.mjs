@@ -721,7 +721,8 @@ await withBrowser(browser, async () => {
       await expect(visitorTile).toBeFocused();
       await visitors.getByRole("button", { name: "Villagers", exact: true }).click();
       await expect(selector).toBeVisible();
-      await villagerPortrait.evaluate((img) => img.decode());
+      await expect(villagerPortrait).toHaveJSProperty("naturalWidth", 1024);
+      await expect(villagerPortrait).toHaveJSProperty("complete", true);
     }
     await page.screenshot({ path: resolve(output, `directory-${width}-${height}.png`) });
     const search = selector.getByRole("searchbox", { name: "Find a person" });
