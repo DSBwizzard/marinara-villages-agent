@@ -15,6 +15,7 @@ import type {
   CapabilityRuntimeHost,
 } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
+import { starterAgendaReply } from "./helpers/agenda.fixture.js";
 import {
   activationScope,
   createActivationScope,
@@ -328,6 +329,7 @@ async function foundingConnectionOwnership() {
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AGtLQAAAABJRU5ErkJggg==";
   const compactReply = (label: string) => ({
     routine: `${label} reads quietly.`,
+    ...starterAgendaReply(label),
     wishes: [],
     palette: Array.from({ length: 6 }, (_, index) => ({
       activity: `${label} reading ${index}`,

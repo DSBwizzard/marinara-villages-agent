@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { starterAgendaReply } from "./helpers/agenda.fixture.js";
 import {
   parseCompactFounding,
   parseCompactFoundingCompletion,
@@ -134,6 +135,20 @@ async function main() {
 
   assert.throws(() => parseCompactFounding({ ...payload(), rhythm: undefined }, context(null) as any), /rest windows/);
 
+  const starterContext = { ...context(null), starterWeekStart: "2026-11-11" };
+  const starterReply = { ...payload(), ...starterAgendaReply() };
+  const starter = parseCompactFounding(starterReply, starterContext).starterWeek!;
+  assert.equal(new Set(starter.slots.map(({ date }) => date)).size, 7);
+  assert.equal(starter.through, "2026-11-17");
+  assert.throws(
+    () =>
+      parseCompactFounding(
+        { ...starterReply, starterDays: Array(7).fill(starterReply.starterDays[0]) },
+        starterContext,
+      ),
+    /repeats too many/,
+  );
+
   let calls = 0;
   let capturedPrompt = "";
   let options: Record<string, unknown> = {};
@@ -216,6 +231,12 @@ async function main() {
       capturedPrompt,
       /chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song|"activity":"reading"/,
     );
+    const beforeStarter = calls;
+    answer = starterReply;
+    const prepared = await proposeCompactFounding(starterContext, async () => {});
+    assert.equal(calls, beforeStarter + 1, "The existing Founding request captures the entire starter week.");
+    assert.ok(prepared.starterWeek?.choices.every(Boolean));
+    assert.equal(prepared.agenda.week!.Wednesday!.find(({ startMinute }) => startMinute === 1320)?.essential, true);
     assert.equal(usageDocument.data.requests.length, calls, "every founding request is accounted for");
     assert.ok(usageDocument.data.requests.every((request: any) => request.status === "complete"));
     assert.equal(options.maxTokens, 2048);

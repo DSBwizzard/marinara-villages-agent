@@ -4,13 +4,26 @@ import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager }
 import { flexibleAgendaBlock, restingAgendaBlock } from "./agenda-flexibility.js";
 import { agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
 import { validateRoutineDay } from "./owned-routine.js";
+import { routineVenues } from "./prompt-preset.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { zoneActivityFits } from "./venue-presence.js";
-import { canOccupyZone, resolveVenueZone } from "./venue-zones.js";
+import { canOccupyZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
 
 export const AGENDA_WEEK_DAYS = 7;
 const dayParts = [360, 720, 1020, 1440];
 const openBlock = (block: VillageAgendaBlock) => flexibleAgendaBlock(block) && !restingAgendaBlock(block);
+
+export const agendaActivityKey = (activity: string) =>
+  activity
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+export function preparedAgendaThrough(agenda: VillageAgenda | null | undefined): string {
+  const manual = agenda?.manualWeek?.through ?? "";
+  const starter = agenda?.starterWeekThrough ?? "";
+  return manual > starter ? manual : starter;
+}
 
 export function shiftAgendaDate(date: Date, days: number): Date {
   return calendarDate(date, date.getFullYear(), date.getMonth(), date.getDate() + days, 12);
@@ -18,6 +31,19 @@ export function shiftAgendaDate(date: Date, days: number): Date {
 
 export function agendaCalendar(state: Pick<VillageState, "timeZone">, now: Date): Date {
   return state.timeZone ? new ZonedDate(now, state.timeZone) : now;
+}
+
+export function weeklyAgendaVenues(state: VillageState, residentId: string, start: Date) {
+  const key = agendaDateKey(start);
+  return routineVenues(state.venues).filter((place) =>
+    venueZones(place).some(
+      (zone) =>
+        !zoneClosed(state, place, zone) &&
+        [480, 780, 1140].some((minute) =>
+          canOccupyZone(place, zone, residentId, { at: calendarAt(start, key, minute), environment: state.narrative }),
+        ),
+    ),
+  );
 }
 
 /** Admission uses civil dates, including when a week spans a clock change. */

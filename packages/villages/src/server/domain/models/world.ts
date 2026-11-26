@@ -10,6 +10,7 @@ export type VillageAgenda = {
   recentChanges?: import("../decoding/agenda-codec.js").AgendaChange[];
   plannedDays?: Record<string, VillageAgendaBlock[]>;
   manualWeek?: { actionId: string; through: string };
+  starterWeekThrough?: string;
   /** Preserve dated corrections when the Agenda is regenerated. */
   repairedDays?: string[];
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;

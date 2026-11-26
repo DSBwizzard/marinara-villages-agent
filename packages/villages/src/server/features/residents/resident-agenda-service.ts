@@ -12,7 +12,10 @@ import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domai
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 import { agendaDateKey, bookedAgendaDays } from "../../domain/rules/agenda-week.js";
-import type { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
+import type {
+  CompactFoundingResult,
+  parseCompactFoundingCompletion,
+} from "../../domain/rules/compact-founding-rules.js";
 import { notFound } from "../../domain/rules/errors.js";
 import {
   completeFoundingTask,
@@ -31,6 +34,14 @@ import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { createWeeklyAgenda } from "./weekly-agenda-service.js";
+import {
+  agendaCalendar,
+  applyWeeklyAgenda,
+  shiftAgendaDate,
+  weeklyAgendaVenues,
+} from "../../domain/rules/weekly-agenda.js";
+import { refreshWorkReservations } from "../../domain/rules/venue-work.js";
+import { routineProfileFromWeek } from "../../domain/rules/owned-routine.js";
 export interface ResidentAgendaPorts {
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
@@ -194,6 +205,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         { memories: true },
       );
     await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
+    const start = founding ? shiftAgendaDate(agendaCalendar(village, villageNow()), 1) : undefined;
     await queueBackgroundJob({
       kind: "agenda",
       retryActionId: founding ? village.foundingPreparation?.retryActions?.at(-1) : undefined,
@@ -208,7 +220,13 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         characterId,
         foundingContract: founding ? 1 : undefined,
         revision,
-        context: { ...context, activityLabelFormat: 1 },
+        context: {
+          ...context,
+          activityLabelFormat: 1,
+          ...(start
+            ? { starterWeekStart: agendaDateKey(start), venues: weeklyAgendaVenues(village, characterId, start) }
+            : {}),
+        },
       },
     });
   }
@@ -252,7 +270,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           input.context.identityDescriptionRevision,
           result.identityDescription,
         );
-      applyAgenda(state, input.characterId, result.agenda);
+      applyAgenda(state, input.characterId, result.agenda, result.starterWeek);
       if (input.foundingContract === 1) completeFoundingTask(state, input.characterId, "routine", input.revision);
     },
   };
@@ -266,7 +284,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
    * is right in that case — the call was made for a villager who no longer
    * exists, and there is no error a player could act on.
    */
-  function applyAgenda(state: VillageState, characterId: string, agenda: VillageAgenda): void {
+  function applyAgenda(
+    state: VillageState,
+    characterId: string,
+    agenda: VillageAgenda,
+    starter?: CompactFoundingResult["starterWeek"],
+  ): void {
     const villager = state.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
     if (state.foundingPreparation?.status === "pending" && state.foundingPreparation.currentId === characterId) {
@@ -274,7 +297,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       state.foundingPreparation.stageStartedAt = villageNow().toISOString();
     }
     const previous = villager.agenda;
-    const now = villageNow();
+    const now = agendaCalendar(state, villageNow());
     const dayHasRolled = previous?.activeDay?.dateKey !== agendaDateKey(now);
     villager.agenda = {
       ...agenda,
@@ -294,9 +317,20 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       activeDay: dayHasRolled ? undefined : previous?.activeDay,
       personalizationAttemptDate: agendaDateKey(now),
     };
+    if (starter) {
+      if (dayHasRolled) activateVillagerDay(villager, now, state);
+      projectAgendaReservations(state);
+      refreshWorkReservations(state, now);
+      if (applyWeeklyAgenda(state, villager, now, starter.slots, starter.choices))
+        villager.agenda.starterWeekThrough = starter.through;
+      villager.agenda.week = starter.fallbackWeek;
+      villager.agenda.routineProfile = routineProfileFromWeek(starter.fallbackWeek);
+    }
     planRoutineDays(state, now);
-    if (dayHasRolled) activateVillagerDay(villager, now, state);
-    projectAgendaReservations(state);
+    if (!starter) {
+      if (dayHasRolled) activateVillagerDay(villager, now, state);
+      projectAgendaReservations(state);
+    }
   }
 
   /** Discover missing agendas. The coordinator retains failures across dates and throttles provider requests. */

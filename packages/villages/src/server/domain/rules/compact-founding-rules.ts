@@ -1,14 +1,25 @@
 import type { VillagerCard } from "../models/catalog-model.js";
-import type { VillageAgenda, VillagePlayerBackground, VillageVenue } from "../models/world.js";
+import type { VillageAgenda, VillageAgendaBlock, VillagePlayerBackground, VillageVenue } from "../models/world.js";
 import { extractModelJsonObject } from "./json-reply.js";
 import type { RoutineProfile } from "./owned-routine.js";
-import { routineDay, validRoutineRhythm } from "./owned-routine.js";
+import { routineDay, routineProfileFromWeek, validRoutineRhythm } from "./owned-routine.js";
 import { boundText, MAX_ROUTINE_SUMMARY_LENGTH } from "./prompt-preset.js";
 import { generatedIdentityDescription } from "./resident-description.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import { backgroundRevision } from "./background-revision.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { generatedAgendaActivityLabel } from "./agenda-plan.js";
+import { completeAgendaWeek, workingAgendaWeek, agendaDateKey } from "./agenda-week.js";
+import { restingAgendaBlock } from "./agenda-flexibility.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import {
+  AGENDA_WEEK_DAYS,
+  agendaActivityKey,
+  shiftAgendaDate,
+  weeklyAgendaSlots,
+  type WeeklyAgendaChoice,
+  type WeeklyAgendaSlot,
+} from "./weekly-agenda.js";
 
 export class RoutineResponseError extends Error {}
 
@@ -45,11 +56,18 @@ export type CompactFoundingContext = {
   wishes: readonly string[];
   characterId?: string;
   activityLabelFormat?: 1;
+  starterWeekStart?: string;
 };
 
 export type CompactFoundingResult = {
   identityDescription?: string;
   agenda: VillageAgenda;
+  starterWeek?: {
+    slots: WeeklyAgendaSlot[];
+    choices: (WeeklyAgendaChoice | null)[];
+    fallbackWeek: Record<string, VillageAgendaBlock[]>;
+    through: string;
+  };
 };
 
 const validIndex = (value: unknown, length: number): value is number =>
@@ -111,6 +129,7 @@ export function parseCompactFounding(
   payload: Record<string, unknown>,
   context: CompactFoundingContext,
 ): CompactFoundingResult {
+  if (context.starterWeekStart) return parseStarterWeek(payload, context, context.starterWeekStart);
   if (Array.isArray(payload.palette))
     for (const [index, value] of payload.palette.entries()) {
       const row = value as Record<string, unknown>;
@@ -209,6 +228,120 @@ export function parseCompactFounding(
       personalizationPending: false,
       personalizationFailure: "",
       generatedAt: at,
+    },
+  };
+}
+
+function parseStarterWeek(
+  payload: Record<string, unknown>,
+  context: CompactFoundingContext,
+  start: string,
+): CompactFoundingResult {
+  const first = new ZonedDate(`${start}T12:00:00.000Z`, "UTC");
+  const invalid = (message: string): never => {
+    throw new RoutineResponseError(message);
+  };
+  const title = (value: unknown): string => {
+    const text = typeof value === "string" ? generatedAgendaActivityLabel(value.trim()) : "";
+    if (!agendaActivityKey(text) || text.length > 80 || /[\u0000-\u001f]/u.test(text))
+      invalid("Each starter Agenda activity needs a short standalone label.");
+    return text;
+  };
+  if (
+    typeof payload.routine !== "string" ||
+    !payload.routine.trim() ||
+    !Number.isFinite(first.getTime()) ||
+    !Array.isArray(payload.rest) ||
+    payload.rest.length > 2
+  )
+    return invalid("The starter Agenda needs a summary and up to two recurring rest windows.");
+  const restBlocks: VillageAgendaBlock[] = [];
+  for (const rest of payload.rest) {
+    if (!Array.isArray(rest) || rest.length !== 3) return invalid("A starter Agenda rest window is invalid.");
+    const [activity, from, to] = rest;
+    if (
+      !Number.isInteger(from) ||
+      !Number.isInteger(to) ||
+      from < 0 ||
+      from >= 1440 ||
+      to < 0 ||
+      to > 1440 ||
+      from === to
+    )
+      return invalid("A starter Agenda rest window is invalid.");
+    const label = title(activity);
+    for (const [startMinute, endMinute] of from < to
+      ? [[from, to]]
+      : [
+          [0, to],
+          [from, 1440],
+        ]) {
+      if (startMinute < endMinute)
+        restBlocks.push({ startMinute, endMinute, activity: label, venueId: "", essential: true, flexible: false });
+    }
+  }
+  restBlocks.sort((a, b) => a.startMinute - b.startMinute);
+  if (restBlocks.some((row, index) => index > 0 && row.startMinute < restBlocks[index - 1]!.endMinute))
+    return invalid("Starter Agenda rest windows overlap.");
+  const week = completeAgendaWeek(
+    Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, restBlocks])),
+    workingAgendaWeek(),
+  );
+  const agenda: VillageAgenda = {
+    calendarVersion: 1,
+    routineProfile: routineProfileFromWeek(week),
+    routineSummary: boundText(payload.routine, MAX_ROUTINE_SUMMARY_LENGTH),
+    day: week[VILLAGE_WEEKDAYS[(first.getDay() + 6) % 7]!]!,
+    week,
+    personalizationPending: false,
+    personalizationFailure: "",
+    generatedAt: new Date().toISOString(),
+  };
+  if (!Array.isArray(payload.starterDays) || payload.starterDays.length !== AGENDA_WEEK_DAYS)
+    return invalid("The starter Agenda needs plans for all seven days.");
+  const slots: WeeklyAgendaSlot[] = [],
+    choices: (WeeklyAgendaChoice | null)[] = [],
+    fallback: Record<string, VillageAgendaBlock[]> = {};
+  const distinct = new Set<string>();
+  for (const [offset, entries] of payload.starterDays.entries()) {
+    const date = shiftAgendaDate(first, offset);
+    const blocks = [...restBlocks];
+    fallback[VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!] = blocks;
+    const offered = weeklyAgendaSlots(agenda, date).slice(0, 8);
+    if (!Array.isArray(entries) || entries.length !== 8 || !offered.length)
+      return invalid("Each starter Agenda day needs eight activity choices and some waking time.");
+    const dayTitles = new Set<string>();
+    for (const [index, entry] of entries.entries()) {
+      if (!Array.isArray(entry) || entry.length !== 2) return invalid("A starter Agenda activity is invalid.");
+      const [label, place] = entry;
+      if (!Number.isInteger(place) || place < 0 || place > context.venues.length)
+        return invalid("A starter Agenda activity has an unavailable place.");
+      const activity = title(label);
+      if (restingAgendaBlock({ activity })) return invalid("Put recurring rest in the starter Agenda rest windows.");
+      const slot = offered[index];
+      if (!slot) continue;
+      const key = agendaActivityKey(activity);
+      slots.push(slot);
+      const choice = dayTitles.has(key)
+        ? null
+        : { activity, venueId: place === 0 ? "" : context.venues[place - 1]!.id };
+      choices.push(choice);
+      if (choice) blocks.push({ ...choice, startMinute: slot.startMinute, endMinute: slot.endMinute, flexible: true });
+      dayTitles.add(key);
+      distinct.add(key);
+    }
+  }
+  if (distinct.size < Math.ceil(slots.length * 0.6)) return invalid("The starter Agenda repeats too many activities.");
+  return {
+    ...(context.identityDescriptionRevision
+      ? { identityDescription: generatedIdentityDescription(payload.identityDescription) }
+      : {}),
+    agenda,
+    starterWeek: {
+      slots,
+      choices,
+      fallbackWeek: completeAgendaWeek(fallback, week),
+      through: agendaDateKey(shiftAgendaDate(first, AGENDA_WEEK_DAYS - 1)),
     },
   };
 }

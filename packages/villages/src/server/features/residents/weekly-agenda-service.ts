@@ -1,4 +1,3 @@
-import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -9,18 +8,19 @@ import { flexibleAgendaBlock, restingAgendaBlock } from "../../domain/rules/agen
 import { calendarReplay } from "../../domain/rules/clock-state.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { routineVenues } from "../../domain/rules/prompt-preset.js";
-import { canOccupyZone, venueZones, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
 import { refreshWorkReservations } from "../../domain/rules/venue-work.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 import {
   AGENDA_WEEK_DAYS,
+  agendaActivityKey as clean,
   agendaCalendar,
   applyWeeklyAgenda,
+  preparedAgendaThrough,
   shiftAgendaDate,
   weeklyAgendaDue,
   weeklyAgendaSlots,
+  weeklyAgendaVenues,
   type WeeklyAgendaChoice,
   type WeeklyAgendaSlot,
 } from "../../domain/rules/weekly-agenda.js";
@@ -32,11 +32,6 @@ const KIND = "weekly-agenda";
 const SUBJECT = "village";
 const STEP = "weekly-agenda-v1";
 const DAY_PARTS = ["overnight", "morning", "afternoon", "evening"];
-const clean = (activity: string) =>
-  activity
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
 type Input = {
   start: string;
   end: string;
@@ -57,7 +52,6 @@ type Input = {
 
 function captureWeek(state: VillageState, today: Date, start: Date, characterId?: string): Input {
   const days = Array.from({ length: AGENDA_WEEK_DAYS }, (_, index) => shiftAgendaDate(start, index));
-  const places = routineVenues(state.venues);
   const since = shiftAgendaDate(today, -AGENDA_WEEK_DAYS);
   const oldest = agendaDateKey(since);
   const current = agendaDateKey(today);
@@ -69,7 +63,7 @@ function captureWeek(state: VillageState, today: Date, start: Date, characterId?
       const agenda = resident.agenda;
       if (!agenda || agenda.personalizationPending) return [];
       const slots = days.flatMap((day) =>
-        characterId === undefined && agendaDateKey(day) <= (agenda.manualWeek?.through ?? "")
+        characterId === undefined && agendaDateKey(day) <= preparedAgendaThrough(agenda)
           ? []
           : weeklyAgendaSlots(agenda, day),
       );
@@ -99,20 +93,7 @@ function captureWeek(state: VillageState, today: Date, start: Date, characterId?
             .slice(0, 8)
             .map(({ activity }) => activity.slice(0, 80)),
           recent,
-          places: places
-            .filter((place) =>
-              venueZones(place).some(
-                (zone) =>
-                  !zoneClosed(state, place, zone) &&
-                  [480, 780, 1140].some((minute) =>
-                    canOccupyZone(place, zone, resident.characterId, {
-                      at: calendarAt(start, agendaDateKey(start), minute),
-                      environment: state.narrative,
-                    }),
-                  ),
-              ),
-            )
-            .map(({ id, name }) => ({ id, name })),
+          places: weeklyAgendaVenues(state, resident.characterId, start).map(({ id, name }) => ({ id, name })),
           slots,
         },
       ];
@@ -222,7 +203,7 @@ export function createWeeklyAgenda(ports: {
       }),
     );
     const villagers = residents.flat();
-    if (villagers.every(({ agenda }) => (agenda?.manualWeek?.through ?? "") >= agendaDateKey(start))) return;
+    if (villagers.every(({ agenda }) => preparedAgendaThrough(agenda) >= agendaDateKey(start))) return;
     const input: Input = { ...captureWeek({ ...state, villagers }, today, start), distinctDailyActivities: true };
     if (!input.residents.length) return;
     await ports.queue({
@@ -260,8 +241,7 @@ export function createWeeklyAgenda(ports: {
               sameResident(resident, plan) &&
               plan.slots.some(
                 ({ date }) =>
-                  date > today &&
-                  (input.weekActionId !== undefined || date > (resident.agenda?.manualWeek?.through ?? "")),
+                  date > today && (input.weekActionId !== undefined || date > preparedAgendaThrough(resident.agenda)),
               ),
           ),
         )
@@ -332,7 +312,7 @@ export function createWeeklyAgenda(ports: {
         const resident = state.villagers.find((row) => sameResident(row, plan));
         if (resident?.agenda) {
           if (input.weekActionId === undefined) {
-            applyWeeklyAgenda(state, resident, now, plan.slots, result[index]!, resident.agenda.manualWeek?.through);
+            applyWeeklyAgenda(state, resident, now, plan.slots, result[index]!, preparedAgendaThrough(resident.agenda));
           } else {
             const placed = applyWeeklyAgenda(state, resident, now, plan.slots, result[index]!);
             if (!placed)

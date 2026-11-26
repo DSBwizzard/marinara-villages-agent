@@ -1,6 +1,7 @@
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { sharedVenuesFixture, venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import { starterAgendaReply } from "./helpers/agenda.fixture.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
@@ -336,6 +337,7 @@ const release = configureVillagesRuntime({
         return {
           content: JSON.stringify({
             routine: "Quiet days at the station",
+            ...starterAgendaReply("Station activity", invalid ? "0" : 0),
             palette: ["resting", "reading", "walking", "writing", "thinking", "tidying"].map((activity) => ({
               activity,
               venue: invalid ? "0" : 0,
@@ -582,9 +584,9 @@ async function main() {
     );
 
     // Recover current purchased replies locally before discarding a failed checkpoint.
-    for (const recovery of ["current", "malformed", "truncated", "stale"]) {
+    for (const recovery of ["current", "delayed", "malformed", "truncated", "stale"]) {
       install();
-      const valid = recovery === "current" || recovery === "stale";
+      const valid = recovery === "current" || recovery === "delayed" || recovery === "stale";
       mode = "routine-recovery-" + recovery;
       holdRoutinePublication = valid;
       await prepareFoundedVillage();
@@ -623,9 +625,15 @@ async function main() {
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
       conflicts = 2;
-      await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
-      await prepareFoundedVillage();
-      state = await readVillageState({ memories: true });
+      const realNow = Date.now;
+      if (recovery === "delayed") Date.now = () => realNow() + 10 * 86_400_000;
+      try {
+        await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
+        await prepareFoundedVillage();
+        state = await readVillageState({ memories: true });
+      } finally {
+        Date.now = realNow;
+      }
       assert.equal(state.foundingPreparation?.status, "ready");
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
@@ -638,6 +646,18 @@ async function main() {
         "completed private spaces are preserved",
       );
       assert.equal(state.townMapImage, fixture().townMapImage);
+      if (recovery === "delayed") {
+        const agenda = state.villagers[0]!.agenda!;
+        assert.equal(agenda.starterWeekThrough, undefined, "expired plans do not claim dated coverage");
+        const today = agenda.activeDay!;
+        assert.ok(today.dateKey > checkpoint.data.input.context.starterWeekStart);
+        assert.ok(today.blocks.every((block) => !block.activity.startsWith("Station activity")));
+        const next = Object.keys(agenda.plannedDays!)
+          .sort()
+          .find((date) => date > today.dateKey)!;
+        const upcoming = agenda.plannedDays![next]!;
+        assert.ok(new Set(upcoming.filter((block) => block.flexible).map((block) => block.activity)).size >= 3);
+      }
       const before = calls.length;
       await retryFoundedVillagePreparation();
       await prepareFoundedVillage();

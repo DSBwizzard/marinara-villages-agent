@@ -2,11 +2,14 @@ import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.f
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
+import { starterAgendaReply } from "./helpers/agenda.fixture.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { ordinaryAgendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { calendarAt } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8")),
   zip = new AdmZip(receipt.retainedArchivePath ?? receipt.archivePath ?? receipt.archive);
@@ -100,6 +103,7 @@ const model = {
           : {
               identityDescription: "A patient resident with a lasting interest in local history.",
               routine: "Ordinary varied days",
+              ...starterAgendaReply(),
               palette: Array.from({ length: 6 }, (_, i) => ({
                 activity: "Activity " + i,
                 venue: 0,
@@ -182,6 +186,22 @@ try {
   assert.equal(calls, 5, "The failed Wish receives exactly one automatic replacement.");
   assert.equal(marker.status, "failed");
   assert.equal(marker.tasks.a.routine.status, "completed");
+  const starterAgenda = records.get("villages-village").data.villagers[0].agenda;
+  const planned = Object.entries(
+    starterAgenda.plannedDays as Record<string, { activity: string; essential?: boolean }[]>,
+  )
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-7);
+  assert.equal(planned.length, 7);
+  assert.equal(planned.at(-1)?.[0], starterAgenda.starterWeekThrough);
+  const afterStarter = calendarAt(new Date(), starterAgenda.starterWeekThrough, 720);
+  afterStarter.setDate(afterStarter.getDate() + 1);
+  const fallback = ordinaryAgendaBlocksFor(starterAgenda, afterStarter);
+  assert.ok(new Set(fallback.filter((block) => block.flexible).map((block) => block.activity)).size >= 3);
+  for (const [index, [, blocks]] of planned.entries()) {
+    assert.ok(blocks.filter(({ activity }) => activity.startsWith(`Starter activity ${index + 1}/`)).length >= 3);
+    assert.ok(blocks.some((block) => block.activity === "Sleeping" && block.essential));
+  }
   assert.equal(
     records.get("villages-village").data.villagers[0].identityDescription.text,
     "A patient resident with a lasting interest in local history.",
