@@ -140,6 +140,7 @@ export function RosterScreen({
                         portrait={portraits[person.characterId]}
                         name={person.name}
                         className={`${ELEMENT_TAG}-avatar`}
+                        fullResolution
                       />
                       <span className={`${ELEMENT_TAG}-directory-text`}>
                         <strong>{person.name}</strong>
