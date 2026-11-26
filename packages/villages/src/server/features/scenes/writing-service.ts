@@ -203,8 +203,12 @@ export function createSceneWriting({
       if (!npc) throw conflict("A captured character's authored identity is unavailable.");
       return npcProfile(npc);
     });
-    const nativeCommands = !scene.visitorIntroduction && (mode !== "chat" || !!scene.contactGeneration?.instruction);
-    const tagged = freshReply && mode === "chat" && !nativeCommands && !scene.visitorIntroduction;
+    const spontaneousOpening = mode === "greet" && (scene.visitEvent === "place" || scene.visitEvent === "opening");
+    const nativeCommands =
+      !scene.visitorIntroduction &&
+      ((mode !== "chat" && !spontaneousOpening) || !!scene.contactGeneration?.instruction);
+    const tagged =
+      (spontaneousOpening || (freshReply && mode === "chat")) && !nativeCommands && !scene.visitorIntroduction;
     const addressed = nativeCommands
       ? []
       : addressedSceneResidents(input, cast, scene.sceneAttendance?.occupants ?? cast);
@@ -397,7 +401,7 @@ export function createSceneWriting({
           : "",
         nativeCommands ? NARRATION_RESPONSE : tagged ? "" : ordinarySceneCitationIds(positions),
         nativeCommands ? "" : ordinarySceneKeepSources(tagged || positions),
-        freshReply ? "Use the supplied calendar for the current time. Past exchanges cannot change it." : "",
+        freshReply || tagged ? "Use the supplied calendar for the current time. Past exchanges cannot change it." : "",
         scene.contactGeneration?.doorwayVoiceIds?.length
           ? (tagged
               ? "For dialogue to the player from these doorway speakers, add [to player]: "
@@ -615,7 +619,7 @@ export function createSceneWriting({
           ? { automaticTrespass: true as const }
           : {}),
         ...(!nativeCommands && !freshReply ? { retryEpisodeRevision: authority.episodes.revision } : {}),
-        ...(freshReply ? { strictSceneReply: true as const } : {}),
+        ...(freshReply || tagged ? { strictSceneReply: true as const } : {}),
         ...(tagged ? { taggedSceneReply: true as const } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
@@ -641,7 +645,7 @@ export function createSceneWriting({
               positionedSceneSources: true,
               stripSceneHistoryDecoration: true,
               quotedSceneSources: true,
-              ...(!freshReply
+              ...(!freshReply && !tagged
                 ? {
                     ordinaryReplyRecovery: true as const,
                     ordinaryFormatRecovery: 6 as const,

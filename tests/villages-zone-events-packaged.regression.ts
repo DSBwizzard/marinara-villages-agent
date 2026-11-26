@@ -245,7 +245,7 @@ const model = {
   maxContext: 64000,
   maxOutputTokens: 4096,
   fitContext: (messages: any[], options: any) => ({ messages, ...options, trimmed: false }),
-  async chatComplete(messages: { role: string; content: string }[]) {
+  async chatComplete(messages: { role: string; content: string }[], options?: { responseFormat?: unknown }) {
     completions++;
     assert.match(messages[0].content, /GM of Villages/);
     const prompt = messages.map(({ content }) => content).join("\n");
@@ -255,6 +255,11 @@ const model = {
       assert.match(prompt, /Native changes use commands/u);
       assert.match(prompt, /Contact context: .*"boundaryZoneId":"kitchen"/u);
       assert.doesNotMatch(prompt, /"kind":"knock"|doorway contact/iu);
+    }
+    if (prompt.includes("The place can initiate this even when nobody is present.")) {
+      assert.match(messages.at(-1)!.content, /Use Narration: text/);
+      assert.doesNotMatch(messages.at(-1)!.content, /one JSON object/);
+      assert.equal(options?.responseFormat, undefined);
     }
     assert(answer, "Only an explicitly supplied synthetic response may dispatch");
     const selected = answer;
@@ -565,11 +570,18 @@ try {
   const readyEntrance = (await request("/rooms/active")).session;
   assert.equal(readyEntrance.visitEventOpening, true);
   assert.deepEqual(readyEntrance.activeIds, []);
-  provide({ segments: [{ id: "wind", kind: "narration", text: "A gust rattles the shutters." }] });
+  answer = {
+    content: 'Narration: A gust rattles the shutters.\n[keep]: {"text":\nNarration: PRIVATE PLACEHOLDER',
+    finishReason: "stop",
+  };
   const greetedEntrance = (await request("/rooms/greet", { sessionId: placeArrival.id })).session;
   assert.equal(greetedEntrance.status, "active");
   assert.equal(completions, beforeDisabled + 1);
   assert.match(JSON.stringify(greetedEntrance.lines), /gust rattles the shutters/);
+  assert.doesNotMatch(JSON.stringify(greetedEntrance.lines), /PRIVATE PLACEHOLDER/);
+  assert.equal(greetedEntrance.zoneId, "exterior");
+  await request("/rooms/greet", { sessionId: placeArrival.id });
+  assert.equal(completions, beforeDisabled + 1, "the saved opening never dispatches again");
 
   await restart(baseline);
   const validKeep = {
