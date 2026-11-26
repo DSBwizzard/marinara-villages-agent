@@ -435,10 +435,11 @@ export async function verifyFoundingLayout(group) {
           await finishPassage(root, -1);
           await button("Back").click();
         };
+        const venueIntroOpening = /^There’s our Map\./;
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
-            const introduction = guide.getByText(/^Add or draft your Venues/);
+            const introduction = guide.getByText(venueIntroOpening);
             await expect(introduction).toBeVisible();
             await expect(work).toHaveCount(0);
             await layer("Venue");
@@ -456,6 +457,24 @@ export async function verifyFoundingLayout(group) {
               await page.screenshot({
                 path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `venue-intro-${view.width}.png`),
               });
+            await advance();
+            const addOrDraft = guide.getByText(/^Got a place in mind/);
+            await expect(addOrDraft).toBeVisible();
+            await expect(work).toHaveCount(0);
+            await advance();
+            const assignments = guide.getByText(/^Put your places on the Map/);
+            await expect(assignments).toBeVisible();
+            await expect(work).toHaveCount(0);
+            if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
+              await retreat();
+              await expect(addOrDraft).toBeVisible();
+              await advance();
+              await expect(assignments).toBeVisible();
+              if (process.env.VILLAGES_SCREENSHOT_DIR)
+                await page.screenshot({
+                  path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `venue-intro-assignments-${view.width}.png`),
+                });
+            }
             await finishPassage(guide);
             if (view.width === 1366) {
               const move = await page.evaluate(async () => {
@@ -1765,7 +1784,7 @@ export async function verifyFoundingLayout(group) {
         await bounds("people");
         await advance();
         await expect(root).toHaveAttribute("data-step", "2");
-        await expect(root.getByText(/^Add or draft your Venues/)).toHaveCount(0);
+        await expect(root.getByText(venueIntroOpening)).toHaveCount(0);
         await enterChapter();
         await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
         await button("Art settings").click();
@@ -1997,7 +2016,7 @@ export async function verifyFoundingLayout(group) {
         await advance();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.locator("[data-explanation]")).toHaveCount(1);
-        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
+        await expect(root.getByText(venueIntroOpening)).toBeVisible();
         await expect(work).toHaveCount(0);
         await enterChapter();
         await retreat();
@@ -2006,7 +2025,7 @@ export async function verifyFoundingLayout(group) {
         if (phone)
           await expect(root.locator(".villages-setting-dialogue:visible")).not.toHaveAttribute("data-reader-next-page");
         await finishPassage(root, -1);
-        await expect(root.getByText(/^Add or draft your Venues/)).toBeVisible();
+        await expect(root.getByText(venueIntroOpening)).toBeVisible();
         await expect(work).toHaveCount(0);
         await retreat();
         await expect(root).toHaveAttribute("data-step", "2");
