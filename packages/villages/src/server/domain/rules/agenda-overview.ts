@@ -263,35 +263,42 @@ export function agendaWeek(world: VillageState, actorId: string, now: Date, insp
       );
       const times: (Omit<AgendaTime, "date"> & {
         activity: string;
+        label?: string;
         source?: "told" | "seen" | "agreed";
       })[] =
         inspect || shared
-          ? effective.map((block) => ({
-              ...block,
-              activity:
+          ? effective.map((block) => {
+              const activity =
                 !block.commitmentId &&
                 !resident.agenda?.repairedDays?.includes(date) &&
                 !authoredShifts.has(block.activity) &&
                 generatedActivities.has(block.activity)
                   ? generatedAgendaActivityLabel(block.activity)
-                  : block.activity,
-              source: visible.find(
-                (row) =>
-                  row.source === "agreed" &&
-                  row.id === block.commitmentId &&
-                  row.time.startMinute <= block.startMinute &&
-                  row.time.endMinute >= block.endMinute &&
-                  row.time.venueId === block.venueId,
-              )?.source,
-            }))
+                  : block.activity;
+              const label = activity !== block.activity ? activity.split(",", 1)[0]?.trim() : undefined;
+              return {
+                ...block,
+                activity,
+                ...(label && label !== activity ? { label } : {}),
+                source: visible.find(
+                  (row) =>
+                    row.source === "agreed" &&
+                    row.id === block.commitmentId &&
+                    row.time.startMinute <= block.startMinute &&
+                    row.time.endMinute >= block.endMinute &&
+                    row.time.venueId === block.venueId,
+                )?.source,
+              };
+            })
           : visible.map(({ time, activity, source }) => ({ ...time, activity, source }));
-      const blocks = times.map(({ startMinute, endMinute, activity, venueId, zoneId, source }) => {
+      const blocks = times.map(({ startMinute, endMinute, activity, label, venueId, zoneId, source }) => {
         const venue = findLocation(world, venueId);
         const zone = venue && zoneId && resolveVenueZone(venue, zoneId);
         return {
           startMinute,
           endMinute,
           activity,
+          ...(label ? { label } : {}),
           ...(restingAgendaBlock({ activity }) ? { resting: true as const } : {}),
           ...(venue ? { place: zone && (inspect || zone.seen || source === "agreed") ? zone.name : venue.name } : {}),
           ...(source ? { source } : {}),

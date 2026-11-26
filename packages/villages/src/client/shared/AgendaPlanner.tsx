@@ -98,7 +98,7 @@ export function AgendaPlanner<T extends Block>({
                   }}
                 >
                   <span className={P + "-planner-time"}>{blockTime(block)}</span>
-                  <span>{block.activity}</span>
+                  <span>{block.label ?? block.activity}</span>
                 </button>
               ))}
           </div>

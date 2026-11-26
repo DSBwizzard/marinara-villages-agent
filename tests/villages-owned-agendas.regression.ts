@@ -129,6 +129,7 @@ const records = new Map<string, any>();
     "Patrolling the Hiking Trail, memorizing escape routes.",
   );
   assert.equal(agenda.activeDay.blocks[0]!.activity, activity, "Inspection leaves the saved Agenda intact.");
+  assert.equal(agendaWeek(world, "a", today, true).days[0]!.blocks[0]!.label, "Patrolling the Hiking Trail");
   agenda.repairedDays = [dateKey];
   assert.equal(
     agendaWeek(world, "a", today, true).days[0]!.blocks[0]!.activity,

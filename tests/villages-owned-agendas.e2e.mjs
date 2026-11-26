@@ -16,7 +16,13 @@ await withBrowser(browser, async () => {
     const block = {
       startMinute: 360,
       endMinute: 480,
+      label: "Patrolling the Hiking Trail",
       activity: "Patrolling the Hiking Trail, memorizing escape routes and testing footing on the uneven ground",
+    };
+    const longBlock = {
+      startMinute: 840,
+      endMinute: 960,
+      activity: "Sorting the maps and cataloguing new trail markers for the next neighborhood walking tour",
     };
     const resident = { characterId: "mara", agenda: null };
     await page.route("http://villages.test/", (route) =>
@@ -33,7 +39,7 @@ await withBrowser(browser, async () => {
         const inspect = url.searchParams.get("inspect") === "true";
         value = {
           visibility: inspect ? "inspect" : "known",
-          days: [{ date: "2026-11-10", weekday: "Tuesday", blocks: inspect ? [block] : [] }],
+          days: [{ date: "2026-11-10", weekday: "Tuesday", blocks: inspect ? [block, longBlock] : [] }],
         };
       } else if (path.endsWith("/agendas")) value = { villagers: [resident] };
       else if (path.endsWith("/relationships")) value = { profiles: [{ characterId: "mara", entries: [] }] };
@@ -64,12 +70,12 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true })
       .click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    const label = page.getByText(block.activity, { exact: true });
+    const label = page.getByText(block.label, { exact: true });
     await expect(label).toHaveCount(0);
     await clickCharacterTool(page, "Inspect Agenda");
     await expect(label).toBeVisible();
     assert.ok(
-      await label.evaluate((node) => {
+      await page.getByText(longBlock.activity, { exact: true }).evaluate((node) => {
         const range = document.createRange();
         range.selectNodeContents(node);
         return range.getClientRects().length > 1 && node.scrollWidth <= node.clientWidth;
@@ -83,6 +89,8 @@ await withBrowser(browser, async () => {
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
     assert.equal(paid, 0);
     await page.screenshot({ path: resolve("artifacts/owned-agendas-" + width + ".png") });
+    await label.click();
+    await expect(page.getByRole("status").filter({ hasText: block.activity })).toBeVisible();
     await clickCharacterTool(page, "Leave Inspect");
     await expect(label).toHaveCount(0);
     assert.deepEqual(errors, []);
