@@ -124,7 +124,7 @@ await withBrowser(browser, async () => {
       error: "Map artwork could not be generated.",
       result: null,
     });
-    await expect(f.page.getByRole("alert")).toHaveText("Map artwork could not be generated.");
+    await expect(f.page.getByRole("alert")).toHaveText("Couldn’t generate the map.");
     await expect(f.page.getByRole("button", { name: "Generate artwork" })).toBeEnabled();
     await expect(f.page.getByRole("button", { name: "Upload image" })).toBeEnabled();
     assert.deepEqual(await f.state(), { busy: false, request: null });

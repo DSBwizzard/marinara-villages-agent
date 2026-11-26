@@ -158,7 +158,9 @@ export async function verifyFoundingLayout(group) {
               sourceKey: body.sourceKey,
               startedAt: new Date().toISOString(),
               status: failMapGeneration ? "failed" : "complete",
-              error: failMapGeneration ? "Map artwork could not be generated." : "",
+              error: failMapGeneration
+                ? `The Engine refused /api/characters/avatar-generation (500): ${"upstream error details ".repeat(25)}`
+                : "",
               result: failMapGeneration ? null : { image: generationImage, width: 1536, height: 1024 },
             };
             return send({ ...mapReceipt, status: "running", result: null });
@@ -1865,14 +1867,41 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-step", "2");
         await expect(mapWarning).toBeVisible();
         assert.deepEqual(await root.boundingBox(), frame, "Missing artwork keeps the player on Maps");
-        if (view.width === 1366) {
+        if (view.width === 1366 || view.width === 390) {
           failMapGeneration = true;
           await button("Generate image").click();
-          await expect(
-            root.getByRole("alert").filter({ hasText: "Map artwork could not be generated." }),
-          ).toBeVisible();
-          await expect(button("Generate image")).toBeEnabled();
-          await expect(button("Upload image")).toBeEnabled();
+          const artwork = root.getByRole("region", { name: "Map artwork", exact: true });
+          const mapFailure = artwork.getByRole("alert");
+          const checkMapFailure = async () => {
+            await expect(mapFailure).toHaveText("Couldn’t generate the map.");
+            await expect(mapFailure).toBeInViewport({ ratio: 1 });
+            for (const name of ["Generate again", "Upload image"]) {
+              await expect(button(name)).toBeEnabled();
+              await expect(button(name)).toBeInViewport({ ratio: 1 });
+            }
+            assert.ok(await work.evaluate((node) => node.scrollHeight <= node.clientHeight + 1));
+            await expect(root.getByText(/upstream error details/)).toHaveCount(0);
+          };
+          await checkMapFailure();
+          if (phone) await retreat(); // Close the Maps panel before leaving the chapter.
+          await retreat();
+          await expect(root).toHaveAttribute("data-step", "1");
+          await expect(root.getByText("Couldn’t generate the map.", { exact: true })).toHaveCount(0);
+          if (phone) await retreat();
+          await retreat();
+          await expect(root).toHaveAttribute("data-step", "0");
+          await expect(root.getByText("Couldn’t generate the map.", { exact: true })).toHaveCount(0);
+          await advance();
+          await enterChapter();
+          await advance();
+          await enterChapter();
+          await checkMapFailure();
+          await expect
+            .poll(() => page.evaluate(() => window.featureController.savedSetupDraft?.data.mapProblem))
+            .toBe("Couldn’t generate the map.");
+          await page.reload();
+          await page.addScriptTag({ content: foundingBundle });
+          await checkMapFailure();
           assert.equal(generatedImages, 1, "Reading the failed attempt never generates another image");
           assert.equal(await page.evaluate(() => window.featureController.setupMapRequest), null);
           assert.equal(await page.evaluate(() => window.featureController.setupMapBusy), false);
@@ -1880,8 +1909,10 @@ export async function verifyFoundingLayout(group) {
           await expect(settingNext()).toBeEnabled();
           await advance();
           await expect(root).toHaveAttribute("data-step", "2");
+        }
+        if (view.width === 1366) {
           failMapGeneration = false;
-          await button("Generate image").click();
+          await button("Generate again").click();
           await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
           assert.equal(generatedImages, 2);
         } else {
@@ -2980,7 +3011,7 @@ export async function verifyFoundingLayout(group) {
             .map((row) => row.id)
             .sort(),
         );
-        assert.equal(generatedImages, 3 * Number(view.width === 1366));
+        assert.equal(generatedImages, view.width === 1366 ? 3 : Number(view.width === 390));
         assert.equal(suggestions, 2);
         await context.close();
       });
