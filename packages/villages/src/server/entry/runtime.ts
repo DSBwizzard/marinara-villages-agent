@@ -769,7 +769,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readLinkedPersona,
       listVillagerCards,
       prepareFoundedVillage,
-      queueStartingTies: startingTies.queue,
       queueMicrotask,
       readVillageLore,
       draftVillageVenueDescriptions,
@@ -1008,6 +1007,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       backgroundWorkSummaries,
       retryBackgroundJob,
       settleBackgroundWork,
+      queueStartingTies: startingTies.queue,
       queueVillagerAgenda,
     }),
   );

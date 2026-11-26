@@ -701,6 +701,7 @@ export function createSceneCommands({
     const world = await readVillageState({ memories: true });
     const discovery = world.worldPlaces.places[placeId];
     if (!discovery || discovery.prepared) return;
+    if (!startingHistoryReady(world)) throw conflict("Finish starting history before opening a Scene.");
     const result = await preparePlace(
       {
         worldScope: villageWorldScope(world),

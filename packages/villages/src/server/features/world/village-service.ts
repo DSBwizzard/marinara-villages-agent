@@ -1,4 +1,5 @@
 import { foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
+import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import type {
   MemoryCorrectRequest,
@@ -114,6 +115,11 @@ export function createWorldCoordination({
       const request = options.advanceTime;
       const departure = await readVillageAuthority({ memories: true });
       await advanceVillageClock(request, (state, from, until) => {
+        if (
+          !foundingReadyForPlay(state) ||
+          (state.opening?.stage === "gathering" && !state.opening.gatheringSceneId && !startingHistoryReady(state))
+        )
+          throw conflict("Finish Founding preparation before advancing time.");
         const captured = captureReturnContext(state, from);
         if (returnCaptureRevision(captured) !== returnCaptureRevision(captureReturnContext(departure, from)))
           throw conflict("The Village changed. Refresh before advancing time.");

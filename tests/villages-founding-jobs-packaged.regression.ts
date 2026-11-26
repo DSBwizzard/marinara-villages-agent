@@ -8,7 +8,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
-import { ordinaryAgendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { agendaBlocksFor, ordinaryAgendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { continuityActor } from "../packages/villages/src/server/domain/rules/continuity-actors.js";
 import { calendarAt } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8")),
@@ -21,7 +22,9 @@ assert.deepEqual(
   await readFile("packages/villages/server.mjs"),
 );
 const { activate } = await import(pathToFileURL(resolve("packages/villages/server.mjs")).href);
-const now = new Date().toISOString();
+const now = "2026-11-26T12:00:00.000Z";
+const realNow = Date.now;
+Date.now = () => Date.parse(now);
 const world = coerceVillageState({
   ...defaultVillageState(),
 
@@ -29,6 +32,7 @@ const world = coerceVillageState({
   name: "Synthetic place",
   setting: "Shared converted rooms",
   backgroundPace: "off",
+  timeZone: "UTC",
   setupAt: now,
   foundedAt: now,
   foundingPreparation: {
@@ -54,7 +58,19 @@ const world = coerceVillageState({
     },
   })),
 });
-for (const resident of world.villagers) resident.agenda = unwrittenVillageAgenda();
+for (const resident of world.villagers) {
+  resident.agenda = unwrittenVillageAgenda(new Date(now));
+  world.startingHistory.reviewed[resident.characterId] = resident.incarnation;
+}
+world.residentPlans.appointments = [
+  {
+    id: "saved-opening-appointment",
+    resident: { id: "b", incarnation: "one" },
+    playerIncarnation: continuityActor(world, "player")!.incarnation,
+    time: { date: "2026-11-26", startMinute: 1305, endMinute: 1350, venueId: world.venues[0]!.id },
+    activity: "Meet at the square",
+  },
+];
 const clone = <T>(x: T): T => structuredClone(x);
 const records = new Map<string, any>([
   ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: world }],
@@ -168,6 +184,11 @@ try {
   await start();
   const read = await app.inject({ method: "GET", url: "/api/villages/setup/preparation" });
   assert.equal(read.statusCode, 200, read.body);
+  assert.equal(read.json().foundingPreparation.canPlay, false);
+  const enter = () => app.inject({ method: "POST", url: "/api/villages/rooms", payload: { venueId: "square" } });
+  const blocked = await enter();
+  assert.equal(blocked.statusCode, 409, blocked.body);
+  assert.match(blocked.body, /Finish Founding preparation/);
   assert.equal(calls, 0);
   const batch = { actionId: "batch-http" };
   let response = await app.inject({ method: "POST", url: "/api/villages/setup/preparation/retry", payload: batch });
@@ -185,15 +206,35 @@ try {
   );
   assert.equal(calls, 5, "The failed Wish receives exactly one automatic replacement.");
   assert.equal(marker.status, "failed");
+  assert.equal((await enter()).statusCode, 409, "An unfinished Wish still blocks entry");
   assert.equal(marker.tasks.a.routine.status, "completed");
   const starterAgenda = records.get("villages-village").data.villagers[0].agenda;
+  const bookedAgenda = records.get("villages-village").data.villagers[1].agenda;
+  assert.ok(
+    agendaBlocksFor(bookedAgenda, new Date(now)).some(
+      (block) =>
+        block.commitmentId === "saved-opening-appointment" && block.startMinute === 1305 && block.endMinute === 1350,
+    ),
+    "A booked opening-day appointment still spans the whole reserved interval",
+  );
   const planned = Object.entries(
     starterAgenda.plannedDays as Record<string, { activity: string; essential?: boolean }[]>,
   )
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-7);
   assert.equal(planned.length, 7);
+  assert.equal(planned[0]![0], "2026-11-26", "The saved week begins on Founding day");
   assert.equal(planned.at(-1)?.[0], starterAgenda.starterWeekThrough);
+  assert.equal(starterAgenda.starterWeekThrough, "2026-12-02");
+  assert.equal(starterAgenda.activeDay.blocks[0].activity, "Taking care of their own affairs");
+  assert.equal(starterAgenda.activeDay.blocks[0].endMinute, 720, "Elapsed minutes are preserved");
+  assert.ok(
+    starterAgenda.activeDay.blocks.some(
+      (block: { activity: string; startMinute: number }) =>
+        block.startMinute === 720 && block.activity.startsWith("Starter activity 1/"),
+    ),
+    "Afternoon plans are active today",
+  );
   const afterStarter = calendarAt(new Date(), starterAgenda.starterWeekThrough, 720);
   afterStarter.setDate(afterStarter.getDate() + 1);
   const fallback = ordinaryAgendaBlocksFor(starterAgenda, afterStarter);
@@ -273,6 +314,10 @@ try {
   await settled();
   assert.equal(calls, before + 1);
   assert.equal(records.get("villages-village").data.foundingPreparation.status, "ready");
+  assert.equal(
+    (await app.inject({ method: "GET", url: "/api/villages/setup/preparation" })).json().foundingPreparation.canPlay,
+    true,
+  );
   await app.inject({ method: "POST", url: "/api/villages/setup/preparation/retry", payload: target });
   assert.equal(calls, before + 1, "duplicate retry is free");
   console.log(
@@ -281,4 +326,5 @@ try {
 } finally {
   await stop?.();
   globalThis.fetch = fetchBefore;
+  Date.now = realNow;
 }

@@ -12,6 +12,7 @@ import {
   ownsFoundingTask,
 } from "../../domain/rules/founding-tasks.js";
 import { continuityWishes } from "../../domain/rules/continuity-library.js";
+import { startingHistoryReady } from "../../domain/rules/starting-history.js";
 
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type {
@@ -42,6 +43,7 @@ export interface FoundingPreparationPorts {
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
   retryBackgroundJob: typeof retryBackgroundJob;
   settleBackgroundWork: typeof settleBackgroundWork;
+  queueStartingTies?(): Promise<void>;
   queueVillagerAgenda(characterId: string, finite?: boolean, origin?: "founding"): Promise<void>;
 }
 /** One application owns the first-founding sequence and its deliberate retries. */
@@ -72,6 +74,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       if (initial.foundingPreparation?.status !== "pending") return;
       await initializeTasks(initial.seed);
       const targeted = !!initial.foundingPreparation.selectedTasks?.length;
+      if (!targeted && !startingHistoryReady(initial)) await ports.queueStartingTies?.();
       try {
         if ((await readVillageState()).seed !== initial.seed) return;
         await reportFoundingProgress(initial.seed, {
@@ -255,6 +258,10 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       marker = requested.foundingPreparation;
     if (!marker) return buildVillageSnapshot();
     if (input.actionId && marker.retryActions?.includes(input.actionId)) return buildVillageSnapshot();
+    if (marker.status === "ready" && !input.characterId && !input.task && !startingHistoryReady(requested)) {
+      await ports.queueStartingTies?.();
+      return buildVillageSnapshot();
+    }
     if (marker.status !== "failed") return buildVillageSnapshot();
     const targeted = input.characterId !== undefined || input.task !== undefined;
     if (
@@ -314,7 +321,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
   }
   async function assertFoundedVillageReady(): Promise<void> {
     if (!foundingReadyForPlay(await readVillageState()))
-      throw conflict("The Village needs usable places and Agendas before entering.");
+      throw conflict("Finish Founding preparation before entering the Village.");
   }
 
   async function initializeTasks(seed: string) {

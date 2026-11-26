@@ -13,17 +13,8 @@ import { influenceSettings } from "./owned-routine.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { continuityContextRevision } from "./continuity-library.js";
 
-export function foundingReadyForPlay(
-  state: Pick<VillageState, "setupAt" | "venues" | "villagers" | "foundingPreparation">,
-): boolean {
-  if (!state.foundingPreparation || state.foundingPreparation.status === "ready") return true;
-  return (
-    !!state.setupAt &&
-    state.venues.some((venue) =>
-      venueZones(venue).some((zone) => zone.kind === "exterior" && !!zone.description.trim()),
-    ) &&
-    state.villagers.every((resident) => !!resident.agenda)
-  );
+export function foundingReadyForPlay(state: Pick<VillageState, "foundingPreparation">): boolean {
+  return !state.foundingPreparation || state.foundingPreparation.status === "ready";
 }
 
 export function foundingTaskRevision(state: VillageState, id: string, kind: FoundingTaskKind): string {

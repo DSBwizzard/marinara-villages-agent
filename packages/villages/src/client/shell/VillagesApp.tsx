@@ -466,7 +466,7 @@ function VillageScreen(props: VillageScreenProps) {
     );
   }
 
-  if (snapshot.isFounded && !room && sceneRestoration.status !== "ready") {
+  if (screen !== "preparing" && snapshot.isFounded && !room && sceneRestoration.status !== "ready") {
     if (sceneRestoration.status !== "error") return null;
     return (
       <div className={ELEMENT_TAG + "-root"}>

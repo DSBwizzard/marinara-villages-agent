@@ -362,21 +362,15 @@ async function main() {
   try {
     install();
     const local = fixture();
-    assert.equal(foundingReadyForPlay(local), true, "Local routines and usable places allow play during optional work");
-    const incomplete = structuredClone(local);
-    incomplete.villagers[0]!.agenda = null;
-    assert.equal(foundingReadyForPlay(incomplete), false, "A resident still needs a usable local routine");
-    incomplete.villagers = [];
-    incomplete.venues = [];
-    assert.equal(foundingReadyForPlay(incomplete), false, "An unfinished Village needs usable places");
-    await assertFoundedVillageReady();
+    assert.equal(foundingReadyForPlay(local), false, "Usable places and starter placeholders cannot open the Village");
+    await assert.rejects(assertFoundedVillageReady(), /Finish Founding preparation/);
     assert.equal(calls.length, 0, "Entering does not authorize extra generation");
     mode = "context-loss";
     await prepareFoundedVillage();
     assert.equal(calls.length, 0, "required resident context cannot be trimmed before dispatch");
     assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
-    await assertFoundedVillageReady();
-    assert.equal((await foundingPreparationSnapshot()).foundingPreparation?.canPlay, true);
+    await assert.rejects(assertFoundedVillageReady(), /Finish Founding preparation/);
+    assert.equal((await foundingPreparationSnapshot()).foundingPreparation?.canPlay, false);
     install();
     mode = "held";
     failVenue = "aqua";
@@ -403,6 +397,7 @@ async function main() {
     await preparing;
     const withNewcomer = await readVillageState({ memories: true });
     assert.equal(withNewcomer.foundingPreparation?.status, "ready");
+    await assertFoundedVillageReady();
     assert.equal(
       withNewcomer.foundingPreparation?.tasks?.newcomer,
       undefined,
@@ -511,7 +506,7 @@ async function main() {
       await prepareFoundedVillage();
       state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "failed");
-      await assertFoundedVillageReady();
+      await assert.rejects(assertFoundedVillageReady(), /Finish Founding preparation/);
       assert.equal(
         state.foundingPreparation?.completedIds.length,
         2,

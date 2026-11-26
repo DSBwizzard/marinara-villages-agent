@@ -247,7 +247,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     siteProjectId,
     setSiteProjectId,
   } = useProjectsState();
-  const screen = sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed", !!placingProjectId);
+  const foundingBlocked = snapshot?.foundingPreparation?.canPlay === false;
+  const screen = foundingBlocked
+    ? "preparing"
+    : sceneNavigationScreen(requestedScreen, !!room && room.status !== "closed", !!placingProjectId);
   useLayoutEffect(() => {
     // Ordinary exploration requests must not wait behind the Scene; Project placement is an editor.
     if (requestedScreen !== screen) setScreen(screen);
@@ -623,7 +626,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // session; the client restores it instead of opening another conversation.
   const sceneRestoration = useActiveSceneRestoration({
     ...scenes,
-    isFounded: snapshot?.isFounded,
+    isFounded: snapshot?.isFounded && !foundingBlocked,
     room,
     setRoom,
     setScreen,

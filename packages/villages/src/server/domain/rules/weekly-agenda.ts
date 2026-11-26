@@ -146,14 +146,15 @@ export function applyWeeklyAgenda(
   now: Date,
   offered: readonly WeeklyAgendaSlot[],
   choices: readonly (WeeklyAgendaChoice | null)[],
-  preserveThrough = "",
+  { preserveThrough = "", todayAfter }: { preserveThrough?: string; todayAfter?: number } = {},
 ): number {
   const agenda = resident.agenda;
   if (!agenda) return 0;
   const today = agendaDateKey(now);
   let placed = 0;
   for (const key of new Set(offered.map(({ date }) => date))) {
-    if (key <= today || key <= preserveThrough || agenda.activeDay?.dateKey === key) continue;
+    const planToday = key === today && todayAfter !== undefined;
+    if (key <= preserveThrough || (!planToday && (key <= today || agenda.activeDay?.dateKey === key))) continue;
     const date = calendarAt(now, key, 720);
     const livePeriods = freeAgendaPeriods(agenda, date);
     let blocks = ordinaryAgendaBlocksFor(agenda, date);
@@ -163,7 +164,7 @@ export function applyWeeklyAgenda(
       const choice = choices[index];
       if (!choice) continue;
       for (const available of livePeriods) {
-        const startMinute = Math.max(available.startMinute, slot.startMinute);
+        const startMinute = Math.max(available.startMinute, slot.startMinute, planToday ? todayAfter : 0);
         const endMinute = Math.min(available.endMinute, slot.endMinute);
         if (endMinute - startMinute < 30) continue;
         const [plan] = validateRoutineDay(
@@ -185,7 +186,10 @@ export function applyWeeklyAgenda(
         placed++;
       }
     }
-    if (placed > before) (agenda.plannedDays ??= {})[key] = blocks.sort((a, b) => a.startMinute - b.startMinute);
+    if (placed > before) {
+      (agenda.plannedDays ??= {})[key] = blocks.sort((a, b) => a.startMinute - b.startMinute);
+      if (agenda.activeDay?.dateKey === key) agenda.activeDay.blocks = blocks;
+    }
   }
   return placed;
 }

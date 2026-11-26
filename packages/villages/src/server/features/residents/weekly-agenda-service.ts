@@ -312,7 +312,9 @@ export function createWeeklyAgenda(ports: {
         const resident = state.villagers.find((row) => sameResident(row, plan));
         if (resident?.agenda) {
           if (input.weekActionId === undefined) {
-            applyWeeklyAgenda(state, resident, now, plan.slots, result[index]!, preparedAgendaThrough(resident.agenda));
+            applyWeeklyAgenda(state, resident, now, plan.slots, result[index]!, {
+              preserveThrough: preparedAgendaThrough(resident.agenda),
+            });
           } else {
             const placed = applyWeeklyAgenda(state, resident, now, plan.slots, result[index]!);
             if (!placed)

@@ -9,7 +9,7 @@ import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
-import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
+import { scheduledAgendaActivity, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 import { agendaDateKey, bookedAgendaDays } from "../../domain/rules/agenda-week.js";
 import type {
@@ -34,12 +34,7 @@ import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { createWeeklyAgenda } from "./weekly-agenda-service.js";
-import {
-  agendaCalendar,
-  applyWeeklyAgenda,
-  shiftAgendaDate,
-  weeklyAgendaVenues,
-} from "../../domain/rules/weekly-agenda.js";
+import { agendaCalendar, applyWeeklyAgenda, weeklyAgendaVenues } from "../../domain/rules/weekly-agenda.js";
 import { refreshWorkReservations } from "../../domain/rules/venue-work.js";
 import { routineProfileFromWeek } from "../../domain/rules/owned-routine.js";
 export interface ResidentAgendaPorts {
@@ -205,7 +200,9 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         { memories: true },
       );
     await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
-    const start = founding ? shiftAgendaDate(agendaCalendar(village, villageNow()), 1) : undefined;
+    const start = founding
+      ? agendaCalendar(village, village.setupAt ? new Date(village.setupAt) : villageNow())
+      : undefined;
     await queueBackgroundJob({
       kind: "agenda",
       retryActionId: founding ? village.foundingPreparation?.retryActions?.at(-1) : undefined,
@@ -298,7 +295,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     }
     const previous = villager.agenda;
     const now = agendaCalendar(state, villageNow());
-    const dayHasRolled = previous?.activeDay?.dateKey !== agendaDateKey(now);
+    const today = agendaDateKey(now);
+    const dayHasRolled = previous?.activeDay?.dateKey !== today;
     villager.agenda = {
       ...agenda,
       calendarVersion: 1,
@@ -315,13 +313,33 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       repairedDays: previous?.repairedDays,
       reservations: previous?.reservations ?? [],
       activeDay: dayHasRolled ? undefined : previous?.activeDay,
-      personalizationAttemptDate: agendaDateKey(now),
+      personalizationAttemptDate: today,
     };
     if (starter) {
       if (dayHasRolled) activateVillagerDay(villager, now, state);
+      const active = villager.agenda.activeDay!;
+      let todayAfter: number | undefined;
+      if (starter.slots.some(({ date }) => date === today) && !villager.agenda.repairedDays?.includes(today)) {
+        const minute = now.getHours() * 60 + now.getMinutes();
+        const current = active.blocks.find((block) => block.startMinute <= minute && minute < block.endMinute);
+        todayAfter = current && scheduledAgendaActivity(current) ? current.endMinute : minute;
+        const cut = todayAfter;
+        if (!previous?.reservations?.some((row) => row.dateKey === today && row.source !== "work"))
+          villager.agenda.activeDay = {
+            ...active,
+            blocks: [
+              ...active.blocks
+                .filter((block) => block.startMinute < cut)
+                .map((block) => ({ ...block, endMinute: Math.min(block.endMinute, cut) })),
+              ...agenda
+                .week![active.weekday]!.filter((block) => block.endMinute > cut)
+                .map((block) => ({ ...block, startMinute: Math.max(block.startMinute, cut) })),
+            ],
+          };
+      }
       projectAgendaReservations(state);
       refreshWorkReservations(state, now);
-      if (applyWeeklyAgenda(state, villager, now, starter.slots, starter.choices))
+      if (applyWeeklyAgenda(state, villager, now, starter.slots, starter.choices, { todayAfter }))
         villager.agenda.starterWeekThrough = starter.through;
       villager.agenda.week = starter.fallbackWeek;
       villager.agenda.routineProfile = routineProfileFromWeek(starter.fallbackWeek);

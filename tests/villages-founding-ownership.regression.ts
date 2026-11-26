@@ -194,7 +194,7 @@ async function independentFounding() {
     await a.service.foundingPreparationSnapshot();
     await a.service.prepareFoundedVillage();
     assert.deepEqual(a.calls, ["first", "second"], "discovery does not retry an interrupted paid request");
-    await a.service.assertFoundedVillageReady();
+    await assert.rejects(a.service.assertFoundedVillageReady(), /Finish Founding preparation/);
     a.setFailure(false);
     await a.service.retryFoundedVillagePreparation();
     await a.service.prepareFoundedVillage();
@@ -350,6 +350,23 @@ async function foundingDoesNotPopulateNpcs() {
   );
 }
 async function main() {
+  const history = fixture("starting-history-recovery");
+  let historyAdmissions = 0;
+  history.ports.queueStartingTies = async () => {
+    if (++historyAdmissions === 1) throw new Error("Starting history could not be queued.");
+  };
+  history.gate.resolve();
+  await history.service.prepareFoundedVillage();
+  assert.equal(history.state().foundingPreparation?.status, "failed");
+  assert.match(history.state().foundingPreparation!.error, /Starting history could not be queued/);
+  assert.deepEqual(history.calls, [], "A failed admission gives Founding a retry without spending on later tasks");
+  await history.service.retryFoundedVillagePreparation();
+  await history.service.prepareFoundedVillage();
+  assert.equal(history.state().foundingPreparation?.status, "ready");
+  assert.equal(historyAdmissions, 2);
+  await history.service.retryFoundedVillagePreparation();
+  assert.equal(historyAdmissions, 3, "A saved ready marker can recover a missing history job");
+  assert.deepEqual(history.calls, ["first", "second"], "Retrying history preserves successfully generated Agendas");
   await foundingDoesNotPopulateNpcs();
   await interactiveOpeningNeedsNoIdeas();
   await partialOpeningCount();

@@ -95,6 +95,7 @@ export function PreparationScreen({
                   .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
               }
               onChange={async () => controller.setSnapshot(await request("/setup/preparation"))}
+              retryMissing={preparation.status === "ready" ? () => retryPreparation() : undefined}
             />
           ) : null}
           <ul className="villages-forging-preparation-list">

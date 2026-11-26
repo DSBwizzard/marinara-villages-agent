@@ -23,7 +23,7 @@ export type VillageAgenda = {
   day: { startMinute: number; endMinute: number; venueId: string; zoneId?: string; activity: string }[];
   /** Villages' own complete weekly plan, independent of Marinara schedules. */
   week?: Record<string, VillageAgendaBlock[]>;
-  /** The day already in progress never changes when a week is rewritten. */
+  /** Weekly refreshes preserve the active day. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
   /** Failed generation keeps the owned routine; only deliberate retry can spend again. */
   personalizationPending?: boolean;
