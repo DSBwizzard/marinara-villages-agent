@@ -32,6 +32,7 @@ export function composeAgenda(
           venueId: reservation.venueId,
           zoneId: reservation.zoneId,
           activity: reservation.activity,
+          purpose: work ? "work" : "ordinary",
           ...(work ? {} : { commitmentId: reservation.id }),
           flexible: false,
         },

@@ -820,7 +820,7 @@ export function acceptNarrationContinuity(
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
-          if (write.agenda?.kind === "offer" || write.accept || write.closeOffer) {
+          if (write.closeOffer) {
             const candidate = cloneAppointmentState(scheduledWorld);
             if (applySceneAppointment(candidate, next, write, keep.admission.operationId + ":" + id, acceptedAt))
               scheduledWorld = candidate;

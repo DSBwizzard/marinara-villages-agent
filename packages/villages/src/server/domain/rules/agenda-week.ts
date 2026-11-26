@@ -1,5 +1,6 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageVenue } from "../models/world.js";
 import { composeAgenda } from "./agenda-composition.js";
+import { readAgendaPurpose } from "./agenda-flexibility.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 import { routineDay } from "./owned-routine.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -25,6 +26,7 @@ export function workingAgendaWeek(): Record<string, VillageAgendaBlock[]> {
           endMinute: 1440,
           venueId: "",
           activity: "Taking care of their own affairs",
+          purpose: "unplanned",
           flexible: true,
         },
       ],
@@ -67,6 +69,7 @@ export function completeAgendaWeek(
           return [
             {
               ...block(start as number, end as number, venueId, activity),
+              purpose: readAgendaPurpose(row.purpose),
               zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
               ...(row.essential === true ? { essential: true } : {}),
               ...(typeof row.commitmentId === "string" ? { commitmentId: row.commitmentId } : {}),
@@ -123,6 +126,7 @@ export function ordinaryAgendaBlocksFor(agenda: VillageAgenda, at: Date): Villag
         agenda.week?.[weekday] ??
         agenda.day.map((entry) => ({
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
+          purpose: entry.purpose,
           zoneId: entry.zoneId,
         })));
 }

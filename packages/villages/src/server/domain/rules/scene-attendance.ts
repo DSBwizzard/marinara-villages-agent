@@ -98,7 +98,7 @@ export function captureSceneAttendance(
         const block = agendaAt(villager.agenda, moment.minuteOfDay, now);
         const zone =
           resolveVenueZone(venue, position.zoneId ?? "") ??
-          chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
+          chooseAgendaZone(venue, villager.characterId, block, block?.zoneId, village, {
             at: now,
           });
         return [

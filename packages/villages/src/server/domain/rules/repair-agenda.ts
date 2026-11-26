@@ -217,7 +217,7 @@ export function applyAgendaRepair(
         throw repairFieldError(`zone:${index}`, "Choose a Zone in this Venue.");
     }
     const edited = {
-      ...(block ?? { flexible: false }),
+      ...(block ?? { flexible: false, purpose: "ordinary" as const }),
       activity,
       startMinute,
       endMinute,
@@ -309,7 +309,7 @@ export function applyAgendaRepair(
     const venue = locationFor(block);
     if (!venue) continue;
     const zoneFor = (item: VillageAgendaBlock, at: Date) =>
-      chooseAgendaZone(venue, residentId, item.activity, item.zoneId, state, { at }).id;
+      chooseAgendaZone(venue, residentId, item, item.zoneId, state, { at }).id;
     const available = zoneActivityFits(
       state,
       [residentId],

@@ -6,7 +6,16 @@ export type AgendaTime = {
   zoneId?: string;
 };
 
+export type AgendaAppointmentOffer = {
+  id: string;
+  token: string;
+  time: AgendaTime;
+  activity: string;
+  place: string;
+};
+
 export type AgendaWeek = {
+  pending?: AgendaAppointmentOffer[];
   visibility: "known" | "shared" | "inspect";
   days: {
     date: string;
