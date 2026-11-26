@@ -1,5 +1,5 @@
 import { asRecord } from "../../domain/rules/coerce.js";
-import { badRequest, VillagesRequestError } from "../../domain/rules/errors.js";
+import { badRequest, EngineRefusal } from "../../domain/rules/errors.js";
 import { villageEngineJson } from "./engine-transport.js";
 
 export type DecodedVillageImage = { dataUrl: string; mime: string; bytes: Uint8Array };
@@ -10,7 +10,7 @@ export async function inspectVillageImage(image: string): Promise<{ width: numbe
     answer = asRecord(await villageEngineJson<unknown>("/api/image-metadata/inspect", { body: { image } }));
   } catch (error) {
     // The package also runs on earlier 2.4.6 hosts while this shared endpoint rolls out.
-    if (!(error instanceof VillagesRequestError) || !error.message.includes("(404)")) throw error;
+    if (!(error instanceof EngineRefusal) || error.engineStatus !== 404) throw error;
     const decoded = decodeVillageImageDataUrl(image, { label: "map image", maxBase64Length: 8_000_000 });
     const size = fallbackImageDimensions(decoded.bytes);
     if (!size)

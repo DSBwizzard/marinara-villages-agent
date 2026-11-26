@@ -97,6 +97,26 @@ try {
     return true;
   });
 
+  const clockEvents = new EventTarget();
+  let refreshes = 0;
+  clockEvents.addEventListener("villages-clock-changed", () => refreshes++);
+  Object.defineProperty(globalThis, "window", { value: clockEvents, configurable: true });
+  try {
+    for (const [code, error] of [
+      ["CLOCK_CHANGED", "Time has advanced."],
+      ["SCENE_STALE", "The Scene clock label needs a refresh."],
+      [undefined, "The Village clock changed."],
+    ]) {
+      respond(Response.json({ code, error }, { status: 409 }));
+      await assert.rejects(request("/rooms/turn", { method: "POST" }), (cause: unknown) => {
+        return cause instanceof VillageApiError && cause.code === code && cause.message === error;
+      });
+    }
+    assert.equal(refreshes, 2, "the clock code and older clock errors refresh the Village");
+  } finally {
+    Reflect.deleteProperty(globalThis, "window");
+  }
+
   for (const body of ["", "<html>unavailable</html>", "{truncated", "null"]) {
     respond(new Response(body, { status: 200 }));
     await assert.rejects(request("/setup/reset", { method: "POST" }), (error: unknown) => {
