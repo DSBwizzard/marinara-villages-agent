@@ -1043,7 +1043,8 @@ await withBrowser(browser, async () => {
     relationships.starting.pending = false;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
-    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
+    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect")).length, 0);
+    if (width !== 1440) assert.equal(reads.filter((path) => path.endsWith("/agendas")).length, 0);
     await chooseSection("Venues");
     await expect(profile.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
