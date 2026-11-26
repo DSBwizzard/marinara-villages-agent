@@ -107,6 +107,7 @@ export async function verifyFoundingLayout(group) {
             Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
           });
         let setupPosts = 0;
+        let foundedSnapshot;
         let payload,
           suggestions = 0,
           settingReceipt,
@@ -315,7 +316,22 @@ export async function verifyFoundingLayout(group) {
                 body: JSON.stringify({ error: "Fixture founding failure." }),
               });
             payload = route.request().postDataJSON();
-            return send(snapshot);
+            foundedSnapshot = {
+              ...snapshot,
+              isFounded: true,
+              village: { ...snapshot.village, name: payload.name },
+              foundingPreparation: {
+                status: "pending",
+                canPlay: view.width === 727,
+                phase: "residents",
+                completedIds: [],
+                currentId: "finn",
+                currentTask: "routine",
+                error: "",
+              },
+              villagers: characters.slice(0, view.count).map(({ id, name }) => ({ characterId: id, name })),
+            };
+            return send(foundedSnapshot);
           }
           if (path.endsWith("/setup/venue-image/generate")) {
             generatedImages++;
@@ -353,7 +369,7 @@ export async function verifyFoundingLayout(group) {
             });
           if (path.endsWith("/image-style-profiles"))
             return send({ defaultProfileId: "fixture-ink", profiles: [{ id: "fixture-ink", name: "Ink" }] });
-          return send(snapshot);
+          return send(foundedSnapshot ?? snapshot);
         });
         await page.route("**/api/connections", (route) =>
           fulfill(route, {
@@ -2927,17 +2943,9 @@ export async function verifyFoundingLayout(group) {
         await expect(root).toHaveAttribute("data-review-stage", "map");
         await expect(button("Reset map view")).toBeVisible();
         await advance();
-        await button("Found village").click();
-        await expect(root).toHaveAttribute("data-review-stage", "sendoff");
-        assert.equal(setupPosts, 0, "Confirmation and scripted dialogue do not dispatch founding or model requests");
-        await expectPose("presenting");
-        await retreat();
         await expect(root).toHaveAttribute("data-review-stage", "confirm");
-        await button("Found village").click();
-        await advance();
-        await expect(root).toHaveAttribute("data-review-stage", "playful");
-        await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
-        await expectPose("playful");
+        assert.equal(setupPosts, 0, "Review does not submit founding");
+        const backdrop = await root.evaluate((node) => getComputedStyle(node).backgroundImage);
         if (view.width === 320 || view.width === 1366) {
           await page.evaluate(() =>
             window.featureController.updateSetupMapRequest({
@@ -2947,16 +2955,31 @@ export async function verifyFoundingLayout(group) {
               phase: "paused",
             }),
           );
-          await expect(button("Enter village")).toBeDisabled();
-          assert.equal(setupPosts, 0, "A paused map attempt still blocks Enter village after confirmation");
+          await expect(button("Found village")).toBeDisabled();
+          assert.equal(setupPosts, 0, "A paused map attempt blocks founding");
           await page.evaluate(() => window.featureController.updateSetupMapRequest(null));
         }
-        await expect(button("Enter village")).toBeEnabled();
-        const mariBox = await stage.boundingBox();
-        assert.ok(
-          mariBox.x + mariBox.width / 2 < frame.x + frame.width * 0.5,
-          "Mari stays on the left during her send-off",
-        );
+        await button("Found village").click();
+        if (view.width === 1366) {
+          await expect(root.getByRole("alert")).toContainText("Fixture founding failure.");
+          await expect(root).toHaveAttribute("data-review-stage", "confirm");
+          await expectPose("proud");
+          await button("Found village").click();
+        }
+        await expect(root).toHaveAttribute("data-step", "preparation");
+        assert.equal(await root.evaluate((node) => getComputedStyle(node).backgroundImage), backdrop);
+        if (view.width !== 727) {
+          await expect(root.getByRole("heading", { name: "Preparing your village" })).toBeVisible();
+          await expect(stage).toHaveCount(0);
+          await expect(button("Enter village")).toHaveCount(0);
+          foundedSnapshot.foundingPreparation.canPlay = true;
+        }
+        await expect(root.getByText(/Coastal Community is ready for you/)).toBeVisible();
+        await expectPose("presenting");
+        await expect(button("Next")).toBeInViewport({ ratio: 1 });
+        await button("Next").click();
+        await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
+        await expectPose("playful");
         await expect(button("Enter village")).toBeInViewport({ ratio: 1 });
         if (process.env.VILLAGES_SCREENSHOT_DIR)
           await page.screenshot({
@@ -2966,17 +2989,12 @@ export async function verifyFoundingLayout(group) {
             ),
           });
         await button("Enter village").click();
-        if (view.width === 1366) {
-          await expect(root.getByRole("alert")).toContainText("Fixture founding failure.");
-          await expect(root).toHaveAttribute("data-review-stage", "playful");
-          await expect(button("Enter village")).toBeEnabled();
-          await button("Enter village").click();
-        }
+        await expect(root).toHaveCount(0);
         await expect.poll(() => payload).toBeTruthy();
         assert.equal(
           setupPosts,
           view.width === 1366 ? 2 : 1,
-          "Only the final action submits, with one explicit retry on failure",
+          "Only Found village submits, with one explicit retry on failure",
         );
         assert.equal(payload.name, "Coastal Community");
         assert.equal(payload.timeZone, snapshot.clock?.timeZone || snapshot.village.timeZone);

@@ -46,7 +46,7 @@ const PLACE_ERRORS = {
 const FOUNDING_ROOT = `${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`;
 const PHONE_LAYOUT = "(max-width:727px)";
 const CHAPTER_MENUS = [undefined, "people", "maps", "venues", "review"] as const;
-type ReviewStage = "people" | "setting" | "map" | "confirm" | "sendoff" | "playful";
+type ReviewStage = "people" | "setting" | "map" | "confirm";
 
 function FoundingChapter({
   step,
@@ -200,7 +200,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
   const [phone, setPhone] = useState(() => window.matchMedia(PHONE_LAYOUT).matches);
   const [reviewStage, setReviewStage] = useState<ReviewStage>("people");
   const reviewingMap = setupStep === FOUNDING_STEP.Review && reviewStage === "map";
-  const reviewScene = setupStep === FOUNDING_STEP.Review && ["confirm", "sendoff", "playful"].includes(reviewStage);
+  const reviewScene = setupStep === FOUNDING_STEP.Review && reviewStage === "confirm";
   useEffect(() => {
     const layout = window.matchMedia(PHONE_LAYOUT);
     const update = () => setPhone(layout.matches);
@@ -269,11 +269,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           : setupStep === FOUNDING_STEP.People
             ? "happy"
             : setupStep === FOUNDING_STEP.Review
-              ? reviewStage === "playful"
-                ? "playful"
-                : reviewStage === "sendoff"
-                  ? "presenting"
-                  : "proud"
+              ? "proud"
               : "playful";
   const mariFacing = mariPose === "happy-side" ? "left" : mariPose === "looking-up" ? "right" : "front";
   const mariFlipEnabled = snapshot?.settings.spriteCardFlipEnabled !== false;
@@ -754,8 +750,6 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           setSetupMapReviewed(true);
           setReviewStage("confirm");
         } else if (!controller.setupMapReviewed) setReviewStage("map");
-        else if (reviewStage === "confirm") setReviewStage("sendoff");
-        else if (reviewStage === "sendoff") setReviewStage("playful");
         else void foundVillage();
       } else changeStep(setupStep + 1);
     };
@@ -771,9 +765,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           ? "Saving village…"
           : setupStep === FOUNDING_STEP.Review && reviewStage === "confirm"
             ? "Found village"
-            : setupStep === FOUNDING_STEP.Review && reviewStage === "playful"
-              ? "Enter village"
-              : "Next"}
+            : "Next"}
       </button>
     );
     const villageNameField = (
@@ -1211,18 +1203,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
       if (reviewStage === "people") {
         if (phone) backToChapterGuide();
         else changeStep(FOUNDING_STEP.Venues, true);
-      } else
-        setReviewStage(
-          reviewStage === "setting"
-            ? "people"
-            : reviewStage === "map"
-              ? "setting"
-              : reviewStage === "confirm"
-                ? "map"
-                : reviewStage === "sendoff"
-                  ? "confirm"
-                  : "sendoff",
-        );
+      } else setReviewStage(reviewStage === "setting" ? "people" : reviewStage === "map" ? "setting" : "map");
     };
     const reviewReplies = (
       <>
@@ -1284,15 +1265,11 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
           {setupStep === FOUNDING_STEP.Venues && (phone || explainingStarters)
             ? "Add or draft your Venues. Open Assignments to choose Homes and Work."
             : setupStep === FOUNDING_STEP.Review
-              ? reviewStage === "confirm"
+              ? reviewScene
                 ? "Ready to found " + setupName + "?"
-                : reviewStage === "sendoff"
-                  ? "Then let's give this place a beginning. Take care of each other—and leave a little room for surprises."
-                  : reviewStage === "playful"
-                    ? "Maybe I'll see you there!"
-                    : reviewingMap
-                      ? "Check your Map and everyone's home."
-                      : "One last look at your people, setting, and Map."
+                : reviewingMap
+                  ? "Check your Map and everyone's home."
+                  : "One last look at your people, setting, and Map."
               : [
                   "",
                   "Choose who you’ll play and who lives here. I recommend making sure your Villagers have Sprites assigned to their Character Card, otherwise they’ll spend every Scene doing their best impression of a passport photo.",
@@ -1338,6 +1315,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         data-review={setupStep === FOUNDING_STEP.Review || undefined}
         data-review-stage={setupStep === FOUNDING_STEP.Review ? reviewStage : undefined}
         data-review-scene={reviewScene || undefined}
+        data-founding-submitting={(reviewScene && busy) || undefined}
         data-lighting={storybookDaylight ? "day" : "night"}
         data-scene-arrival={enteringScene || undefined}
         data-title={showTitle || undefined}

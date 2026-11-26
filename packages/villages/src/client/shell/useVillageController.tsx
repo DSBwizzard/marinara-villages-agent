@@ -1109,13 +1109,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useFoundingPreparationPolling({
     ...founding,
     visible,
-    canPlay: snapshot?.foundingPreparation?.canPlay,
+    canPlay: snapshot?.isFounded && (snapshot.foundingPreparation?.canPlay ?? true),
     historyPending: !!snapshot?.backgroundWork?.some(
       (row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status),
     ),
     status: snapshot?.foundingPreparation?.status,
     screen,
-    setScreen,
     setSnapshot,
   });
 

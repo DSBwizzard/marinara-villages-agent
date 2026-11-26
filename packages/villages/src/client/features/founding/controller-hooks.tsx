@@ -512,19 +512,12 @@ export function useFoundingPreparationPolling(ports: {
   status: VillageSnapshot["foundingPreparation"]["status"] | undefined;
   screen: "home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person";
   setPreparationProblem: React.Dispatch<React.SetStateAction<string>>;
-  setScreen: React.Dispatch<
-    React.SetStateAction<"home" | "menu" | "setup" | "preparing" | "venue" | "room" | "person">
-  >;
   setSnapshot: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageSnapshot>>;
 }) {
-  const { screen, setPreparationProblem, setScreen, setSnapshot } = ports;
+  const { screen, setPreparationProblem, setSnapshot } = ports;
   const status = ports.status;
   useEffect(() => {
-    if (screen !== "preparing" || !ports.visible) return;
-    if (ports.canPlay) {
-      setScreen((current) => (current === "preparing" ? "home" : current));
-      return;
-    }
+    if (screen !== "preparing" || !ports.visible || ports.canPlay) return;
     if (status === "failed" && !ports.historyPending) return;
     let cancelled = false;
     const controller = new AbortController();
@@ -535,11 +528,13 @@ export function useFoundingPreparationPolling(ports: {
         if (cancelled) return;
         setSnapshot(next);
         setPreparationProblem("");
-        if (!next.foundingPreparation || next.foundingPreparation.canPlay)
-          setScreen((current) => (current === "preparing" ? "home" : current));
-        else if (
-          next.foundingPreparation.status === "pending" ||
-          next.backgroundWork?.some((row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status))
+        if (
+          next.foundingPreparation &&
+          !next.foundingPreparation.canPlay &&
+          (next.foundingPreparation.status === "pending" ||
+            next.backgroundWork?.some(
+              (row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status),
+            ))
         )
           timer = setTimeout(() => void poll(), 2500);
       } catch (cause) {
@@ -555,14 +550,5 @@ export function useFoundingPreparationPolling(ports: {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [
-    screen,
-    setPreparationProblem,
-    setScreen,
-    setSnapshot,
-    ports.visible,
-    ports.canPlay,
-    ports.historyPending,
-    status,
-  ]);
+  }, [screen, setPreparationProblem, setSnapshot, ports.visible, ports.canPlay, ports.historyPending, status]);
 }
