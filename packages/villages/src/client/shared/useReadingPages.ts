@@ -61,7 +61,7 @@ export function useReadingPages(
   readingKey: string,
   readingRef: RefObject<HTMLDivElement | null>,
   position?: ReadingPosition,
-  reveal = false,
+  { reveal = false, paginate = true }: { reveal?: boolean; paginate?: boolean } = {},
 ) {
   const nodes = useMemo(() => parseVillagesInlineMarkdown(text), [text]);
   const length = readingText(nodes).length;
@@ -110,7 +110,7 @@ export function useReadingPages(
       if (keyboard && hasMeasured) return;
       const mobile = screen.dataset.mobile === "true" || screen.matches(".villages-forging-v2[data-mobile=true]");
       const scene = screen.classList.contains(tag + "-room-screen");
-      const paged = mobile || scene;
+      const paged = paginate && (mobile || scene);
       const sample = reading.querySelector("p");
       if (!sample) return;
       const style = getComputedStyle(sample);
@@ -191,7 +191,7 @@ export function useReadingPages(
       attributes.disconnect();
       document.fonts?.removeEventListener("loadingdone", fontsChanged);
     };
-  }, [nodes, text, readingKey, length, readingRef, anchor, enterAtEnd, reset, isFounded]);
+  }, [nodes, text, readingKey, length, readingRef, anchor, enterAtEnd, reset, isFounded, paginate]);
 
   const move = (direction: -1 | 1): boolean => {
     const next = pages[index + direction];

@@ -1250,6 +1250,7 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
         <FoundingGuide
           scene
           inactive={phone && !mobileScene}
+          paginate={!explainingStarters}
           lineRef={chapterLine}
           replies={
             reviewScene ? (

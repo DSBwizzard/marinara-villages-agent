@@ -439,8 +439,10 @@ export async function verifyFoundingLayout(group) {
         const enterChapter = async () => {
           const guide = root.locator(".villages-chapter-guide");
           if (await root.locator("[data-explanation]").count()) {
+            const passage = guide.locator(".villages-setting-dialogue");
             const introduction = guide.getByText(venueIntroOpening);
             await expect(introduction).toBeVisible();
+            await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             await layer("Venue");
             await expect(hierarchy).toBeInViewport({ ratio: 1 });
@@ -460,10 +462,12 @@ export async function verifyFoundingLayout(group) {
             await advance();
             const addOrDraft = guide.getByText(/^Got a place in mind/);
             await expect(addOrDraft).toBeVisible();
+            await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             await advance();
             const assignments = guide.getByText(/^Put your places on the Map/);
             await expect(assignments).toBeVisible();
+            await expect(passage).not.toHaveAttribute("data-reader-next-page");
             await expect(work).toHaveCount(0);
             if (view.width === 1366 || (view.width === 390 && view.height === 844)) {
               await retreat();
