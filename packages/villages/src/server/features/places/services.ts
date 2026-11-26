@@ -181,7 +181,8 @@ export async function generatePlace(value: unknown, placeId?: string) {
   const fingerprint = JSON.stringify([kind, placeId ?? "", input.mapId, input.intent, input.expectedRevision]);
   let operation = world.worldPlaces.operations[input.requestId];
   if (operation && operation.fingerprint !== fingerprint) throw conflict("This request ID was already used.");
-  if (operation?.status === "ready") return publicOperation(operation);
+  if (operation && (operation.status === "ready" || (kind === "prepare" && operation.status === "failed")))
+    return publicOperation(operation);
   if (!operation) {
     let inspection: LoreInspection | undefined;
     const lore = await readVillageLore(
@@ -247,7 +248,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
       { memories: true },
     );
   }
-  const admitted = operation!;
+  let admitted = operation!;
   if (admitted.status === "ready") return publicOperation(admitted);
   const packet = JSON.parse(admitted.messages[1].content) as {
     relatedPlaces: { id: string }[];
@@ -289,102 +290,144 @@ export async function generatePlace(value: unknown, placeId?: string) {
     );
     return true;
   };
-  const requestKey = `place:${world.seed}:${admitted.id}:${admitted.attempt}`;
-  let completion: CapabilityLanguageModelCompletion | undefined;
+  let canRecoverPublication = false;
   try {
-    completion = await reopenSavedResponse(mutateDocument, requestKey, admitted.messages);
-    if (!completion && admitted.status === "failed") return publicOperation(admitted);
-    // An older build could advance the attempt before reaching its provider.
-    if (!completion && admitted.attempt === 1) {
+    let completion =
+      kind === "explore"
+        ? await reopenSavedResponse(
+            mutateDocument,
+            `place:${world.seed}:${admitted.id}:${admitted.attempt}`,
+            admitted.messages,
+          )
+        : undefined;
+    if (!completion && kind === "explore") {
+      if (admitted.status === "failed") return publicOperation(admitted);
+      // An older build could advance the attempt before reaching its provider.
+      if (admitted.attempt !== 1) throw conflict("This exploration attempt has ended.");
+    }
+    if (!completion) {
+      if (admitted.attempt > 2) throw conflict("This exploration attempt has ended.");
       const model = await villagesLanguageModels().resolveForRequest({ connectionId: admitted.connectionId });
       const fitted = model.fitContext(admitted.messages, { maxTokens: 4096 });
       if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(admitted.messages))
         throw badRequest("The Place request does not fit the System context. No request was made.");
       await recordLoreUse(admitted.lore, kind === "prepare" ? "Place preparation" : "Place discovery");
-      completion = await completeWithRoom(model, admitted.messages, Math.min(4096, fitted.maxTokens ?? 4096), {
-        temperature: 0.3,
-        responseFormat: { type: "json_object" },
-        savedRequest: { key: requestKey, retry: false, valid },
-      });
-    }
-    if (!completion || !valid(completion)) throw badRequest("Incomplete Place response.");
-  } catch (error) {
+      for (;;) {
+        try {
+          completion = await completeWithRoom(model, admitted.messages, Math.min(4096, fitted.maxTokens ?? 4096), {
+            temperature: 0.3,
+            responseFormat: { type: "json_object" },
+            savedRequest: {
+              key: `place:${world.seed}:${admitted.id}:${admitted.attempt}`,
+              retry: false,
+              valid,
+            },
+          });
+          if (!valid(completion)) throw badRequest("Incomplete Place response.");
+          break;
+        } catch (error) {
+          if (kind === "explore" || admitted.attempt >= 2) throw error;
+          const attempt = admitted.attempt;
+          await mutateVillageState(
+            (state) => {
+              const saved = state.worldPlaces.operations[admitted.id];
+              if (state.seed !== world.seed || !saved) throw conflict("This request already changed.");
+              if (saved.attempt === attempt && saved.status === "started") {
+                saved.attempt++;
+                state.worldPlaces.revision++;
+              }
+              admitted = saved;
+            },
+            { memories: true },
+          );
+          if (admitted.status !== "started") return publicOperation(admitted);
+        }
+      }
+    } else if (!valid(completion)) throw badRequest("Incomplete Place response.");
+    canRecoverPublication = kind === "explore";
+    const raw = extractModelJsonObject(completion)!;
     await mutateVillageState(
       (state) => {
-        if (state.seed !== world.seed) return;
+        if (state.seed !== world.seed) throw conflict("The Village changed.");
         const saved = state.worldPlaces.operations[admitted.id];
-        if (!saved || saved.attempt !== admitted.attempt) return;
         operation = saved;
-        if (saved.status !== "started") return;
-        saved.status = "failed";
-        saved.error = safeFailureMessage(error);
+        if (saved.status === "ready") return;
+        if (saved.attempt !== admitted.attempt) throw conflict("A newer Place request replaced this response.");
+        const prior = placeId ? state.worldPlaces.places[placeId] : undefined;
+        if (placeId && (!prior || prior.revision !== admitted.input.placeRevision))
+          throw conflict("The Place changed during preparation.");
+        const draft = raw.place ? validateDraft(raw.place) : undefined;
+        const duplicate =
+          kind === "explore" && draft ? findNamedLocation(state, admitted.input.mapId, draft.name) : undefined;
+        const selectedId = typeof raw.existingId === "string" ? raw.existingId : duplicate?.id;
+        if (selectedId !== undefined) {
+          if (kind !== "explore" || (raw.existingId !== undefined && !candidateIds.has(selectedId)))
+            throw conflict("The selected Place is unavailable.");
+          const existing = candidateIds.has(selectedId) ? state.worldPlaces.places[selectedId] : undefined;
+          saved.placeId = "";
+          if (
+            existing &&
+            !existing.disabled &&
+            !existing.knownBy.includes("player") &&
+            existing.location.presentation.mapId === admitted.input.mapId
+          ) {
+            existing.knownBy.push("player");
+            existing.revision++;
+            saved.placeId = existing.id;
+          }
+        } else if (raw.place === null) {
+          if (placeId) throw badRequest("The known Place could not be prepared. Its discovery is retained.");
+          saved.placeId = "";
+        } else {
+          const created = establishPlace(
+            state,
+            draft!,
+            admitted.placeId,
+            input.mapId,
+            `request:${admitted.id}`,
+            villageNow().toISOString(),
+            true,
+            prior,
+          );
+          for (const zone of created.location.zones ?? [])
+            if (!prior?.location.zones?.some((row) => row.id === zone.id))
+              initializeRoomContinuity(
+                state,
+                created.id,
+                zone.id,
+                zone.description,
+                `request:${admitted.id}`,
+                villageNow().toISOString(),
+              );
+        }
+        saved.status = "ready";
+        delete saved.error;
         state.worldPlaces.revision++;
+        operation = saved;
       },
       { memories: true },
     );
     return publicOperation(operation!);
-  }
-  const raw = extractModelJsonObject(completion)!;
-  await mutateVillageState(
-    (state) => {
-      if (state.seed !== world.seed) throw conflict("The Village changed.");
-      const saved = state.worldPlaces.operations[admitted.id];
-      operation = saved;
-      if (saved.status === "ready") return;
-      if (saved.attempt !== admitted.attempt) throw conflict("A newer Place request replaced this response.");
-      const prior = placeId ? state.worldPlaces.places[placeId] : undefined;
-      if (placeId && (!prior || prior.revision !== admitted.input.placeRevision))
-        throw conflict("The Place changed during preparation.");
-      const draft = raw.place ? validateDraft(raw.place) : undefined;
-      const duplicate =
-        kind === "explore" && draft ? findNamedLocation(state, admitted.input.mapId, draft.name) : undefined;
-      const selectedId = typeof raw.existingId === "string" ? raw.existingId : duplicate?.id;
-      if (selectedId !== undefined) {
-        if (kind !== "explore" || (raw.existingId !== undefined && !candidateIds.has(selectedId)))
-          throw conflict("The selected Place is unavailable.");
-        const existing = candidateIds.has(selectedId) ? state.worldPlaces.places[selectedId] : undefined;
-        saved.placeId = "";
-        if (
-          existing &&
-          !existing.disabled &&
-          !existing.knownBy.includes("player") &&
-          existing.location.presentation.mapId === admitted.input.mapId
-        ) {
-          existing.knownBy.push("player");
-          existing.revision++;
-          saved.placeId = existing.id;
+  } catch (error) {
+    if (canRecoverPublication) throw error;
+    await mutateVillageState(
+      (state) => {
+        if (state.seed !== world.seed) return;
+        const saved = state.worldPlaces.operations[admitted.id];
+        if (saved?.attempt === admitted.attempt && saved.status === "ready") {
+          operation = saved;
+          return;
         }
-      } else if (raw.place === null) {
-        if (placeId) throw badRequest("The known Place could not be prepared. Its discovery is retained.");
-        saved.placeId = "";
-      } else {
-        const created = establishPlace(
-          state,
-          draft!,
-          admitted.placeId,
-          input.mapId,
-          `request:${admitted.id}`,
-          villageNow().toISOString(),
-          true,
-          prior,
-        );
-        for (const zone of created.location.zones ?? [])
-          if (!prior?.location.zones?.some((row) => row.id === zone.id))
-            initializeRoomContinuity(
-              state,
-              created.id,
-              zone.id,
-              zone.description,
-              `request:${admitted.id}`,
-              villageNow().toISOString(),
-            );
-      }
-      saved.status = "ready";
-      delete saved.error;
-      state.worldPlaces.revision++;
-      operation = saved;
-    },
-    { memories: true },
-  );
-  return publicOperation(operation!);
+        if (saved?.attempt === admitted.attempt) {
+          saved.status = "failed";
+          saved.error = safeFailureMessage(error);
+          state.worldPlaces.revision++;
+        }
+      },
+      { memories: true },
+    );
+    return operation?.status === "ready"
+      ? publicOperation(operation)
+      : { ...publicOperation(admitted), status: "failed" as const };
+  }
 }

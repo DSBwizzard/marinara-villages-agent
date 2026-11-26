@@ -174,7 +174,7 @@ try {
   const beforeInvalid = calls,
     invalid = await explore("hallucinated-id");
   assert.equal(invalid.json().status, "failed", invalid.body);
-  assert.equal(calls, beforeInvalid + 2, "Unsupplied IDs remain invalid under the existing two-attempt budget");
+  assert.equal(calls, beforeInvalid + 1, "Unsupplied IDs fail without a second attempt");
 
   reply = () => ({
     place: {
@@ -186,7 +186,7 @@ try {
   const beforePerson = calls,
     invalidPerson = await explore("invented-person");
   assert.equal(invalidPerson.json().status, "failed", invalidPerson.body);
-  assert.equal(calls, beforePerson + 2);
+  assert.equal(calls, beforePerson + 1);
   assert.deepEqual(state().worldPlaces.npcs, npcs, "Discovery cannot invent an NPC");
 
   let arrivals = 0;
