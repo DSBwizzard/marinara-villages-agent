@@ -1,7 +1,7 @@
 import { refreshWorkReservations } from "./venue-work.js";
 import { calendarDate } from "../../../shared/helpers/zoned-date.js";
 import type { VillageAgenda, VillageState, VillageVillager } from "../models/world.js";
-import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
+import { agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
 import { influenceSettings, routineDay, validateRoutineDay } from "./owned-routine.js";
 import { routineVenues } from "./prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -10,7 +10,7 @@ export function planRoutineDays(state: VillageState, now: Date): void {
   refreshWorkReservations(state, now);
   for (const resident of [...state.villagers].sort((a, b) => a.characterId.localeCompare(b.characterId))) {
     const agenda = resident.agenda;
-    if (!agenda?.routineProfile) continue;
+    if (!agenda) continue;
     agenda.plannedDays ??= {};
     for (let offset = 0; offset < 7; offset++) {
       const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12),
@@ -24,13 +24,15 @@ export function planRoutineDays(state: VillageState, now: Date): void {
         continue;
       }
       const blocks = validateRoutineDay(
-        routineDay(
-          agenda.routineProfile,
-          agenda.generatedAt || agenda.routineSummary,
-          date,
-          agenda.scheduleInfluenceSnapshot,
-          influenceSettings(resident.scheduleInfluence),
-        ),
+        !agenda.calendarVersion && agenda.routineProfile
+          ? routineDay(
+              agenda.routineProfile,
+              agenda.generatedAt || agenda.routineSummary,
+              date,
+              agenda.scheduleInfluenceSnapshot,
+              influenceSettings(resident.scheduleInfluence),
+            )
+          : ordinaryAgendaBlocksFor(agenda, date),
         resident,
         state,
         date,
@@ -54,7 +56,7 @@ export function activateVillagerDay(villager: VillageVillager, now: Date, state:
     weekday,
     blocks:
       agenda.plannedDays?.[agendaDateKey(now)] ??
-      validateRoutineDay(agendaBlocksFor(agenda, now), villager, state, now),
+      validateRoutineDay(ordinaryAgendaBlocksFor(agenda, now), villager, state, now),
     scheduleInformed: false,
   };
 }

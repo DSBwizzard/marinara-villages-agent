@@ -2,11 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import {
-  buildVillageAgendas,
-  clearVillagerAgenda,
-  setVillagerScheduleInfluence,
-} from "../residents/resident-agendas.js";
+import { buildVillageAgendas, clearVillagerAgenda } from "../residents/resident-agendas.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
 import { offerVisitorLodging } from "../../domain/rules/visitors.js";
@@ -320,13 +316,4 @@ export function registerAgendaRoutes(engine: FastifyInstance) {
       }
     },
   );
-
-  app.patch<{ Params: CharacterParams; Body: unknown }>("/agendas/:characterId/influence", async (request, reply) => {
-    try {
-      await setVillagerScheduleInfluence(readCharacterId(request.params.characterId), request.body);
-      return { villagers: await buildVillageAgendas() };
-    } catch (error) {
-      return fail(reply, error, "changing schedule influence");
-    }
-  });
 }

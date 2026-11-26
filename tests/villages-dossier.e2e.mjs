@@ -607,15 +607,14 @@ await withBrowser(browser, async () => {
         profile.knownWishes.find((wish) => path.includes("/" + wish.wishId + "/")).followed =
           request.postDataJSON().followed;
         value = { wishes: profile.knownWishes };
-      } else if (path.endsWith("/agendas/mara/influence")) {
+      } else if (path.endsWith("/agendas/mara/regenerate")) {
         if (heldAgenda) {
           const pending = heldAgenda;
           pending.started++;
           await pending.gate;
         }
-        agendas.villagers[0].scheduleInfluence.enabled = true;
         value = agendas;
-      } else if (path.endsWith("/agendas/mara/regenerate") || path.endsWith("/agendas")) value = agendas;
+      } else if (path.endsWith("/agendas")) value = agendas;
       else if (path.endsWith("/usage/preview")) value = { requests: { min: 1, max: 1 }, warnings: [] };
       else if (path.endsWith("/villagers/mara/refresh"))
         value =
@@ -711,7 +710,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Offer to host", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Appearance", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Turn visits off", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Agenda records", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Inspect Agenda", exact: true })).toHaveCount(0);
       if (width <= 700) await visitorBack.click();
       else
         await page
@@ -905,7 +904,7 @@ await withBrowser(browser, async () => {
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
     const chooseSection = async (label) => {
       if (["Agenda", "Venues"].includes(label))
-        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+        return clickCharacterTool(page, label === "Agenda" ? "Inspect Agenda" : "Venue connections");
       return width <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : tabs.getByRole("button", { name: label, exact: true }).click();
@@ -1044,7 +1043,8 @@ await withBrowser(browser, async () => {
     relationships.starting.pending = false;
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(overview.getByText("Mara and Eli are friends")).toHaveCount(0);
-    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect") || path.endsWith("/agendas")).length, 0);
+    assert.equal(reads.filter((path) => path.endsWith("/memories/inspect")).length, 0);
+    if (width !== 1440) assert.equal(reads.filter((path) => path.endsWith("/agendas")).length, 0);
     await chooseSection("Venues");
     await expect(profile.getByRole("heading", { name: "The Mill", exact: true })).toBeVisible();
     await expect(profile.getByRole("heading", { name: "The Harbour", exact: true })).toBeVisible();
@@ -1188,7 +1188,7 @@ await withBrowser(browser, async () => {
       });
       assert(position > 0, "Long mobile profiles scroll as one paper sheet");
       await expect(tabs.getByRole("button", { name: "Character Tools", exact: true })).toBeInViewport({ ratio: 0.99 });
-      await chooseSection("Agenda");
+      await chooseSection("Relationships");
       assert.equal(await paper.evaluate((node) => node.scrollTop), 0, "A new section starts at the top");
       await chooseSection("Overview");
       assert.equal(
@@ -1213,7 +1213,7 @@ await withBrowser(browser, async () => {
       await profile.getByRole("combobox", { name: "Section" }).focus();
       await expect(profile.getByRole("combobox", { name: "Section" })).toBeFocused();
     }
-    for (const label of ["Relationships", "Wishes", "Memories", "Agenda", "Venues"]) {
+    for (const label of ["Relationships", "Wishes", "Memories", "Overview", "Venues"]) {
       await chooseSection(label);
       await expect(profile.getByRole("heading", { name: "Mara", exact: true, level: 1 })).toBeVisible();
       await expect(profile.getByText(/PRIVATE/)).toHaveCount(0);
@@ -1237,11 +1237,8 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("PRIVATE MARA WISH", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI WISH", { exact: true })).toHaveCount(0);
     await chooseSection("Agenda");
-    await expect(profile.getByText("PRIVATE ROUTINE", { exact: true })).toBeVisible();
-    await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
-    await expect(profile.getByRole("checkbox", { name: "Schedule influence" })).toBeChecked();
-    assert.equal(writes.at(-1).path.endsWith("/agendas/mara/influence"), true);
-    await profile.getByRole("button", { name: "Regenerate agenda", exact: true }).click();
+    await expect(profile.getByRole("checkbox", { name: "Schedule influence" })).toHaveCount(0);
+    await profile.getByRole("button", { name: "Regenerate Agenda", exact: true }).click();
     try {
       await expect.poll(() => writes.at(-1).path.endsWith("/agendas/mara/regenerate")).toBe(true);
     } catch (cause) {
@@ -1257,7 +1254,7 @@ await withBrowser(browser, async () => {
       throw cause;
     }
     await chooseSection("Venues");
-    await expect(profile.getByText(/Agenda destination/)).toBeVisible();
+    await expect(profile.getByText(/Agenda destination/)).toHaveCount(0);
     await chooseSection("Relationships");
     const relationshipCards = profile.locator(".villages-relationship-scores > article");
     await expect(relationshipCards).toHaveCount(2);
@@ -1339,7 +1336,7 @@ await withBrowser(browser, async () => {
       await chooseSection("Agenda");
       const pendingAgenda = hold(() => true);
       heldAgenda = pendingAgenda;
-      await profile.getByRole("checkbox", { name: "Schedule influence" }).click();
+      await profile.getByRole("button", { name: "Regenerate Agenda", exact: true }).click();
       await expect.poll(() => pendingAgenda.started).toBe(1);
       await chooseSection("Overview");
       await openCharacterTools(page);
@@ -1353,7 +1350,7 @@ await withBrowser(browser, async () => {
           .getByRole("button", { name: "Inspect", exact: true, includeHidden: true }),
       ).toBeVisible();
       await expect(compare).toBeEnabled();
-      const finishedAgenda = page.waitForResponse((response) => response.url().endsWith("/agendas/mara/influence"));
+      const finishedAgenda = page.waitForResponse((response) => response.url().endsWith("/agendas/mara/regenerate"));
       pendingAgenda.release();
       heldAgenda = null;
       await (await finishedAgenda).finished();

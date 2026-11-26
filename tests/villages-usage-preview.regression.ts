@@ -16,7 +16,6 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { withSettingsOwners, settingsJobId } from "./fixtures/villages-settings-owner.fixture.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 
-import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
@@ -270,7 +269,6 @@ async function main() {
     assert.equal(unknown.unknownCosts, 2);
     assert.equal(unknown.dollars, null);
     failCards = true;
-    assert.equal((await readNativeScheduleSnapshot(new Date(Date.now() + 31_000), ["a"])).cardsReadable, false);
     await assert.rejects(
       previewVillageBurst({ action: "translation", characterId: "a" }),
       /supported generation preview/,

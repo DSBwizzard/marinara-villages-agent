@@ -519,7 +519,6 @@ await runCase("common-wishes/routine-protection", async () => {
         readVillageLore: async () => [],
         queueBackgroundJob: f.service.queueBackgroundJob,
         backgroundWorkSummaries: f.service.backgroundWorkSummaries,
-        readNativeScheduleSnapshot: async () => ({ schedules: [] }) as any,
         parseCompactFoundingCompletion: () => {
           throw Error("No saved response needed");
         },

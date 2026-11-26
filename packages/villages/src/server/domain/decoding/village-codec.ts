@@ -10,7 +10,7 @@ import {
 } from "../../../shared/helpers/resident-admission.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
+import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import { cloneReturnCapture } from "../rules/world-context-copy.js";
 import type {
@@ -30,7 +30,7 @@ import type {
   VillageVisitor,
   VillageZoneDraft,
 } from "../models/world.js";
-import { completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
+import { bookedAgendaDays, completeAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
 import { projectAgendaReservations, readProjectFocus } from "../rules/project-focus.js";
 import { decodeVillageClock } from "../rules/clock-state.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
@@ -83,6 +83,8 @@ import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, venueResidentIds } from "../rules/venue-model.js";
 import { chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
+import { agendaChange } from "./agenda-codec.js";
+import { MAX_AGENDA_CHANGES } from "../rules/agenda-changes.js";
 import { VILLAGE_WEEKDAYS } from "../rules/village-clock.js";
 import { emptyStartingHistory } from "../rules/starting-history.js";
 import { readStartingHistory } from "./starting-history-codec.js";
@@ -241,7 +243,11 @@ function coerceCardCharacter(value: unknown, applySpriteDefaults: boolean): Vill
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
   };
 }
-function coerceVillager(value: unknown, applySpriteDefaults: boolean): VillageVillager | null {
+function coerceVillager(
+  value: unknown,
+  applySpriteDefaults: boolean,
+  preserveCapturedAgenda: boolean,
+): VillageVillager | null {
   const person = coerceCardCharacter(value, applySpriteDefaults);
   if (!person) return null;
   const raw = asRecord(value);
@@ -253,7 +259,7 @@ function coerceVillager(value: unknown, applySpriteDefaults: boolean): VillageVi
     // matters: null means "not written for yet", which is what makes the
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
-    agenda: coerceAgenda(raw.agenda),
+    agenda: coerceAgenda(raw.agenda, preserveCapturedAgenda),
     scheduleInfluence: influenceSettings(raw.scheduleInfluence),
   };
 }
@@ -363,7 +369,7 @@ function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot
     capturedAt,
   };
 }
-function coerceAgenda(value: unknown): VillageAgenda | null {
+function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageAgenda | null {
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
   if (Object.keys(raw).length === 0) return null;
@@ -398,11 +404,12 @@ function coerceAgenda(value: unknown): VillageAgenda | null {
     generatedAt: asIsoString(raw.generatedAt) ?? "",
   };
   const fallback = workingAgendaWeek();
+  if (raw.calendarVersion === 1) agenda.calendarVersion = 1;
   agenda.week = completeAgendaWeek(raw.week, fallback);
   agenda.plannedDays = Object.fromEntries(
     Object.entries(asRecord(raw.plannedDays))
       .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
-      .slice(-14)
+      .slice(-96)
       .map(([key, blocks]) => [key, completeAgendaWeek({ Monday: blocks }, agenda.week!).Monday!]),
   );
   if (Array.isArray(raw.repairedDays)) {
@@ -432,8 +439,17 @@ function coerceAgenda(value: unknown): VillageAgenda | null {
   }
   agenda.routineProfile = coerceRoutineProfile(raw.routineProfile);
   if (!agenda.routineProfile) throw new Error("Invalid saved routine profile. Start a fresh Village.");
-  if (asRecord(raw.routineProfile).baseWeek)
+  if (asRecord(raw.routineProfile).baseWeek) {
     agenda.routineProfile.baseWeek = completeAgendaWeek(asRecord(raw.routineProfile).baseWeek, agenda.week!);
+    if (!preserveCapturedAgenda && raw.week == null) agenda.week = agenda.routineProfile.baseWeek;
+  }
+  if (Array.isArray(raw.recentChanges)) {
+    const changes = raw.recentChanges.slice(0, MAX_AGENDA_CHANGES).flatMap((row) => {
+      const parsed = agendaChange.safeParse(row);
+      return parsed.success ? [parsed.data] : [];
+    });
+    if (changes.length) agenda.recentChanges = changes;
+  }
   agenda.personalizationPending = raw.personalizationPending === true;
   const influence = asRecord(raw.scheduleInfluenceSnapshot);
   if (
@@ -1411,7 +1427,10 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
   };
 }
 
-export function coerceVillageState(value: unknown, { applySpriteDefaults = true } = {}): VillageState {
+export function coerceVillageState(
+  value: unknown,
+  { applySpriteDefaults = true, preserveCapturedAgenda = false } = {},
+): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 20) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null)
@@ -1423,7 +1442,7 @@ export function coerceVillageState(value: unknown, { applySpriteDefaults = true 
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
     ? raw.villagers
-        .map((entry) => coerceVillager(entry, applySpriteDefaults))
+        .map((entry) => coerceVillager(entry, applySpriteDefaults, preserveCapturedAgenda))
         .filter((entry): entry is VillageVillager => entry !== null)
     : [];
   const seen = new Set<string>();
@@ -1677,5 +1696,17 @@ export function coerceVillageState(value: unknown, { applySpriteDefaults = true 
   }
 
   projectAgendaReservations(state);
+  if (!preserveCapturedAgenda) {
+    const instant = Date.parse(state.simulatedThrough || state.setupAt || state.foundedAt);
+    for (const { agenda } of state.villagers) {
+      if (!agenda || agenda.calendarVersion) continue;
+      // Future bookings already checked against the legacy calendar keep that dated base.
+      if (Number.isFinite(instant)) {
+        const at = new ZonedDate(instant, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+        agenda.plannedDays = { ...agenda.plannedDays, ...bookedAgendaDays(agenda, at) };
+      }
+      agenda.calendarVersion = 1;
+    }
+  }
   return state;
 }

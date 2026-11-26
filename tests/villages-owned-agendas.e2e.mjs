@@ -9,48 +9,12 @@ const browser = await chromium.launch({ headless: true });
 await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } }),
-      errors = [],
-      patches = [];
+      errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await mockEngineLookups(page);
     let paid = 0;
-    const categories = {
-      rhythm: true,
-      busyFree: true,
-      weekdayWeekend: true,
-      interests: true,
-      establishedEntities: true,
-    };
-    const block = {
-      startMinute: 0,
-      endMinute: 1440,
-      venueId: "",
-      activity: "Reading by the window",
-      reason: "An ordinary day",
-      status: "idle",
-      flexible: true,
-    };
-    const resident = {
-      characterId: "mara",
-      name: "Mara",
-      missing: false,
-      canInterpretSchedule: true,
-      scheduleInfluence: { version: 1, enabled: false, categories },
-      nativeSchedule: { weekStart: "", days: {} },
-      weekUnreadable: false,
-      days: [{ weekday: "Monday", dateLabel: "Today", isToday: true, blocks: [] }],
-      effectiveDays: { Monday: [block] },
-      wishes: [],
-      agenda: {
-        routineSummary: "Mara reads and tends herbs.",
-        day: [],
-        week: { Monday: [block] },
-        scheduleInfluenceSnapshot: {
-          adopted: ["Interest: Reading"],
-          unresolved: ["Interest awaiting compatible village activity: Painting"],
-        },
-      },
-    };
+    const block = { startMinute: 600, endMinute: 660, activity: "Reading by the window" };
+    const resident = { characterId: "mara", agenda: null };
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
@@ -58,16 +22,17 @@ await withBrowser(browser, async () => {
       }),
     );
     await page.route("**/api/villages**", async (route) => {
-      const path = new URL(route.request().url()).pathname;
+      const url = new URL(route.request().url());
+      const path = url.pathname;
       let value = structuredClone(snapshot);
-      if (path.endsWith("/influence")) {
-        assert.equal(route.request().method(), "PATCH");
-        const body = route.request().postDataJSON();
-        patches.push(body);
-        if (body.enabled !== undefined) resident.scheduleInfluence.enabled = body.enabled;
-        Object.assign(categories, body.categories ?? {});
-        value = { villagers: [resident] };
+      if (path.endsWith("/agendas") && url.searchParams.has("characterId")) {
+        const inspect = url.searchParams.get("inspect") === "true";
+        value = {
+          visibility: inspect ? "inspect" : "known",
+          days: [{ date: "2026-11-10", weekday: "Tuesday", blocks: inspect ? [block] : [] }],
+        };
       } else if (path.endsWith("/agendas")) value = { villagers: [resident] };
+      else if (path.endsWith("/relationships")) value = { profiles: [{ characterId: "mara", entries: [] }] };
       else if (path.endsWith("/usage/preview")) value = { requests: 1, residents: [], dollars: null, unknownCosts: 1 };
       else if (path.endsWith("/usage"))
         value = {
@@ -95,52 +60,20 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "People", exact: true })
       .click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    const sections = page.getByRole("navigation", { name: "Villager profile sections" });
-    await clickCharacterTool(page, "Agenda records");
-    await clickCharacterTool(page, "Inspect");
-    const master = page.getByRole("checkbox", { name: "Schedule influence", exact: true });
-    const interpret = page.getByRole("button", { name: "Interpret schedule", exact: true });
-    await expect(interpret).toBeDisabled();
-    const controls = [
-      "Preferred sleep/wake rhythm",
-      "Broad busy/free periods",
-      "Weekday/weekend patterns",
-      "Compatible hobbies and interests",
-      "Established workplaces, vehicles and institutions",
-    ];
-    for (const name of controls) {
-      await expect(page.getByRole("checkbox", { name, exact: true })).toBeDisabled();
-      await expect(page.getByRole("checkbox", { name, exact: true })).toBeChecked();
-    }
-    await master.click();
-    await expect(master).toBeChecked();
-    for (const name of controls) await expect(page.getByRole("checkbox", { name, exact: true })).toBeEnabled();
-    await page.getByRole("checkbox", { name: controls[0], exact: true }).click();
-    await expect(page.getByRole("checkbox", { name: controls[0], exact: true })).not.toBeChecked();
-    await expect(page.getByText("Interest: Reading", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Interest awaiting compatible village activity: Painting", { exact: true }),
-    ).toBeVisible();
-    await expect(page.getByText(/waits for an existing generation request/)).toHaveCount(0);
+    await expect(page.getByText("Reading by the window", { exact: true })).toHaveCount(0);
+    await clickCharacterTool(page, "Inspect Agenda");
     await expect(page.getByText("Reading by the window", { exact: true })).toBeVisible();
-    await expect(page.getByText("An ordinary day", { exact: true })).toHaveCount(0);
-    for (const label of ["Online", "Available", "Busy", "Offline", "Away"])
-      await expect(page.getByText(label, { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Marinara schedule", { exact: true })).toHaveCount(0);
-    assert.equal(paid, 0);
-    await expect(interpret).toBeEnabled();
-    await interpret.click();
-    await expect(interpret).toBeEnabled();
-    assert.equal(patches.length, 3, "Explicit interpretation reuses the finite settings admission");
-    assert.equal(patches[2].enabled, true);
-    assert.equal(patches[1].categories.rhythm, false);
-    const box = await master.boundingBox();
+    await expect(page.getByRole("checkbox", { name: "Schedule influence", exact: true })).toHaveCount(0);
+    const update = page.getByRole("button", { name: "Regenerate Agenda", exact: true });
+    await expect(update).toBeVisible();
+    const box = await update.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
+    assert.equal(paid, 0);
+    await clickCharacterTool(page, "Leave Inspect");
+    await expect(page.getByText("Reading by the window", { exact: true })).toHaveCount(0);
     assert.deepEqual(errors, []);
     await page.screenshot({ path: resolve("artifacts/owned-agendas-" + width + ".png") });
     await page.close();
   }
-  console.log(
-    "Owned Agenda controls: opt-in, independent categories, explicit interpretation and preserved day on desktop/phones; mocked HTTP only.",
-  );
+  console.log("The profile Agenda uses one calendar for known and inspected views on desktop and phones.");
 });

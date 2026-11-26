@@ -2,8 +2,6 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { createNativeSchedules } from "../packages/villages/src/server/adapters/engine/native-schedules-service.js";
-import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { createGlobalGallery } from "../packages/villages/src/server/adapters/engine/global-gallery-service.js";
 import {
   configureGlobalGallery,
@@ -14,70 +12,10 @@ import {
 function deferred() {
   return Promise.withResolvers<void>();
 }
-const now = new Date("2026-10-05T10:00:00");
-const ids = ["same-character"];
-function library(name: string) {
-  let pause = false,
-    failed = false,
-    reads = 0;
-  const gate = deferred(),
-    entered = deferred();
-  const warnings: unknown[][] = [];
-  const logger = {
-    debug() {},
-    info() {},
-    error() {},
-    debugOverride() {},
-    warn(...args: unknown[]) {
-      warnings.push(args);
-    },
-  };
-  const resources: any = {
-    async listCharacters(selected?: string[]) {
-      reads++;
-      assert.deepEqual(selected, ids);
-      if (pause) {
-        entered.resolve();
-        await gate.promise;
-      }
-      if (failed) throw new Error(`${name} library unavailable`);
-      return [
-        {
-          id: ids[0],
-          data: JSON.stringify({
-            extensions: {
-              conversationSchedule: {
-                routineSummary: name,
-                days: { Monday: [{ time: "09:00-12:00", activity: `${name} activity`, status: "idle" }] },
-              },
-            },
-          }),
-        },
-      ];
-    },
-  };
-  const service = createNativeSchedules({ villagesResources: () => resources, villagesLogger: () => logger });
-  const host: any = {
-    resources,
-    logger,
-    persistence: { documents: villageFixtureDocuments({ getById: async () => null, list: async () => [] }) },
-    isDebugAgentsEnabled: () => false,
-  };
-  return {
-    host,
-    service,
-    gate,
-    entered,
-    warnings,
-    reads: () => reads,
-    pause: () => {
-      pause = true;
-    },
-    fail: (value: boolean) => {
-      failed = value;
-    },
-  };
-}
+const host = () => ({
+  persistence: { documents: villageFixtureDocuments({ getById: async () => null, list: async () => [] }) },
+  isDebugAgentsEnabled: () => false,
+});
 function gallery(name: string) {
   let pause = false,
     fail = false,
@@ -115,46 +53,6 @@ function gallery(name: string) {
   };
 }
 const image = { bytes: new Uint8Array([1, 2, 3]), mime: "image/png", name: "../Picture", prompt: "fixture" };
-async function cacheIsolation() {
-  const a = library("A"),
-    b = library("B");
-  a.pause();
-  const pending = a.service.readNativeScheduleSnapshot(now, ids);
-  await a.entered.promise;
-  try {
-    assert.equal((await b.service.readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "B");
-    a.gate.resolve();
-    assert.equal((await pending).schedules[0].routineSummary, "A");
-    assert.equal(
-      (await b.service.readNativeScheduleSnapshot(now, ids)).schedules[0].days.Monday[0].activity,
-      "B activity",
-    );
-    assert.equal(b.reads(), 1);
-    await b.service.readNativeScheduleSnapshot(now, ids);
-    assert.equal(b.reads(), 1, "Another owner's reads leave this cache intact");
-    a.fail(true);
-    assert.equal(
-      (await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids)).cardsReadable,
-      false,
-    );
-    await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 62_000), ids);
-    assert.equal(a.warnings.length, 1, "a continuing failure is reported once by this owner");
-    b.fail(true);
-    await b.service.readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids);
-    assert.equal(b.warnings.length, 1, "another library reports its own failure");
-    a.fail(false);
-    assert.equal(
-      (await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 93_000), ids)).cardsReadable,
-      true,
-    );
-    a.fail(true);
-    await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 124_000), ids);
-    assert.equal(a.warnings.length, 2, "recovery rearms only this owner's failure report");
-  } finally {
-    a.gate.resolve();
-    await pending;
-  }
-}
 async function galleryIsolation() {
   const a = gallery("A"),
     b = gallery("B");
@@ -191,31 +89,16 @@ async function galleryIsolation() {
   }
 }
 async function assembledDispatch() {
-  const a = library("scoped-A"),
-    b = library("scoped-B"),
-    ga = gallery("scoped-A"),
+  const ga = gallery("scoped-A"),
     gb = gallery("scoped-B");
   const ownerA = createActivationScope(),
     ownerB = createActivationScope();
-  const releaseA = ownerA.run(() => configureVillagesRuntime(a.host));
-  const releaseB = ownerB.run(() => configureVillagesRuntime(b.host));
+  const releaseA = ownerA.run(() => configureVillagesRuntime(host() as any));
+  const releaseB = ownerB.run(() => configureVillagesRuntime(host() as any));
   const releaseGalleryA = ownerA.run(() => configureGlobalGallery(ga.service));
   const releaseGalleryB = ownerB.run(() => configureGlobalGallery(gb.service));
 
-  a.pause();
-  const pending = ownerB.run(() => ownerA.run(() => readNativeScheduleSnapshot(now, ids)));
-  await a.entered.promise;
   try {
-    await ownerB.run(async () =>
-      assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B"),
-    );
-    a.gate.resolve();
-    assert.equal((await pending).schedules[0].routineSummary, "scoped-A");
-    await ownerB.run(() => ownerA.run(() => readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids)));
-    await ownerB.run(async () =>
-      assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B"),
-    );
-    ownerB.run(() => assert.equal(b.reads(), 1));
     await ownerB.run(async () =>
       assert.equal(await ownerA.run(() => ensureVillagesGalleryFolder()), "scoped-A-folder"),
     );
@@ -224,22 +107,11 @@ async function assembledDispatch() {
     ownerB.run(() => releaseA());
     ownerB.run(() => releaseA());
     await ownerB.run(async () => assert.equal((await uploadVillageGalleryImage(image)).id, "scoped-B-image"));
-    await ownerB.run(async () =>
-      assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B"),
-    );
-    await ownerB.run(() =>
-      assert.rejects(
-        ownerA.run(() => readNativeScheduleSnapshot(now, ids)),
-        /not configured/,
-      ),
-    );
     ownerB.run(() => assert.throws(() => ownerA.run(() => ensureVillagesGalleryFolder()), /not configured/));
     ownerA.dispose();
     ownerB.run(() => assert.throws(() => ownerA.run(() => ensureVillagesGalleryFolder()), /not configured/));
     ownerB.run(() => assert.equal(gb.lookups(), 1));
   } finally {
-    a.gate.resolve();
-    await pending;
     ownerB.run(() => releaseGalleryA());
     ownerB.run(() => releaseGalleryB());
     ownerB.run(() => releaseA());
@@ -250,11 +122,8 @@ async function assembledDispatch() {
   }
 }
 async function main() {
-  await cacheIsolation();
   await galleryIsolation();
   await assembledDispatch();
-  console.log(
-    "Schedule caches, library failure reports and gallery lookup promises belong to their originating activation.",
-  );
+  console.log("Gallery lookup promises and uploads belong to their originating activation.");
 }
 await main();

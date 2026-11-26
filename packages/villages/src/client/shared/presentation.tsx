@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
-import type { SceneView, VillagerAgendaView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
+import type { SceneView, VillageSnapshot, VillageVenue } from "../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "./constants.js";
 import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
 import { villageConnectionCategory } from "../../shared/helpers/connection-category.js";
@@ -17,22 +17,6 @@ export function stampTime(at: string): string {
   const when = new Date(at);
   return Number.isNaN(when.getTime()) ? "" : CLOCK_TIME.format(when);
 }
-/** Resolve the current name of an Agenda location. */
-export function agendaPlaceName(venues: readonly VillageVenue[], venueId: string): string {
-  return venues.find((venue) => venue.id === venueId)?.name ?? "a place that is gone";
-}
-
-export function agendaMinuteLabel(minute: number): string {
-  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-}
-
-export function agendaUpdatePending(view: VillagerAgendaView): boolean {
-  const active = view.agenda?.activeDay;
-  if (!active) return false;
-  const future = view.agenda?.week?.[active.weekday];
-  return !!future && JSON.stringify(active.blocks) !== JSON.stringify(future);
-}
-
 /**
  * The picture of one place, or `""` for one that has never been drawn.
  *

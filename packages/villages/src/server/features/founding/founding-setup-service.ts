@@ -23,7 +23,6 @@ import {
 } from "../../domain/rules/lore-policy.js";
 import { initialOpening } from "../../domain/rules/opening-project.js";
 import { openingPlayspace } from "../../domain/rules/opening-playspace.js";
-import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { readFoundingResidentAdmissions } from "../../domain/rules/resident-admission.js";
@@ -299,7 +298,6 @@ export function createFoundingSetup({
           },
           addedAt: villageNow().toISOString(),
           agenda: unwrittenVillageAgenda(villageNow()),
-          scheduleInfluence: influenceSettings(null),
         });
         addedResidents.push(card);
       }

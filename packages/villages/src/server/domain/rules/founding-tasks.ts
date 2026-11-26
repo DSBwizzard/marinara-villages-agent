@@ -9,6 +9,7 @@ import { backgroundRevision } from "./background-revision.js";
 import { asRecord } from "./coerce.js";
 import { venueZones } from "./venue-zones.js";
 import { foundingIdentity } from "./founding-requests.js";
+import { influenceSettings } from "./owned-routine.js";
 import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { continuityContextRevision } from "./continuity-library.js";
 
@@ -39,7 +40,7 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
     state.playerBackground,
     state.playerPersonaName,
     foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
-    resident?.scheduleInfluence,
+    resident && influenceSettings(resident.scheduleInfluence),
     state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description])]),
     resident ? continuityContextRevision(state, id) : null,
   ]);

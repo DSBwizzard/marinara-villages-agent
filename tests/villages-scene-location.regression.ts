@@ -131,7 +131,8 @@ scene.contactGeneration = {
   actorIds: ["mari"],
 };
 const before = structuredClone(scene);
-const remote = sceneLocationContext(scene, venue, ["mari"]);
+const currentActivity = [{ actorId: "mari", doing: "Talking" }];
+const remote = sceneLocationContext(scene, venue, ["mari"], currentActivity);
 assert.deepEqual(remote.player.zone, { id: "bar", name: "Prompt Bar", kind: "public" });
 assert.deepEqual(remote.residents, [
   {
@@ -139,6 +140,7 @@ assert.deepEqual(remote.residents, [
     name: "Mari",
     location: "adjacent Zone, apart from player",
     zone: { id: "exterior", name: "Entrance", kind: "exterior" },
+    doing: "Talking",
   },
 ]);
 assert.doesNotMatch(JSON.stringify(remote), /HIDDEN|secret-room|hidden/);
@@ -167,7 +169,7 @@ const changedVenue = structuredClone(venue);
 changedVenue.zones![0].name = "LATER RENAMED ROOM";
 changedVenue.zones![1].connectedTo = [];
 assert.deepEqual(
-  sceneLocationContext(scene, changedVenue, ["mari"]),
+  sceneLocationContext(scene, changedVenue, ["mari"], currentActivity),
   remote,
   "captured Scene layout outranks later background changes",
 );
@@ -199,7 +201,7 @@ for (const context of [
   });
   assert.deepEqual(
     scenePromptPacket(prompt, "location").location,
-    sceneLocationContext(context, venue, ["mari"]),
+    sceneLocationContext(context, venue, ["mari"], currentActivity),
     "the actual writer refreshes positions on arrival and movement, in the current GM context",
   );
 }

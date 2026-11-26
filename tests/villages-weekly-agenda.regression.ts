@@ -1,4 +1,4 @@
-// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling
+// Test cases: weekly-agenda/visibility, weekly-agenda/agreement, weekly-agenda/shared-scene, weekly-agenda/opening-offer-echo, weekly-agenda/scene-scheduling, weekly-agenda/compact-context
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mock } from "node:test";
@@ -11,12 +11,16 @@ import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { agendaSpeechOptions, agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
+import { sceneAgendaContext, agendaWeek } from "../packages/villages/src/server/domain/rules/agenda-overview.js";
 import {
   activityMoments,
   keepsakeAvailable,
   recordSceneFollowup,
 } from "../packages/villages/src/server/domain/rules/activity-followup.js";
+import {
+  agendaChangeSources,
+  recordAgendaChanges,
+} from "../packages/villages/src/server/domain/rules/agenda-changes.js";
 import { agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -104,7 +108,13 @@ function fixture() {
         responseDigest: memoryHash(raw),
         readset: {
           ...readset,
-          agendaOptions: agendaSpeechOptions(world, ["mara"], when, false),
+          agendaOptions: sceneAgendaContext(
+            world,
+            [{ characterId: "mara", doing: "Talking" }],
+            when,
+            "schedule",
+            venue.id,
+          ).agendaOptions,
           agendaVenues: [{ id: venue.id, zones: ["exterior"] }],
         },
       },
@@ -243,6 +253,53 @@ await runCase("weekly-agenda/agreement", () => {
   const due = new Date(tomorrow + "T12:15:00Z");
   assert.equal(agendaWeek(state, "mara", due, false).days[0].blocks[0].source, "agreed");
   assert.equal(Object.hasOwn(agendaWeek(state, "mara", due, false).days[0].blocks[0], "join"), false);
+});
+
+await runCase("weekly-agenda/compact-context", () => {
+  const { world, resident } = fixture();
+  const agenda = Object.assign(resident.agenda, { calendarVersion: 1 as const });
+  const day = [
+    { startMinute: 0, endMinute: 720, venueId: "mill", activity: "Morning errand" },
+    { startMinute: 720, endMinute: 900, venueId: "mill", activity: "Mend nets" },
+    { startMinute: 900, endMinute: 1440, venueId: "mill", activity: "Staff the desk" },
+  ];
+  agenda.plannedDays = { [tomorrow]: day };
+  const before = agendaChangeSources(world);
+  agenda.plannedDays[tomorrow] = [
+    day[0]!,
+    { ...day[1]!, endMinute: 780 },
+    { ...day[1]!, startMinute: 780, activity: "Fill in at the library" },
+    day[2]!,
+  ];
+  recordAgendaChanges(world, before, when);
+  const cast = [{ characterId: "mara", doing: "Talking with the player" }];
+  const ordinary = sceneAgendaContext(world, cast, when, "", "mill");
+  assert.deepEqual(ordinary.activities, [{ actorId: "mara", doing: "Talking with the player" }]);
+  assert.equal(ordinary.agendaOptions.length, 0);
+  assert.equal(ordinary.recentChange, undefined);
+  const asked = sceneAgendaContext(world, cast, when, "Are you free tomorrow afternoon?", "mill");
+  assert(asked.agendaOptions.every((row) => row.time.date === tomorrow && row.time.startMinute >= 720));
+  assert(asked.agendaOptions.length <= 3);
+  assert.equal(asked.available?.[0]?.free, false);
+  const changed = sceneAgendaContext(world, cast, when, "Why did your plans change tomorrow afternoon?", "mill");
+  assert.deepEqual(changed.recentChange, {
+    actorId: "mara",
+    date: tomorrow,
+    startMinute: 780,
+    endMinute: 900,
+    previous: "Mend nets",
+    replacement: "Fill in at the library",
+  });
+  assert.equal(
+    sceneAgendaContext(world, [], when, "Why did the plan change tomorrow?", "mill").recentChange,
+    undefined,
+  );
+  const afterWindow = new Date("2026-11-12T08:00:00.000Z");
+  assert.equal(
+    sceneAgendaContext(world, cast, afterWindow, "Why did your plan change yesterday?", "mill").recentChange,
+    undefined,
+  );
+  assert(!JSON.stringify(agendaWeek(world, "mara", when, true)).includes("recentChanges"));
 });
 
 await runCase("weekly-agenda/scene-scheduling", async () => {

@@ -13,21 +13,12 @@ export async function queueVillagerAgenda(...args: Parameters<ResidentAgendas["q
 export async function queuePendingAgendas(...args: Parameters<ResidentAgendas["queuePendingAgendas"]>) {
   return binding.get().queuePendingAgendas(...args);
 }
-export async function refreshScheduleInfluence(...args: Parameters<ResidentAgendas["refreshScheduleInfluence"]>) {
-  return binding.get().refreshScheduleInfluence(...args);
-}
 export async function buildVillageAgendas(...args: Parameters<ResidentAgendas["buildVillageAgendas"]>) {
   return binding.get().buildVillageAgendas(...args);
 }
 export async function clearVillagerAgenda(...args: Parameters<ResidentAgendas["clearVillagerAgenda"]>) {
   return binding.get().clearVillagerAgenda(...args);
 }
-export async function setVillagerScheduleInfluence(
-  ...args: Parameters<ResidentAgendas["setVillagerScheduleInfluence"]>
-) {
-  return binding.get().setVillagerScheduleInfluence(...args);
-}
-
 export function readFoundingResidentContext(...args: Parameters<ResidentAgendas["readFoundingResidentContext"]>) {
   return binding.get().readFoundingResidentContext(...args);
 }

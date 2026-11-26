@@ -18,7 +18,7 @@ import {VillagerDossier} from './packages/villages/src/client/features/residents
 import {DOSSIER_STYLES} from './packages/villages/src/client/features/residents/villages-dossier-styles.js';
 import {VillagerWishJournal} from './packages/villages/src/client/features/residents/villages-wish-journal.js';
 import {VillagerMemoriesPanel} from './packages/villages/src/client/features/residents/MemoriesPanel.js';
-import {useLoadMemoryLibrary,useLoadAgendas,useSetScheduleInfluence} from './packages/villages/src/client/features/residents/actions.js';
+import {useLoadMemoryLibrary,useLoadAgendas,useRewriteAgenda} from './packages/villages/src/client/features/residents/actions.js';
 import {useSceneSelectionReset} from './packages/villages/src/client/features/scenes/controller-hooks.js';
 import {useResidentInspection} from './packages/villages/src/client/features/residents/controller-hooks.js';
 function Harness(){
@@ -34,18 +34,18 @@ function Harness(){
  const loadAgendas=useLoadAgendas({worldScope:scope,setAgendas,setError,agendaRevision});
  const personProfile=useMemo(()=>navigation.actorId===actor?navigation:{actorId:actor,returnTo:'home'},[navigation,actor]);
  useResidentInspection({loadAgendas,personProfile,profileInspection:inspection,screen:active?'person':'home',visible});
- const influence=useSetScheduleInfluence({currentSnapshotRef,setAgendas,setError,setBusy:()=>{}});
+ const regenerate=useRewriteAgenda({currentSnapshotRef,setAgendas,setError,setBusy:()=>{},retryWork:()=>{}});
  const [validating,setValidating]=useState(false),observed=useRef(''),completion=useRef({roomId:'',submissionId:''}),movement=useRef(''),seen=useRef(new Set());
  const noChange=useCallback(()=>{},[]);
  useSceneSelectionReset({snapshot:{isFounded:true,village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active'}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
- window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
+ window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,regenerate,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
  return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}><style>{DOSSIER_STYLES}</style>
  <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
  onInspectSection={setInspection} onVenue={id=>window.h.openedVenue=id} inspectors={{
  wishes:<VillagerWishJournal request={request} characterId={actor} prefix='v' inspect/>,
  memories:<VillagerMemoriesPanel characterId={actor} library={library} busy={false} onQuery={(query,signal)=>loadMemory(signal,query)} onForget={()=>{}}/>,
- agenda:<pre>{JSON.stringify(agendas)}</pre>
+ overview:<pre>{JSON.stringify(agendas)}</pre>
  }}/></RetainedView><p role='alert'>{error}</p></VillageActivity>;
 }createRoot(document.getElementById('root')).render(<Harness/>);`,
     loader: "tsx",
@@ -217,7 +217,7 @@ await withBrowser(browser, async () => {
           next: null,
         };
       } else if (readsWeek) json = emptyAgendaWeek(url.searchParams.get("inspect") === "true");
-      else if (url.pathname.endsWith("/agendas") || url.pathname.endsWith("/influence"))
+      else if (url.pathname.endsWith("/agendas") || url.pathname.endsWith("/regenerate"))
         json = { villagers: [{ characterId: "mara", name: agendaName }] };
       else if (url.pathname.endsWith("/signature")) json = { status: "idle", attempt: 0 };
       else if (url.pathname.endsWith("/rooms/active")) json = { session: { id: "saved-scene", status: "active" } };
@@ -237,7 +237,7 @@ await withBrowser(browser, async () => {
     const tabs = page.getByRole("navigation", { name: "Villager profile sections" });
     const chooseSection = async (label) => {
       if (["Agenda", "Venues"].includes(label))
-        return clickCharacterTool(page, label === "Agenda" ? "Agenda records" : "Venue connections");
+        return clickCharacterTool(page, label === "Agenda" ? "Inspect Agenda" : "Venue connections");
       return panelWidth <= 700
         ? page.getByRole("combobox", { name: "Section" }).selectOption({ label })
         : tabs.getByRole("button", { name: label, exact: true }).click();
@@ -270,7 +270,7 @@ await withBrowser(browser, async () => {
         })),
       }),
     );
-    await chooseSection("Agenda");
+    await chooseSection("Relationships");
     await chooseSection("Overview");
     await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(position);
     await openCharacterTools(page);
@@ -436,7 +436,7 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => beforeInfluence.started).toBeGreaterThan(0);
     agendaName = "Updated agenda";
-    await page.evaluate(() => window.h.influence("mara", true));
+    await page.evaluate(() => window.h.regenerate("mara"));
     beforeInfluence.gate.resolve();
     hold = null;
     await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Updated agenda");
@@ -448,9 +448,9 @@ await withBrowser(browser, async () => {
     const oldProfile = pause("/api/villages/relationships");
     await page.evaluate(() => window.h.refresh());
     await expect.poll(() => oldProfile.started).toBeGreaterThan(0);
-    const oldMutation = pause("/api/villages/agendas/mara/influence");
+    const oldMutation = pause("/api/villages/agendas/mara/regenerate");
     await page.evaluate(() => {
-      void window.h.influence("mara", false);
+      void window.h.regenerate("mara");
     });
     await expect.poll(() => oldMutation.started).toBeGreaterThan(0);
     await page.evaluate(() => {

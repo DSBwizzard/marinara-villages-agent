@@ -15,8 +15,6 @@ import type { usePreviewVillagerRefresh } from "./actions.js";
 
 import type { useRewriteAgenda } from "./actions.js";
 
-import type { useSetScheduleInfluence } from "./actions.js";
-
 /** Values and actions used by ResidentsScreen; independent of shell implementation. */
 export type ResidentsScreenController = {
   readonly setMailboxOpen: (open: boolean) => void;
@@ -39,7 +37,6 @@ export type ResidentsScreenController = {
   readonly refreshPreviews: ResidentsState["refreshPreviews"];
   readonly rewriteAgenda: ReturnType<typeof useRewriteAgenda>;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "preparing" | "person";
-  readonly setScheduleInfluence: ReturnType<typeof useSetScheduleInfluence>;
   readonly setExploreSheet: React.Dispatch<React.SetStateAction<ExplorationSheet | null>>;
   readonly setFocusedProjectId: (id: string) => void;
   readonly setFocusedRequestId: React.Dispatch<React.SetStateAction<string>>;

@@ -9,7 +9,6 @@ import { PROFESSOR_MARI_ID } from "../../domain/rules/visitor-introduction.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
@@ -124,7 +123,6 @@ export function createResidentRoster({
           cardSnapshot: visitor?.cardSnapshot ?? { ...snapshotFromCard(card!, 1), capturedAt: addedAt },
           addedAt: visitor?.addedAt ?? addedAt,
           agenda: unwrittenVillageAgenda(villageNow()),
-          scheduleInfluence: influenceSettings(null),
         });
         if (visitor) {
           clearVisitorLodging(state, visitor);

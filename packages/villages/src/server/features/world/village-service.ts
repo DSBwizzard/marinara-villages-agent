@@ -26,11 +26,7 @@ import {
 } from "../../domain/rules/continuity-library.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
-import type {
-  queuePendingAgendas,
-  refreshScheduleInfluence,
-  rollActiveAgendas,
-} from "../residents/resident-agendas.js";
+import type { queuePendingAgendas, rollActiveAgendas } from "../residents/resident-agendas.js";
 import type { completeVillageResidence } from "../venues/residences.js";
 import type { buildVillageSnapshot } from "./snapshot.js";
 import type { mutateVillageState, readVillageState } from "./village-store.js";
@@ -48,7 +44,6 @@ export interface WorldCoordinationPorts {
   outsideVenueOperation: typeof outsideVenueOperation;
   completeVillageResidence: typeof completeVillageResidence;
   queuePendingAgendas: typeof queuePendingAgendas;
-  refreshScheduleInfluence: typeof refreshScheduleInfluence;
   preparePrivateSpaces: typeof preparePrivateSpaces;
   reconcileProjectLifecycles: typeof reconcileProjectLifecycles;
   rollActiveAgendas: typeof rollActiveAgendas;
@@ -68,7 +63,6 @@ export function createWorldCoordination({
   outsideVenueOperation,
   completeVillageResidence,
   queuePendingAgendas,
-  refreshScheduleInfluence,
   preparePrivateSpaces,
   reconcileProjectLifecycles,
   rollActiveAgendas,
@@ -185,8 +179,7 @@ export function createWorldCoordination({
     outsideVenueOperation(() => {
       void preparePrivateSpaces().catch(() => {});
     });
-    const withAgendas = await queuePendingAgendas(await readVillageState(), now);
-    await refreshScheduleInfluence(withAgendas, now);
+    await queuePendingAgendas(await readVillageState(), now);
     await reconcileResidentPlanning?.(now);
     return buildVillageSnapshot(now);
   }
