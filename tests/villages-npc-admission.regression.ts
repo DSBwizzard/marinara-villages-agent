@@ -218,6 +218,29 @@ await runCase("npc-admission/tagged-turn", () => {
       ["narration", "A faint creak comes from the sign."],
     ],
   );
+  const source = readset.source.scene;
+  const people = [
+    { name: "Visible Seller", characterId: "seller-id", doing: "" },
+    { name: "Another Seller", characterId: "other-id", doing: "" },
+  ];
+  const withPeople = (participants: typeof people) => ({
+    ...readset,
+    source: {
+      ...readset.source,
+      scene: { ...source, participants, contactGeneration: undefined, activeIds: ["seller-id", "other-id"] },
+    },
+  });
+  const aliases = decodeTaggedSceneReply(
+    '[Visible Seller]: Hello.\nVisible Seller: "Come closer."',
+    withPeople(people),
+  );
+  assert.deepEqual(
+    (aliases.value?.segments as { speakerId: string }[]).map(({ speakerId }) => speakerId),
+    ["seller-id", "seller-id"],
+  );
+  const shadowed = withPeople([people[0], { ...people[1], name: "Visible Seller" }]);
+  assert.equal(decodeTaggedSceneReply("[Visible Seller]: Ambiguous words.", shadowed).value, null);
+  assert.equal(decodeTaggedSceneReply("[Offstage Seller]: Unheard words.", withPeople(people)).value, null);
   for (const [content, issue] of [
     ["[unknown]: Private dialogue.\nA continuation.", "unknown_speaker"],
     ['[keep]: {"text":"secret"\nA continuation.', "invalid_private_record"],

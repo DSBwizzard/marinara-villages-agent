@@ -825,6 +825,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     calls++;
     assert.equal((options as { responseFormat?: unknown }).responseFormat, undefined);
     const prompt = messages.map(({ content }) => content).join("\n");
+    assert.match(prompt, /\[mara\] \[to player\]: text/);
     const choices = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]);
     const choice = choices.find(
       (row: { actorId: string; zoneId: string }) => row.actorId === "mara" && row.zoneId === "common",
@@ -833,7 +834,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     return {
       content: [
         "Narration: Water drips from the eaves.",
-        "[!mara] [to player]: Come into the Common room.",
+        (calls === 2 ? "[!mara]" : "[!mara] [to player]") + ": Come into the Common room.",
         "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
       ].join("\n"),
       finishReason: "stop",
@@ -865,6 +866,13 @@ await runCase("scene-travel/doorway-after-hours", async () => {
       ["Water drips from the eaves."],
     );
     assert.deepEqual((await world()).venues[0].access!.permissions, []);
+    const unheard = await send("unheard-doorway-invitation");
+    assert.equal(unheard.statusCode, 200, unheard.body);
+    assert.deepEqual(
+      unheard.json().session.lines.map((line: { content: string }) => line.content),
+      ["Water drips from the eaves."],
+    );
+    assert.deepEqual((await world()).venues[0].access!.permissions, []);
     const invitation = input();
     const spoken = await send("valid-doorway-invitation", invitation);
     assert.equal(spoken.statusCode, 200, spoken.body);
@@ -886,7 +894,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     });
     assert.equal(moved.statusCode, 200, moved.body);
     assert.equal(moved.json().session.zoneId, "common");
-    assert.equal(calls, 2);
+    assert.equal(calls, 3);
   } finally {
     await host.stop();
   }

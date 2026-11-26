@@ -596,8 +596,10 @@ await runCase("narration-writing/single-request", async () => {
   );
   assert.equal(deepSeekReply.readset.positionedSceneSources, true);
   assert.equal(deepSeekReply.readset.source.input, exact);
-  await deepSeek.writing.generate(deepSeek.scene, "", "greet");
-  assert.deepEqual(deepSeek.formats, [undefined, { type: "json_object" }]);
+  deepSeek.respondWith("Rain taps the glass.");
+  const opening = await deepSeek.writing.generate(deepSeek.scene, "", "greet");
+  assert.equal(opening.readset.taggedSceneReply, true);
+  assert.deepEqual(deepSeek.formats, [undefined, undefined]);
   assert.equal(deepSeek.messages().at(-2).content, "");
   const greeting = deepSeek
     .messages()
@@ -606,7 +608,7 @@ await runCase("narration-writing/single-request", async () => {
   assert.match(greeting, /Open the Scene from established presence/u);
   assert.match(greeting, /Treat only quoted player text as spoken aloud/u);
   assert.match(greeting, /HALT only if no natural continuation/u);
-  assert.match(greeting, /halt:\{reason,source\}/u);
+  assert.match(greeting, /\[halt\]: \{reason,source\}/u);
   assert.doesNotMatch(greeting, /several substantial exchanges/u);
   const leaving = await deepSeek.writing.prepareVenueTurnMessages(deepSeek.scene, "I leave.", "leave");
   const departure = leaving.fitted.messages.map((row) => row.content).join("\n");

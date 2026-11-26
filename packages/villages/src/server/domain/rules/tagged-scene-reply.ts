@@ -7,7 +7,7 @@ import type { NarrationReadset } from "../models/narration-model.js";
 import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
 export const TAGGED_SCENE_FORMAT = [
-  "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. Omit code fences.",
+  "For a narration-only reply, write plain prose. When mixing narration, dialogue or effects, use one Scene beat per line: Narration: text or [speaker-id]: spoken text. A unique displayed speaker name also works in brackets. Omit code fences.",
   "[speaker-id] [whisper recipient-id]: text, [speaker-id] [shout]: text, and [speaker-id] [aside]: text are optional. An aside follows its main line.",
   "Put each lasting proposal on its own [keep]: {…} or [command]: {…} line. These lines are private. Write any prose that asserts a lasting change as [!speaker-id]: text or Narration!: text immediately before its proposal.",
   "The game binds a proposal to the preceding beat. Commands get their anchor and default evidence from that beat. A keep may supply explicit evidence for other events.",
@@ -18,6 +18,7 @@ const effectLabel = /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u;
 const isEffectLabel = (value: unknown): value is string =>
   typeof value === "string" && value !== "self" && effectLabel.test(value);
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
+const aliasKey = (text: string) => text.normalize("NFKC").trim().toLowerCase();
 type Beat = { id: string; kind: "narration" | "dialogue"; text: string; requires: string[] } & Record<string, unknown>;
 
 function plainNarration(content: string): { narration?: Beat[]; issue?: SceneReplyIssue } {
@@ -62,6 +63,18 @@ export function decodeTaggedSceneReply(
   if (content.length > MODEL_JSON_MAX_CHARACTERS) return { value: null, issue: "reply_limits" };
   const scene = readset.source.scene;
   const speakers = new Set(scene.contactGeneration?.actorIds ?? scene.activeIds);
+  const aliases = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const { characterId, name } of scene.participants) {
+    if (!speakers.has(characterId)) continue;
+    const alias = aliasKey(name);
+    if (!alias || (aliases.has(alias) && aliases.get(alias) !== characterId)) ambiguous.add(alias);
+    else aliases.set(alias, characterId);
+  }
+  const resolveAlias = (alias: string) => {
+    const key = aliasKey(alias);
+    return ambiguous.has(key) ? undefined : aliases.get(key);
+  };
   const newcomers = new Map<string, string>();
   const ids = new Set(["scene-visit", "remember-fact"]);
   const positions: string[] = [];
@@ -86,7 +99,11 @@ export function decodeTaggedSceneReply(
     const line = value.trim();
     if (!line) continue;
     if (line.startsWith("```")) break;
-    const header = /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*)\s*:\s*(.*)$/iu.exec(line);
+    const quotedSpeaker = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u.exec(line);
+    const quotedAlias = quotedSpeaker && !controlPrefix.test(quotedSpeaker[1]) && resolveAlias(quotedSpeaker[1]);
+    const header =
+      /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*)\s*:\s*(.*)$/iu.exec(line) ??
+      (quotedAlias && quotedSpeaker ? [line, undefined, quotedAlias, "", quotedSpeaker[2]] : null);
     if (!header) {
       if (line.startsWith("[") && controlPrefix.test(line.slice(1))) {
         issue = "invalid_private_record";
@@ -145,6 +162,7 @@ export function decodeTaggedSceneReply(
           choice &&
           readset.sceneVisitOptions?.[Number(choice[1]) - 1]?.actorId === anchor.speakerId &&
           anchor.presentation !== "aside" &&
+          (anchor.targetId === undefined || anchor.targetId === "player") &&
           (anchor.delivery !== "whisper" || anchor.targetId === "player")
         ) {
           visit = { segment: anchor.id, option: Number(choice[1]), escort: !!choice[2] };
@@ -216,9 +234,10 @@ export function decodeTaggedSceneReply(
       }
       anchor = { id, kind: "narration", text, requires: requirements, ...(actors.length ? { actors } : {}) };
     } else {
-      const speakerId = marked ? speaker.slice(1) : speaker;
-      const admission = newcomers.get(speakerId);
-      if (speakerId === "player" || (!speakers.has(speakerId) && !admission)) {
+      const token = marked ? speaker.slice(1) : speaker;
+      const admission = newcomers.get(token);
+      const speakerId = speakers.has(token) || admission ? token : resolveAlias(token);
+      if (token === "player" || !speakerId || speakerId === "player") {
         issue = "unknown_speaker";
         continue;
       }
