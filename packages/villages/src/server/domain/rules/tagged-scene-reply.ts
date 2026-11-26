@@ -18,6 +18,7 @@ const effectLabel = /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u;
 const isEffectLabel = (value: unknown): value is string =>
   typeof value === "string" && value !== "self" && effectLabel.test(value);
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
+const actionPrefix = /^\s*!?\s*(action)(?=[ \t]+[+-]?\d)/iu;
 const quotedSpeakerHeader = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u;
 const aliasKey = (text: string) => text.normalize("NFKC").trim().toLowerCase();
 type Beat = { id: string; kind: "narration" | "dialogue"; text: string; requires: string[] } & Record<string, unknown>;
@@ -78,6 +79,9 @@ export function decodeTaggedSceneReply(
     const key = aliasKey(alias);
     return ambiguous.has(key) ? undefined : aliases.get(key);
   };
+  const reservedControl = (text: string) =>
+    (controlPrefix.exec(text) ??
+      (readset.sceneSpeechActions?.length ? actionPrefix.exec(text) : null))?.[1].toLowerCase();
   const newcomers = new Map<string, string>();
   const ids = new Set(["scene-visit"]);
   const positions: string[] = [];
@@ -87,6 +91,7 @@ export function decodeTaggedSceneReply(
   let visit: { segment: string; option: number; escort: boolean } | undefined;
   let halt: Record<string, unknown> | undefined;
   let anchor: Beat | undefined;
+  let actionAnchor: Beat | undefined;
   let marked = false;
   let effectIndex = 0;
   let issue: SceneReplyIssue | undefined;
@@ -103,23 +108,25 @@ export function decodeTaggedSceneReply(
     if (!line) continue;
     if (line.startsWith("```")) break;
     const quotedSpeaker = quotedSpeakerHeader.exec(line);
-    const quotedAlias = quotedSpeaker && !controlPrefix.test(quotedSpeaker[1]) && resolveAlias(quotedSpeaker[1]);
+    const quotedAlias = quotedSpeaker && !reservedControl(quotedSpeaker[1]) && resolveAlias(quotedSpeaker[1]);
     const header =
       /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*)\s*:\s*(.*)$/iu.exec(line) ??
       (quotedAlias && quotedSpeaker ? [line, undefined, quotedAlias, "", quotedSpeaker[2]] : null);
     if (!header) {
-      if (line.startsWith("[") && controlPrefix.test(line.slice(1))) {
+      const malformed = line.startsWith("[") && reservedControl(line.slice(1));
+      if (malformed && malformed !== "action") {
         issue = "invalid_private_record";
         break;
       }
+      if (malformed === "action") issue = "invalid_action_option";
       anchor = undefined;
       continue;
     }
     const [, narration, speaker, tags, text] = header;
     const meta = [...(tags ?? "").matchAll(/\[([^\]]+)\]/gu)].map((part) => part[1]);
     const control = speaker?.trim().toLowerCase();
-    const reserved = controlPrefix.exec(speaker ?? "")?.[1].toLowerCase();
-    if (reserved) {
+    const reserved = reservedControl(speaker ?? "");
+    if (reserved && reserved !== "action") {
       if (control !== reserved || meta.length) {
         issue = "invalid_private_record";
         break;
@@ -158,10 +165,11 @@ export function decodeTaggedSceneReply(
         continue;
       }
       if (control === "visit") {
-        if (!anchor || anchor.kind !== "dialogue") continue;
+        if (!anchor || anchor === actionAnchor || anchor.kind !== "dialogue") continue;
         const choice = /^([1-9]\d?)( escort)?$/u.exec(text);
         if (
           !visit &&
+          commands.length < 16 &&
           choice &&
           readset.sceneVisitOptions?.[Number(choice[1]) - 1]?.actorId === anchor.speakerId &&
           anchor.presentation !== "aside" &&
@@ -176,7 +184,11 @@ export function decodeTaggedSceneReply(
       }
       const list = control === "keep" ? keep : commands;
       const proposal = parsePrivateRecord(text);
-      if (list.length >= (control === "keep" ? 32 : 16) || (!anchor && control === "command")) {
+      if (
+        control === "keep"
+          ? list.length >= 32
+          : !anchor || anchor === actionAnchor || list.length + Number(!!visit) >= 16
+      ) {
         if (!proposal) break;
         continue;
       }
@@ -256,14 +268,37 @@ export function decodeTaggedSceneReply(
       anchor = { id, kind: "narration", text, requires: requirements, ...(actors.length ? { actors } : {}) };
     } else {
       const token = marked ? speaker.slice(1) : speaker;
-      const admission = newcomers.get(token);
-      const speakerId = speakers.has(token) || admission ? token : resolveAlias(token);
+      const action =
+        reserved === "action" ? /^action[ \t]+([1-9]\d?)(?:[ \t]+(escort))?$/iu.exec(speaker.trim()) : null;
+      const choice = action ? readset.sceneSpeechActions?.[Number(action[1]) - 1] : undefined;
+      const escort = !!action?.[2];
+      if (
+        reserved === "action" &&
+        (!choice ||
+          !speakers.has(choice.actorId) ||
+          commands.length + Number(!!visit) >= 16 ||
+          (choice.kind === "visit"
+            ? !!visit || readset.sceneVisitOptions?.[choice.option - 1]?.actorId !== choice.actorId
+            : escort))
+      ) {
+        issue = "invalid_action_option";
+        continue;
+      }
+      const admission = choice ? undefined : newcomers.get(token);
+      const speakerId = choice?.actorId ?? (speakers.has(token) || admission ? token : resolveAlias(token));
       if (token === "player" || !speakerId || speakerId === "player") {
         issue = "unknown_speaker";
         continue;
       }
       if (admission) requirements.push(admission);
-      const beat: Beat = { id, kind: "dialogue", speakerId, text, requires: requirements };
+      const beat: Beat = {
+        id,
+        kind: "dialogue",
+        speakerId,
+        text,
+        requires: requirements,
+        ...(choice ? { targetId: "player" } : {}),
+      };
       let valid = true;
       for (const tag of meta) {
         const index = tag.indexOf(" ");
@@ -287,8 +322,33 @@ export function decodeTaggedSceneReply(
         } else if (tag === "remember" && readset.requestedMemory) requirements.push("remember-fact");
         else valid = false;
       }
-      if (valid) anchor = beat;
-      else issue = "invalid_dialogue_tag";
+      if (!valid || (choice?.kind === "visit" && beat.presentation === "aside")) {
+        issue = "invalid_dialogue_tag";
+        continue;
+      }
+      if (choice) {
+        if (choice.kind === "visit") {
+          visit = { segment: id, option: choice.option, escort };
+          bind(beat, "scene-visit");
+        } else {
+          let effectId = "action-" + id;
+          while (ids.has(effectId)) effectId += "-";
+          ids.add(effectId);
+          commands.push({
+            id: effectId,
+            type: "move.decide",
+            who: choice.actorId,
+            at: id,
+            agrees: choice.agrees,
+            ...(choice.to ? { to: choice.to } : {}),
+            ...(choice.trespass ? { trespass: true } : {}),
+            source: [{ segment: id }],
+          });
+          bind(beat, effectId);
+        }
+        actionAnchor = beat;
+      }
+      anchor = beat;
     }
     if (anchor) segments.push(anchor);
   }

@@ -1,4 +1,4 @@
-// Test cases: scene-travel/prepared-place, scene-travel/unprepared-place, scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move, scene-travel/local-permission, scene-travel/doorway-after-hours
+// Test cases: scene-travel/prepared-place, scene-travel/unprepared-place, scene-travel/invitation, scene-travel/revoked, scene-travel/restore, scene-travel/prose-only, scene-travel/group-visit, scene-travel/overheard, scene-travel/boundary, scene-travel/open-park-boundary, scene-travel/trespass, scene-travel/crossing-rejected, scene-travel/departure-rejected, scene-travel/resident-crossing, scene-travel/resident-departure, scene-travel/follow-after-move, scene-travel/local-permission, scene-travel/doorway-after-hours, scene-travel/mixed-speech-actions
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -180,8 +180,8 @@ for (const scenario of [
       if (calls === 1) {
         const prompt = messages.map(({ content }) => content).join("\n");
         assert.match(prompt, /Visit invitations available.*Willow Hotel/);
-        assert.match(prompt, /Entry needs a spoken invitation/);
-        assert.match(prompt, /A group invite counts if it includes the player/);
+        assert.match(prompt, /copy its listed number and write \[action N\]/);
+        assert.match(prompt, /A group invitation must include the player/);
       }
       if (follow) {
         const prompt = messages.map(({ content }) => content).join("\n");
@@ -733,13 +733,13 @@ await runCase("scene-travel/local-permission", async () => {
             ? "[mara]: Ask me after lunch first."
             : mode === "unrelated"
               ? "[mara]: Just a quiet afternoon."
-              : [
-                  "Narration: A breeze stirs the grass.",
-                  mode === "whisper"
-                    ? "[!mara] [whisper leo]: Yes, go take a look at the Airstrip."
-                    : "[!mara]: Yes, go take a look at the Airstrip.",
-                  "[visit]: " + (mode === "unlisted" ? 12 : option),
-                ].join("\n"),
+              : mode === "whisper"
+                ? `Narration: A breeze stirs the grass.\n[action ${option}] [whisper leo]: Yes, go take a look at the Airstrip.`
+                : [
+                    "Narration: A breeze stirs the grass.",
+                    "[!mara]: Yes, go take a look at the Airstrip.",
+                    "[visit]: " + (mode === "unlisted" ? 12 : option),
+                  ].join("\n"),
         finishReason: "stop",
         usage: { inputTokens: 10, outputTokens: 10 },
       };
@@ -836,11 +836,13 @@ await runCase("scene-travel/doorway-after-hours", async () => {
       content:
         calls === 3
           ? "[mara]: Quiet words spoken elsewhere."
-          : [
-              "Narration: Water drips from the eaves.",
-              (calls === 2 ? "[!mara]" : "[!mara] [to player]") + ": Come into the Common room.",
-              "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
-            ].join("\n"),
+          : calls === 4
+            ? `[action ${choice.option}]: Come into the Common room.`
+            : [
+                "Narration: Water drips from the eaves.",
+                (calls === 2 ? "[!mara]" : "[!mara] [to player]") + ": Come into the Common room.",
+                "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
+              ].join("\n"),
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -908,5 +910,109 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     assert.equal(calls, 4);
   } finally {
     await host.stop();
+  }
+});
+
+await runCase("scene-travel/mixed-speech-actions", async () => {
+  for (const movesAway of [true, false]) {
+    const host = await packagedSceneServer({
+      configure(world) {
+        world.spontaneousEvents = false;
+        const venue = world.venues[0];
+        venue.access!.managerIds = ["mara"];
+        venue.zones!.find((zone) => zone.id === "common")!.connectedTo.push("workshop");
+        venue.zones!.push({
+          ...defaultVenueSpace("other"),
+          id: "workshop",
+          name: "Workshop",
+          description: "A workbench beside a wall of tools.",
+          kind: "restricted",
+          connectedTo: ["common"],
+          seen: true,
+        });
+        initializeVenueAccess(venue);
+        venue.zones!.find((zone) => zone.id === "workshop")!.access!.mode = "permission-required";
+      },
+    });
+    const invite = "Come into the Workshop.";
+    const follow = "I’ll come along with you.";
+    const crossing = "Mara steps outside.";
+    let calls = 0;
+    host.model.chatComplete = async (messages) => {
+      calls++;
+      const prompt = messages.map(({ content }) => content).join("\n");
+      const invites = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]) as {
+        actorId: string;
+        zoneId: string;
+        option: number;
+      }[];
+      const following = JSON.parse(prompt.match(/Following decisions available.*: ([^\n]+)/)![1]) as Record<
+        string,
+        [number, string][]
+      >;
+      const invited = invites.find(({ actorId, zoneId }) => actorId === "mara" && zoneId === "workshop");
+      const agreed = following.mara.find(([, decision]) => decision === "start following")?.[0];
+      assert(invited && agreed && invited.option !== agreed);
+      return {
+        content: [
+          "Narration: The tools rattle softly.",
+          `[action ${invited.option}]: ${invite}`,
+          ...(movesAway ? ["Narration!: " + crossing, '[command]: {"type":"move","who":"mara","to":"exterior"}'] : []),
+          `[action ${agreed}]: ${follow}`,
+        ].join("\n"),
+        finishReason: "stop",
+        usage: { inputTokens: 10, outputTokens: 10 },
+      };
+    };
+    try {
+      const active = await host.app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+      assert.equal(active.statusCode, 200, active.body);
+      const input = {
+        sessionId: "browser",
+        submissionId: "mixed-speech",
+        expectedSceneRevision: active.json().session.sceneRevision,
+        message: '"Mara, may I enter the Workshop, and will you come with me?"',
+        mode: "chat",
+      };
+      const send = () => host.app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: input });
+      const reply = await send();
+      assert.equal(reply.statusCode, 200, reply.body);
+      const session = reply.json().session;
+      assert.equal(session.zoneId, "common");
+      assert.deepEqual(
+        session.lines.map((line: { content: string }) => line.content),
+        ["The tools rattle softly.", invite, movesAway ? crossing : follow],
+      );
+      const repository = createVillageRepository(() => host.documents as never);
+      const world = await repository.readAuthority({ memories: true });
+      assert.equal(world.venues[0].access!.permissions.length, 1);
+      const episode = world.episodes.records.at(-1)!;
+      assert.deepEqual(episode.commandReceipts.map(({ kind }) => kind).toSorted(), [
+        "access",
+        movesAway ? "movement" : "movement-agreement",
+      ]);
+      if (movesAway)
+        assert(episode.rejectedEffects?.some(({ reason }) => /following needs this current local actor/u.test(reason)));
+      assert.equal((await send()).statusCode, 200, "One submission cannot run the actions twice");
+      assert.equal((await repository.readAuthority()).venues[0].access!.permissions.length, 1);
+      const move = await host.app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/zone",
+        payload: {
+          sessionId: session.id,
+          zoneId: "workshop",
+          operationId: "use-mixed-invitation",
+          expectedSceneRevision: session.sceneRevision,
+          follow: true,
+        },
+      });
+      assert.equal(move.statusCode, 200, move.body);
+      assert.equal(move.json().session.zoneId, "workshop");
+      assert.equal(move.json().session.trespassing, undefined);
+      assert.equal(move.json().session.activeIds.includes("mara"), !movesAway);
+      assert.equal(calls, 1, "One reply settles both actions. Move and replay purchase nothing.");
+    } finally {
+      await host.stop();
+    }
   }
 });

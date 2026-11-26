@@ -2,6 +2,10 @@ import type { NarrationSourceContext } from "../rules/narration-sources.js";
 import type { ContinuityAdmission, ContinuityEvidence } from "./continuity-model.js";
 import type { AcceptedEpisode } from "./episode-model.js";
 
+export type SceneSpeechAction =
+  | { kind: "visit"; actorId: string; option: number }
+  | { kind: "follow"; actorId: string; agrees: boolean; to?: string; trespass?: true };
+
 /** Exact final fitted evidence and native circumstances, retained by the existing operation checkpoint. */
 export type NarrationReadset = {
   visitorIntroductionFarewell?: true;
@@ -29,6 +33,7 @@ export type NarrationReadset = {
   sceneFollowing?: true | 2;
   automaticTrespass?: true;
   sceneVisitOptions?: { actorId: string; venueId: string; zoneId: string; afterHours?: true }[];
+  sceneSpeechActions?: SceneSpeechAction[];
   strictSceneReply?: true;
   taggedSceneReply?: true;
   ordinaryReplyRecovery?: true;

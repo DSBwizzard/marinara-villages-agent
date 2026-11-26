@@ -113,6 +113,7 @@ export const sceneReplyIssues = {
   structured_reply: "the reply contains unrecognized markup or structured data",
   unknown_speaker: "dialogue uses a speaker the Scene did not admit",
   invalid_dialogue_tag: "a dialogue tag or recipient was invalid",
+  invalid_action_option: "a Scene action was unavailable or used an invalid header",
   invalid_private_record: "a private record was malformed",
   reply_limits: "the reply exceeded parser limits",
 } as const;

@@ -4,7 +4,7 @@ import { admissionLoreContext } from "../../../shared/helpers/resident-admission
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { agendaSpeechOptions } from "../../domain/rules/agenda-overview.js";
-import type { NarrationReadset } from "../../domain/models/narration-model.js";
+import type { NarrationReadset, SceneSpeechAction } from "../../domain/models/narration-model.js";
 import type { GreetingTrace, VenueScene } from "../../domain/models/scene-model.js";
 import {
   badGateway,
@@ -52,7 +52,11 @@ import {
   NARRATION_PROJECT_COMMANDS,
 } from "../../domain/rules/narration-command-contract.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
-import { residentMovementOptions, residentMovementPrompt } from "../../domain/rules/resident-movement.js";
+import {
+  residentFollowingOptions,
+  residentMovementOptions,
+  residentMovementPrompt,
+} from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { sceneContinuityView, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
 import { sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
@@ -72,6 +76,7 @@ import { contactPosition } from "../../domain/rules/venue-contact.js";
 import { sceneEpisodeId } from "../../domain/rules/episode-sources.js";
 import { capturedSceneCalendar } from "../../domain/rules/scene-calendar.js";
 import { decodeTaggedSceneReply, TAGGED_SCENE_FORMAT } from "../../domain/rules/tagged-scene-reply.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { ContinuityEvidence } from "../../domain/models/continuity-model.js";
 
 export interface SceneWritingPorts {
@@ -299,12 +304,51 @@ export function createSceneWriting({
             scene.contactGeneration?.doorwayVoiceIds?.some((id) => contactPosition(scene, id) === zone.id)),
       )
       .map((zone) => zone.id);
+    const residentMovesInReply = mode === "chat";
+    const offerSpeechActions = tagged && residentMovesInReply && !context.codeRequestedMemory;
     const visitOptions =
-      mode === "chat"
+      residentMovesInReply && (!tagged || offerSpeechActions)
         ? sceneVisitOptions(context.access, scene.placeId, selectedIds, localVisitZones, calendar, venue)
         : [];
     const canInviteForVisit = visitOptions.length > 0;
-    const residentMovesInReply = mode === "chat";
+    const movementOptions = residentMovementOptions(
+      village,
+      venue,
+      scene,
+      selectedIds,
+      new ZonedDate(calendar.instant, calendar.timeZone),
+    );
+    const followingOptions = offerSpeechActions ? residentFollowingOptions(venue, scene, movementOptions) : [];
+    const sceneSpeechActions: SceneSpeechAction[] = offerSpeechActions
+      ? [
+          ...visitOptions.map(({ actorId, option }) => ({ kind: "visit" as const, actorId, option })),
+          ...followingOptions,
+        ]
+      : [];
+    const followingBySpeaker = Map.groupBy(
+      followingOptions.map((option, index) => ({ ...option, number: visitOptions.length + index + 1 })),
+      ({ actorId }) => actorId,
+    );
+    const followingMenu = Object.fromEntries(
+      [...followingBySpeaker].map(([speaker, options]) => [
+        speaker,
+        options.map(({ number, to, agrees, trespass }) => {
+          const zone = movementOptions.zones.find(({ id }) => id === to);
+          const destination =
+            zone &&
+            (movementOptions.zones.some(({ id, name }) => id !== zone.id && name === zone.name)
+              ? `${zone.name} (${zone.id})`
+              : zone.name);
+          const decision = destination
+            ? (agrees ? (trespass ? "agree to sneak across to " : "agree to cross to ") : "decline crossing to ") +
+              destination
+            : agrees
+              ? "start following"
+              : "stop following";
+          return [number, decision];
+        }),
+      ]),
+    );
     const positions = !nativeCommands && !context.memoryChange;
     const requestedMemory = context.requestedMemory;
     const memoryResident = JSON.stringify(requestedMemory?.recipientId ?? "resident-id");
@@ -412,33 +456,38 @@ export function createSceneWriting({
         freshReply || tagged ? "Use the supplied calendar for the current time. Past exchanges cannot change it." : "",
         scene.contactGeneration?.doorwayVoiceIds?.length
           ? (tagged
-              ? "Copy a complete header for doorway words spoken to the player: " +
+              ? "For ordinary doorway dialogue spoken to the player, copy a complete header: " +
                 scene.contactGeneration.doorwayVoiceIds.map((id) => "[" + id + "] [to player]: text").join(" or ") +
+                (sceneSpeechActions.length ? ". A numbered action already addresses the player" : "") +
                 ". Start with a brief Narration: beat of what the player can observe from their side, even if no one answers"
               : 'Doorway dialogue to the player: use targetId:"player" with these IDs: ' +
                 JSON.stringify(scene.contactGeneration.doorwayVoiceIds)) +
             ". They stay in their Zone. Hearing, an open door, and gestures grant no sight or entry. Use a listed invitation option for permission."
           : "",
-        canInviteForVisit
-          ? tagged
-            ? "Entry needs a spoken invitation. Put [visit]: 1 on the next line, using the speaker's supplied option number. A group invite counts if it includes the player. Add escort only when offered. Tentative or unmet terms grant nothing. The player chooses whether to move."
-            : 'Entry needs a spoken invitation and "visit":{"option":1,"segment":2,"escort":false}. Use the speaker’s option and dialogue position. A group invite counts if it includes the player. Omit tentative or unmet terms. afterHours means admission despite the schedule. Escort only if offered. Leave movement to the player.'
+        canInviteForVisit && !tagged
+          ? 'Entry needs a spoken invitation and "visit":{"option":1,"segment":2,"escort":false}. Use the speaker’s option and dialogue position. A group invite counts if it includes the player. Omit tentative or unmet terms. afterHours means admission despite the schedule. Escort only if offered. Leave movement to the player.'
           : "",
-        residentMovesInReply
+        sceneSpeechActions.length
+          ? "For each settled invitation or following decision, copy its listed number and write [action N]: their exact words to the player. One action per line, even when the same person says both. The game supplies the speaker and records the outcome. Keep tentative offers in ordinary dialogue. Leave movement to the player." +
+            (canInviteForVisit
+              ? " Use [action N escort]: text only when the speaker offers to accompany the player. A group invitation must include the player."
+              : "")
+          : "",
+        residentMovesInReply && (!tagged || !context.codeRequestedMemory)
           ? tagged
             ? 'An observed resident crossing uses Narration!: text followed by [command]: {"type":"move","who":"resident-id","to":"zone-id"}. Use supplied routes; trespass:true needs an eligible unauthorized route. For leaving, use type:"depart" and who. Place movement before later speech. Stay with the player.'
             : 'Visible move: {"kind":"crossing","who":"resident-id","to":"zone-id","text":"They enter."}; trespass:true needs a supplied unauthorized adjacent route. Exit: {"kind":"departure","who":"resident-id","text":"They leave."}. Use supplied routes; movement precedes dialogue. Stay with the player.'
           : "",
-        scene.visitorIntroduction
+        !npcIntroduction
           ? ""
           : tagged
             ? 'For a new named person, write Narration!: A baker steps into view. Then [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."}. Afterwards [new:baker]: text. If a supplied returning NPC appears, write their visible arrival as Narration!: text, then [command]: {"type":"npc.admit","existingId":"supplied-id"} and [supplied-id]: text. Copy their actual supplied ID in both lines. A candidate is not already present. A passerby can appear briefly in narration.'
             : nativeCommands
               ? NARRATION_NATIVE
               : narrationNpcCommands(positions),
-        !nativeCommands && !scene.visitorIntroduction
+        !nativeCommands && !scene.visitorIntroduction && (!tagged || offerSpeechActions)
           ? tagged
-            ? 'A decision to follow uses [!resident-id]: "I’ll come with you." then [command]: {"type":"move.decide","who":"resident-id","agrees":true}. The game moves followers only after a recorded decision. Discuss conditions or decline without starting to follow. Omit to for ongoing following; to limits one adjacent crossing. Use agrees:false to stop. trespass:true needs explicit outing-wide sneaking consent.'
+            ? 'The game moves followers after a recorded decision. For explicit outing-wide sneaking consent, use the resident’s heard words followed by [command]: {"type":"move.decide","who":"resident-id","agrees":true,"trespass":true}.'
             : "Agreement to accompany: dialogue follow:{agrees:true}, also on spoken asides. Memory alone does not enable following. trespass:true needs explicit outing-wide sneaking consent. Omit to for ongoing following; to limits one adjacent crossing. agrees:false stops. Questions/conditions grant no consent. Use one form per decision. Observed following uses native move.decide with player-seen evidence."
           : "",
         mode === "leave" && input.trim()
@@ -501,14 +550,18 @@ export function createSceneWriting({
           nativeCommands && context.projects.length ? PROJECT_SPEECH_DIRECTION : "",
           nativeCommands && context.projects.length ? NARRATION_PROJECT_COMMANDS : "",
           showAccess ? narrationAccessPrompt(context.access) : "",
-          (nativeCommands || tagged) && showAccess ? NARRATION_ACCESS_COMMANDS : "",
+          (nativeCommands || (tagged && !context.codeRequestedMemory)) && showAccess ? NARRATION_ACCESS_COMMANDS : "",
           canInviteForVisit ? "Visit invitations available in this Scene: " + JSON.stringify(visitOptions) : "",
+          followingOptions.length
+            ? "Following decisions available in this Scene, grouped by speaker as [number, decision]: " +
+              JSON.stringify(followingMenu)
+            : "",
           housing,
           nativeCommands && housing ? NARRATION_HOUSING_COMMANDS : "",
           narrationPlacePrompt(places),
           context.codeRequestedMemory
             ? tagged
-              ? "The game records the exact requested fact. Use [speaker-id] [remember]: text to acknowledge it only if the record is accepted."
+              ? "The game records the exact requested fact. Use [speaker-id] [remember]: text to acknowledge it only if the record is accepted. Keep any other offers pending."
               : 'Code records the exact requested fact for the named resident. Omit a keep for that fact. To say it was saved, put "requires":["remember-fact"] inside that dialogue or narration segment.'
             : requestedMemory
               ? (tagged
@@ -539,7 +592,7 @@ export function createSceneWriting({
                 }
               : {}),
             leadSpeakerId,
-            movements: residentMovementPrompt(residentMovementOptions(village, venue, scene, selectedIds)),
+            movements: residentMovementPrompt(movementOptions),
             zoneContacts: scene.doorwayContacts?.map((contact) => contact.characterId) ?? [],
             protections: context.protections,
             roomReferences: context.roomReferences,
@@ -597,7 +650,8 @@ export function createSceneWriting({
           : `Keep the player in ${JSON.stringify("name" in playerZone ? playerZone.name : playerZone.id)} until they use Move or Visit. End crossing attempts before entry despite prior prose. `) +
         attendanceDirection +
         (tagged
-          ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Put each lasting change on its own tag line."
+          ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Put each lasting change on its own tag line." +
+            (sceneSpeechActions.length ? " Put invitation and following words on their numbered [action N] lines." : "")
           : 'Return "segments" and any "keep" or "commands" in one JSON object.'),
     );
     if (loreInspection) {
@@ -638,6 +692,7 @@ export function createSceneWriting({
         ...(tagged ? { taggedSceneReply: true as const } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
+        ...(sceneSpeechActions.length ? { sceneSpeechActions } : {}),
         ...(canInviteForVisit
           ? {
               sceneVisitOptions: visitOptions.map(({ actorId, venueId, zoneId, afterHours }) => ({

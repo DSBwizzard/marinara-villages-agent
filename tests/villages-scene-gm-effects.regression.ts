@@ -142,7 +142,10 @@ await runCase("gm-effects/tagged-memory-and-wish", async () => {
     const response = ++calls;
     if (response === 1)
       assert.match(prompt, /"owner":"resident-id","for":\["resident-id","player"\],"class":"desire"/u);
-    if (response === 2) assert.match(prompt, /The game records the exact requested fact/u);
+    if (response === 2) {
+      assert.match(prompt, /The game records the exact requested fact/u);
+      assert.doesNotMatch(prompt, /Following decisions available|\[action N\]|"type":"npc\.admit"/u);
+    }
     if (response === 3) {
       assert.match(prompt, /Use \[keep\]: \{"id":"remember-fact","for":\["resident-id"\]/u);
       assert.doesNotMatch(prompt, /required top-level keep entry/u);
