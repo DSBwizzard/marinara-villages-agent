@@ -20,6 +20,7 @@ const validationCodes = new Set([
   "scene_capacity",
   "invalid_scene_speaker",
   "invalid_scene_invitation",
+  "no_perceived_scene_lines",
   "past_scene_appointment",
 ]);
 const schemaFields = new Set([

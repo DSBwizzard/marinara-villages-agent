@@ -411,7 +411,8 @@ export function createSceneWriting({
         scene.contactGeneration?.doorwayVoiceIds?.length
           ? (tagged
               ? "Copy a complete header for doorway words spoken to the player: " +
-                scene.contactGeneration.doorwayVoiceIds.map((id) => "[" + id + "] [to player]: text").join(" or ")
+                scene.contactGeneration.doorwayVoiceIds.map((id) => "[" + id + "] [to player]: text").join(" or ") +
+                ". Start with a brief Narration: beat of what the player can observe from their side, even if no one answers"
               : 'Doorway dialogue to the player: use targetId:"player" with these IDs: ' +
                 JSON.stringify(scene.contactGeneration.doorwayVoiceIds)) +
             ". They stay in their Zone. Hearing, an open door, and gestures grant no sight or entry. Use a listed invitation option for permission."

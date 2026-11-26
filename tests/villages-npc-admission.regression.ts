@@ -218,6 +218,21 @@ await runCase("npc-admission/tagged-turn", () => {
       ["narration", "A faint creak comes from the sign."],
     ],
   );
+  const narrationWithUnheardSpeech = decodeTaggedSceneReply(
+    [
+      "Light moves across the glass.",
+      "The awning gives a faint creak.",
+      'Someone behind the glass: "This should stay private."',
+      "This could continue the same private speech.",
+    ].join("\n\n"),
+    readset,
+  );
+  assert.equal(narrationWithUnheardSpeech.repaired, true);
+  assert.deepEqual(
+    (narrationWithUnheardSpeech.value?.segments as { text: string }[]).map(({ text }) => text),
+    ["Light moves across the glass.", "The awning gives a faint creak."],
+  );
+  assert.deepEqual(Object.keys(narrationWithUnheardSpeech.value!), ["segments"]);
   const source = readset.source.scene;
   const people = [
     { name: "Visible Seller", characterId: "seller-id", doing: "" },
@@ -246,6 +261,8 @@ await runCase("npc-admission/tagged-turn", () => {
     ['[keep]: {"text":"secret"\nA continuation.', "invalid_private_record"],
     ['A safe-looking paragraph.\n{"commands":[]}', "structured_reply"],
     ["Mara: Private dialogue.\nA continuation.", "structured_reply"],
+    ['Mara: "Private dialogue."\n\nA continuation.', "structured_reply"],
+    ['Plain prose.\n\nMara: "Private dialogue."\n\n[keep]: {"text":"private"}', "structured_reply"],
     ["**Mara**: Private dialogue.", "structured_reply"],
     ["- Mara: Private dialogue.", "structured_reply"],
     ["Mara：Private dialogue.", "structured_reply"],

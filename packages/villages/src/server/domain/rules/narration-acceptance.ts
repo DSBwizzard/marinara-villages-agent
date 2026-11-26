@@ -60,6 +60,7 @@ export type NarrationPublication = {
 
 type SavedNarration = Pick<NarrationPublication, "readset" | "raw" | "responseDigest">;
 export const ACTOR_MEMORY_TARGETS_ROOM = "actor memory targeted Room";
+export const SCENE_REPLY_NOT_PERCEIVED = "The reply contained no lines the player could see or hear.";
 const roomNoteFields = new Set(["id", "for", "text", "source", "requires", "independent"]);
 const roomFactFields = new Set([
   ...roomNoteFields,
@@ -247,7 +248,7 @@ export function acceptNarrationContinuity(
   )
     return {
       held: true as const,
-      rejected: [{ id: "visible-reply", reason: "The reply contained no lines the player could see or hear." }],
+      rejected: [{ id: "visible-reply", reason: SCENE_REPLY_NOT_PERCEIVED }],
       usableIds: [],
       acceptedIds: [],
       episode: undefined,

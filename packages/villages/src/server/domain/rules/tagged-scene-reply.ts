@@ -18,31 +18,34 @@ const effectLabel = /^[A-Za-z][A-Za-z0-9_-]{0,47}$/u;
 const isEffectLabel = (value: unknown): value is string =>
   typeof value === "string" && value !== "self" && effectLabel.test(value);
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
+const quotedSpeakerHeader = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u;
 const aliasKey = (text: string) => text.normalize("NFKC").trim().toLowerCase();
 type Beat = { id: string; kind: "narration" | "dialogue"; text: string; requires: string[] } & Record<string, unknown>;
 
 function plainNarration(content: string): { narration?: Beat[]; issue?: SceneReplyIssue } {
-  const lines = content
-    .trim()
-    .split(/\r?\n/u)
-    .map((line) => line.trim());
-  // Only a wholly prose reply can use the default. Mixed or damaged structured replies never enter this path.
-  if (
-    /[\[\]{}<>\x60]/u.test(content.normalize("NFKC")) ||
-    lines.some((line) => {
-      const syntax = line
-        .normalize("NFKC")
-        .replace(/^(?:[-+*]|\d+[.)])\s+/u, "")
-        .replace(/[*_~]/gu, "")
-        .trim();
-      return /^[#"“'‘]|^[\p{L}\p{N}][\p{L}\p{M}\p{N} .'’()-]{0,55}:/u.test(syntax);
-    })
-  )
-    return { issue: "structured_reply" };
-  const paragraphs = lines
-    .join("\n")
-    .split(/\n{2,}/u)
-    .filter((text) => /\p{L}/u.test(text));
+  // A damaged control or JSON reply cannot fall back to prose.
+  if (/[\[\]{}<>\x60]/u.test(content.normalize("NFKC"))) return { issue: "structured_reply" };
+  const paragraphs: string[] = [];
+  for (const paragraph of content.trim().split(/\r?\n(?:[^\S\r\n]*\r?\n)+/u)) {
+    const text = paragraph.trim();
+    // Keep clear narration before a stand-alone untrusted speaker cue. Its entire tail stays hidden.
+    if (quotedSpeakerHeader.test(text)) {
+      if (!paragraphs.length) return { issue: "structured_reply" };
+      break;
+    }
+    if (
+      text.split(/\r?\n/u).some((line) => {
+        const syntax = line
+          .normalize("NFKC")
+          .replace(/^(?:[-+*]|\d+[.)])\s+/u, "")
+          .replace(/[*_~]/gu, "")
+          .trim();
+        return /^[#"“'‘]|^[\p{L}\p{N}][\p{L}\p{M}\p{N} .'’()-]{0,55}:/u.test(syntax);
+      })
+    )
+      return { issue: "structured_reply" };
+    if (/\p{L}/u.test(text)) paragraphs.push(text);
+  }
   if (paragraphs.length > 24 || paragraphs.some((text) => text.length > NARRATION_SEGMENT_CHARACTERS))
     return { issue: "reply_limits" };
   if (!paragraphs.length) return {};
@@ -99,7 +102,7 @@ export function decodeTaggedSceneReply(
     const line = value.trim();
     if (!line) continue;
     if (line.startsWith("```")) break;
-    const quotedSpeaker = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u.exec(line);
+    const quotedSpeaker = quotedSpeakerHeader.exec(line);
     const quotedAlias = quotedSpeaker && !controlPrefix.test(quotedSpeaker[1]) && resolveAlias(quotedSpeaker[1]);
     const header =
       /^(?:Narration(!?)|\[([^\]\r\n]+)\])((?:\s*\[[^\]\r\n]+\])*)\s*:\s*(.*)$/iu.exec(line) ??

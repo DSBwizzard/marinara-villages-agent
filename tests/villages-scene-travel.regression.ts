@@ -826,17 +826,21 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     assert.equal((options as { responseFormat?: unknown }).responseFormat, undefined);
     const prompt = messages.map(({ content }) => content).join("\n");
     assert.match(prompt, /\[mara\] \[to player\]: text/);
+    assert.match(prompt, /Start with a brief Narration: beat of what the player can observe from their side/);
     const choices = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]);
     const choice = choices.find(
       (row: { actorId: string; zoneId: string }) => row.actorId === "mara" && row.zoneId === "common",
     );
     assert(choice?.afterHours);
     return {
-      content: [
-        "Narration: Water drips from the eaves.",
-        (calls === 2 ? "[!mara]" : "[!mara] [to player]") + ": Come into the Common room.",
-        "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
-      ].join("\n"),
+      content:
+        calls === 3
+          ? "[mara]: Quiet words spoken elsewhere."
+          : [
+              "Narration: Water drips from the eaves.",
+              (calls === 2 ? "[!mara]" : "[!mara] [to player]") + ": Come into the Common room.",
+              "[visit]: " + (calls === 1 ? "unlisted" : choice.option),
+            ].join("\n"),
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -873,6 +877,13 @@ await runCase("scene-travel/doorway-after-hours", async () => {
       ["Water drips from the eaves."],
     );
     assert.deepEqual((await world()).venues[0].access!.permissions, []);
+    const silent = await send("unheard-doorway-dialogue");
+    assert.equal(silent.statusCode, 502, silent.body);
+    assert.deepEqual(silent.json().sceneFailure.diagnostic.checks, [
+      { code: "no_perceived_scene_lines", path: ["segments"] },
+    ]);
+    assert(!silent.body.includes("Quiet words spoken elsewhere."));
+    assert.deepEqual((await world()).venues[0].access!.permissions, []);
     const invitation = input();
     const spoken = await send("valid-doorway-invitation", invitation);
     assert.equal(spoken.statusCode, 200, spoken.body);
@@ -894,7 +905,7 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     });
     assert.equal(moved.statusCode, 200, moved.body);
     assert.equal(moved.json().session.zoneId, "common");
-    assert.equal(calls, 3);
+    assert.equal(calls, 4);
   } finally {
     await host.stop();
   }

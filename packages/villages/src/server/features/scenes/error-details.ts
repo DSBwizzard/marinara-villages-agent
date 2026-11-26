@@ -8,7 +8,7 @@ import {
   ROOM_OUTCOME_UNVERIFIED,
   UNWITNESSED_CONTINUITY_SUPPORT,
 } from "../../domain/rules/continuity.js";
-import { ACTOR_MEMORY_TARGETS_ROOM } from "../../domain/rules/narration-acceptance.js";
+import { ACTOR_MEMORY_TARGETS_ROOM, SCENE_REPLY_NOT_PERCEIVED } from "../../domain/rules/narration-acceptance.js";
 import { MISSING_CONTINUITY_TEXT } from "../../domain/rules/narration-contract.js";
 import { badGateway } from "../../domain/rules/errors.js";
 import { sceneFailureMetadata, type WorkFailure } from "../../domain/rules/work-failure.js";
@@ -20,6 +20,7 @@ const ruleChecks = new Map([
   [MISSING_CONTINUITY_TEXT, { code: "missing_continuity_text", path: ["text"] }],
   [MISSING_PRIVATE_STATE_EVIDENCE, { code: "missing_private_state_evidence", path: ["source"] }],
   [ROOM_OUTCOME_UNVERIFIED, { code: "room_outcome_unverified", path: ["source"] }],
+  [SCENE_REPLY_NOT_PERCEIVED, { code: "no_perceived_scene_lines", path: ["segments"] }],
   [
     "Scene cannot invent a player or an actor's words",
     { code: "invalid_scene_speaker", path: ["segments", "speakerId"] },
