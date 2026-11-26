@@ -412,6 +412,15 @@ function coerceAgenda(value: unknown, preserveCapturedAgenda: boolean): VillageA
       .slice(-96)
       .map(([key, blocks]) => [key, completeAgendaWeek({ Monday: blocks }, agenda.week!).Monday!]),
   );
+  const manualWeek = asRecord(raw.manualWeek);
+  if (
+    typeof manualWeek.actionId === "string" &&
+    /^[a-zA-Z0-9-]{1,100}$/.test(manualWeek.actionId) &&
+    typeof manualWeek.through === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(manualWeek.through)
+  ) {
+    agenda.manualWeek = { actionId: manualWeek.actionId, through: manualWeek.through };
+  }
   if (Array.isArray(raw.repairedDays)) {
     const dates = [
       ...new Set(

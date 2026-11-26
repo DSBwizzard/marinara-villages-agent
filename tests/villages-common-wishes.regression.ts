@@ -512,6 +512,12 @@ await runCase("common-wishes/routine-protection", async () => {
       );
       let routineCalls = 0;
       const agendas = createResidentAgendas({
+        weeklyAgenda: {
+          queueResidentWeek: async () => {
+            throw new Error("Unexpected weekly regeneration");
+          },
+          handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
+        },
         readVillageState: (options) => f.repository.readAuthority(options),
         mutateVillageState: (mutate, options) => states.mutateVillageState(mutate, options),
         reportFoundingProgress: async () => {},

@@ -120,15 +120,18 @@ export function applyWeeklyAgenda(
   now: Date,
   offered: readonly WeeklyAgendaSlot[],
   choices: readonly WeeklyAgendaChoice[],
-): void {
+  preserveThrough = "",
+): number {
   const agenda = resident.agenda;
-  if (!agenda) return;
+  if (!agenda) return 0;
   const today = agendaDateKey(now);
+  let placed = 0;
   for (const key of new Set(offered.map(({ date }) => date))) {
-    if (key <= today || agenda.activeDay?.dateKey === key) continue;
+    if (key <= today || key <= preserveThrough || agenda.activeDay?.dateKey === key) continue;
     const date = calendarAt(now, key, 720);
     const livePeriods = freeAgendaPeriods(agenda, date);
     let blocks = ordinaryAgendaBlocksFor(agenda, date);
+    const before = placed;
     for (const [index, slot] of offered.entries()) {
       if (slot.date !== key) continue;
       const choice = choices[index];
@@ -153,8 +156,10 @@ export function applyWeeklyAgenda(
               ],
         );
         blocks.push(plan);
+        placed++;
       }
     }
-    (agenda.plannedDays ??= {})[key] = blocks.sort((a, b) => a.startMinute - b.startMinute);
+    if (placed > before) (agenda.plannedDays ??= {})[key] = blocks.sort((a, b) => a.startMinute - b.startMinute);
   }
+  return placed;
 }

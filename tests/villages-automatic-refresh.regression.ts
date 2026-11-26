@@ -359,7 +359,10 @@ async function main() {
     assert.equal(activeSunday.scheduleInformed, false);
     assert.ok(activeSunday.blocks.length > 0, "Owned Sunday still covers the day after an influence toggle");
 
-    // One compact request, deliberate recovery, and deduplicated action IDs.
+    // A resident whose starter Agenda was never written still uses compact preparation.
+    await mutateVillageState((state) => {
+      state.villagers[0]!.agenda!.generatedAt = "";
+    });
     agendaMode = true;
     failWednesday = true;
     await Promise.all([
@@ -650,6 +653,44 @@ async function main() {
         agendaBlocksFor(resident.agenda!, date(22)).some(({ activity }) => activity.includes("pursuit 3/")),
       ),
     );
+    setToday(28);
+    incompleteWeek = false;
+    await clearVillagerAgenda("Ari", "personal-week");
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 4);
+    const personal = (await readVillageState()).villagers.find((row) => row.characterId === "Ari")?.agenda;
+    assert.deepEqual(personal?.manualWeek, { actionId: "personal-week", through: agendaDateKey(date(35)) });
+
+    await reconcileVillage({ now: date(28) });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 5, "The usual weekly request still prepares Mara's week.");
+    const refreshed = await readVillageState();
+    for (let day = 29; day <= 35; day++) {
+      assert.deepEqual(
+        agendaBlocksFor(refreshed.villagers[0]!.agenda!, date(day)),
+        agendaBlocksFor(personal!, date(day)),
+      );
+      assert.ok(
+        agendaBlocksFor(refreshed.villagers[1]!.agenda!, date(day)).some(({ activity }) =>
+          activity.startsWith("Mara pursuit 5/"),
+        ),
+      );
+    }
+
+    setToday(35);
+    await mutateVillageState((state) => {
+      state.villagers = state.villagers.filter(({ characterId }) => characterId === "Ari");
+    });
+    await villageBackgroundPresence("visible-story-fixture", false);
+    await reconcileVillage({ now: date(35), returning: true });
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 5, "A queued automatic week waits for browser presence.");
+    await clearVillagerAgenda("Ari", "later-personal-week");
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 6, "The deliberate request prepared the week while the automatic job was paused.");
+    await villageBackgroundPresence("visible-story-fixture", true);
+    await settleBackgroundWork();
+    assert.equal(weeklyResponses, 6, "A stale automatic job cannot buy a reply for dates already planned manually.");
   } finally {
     Date.now = realNow;
     stopWork();

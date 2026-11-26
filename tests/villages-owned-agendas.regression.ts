@@ -191,11 +191,20 @@ const release = configureVillagesRuntime({
         fitContext(messages: any, options: any) {
           return { messages, ...options };
         },
-        async chatComplete(_messages: any, options: any) {
+        async chatComplete(messages: any, options: any) {
           calls++;
           lastOptions = options;
+          const { residents } = JSON.parse(String(messages.at(-1).content)) as {
+            residents: { name: string; recent: string[]; slots: [string, string, number][] }[];
+          };
+          assert.equal(residents.length, 1, "Regeneration supplies only the selected villager.");
+          assert.ok(residents[0]!.recent.includes("Reading"), "The upcoming activities are offered as prior plans.");
+          const plans = residents.map(({ slots }) =>
+            slots.map(([date], index) => [`${fail ? "Another" : "A dated"} pursuit ${date} ${index}`, 0]),
+          );
+          if (fail) plans[0]![1] = plans[0]![0]!;
           return {
-            content: fail ? "{invalid" : JSON.stringify(payload),
+            content: JSON.stringify({ plans }),
             usage: { promptTokens: 200, completionTokens: 100, totalTokens: 300 },
             finishReason: "stop",
           };
@@ -543,7 +552,7 @@ async function main() {
       persisted.villagers[0]!.agenda!.plannedDays,
     );
     const before = persisted.villagers[0]!.agenda!.activeDay;
-    await clearVillagerAgenda("a", "one-action");
+    await Promise.all([clearVillagerAgenda("a", "one-action"), clearVillagerAgenda("a", "one-action")]);
     await settleBackgroundWork();
     assert.equal(
       calls,
@@ -552,15 +561,26 @@ async function main() {
     );
     assert.ok(
       (await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "completed"),
-      "the valid response actually completes Routine generation",
+      "the valid response completes weekly Agenda generation",
     );
     assert.ok(lastOptions.maxTokens <= 4000);
-    assert.equal(lastOptions.reasoningEffort, "none");
+    assert.deepEqual(lastOptions.responseFormat, { type: "json_object" });
     assert.deepEqual(
       (await readVillageState({ memories: true })).villagers[0]!.agenda!.activeDay,
       before,
       "regeneration preserves today",
     );
+    const regenerated = (await readVillageState()).villagers[0]!.agenda!;
+    const days = Array.from(
+      { length: 7 },
+      (_, index) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + index + 1, 12),
+    );
+    for (const day of days) {
+      const blocks = agendaBlocksFor(regenerated, day);
+      assert.ok(blocks.length >= 3);
+      assert.ok(blocks.every(({ activity }) => activity.includes(`A dated pursuit ${agendaDateKey(day)}`)));
+      assert.equal(new Set(blocks.map(({ activity }) => activity)).size, blocks.length);
+    }
     await clearVillagerAgenda("a", "one-action");
     await settleBackgroundWork();
     assert.equal(calls, 1);
@@ -663,13 +683,13 @@ async function main() {
     fail = true;
     await clearVillagerAgenda("a", "bad-output");
     await settleBackgroundWork();
-    assert.equal(calls, 3, "malformed output receives one eligible replacement request");
+    assert.equal(calls, 2, "Repeated same-day activities spend one request and wait for an explicit retry.");
     const failed = (await backgroundWorkSummaries()).find((job) => job.kind === "agenda" && job.status === "failed");
-    assert.equal(failed?.attempt, 3, "successful generation, explicit regeneration, then one automatic retry");
-    assert.equal(failed?.requests, 2);
+    assert.equal(failed?.attempt, 2);
+    assert.equal(failed?.requests, 1);
     await buildVillageAgendas();
     await settleBackgroundWork();
-    assert.equal(calls, 3, "local reads cannot purchase another retry after the allowance is spent");
+    assert.equal(calls, 2, "Local reads cannot purchase another retry.");
     assert.ok((await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "failed"));
     assert.ok(agendaBlocksFor((await readVillageState({ memories: true })).villagers[0]!.agenda!, next).length);
     await mutateVillageState((value) => {
@@ -679,7 +699,7 @@ async function main() {
     });
     await reconcileVillage({ now: today });
     await settleBackgroundWork();
-    assert.equal(calls, 3, "Missing agendas cannot admit a paid request");
+    assert.equal(calls, 2, "Missing agendas cannot admit a paid request");
     assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda, null);
   } finally {
     stop();

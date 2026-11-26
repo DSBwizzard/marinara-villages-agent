@@ -642,7 +642,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const holding = batch && !["completed", "cancelled"].includes(batch.status);
     if (batchId && (!holding || batch.id !== batchId || batch.status !== "running"))
       throw new Obsolete("This catch-up opportunity is no longer active.");
-    if (holding && !batchId && (!job.finite || ["resident-planning", "weekly-agenda"].includes(job.kind)))
+    if (
+      holding &&
+      !batchId &&
+      (!job.finite ||
+        ["resident-planning", "weekly-agenda"].includes(job.kind) ||
+        (job.kind === "agenda" && typeof asRecord(job.input).weekActionId === "string"))
+    )
       throw new Paused("Waiting for Village catch-up.");
     if (
       superseded.has(job.instanceId) ||
@@ -679,6 +685,15 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (work.kind === "personal-mail")
           throw new Error("Letter processing is unavailable. Try again when Villages is running.");
         return;
+      }
+      const residentWeek = work.kind === "agenda" && typeof asRecord(work.input).weekActionId === "string";
+      if (residentWeek) {
+        const prefix = "villages-background-history-" + jobId(work) + "-";
+        for (const row of await documents.list(VILLAGES_PACKAGE_ID, "background-history")) {
+          if (!row.id.startsWith(prefix)) continue;
+          validateBackgroundJobRecord(row);
+          if (activityDispatched(row.data as Job)) return;
+        }
       }
       await changeJob(
         id,
@@ -723,6 +738,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               return holdReplacement(previous);
             }
           }
+          if (
+            previous?.seed === work.seed &&
+            residentWeek &&
+            (running.has(id) || !["completed", "obsolete"].includes(previous.status) || uncertainAttempt(previous))
+          )
+            throw conflict("An Agenda request is already saved. Let it finish or retry it.");
           if (running.has(id) && previous) {
             superseded.add(previous.instanceId);
             previous.replacement = copyBackgroundWork(work);

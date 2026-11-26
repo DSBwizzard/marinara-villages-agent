@@ -64,6 +64,12 @@ function fixture(name: string) {
     owners.push(activationScope());
   };
   const ports: ResidentAgendaPorts = {
+    weeklyAgenda: {
+      queueResidentWeek: async () => {
+        throw new Error("Unexpected weekly regeneration");
+      },
+      handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
+    },
     async readVillageState() {
       note("read");
       if (pauseRead) {

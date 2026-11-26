@@ -597,14 +597,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useResidentAgendaPolling({ visible, agendas, loadAgendas, personProfile, profileInspection, screen });
 
-  /**
-   * Ask the village to work one villager out again.
-   *
-   * The press only clears what is stored; the writing happens on the next part of
-   * the day, along with everything else the village does. The server answers with
-   * the whole list and that answer is what gets drawn, so a row can never be left
-   * showing something the village has already forgotten.
-   */
   const retryWork = useResidentsRetryWork({ loadAgendas, setSnapshot });
 
   const backgroundPanel = <BackgroundWorkPanel jobs={snapshot?.backgroundWork ?? []} onRetry={retryWork} />;
@@ -612,6 +604,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const rewriteAgenda = useRewriteAgenda({
     currentSnapshotRef,
     retryWork,
+    loadSnapshot,
     setAgendas,
     setBusy,
     setError,

@@ -30,6 +30,7 @@ import type { backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/bac
 import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
+import type { createWeeklyAgenda } from "./weekly-agenda-service.js";
 export interface ResidentAgendaPorts {
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
@@ -40,6 +41,7 @@ export interface ResidentAgendaPorts {
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
   parseCompactFoundingCompletion: typeof parseCompactFoundingCompletion;
   proposeCompactFounding: typeof proposeCompactFounding;
+  weeklyAgenda: Pick<ReturnType<typeof createWeeklyAgenda>, "handler" | "queueResidentWeek">;
 }
 /** A resident Agenda owns its specific saved-world, schedule, job and generation connections. */
 export function createResidentAgendas(ports: ResidentAgendaPorts) {
@@ -53,6 +55,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,
+    weeklyAgenda,
   } = ports;
   async function rollActiveAgendas(at?: Date, known?: VillageState, clockRevision?: number): Promise<boolean> {
     const clock = at ? undefined : await observeVillageClock();
@@ -212,12 +215,14 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   const agendaBackgroundHandler: Handler = {
     recoverSavedResult: (input, steps) => {
+      if (typeof input.weekActionId === "string") return weeklyAgenda.handler.recoverSavedResult!(input, steps);
       const key = "founding-routine-v2";
       const saved = steps.find((step) => step.key === key && step.status === "completed");
       if (!saved?.response) return undefined;
       return parseCompactFoundingCompletion(saved.response, input.context);
     },
     generate: async (input) => {
+      if (typeof input.weekActionId === "string") return weeklyAgenda.handler.generate(input);
       const job = (await backgroundWorkSummaries()).find(
         (entry) => entry.kind === "agenda" && entry.subjectId === input.characterId,
       );
@@ -228,13 +233,16 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       await reportFoundingProgress(input.seed, { stage: "applying" }, input.characterId);
       return result;
     },
-    valid: (state, input) =>
-      state.villagers.some((resident) => resident.characterId === input.characterId) &&
-      input.context.continuity?.fingerprint === continuityContextRevision(state, input.characterId) &&
-      (input.foundingContract === 1
-        ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
-        : agendaRevision(state, input.characterId) === input.revision),
-    apply: (state, input, result) => {
+    valid: (state, input, admission) =>
+      typeof input.weekActionId === "string"
+        ? weeklyAgenda.handler.valid(state, input, admission)
+        : state.villagers.some((resident) => resident.characterId === input.characterId) &&
+          input.context.continuity?.fingerprint === continuityContextRevision(state, input.characterId) &&
+          (input.foundingContract === 1
+            ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
+            : agendaRevision(state, input.characterId) === input.revision),
+    apply: (state, input, result, context) => {
+      if (typeof input.weekActionId === "string") return weeklyAgenda.handler.apply(state, input, result, context);
       const task = state.foundingPreparation?.tasks?.[input.characterId]?.routine;
       if (input.foundingContract === 1 && task?.revision === input.revision) task.lore = input.context.loreUse;
       const resident = state.villagers.find((row) => row.characterId === input.characterId);
@@ -316,7 +324,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const village = await readVillageState();
     const resident = village.villagers.find((entry) => entry.characterId === characterId);
     if (!resident) throw notFound("That villager does not live here.");
-    if (resident.agendaGeneration === actionId) return;
+    if (resident.agendaGeneration === actionId || resident.agenda?.manualWeek?.actionId === actionId) return;
+    if (resident.agenda?.generatedAt && !resident.agenda.personalizationPending) {
+      await weeklyAgenda.queueResidentWeek(village, characterId, actionId);
+      return;
+    }
     await mutateVillageState((state) => {
       const entry = state.villagers.find((entry) => entry.characterId === characterId);
       if (!entry || entry.agendaGeneration === actionId) return;

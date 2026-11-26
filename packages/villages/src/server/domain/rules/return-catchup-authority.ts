@@ -32,6 +32,7 @@ export function sameReturnResident(
   const {
     activeDay: oldDay,
     plannedDays: oldPlans,
+    manualWeek: _oldManualWeek,
     repairedDays: _oldRepairs,
     calendarVersion: _oldCalendarVersion,
     recentChanges: _oldChanges,
@@ -40,6 +41,7 @@ export function sameReturnResident(
   const {
     activeDay: newDay,
     plannedDays: newPlans,
+    manualWeek: _newManualWeek,
     repairedDays: _newRepairs,
     calendarVersion: _newCalendarVersion,
     recentChanges: _newChanges,

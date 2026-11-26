@@ -177,20 +177,29 @@ export function ResidentsScreen({
       <VillagerWishJournal request={request} characterId={personProfile.actorId} prefix={ELEMENT_TAG} inspect />
     );
     const agendaStatus = selectedAgendas[0]?.agenda;
+    const agendaJob = snapshot?.backgroundWork?.find(
+      ({ kind, subjectId }) => kind === "agenda" && subjectId === personProfile.actorId,
+    );
+    const agendaFailure =
+      agendaJob && ["failed", "paused", "interrupted"].includes(agendaJob.status)
+        ? agendaJob.error
+        : agendaStatus?.personalizationFailure;
+    const preparingAgenda =
+      (agendaJob && ["queued", "running"].includes(agendaJob.status)) || agendaStatus?.personalizationPending;
     const agendaInspection = (
       <div className={`${ELEMENT_TAG}-agenda-actions`}>
-        {agendaStatus?.personalizationFailure ? (
-          <p role="status">{agendaStatus.personalizationFailure}</p>
-        ) : agendaStatus?.personalizationPending ? (
+        {agendaFailure ? (
+          <p role="status">{agendaFailure}</p>
+        ) : preparingAgenda ? (
           <p role="status">Preparing Agenda…</p>
         ) : null}
         <button
           type="button"
           className={`${ELEMENT_TAG}-button`}
-          disabled={busy}
+          disabled={busy || (preparingAgenda && !agendaFailure)}
           onClick={() => void rewriteAgenda(personProfile.actorId)}
         >
-          {agendaStatus?.personalizationFailure ? "Retry Agenda" : "Regenerate Agenda"}
+          {agendaFailure ? "Retry Agenda" : "Regenerate Agenda"}
         </button>
       </div>
     );

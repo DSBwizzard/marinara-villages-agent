@@ -653,6 +653,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       privatePreparationRooms,
     }),
   );
+  const weeklyAgenda = createWeeklyAgenda({
+    presence: hasVillagePresence,
+    job: backgroundJobSnapshot,
+    queue: queueBackgroundJob,
+    models: villagesLanguageModels,
+    connection: villagesConnectionIdFor,
+    complete: completeWithRoom,
+    now: villageNow,
+  });
   const residentAgendas = createResidentAgendas({
     readVillageState,
     mutateVillageState,
@@ -663,17 +672,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,
+    weeklyAgenda,
   });
   const releaseResidentAgendas = configureResidentAgendas(residentAgendas);
-  const weeklyAgenda = createWeeklyAgenda({
-    presence: hasVillagePresence,
-    job: backgroundJobSnapshot,
-    queue: queueBackgroundJob,
-    models: villagesLanguageModels,
-    connection: villagesConnectionIdFor,
-    complete: completeWithRoom,
-    now: villageNow,
-  });
   const residences = createResidences({ mutateVillageState, buildVillageSnapshot });
   const releaseResidences = configureResidences(residences);
   const releasePersonaCache = configurePersonaCache(
