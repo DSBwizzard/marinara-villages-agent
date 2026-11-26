@@ -424,6 +424,9 @@ export function createSceneWriting({
       ]),
       metadata: blocksFor([
         scene.visitorIntroduction ? "Public Village name: " + JSON.stringify(village.name) : "",
+        context.newNpcEncounter
+          ? "The player wants to meet someone they have never met. Introduce a plausible NPC from the supplied arrival candidates, or introduce one new named NPC if none fits. Keep familiar people in the Scene where they already are. The new encounter needs its own NPC admission and a visible arrival."
+          : "",
         scene.contactGeneration?.instruction ?? "",
         scene.trespass?.zoneId === scene.zoneId && scene.trespass
           ? "The player is here without permission. Reactions depend on what each person can observe or already knows. The crossing established no consent."

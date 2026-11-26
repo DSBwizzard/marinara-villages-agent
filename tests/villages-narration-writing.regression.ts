@@ -1,4 +1,4 @@
-// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner, narration-writing/empty-cast-npc
+// Test cases: narration-writing/departed-speaker, narration-writing/connection-failure, narration-writing/single-request, narration-writing/open-offer-guidance, narration-writing/saved-replay, narration-writing/required-overflow, narration-writing/fitted-evidence, narration-writing/scoped-cold-provenance, narration-writing/advanced-clock-expiry, narration-writing/pending-request-model, narration-writing/arrival-routing, narration-writing/explicit-player-delivery, narration-writing/optional-facets, narration-writing/long-followup, narration-writing/history-prefix, narration-writing/required-evidence-bound, narration-writing/circumstance-provenance, narration-writing/learned-wish-initiative, narration-writing/subject-scope, narration-writing/activation-owner, narration-writing/empty-cast-npc, narration-writing/new-encounter
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import {
@@ -46,7 +46,10 @@ import {
   readFoundingCircumstances,
 } from "../packages/villages/src/server/domain/rules/founding-circumstances.js";
 import { acceptNarration } from "../packages/villages/src/server/domain/rules/narration-native.js";
-import { npcEncounterIndex } from "../packages/villages/src/server/domain/rules/npc-encounters.js";
+import {
+  npcEncounterIndex,
+  requestsNewNpcEncounter,
+} from "../packages/villages/src/server/domain/rules/npc-encounters.js";
 import { applyAcceptedSceneDelta } from "../packages/villages/src/server/domain/rules/scene-delta.js";
 import {
   createSceneWriting,
@@ -283,6 +286,100 @@ await runCase("narration-writing/empty-cast-npc", async () => {
     assert.match(prompt, /newcomer/u);
     assert.equal(f.calls.purchases, 1);
   }
+});
+
+await runCase("narration-writing/new-encounter", async () => {
+  const request = 'I walk across the market and meet a completely different stranger. "Hello!"';
+  for (const input of [
+    request,
+    "I meet someone entirely new.",
+    "Can I meet someone I haven’t met?",
+    "I look for somebody I’ve never met.",
+  ])
+    assert(requestsNewNpcEncounter(input), input);
+  for (const input of [
+    "I don’t want to meet someone new.",
+    "I wonder whether I should meet someone new.",
+    '"Would you like to meet a stranger?"',
+    'I read the line "I meet someone new."',
+    "I approach Mara.",
+  ])
+    assert(!requestsNewNpcEncounter(input), input);
+
+  const f = fixture();
+  const turn = async (id: string, input: string, content: string) => {
+    f.nextOperation(id);
+    f.respondWith(content);
+    const before = f.calls.purchases;
+    const publication = await f.writing.generate(f.scene, input, "chat", undefined, undefined, undefined, true);
+    assert.equal(f.calls.purchases, before + 1);
+    return {
+      publication,
+      prompt: f
+        .messages()
+        .map(({ content }) => content)
+        .join("\n"),
+      result: acceptNarration(f.state, publication, id, publication.readset.capturedAt),
+    };
+  };
+  const admit = (person: Record<string, unknown>, speaker: string) =>
+    [
+      "Narration: The market is busy.",
+      "Narration!: Someone steps out from behind a cart.",
+      "[command]: " + JSON.stringify({ type: "npc.admit", ...person }),
+      "[" + speaker + "]: Good afternoon.",
+    ].join("\n");
+  const known = await turn("met-mara", '"Hello!"', "[Mara]: Hello.");
+  assert(!known.result.held);
+  assert(npcEncounterIndex(f.state).has(f.id));
+
+  const newWithMaraPresent = await turn("mara-present", request, "Narration: Shoppers mill about.");
+  assert(newWithMaraPresent.publication.readset.source.scene.contactGeneration?.actorIds?.includes(f.id));
+  assert.match(newWithMaraPresent.prompt, /The player wants to meet someone they have never met/u);
+
+  f.scene.activeIds = [];
+  f.scene.participants = [];
+  f.scene.sceneAttendance!.occupants = [];
+  const repeated = await turn("not-new", request, admit({ existingId: f.id }, f.id));
+  assert(!repeated.publication.readset.npcCandidates.some(({ npc }) => npc.id === f.id));
+  assert(!repeated.result.held);
+  assert.deepEqual(
+    repeated.result.episode?.segments.map(({ content }) => content),
+    ["The market is busy."],
+  );
+  assert(!repeated.result.episode?.commandReceipts.some(({ kind }) => kind === "npc"));
+
+  const newNpc = await turn(
+    "new-invented",
+    "I meet someone entirely new.",
+    admit({ localKey: "new:tess", name: "Tess", label: "Flower seller" }, "new:tess"),
+  );
+  assert(!newNpc.result.held);
+  const tess = newNpc.result.episode?.commandReceipts.find(({ kind }) => kind === "npc")?.targetId;
+  assert(tess && tess !== f.id && npcEncounterIndex(f.state).has(tess));
+
+  const unseenId = "npc:unmet";
+  f.state.worldPlaces.npcs[unseenId] = {
+    ...structuredClone(f.state.worldPlaces.npcs[f.id]),
+    id: unseenId,
+    name: "Nell",
+    label: "Nell",
+  };
+  f.state.worldPlaces.revision++;
+  assert(!npcEncounterIndex(f.state).has(unseenId));
+  const firstMeeting = await turn("new-existing", request, admit({ existingId: unseenId }, unseenId));
+  assert(!firstMeeting.result.held);
+  assert.deepEqual(
+    firstMeeting.publication.readset.npcCandidates.map(({ npc }) => npc.id),
+    [unseenId],
+  );
+  assert.equal(firstMeeting.result.episode?.commandReceipts.find(({ kind }) => kind === "npc")?.targetId, unseenId);
+  assert(npcEncounterIndex(f.state).has(unseenId));
+
+  const returning = await turn("returning", "I look for Mara.", admit({ existingId: f.id }, f.id));
+  assert(!returning.result.held);
+  assert(returning.publication.readset.npcCandidates.some(({ npc }) => npc.id === f.id));
+  assert.equal(returning.result.episode?.commandReceipts.find(({ kind }) => kind === "npc")?.targetId, f.id);
 });
 
 await runCase("narration-writing/connection-failure", async () => {

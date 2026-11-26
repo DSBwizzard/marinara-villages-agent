@@ -10,6 +10,23 @@ import { DEFAULT_NPC_LABEL, playerHeardNpcSpeech, revealsNpcName } from "./npc-p
 import { villageWorldScope } from "./village-identity.js";
 import { badRequest, conflict } from "./errors.js";
 
+export function requestsNewNpcEncounter(input: string): boolean {
+  const action = input.normalize("NFKC").replace(/"[^"]*"|“[^”]*”/gu, " ");
+  const request = /^\s*(?:(?:(?:can|could|may)\s+)?(?:i|we)\s+(?:(?:try|want|hope|would like)\s+to\s+)?|please\s+)?/iu;
+  const approach =
+    /^(?:(?:walk|head|go|move)\s+.{1,240}?\s+and\s+)?(?:meet|approach|look for|find|talk to|speak to)\s+/iu;
+  const newPerson =
+    /^(?:someone|somebody)\s+(?:(?:entirely|completely|totally|brand)[ -]+)?new\b|^(?:a|another)\s+(?:[\p{L}-]+\s+){0,2}(?:stranger|new (?:person|face))\b/iu;
+  const unmetPerson = /^(?:someone|somebody)\s+(?:i|we)(?:(?:\s+have|['’]ve)\s+(?:never|not)|\s+haven['’]t)\s+met\b/iu;
+  return action.split(/[.!?;\r\n]/u).some((clause) => {
+    const intent = clause.replace(request, "");
+    const verb = approach.exec(intent);
+    if (!verb) return false;
+    const person = intent.slice(verb[0].length);
+    return newPerson.test(person) || unmetPerson.test(person);
+  });
+}
+
 /** Recover a previously heard introduction when the saved public label still predates it. */
 export function savedNpcNameReveal(state: VillageState, npc: NpcIdentity) {
   const player = continuityActor(state, "player");

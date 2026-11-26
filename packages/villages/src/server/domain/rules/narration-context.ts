@@ -47,6 +47,7 @@ import {
   sceneEpisodeId,
 } from "./episode-sources.js";
 import { capturePlaceContext, npcProfile } from "./places.js";
+import { npcEncounterIndex, requestsNewNpcEncounter } from "./npc-encounters.js";
 import { offerSceneNarrative } from "./scene-narrative.js";
 import { nativeCircumstanceRoots } from "./native-continuity.js";
 import { sceneRepairOffers } from "./narration-circumstance.js";
@@ -222,12 +223,15 @@ export function narrationContinuityContext(
   const writerIds = scene.contactGeneration?.actorIds ?? scene.activeIds;
   const captured = sceneContinuityView(state, scene);
   const loreAudience = ["player", ...writerIds];
+  const newNpcEncounter = !scene.visitorIntroduction && requestsNewNpcEncounter(input);
+  const metNpcIds = newNpcEncounter ? [...npcEncounterIndex(state).keys()] : [];
   const npcCandidates = Object.values(
     capturePlaceContext(
       state,
       scene.placeId,
       actors.map((actor) => actor.id),
       input,
+      metNpcIds,
     ).npcs,
   )
     .filter((npc) => !actors.some((actor) => actor.id === npc.id))
@@ -797,6 +801,7 @@ export function narrationContinuityContext(
     actors,
     presentation: sceneSpriteSelection(scene, captured),
     npcCandidates,
+    newNpcEncounter,
     circumstance: offerSceneNarrative(
       state,
       scene,
