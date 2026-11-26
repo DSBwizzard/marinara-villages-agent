@@ -257,8 +257,9 @@ function parseStarterWeek(
     return invalid("The starter Agenda needs a summary and up to two recurring rest windows.");
   const restBlocks: VillageAgendaBlock[] = [];
   for (const rest of payload.rest) {
-    if (!Array.isArray(rest) || rest.length !== 3) return invalid("A starter Agenda rest window is invalid.");
-    const [activity, from, to] = rest;
+    if (!Array.isArray(rest) || (rest.length !== 2 && rest.length !== 3))
+      return invalid("A starter Agenda rest window is invalid.");
+    const [activity, from, to] = rest.length === 2 ? ["Resting at home", ...rest] : rest;
     if (
       !Number.isInteger(from) ||
       !Number.isInteger(to) ||
@@ -310,25 +311,31 @@ function parseStarterWeek(
     const offered = weeklyAgendaSlots(agenda, date).slice(0, 8);
     if (!Array.isArray(entries) || entries.length !== 8 || !offered.length)
       return invalid("Each starter Agenda day needs eight activity choices and some waking time.");
-    const dayTitles = new Set<string>();
-    for (const [index, entry] of entries.entries()) {
+    const wakingChoices = entries.flatMap((entry): WeeklyAgendaChoice[] => {
       if (!Array.isArray(entry) || entry.length !== 2) return invalid("A starter Agenda activity is invalid.");
       const [label, place] = entry;
       if (!Number.isInteger(place) || place < 0 || place > context.venues.length)
         return invalid("A starter Agenda activity has an unavailable place.");
       const activity = title(label);
-      if (restingAgendaBlock({ activity })) return invalid("Put recurring rest in the starter Agenda rest windows.");
-      const slot = offered[index];
-      if (!slot) continue;
-      const key = agendaActivityKey(activity);
+      if (restingAgendaBlock({ activity })) {
+        if (!restBlocks.length) return invalid("Put recurring rest in the starter Agenda rest windows.");
+        return [];
+      }
+      return [{ activity, venueId: place === 0 ? "" : context.venues[place - 1]!.id }];
+    });
+    if (!wakingChoices.length) return invalid("Each starter Agenda day needs waking activities.");
+    const dayTitles = new Set<string>();
+    for (const [index, slot] of offered.entries()) {
+      const suggestion = wakingChoices[index];
+      const key = suggestion ? agendaActivityKey(suggestion.activity) : "";
+      const choice = suggestion && !dayTitles.has(key) ? suggestion : null;
       slots.push(slot);
-      const choice = dayTitles.has(key)
-        ? null
-        : { activity, venueId: place === 0 ? "" : context.venues[place - 1]!.id };
       choices.push(choice);
-      if (choice) blocks.push({ ...choice, startMinute: slot.startMinute, endMinute: slot.endMinute, flexible: true });
-      dayTitles.add(key);
-      distinct.add(key);
+      if (choice) {
+        blocks.push({ ...choice, startMinute: slot.startMinute, endMinute: slot.endMinute, flexible: true });
+        dayTitles.add(key);
+        distinct.add(key);
+      }
     }
   }
   if (distinct.size < Math.ceil(slots.length * 0.6)) return invalid("The starter Agenda repeats too many activities.");

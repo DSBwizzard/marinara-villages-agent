@@ -140,6 +140,43 @@ async function main() {
   const starter = parseCompactFounding(starterReply, starterContext).starterWeek!;
   assert.equal(new Set(starter.slots.map(({ date }) => date)).size, 7);
   assert.equal(starter.through, "2026-11-17");
+  const unlabeled = parseCompactFounding(
+    {
+      ...starterReply,
+      rest: [
+        [0, 360],
+        [1290, 1440],
+      ],
+      starterDays: starterReply.starterDays.map((day, index) =>
+        index === 6 ? [["Sleeping at home", 0], ...day.slice(1)] : day,
+      ),
+    },
+    starterContext,
+  );
+  assert.deepEqual(
+    unlabeled.agenda
+      .week!.Wednesday!.filter(({ essential }) => essential)
+      .map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
+    [
+      ["Resting at home", 0, 360],
+      ["Resting at home", 1290, 1440],
+    ],
+  );
+  assert.equal(new Set(unlabeled.starterWeek!.slots.map(({ date }) => date)).size, 7);
+  const seventhDay = unlabeled.starterWeek!.slots.findIndex(({ date }) => date === "2026-11-17");
+  assert.equal(unlabeled.starterWeek!.choices[seventhDay]?.activity, starterReply.starterDays[6]![1]![0]);
+  assert.throws(
+    () =>
+      parseCompactFounding(
+        { ...starterReply, rest: [], starterDays: Array(7).fill(Array(8).fill(["Sleeping", 0])) },
+        starterContext,
+      ),
+    /Put recurring rest in the starter Agenda rest windows/,
+  );
+  assert.throws(
+    () => parseCompactFounding({ ...starterReply, rest: [[0, -1]] }, starterContext),
+    /rest window is invalid/,
+  );
   assert.throws(
     () =>
       parseCompactFounding(

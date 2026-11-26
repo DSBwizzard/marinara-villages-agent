@@ -338,6 +338,14 @@ const release = configureVillagesRuntime({
           content: JSON.stringify({
             routine: "Quiet days at the station",
             ...starterAgendaReply("Station activity", invalid ? "0" : 0),
+            ...(mode === "routine-recovery-current" && actorId === "aqua"
+              ? {
+                  rest: [
+                    [0, 360],
+                    [1290, 1440],
+                  ],
+                }
+              : {}),
             palette: ["resting", "reading", "walking", "writing", "thinking", "tidying"].map((activity) => ({
               activity,
               venue: invalid ? "0" : 0,
