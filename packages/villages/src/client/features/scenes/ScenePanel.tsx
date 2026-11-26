@@ -12,7 +12,6 @@ import {
 import type {
   ResidentSprite,
   RoomRecordEvent,
-  RoomOperation,
   SceneChangeIssue,
   SceneView,
 } from "../../../shared/contracts/village.js";
@@ -36,7 +35,6 @@ import type { SceneFailure } from "./scene-error-report.js";
 import { CardFlipSprite } from "../../shared/CardFlipSprite.js";
 import { useReadingPages } from "../../shared/useReadingPages.js";
 import { DialogueReader } from "../../shared/DialogueReader.js";
-import { hasCompletedRoomSubmission } from "./villages-room-reading";
 import { SceneHistory } from "./SceneHistory.js";
 import { splitVillagesParagraphs, classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { groupSceneMoments, speechDelivery } from "../../../shared/helpers/scene-speech.js";
@@ -132,32 +130,6 @@ export async function refreshSceneAfterFailure(
   }
 }
 
-export async function completedRoomAfterFailure(
-  sessionId: string,
-  submissionId: string,
-  owns = () => true,
-): Promise<SceneView | null> {
-  try {
-    if (!owns()) return null;
-    const { visit } = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(sessionId)}/recovery`, {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!owns()) return null;
-    if (hasCompletedRoomSubmission(visit, submissionId)) return currentRoom(visit);
-    if (visit.status !== "closed") return null;
-    const { operation } = await request<{ operation: RoomOperation | null }>(
-      `/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`,
-      { signal: AbortSignal.timeout(5_000) },
-    );
-    if (!owns()) return null;
-    return operation?.id === submissionId && operation.committed === true && operation.replyReady === true
-      ? currentRoom(visit)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export function openingFailureMessage(cause: unknown): string {
   const message = messageFrom(cause, "The scene opening could not be prepared.");
   return /timeout|timed out|exceeded 28 seconds/iu.test(message) ? "The scene opening took too long." : message;
@@ -208,7 +180,6 @@ export function RoomPanel({
   greetingNotice,
   turnRecovery,
   sceneErrors = [],
-  onCheckSavedReply,
   open,
   ended,
   playerName,
@@ -261,7 +232,6 @@ export function RoomPanel({
   greetingNotice: string;
   turnRecovery?: string | SceneFailure;
   sceneErrors?: SceneErrorItem[];
-  onCheckSavedReply?: () => void;
   open: boolean;
   ended: boolean;
   playerName: string;
@@ -467,11 +437,6 @@ export function RoomPanel({
       title: "Reply connection interrupted",
       message: typeof turnRecovery === "string" ? turnRecovery : turnRecovery.message,
       trace: recoveryTrace,
-      actions: (
-        <button type="button" onClick={onCheckSavedReply}>
-          Check saved reply
-        </button>
-      ),
     });
   if (greetingNotice)
     errorItems.push({
@@ -633,8 +598,7 @@ export function RoomPanel({
   const canCompose = canDraft && !historyOpen && (!canReadNext || busy || !!error || !!turnRecovery);
   const canRetryReply = canCompose && !canReadNext && !historyOpen && !busy && !!room.retryReply && !!onRetryReply;
   const canSend = canCompose && !historyOpen && !busy && !contactRecovery;
-  const resend = !draft.trim() && !!turnRecovery;
-  const sendLabel = busy ? "Sending" : resend ? "Resend" : "Send";
+  const sendLabel = busy ? "Sending" : "Send";
   const travel = room.travel;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
@@ -667,7 +631,7 @@ export function RoomPanel({
   }, [canCompose, resizeComposer]);
 
   const submitComposer = () => {
-    if (!canSend || (!draft.trim() && !resend)) return;
+    if (!canSend || !draft.trim()) return;
     setActionsView(null);
     onSend();
   };
@@ -1420,11 +1384,11 @@ export function RoomPanel({
                   type="button"
                   className={`${ELEMENT_TAG}-chat-send`}
                   onClick={submitComposer}
-                  disabled={!canSend || (!draft.trim() && !resend)}
+                  disabled={!canSend || !draft.trim()}
                   aria-label={sendLabel}
                   title={sendLabel}
                 >
-                  {resend && !busy ? "Resend" : <SceneControlIcon name={busy ? "sending" : "send"} />}
+                  <SceneControlIcon name={busy ? "sending" : "send"} />
                 </button>
               </span>
               <button

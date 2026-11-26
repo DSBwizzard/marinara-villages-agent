@@ -571,9 +571,7 @@ await withBrowser(browser, async () => {
           "dialogue dock stays inside the visible Scene",
         );
         await page.screenshot({ path: `.build-tmp/scene-status/recovery-${mobile ? "mobile" : "desktop"}.png` });
-        await expect(page.getByRole("button", { name: "Check saved reply", exact: true })).toHaveCount(0, {
-          timeout: 12000,
-        });
+        await expect(chip).toHaveCount(0, { timeout: 12_000 });
         await page.keyboard.press("Escape");
       }
       const next = page.getByRole("button", { name: "Next paragraph", exact: true });
@@ -582,6 +580,7 @@ await withBrowser(browser, async () => {
           async () =>
             ((await next.count()) > 0 && (await next.isEnabled())) ||
             ((await composer.isVisible()) && (await composer.isEnabled()) && (await composer.inputValue()) === ""),
+          { message: "Recover the dropped reply (" + lost + ")" },
         )
         .toBe(true);
       while ((await next.count()) > 0 && (await next.isEnabled())) await next.click();
@@ -711,17 +710,16 @@ await withBrowser(browser, async () => {
       await expect.poll(() => turns.length).toBe(beforeDrop + 1);
       const dropped = turns.at(-1).submissionId;
       await expect(composer).toBeEditable();
-      await expect(composer).toHaveValue("");
       if (edit) {
         await composer.fill(original + " with edits");
         await load();
       }
       const message = edit ? original + " with edits" : original;
-      await expect(composer).toHaveValue(edit ? message : "");
-      const resend = edit ? send : page.getByRole("button", { name: "Resend", exact: true });
-      await expect(resend).toBeEnabled({ timeout: 12_000 });
       staleStatus.resolve();
-      await resend.click();
+      await expect(composer).toHaveValue(message);
+      await expect(send).toBeEnabled({ timeout: 12_000 });
+      await expect(page.getByRole("button", { name: "Resend", exact: true })).toHaveCount(0);
+      await send.click();
       await expect.poll(() => turns.length).toBe(beforeDrop + 2);
       assert.equal(turns.at(-1).submissionId, dropped, "a delayed original can only claim the same submission");
       assert.equal(turns.at(-1).message, message);

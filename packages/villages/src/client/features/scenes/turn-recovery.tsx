@@ -45,9 +45,6 @@ function readSceneDraft(key: string): { text: string; editVersion: number } | nu
     return null;
   }
 }
-function recoveryMessage(pending: Pending, message: string) {
-  return [message, pending.failure, `Request: ${pending.submissionId}`].filter(Boolean).join("\n\n");
-}
 /** Read-only reconciliation. A lost transport never authorizes another turn. */
 export function useTurnRecovery(ports: {
   visible?: boolean;
@@ -59,26 +56,43 @@ export function useTurnRecovery(ports: {
   setRoomError: React.Dispatch<React.SetStateAction<string | SceneFailure>>;
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
   submission: React.RefObject<string | null>;
+  completion?: React.RefObject<{ roomId: string; submissionId: string } | null>;
   editVersion?: React.RefObject<number>;
   receiveRoomRecordEvents?: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
   refreshSnapshot?: () => void;
 }) {
-  const { editVersion, setRoomDraft } = ports;
+  const { completion, editVersion, setRoomDraft } = ports;
   const sceneId = ports.room?.id;
   const [pending, setPending] = useState<Pending | null>(null);
   const [status, setStatus] = useState("");
   const key = ports.worldScope && ports.room?.id ? `villages:scene:${ports.worldScope}:${ports.room.id}` : "";
   const attemptKey = key ? key + ":send" : "";
   const latest = useRef(ports);
-  const owner = useRef<object>({});
+  const owner = useRef<Pending | null>(null);
   const reading = useRef<object | null>(null);
   const queued = useRef<object | null>(null);
+  const activeAttempt = useRef<object | null>(null);
+  const completionLease = useRef<{ roomId: string; submissionId: string } | null>(null);
   const draftKey = useRef("");
   useEffect(() => {
     latest.current = ports;
   });
+  const holdCompletion = useCallback(
+    (attempt: Pending) => {
+      if (!completion) return;
+      const current = completion.current;
+      if (current && (current.roomId !== attempt.sceneId || current.submissionId !== attempt.submissionId)) return;
+      completion.current ??= { roomId: attempt.sceneId, submissionId: attempt.submissionId };
+      completionLease.current = completion.current;
+    },
+    [completion],
+  );
+  const releaseCompletion = useCallback(() => {
+    if (completion && completion.current === completionLease.current) completion.current = null;
+    completionLease.current = null;
+  }, [completion]);
   useLayoutEffect(() => {
-    owner.current = {};
+    owner.current = null;
     const draft = readSceneDraft(key);
     let saved: Pending | null = null;
     try {
@@ -92,12 +106,15 @@ export function useTurnRecovery(ports: {
     if (draft) {
       setRoomDraft(saved?.editVersion === draft.editVersion && saved.text === draft.text ? "" : draft.text);
     }
+    owner.current = saved;
+    if (saved) holdCompletion(saved);
     setPending(saved);
-    setStatus(saved ? recoveryMessage(saved, "Reconnecting to check your saved reply…") : "");
+    setStatus(saved ? "Reconnecting…" : "");
     return () => {
-      owner.current = {};
+      owner.current = null;
+      releaseCompletion();
     };
-  }, [sceneId, key, attemptKey, setRoomDraft, editVersion]);
+  }, [sceneId, key, attemptKey, setRoomDraft, editVersion, holdCompletion, releaseCompletion]);
   useLayoutEffect(() => {
     if (draftKey.current !== key) {
       draftKey.current = key;
@@ -107,7 +124,7 @@ export function useTurnRecovery(ports: {
       writeSession(key, JSON.stringify({ text: ports.draft, editVersion: ports.editVersion?.current ?? 0 }));
   }, [key, ports.draft, ports.editVersion]);
   const finish = useCallback(() => {
-    owner.current = {};
+    owner.current = null;
     writeSession(attemptKey, "");
     setPending(null);
     setStatus("");
@@ -134,19 +151,23 @@ export function useTurnRecovery(ports: {
         trace,
       };
       track({ ...attempt, failure: undefined });
-      owner.current = {};
+      owner.current = attempt;
+      holdCompletion(attempt);
       setPending(attempt);
-      setStatus(recoveryMessage(attempt, "Reconnecting to check your saved reply…"));
+      setStatus("Reconnecting…");
     },
-    [track],
+    [track, holdCompletion],
   );
   const check = useCallback(
-    async function reconcile() {
-      const token = owner.current;
-      if (!pending || latest.current.room?.id !== pending.sceneId) return;
-      const restoreDraft = () => {
+    async function reconcile(observed?: RoomOperation) {
+      if (!pending || owner.current !== pending || latest.current.room?.id !== pending.sceneId) return;
+      const token = pending;
+      const finishDraft = (restore: boolean) => {
         if (!latest.current.editVersion || latest.current.editVersion.current === pending.editVersion)
-          latest.current.setRoomDraft((current) => current || pending.text);
+          latest.current.setRoomDraft((current) => {
+            if (restore) return current || pending.text;
+            return current === pending.text ? "" : current;
+          });
       };
       const reportFailure = (message: string) =>
         latest.current.setRoomError(pending.trace ? { message, trace: pending.trace } : message);
@@ -156,13 +177,28 @@ export function useTurnRecovery(ports: {
       }
       queued.current = null;
       reading.current = token;
+      holdCompletion(pending);
       const owns = () => owner.current === token && latest.current.room?.id === pending.sceneId;
-      const scene = await refreshSceneAfterFailure(pending.sceneId, pending.submissionId, owns);
+      const operation =
+        observed ??
+        (await request<{ operation: RoomOperation | null }>(
+          `/rooms/${encodeURIComponent(pending.sceneId)}/operations/${encodeURIComponent(pending.submissionId)}`,
+          { signal: AbortSignal.timeout(5_000) },
+        ).then(
+          ({ operation }) => operation,
+          () => undefined,
+        ));
       if (!owns()) return;
-      const { operation } = await request<{ operation: RoomOperation | null }>(
-        `/rooms/${encodeURIComponent(pending.sceneId)}/operations/${encodeURIComponent(pending.submissionId)}`,
-        { signal: AbortSignal.timeout(5_000) },
-      ).catch(() => ({ operation: null }));
+      if (operation?.id === pending.submissionId && operation.status === "running" && !operation.committed) {
+        reading.current = null;
+        activeAttempt.current = token;
+        setStatus("Waiting for the reply…");
+        return;
+      }
+      if (operation !== undefined)
+        activeAttempt.current =
+          operation?.id === pending.submissionId && operation.committed && operation.replyReady ? token : null;
+      const scene = await refreshSceneAfterFailure(pending.sceneId, pending.submissionId, owns);
       if (reading.current === token) reading.current = null;
       if (!owns()) return;
       if (operation?.id === pending.submissionId && operation.terminal && operation.status === "complete") {
@@ -173,7 +209,8 @@ export function useTurnRecovery(ports: {
           current?.id === pending.sceneId ? { ...current, status: "closed" } : current,
         );
         latest.current.setRoomEnded(true);
-        latest.current.setRoomError("The Scene ended. Your turn completed, but the reply text is no longer available.");
+        latest.current.setRoomError("The Scene ended. Couldn’t open the reply.");
+        finishDraft(false);
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
         finish();
         return;
@@ -183,7 +220,8 @@ export function useTurnRecovery(ports: {
           current?.id === pending.sceneId ? { ...current, status: "closed" } : current,
         );
         latest.current.setRoomEnded(true);
-        reportFailure(operation.error || "The Scene ended, but the request outcome is unavailable.");
+        reportFailure(operation.error || "The Scene ended. Couldn’t confirm your reply.");
+        finishDraft(true);
         finish();
         return;
       }
@@ -196,11 +234,13 @@ export function useTurnRecovery(ports: {
         recordTurnTiming(pending.sceneId, pending.submissionId, "recovered");
         latest.current.setRoom(scene);
         latest.current.setRoomEnded(scene.status === "closed");
+        if (scene.status !== "closed") releaseCompletion();
+        latest.current.refreshSnapshot?.();
         latest.current.setRoomError("");
         if (pending.changed && acceptedText !== pending.text) {
-          restoreDraft();
+          finishDraft(true);
           reportFailure("An earlier version of this message went through.");
-        }
+        } else finishDraft(false);
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
         finish();
         return;
@@ -220,38 +260,38 @@ export function useTurnRecovery(ports: {
             : view;
         });
         if (latest.current.submission.current === pending.submissionId) latest.current.submission.current = null;
-        restoreDraft();
+        releaseCompletion();
+        finishDraft(true);
         reportFailure(
           operation.error ||
-            (operation.acceptance === "abandoned" ? "The saved request was replaced." : "Your message did not finish."),
+            (operation.acceptance === "abandoned"
+              ? "Villages replaced this request."
+              : pending.failure || "Your message didn’t finish."),
         );
         finish();
         return;
       }
       if (scene) latest.current.setRoom(scene);
-      setStatus(
-        recoveryMessage(
-          pending,
-          Date.now() - pending.started >= 60_000
-            ? "Reply outcome unknown. Check the saved reply or send again."
-            : scene?.operation?.id === pending.submissionId && scene.operation.status === "running"
-              ? "Your reply is still processing. Checking saved progress…"
-              : "Reconnecting to check your saved reply…",
-        ),
-      );
+      if (!operation && activeAttempt.current !== token && !hasPublishedRoomSubmission(scene, pending.submissionId)) {
+        finishDraft(true);
+        setStatus("Couldn’t confirm your reply.");
+      }
       if (queued.current === token) {
         queued.current = null;
         void reconcile();
       }
     },
-    [pending, finish],
+    [pending, finish, holdCompletion, releaseCompletion],
   );
   useEffect(() => {
     if (!pending || ports.visible === false) return;
     const poll = () => {
-      if (document.hidden) return;
-      if (Date.now() - pending.started < 60_000 || latest.current.room?.operation?.status === "running") void check();
-      else setStatus(recoveryMessage(pending, "Reply outcome unknown. Check the saved reply or send again."));
+      if (document.hidden || owner.current !== pending) return;
+      if (Date.now() - pending.started < 60_000 || activeAttempt.current === owner.current) void check();
+      else if (reading.current !== owner.current) {
+        releaseCompletion();
+        setStatus("Couldn’t confirm your reply.");
+      }
     };
     const resume = () => {
       if (!document.hidden) void check();
@@ -268,7 +308,7 @@ export function useTurnRecovery(ports: {
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", resume);
     };
-  }, [pending, check, ports.visible]);
+  }, [pending, check, ports.visible, releaseCompletion]);
   return {
     begin,
     finish,

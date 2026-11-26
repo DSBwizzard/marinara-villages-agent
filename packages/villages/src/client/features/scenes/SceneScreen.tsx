@@ -235,7 +235,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               .map((entry): SceneErrorItem => ({ ...entry, message: entry.message! })),
           ]}
           turnRecovery={controller.turnRecovery}
-          onCheckSavedReply={() => void controller.checkSavedReply?.()}
           sceneReading={sceneReading}
           mobile={mobile}
           nameColors={
