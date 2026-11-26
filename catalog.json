@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-26T22:13:55.163Z",
+  "generatedAt": "2026-11-26T22:22:24.291Z",
   "packages": [
     {
       "manifest": {
@@ -15,7 +15,7 @@
         },
         "id": "villages",
         "name": "Villages",
-        "version": "0.8.15",
+        "version": "0.8.16",
         "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
         "engine": {
           "min": "2.5.2",
@@ -99,8 +99,8 @@
           },
           {
             "path": "client.js",
-            "sha256": "ad8a2ccdaa53f21fbb7085ee8427686920e08bc603df9f952736b0b05ee8a549",
-            "bytes": 2392764
+            "sha256": "82cf4cc497b62544e19c978f0b337194c008806e9c015386aec84c42a001723a",
+            "bytes": 2392374
           },
           {
             "path": "letter-fonts/PROVENANCE.txt",
@@ -393,14 +393,14 @@
       },
       "category": "misc",
       "artifact": {
-        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-7364a4860bb27286/villages-0.8.15-7364a4860bb27286.zip",
-        "bytes": 27006899,
-        "sha256": "7364a4860bb272868deae85dc157da3191e9adec96c6cb19e7ffe2ff72fd56d3"
+        "url": "https://github.com/DSBwizzard/marinara-villages-agent/releases/download/agent-catalog-artifacts-2ca432f3d3d3b921/villages-0.8.16-2ca432f3d3d3b921.zip",
+        "bytes": 27006738,
+        "sha256": "2ca432f3d3d3b9217c084664e31273c79d62e01a5b7834eacb4583006384c909"
       }
     }
   ],
   "provenance": {
     "kind": "custom",
-    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/45901549525"
+    "url": "https://github.com/DSBwizzard/marinara-villages-agent/actions/runs/45903483008"
   }
 }
