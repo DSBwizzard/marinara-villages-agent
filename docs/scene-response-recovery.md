@@ -14,7 +14,7 @@ Villages validates the GM's segments, common continuity and native commands agai
 
 ## Lost turn connections
 
-A failed browser connection can outlive the request while the server finishes a turn. The client keeps submitted text and its identity in the current browser tab and reconciles saved receipts with bounded reads. It checks while visible, including while a known request is still running, and offers Check saved reply. While the outcome is unknown, the empty composer offers Resend and the player can also type edits and use Send. Both check the exact prior identity first. If the server has no receipt, they reuse that identity so a delayed original and the resend cannot both publish.
+If the browser loses its connection, the server can still finish the turn. Villages keeps the submitted text and ID in the current tab. It checks that exact request on reconnect and refreshes the Scene when a reply becomes available. If Villages can’t confirm the reply, it restores the text without overwriting newer edits. Send checks the original ID before dispatch. If the server has no receipt, Send reuses that ID so a delayed original and the new submission can’t both publish.
 
 A visible playback page is not the submission ledger. The latest saved submission provides committed/publication proof even when its reply falls outside the current page or a later close replaced the operation. Unpublished consequential effects remain held. Clarifications must match both submitted text and submission identity; reconciliation never sends a duplicate turn.
 

@@ -46,6 +46,7 @@ await withBrowser(browser, async () => {
       "selection",
       "unknown",
       "hidden-return",
+      "running-then-offline",
       "retired",
       "retired-draft",
       "retired-unknown",
@@ -87,9 +88,9 @@ await withBrowser(browser, async () => {
       await page.evaluate((value) => (window.initial = value), authorSceneView(initial, scope));
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect(page.locator("#state")).toContainText('"pending":false');
-      if (mode === "unknown" || mode === "hidden-return") await page.clock.install();
+      if (["unknown", "hidden-return", "running-then-offline"].includes(mode)) await page.clock.install();
       await page.evaluate((changed) => window.h.begin(changed), mode === "edited-lost");
-      await expect(page.locator("#state")).toContainText("Reconnecting");
+      await expect(page.locator("#state")).toContainText('"pending":true');
       if (mode === "draft" || mode === "retired-draft") await page.evaluate(() => window.h.edit("new draft"));
       if (mode === "same-draft") await page.evaluate(() => window.h.edit("sent"));
       if (mode === "cleared-during-failure")
@@ -100,11 +101,20 @@ await withBrowser(browser, async () => {
       if (mode === "selection") await page.evaluate(() => window.h.select());
       if (mode === "unknown") {
         await page.clock.fastForward(65000);
-        await expect(page.locator("#state")).toContainText("outcome unknown");
+        await expect(page.locator("#state")).toContainText("Couldn’t confirm your reply.");
       }
       if (mode === "hidden-return") {
         await page.evaluate(() => window.h.visible(false));
         await page.clock.fastForward(65_000);
+      }
+      if (mode === "running-then-offline") {
+        unavailable = false;
+        scene.operation = { id: "submission", status: "running" };
+        await page.evaluate(() => window.h.check());
+        await expect(page.locator("#state")).toContainText("Waiting for the reply…");
+        unavailable = true;
+        await page.clock.fastForward(65_000);
+        await expect(page.locator("#state")).toContainText('"pending":true');
       }
       unavailable = false;
       scene = { ...initial, sceneRevision: 2 };
@@ -140,6 +150,7 @@ await withBrowser(browser, async () => {
         };
       } else scene.submissions = [{ mode: "chat", id: "submission" }];
       if (mode === "hidden-return") await page.evaluate(() => window.h.visible(true));
+      else if (mode === "running-then-offline") await page.clock.runFor(2_000);
       else await page.evaluate(() => window.h.check());
       if (mode === "selection") {
         await expect(page.locator("#state")).toContainText('"id":"B"');
@@ -150,22 +161,23 @@ await withBrowser(browser, async () => {
           state.draft,
           mode === "draft" || mode === "retired-draft"
             ? "new draft"
-            : ["error", "status-only-error", "abandoned", "same-draft", "edited-lost"].includes(mode)
+            : ["error", "status-only-error", "abandoned", "same-draft", "edited-lost", "retired-unknown"].includes(mode)
               ? "sent"
               : "",
+          mode,
         );
         assert.equal(
           state.error,
           ["error", "status-only-error", "cleared-during-failure"].includes(mode)
             ? "Confirmed validation failure"
             : mode === "abandoned"
-              ? "The saved request was replaced."
+              ? "Villages replaced this request."
               : mode === "retired-unknown"
                 ? "The request outcome is unavailable."
                 : mode === "edited-lost"
                   ? "An earlier version of this message went through."
                   : mode.startsWith("retired")
-                    ? "The Scene ended. Your turn completed, but the reply text is no longer available."
+                    ? "The Scene ended. Couldn’t open the reply."
                     : "",
         );
         if (mode !== "error" && mode !== "retired-unknown") assert.equal(state.submission, null);

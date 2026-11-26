@@ -24,7 +24,7 @@ function Harness(){
  const [screen,setScreen]=useState('room'),[snapshot,setSnapshot]=useState(window.snapshot);
  const [contactRecovery,setContactRecovery]=useState(null);
  const inFlight=useRef(false),submission=useRef(null),completion=useRef(null),events=useRef(new Set()),editVersion=useRef(0);
- const {sendRoom:send}=useSendRoom({room,roomBusy:busy,roomDraft:draft,roomEnded:ended,contactRecovery,setContactRecovery,composerEditVersionRef:editVersion,
+ const {sendRoom:send,replyPending}=useSendRoom({room,roomBusy:busy,roomDraft:draft,roomEnded:ended,contactRecovery,setContactRecovery,composerEditVersionRef:editVersion,
  snapshot,roomCompletionRef:completion,roomSendInFlightRef:inFlight,roomSubmissionIdRef:submission,seenRoomEventIdsRef:events,
  loadSnapshot:async()=>{window.loads++},receiveRoomRecordEvents:noop,setLastSceneEnding:noop,setRoom,setRoomBusy:setBusy,
  setRoomDraft:setDraft,setRoomEnded:setEnded,setRoomError:setError,setRoomGreetingNotice:noop,setRoomNotices:noop,
@@ -32,7 +32,7 @@ function Harness(){
  useEffect(()=>setRoom(scene('A')),[]);
  window.h={send:()=>{const promise=send();(window.promises??=[]).push(promise);return promise},setRoom,setDraft:value=>{editVersion.current++;submission.current=null;setDraft(value)},setBusy,setSnapshot,scene,inFlight,submission,completion,
  select:(id='B',newOwner=false)=>{setRoom(scene(id));setDraft(id+' draft');if(newOwner){setBusy(true);inFlight.current=true;submission.current=id+' submission';completion.current={roomId:id,submissionId:id+' submission'}}}};
- return <pre id='state'>{JSON.stringify({id:room?.id,revision:room?.sceneRevision,operation:room?.operation,draft,busy,error,screen,founded:snapshot?.isFounded,ended})}</pre>;
+ return <pre id='state'>{JSON.stringify({id:room?.id,revision:room?.sceneRevision,operation:room?.operation,draft,busy,error,screen,founded:snapshot?.isFounded,ended,replyPending})}</pre>;
 }
 const root=createRoot(document.getElementById('root'));window.loads=0;window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
 `,
@@ -413,9 +413,11 @@ await withBrowser(browser, async () => {
       try {
         const pending = await closedRecovery.send();
         await expect.poll(() => closedRecovery.held.length).toBe(1);
-        assert.equal((await closedRecovery.state()).busy, true);
-        await closedRecovery.release();
         await closedRecovery.settle(pending);
+        assert.equal((await closedRecovery.state()).replyPending, true);
+        assert.equal((await closedRecovery.refs()).completion.roomId, "A");
+        await closedRecovery.release();
+        await expect.poll(async () => (await closedRecovery.state()).ended).toBe(true);
         assert.equal((await closedRecovery.state()).id, "A");
         assert.equal(
           (await closedRecovery.state()).ended,
@@ -449,10 +451,15 @@ await withBrowser(browser, async () => {
         try {
           const pending = await learned.send();
           await learned.settle(pending);
+          await expect.poll(async () => (await learned.state()).revision).toBe(10);
+          const activeReads = () => learned.requests.filter((row) => row.path.endsWith("/active")).length;
+          const previousReads = activeReads();
+          await learned.page.evaluate(() => window.dispatchEvent(new Event("online")));
+          await expect.poll(activeReads).toBeGreaterThan(previousReads);
           assert.equal((await learned.state()).revision, 10, "recovery retains its highest observed Scene revision");
           assert.equal((await learned.state()).busy, false);
           assert.equal((await learned.refs()).flight, false);
-          assert.equal((await learned.state()).draft, "", "an unconfirmed outcome keeps the sent text in recovery");
+          assert.equal((await learned.state()).draft, "A draft", "an unconfirmed outcome restores the sent text");
           assert.equal(learned.requests.filter((row) => row.path.endsWith("/turn")).length, 1);
           assert.deepEqual(learned.errors, []);
         } finally {

@@ -708,7 +708,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const moveRoom = useMoveRoom({ ...scenes, isFounded: snapshot?.isFounded, loadSnapshot, room, setRoom });
 
-  const { sendRoom, turnRecovery, checkSavedReply, replyPending } = useSendRoom({
+  const { sendRoom, turnRecovery, replyPending } = useSendRoom({
     ...scenes,
     visible: visible && screen === "room",
     loadSnapshot,
@@ -1456,7 +1456,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     selectedSetupVenueId: founding.selectedSetupVenueId,
     sendRoom,
     turnRecovery,
-    checkSavedReply,
     setBusy,
     setConnectionSetupProblem: founding.setConnectionSetupProblem,
     setError,
