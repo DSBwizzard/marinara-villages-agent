@@ -515,7 +515,9 @@ export function createSceneWriting({
                   ? `The player explicitly asked to save a fact. Use [keep]: ${memoryKeep}. Use [speaker-id] [remember]: text for acknowledgment.`
                   : `The player explicitly asked to save a fact. Add this required top-level keep entry: ${memoryKeep}. Put "remember-fact" in requires on any line claiming it was saved.`) +
                 " Copy the exact fact from the player submission. Use the ID of the resident who heard it."
-              : "",
+              : context.clarifyMemoryRecipient
+                ? "Several people heard the request to remember a fact, and the player did not name a recipient. Ask who should remember it. Use ordinary dialogue and avoid claiming the fact was saved."
+                : "",
           !nativeCommands && context.protections.length
             ? 'Check every proposed keep against the supplied protected meanings. Give protection.roots as the supplied root IDs and protection.disposition as "clear", "conflict", or "uncertain". Only clear may publish. Never restore a protected meaning through paraphrase, player input, or self attribution.'
             : "",

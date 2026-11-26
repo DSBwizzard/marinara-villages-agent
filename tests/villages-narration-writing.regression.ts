@@ -650,6 +650,31 @@ await runCase("narration-writing/single-request", async () => {
   assert.equal(unspokenMemory.readset.requestedMemory, undefined);
   assert.equal(unspokenMemory.readset.codeRequestedMemory, undefined);
 
+  const group = fixture();
+  const other = "npc:other";
+  group.state.worldPlaces.npcs[other] = {
+    ...group.state.worldPlaces.npcs[group.id],
+    id: other,
+    name: "Bryn",
+    label: "Bryn",
+  };
+  const second = { characterId: other, name: "Bryn", doing: "Listening" };
+  group.scene.activeIds.push(other);
+  group.scene.participants.push(second);
+  group.scene.sceneAttendance!.occupants.push({ ...second, zoneId: "parlor" });
+  const unspecific = await group.writing.prepareVenueTurnMessages(
+    group.scene,
+    '"Please remember this: I knit."',
+    "chat",
+    undefined,
+    undefined,
+    true,
+  );
+  const groupPrompt = unspecific.fitted.messages.map(({ content }) => content).join("\n");
+  assert.match(groupPrompt, /Ask who should remember it/u);
+  assert.doesNotMatch(groupPrompt, /"id":"remember-fact"/u);
+  assert.equal(unspecific.readset.requestedMemory, undefined);
+
   const legacy = fixture(undefined, "deepseek-flash");
   await legacy.writing.prepareVenueTurnMessages(legacy.scene, input, "chat");
   const saved = [...legacy.checkpoints.values()][0] as { plainJson?: true };

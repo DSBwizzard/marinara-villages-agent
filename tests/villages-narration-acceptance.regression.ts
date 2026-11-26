@@ -253,10 +253,12 @@ await runCase("narration-acceptance/requested-memory", () => {
   group.scene.activeIds.push(other);
   group.scene.sceneAttendance!.occupants.push({ ...attending, zoneId: group.scene.zoneId! });
   group.scene.contactGeneration!.actorIds!.push(other);
-  const groupRequest = group.publication({}, "operation", true).readset;
-  assert(
-    groupRequest.requestedMemory && !groupRequest.requestedMemory.recipientId && !groupRequest.codeRequestedMemory,
-  );
+  const question = { ...group.response()[0], text: "Which of us would you like to remember this?" };
+  const groupRequest = group.publication({ segments: [question] }, "operation", true);
+  assert.equal(groupRequest.readset.requestedMemory, undefined);
+  assert.equal(groupRequest.readset.codeRequestedMemory, undefined);
+  assert.equal(acceptNarrationContinuity(group.state, groupRequest, "ask-recipient", later).held, false);
+  assert.equal(group.state.continuity.versions.length, 0);
   for (const aside of ["*I use the west peg*", "I think privately that I use the west peg", "[I use the west peg]"])
     assert.equal(
       fixture(`"Mara, remember this: ${aside}"`).publication({}, "operation", true).readset.codeRequestedMemory,

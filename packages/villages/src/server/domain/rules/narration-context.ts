@@ -319,10 +319,12 @@ export function narrationContinuityContext(
   const recipientId =
     addressed[0]?.characterId ??
     (remember && !remember.groups?.qualification && local.length === 1 ? local[0].id : undefined);
+  const clarifyMemoryRecipient = !!fact && !recipientId && local.length > 1;
   // shortcut: gate only a single quoted “remember this:” fact until mixed-intent speech has a structured input.
   const requestedMemory =
     fact &&
     factRange &&
+    !clarifyMemoryRecipient &&
     !/[.!?"“”]/u.test(fact) &&
     Buffer.byteLength("Player said: " + fact) < CONTINUITY_TEXT_BYTES &&
     local.some(({ id }) => !recipientId || id === recipientId)
@@ -808,6 +810,7 @@ export function narrationContinuityContext(
     at,
     memoryChange,
     requestedMemory,
+    clarifyMemoryRecipient,
     codeRequestedMemory,
     parts: bounded,
     recentLore: bounded
