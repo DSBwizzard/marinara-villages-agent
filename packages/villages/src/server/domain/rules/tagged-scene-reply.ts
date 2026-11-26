@@ -218,8 +218,14 @@ export function decodeTaggedSceneReply(
           },
         ];
       }
-      if (effect.type === "npc.admit" && typeof effect.localKey === "string" && !newcomers.has(effect.localKey))
-        newcomers.set(effect.localKey, id);
+      if (control === "command" && effect.type === "npc.admit") {
+        const returning = readset.npcCandidates.find(({ npc }) => npc.id === effect.existingId)?.npc.id;
+        if (returning && effect.localKey === undefined) effect.localKey = "new:returning-" + effectIndex;
+        if (typeof effect.localKey === "string" && !newcomers.has(effect.localKey)) {
+          newcomers.set(effect.localKey, id);
+          if (returning && !newcomers.has(returning)) newcomers.set(returning, id);
+        }
+      }
       list.push(effect);
       // A malformed control may spill private text onto later lines.
       if (!proposal) break;

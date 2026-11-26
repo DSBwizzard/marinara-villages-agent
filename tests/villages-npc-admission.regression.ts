@@ -187,6 +187,27 @@ await runCase("npc-admission/tagged-turn", () => {
     assert(acceptNarration(f.state, publication, "tagged", at).replayed);
     assert.equal(memoryHash(f.state), save);
   }
+  {
+    const f = fixture();
+    const readset = { ...f.publication({}, '"Mara, hello."').readset, taggedSceneReply: true as const };
+    const id = f.existing.id;
+    assert(readset.npcCandidates.some(({ npc }) => npc.id === id));
+    assert.equal(decodeTaggedSceneReply(`[${id}]: Unadmitted dialogue.`, readset).value, null);
+    const content = [
+      "Narration!: Mara comes through the door.",
+      "[command]: " + JSON.stringify({ type: "npc.admit", existingId: id }),
+      `[${id}]: Good to see you again.`,
+    ].join("\n");
+    const raw = decodeTaggedSceneReply(content, readset).value!;
+    const publication = { raw, readset, responseDigest: memoryHash(content) };
+    const count = Object.keys(f.state.worldPlaces.npcs).length;
+    const result = acceptNarration(f.state, publication, "tagged-return", at);
+    assert(!result.held, JSON.stringify(result.rejected));
+    assert.equal(result.episode?.segments[1]?.speakerId, id);
+    assert.equal(result.episode?.commandReceipts[0]?.admission?.npc.id, id);
+    assert.equal(Object.keys(f.state.worldPlaces.npcs).length, count);
+    assert(acceptNarration(f.state, publication, "tagged-return", at).replayed);
+  }
   const f = fixture(),
     readset = f.publication({}).readset;
   const raw = decodeTaggedSceneReply(

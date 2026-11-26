@@ -655,7 +655,7 @@ export function acceptNarration(
     }
     const reduced = pruneTaggedSceneReply(raw, new Set(rejected.map(({ id }) => id)));
     if (!reduced) {
-      if (admissionFailure) throw admissionFailure;
+      if (admissionFailure) throw admissionFailure.cause;
       return selected!.result;
     }
     for (const { id, reason } of rejected) discarded.set(id, reason);

@@ -432,7 +432,7 @@ export function createSceneWriting({
         scene.visitorIntroduction
           ? ""
           : tagged
-            ? 'For a named arrival, write Narration!: A baker steps into view. Then [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."}. Afterwards [new:baker]: text. A returning NPC uses supplied existingId in place of name, label and characterization. A passerby can appear briefly in narration.'
+            ? 'For a new named person, write Narration!: A baker steps into view. Then [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A baker."}. Afterwards [new:baker]: text. If a supplied returning NPC appears, write their visible arrival as Narration!: text, then [command]: {"type":"npc.admit","existingId":"supplied-id"} and [supplied-id]: text. Copy their actual supplied ID in both lines. A candidate is not already present. A passerby can appear briefly in narration.'
             : nativeCommands
               ? NARRATION_NATIVE
               : narrationNpcCommands(positions),

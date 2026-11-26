@@ -71,7 +71,13 @@ await runCase("gm-effects/provider-reply", async () => {
             "[keep]: " + JSON.stringify(keep[0]),
             '[keep]: {"text":"Private malformed field"',
           ].join("\n")
-        : " ".repeat(149),
+        : calls === 2
+          ? " ".repeat(149)
+          : [
+              "Narration!: Another person steps through the door.",
+              '[command]: {"type":"npc.admit","localKey":"bad key","name":"Private Invented Name"}',
+              "[bad key]: Unadmitted speech.",
+            ].join("\n"),
     finishReason: "stop",
     usage: { inputTokens: 10, outputTokens: 10 },
   });
@@ -115,7 +121,12 @@ await runCase("gm-effects/provider-reply", async () => {
     assert.match(empty.json().error, /model returned no answer/iu);
     const details = await host.app.inject({ method: "GET", url: "/api/villages/rooms/browser/error-details" });
     assert(details.json().errors.some((row: { details: string }) => JSON.parse(row.details).cause === "empty_output"));
-    assert.equal(calls, 2);
+
+    const malformed = await send("provider-bad-admission");
+    assert.equal(malformed.statusCode, 502, malformed.body);
+    assert.deepEqual(malformed.json().sceneFailure.diagnostic.checks, [{ code: "invalid_format", path: ["localKey"] }]);
+    assert(!malformed.body.includes("Private Invented Name"));
+    assert.equal(calls, 3);
   } finally {
     await host.stop();
   }
