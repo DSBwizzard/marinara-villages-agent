@@ -9,11 +9,17 @@ THE SOFTWARE IS PROVIDED "AS IS" AND ISC DISCLAIMS ALL WARRANTIES WITH REGARD TO
 
 */
 import { jsonrepair } from "jsonrepair";
+import type { SceneJsonIssue } from "../../../shared/contracts/scene-failure-diagnostic.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
 
 export const MODEL_JSON_MAX_CHARACTERS = 131_072;
 export const MODEL_JSON_MAX_EDITS = 8;
-export type ModelJsonReply = { value: Record<string, unknown> | null; repaired: boolean; edits: number };
+export type ModelJsonReply = {
+  value: Record<string, unknown> | null;
+  repaired: boolean;
+  edits: number;
+  jsonIssue?: SceneJsonIssue;
+};
 
 export function modelJsonWithinBounds(content: string): boolean {
   if (content.length > MODEL_JSON_MAX_CHARACTERS) return false;
@@ -26,19 +32,6 @@ export function modelJsonWithinBounds(content: string): boolean {
     if (depth > 64) return false;
   }
   return true;
-}
-function objectCandidate(content: string): string | null {
-  if (!modelJsonWithinBounds(content)) return null;
-  const start = content.indexOf("{");
-  const end = content.lastIndexOf("}");
-  if (
-    start < 0 ||
-    end <= start ||
-    /[\[\]}]/u.test(content.slice(0, start)) ||
-    /[{}\[\],:"]/u.test(content.slice(end + 1))
-  )
-    return null;
-  return content.slice(start, end + 1);
 }
 /** Tokenize the entire candidate; unquoted/incomplete values and excess depth are never repairable. */
 function tokens(text: string): string[] | null {
@@ -99,26 +92,36 @@ type ModelJsonCompletion = {
 };
 
 export function readModelJsonObject(completion: ModelJsonCompletion): ModelJsonReply {
-  const failed: ModelJsonReply = { value: null, repaired: false, edits: 0 };
-  if (["length", "max_tokens", "content_filter", "tool_calls"].includes(completion.finishReason ?? "")) return failed;
-  const candidate = objectCandidate(completion.content ?? "");
-  if (!candidate) return failed;
-  const strict = parseSceneObject(candidate);
+  const failed = (jsonIssue: SceneJsonIssue): ModelJsonReply => ({ value: null, repaired: false, edits: 0, jsonIssue });
+  if (["length", "max_tokens", "content_filter", "tool_calls"].includes(completion.finishReason ?? ""))
+    return failed("unsupported_finish");
+  const content = completion.content ?? "";
+  if (!modelJsonWithinBounds(content)) return failed("parser_limits");
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start < 0) return failed("missing_object");
+  if (end <= start) return failed("incomplete_json");
+  if (/[\[\]}]/u.test(content.slice(0, start)) || /[{}\[\],:"]/u.test(content.slice(end + 1)))
+    return failed("unexpected_envelope");
+  const candidate = content.slice(start, end + 1);
+  let issue: SceneJsonIssue = "invalid_syntax";
+  const strict = parseSceneObject(candidate, (reason) => {
+    issue = reason;
+  });
   if (strict) return { value: strict, repaired: false, edits: 0 };
-  if (!["stop", "end_turn"].includes(completion.finishReason ?? "")) return failed;
+  if (!["stop", "end_turn"].includes(completion.finishReason ?? "")) return failed(issue);
   const originalTokens = tokens(candidate);
-  if (!originalTokens) return failed;
-  const normalized = candidate;
+  if (!originalTokens) return failed(issue);
   try {
-    const repaired = jsonrepair(normalized);
-    if (repaired.length > MODEL_JSON_MAX_CHARACTERS) return failed;
+    const repaired = jsonrepair(candidate);
+    if (repaired.length > MODEL_JSON_MAX_CHARACTERS) return failed(issue);
     const repairedTokens = tokens(repaired);
     const edits = repairedTokens && punctuationEdits(originalTokens, repairedTokens);
-    if (edits === null) return failed;
+    if (edits === null) return failed(issue);
     const value = parseSceneObject(repaired);
-    return value ? { value, repaired: true, edits } : failed;
+    return value ? { value, repaired: true, edits } : failed(issue);
   } catch {
-    return failed;
+    return failed(issue);
   }
 }
 export function extractModelJsonObject(completion: ModelJsonCompletion): Record<string, unknown> | null {

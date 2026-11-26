@@ -193,6 +193,8 @@ function authority(scene: VenueScene) {
   const replyTurn = scene.submissions.findLast(
     (turn) => sceneTurnPublished(turn) && turn.replyLineIds?.some((id) => replyIds.has(id)),
   );
+  const presentationAt =
+    replyTurn && replyTurn.at > (scene.continuity?.capturedAt ?? "") ? replyTurn.at : scene.continuity?.capturedAt;
   const rejected = replyTurn?.acceptance.rejected ?? [];
   return {
     ...(rejected.length
@@ -254,12 +256,11 @@ function authority(scene: VenueScene) {
               foundedAt: facts.foundedAt,
               seed: facts.seed,
               timeZone: facts.timeZone || undefined,
-              now: new Date(scene.continuity!.capturedAt),
+              now: new Date(presentationAt!),
             });
             return moment.weekday + ", " + moment.dateLabel + " · " + moment.localTime;
           })(),
-          lighting:
-            villageLighting(scene.continuity!.capturedAt, facts.timeZone || undefined) === "night" ? "night" : "day",
+          lighting: villageLighting(presentationAt!, facts.timeZone || undefined) === "night" ? "night" : "day",
         }
       : {}),
     connectionMap: (scene.sceneAttendance?.layout ?? []).map(({ id, connectedTo }) => ({ id, connectedTo })),

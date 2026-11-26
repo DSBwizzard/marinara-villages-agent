@@ -4,7 +4,11 @@ import {
   sceneErrorCause,
   sceneErrorMessage,
 } from "../packages/villages/src/client/features/scenes/scene-error-message.js";
-import { anonymousSceneErrorReport } from "../packages/villages/src/client/features/scenes/scene-error-report.js";
+import {
+  anonymousSceneErrorReport,
+  sceneFailure,
+} from "../packages/villages/src/client/features/scenes/scene-error-report.js";
+import { VillageApiError } from "../packages/villages/src/client/shared/api.js";
 
 const cases = [
   ["Invalid request details", "The request contains invalid details."],
@@ -142,4 +146,24 @@ const heldReport = anonymousSceneErrorReport([
   },
 ]);
 assert.match(heldReport, /Operation code: missing_result\nPhase: reply validation\nValidator details: unavailable/);
+const directFailure = sceneFailure(
+  new VillageApiError("Private model text", 502, undefined, {
+    failureCause: "invalid_reply",
+    failureStage: "reply-validation",
+    diagnostic: {
+      rejected: 2,
+      checks: [
+        { code: "invalid_type", path: ["segments", 0, "speakerId"], expected: "string" },
+        { code: "unrecognized_keys", path: ["segments", 0, "Private model key"], expected: "Private value" },
+      ],
+    },
+  }),
+  "The reply failed.",
+  "send",
+);
+const directReport = anonymousSceneErrorReport([{ id: "room", title: "Message failed", ...directFailure }]);
+assert.match(directReport, /Cause: invalid_reply\nPhase: reply validation/);
+assert.match(directReport, /invalid_type at segments\.0\.speakerId \(expected string\)/);
+assert.match(directReport, /unrecognized_keys at segments\.0\.\?/);
+assert.doesNotMatch(directReport, /Private/);
 console.log("Scene errors: player messages and actionable anonymous request traces passed.");

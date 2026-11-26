@@ -66,7 +66,7 @@ for (const scenario of ["ordinary", "invitation", "revoked", "refused", "banned"
       assert.equal(messages.at(-2).content, calls === 1 ? message : "Why?");
       const prompt = messages.map((row) => row.content).join("\n");
       assert.equal(prompt.includes("Scoped native access authority"), invited);
-      assert.doesNotMatch(prompt, /Access commands use supplied venue and zone IDs/u);
+      assert.equal(prompt.includes("Access commands use supplied venue and zone IDs"), invited);
       if (calls === 2)
         assert(
           messages.some(
@@ -294,11 +294,11 @@ await runCase("packaged-scene/strict-reply", async () => {
     });
     assert(response.statusCode >= 400, response.body);
     assert.equal(calls, 1, response.body);
-    assert.equal(host.scene().submissions.length, 1, "the admitted original input remains available for recovery");
-    assert.notEqual(host.scene().submissions[0].acceptance.status, "applied");
-    assert.equal(host.scene().submissions[0].episodeId, undefined);
+    assert.equal(host.scene().submissions.length, 0, "an unusable reply never adds an exchange");
+    assert.equal((host.scene().operation?.input as { message?: string })?.message, "Hello.");
+    assert.equal(host.scene().operation?.status, "complete");
     assert(!host.scene().lines.some((line) => line.content === "Unsupported reply."));
-    assert(host.scene().operation, "invalid paid output stays recoverable without a classification adapter");
+    assert.equal(Object.keys(host.scene().operation?.checkpoints ?? {}).length, 0);
   } finally {
     await host.stop();
   }

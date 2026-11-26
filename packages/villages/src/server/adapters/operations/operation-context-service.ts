@@ -2,6 +2,7 @@ import type { VenueOperation } from "../../domain/models/operation-model.js";
 import { VillagesRequestError } from "../../domain/rules/errors.js";
 import type { CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { sceneFailureMetadata } from "../../domain/rules/work-failure.js";
 export type { VenueOperation } from "../../domain/models/operation-model.js";
 export type Context = {
   sessionId: string;
@@ -20,11 +21,12 @@ export function operationSummary(operation?: VenueOperation) {
   return {
     id: operation.id,
     kind: operation.kind,
+    ...(operation.freshReply ? { freshReply: true as const } : {}),
     recoverable: operation.kind === "greet" && Object.hasOwn(operation.checkpoints, "greeting-reply"),
     attemptId: operation.attemptId,
     status: operation.status,
     stage: operation.stage,
-    ...(operation.failure ? { failureCause: operation.failure.cause } : {}),
+    ...sceneFailureMetadata(operation.failure),
     error: operation.error,
   };
 }
@@ -49,7 +51,7 @@ export function createVenueOperationContext(villagesLogger: () => CapabilityRunt
     return context.getStore()?.operation.id ?? "uncoordinated";
   }
   function venueRequestMetrics(operation = context.getStore()?.operation) {
-    if (!operation) return null;
+    if (!operation || operation.freshReply) return null;
     return Object.entries(operation.attempts).map(([stage, attempt]) => ({
       stage,
       status: attempt.status,
