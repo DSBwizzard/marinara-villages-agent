@@ -522,7 +522,7 @@ export function createSceneWriting({
         !npcIntroduction
           ? ""
           : tagged
-            ? 'Admit anyone new who speaks, including a person the player addresses at a shop or stall. A silent passerby can stay in ordinary narration. First show the person entering or coming into view with Narration!: text. On the next line use [command]: {"type":"npc.admit","existingId":"supplied-id"} for a supplied candidate, then use [supplied-id]: text for what they say. Add "returning":true only for an npcReturnCandidate whose return fits. Otherwise admit at most one new NPC with [command]: {"type":"npc.admit","localKey":"new:baker","name":"Mira","label":"Baker","characterization":"A local baker."}. Start their first spoken line with [new:baker]: text. Their name can stay private.'
+            ? 'Admit an unfamiliar person who speaks, including a vendor the player addresses. A silent passerby can stay in ordinary narration. Villagers and Visitors speak only through their supplied speaker IDs when present. Admit at most one new NPC. First show the person coming into view with Narration!: text. On the next line use [new:baker] [npc Mira | Baker]: text. This header supplies the admission. Use [new:baker]: text for later speech. For a supplied NPC candidate use [command]: {"type":"npc.admit","existingId":"supplied-id"} after the arrival, then [supplied-id]: text. Add "returning":true for an npcReturnCandidate whose return fits.'
             : nativeCommands
               ? NARRATION_NATIVE
               : narrationNpcCommands(positions),
@@ -704,7 +704,9 @@ export function createSceneWriting({
         attendanceDirection +
         (tagged
           ? "Plain prose is enough for narration alone. Use Narration: text or [speaker-id]: text when mixing beats and effects. Use a marked beat only when its next line proposes the lasting change." +
-            (npcIntroduction ? " Admit a new speaker before their first line." : "") +
+            (npcIntroduction
+              ? " Immediately after a new NPC's Narration! arrival, write [new:key] [npc Name | Public role]: their first words."
+              : "") +
             (sceneSpeechActions.length
               ? " Put invitation and following words only on their numbered [action N] lines."
               : "")
@@ -746,6 +748,7 @@ export function createSceneWriting({
         ...(!nativeCommands && !freshReply ? { retryEpisodeRevision: authority.episodes.revision } : {}),
         ...(freshReply || tagged ? { strictSceneReply: true as const } : {}),
         ...(tagged ? { taggedSceneReply: true as const, npcSpeakerNames } : {}),
+        ...(tagged && npcIntroduction ? { compactNpcSpeech: true as const } : {}),
         playerNavigation: mode === "leave" ? "conclude" : "explicit",
         ...(residentMovesInReply ? { sceneResidentMovement: true as const } : {}),
         ...(sceneSpeechActions.length ? { sceneSpeechActions } : {}),

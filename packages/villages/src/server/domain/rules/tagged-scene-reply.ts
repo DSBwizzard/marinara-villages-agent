@@ -3,6 +3,7 @@ import { NARRATION_SEGMENT_CHARACTERS, readNarrationReply } from "./narration-co
 import { parseSceneObject } from "./scene-json-syntax.js";
 import { MODEL_JSON_MAX_CHARACTERS, modelJsonWithinBounds } from "./json-reply.js";
 import { bindSceneSourcePositions } from "./narration-sources.js";
+import { npcNameInText } from "./npc-participation.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import type { SceneReplyIssue } from "../../../shared/contracts/scene-failure-diagnostic.js";
 
@@ -20,6 +21,7 @@ const isEffectLabel = (value: unknown): value is string =>
 const controlPrefix = /^\s*!?\s*(keep|command|visit|halt|cue)(?:[\s:\]]|$)/iu;
 const actionPrefix = /^\s*!?\s*(action)(?=[ \t]+[+-]?\d)/iu;
 const quotedSpeakerHeader = /^([^:\r\n]{1,100}):\s*(["“].*["”])$/u;
+const compactNpcSpeech = /^\[(new:[a-z0-9-]{1,60})\]\s+\[npc ([^|\]]{1,102})\|([^|\]]{1,102})\]\s*:\s*(\S.*)$/u;
 const aliasKey = (text: string) => text.normalize("NFKC").trim().toLowerCase();
 type Beat = { id: string; kind: "narration" | "dialogue"; text: string; requires: string[] } & Record<string, unknown>;
 
@@ -98,6 +100,7 @@ export function decodeTaggedSceneReply(
   let halt: Record<string, unknown> | undefined;
   let anchor: Beat | undefined;
   let actionAnchor: Beat | undefined;
+  let precedingArrival: Beat | undefined;
   let marked = false;
   let effectIndex = 0;
   let issue: SceneReplyIssue | undefined;
@@ -109,9 +112,33 @@ export function decodeTaggedSceneReply(
   const bind = (beat: Beat, id: string) => {
     beat.requires = [...beat.requires.filter((value) => value !== "missing-" + beat.id), id];
   };
-  for (const value of content.split(/\r?\n/u)) {
-    const line = value.trim();
+  const lines = content.split(/\r?\n/u);
+  for (let index = 0; index < lines.length; index++) {
+    let line = lines[index]!.trim();
     if (!line) continue;
+    const arrival = precedingArrival;
+    precedingArrival = undefined;
+    const admission = readset.compactNpcSpeech && arrival ? compactNpcSpeech.exec(line) : null;
+    if (admission && positions.length < 24 && commands.length + Number(!!visit) < 16) {
+      const [, localKey, rawName, rawLabel, speech] = admission;
+      const name = rawName.trim();
+      const label = rawLabel.trim();
+      if (
+        name &&
+        name.length <= 100 &&
+        label &&
+        label.length <= 100 &&
+        !npcNameInText(aliasKey(label), aliasKey(name)) &&
+        speech.length <= NARRATION_SEGMENT_CHARACTERS &&
+        !/^[{\x60]/u.test(speech) &&
+        !speakers.has(localKey) &&
+        !newcomers.has(localKey)
+      ) {
+        // Reuse the ordinary admission command, including the arrival dependency and witness binding.
+        line = "[command]: " + JSON.stringify({ type: "npc.admit", localKey, name, label });
+        lines.splice(index + 1, 0, "[" + localKey + "]: " + speech);
+      }
+    }
     if (line.startsWith("```")) break;
     const quotedSpeaker = quotedSpeakerHeader.exec(line);
     const quotedAlias = quotedSpeaker && !reservedControl(quotedSpeaker[1]) && resolveAlias(quotedSpeaker[1]);
@@ -278,6 +305,7 @@ export function decodeTaggedSceneReply(
         if (admission && !requirements.includes(admission)) requirements.push(admission);
       }
       anchor = { id, kind: "narration", text, requires: requirements, ...(actors.length ? { actors } : {}) };
+      if (marked) precedingArrival = anchor;
     } else {
       const token = marked ? speaker.slice(1) : speaker;
       const action =

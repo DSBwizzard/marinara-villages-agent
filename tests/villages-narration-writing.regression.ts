@@ -320,7 +320,8 @@ await runCase("narration-writing/new-encounter", async () => {
   const newWithMaraPresent = await turn("mara-present", request, "Narration: Shoppers mill about.");
   assert(newWithMaraPresent.publication.readset.source.scene.contactGeneration?.actorIds?.includes(f.id));
   assert(newWithMaraPresent.prompt.includes(request));
-  assert.match(newWithMaraPresent.prompt, /Admit anyone new who speaks[\s\S]*\[new:baker\]: text/u);
+  assert.match(newWithMaraPresent.prompt, /\[new:baker\] \[npc Mira \| Baker\]: text/u);
+  assert.equal(newWithMaraPresent.publication.readset.compactNpcSpeech, true);
 
   f.scene.activeIds = [];
   f.scene.participants = [];
