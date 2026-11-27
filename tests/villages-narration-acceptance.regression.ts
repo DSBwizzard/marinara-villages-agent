@@ -1554,6 +1554,38 @@ await runCase("narration-acceptance/passive-actor-notes", () => {
     assert.equal(f.state.continuity.versions.length, 0);
     if (dependency === "none") assert(result.episode?.segments.length);
   }
+  for (const problem of ["recipients", "missing-for", "source", "excerpt", "text", "agenda", "required"] as const) {
+    const f = fixture("Would you have a look?");
+    const publication = f.publication({
+      segments: f.response(problem === "required" ? ["note"] : []),
+      keep: [
+        {
+          id: "note",
+          ...(problem === "missing-for" ? {} : { for: problem === "recipients" ? f.id : [f.id] }),
+          class: "information",
+          text: problem === "text" ? undefined : "The player shared a detail.",
+          source:
+            problem === "excerpt"
+              ? [{ input: "Words the player never sent.", ground: { kind: "spoken", to: [f.id] } }]
+              : problem === "source"
+                ? "unknown-segment"
+                : ["unknown-segment"],
+          independent: true,
+          ...(problem === "agenda" ? { agenda: {} } : {}),
+        },
+      ],
+    });
+    publication.readset.quietIncidentalKeeps = true;
+    const result = acceptNarrationContinuity(f.state, publication, "submission", later);
+    assert.equal(result.held, problem === "required");
+    assert.equal(result.rejected.length, problem === "agenda" || problem === "required" ? 1 : 0, problem);
+    assert.equal(f.state.continuity.versions.length, 0);
+    if (!result.held) {
+      assert(result.episode?.segments.length);
+      const replay = acceptNarrationContinuity(f.state, publication, "submission", later);
+      assert.deepEqual(replay.rejected, result.rejected);
+    }
+  }
 });
 
 await runCase("narration-acceptance/romantic-interest", () => {

@@ -55,6 +55,7 @@ export type NarrationReadset = {
   coalesceOfferDecisions?: true;
   stripOfferContributionEcho?: true;
   recognizeDirectOfferSpeech?: true | 2 | 3 | 4 | 5;
+  quietIncidentalKeeps?: true;
   optionalActorMemories?: true | 2 | 3 | 4 | 5;
   continuityEffectRecovery?: true;
   stripSceneReplyDecorations?: true | 2 | 3 | 4 | 5;

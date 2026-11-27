@@ -787,6 +787,7 @@ export function createSceneWriting({
               explicitNpcIntroduction: true as const,
             }
           : {}),
+        ...(tagged && mode === "chat" ? { quietIncidentalKeeps: true as const } : {}),
         ...(tagged && !requestedMemory && readset.repairs.length ? { terminalSceneRepair: true as const } : {}),
         ...(tagged
           ? {
