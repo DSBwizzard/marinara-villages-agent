@@ -12,6 +12,24 @@ export function starterAgendaReply(label = "Starter activity", place: number | s
   };
 }
 
+export function keyedStarterReply(
+  request: { residents: { days: [string, string, number][] }[] },
+  label = "Starter activity",
+  place: number | string = 0,
+) {
+  return {
+    setup: { routine: "Ordinary varied days", rest: starterAgendaReply().rest },
+    plans: Object.fromEntries(
+      request.residents.flatMap(({ days }) =>
+        days.map(([id, , count], day) => [
+          id,
+          Array.from({ length: count }, (_, slot) => [`${label} ${day + 1}/${slot + 1}`, place]),
+        ]),
+      ),
+    ),
+  };
+}
+
 export function agendaFixture(value: Partial<VillageAgenda> = {}): VillageAgenda {
   const week = completeAgendaWeek(
     value.week ?? Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, value.day ?? []])),

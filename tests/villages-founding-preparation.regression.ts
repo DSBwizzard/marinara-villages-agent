@@ -1,10 +1,9 @@
 import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.fixture.js";
 import { sharedVenuesFixture, venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import { starterAgendaReply } from "./helpers/agenda.fixture.js";
+import { keyedStarterReply, starterAgendaReply } from "./helpers/agenda.fixture.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { continuityWishes } from "../packages/villages/src/server/domain/rules/continuity-library.js";
-import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import {
   foundingReadyForPlay,
   foundingSlot,
@@ -296,7 +295,8 @@ const release = configureVillagesRuntime({
         }
         assert.match(messages[1].content, /STARTING-CONTEXT-/);
         assert.doesNotMatch(messages[1].content, /UNSCOPED-OLD-ROOM-PROSE/);
-        assert.equal(options.reasoningEffort, "none");
+        const packet = JSON.parse(messages[1].content);
+        assert.equal(options.reasoningEffort, packet.setup ? undefined : "none");
         assert.equal(options.responseFormat.type, "json_object");
         if (messages[0].content.includes("{wish:null}")) {
           calls.push("wish");
@@ -321,31 +321,37 @@ const release = configureVillagesRuntime({
           return { content: JSON.stringify({ wish }), finishReason: "stop" };
         }
         calls.push("routine");
-        const actorId = JSON.parse(messages[1].content).identity.id;
-        if (
-          ["routine-timeout", "inherited-pause"].includes(mode) &&
-          JSON.parse(messages[1].content).identity.id === "aqua"
-        )
+        const actorId =
+          packet.identity?.id ??
+          rows
+            .get("villages-village")
+            .data.villagers.find((resident: any) => resident.cardSnapshot.name === packet.residents[0].name)
+            ?.characterId;
+        if (["routine-timeout", "inherited-pause"].includes(mode) && actorId === "aqua")
           throw new Error("Provider request exceeded 30 seconds.");
         if (mode === "json-unsupported") throw new Error("response_format json_object is not supported");
-        assert.equal(options.maxTokens, Math.min(limit, 2048));
+        assert.equal(options.maxTokens, Math.min(limit, packet.setup ? 8192 : 2048));
         if (mode === "routine-recovery-malformed" && actorId === "aqua") return { content: "{}", finishReason: "stop" };
         const invalid =
           mode === "routine-invalid" ||
           (mode === "routine-one-fail" && actorId === "aqua") ||
           (mode.startsWith("routine-recovery-") && actorId !== "aqua");
+        if (packet.setup) {
+          const planned = keyedStarterReply(packet, "Station activity", invalid ? "0" : 0);
+          if (mode === "routine-recovery-current" && actorId === "aqua")
+            planned.setup.rest = [
+              { kind: "sleep", startMinute: 0, endMinute: 360 },
+              { kind: "sleep", startMinute: 1290, endMinute: 1440 },
+            ];
+          return {
+            content: JSON.stringify(planned),
+            finishReason: mode === "routine-recovery-truncated" && actorId === "aqua" ? "length" : "stop",
+          };
+        }
         return {
           content: JSON.stringify({
             routine: "Quiet days at the station",
             ...starterAgendaReply("Station activity", invalid ? "0" : 0),
-            ...(mode === "routine-recovery-current" && actorId === "aqua"
-              ? {
-                  rest: [
-                    { kind: "sleep", startMinute: 0, endMinute: 360 },
-                    { kind: "sleep", startMinute: 1290, endMinute: 1440 },
-                  ],
-                }
-              : {}),
             palette: ["resting", "reading", "walking", "writing", "thinking", "tidying"].map((activity) => ({
               activity,
               venue: invalid ? "0" : 0,
@@ -404,7 +410,11 @@ async function main() {
     hold!();
     await preparing;
     const withNewcomer = await readVillageState({ memories: true });
-    assert.equal(withNewcomer.foundingPreparation?.status, "ready");
+    assert.equal(
+      withNewcomer.foundingPreparation?.status,
+      "ready",
+      JSON.stringify(withNewcomer.foundingPreparation?.tasks),
+    );
     await assertFoundedVillageReady();
     assert.equal(
       withNewcomer.foundingPreparation?.tasks?.newcomer,
@@ -600,11 +610,12 @@ async function main() {
       const current = await readVillageState({ memories: true });
       assert.equal(checkpoint.data.revision, foundingTaskRevision(current, "aqua", "routine"));
       const saved = validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response;
+      assert.equal(checkpoint.data.steps[0].key, "weekly-agenda-v5");
       if (valid) {
         assert.equal(holdRoutinePublication, false);
         assert.equal(checkpoint.data.hasResult, true);
-        assert.ok(parseCompactFoundingCompletion(saved, checkpoint.data.input.context).agenda);
-      } else assert.throws(() => parseCompactFoundingCompletion(saved, checkpoint.data.input.context));
+        assert.ok(JSON.parse(saved.content!).plans);
+      } else assert.equal(checkpoint.data.hasResult, false);
       mode = "valid";
       calls.length = 0;
       if (recovery === "stale") {
@@ -653,7 +664,7 @@ async function main() {
         const agenda = state.villagers[0]!.agenda!;
         assert.equal(agenda.starterWeekThrough, undefined, "expired plans do not claim dated coverage");
         const today = agenda.activeDay!;
-        assert.ok(today.dateKey > checkpoint.data.input.context.starterWeekStart);
+        assert.ok(today.dateKey > checkpoint.data.input.weekPlan.start);
         assert.ok(today.blocks.every((block) => !block.activity.startsWith("Station activity")));
         const next = Object.keys(agenda.plannedDays!)
           .sort()

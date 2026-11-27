@@ -661,6 +661,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     connection: villagesConnectionIdFor,
     complete: completeWithRoom,
     now: villageNow,
+    readVillageLore,
   });
   const residentAgendas = createResidentAgendas({
     readVillageState,

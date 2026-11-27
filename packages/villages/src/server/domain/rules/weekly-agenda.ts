@@ -1,7 +1,7 @@
 import { calendarAt, calendarDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { Job } from "../models/background-model.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
-import { flexibleAgendaBlock, restingAgendaBlock } from "./agenda-flexibility.js";
+import { fixedRestAgendaBlock, flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { agendaDateKey, ordinaryAgendaBlocksFor } from "./agenda-week.js";
 import { validateRoutineDay } from "./owned-routine.js";
 import { routineVenues } from "./prompt-preset.js";
@@ -14,7 +14,7 @@ export const AGENDA_WEEK_DAYS = 7;
 const dayParts = [360, 720, 1020, 1440];
 const minActivityMinutes = 30;
 const maxActivityMinutes = 240;
-const openBlock = (block: VillageAgendaBlock) => flexibleAgendaBlock(block) && !restingAgendaBlock(block);
+const openBlock = (block: VillageAgendaBlock) => flexibleAgendaBlock(block) && !fixedRestAgendaBlock(block);
 
 export const agendaActivityKey = (activity: string) =>
   activity
@@ -127,7 +127,21 @@ export function weeklyAgendaSlots(agenda: VillageAgenda, date: Date, residentId:
 }
 
 export type WeeklyAgendaSlot = ReturnType<typeof weeklyAgendaSlots>[number];
-export type WeeklyAgendaChoice = { activity: string; venueId: string };
+export type WeeklyAgendaChoice = { activity: string; venueId: string; maxMinutes?: number };
+
+export function weeklyChoiceBlock(
+  choice: WeeklyAgendaChoice,
+  startMinute: number,
+  endMinute: number,
+): VillageAgendaBlock {
+  return {
+    activity: choice.activity,
+    venueId: choice.venueId,
+    startMinute,
+    endMinute: Math.min(endMinute, startMinute + (choice.maxMinutes ?? 1440)),
+    flexible: true,
+  };
+}
 
 function venueFits(state: VillageState, residentId: string, date: Date, block: VillageAgendaBlock): boolean {
   if (!block.venueId) return true;
@@ -182,14 +196,10 @@ export function applyWeeklyAgenda(
       if (!choice) continue;
       for (const available of livePeriods) {
         const startMinute = Math.max(available.startMinute, slot.startMinute, planToday ? todayAfter : 0);
-        const endMinute = Math.min(available.endMinute, slot.endMinute);
+        const block = weeklyChoiceBlock(choice, startMinute, Math.min(available.endMinute, slot.endMinute));
+        const { endMinute } = block;
         if (endMinute - startMinute < minActivityMinutes) continue;
-        const [plan] = validateRoutineDay(
-          [{ ...choice, startMinute, endMinute, flexible: true }],
-          resident,
-          state,
-          date,
-        );
+        const [plan] = validateRoutineDay([block], resident, state, date);
         if (!plan || plan.venueId !== choice.venueId || !venueFits(state, resident.characterId, date, plan)) continue;
         blocks = blocks.flatMap((block) =>
           block.endMinute <= startMinute || block.startMinute >= endMinute
@@ -201,6 +211,7 @@ export function applyWeeklyAgenda(
         );
         blocks.push(plan);
         placed++;
+        if (choice.maxMinutes !== undefined) break;
       }
     }
     if (placed > before) {

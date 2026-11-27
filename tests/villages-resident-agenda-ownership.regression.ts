@@ -69,6 +69,15 @@ function fixture(name: string) {
         throw new Error("Unexpected weekly regeneration");
       },
       handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
+      captureStartingWeek: () => {
+        throw new Error("Unexpected new Agenda planner capture");
+      },
+      planner: {
+        generate: async () => {
+          throw new Error("Unexpected new Agenda planner call");
+        },
+        recoverSavedResult: () => undefined,
+      },
     },
     async readVillageState() {
       note("read");

@@ -2,7 +2,7 @@ import { defaultVillageFixture as defaultVillageState } from "./helpers/venues.f
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
-import { starterAgendaReply } from "./helpers/agenda.fixture.js";
+import { keyedStarterReply } from "./helpers/agenda.fixture.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -105,31 +105,33 @@ const model = {
   chatComplete: async (messages: any[], options: any) => {
     calls++;
     assert.equal(options.responseFormat?.type, "json_object");
-    assert.equal(options.reasoningEffort, "none");
     const wish = messages[0].content.includes("{wish:null}"),
-      id = JSON.parse(messages[1].content).identity.id;
-    assert.equal(options.maxTokens, wish ? 1536 : 2048);
+      packet = JSON.parse(messages[1].content);
+    assert.equal(options.reasoningEffort, wish ? "none" : undefined);
+    assert.equal(options.maxTokens, wish ? 1536 : 4096);
+    const plan = wish ? undefined : keyedStarterReply(packet);
+    const napDay: string | undefined = packet.residents?.[0].days[1][0];
     return {
       finishReason: "stop",
       content: JSON.stringify(
         wish
-          ? failWish && id === "a"
+          ? failWish && packet.identity.id === "a"
             ? {}
             : { wish: null }
           : {
-              identityDescription: "A patient resident with a lasting interest in local history.",
-              routine: "Ordinary varied days",
-              ...starterAgendaReply(),
-              palette: Array.from({ length: 6 }, (_, i) => ({
-                activity: "Activity " + i,
-                venue: 0,
-                flexible: true,
-                essential: false,
-                duration: 60,
-                parts: [0, 1, 2, 3],
-              })),
-              days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
-              rhythm: [],
+              ...plan,
+              ...(napDay
+                ? {
+                    plans: {
+                      ...plan!.plans,
+                      [napDay]: [{ kind: "nap", minutes: 45 }, ...plan!.plans[napDay]!.slice(1)],
+                    },
+                  }
+                : {}),
+              setup: {
+                ...plan!.setup,
+                identityDescription: "A patient resident with a lasting interest in local history.",
+              },
             },
       ),
     };
@@ -218,7 +220,10 @@ try {
     "A booked opening-day appointment still spans the whole reserved interval",
   );
   const planned = Object.entries(
-    starterAgenda.plannedDays as Record<string, { activity: string; essential?: boolean }[]>,
+    starterAgenda.plannedDays as Record<
+      string,
+      { activity: string; essential?: boolean; startMinute: number; endMinute: number }[]
+    >,
   )
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-7);
@@ -226,6 +231,14 @@ try {
   assert.equal(planned[0]![0], "2026-11-26", "The saved week begins on Founding day");
   assert.equal(planned.at(-1)?.[0], starterAgenda.starterWeekThrough);
   assert.equal(starterAgenda.starterWeekThrough, "2026-12-02");
+  assert.deepEqual(
+    planned.map(([, blocks]) =>
+      blocks
+        .filter(({ activity }) => activity === "Sleeping (nap)")
+        .map(({ startMinute, endMinute }) => endMinute - startMinute),
+    ),
+    [[], [45], [], [], [], [], []],
+  );
   assert.equal(starterAgenda.activeDay.blocks[0].activity, "Taking care of their own affairs");
   assert.equal(starterAgenda.activeDay.blocks[0].endMinute, 720, "Elapsed minutes are preserved");
   assert.ok(

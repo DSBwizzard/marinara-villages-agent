@@ -194,9 +194,12 @@ async function main() {
               };
               assert.doesNotMatch(request, /"recent"|"interests"|Reading| pursuit \d+\//);
               assert.doesNotMatch(String(messages[0]?.content), /Tend seedlings|Buy twine/);
-              const plans: Record<string, Array<string | [string, number]>> = {};
+              const plans: Record<
+                string,
+                Array<string | [string, number] | { kind: string; minutes: number; label?: string }>
+              > = {};
               for (const { name, brief, days, slots } of input.residents) {
-                assert.equal(brief, `${name} values independence. Curious and inventive.`);
+                assert.ok(brief.startsWith(`${name} values independence. Curious and inventive.`));
                 assert.equal(slots, undefined, "The provider sees day counts without exact schedule slots.");
                 let index = 0;
                 for (const [id, , count] of days) {
@@ -205,6 +208,11 @@ async function main() {
                 }
               }
               const [first, second, third] = input.residents[0]!.days.map(([id]) => id);
+              if (weeklyResponses === 1) {
+                plans[first!]![1] = { kind: "nap", minutes: 30 };
+                plans[second!]![2] = { kind: "break", minutes: 45, label: "Quiet pause off-duty" };
+                plans[third!]![3] = { kind: "nap", minutes: 60 };
+              }
               if (incompleteWeek) {
                 plans["unexpected-day"] = plans[third!]!;
                 delete plans[third!];
@@ -605,6 +613,17 @@ async function main() {
     await settleBackgroundWork();
     assert.equal(weeklyResponses, 1, "One batch prepares the Village's week, despite repeated reconciliation.");
     const firstWeek = await readVillageState();
+    const restBlocks = [8, 9, 10, 11].map((day) =>
+      agendaBlocksFor(firstWeek.villagers[0]!.agenda!, date(day))
+        .filter(({ activity }) => ["Sleeping (nap)", "Quiet pause off-duty"].includes(activity))
+        .map(({ activity, startMinute, endMinute }) => [activity, endMinute - startMinute]),
+    );
+    assert.deepEqual(restBlocks, [
+      [["Sleeping (nap)", 30]],
+      [["Quiet pause off-duty", 45]],
+      [["Sleeping (nap)", 60]],
+      [],
+    ]);
     for (const resident of firstWeek.villagers) {
       const agenda = resident.agenda!;
       assert.equal(agenda.activeDay?.dateKey, agendaDateKey(date(7)));

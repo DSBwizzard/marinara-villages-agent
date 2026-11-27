@@ -11,7 +11,7 @@ import { asRecord } from "./coerce.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { generatedAgendaActivityLabel } from "./agenda-plan.js";
 import { completeAgendaWeek, workingAgendaWeek, agendaDateKey } from "./agenda-week.js";
-import { restingAgendaBlock } from "./agenda-flexibility.js";
+import { AGENDA_NAP_ACTIVITY, restingAgendaBlock } from "./agenda-flexibility.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import {
   AGENDA_WEEK_DAYS,
@@ -234,21 +234,20 @@ export function parseCompactFounding(
   };
 }
 
-function parseStarterWeek(
-  payload: Record<string, unknown>,
-  context: CompactFoundingContext,
-  start: string,
-): CompactFoundingResult {
+function invalidStarter(message: string): never {
+  throw new RoutineResponseError(message);
+}
+
+function starterActivityTitle(value: unknown): string {
+  const text = typeof value === "string" ? generatedAgendaActivityLabel(value.trim()) : "";
+  if (!agendaActivityKey(text) || text.length > 80 || /[\u0000-\u001f]/u.test(text))
+    invalidStarter("Each starter Agenda activity needs a short standalone label.");
+  return text;
+}
+
+export function starterAgendaBase(payload: Record<string, unknown>, start: string, restFormat?: 1) {
   const first = new ZonedDate(`${start}T12:00:00.000Z`, "UTC");
-  const invalid = (message: string): never => {
-    throw new RoutineResponseError(message);
-  };
-  const title = (value: unknown): string => {
-    const text = typeof value === "string" ? generatedAgendaActivityLabel(value.trim()) : "";
-    if (!agendaActivityKey(text) || text.length > 80 || /[\u0000-\u001f]/u.test(text))
-      invalid("Each starter Agenda activity needs a short standalone label.");
-    return text;
-  };
+  const invalid = invalidStarter;
   if (
     typeof payload.routine !== "string" ||
     !payload.routine.trim() ||
@@ -260,11 +259,11 @@ function parseStarterWeek(
   const restBlocks: VillageAgendaBlock[] = [];
   for (const rest of payload.rest) {
     let activity: unknown, from: unknown, to: unknown;
-    if (context.starterRestFormat === 1) {
+    if (restFormat === 1) {
       const { kind, label, startMinute, endMinute } = asRecord(rest);
       if (kind !== "sleep" && kind !== "nap" && kind !== "other")
         return invalid("A starter Agenda rest window needs a valid kind.");
-      activity = kind === "sleep" ? "Sleeping" : kind === "nap" ? "Sleeping (nap)" : label;
+      activity = kind === "sleep" ? "Sleeping" : kind === "nap" ? AGENDA_NAP_ACTIVITY : label;
       from = startMinute;
       to = endMinute;
     } else {
@@ -284,7 +283,7 @@ function parseStarterWeek(
       from === to
     )
       return invalid("A starter Agenda rest window is invalid.");
-    const label = title(activity);
+    const label = starterActivityTitle(activity);
     for (const [startMinute, endMinute] of from < to
       ? [[from, to]]
       : [
@@ -312,6 +311,16 @@ function parseStarterWeek(
     personalizationFailure: "",
     generatedAt: new Date().toISOString(),
   };
+  return { agenda, restBlocks, first };
+}
+
+function parseStarterWeek(
+  payload: Record<string, unknown>,
+  context: CompactFoundingContext,
+  start: string,
+): CompactFoundingResult {
+  const { agenda, restBlocks, first } = starterAgendaBase(payload, start, context.starterRestFormat);
+  const invalid = invalidStarter;
   if (!Array.isArray(payload.starterDays) || payload.starterDays.length !== AGENDA_WEEK_DAYS)
     return invalid("The starter Agenda needs plans for all seven days.");
   const slots: WeeklyAgendaSlot[] = [],
@@ -330,7 +339,7 @@ function parseStarterWeek(
       const [label, place] = entry;
       if (!Number.isInteger(place) || place < 0 || place > context.venues.length)
         return invalid("A starter Agenda activity has an unavailable place.");
-      const activity = title(label);
+      const activity = starterActivityTitle(label);
       if (restingAgendaBlock({ activity })) {
         if (!restBlocks.length) return invalid("Put recurring rest in the starter Agenda rest windows.");
         return [];
@@ -361,7 +370,7 @@ function parseStarterWeek(
     starterWeek: {
       slots,
       choices,
-      fallbackWeek: completeAgendaWeek(fallback, week),
+      fallbackWeek: completeAgendaWeek(fallback, agenda.week!),
       through: agendaDateKey(shiftAgendaDate(first, AGENDA_WEEK_DAYS - 1)),
     },
   };

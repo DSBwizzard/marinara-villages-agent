@@ -34,7 +34,7 @@ import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { createWeeklyAgenda } from "./weekly-agenda-service.js";
-import { agendaCalendar, applyWeeklyAgenda, weeklyAgendaVenues } from "../../domain/rules/weekly-agenda.js";
+import { agendaCalendar, applyWeeklyAgenda } from "../../domain/rules/weekly-agenda.js";
 import { refreshWorkReservations } from "../../domain/rules/venue-work.js";
 import { routineProfileFromWeek } from "../../domain/rules/owned-routine.js";
 export interface ResidentAgendaPorts {
@@ -47,7 +47,10 @@ export interface ResidentAgendaPorts {
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
   parseCompactFoundingCompletion: typeof parseCompactFoundingCompletion;
   proposeCompactFounding: typeof proposeCompactFounding;
-  weeklyAgenda: Pick<ReturnType<typeof createWeeklyAgenda>, "handler" | "queueResidentWeek">;
+  weeklyAgenda: Pick<
+    ReturnType<typeof createWeeklyAgenda>,
+    "handler" | "queueResidentWeek" | "captureStartingWeek" | "planner"
+  >;
 }
 /** A resident Agenda owns its specific saved-world, schedule, job and generation connections. */
 export function createResidentAgendas(ports: ResidentAgendaPorts) {
@@ -199,10 +202,19 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         },
         { memories: true },
       );
-    await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
     const start = founding
       ? agendaCalendar(village, village.setupAt ? new Date(village.setupAt) : villageNow())
       : undefined;
+    const weekPlan = start
+      ? weeklyAgenda.captureStartingWeek(
+          village,
+          start,
+          characterId,
+          !!context.identityDescriptionRevision,
+          context.lore,
+        )
+      : undefined;
+    await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
     await queueBackgroundJob({
       kind: "agenda",
       retryActionId: founding ? village.foundingPreparation?.retryActions?.at(-1) : undefined,
@@ -217,16 +229,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         characterId,
         foundingContract: founding ? 1 : undefined,
         revision,
+        ...(weekPlan ? { weekPlan } : {}),
         context: {
           ...context,
           activityLabelFormat: 1,
-          ...(start
-            ? {
-                starterWeekStart: agendaDateKey(start),
-                starterRestFormat: 1 as const,
-                venues: weeklyAgendaVenues(village, characterId, start),
-              }
-            : {}),
         },
       },
     });
@@ -238,6 +244,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     },
     recoverSavedResult: (input, steps) => {
       if (typeof input.weekActionId === "string") return weeklyAgenda.handler.recoverSavedResult!(input, steps);
+      if (input.weekPlan) return weeklyAgenda.planner.recoverSavedResult(input.weekPlan, steps)?.starter;
       const key = "founding-routine-v2";
       const saved = steps.find((step) => step.key === key && step.status === "completed");
       if (!saved?.response) return undefined;
@@ -249,9 +256,12 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         (entry) => entry.kind === "agenda" && entry.subjectId === input.characterId,
       );
       await reportFoundingProgress(input.seed, { stage: "resolving", attempt: job?.attempt }, input.characterId);
-      const result = await proposeCompactFounding(input.context, async (modelName) => {
+      const onModel = async (modelName: string) => {
         await reportFoundingProgress(input.seed, { stage: "model", modelName }, input.characterId);
-      });
+      };
+      const result = input.weekPlan
+        ? (await weeklyAgenda.planner.generate(input.weekPlan, onModel)).starter
+        : await proposeCompactFounding(input.context, onModel);
       await reportFoundingProgress(input.seed, { stage: "applying" }, input.characterId);
       return result;
     },

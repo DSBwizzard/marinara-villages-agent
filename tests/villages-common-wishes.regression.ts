@@ -517,6 +517,15 @@ await runCase("common-wishes/routine-protection", async () => {
             throw new Error("Unexpected weekly regeneration");
           },
           handler: { valid: () => false, generate: async () => undefined, apply: () => {} },
+          captureStartingWeek: () => {
+            throw new Error("Unexpected new Agenda planner capture");
+          },
+          planner: {
+            generate: async () => {
+              throw new Error("Unexpected new Agenda planner call");
+            },
+            recoverSavedResult: () => undefined,
+          },
         },
         readVillageState: (options) => f.repository.readAuthority(options),
         mutateVillageState: (mutate, options) => states.mutateVillageState(mutate, options),

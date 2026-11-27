@@ -1,6 +1,6 @@
 import type { AgendaReservation } from "../models/agenda-reservation.js";
 import type { VillageAgendaBlock } from "../models/world.js";
-import { flexibleAgendaBlock, restingAgendaBlock } from "./agenda-flexibility.js";
+import { fixedRestAgendaBlock, flexibleAgendaBlock } from "./agenda-flexibility.js";
 
 /** Reservations share one composition rule; their owners decide admission and cancellation. */
 export function composeAgenda(
@@ -25,7 +25,7 @@ export function composeAgenda(
     for (const block of blocks) {
       const start = Math.max(block.startMinute, reservation.startMinute);
       const end = Math.min(block.endMinute, reservation.endMinute);
-      if (start >= end || (work && (!replaceable(block) || restingAgendaBlock(block)))) {
+      if (start >= end || (work && (!replaceable(block) || fixedRestAgendaBlock(block)))) {
         composed.push(block);
         continue;
       }
