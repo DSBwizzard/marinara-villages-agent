@@ -40,6 +40,7 @@ import { SceneHistory } from "./SceneHistory.js";
 import { splitVillagesParagraphs, classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
 import { groupSceneMoments, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { SceneAsides } from "./villages-scene-asides.js";
+import { isAttributedSceneDialogue, sceneDialogueNodes } from "./scene-dialogue.js";
 import { selectSpriteImage } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 import { SceneActionIcon } from "./SceneActionIcon.js";
@@ -536,7 +537,10 @@ export function RoomPanel({
     }
   }, [replyKey, checkpoint, ownsBookmark, sceneReading.anchor, sceneReading.enterAtEnd]);
   const reveal = at === 0 && ownsBookmark(checkpoint.current.bookmark) && !!checkpoint.current.bookmark?.reveal;
-  const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, { reveal });
+  const readingPages = useReadingPages(step?.text ?? "", step?.key ?? replyKey, readingRef, sceneReading, {
+    reveal,
+    parse: isAttributedSceneDialogue(step) ? sceneDialogueNodes : undefined,
+  });
   const canReadNext = readingPages.revealing || at < steps.length - 1 || readingPages.index < readingPages.count - 1;
   const introductionActive = !!room.visitorIntroduction && !ended && room.status === "active" && steps.length > 0;
   useLayoutEffect(() => {
@@ -1106,7 +1110,9 @@ export function RoomPanel({
                   ) : null}
                 </p>
                 <p className={`${ELEMENT_TAG}-chat-vn-aside-text`} style={speechStyle(aside.speakerId)}>
-                  {renderVillagesMarkdown(aside.content, `aside-${index}-`)}
+                  {isAttributedSceneDialogue(aside)
+                    ? drawVillagesNodes(sceneDialogueNodes(aside.content), `aside-${index}-`)
+                    : renderVillagesMarkdown(aside.content, `aside-${index}-`)}
                 </p>
               </div>
             </div>
