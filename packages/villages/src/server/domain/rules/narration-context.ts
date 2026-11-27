@@ -836,10 +836,12 @@ export function narrationContinuityContext(
   const tryOlder = (linksFirst = false) => {
     const links = scene.visitEvent && opening ? [] : linkedRecall();
     const direct = recallCandidates.filter(({ id }) => history.directRecallIds?.has(id));
+    let attempted = 0;
     for (const view of new Set(
       linksFirst ? [...direct, ...links, ...recallCandidates] : [...recallCandidates, ...links],
     )) {
       if (transcriptIds.has(view.id)) continue;
+      if (attempted++ === 8) break;
       const part = historyPart(view, false);
       if (!takeRecall(part)) continue;
       parts.push(part);

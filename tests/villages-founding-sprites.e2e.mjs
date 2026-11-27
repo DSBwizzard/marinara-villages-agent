@@ -89,6 +89,15 @@ await withBrowser(browser, async () => {
         const url = new URL(route.request().url()),
           path = url.pathname;
         const send = (value) => fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
+        if (path.endsWith("/connections") && route.request().method() === "PUT") {
+          assert.deepEqual(route.request().postDataJSON(), { embedding: "off" });
+          return send({
+            systemConnectionId: "talk",
+            narrationConnectionId: "talk",
+            imageConnectionId: "image",
+            embedding: "off",
+          });
+        }
         if (route.request().method() !== "GET") {
           writes.push(path);
           assert.fail("Unexpected mutation: " + path);
