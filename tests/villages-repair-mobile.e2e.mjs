@@ -51,6 +51,7 @@ await withBrowser(browser, async () => {
       };
       await fits();
       await page.getByRole("button", { name: "Repair Nora", exact: true }).tap();
+      await f.section("memories");
       const row = page.getByRole("button", { name: memory.title, exact: true });
       await expect(row).toBeVisible();
       const title = await row.locator("strong").boundingBox();
@@ -104,8 +105,7 @@ await withBrowser(browser, async () => {
       await page.screenshot({ path: `.build-tmp/repair-captures/${width}-mobile-history.png` });
       await page.getByRole("button", { name: "Repair 0", exact: true }).tap();
       await fits();
-      await f.area("world");
-      await page.getByRole("button", { name: "Village snapshots →" }).tap();
+      await f.snapshots();
       await page.getByRole("button", { name: "Delete Snapshot 0", exact: true }).tap();
       await expect(page.getByRole("button", { name: "Keep snapshot", exact: true })).toBeInViewport({ ratio: 1 });
       await fits();

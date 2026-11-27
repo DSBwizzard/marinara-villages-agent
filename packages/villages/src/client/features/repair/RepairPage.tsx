@@ -5,6 +5,7 @@ import type {
   RepairField,
   RepairPersonSection,
   RepairValue,
+  RepairWorldSection,
 } from "../../../shared/contracts/repair.js";
 import { VillageIcon, type VillageIconName } from "../../shared/VillageIcon.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
@@ -36,6 +37,20 @@ const personSections: [RepairPersonSection, string][] = [
   ["home", "Home & work"],
   ["agenda", "Agenda"],
   ["details", "Character"],
+];
+const worldSections: [RepairWorldSection, string][] = [
+  ["setting", "Village setting"],
+  ["circumstances", "Circumstances"],
+  ["conditions", "Conditions"],
+  ["weather", "Weather"],
+  ["scenes", "Scenes"],
+  ["snapshots", "Village snapshots"],
+];
+const recoverySections: [string, string][] = [
+  ["attention", "Needs attention"],
+  ["active", "In progress"],
+  ["paused", "Paused"],
+  ["completed", "Completed"],
 ];
 const short = (text: string) => (text.length > 90 ? text.slice(0, 87) + "…" : text);
 
@@ -83,38 +98,50 @@ function Sections({
   onChange,
   name,
   disabled,
+  mode,
 }: {
-  entries: [string, string][];
+  entries: [string, string, VillageIconName?][];
   value: string;
   onChange(value: string): void;
   name: string;
   disabled?: boolean;
+  mode?: "left" | "phone";
 }) {
   return (
     <>
-      <nav className="repair-sections" aria-label={name}>
-        {entries.map(([id, title]) => (
-          <button
-            type="button"
-            key={id}
-            disabled={disabled}
-            aria-current={value === id ? "page" : undefined}
-            onClick={() => onChange(id)}
-          >
-            {title}
-          </button>
-        ))}
-      </nav>
-      <label className="repair-mobile-section">
-        <span className="repair-sr">{name}</span>
-        <select aria-label={name} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-          {entries.map(([id, title]) => (
-            <option key={id} value={id}>
+      {mode !== "phone" ? (
+        <nav className={mode === "left" ? "repair-notebook-nav" : "repair-sections"} aria-label={name}>
+          {entries.map(([id, title, icon]) => (
+            <button
+              type="button"
+              key={id}
+              disabled={disabled}
+              aria-current={value === id ? "page" : undefined}
+              onClick={() => onChange(id)}
+            >
+              {icon ? <VillageIcon name={icon} /> : null}
               {title}
-            </option>
+            </button>
           ))}
-        </select>
-      </label>
+        </nav>
+      ) : null}
+      {mode !== "left" ? (
+        <label className="repair-mobile-section">
+          <span className="repair-sr">{name}</span>
+          <select
+            aria-label={name}
+            value={value}
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+          >
+            {entries.map(([id, title]) => (
+              <option key={id} value={id}>
+                {title}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
     </>
   );
 }
@@ -207,6 +234,7 @@ export function RepairPage({
     ),
   );
   const isSnapshots = c.view === "checkpoints" || c.topic === "restore";
+  const inWorld = c.topic === "world" || c.topic === "restore";
   const personSection = c.person && personSections.find(([id]) => id === c.section)?.[1];
   const personCollection = c.person && ["memories", "relationships", "wishes", "details"].includes(c.section);
   const listBudget = isSnapshots
@@ -314,6 +342,50 @@ export function RepairPage({
     setListPage(0);
     void c.load("places", 0, "", part === "details" ? mainPlaceRecord?.id : undefined);
   };
+  const sections =
+    c.view === "review"
+      ? null
+      : c.person
+        ? {
+            name: "Person repairs",
+            entries: personSections.filter(([id]) => id !== "agenda" || c.person?.hasAgenda),
+            value: c.section,
+            onChange: (part: string) => {
+              setRecordQuery("");
+              setListPage(0);
+              if (part !== c.section) void c.chooseSection(part as RepairPersonSection);
+            },
+          }
+        : placeNotebook
+          ? {
+              name: "Location repairs",
+              entries: placeSections,
+              value: placeSection,
+              onChange: choosePlaceSection,
+            }
+          : inWorld
+            ? {
+                name: "World repairs",
+                entries: worldSections,
+                value: c.section,
+                onChange: (part: string) => {
+                  setListPage(0);
+                  setStep(0);
+                  if (part === "snapshots") void c.chooseTopic("restore");
+                  else if (part !== c.section) void c.chooseTopic("world", "", part as RepairWorldSection);
+                },
+              }
+            : c.topic === "progress"
+              ? {
+                  name: "Recovery status",
+                  entries: recoverySections,
+                  value: recoveryFilter,
+                  onChange: (part: string) => {
+                    setRecoveryFilter(part);
+                    setListPage(0);
+                  },
+                }
+              : null;
   const openPlace = (node: RepairBrowseItem) => {
     c.setPlacePath(
       node.icon === "zone" ? [...c.placePath, node.id] : [node.icon === "venue" ? "venues" : "places", node.id],
@@ -337,8 +409,10 @@ export function RepairPage({
   };
   const selected = c.selected;
   const editing = !!selected && !!c.draft && (c.view === "edit" || (c.view === "list" && !!selected.agendaDay));
+  const relationshipSection = c.person && c.section === "relationships";
   const isRelationship = selected?.id.startsWith('["relationship",');
   const mainPlaceDetails = !!targetPlace && !!selected && selected.id === mainPlaceRecord?.id;
+  const mainWorldSetting = selected?.id === '["world"]';
   const isMemory = selected?.topic === "memories";
   const readOnlyMemory = isMemory && ["forget", "remember"].includes(c.draft?.action ?? "");
   const venueField = c.editorFields.find((field) => field.key.startsWith("venue:"));
@@ -401,7 +475,20 @@ export function RepairPage({
     ];
   });
   const fieldGroups = useMemo(() => {
-    if (isRelationship && space.height / space.scale >= 275) return [fields];
+    if (isRelationship) {
+      const scores = fields.filter((field) => field.key === "warmth" || field.key === "romance");
+      const other = fields.filter((field) => !scores.includes(field));
+      if (space.height / space.scale >= 365) return [fields];
+      if (space.height / space.scale >= 255) return [scores, ...other.map((field) => [field])];
+    }
+    if (mainWorldSetting && space.height / space.scale >= (small ? 345 : 355)) {
+      return [
+        [
+          ...fields.filter((field) => ["name", "worldName"].includes(field.key)),
+          ...fields.filter((field) => !["name", "worldName"].includes(field.key)),
+        ],
+      ];
+    }
     if (mainPlaceDetails && !small && !compact && space.height / space.scale >= 430) {
       const first = fields.filter((field) => ["name", "form", "description"].includes(field.key));
       const remaining = fields.filter((field) => !first.includes(field));
@@ -454,7 +541,18 @@ export function RepairPage({
         { key: "__evidence", label: "Original conversation", type: "text", value: selected.source.join("\n\n") },
       ]);
     return groups;
-  }, [fields, compact, isMemory, isRelationship, selected, space.height, space.scale, mainPlaceDetails, small]);
+  }, [
+    fields,
+    compact,
+    isMemory,
+    isRelationship,
+    mainWorldSetting,
+    selected,
+    space.height,
+    space.scale,
+    mainPlaceDetails,
+    small,
+  ]);
   const currentStep = Math.min(step, Math.max(0, fieldGroups.length - 1));
   useLayoutEffect(() => {
     if (content.current) content.current.scrollTop = 0;
@@ -541,7 +639,12 @@ export function RepairPage({
     });
   const font = String(c.draft?.values.letterFontId ?? "");
   useLetterFont(font || undefined);
-  const collectionBesideEditor = personCollection && !small && !compact && (c.section === "memories" || c.total > 1);
+  const collectionBesideEditor =
+    personCollection &&
+    !relationshipSection &&
+    space.width >= 1020 &&
+    !compact &&
+    (c.section === "memories" || c.total > 1);
   let nestedFolder: RepairBrowseItem | undefined;
   let placeChildren = targetPlace?.children ?? [];
   for (const id of c.placePath.slice(c.placePath.indexOf(targetPlace?.id ?? "") + 1)) {
@@ -782,16 +885,18 @@ export function RepairPage({
       </nav>
       <AreaChoice area={area} disabled={c.saving} onChange={chooseArea} />
       <main className="repair-content">
-        {c.person || targetPlace ? (
+        {c.person || targetPlace || (inWorld && c.index && c.view !== "review") ? (
           <header className="repair-target">
-            <button
-              type="button"
-              className="repair-back"
-              disabled={c.saving}
-              onClick={() => (c.person ? void c.chooseTopic("people") : backPlace())}
-            >
-              {c.person ? "← People" : zone ? "← All Zones" : "← Locations"}
-            </button>
+            {c.person || targetPlace ? (
+              <button
+                type="button"
+                className="repair-back"
+                disabled={c.saving}
+                onClick={() => (c.person ? void c.chooseTopic("people") : backPlace())}
+              >
+                {c.person ? "← People" : zone && location ? `← ${location.title}` : "← Locations"}
+              </button>
+            ) : null}
             {c.person ? (
               <AvatarFace
                 name={c.person.name}
@@ -801,11 +906,11 @@ export function RepairPage({
               />
             ) : (
               <span className="repair-target-icon">
-                <VillageIcon name="places" />
+                <VillageIcon name={inWorld ? "world" : zone ? "zone" : "places"} />
               </span>
             )}
-            <div title={c.person?.name ?? targetPlace?.title}>
-              <h1>{c.person?.name ?? targetPlace?.title}</h1>
+            <div title={c.person?.name ?? targetPlace?.title ?? c.index?.villageName}>
+              <h1>{c.person?.name ?? targetPlace?.title ?? c.index?.villageName}</h1>
               <small>
                 {c.person
                   ? c.person.npc
@@ -815,11 +920,13 @@ export function RepairPage({
                       : c.person.id === "player"
                         ? "Your Persona"
                         : "Villager"
-                  : zone
-                    ? location?.title
-                    : location?.icon === "venue"
-                      ? "Venue"
-                      : "Location"}
+                  : inWorld
+                    ? "World"
+                    : zone
+                      ? "Zone"
+                      : location?.icon === "venue"
+                        ? "Venue"
+                        : "Location"}
               </small>
             </div>
           </header>
@@ -835,58 +942,15 @@ export function RepairPage({
           </h1>
         )}
         {area === "all" && !editing && c.view !== "review" ? searchForm("repair-mobile-search") : null}
-        {c.person && c.view !== "review" ? (
-          <Sections
-            name="Person repairs"
-            entries={personSections.filter(([id]) => id !== "agenda" || c.person?.hasAgenda)}
-            value={c.section}
-            disabled={c.saving}
-            onChange={(part) => {
-              setRecordQuery("");
-              setListPage(0);
-              void c.chooseSection(part as RepairPersonSection);
-            }}
-          />
-        ) : placeNotebook ? (
-          <label className="repair-mobile-section">
-            <span className="repair-sr">Location repairs</span>
-            <select
-              aria-label="Location repairs"
-              value={placeSection}
-              disabled={c.busy}
-              onChange={(event) => choosePlaceSection(event.target.value)}
-            >
-              {placeSections.map(([id, title]) => (
-                <option key={id} value={id}>
-                  {title}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        {sections ? <Sections {...sections} mode="phone" disabled={c.saving} /> : null}
         {c.error || problem || (selected?.artwork && artwork?.problem) ? (
           <p className="repair-error" role="alert">
             {c.error || problem || artwork?.problem}
           </p>
         ) : null}
         {!c.index ? <p role="status">Opening REPAIR…</p> : null}
-        <div className="repair-workspace" data-notebook={placeNotebook} ref={space.ref}>
-          {placeNotebook ? (
-            <nav className="repair-notebook-nav" aria-label="Location repairs">
-              {placeSections.map(([id, title, icon]) => (
-                <button
-                  type="button"
-                  key={id}
-                  aria-current={placeSection === id ? "page" : undefined}
-                  disabled={c.busy}
-                  onClick={() => choosePlaceSection(id)}
-                >
-                  <VillageIcon name={icon} />
-                  {title}
-                </button>
-              ))}
-            </nav>
-          ) : null}
+        <div className="repair-workspace" data-notebook={placeNotebook} data-sections={!!sections} ref={space.ref}>
+          {sections ? <Sections {...sections} mode="left" disabled={c.saving} /> : null}
           <div className="repair-notebook-body" ref={content}>
             {c.view === "review" && c.review ? (
               <section className="repair-review">
@@ -1035,7 +1099,7 @@ export function RepairPage({
                       label={`Repair ${person.name}`}
                       onOpen={() => {
                         setRecordQuery("");
-                        void c.choosePerson(person, "memories");
+                        void c.choosePerson(person);
                       }}
                     />
                   ))}
@@ -1181,7 +1245,7 @@ export function RepairPage({
                   />
                 </section>
               )
-            ) : isSnapshots ? (
+            ) : isSnapshots && !editing ? (
               <section className="repair-directory">
                 <button
                   type="button"
@@ -1320,7 +1384,7 @@ export function RepairPage({
                 ) : null}
                 {collectionBesideEditor ? (
                   collection
-                ) : showPageButtons ? (
+                ) : showPageButtons && !relationshipSection ? (
                   <nav className="repair-steps" aria-label="Form sections">
                     {arrangementSteps.length
                       ? arrangementSteps
@@ -1355,46 +1419,83 @@ export function RepairPage({
                   </nav>
                 ) : null}
                 <section className="repair-card">
-                  <header className="repair-card-title">
-                    <h2>
-                      {mainPlaceDetails
-                        ? "Details"
-                        : isRelationship
-                          ? selected.title
-                          : isMemory
-                            ? editorTitle
-                            : fieldGroups[currentStep]
-                              ? stepTitle(fieldGroups[currentStep]!)
-                              : editorTitle}
-                    </h2>
-                    {(arrangementSteps.length || groupCount) > 1 ? (
-                      <small>
-                        {arrangementSteps.length ? arrangementStep + 1 : currentStep + 1} of{" "}
-                        {arrangementSteps.length || groupCount}
-                      </small>
-                    ) : null}
-                    {!(c.person && c.section === "home") && !mainPlaceDetails ? (
-                      <button
-                        type="button"
-                        className="repair-close"
-                        data-collection={personCollection || undefined}
-                        aria-label={`Back to ${personSection || (targetPlace ? placeSection : "records")}`}
+                  {relationshipSection && (c.total > 1 || c.offset > 0) ? (
+                    <div className="repair-relationship-target">
+                      {isRelationship && c.person?.id !== "player" ? <strong>{c.person?.name} →</strong> : null}
+                      <select
+                        aria-label="Relationship with"
                         disabled={c.busy}
-                        onClick={() =>
-                          void c.load(
-                            c.topic,
-                            c.offset,
-                            recordQuery,
-                            placeNotebook && placeSection === "details" && !nestedFolder
-                              ? mainPlaceRecord?.id
-                              : undefined,
-                          )
-                        }
+                        value={selected.id}
+                        onChange={(event) => void c.open(event.target.value)}
                       >
-                        {personCollection ? "← Back" : "×"}
-                      </button>
-                    ) : null}
-                  </header>
+                        {(c.records.some((row) => row.id === selected.id) ? c.records : [selected, ...c.records]).map(
+                          (row) => (
+                            <option key={row.id} value={row.id}>
+                              {c.person?.id === "player" ? row.title : row.title.replace(`${c.person?.name} → `, "")}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                      {c.total > 50 || c.offset > 0 ? (
+                        <Pages
+                          page={0}
+                          size={50}
+                          offset={c.offset}
+                          total={c.total}
+                          disabled={c.busy}
+                          onPage={(offset) => void c.searchRecords("", offset)}
+                        />
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {!(relationshipSection && (c.total > 1 || c.offset > 0)) ? (
+                    <header className="repair-card-title">
+                      <h2>
+                        {mainWorldSetting
+                          ? "Village setting"
+                          : mainPlaceDetails
+                            ? "Details"
+                            : isRelationship
+                              ? selected.title
+                              : isMemory
+                                ? editorTitle
+                                : fieldGroups[currentStep]
+                                  ? stepTitle(fieldGroups[currentStep]!)
+                                  : editorTitle}
+                      </h2>
+                      {(arrangementSteps.length || groupCount) > 1 ? (
+                        <small>
+                          {arrangementSteps.length ? arrangementStep + 1 : currentStep + 1} of{" "}
+                          {arrangementSteps.length || groupCount}
+                        </small>
+                      ) : null}
+                      {!(c.person && c.section === "home") &&
+                      !mainPlaceDetails &&
+                      !relationshipSection &&
+                      !mainWorldSetting &&
+                      !(inWorld && c.section === "weather") ? (
+                        <button
+                          type="button"
+                          className="repair-close"
+                          data-collection={personCollection || undefined}
+                          aria-label={`Back to ${personSection || (targetPlace ? placeSection : "records")}`}
+                          disabled={c.busy}
+                          onClick={() =>
+                            void c.load(
+                              c.topic,
+                              c.offset,
+                              recordQuery,
+                              placeNotebook && placeSection === "details" && !nestedFolder
+                                ? mainPlaceRecord?.id
+                                : undefined,
+                            )
+                          }
+                        >
+                          {personCollection ? "← Back" : "×"}
+                        </button>
+                      ) : null}
+                    </header>
+                  ) : null}
                   {placeNotebook && placeSection === "details" && placeItems.length > 1 ? (
                     <label className="repair-field">
                       Edit
@@ -1521,8 +1622,10 @@ export function RepairPage({
                       className="repair-fields"
                       data-columns={
                         (selected.id.startsWith('["work",') && !compact) ||
-                        (mainPlaceDetails && fieldGroups[currentStep]?.length === 3)
+                        (mainPlaceDetails && fieldGroups[currentStep]?.length === 3) ||
+                        (mainWorldSetting && fieldGroups[currentStep]?.length === 4)
                       }
+                      data-world={mainWorldSetting || undefined}
                     >
                       {fieldGroups[currentStep]?.map((field) => (
                         <RepairFieldControl
@@ -1532,7 +1635,7 @@ export function RepairPage({
                           disabled={c.busy}
                           error={c.errorField === field.key ? c.error : undefined}
                           onChange={(value) => changeValue(field, value)}
-                          rows={proseRows}
+                          rows={mainWorldSetting && fieldGroups[currentStep]?.length === 4 ? 2 : proseRows}
                           hideLabel={
                             !placeNotebook &&
                             !isRelationship &&
@@ -1668,21 +1771,7 @@ export function RepairPage({
               <section className="repair-directory">
                 {c.topic === "progress" ? (
                   <>
-                    <Sections
-                      name="Recovery status"
-                      entries={[
-                        ["attention", "Needs attention"],
-                        ["active", "In progress"],
-                        ["paused", "Paused"],
-                        ["completed", "Completed"],
-                      ]}
-                      value={recoveryFilter}
-                      onChange={(next) => {
-                        setRecoveryFilter(next);
-                        setListPage(0);
-                      }}
-                    />
-                    {preparation?.status === "failed" && onRetryPreparation ? (
+                    {recoveryFilter === "attention" && preparation?.status === "failed" && onRetryPreparation ? (
                       <section className="repair-recovery-row" aria-label="Initial preparation">
                         <strong>Initial preparation</strong>
                         {preparation.error ? <span>{preparation.error}</span> : null}
@@ -1712,18 +1801,7 @@ export function RepairPage({
                     </div>
                   </>
                 ) : null}
-                {c.topic === "world" ? (
-                  <button
-                    type="button"
-                    className="repair-world-snapshots"
-                    onClick={() => {
-                      setListPage(0);
-                      void c.chooseTopic("restore");
-                    }}
-                  >
-                    Village snapshots →
-                  </button>
-                ) : null}
+                {c.topic === "world" ? <h2>{worldSections.find(([id]) => id === c.section)?.[1]}</h2> : null}
                 <div className="repair-record-list">
                   {c.records.slice(0, rowSize).map((record) => (
                     <button
@@ -1744,7 +1822,7 @@ export function RepairPage({
                 {!c.records.length && !visibleJobs.length && !c.busy ? <p>No records here.</p> : null}
                 {c.topic === "progress" && !c.records.length ? (
                   <Pages page={listPage} size={rowSize} total={visibleJobs.length} onPage={setListPage} />
-                ) : (
+                ) : c.total > rowSize || c.offset > 0 ? (
                   <Pages
                     page={0}
                     offset={c.offset}
@@ -1752,7 +1830,7 @@ export function RepairPage({
                     total={c.total}
                     onPage={(offset) => void c.searchRecords(recordQuery, offset)}
                   />
-                )}
+                ) : null}
               </section>
             )}
           </div>

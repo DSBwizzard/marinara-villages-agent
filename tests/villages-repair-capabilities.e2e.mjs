@@ -25,7 +25,7 @@ await withBrowser(browser, async () => {
       await page.evaluate(() => window.c.chooseTopic("world"));
       for (const record of records) {
         if (record.topic === "memories")
-          await page.evaluate(() => window.c.choosePerson({ id: "nora", name: "Nora", hasAgenda: true }));
+          await page.evaluate(() => window.c.choosePerson({ id: "nora", name: "Nora", hasAgenda: true }, "memories"));
         await page.evaluate((id) => window.c.open(id), record.id);
         await expect(page.locator(".repair-editor")).toBeVisible();
         for (let step = 0; step < 100; step++) {

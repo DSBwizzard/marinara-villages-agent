@@ -10,6 +10,7 @@ import type {
   RepairReview,
   RepairTopic,
   RepairValue,
+  RepairWorldSection,
 } from "../../../shared/contracts/repair.js";
 import { REPAIR_NO_CHANGES } from "../../../shared/contracts/repair.js";
 import { repairClockMinutes } from "../../../shared/helpers/repair-clock.js";
@@ -17,7 +18,7 @@ import { request, messageFrom, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
 type Draft = { values: Record<string, RepairValue>; knowers: string[]; action: string; agendaToken?: string };
-type Section = RepairPersonSection;
+type Section = RepairPersonSection | RepairWorldSection;
 type RecordTopic = RepairTopic | "all";
 type AgendaPick = { index: number | "new"; token?: string };
 type View = "hub" | "loading" | "list" | "edit" | "review" | "restored" | "history" | "checkpoints";
@@ -185,7 +186,7 @@ export function useRepairController(
     if (!current(ticket)) return;
     if (nextTopic === "restore" || (nextTopic === "people" && !who)) return;
     const result = await request<RepairRecordPage>(
-      `/repair/records?topic=${nextTopic}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}${part === "memories" ? `&memoryState=${status}` : ""}` : ""}${nextTopic === "places" ? "&browse=places" : ""}`,
+      `/repair/records?topic=${nextTopic}&offset=${start}&query=${encodeURIComponent(search)}${who ? `&personId=${encodeURIComponent(who.id)}&section=${part}${part === "memories" ? `&memoryState=${status}` : ""}` : nextTopic === "world" ? `&section=${part}` : ""}${nextTopic === "places" ? "&browse=places" : ""}`,
     );
     if (!current(ticket)) return;
     if (nextTopic === "places") setPlaceDirectory(result.directory ?? []);
@@ -210,7 +211,11 @@ export function useRepairController(
       openId ??
       (who && part === "home"
         ? (page?.records.find((row) => row.id.startsWith('["home",')) ?? page?.records[0])?.id
-        : undefined);
+        : who && part === "relationships"
+          ? (page?.records.find((row) => row.id.startsWith('["relationship",')) ?? page?.records[0])?.id
+          : nextTopic === "world" && (part === "setting" || part === "weather")
+            ? page?.records[0]?.id
+            : undefined);
     if (id) await fetchRecord(id, ticket, undefined, false, who);
     else {
       setSelected(null);
@@ -235,12 +240,13 @@ export function useRepairController(
     epoch.current++;
     return act((ticket) => fetchRecords(topic, start, search, person, section, ticket, status));
   };
-  const chooseTopic = (nextTopic: RecordTopic, search = "") => {
+  const chooseTopic = (nextTopic: RecordTopic, search = "", worldPart: RepairWorldSection = "setting") => {
     invalidate();
     setPerson(null);
     setPlaceDirectory([]);
     setPlacePath([]);
-    setSection("memories");
+    const part = nextTopic === "world" ? worldPart : nextTopic === "restore" ? "snapshots" : "memories";
+    setSection(part);
     setQuery(search);
     setCollectionQuery(search);
     setTopic(nextTopic);
@@ -248,10 +254,10 @@ export function useRepairController(
     setView("loading");
     return act(async (ticket) => {
       await readIndex();
-      await showRecords(nextTopic, 0, search, null, "memories", ticket);
+      await showRecords(nextTopic, 0, search, null, part, ticket);
     });
   };
-  const choosePerson = (who: RepairPerson, part: Section = "memories", openId?: string) => {
+  const choosePerson = (who: RepairPerson, part: RepairPersonSection = "relationships", openId?: string) => {
     invalidate();
     setPerson(who);
     setTopic("people");

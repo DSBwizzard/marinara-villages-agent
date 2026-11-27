@@ -9,6 +9,7 @@ await withBrowser(browser, async () => {
     const f = await repairBrowserFixture(browser),
       { page } = f;
     await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+    await f.section("memories");
     await page.getByRole("button", { name: "The workshop key", exact: true }).click();
     const field = page.getByRole("textbox", { name: "Memory", exact: true });
     await field.fill("A separate draft for Nora.");
@@ -21,12 +22,14 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "← People", exact: true }).click();
     await page.getByRole("searchbox", { name: "Find a person" }).fill("Ellis");
     await page.getByRole("button", { name: "Repair Ellis", exact: true }).click();
+    await f.section("memories");
     await page.getByRole("button", { name: "A quiet afternoon", exact: true }).click();
     await expect(field).toHaveValue("We read in the garden.");
     await page.getByRole("button", { name: "← People", exact: true }).click();
     await expect(page.getByRole("searchbox", { name: "Find a person" })).toHaveValue("Ellis");
     await page.getByRole("searchbox", { name: "Find a person" }).fill("Nora");
     await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+    await f.section("memories");
     await page.getByRole("button", { name: "The workshop key", exact: true }).click();
     await expect(field).toHaveValue("Keep Nora’s unfinished correction.");
     await page.getByRole("button", { name: "Review changes", exact: true }).click();
@@ -125,11 +128,13 @@ await withBrowser(browser, async () => {
     const f = await repairBrowserFixture(browser),
       { page } = f;
     await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+    await f.section("memories");
     const gate = f.hold('record:["memory","nora"]');
     await page.getByRole("button", { name: "The workshop key", exact: true }).click();
     await gate.started;
     await page.getByRole("button", { name: "← People", exact: true }).click();
     await page.getByRole("button", { name: "Repair Ellis", exact: true }).click();
+    await f.section("memories");
     gate.release();
     await page.getByRole("button", { name: "A quiet afternoon", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
@@ -139,8 +144,7 @@ await withBrowser(browser, async () => {
   await runCase("repair-people/restore-draft", async () => {
     const f = await repairBrowserFixture(browser),
       { page } = f;
-    await f.area("world");
-    await page.getByRole("button", { name: "Village snapshots →" }).click();
+    await f.snapshots();
     await page.getByRole("textbox", { name: "Snapshot name" }).fill("Before correction");
     await page.getByRole("button", { name: "Save snapshot", exact: true }).click();
     await page.getByRole("button", { name: /^Before correction/ }).click();

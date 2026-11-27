@@ -51,6 +51,7 @@ await withBrowser(browser, async () => {
     const f = await repairBrowserFixture(browser, 1440, 900, { extraMemories: 1 }),
       { page } = f;
     await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+    await f.section("memories");
     await page.getByRole("button", { name: "The workshop key", exact: true }).click();
     const field = page.getByRole("textbox", { name: "Memory", exact: true });
     await field.fill("Keep the first account draft.");
@@ -80,6 +81,7 @@ await withBrowser(browser, async () => {
       const f = await repairBrowserFixture(browser, width, 900, { extraMemories: 1 }),
         { page } = f;
       await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+      await f.section("memories");
       await page.getByRole("searchbox", { name: "Find a memory", exact: true }).fill("The workshop key");
       await page.getByRole("button", { name: "The workshop key", exact: true }).click();
       const field = page.getByRole("textbox", { name: "Memory", exact: true });
@@ -123,7 +125,6 @@ await withBrowser(browser, async () => {
     const f = await repairBrowserFixture(browser),
       { page } = f;
     await f.area("world");
-    await page.getByRole("button", { name: "Village setting", exact: true }).click();
     await page.getByRole("textbox", { name: "Village name", exact: true }).fill("Changed village");
     await page.getByRole("button", { name: "Review changes", exact: true }).click();
     await page.route(
@@ -169,6 +170,7 @@ await withBrowser(browser, async () => {
     const f = await repairBrowserFixture(browser),
       { page } = f;
     await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+    await f.section("memories");
     await page.getByRole("button", { name: "The workshop key", exact: true }).click();
     await expect(page.locator(".repair-editor")).toBeVisible();
     await page.evaluate(() => {
@@ -176,6 +178,7 @@ await withBrowser(browser, async () => {
     });
     await page.getByRole("button", { name: "← People", exact: true }).click();
     await page.getByRole("button", { name: "Repair Ellis", exact: true }).click();
+    await f.section("memories");
     await page.getByRole("button", { name: "A quiet afternoon", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue("We read in the garden.");
     const count = f.calls.length;
@@ -191,8 +194,8 @@ await withBrowser(browser, async () => {
       ["history", "historyPage", "historyOffset"],
       ["world", "checkpointPage", "checkpointOffset"],
     ]) {
-      await f.area(area);
-      if (area === "world") await page.getByRole("button", { name: "Village snapshots →" }).click();
+      if (area === "world") await f.snapshots();
+      else await f.area(area);
       const older = f.hold("index");
       await page.evaluate((method) => {
         void window.c[method](50);

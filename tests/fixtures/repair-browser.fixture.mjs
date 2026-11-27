@@ -206,7 +206,9 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
     summary: "Willowmere",
     fields: [
       { key: "name", label: "Village name", type: "text", multiline: false, value: "Willowmere" },
+      { key: "worldName", label: "World name", type: "text", multiline: false, value: "Othiras" },
       { key: "setting", label: "Place description", type: "text", value: "A village by the river." },
+      { key: "worldRules", label: "Standing rules", type: "text", value: "Keep to the road after dark." },
     ],
     source: [],
     actions: [{ id: "correct", label: "Modify" }],
@@ -337,21 +339,24 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
     ],
   };
   const recordFor = (id, person) => {
-    if (id?.startsWith('["relationship",'))
+    if (id?.startsWith('["relationship",')) {
+      const [, owner, recipient] = JSON.parse(id);
+      const first = recipient === "player";
       return {
         id,
         token: "relationship-native",
         topic: "people",
-        title: "Nora → You",
+        title: `${people.find((row) => row.id === owner)?.name ?? owner} → ${first ? "You" : "Ellis"}`,
         summary: "Relationship scores",
         fields: [
-          { key: "warmth", label: "Warmth", type: "number", min: -100, max: 100, value: 42 },
-          { key: "romance", label: "Romantic interest", type: "number", min: -20, max: 20, value: 3 },
+          { key: "warmth", label: "Warmth", type: "number", min: -100, max: 100, value: first ? 50 : -25 },
+          { key: "romance", label: "Romantic interest", type: "number", min: -20, max: 20, value: first ? 3 : -4 },
         ],
         actions: [{ id: "correct", label: "Modify" }],
         related: [],
         source: [],
       };
+    }
     const native = options.records?.find((record) => record.id === id);
     if (native) return structuredClone(native);
     const found = [
@@ -432,7 +437,10 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
             : section === "agenda"
               ? agenda
               : section === "relationships"
-                ? [recordFor('["relationship","nora","player"]', person)]
+                ? [
+                    recordFor(JSON.stringify(["relationship", person, "player"]), person),
+                    ...(person === "nora" ? [recordFor('["relationship","nora","ellis"]', person)] : []),
+                  ]
                 : section === "details"
                   ? [person === "guest" ? visitor : letter]
                   : section === "home"
@@ -603,6 +611,15 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
           })
           .click();
       else await page.getByRole("combobox", { name: "Person repairs" }).selectOption(value);
+    },
+    async snapshots() {
+      await this.area("world");
+      if (width > 700)
+        await page
+          .getByRole("navigation", { name: "World repairs" })
+          .getByRole("button", { name: "Village snapshots" })
+          .click();
+      else await page.getByRole("combobox", { name: "World repairs" }).selectOption("snapshots");
     },
     hold(key) {
       const gate = { started: Promise.withResolvers(), release: Promise.withResolvers() };

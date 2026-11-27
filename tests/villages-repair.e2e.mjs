@@ -13,6 +13,7 @@ await withBrowser(browser, async () => {
       const f = await repairBrowserFixture(browser, width, height, { history: 57, extraMemories: 60 }),
         { page } = f;
       await page.getByRole("button", { name: "Repair Nora", exact: true }).click();
+      await f.section("memories");
       const search = page.getByRole("searchbox", { name: "Find a memory", exact: true });
       await search.fill("Remote memory 59");
       await page.getByRole("button", { name: "Remote memory 59", exact: true }).click();
@@ -73,8 +74,7 @@ await withBrowser(browser, async () => {
   await runCase("repair-ui/checkpoints", async () => {
     const f = await repairBrowserFixture(browser, 390, 844, { checkpoints: 53 }),
       { page } = f;
-    await f.area("world");
-    await page.getByRole("button", { name: "Village snapshots →" }).click();
+    await f.snapshots();
     for (let index = 0; index < 60 && !(await page.getByRole("button", { name: /^Snapshot 52/ }).count()); index++) {
       const status = page.locator(".repair-pages [role=status]");
       const before = await status.textContent();

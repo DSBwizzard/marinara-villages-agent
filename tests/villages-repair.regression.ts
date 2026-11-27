@@ -1125,6 +1125,21 @@ await runCase("repair/domain-editors", async () => {
     { memories: true },
   );
   const opening = await f.api.inspect(repairId("world"));
+  const settings = await f.api.list("world", "", 0, undefined, "setting");
+  assert.deepEqual(
+    settings.records.map((row) => row.id),
+    [opening.id],
+  );
+  const circumstances = await f.api.list("world", "", 0, undefined, "circumstances");
+  assert.ok(circumstances.records.some((row) => row.id === repairId("new-situation")));
+  const conditions = await f.api.list("world", "", 0, undefined, "conditions");
+  assert.ok(conditions.records.some((row) => row.id.startsWith('["new-condition",')));
+  assert.ok(!conditions.records.some((row) => row.id === opening.id));
+  const weather = await f.api.list("world", "", 0, undefined, "weather");
+  assert.deepEqual(
+    weather.records.map((row) => row.id),
+    [repairId("narrative-weather", "new")],
+  );
   assert.equal(opening.fields.find((field) => field.key === "worldRules")!.value, "Original standing rules");
   const founding = await f.prepare(
     edit(

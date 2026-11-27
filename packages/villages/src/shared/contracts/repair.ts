@@ -16,6 +16,7 @@ export type RepairTopic = "memories" | "people" | "places" | "world" | "progress
 export type RepairValue = string | number | boolean;
 export type RepairPerson = { id: string; name: string; hasAgenda?: boolean; visitor?: true; npc?: true };
 export type RepairPersonSection = "relationships" | "memories" | "wishes" | "home" | "agenda" | "details";
+export type RepairWorldSection = "setting" | "circumstances" | "conditions" | "weather" | "scenes" | "snapshots";
 export type RepairBrowseIcon = "places" | "venue" | "zone" | "details" | "access" | "people";
 export type RepairBrowseItem = {
   id: string;
