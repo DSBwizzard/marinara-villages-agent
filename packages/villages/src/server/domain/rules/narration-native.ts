@@ -1,6 +1,7 @@
 import type { VillageState } from "../models/world.js";
 import type { NarrationReadset } from "../models/narration-model.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
+import { npcNameKey } from "./npc-index.js";
 import { readNarrationEffectHeader } from "./narration-contract.js";
 import {
   bindNarrationSource,
@@ -45,6 +46,7 @@ import { projectSpeechContext } from "./project-interpretation.js";
 import { applyNarrationAccess, assertNarrationDecision, narrationAccessScopes } from "./narration-access.js";
 import { asRecord } from "./coerce.js";
 import { pruneTaggedSceneReply } from "./tagged-scene-reply.js";
+import { isPlayerVisitInvitation } from "./scene-visit-speech.js";
 
 class TaggedNpcAdmissionFailure extends Error {
   constructor(
@@ -83,7 +85,14 @@ export function prepareNarrationNative(
       admitting = asRecord(value).id;
       const command = readNarrationNativeCommand(value);
       memoryRequire(command.type === "npc.admit", "invalid NPC command");
-      if (!command.existingId) memoryRequire(++newNpcCount <= 1, "a reply may introduce at most one new NPC");
+      if (!command.existingId) {
+        memoryRequire(++newNpcCount <= 1, "a reply may introduce at most one new NPC");
+        if (readset.explicitNpcIntroduction && command.label && command.name)
+          memoryRequire(
+            npcNameKey(command.label) !== npcNameKey(command.name),
+            "an NPC's public role must differ from their private name",
+          );
+      }
       const segment = rawSegments.findIndex(
           (value, index) =>
             value &&
@@ -219,7 +228,11 @@ export function prepareNarrationNative(
           effect.failure = "Use Move or Visit to change location, or Conclude to end the Scene.";
           return undefined;
         }
-        const segment = reply.segments.findIndex((line) => line.id === command.at);
+        // The explicit Leave action owns the closure position. The command still needs its admitted player source.
+        const segment =
+          command.type === "scene.end" && readset.playerNavigation === "conclude"
+            ? reply.segments.length - 1
+            : reply.segments.findIndex((line) => line.id === command.at);
         memoryRequire(segment >= 0, "native command needs its actual supplied segment");
         if (command.type === "circumstance" && command.situation) {
           const damage = new Set(command.conditions?.flatMap((row) => row.roomKeeps ?? []));
@@ -234,7 +247,14 @@ export function prepareNarrationNative(
       }
     })
     .filter((row) => row !== undefined)
-    .toSorted((a, b) => a.segment - b.segment || a.index - b.index);
+    .toSorted(
+      (a, b) =>
+        (readset.playerNavigation === "conclude"
+          ? Number(a.command.type === "scene.end") - Number(b.command.type === "scene.end")
+          : 0) ||
+        a.segment - b.segment ||
+        a.index - b.index,
+    );
   // Tentative positions grant nothing: every crossing is an essential validated dependency before publication.
   const planned = commands.flatMap(({ command, effect, segment }) => {
     if (
@@ -282,8 +302,31 @@ export function prepareNarrationNative(
   function apply(candidate: VillageState, row: (typeof commands)[number]) {
     const { command, effect } = row;
     const sources = command.source.map((ref) => bindNarrationSource(ref, context));
+    const beat = reply.segments[row.segment];
+    if (readset.taggedSceneReply && beat.kind === "dialogue" && beat.offerWork)
+      memoryRequire(
+        sources.every((source) =>
+          source.perceptions.some((person) => person.actorId === "player" && person.channel === "words"),
+        ),
+        "the Player must hear the Work proposal",
+      );
     if (effect.id === reply.visitCommandId)
       memoryRequire(narrationWitnesses(sources).includes("player"), "the Player must hear the visit invitation");
+    if (
+      readset.authoritativeSceneBeats &&
+      command.type === "access.decide" &&
+      isPlayerVisitInvitation(command.decision)
+    )
+      memoryRequire(
+        sources.some(
+          (source) =>
+            source.kind === "speech" &&
+            source.unitId === context.lines[row.segment].id &&
+            source.actorId === command.by &&
+            source.perceptions.some((person) => person.actorId === "player" && person.channel === "words"),
+        ),
+        "the Player must hear the visit invitation from its actual speaker",
+      );
     memoryRequire(
       sources.every(
         (source) =>
@@ -376,6 +419,7 @@ export function prepareNarrationNative(
       };
     }
     if (command.type === "npc.introduce") {
+      memoryRequire(!readset.explicitNpcIntroduction, "use the explicit name introduction beat");
       const npc = findNpc(candidate, command.who);
       memoryRequire(
         npc &&
@@ -660,7 +704,11 @@ export function acceptNarration(
       admissionFailure = error;
       rejected = [{ id: error.effectId, reason: error.message }];
     }
-    const reduced = pruneTaggedSceneReply(raw, new Set(rejected.map(({ id }) => id)));
+    const reduced = pruneTaggedSceneReply(
+      raw,
+      new Set(rejected.map(({ id }) => id)),
+      publication.readset.authoritativeSceneBeats,
+    );
     if (!reduced) {
       if (admissionFailure) throw admissionFailure.cause;
       return selected!.result;

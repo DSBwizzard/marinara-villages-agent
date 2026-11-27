@@ -705,6 +705,7 @@ export type RoomOperation = import("./scene-failure-diagnostic.js").SceneFailure
   recoverable?: boolean;
   /** Player input from an exact, published turn whose operation has since changed. */
   submittedMessage?: string;
+  submittedRememberFor?: string;
   id: string;
   kind: string;
   attemptId: string;
@@ -720,6 +721,7 @@ export type RoomOperation = import("./scene-failure-diagnostic.js").SceneFailure
     message?: string;
     mode?: string;
     targetId?: string;
+    rememberFor?: string;
     contact?: { kind?: string; boundaryZoneId?: string };
   };
 };

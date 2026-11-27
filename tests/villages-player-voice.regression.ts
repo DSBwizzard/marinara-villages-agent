@@ -72,7 +72,8 @@ async function main() {
     assert.match(prompt, /The player (?:controls|supplies) their [^.]*speech[^.]+thoughts[^.]+consent/u);
     assert.match(prompt, /Leave their next (?:response|choice) (?:to them|open)/u);
     assert.match(prompt, /(?:narrate only what they explicitly submitted|Describe only their submitted actions)/u);
-    assert.equal(scenePromptPacket(prompt, "interaction").interaction.gmPrivateInput, input);
+    assert.equal(scenePromptPacket(prompt, "interaction").interaction.inputWithheld, true);
+    assert.doesNotMatch(prompt, /I worry about the hinge/u);
     assert.match(prompt, /Then the bees can stay put/u);
     if (mode === "greet") assert.match(prompt, /Open the Scene from established presence/u);
     if (mode === "leave") assert.match(prompt, /Any goodbye from the player comes from their submission/u);

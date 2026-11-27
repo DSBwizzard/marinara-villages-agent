@@ -683,6 +683,16 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         id,
         (previous) => {
           if (previous?.id === jobId(work)) {
+            if (
+              work.kind === "wish" &&
+              work.retryActionId &&
+              previous.retryActionId !== work.retryActionId &&
+              previous.status === "obsolete" &&
+              !activityDispatched(previous) &&
+              !uncertainAttempt(previous) &&
+              !previous.steps.length
+            )
+              return fresh(work, previous);
             if (work.finite && !previous.finite) previous.finite = true;
             return previous;
           }
@@ -999,6 +1009,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           current.steps[index]!.timing = timing;
           return current;
         });
+        const claimedJob = job;
+        const claim = claimedJob.steps[index]?.responseClaim;
+        if (!claim) throw new Obsolete("The background request reservation changed before dispatch.");
         const assertActive = () => {
           if (stopped || owner !== runOwner || controller.signal.aborted)
             throw new Paused("Background generation stopped.");
@@ -1017,7 +1030,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
               throw new Paused("Waiting until Villages is visible.");
             pendingCatchupDispatch.delete(id);
-            unsubmittedSteps.delete(job!.steps[index].responseClaim!.id);
+            if (job!.steps[index]?.responseClaim?.id !== claim.id)
+              throw new Obsolete("The background request reservation changed before dispatch.");
+            unsubmittedSteps.delete(claim.id);
             invoked = true;
             dispatched = true;
           };
@@ -1057,11 +1072,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         } catch (error) {
           if (error instanceof Paused || error instanceof Obsolete) throw error;
           const lateResponses = backgroundResponseStore(documents);
-          const physicalJob = job!;
           retainLateProviderResponse(error, (value) =>
-            lateResponses
-              .publish(physicalJob, index, value as Awaited<ReturnType<BackgroundCompletion>>)
-              .then(() => {}),
+            lateResponses.publish(claimedJob, index, value as Awaited<ReturnType<BackgroundCompletion>>).then(() => {}),
           );
           assertActive();
           const connectionIssue = connectionFailureKind(error, !!options.responseFormat);
@@ -1099,17 +1111,22 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           });
         }
         stage = "response-storage";
-        const savedResponse = await responses.publish(job!, index, response);
+        const savedResponse = await responses.publish(claimedJob, index, response);
         if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
         job = await updateJob((current) => {
-          if (current?.id !== job!.id || current.owner !== runOwner) throw new Obsolete("This job was replaced.");
+          if (
+            current?.id !== runJobId ||
+            current.owner !== runOwner ||
+            current.steps[index]?.responseClaim?.id !== claim.id
+          )
+            throw new Obsolete("This job was replaced.");
           current.steps[index] = {
             key: options.checkpointId,
             fingerprint,
             status: "completed",
             response: savedResponse.response,
             responseRef: savedResponse.ref,
-            responseClaim: current.steps[index].responseClaim,
+            responseClaim: claim,
             timing: {
               ...hostTiming,
               hostFinishedAt: new Date().toISOString(),

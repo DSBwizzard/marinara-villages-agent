@@ -2,6 +2,8 @@ import type { SpriteManagerState } from "../../../shared/contracts/sprites.js";
 import { PROFESSOR_MARI_ID, MARI_SPRITE_FOLDER, mariSpriteFiles } from "../../../shared/helpers/professor-mari.js";
 import { automaticVisitorSprites } from "./visitor-sprites.js";
 
+const mariMoods = ["presenting"];
+
 export const MARI_VILLAGES_CONTEXT =
   "Villages context: Professor Mari remembers being Marinara Engine's built-in agentic assistant. " +
   "Her existing card remains the foundation of her personality, appearance and history. She takes the Village and its people seriously, " +
@@ -34,6 +36,7 @@ export function withMariSpriteDefaults(characterId: string, manager: SpriteManag
         ...(slot.version ? { version: slot.version } : {}),
       })),
       [],
+      mariMoods,
     );
     const selection = (value: SpriteManagerState | null) =>
       value && [
@@ -44,5 +47,5 @@ export function withMariSpriteDefaults(characterId: string, manager: SpriteManag
     if (manager.assignments.length && JSON.stringify(selection(manager)) !== JSON.stringify(selection(automatic)))
       return manager;
   }
-  return automaticVisitorSprites(mariSpriteFiles, [MARI_SPRITE_FOLDER])!;
+  return automaticVisitorSprites(mariSpriteFiles, [MARI_SPRITE_FOLDER], mariMoods)!;
 }

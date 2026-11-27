@@ -45,6 +45,7 @@ function fixture(count: number) {
     id,
     name: id,
     kind,
+    seen: kind === "public" || kind === "exterior",
     connectedTo: links,
     ownerId,
   });
@@ -158,7 +159,7 @@ const scene = coerceSession({
   lines: [],
   submissions: [],
 });
-const selected = zoneEventScene(scene, venue, { targetId: ids[4], message: ids[4] + ", hello!" });
+const selected = zoneEventScene(scene, venue, { targetId: ids[4] });
 assert.equal(selected.participants.length, 4);
 assert.equal(selected.contactGeneration!.actorIds![0], ids[4]);
 assert.equal(selected.activeIds.length, 4, "all four locals remain physically present");

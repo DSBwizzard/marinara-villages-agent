@@ -11,6 +11,7 @@ import type {
   RepairRecord,
   RepairRequest,
   RepairReview,
+  RepairValue,
 } from "../../../shared/contracts/repair.js";
 import { REPAIR_NO_CHANGES } from "../../../shared/contracts/repair.js";
 import {
@@ -160,6 +161,15 @@ function recordChanges(before: RepairRecord[], after: RepairRecord[], selectedId
       const after = row.source.filter((entry) => !old.source.includes(entry));
       if (before.length || after.length)
         changes.push({ label: "Schedule", before: before.join("\n"), after: after.join("\n") });
+      for (const field of row.fields) {
+        if (!/^(?:purpose|flexible):/u.test(field.key)) continue;
+        const previous = old.fields.find(({ key }) => key === field.key);
+        if (!previous || previous.value === field.value) continue;
+        const label = (value: RepairValue) =>
+          field.options?.find((option) => option.value === value)?.label ??
+          (typeof value === "boolean" ? (value ? "Yes" : "No") : String(value));
+        changes.push({ label: field.label, before: label(previous.value), after: label(field.value) });
+      }
       continue;
     }
     for (const field of row.fields) {

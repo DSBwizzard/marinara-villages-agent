@@ -5,6 +5,7 @@ import type { VillageState } from "../models/world.js";
 import { continuityActor } from "./continuity-actors.js";
 import { continuityProtectionUnits, continuitySourceUnit, continuityVersionId, continuityViews } from "./continuity.js";
 import { memoryHash } from "./memory-integrity.js";
+import { ordinaryUseRestricted } from "./narrative-environment.js";
 import { findLocation } from "./places.js";
 
 const nativeNotices: Partial<
@@ -78,7 +79,15 @@ export function narrationSceneNotices(
   const notices = new Map<string, VenueRecordEvent>();
   const notifiedReceipts = new Set<string>();
   for (const receipt of episode.commandReceipts) {
-    const label = nativeNotices[receipt.kind];
+    const repairRoom = receipt.kind === "condition-repair" ? episode.room : undefined;
+    const label = repairRoom
+      ? {
+          kind: "venue" as const,
+          text: ordinaryUseRestricted(state.narrative, episode.acceptedAt, repairRoom.placeId, repairRoom.zoneId)
+            ? "Ordinary use still restricted"
+            : "Repair restriction lifted",
+        }
+      : nativeNotices[receipt.kind];
     if (!label || !receipt.witnesses.includes(player.id)) continue;
     const proof = episode.grounding.find(
       (source) => source.kind === "native" && source.committedReceiptId === receipt.id,

@@ -10,6 +10,8 @@ export type FoundingSuggestionOptions = {
   quickStart?: boolean;
   separateHomes?: boolean;
   venueId?: string;
+  addVenue?: boolean;
+  venueBrief?: string;
   fullVenue?: boolean;
   draftEntranceImage?: boolean;
   draftSetting?: boolean;
@@ -58,8 +60,11 @@ export async function requestFoundingSuggestions(
     quickStart: !!options?.quickStart,
     ...(options?.plan ? { plan: true } : {}),
     ...(options?.separateHomes ? { separateHomes: true } : {}),
-    ...(options?.plan || options?.separateHomes ? { sourceVenues: JSON.stringify(setupDraftData.venues) } : {}),
+    ...(options?.plan || options?.separateHomes || options?.addVenue
+      ? { sourceVenues: JSON.stringify(setupDraftData.venues) }
+      : {}),
     venueId: options?.venueId,
+    ...(options?.addVenue ? { addVenue: true } : {}),
     ...(options?.fullVenue ? { fullVenue: true, draftEntranceImage: !!options.draftEntranceImage } : {}),
     ...(options?.draftSetting ? { draftSetting: true, settingReplacement: options.settingReplacement } : {}),
     ...((!options?.quickStart && options?.venueId) || options?.plan || options?.separateHomes || options?.draftSetting
@@ -148,18 +153,17 @@ export async function requestFoundingSuggestions(
       }
       if (receipt.status === "complete" && receipt.result) {
         terminal = true;
-        if (!pending.draftSetting) clear();
-        if (receipt.sourceKey !== ports.setupBeginningSourceKey)
-          throw new Error(
-            "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
-          );
+        if (!pending.draftSetting && !pending.addVenue) clear();
         if (
+          receipt.sourceKey !== ports.setupBeginningSourceKey ||
           (pending.sourceInputs !== undefined && pending.sourceInputs !== JSON.stringify(input)) ||
           (pending.sourceVenues !== undefined && pending.sourceVenues !== JSON.stringify(setupDraftData.venues))
-        )
-          throw new Error(
-            "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.",
-          );
+        ) {
+          const message =
+            "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.";
+          if (pending.addVenue) failed(message);
+          throw new Error(message);
+        }
         return receipt.result;
       }
       if (receipt.status !== "running") throw new Error("Suggestion status is unavailable.");

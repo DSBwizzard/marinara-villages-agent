@@ -287,6 +287,13 @@ await withBrowser(browser, async () => {
       await composer.fill("A very long draft that wraps. ".repeat(35));
       assert.deepEqual(await boxes(), baseline, "draft height does not move the cast");
       assert.ok(await composer.evaluate((el) => el.scrollHeight > el.clientHeight));
+      if (mobile && count === 1 && mode === "sprites") {
+        const reminder = page.getByLabel("Whisper a reminder", { exact: true });
+        await reminder.click();
+        await expect(page.getByRole("button", { name: "Remind " + residents[0].name, exact: true })).toBeVisible();
+        assert.deepEqual(await boxes(), baseline, "opening the reminder chooser does not move the cast");
+        await reminder.click();
+      }
       await composer.fill("Preserve this draft.");
       const text = await reading.innerText();
       await page.getByRole("button", { name: "Venue actions" }).click();

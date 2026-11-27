@@ -138,7 +138,9 @@ export function applyNarrationResidence(
   state: VillageState,
   before: VillageState,
   command: Request,
-  readset: Pick<NarrationReadset, "calendar" | "residence"> & { source: Pick<NarrationReadset["source"], "actors"> },
+  readset: Pick<NarrationReadset, "calendar" | "residence" | "explicitSceneEvidence"> & {
+    source: Pick<NarrationReadset["source"], "actors">;
+  },
   sources: ContinuityEvidence[],
   receiptId: string,
   at: string,
@@ -147,6 +149,10 @@ export function applyNarrationResidence(
   memoryRequire(
     sources.every((source) => source.perceptions.some((row) => row.channel === "words" && row.actorId !== command.by)),
     "the native request or decision must actually be communicated",
+  );
+  memoryRequire(
+    !readset.explicitSceneEvidence || command.type !== "residence.decide" || command.by !== "player",
+    "confirm the player's residence decision in Venue Requests",
   );
   const now = new ZonedDate(at, readset.calendar.timeZone),
     witnesses = narrationWitnesses(sources);

@@ -1,4 +1,6 @@
 import { findCardCharacter } from "./visitors.js";
+import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { badRequest } from "./errors.js";
 import { compactSceneExchange, projectEpisodeRecall } from "./episode-recall.js";
 import { readOnlyRoomContext } from "./continuity-context.js";
 import type { ContinuityEvidence, ContinuityHolder, ContinuityTarget } from "../models/continuity-model.js";
@@ -26,15 +28,7 @@ import {
 import { relationshipAttitudes, selectActorContinuity, selectRoomContinuity } from "./continuity-retrieval.js";
 import { appendHistoryWithin, selectEpisodeHistory } from "./episodes.js";
 import { memoryHash, memoryRequire } from "./memory-integrity.js";
-import {
-  asksForPastExchange,
-  asksForRecallQuote,
-  estimatedTextTokens,
-  recallTerms,
-  requestsMemoryChange,
-  sceneQuoteScore,
-  sceneQuoteTerms,
-} from "./text-recall.js";
+import { estimatedTextTokens, recallOverlap, recallTerms } from "./text-recall.js";
 import { hasWritingEvidence, type VenueWritingBlock } from "./venue-writing.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { sceneContinuityView } from "./scene-continuity.js";
@@ -114,21 +108,14 @@ function callbackView(
     view.segments.some((line) => line.projections.length)
   )
     return view;
-  const quote = asksForRecallQuote(input);
-  const terms = quote ? sceneQuoteTerms(input) : [...new Set(recallTerms(input))];
-  const lines = view.segments.filter((line) => "text" in line).filter((line) => line.kind === "dialogue" && line.text);
+  const terms = new Set(recallTerms(input));
+  const lines = view.segments
+    .filter((line) => "text" in line)
+    .filter((line) => (line.kind === "dialogue" || line.kind === "whisper" || line.kind === "side") && line.text);
   if (lines.length <= 2) return view;
   const scores = lines.map((line) => {
-    if (quote) {
-      if (line.perceivedBy.player !== "words") return 0;
-      return sceneQuoteScore(
-        terms,
-        episode.segments.find((saved) => saved.id === line.id)?.name ?? line.speakerId,
-        line.text,
-      );
-    }
-    const words = new Set(recallTerms(line.text));
-    return terms.filter((term) => words.has(term)).length;
+    const speaker = line.perceivedBy.player === "words" ? episode.segments.find((saved) => saved.id === line.id) : null;
+    return recallOverlap(terms, speaker ? `${speaker.name} ${line.text}` : line.text);
   });
   const strongest = Math.max(...scores);
   if (!strongest) return view;
@@ -202,6 +189,7 @@ export function narrationContinuityContext(
   at: string,
   separateRecallFromEvidence = false,
   distinguishNpcMeetings = false,
+  rememberFor?: string,
 ) {
   memoryRequire(state.seed === scene.villageSeed && scene.zoneId, "Scene continuity scope changed");
   const episodeId = sceneEpisodeId(state.seed, scene.id, operationId);
@@ -295,54 +283,18 @@ export function narrationContinuityContext(
     });
   const circumstanceRoots = new Set(circumstances.flatMap(({ roots }) => roots));
   const requiredRoots = nativeCircumstanceRoots(state, at, views, { placeId: scene.placeId, zoneId: scene.zoneId });
-  const comma = input.indexOf(",");
-  const address =
-    comma > 0
-      ? input
-          .slice(0, comma)
-          .trim()
-          .replace(/^["“]\s*/u, "")
-          .toLocaleLowerCase("en-US")
-      : "";
-  const addressed = address
-    ? scene.participants.filter(({ name }) => {
-        const lower = name.toLocaleLowerCase("en-US");
-        return lower === address || lower.split(/\s+/u)[0] === address;
-      })
-    : [];
-  const recallQuery = addressed.length ? input.slice(comma + 1) : input;
-  const memoryChange = requestsMemoryChange(recallQuery);
-  const speech = /^\s*(?:"([^"\r\n]*)"|“([^“”\r\n]*)”)\s*$/du.exec(input);
-  const speechRange = speech?.indices?.[1] ?? speech?.indices?.[2];
-  const rememberStart = addressed.length ? comma + 1 : (speechRange?.[0] ?? 0);
-  const remember =
-    memoryChange && separateRecallFromEvidence && addressed.length < 2 && speechRange
-      ? /^\s*(?:please\s+)?remember\s+this(?:\s+for\s+(?<qualification>[^:\r\n]{1,60}))?\s*:\s*(?<fact>\S[^\r\n]*?)\s*$/diu.exec(
-          input.slice(rememberStart, speechRange[1]),
-        )
-      : null;
-  const fact = remember?.groups?.fact?.replace(/[.!]+$/u, "").trimEnd();
-  const factRange = remember?.indices?.groups?.fact;
-  const local = actors.filter(({ id }) => id !== "player" && contactPosition(scene, id) === scene.zoneId);
-  const recipientId =
-    addressed[0]?.characterId ??
-    (remember && !remember.groups?.qualification && local.length === 1 ? local[0].id : undefined);
-  const clarifyMemoryRecipient = !!fact && !recipientId && local.length > 1;
-  // shortcut: gate only a single quoted “remember this:” fact until mixed-intent speech has a structured input.
-  const requestedMemory =
-    fact &&
-    factRange &&
-    !clarifyMemoryRecipient &&
-    !/[.!?"“”]/u.test(fact) &&
-    Buffer.byteLength("Player said: " + fact) < CONTINUITY_TEXT_BYTES &&
-    local.some(({ id }) => !recipientId || id === recipientId)
-      ? {
-          start: rememberStart + factRange[0],
-          end: rememberStart + factRange[0] + fact.length,
-          ...(recipientId ? { recipientId } : {}),
-        }
-      : undefined;
-  const readOnlyRecall = separateRecallFromEvidence && !memoryChange;
+  const recallQuery = input;
+  const memoryChange = !!rememberFor;
+  if (rememberFor) {
+    if (!scene.activeIds.includes(rememberFor) || contactPosition(scene, rememberFor) !== scene.zoneId)
+      throw badRequest("Choose someone in this Zone to receive the reminder.");
+    if (!input.trim() || Buffer.byteLength("Player said: " + input.trim()) >= CONTINUITY_TEXT_BYTES)
+      throw badRequest("That reminder is too long to save.");
+  }
+  const requestedMemory = rememberFor
+    ? { start: input.length - input.trimStart().length, end: input.trimEnd().length, recipientId: rememberFor }
+    : undefined;
+  const readOnlyRecall = separateRecallFromEvidence;
   const opening = scene.status === "opening";
   const actorSelection = selectActorContinuity(state.continuity, state.episodes, holders, at, {
     query: recallQuery,
@@ -357,9 +309,7 @@ export function narrationContinuityContext(
     bytes: capacity,
     requiredIds: [],
     preferredIds: repairs.flatMap((repair) => repair.entries),
-    wholeRoom:
-      /\b(all|every|entire|whole|everything)\b/iu.test(input) &&
-      /\b(room|furniture|decor|walls|inside|interior)\b/iu.test(input),
+    wholeRoom: false,
   });
   const parts: Part[] = [];
   let alias = 0;
@@ -432,7 +382,78 @@ export function narrationContinuityContext(
   );
   const transcriptIds = new Set(transcript.map((part) => part.episodeIds[0]));
   parts.push(...transcript);
-  const recallCandidates = scene.visitEvent && opening ? [] : (history.recallCandidates ?? []);
+  const sharedRecall = history.sharedRecall ?? [];
+  const calendar = capturedSceneCalendar({ startedAt: at }, state.timeZone);
+  const local = new ZonedDate(at, calendar.timeZone);
+  const instant = local.getTime();
+  const bookedEpisodes = new Set<string>();
+  for (const booking of state.residentPlans.appointments ?? []) {
+    const time = booking.time;
+    if (
+      booking.cancelled ||
+      !booking.termsVersionId ||
+      time.date !== calendar.date ||
+      instant < calendarAt(local, time.date, time.startMinute).getTime() ||
+      instant >= calendarAt(local, time.date, time.endMinute).getTime() ||
+      time.venueId !== scene.placeId ||
+      (time.zoneId ?? "exterior") !== scene.zoneId ||
+      !scene.activeIds.includes(booking.resident.id) ||
+      contactPosition(scene, booking.resident.id) !== scene.zoneId
+    )
+      continue;
+    const known = (id: string, incarnation: string) =>
+      views.some(
+        (view) =>
+          view.id === booking.id &&
+          view.current &&
+          !view.repaired &&
+          view.holder.kind === "actor" &&
+          view.holder.id === id &&
+          view.holder.incarnation === incarnation,
+      );
+    if (!known("player", booking.playerIncarnation) || !known(booking.resident.id, booking.resident.incarnation))
+      continue;
+    const offer = state.continuity.records.find((record) => record.id === booking.id)?.offer;
+    const terms = state.continuity.versions.find((version) => version.id === booking.termsVersionId);
+    if (
+      offer?.termsVersionId !== booking.termsVersionId ||
+      terms?.rootId !== booking.id ||
+      terms.agenda?.kind !== "offer" ||
+      terms.agenda.actorId !== booking.resident.id ||
+      terms.agenda.activity !== booking.activity ||
+      memoryHash(terms.agenda.time) !== memoryHash(time)
+    )
+      continue;
+    const parties = ["player", booking.resident.id];
+    for (const source of terms.sources) {
+      if (
+        source.kind !== "speech" ||
+        source.actorId !== booking.resident.id ||
+        (source.act !== "offer" && source.act !== "accept")
+      )
+        continue;
+      const view = sharedRecall.find((row) => row.id === source.episodeId);
+      if (
+        view?.segments.some(
+          (line) =>
+            line.id === source.unitId &&
+            "text" in line &&
+            line.text === source.excerpt &&
+            parties.every((id) => line.perceivedBy[id] === "words"),
+        )
+      )
+        bookedEpisodes.add(source.episodeId);
+    }
+  }
+  const bookedRecall = sharedRecall.filter((view) => bookedEpisodes.has(view.id) && !transcriptIds.has(view.id));
+  const conversationalRecall =
+    scene.visitEvent && opening
+      ? []
+      : [
+          ...(history.recallCandidates ?? []),
+          ...(sharedRecall.some((view) => transcriptIds.has(view.id)) ? [] : sharedRecall),
+        ];
+  const recallCandidates = [...new Set([...bookedRecall, ...conversationalRecall])];
   const requiredKey = (target: ContinuityTarget, holderKey: string) =>
     actorSelection.required.some((row) => row.id === target.id && Object.hasOwn(row.heads, holderKey));
   for (const { npc, met } of npcCandidates)
@@ -697,34 +718,14 @@ export function narrationContinuityContext(
       ...episode.segments.flatMap((line) => ("text" in line && line.perceivedBy.player === "words" ? [line.text] : [])),
     ])
     .join("\n");
-  const projectQuery = [input, projectDiscussion].join("\n").toLocaleLowerCase("en-US");
   const projects = projectSpeechContexts(projectWorld, writerIds, projectDiscussion, input, scene.placeId);
-  const localProjects = /\b(?:project|renovation)\b/iu.test(projectQuery)
-    ? projectSpeechContexts(projectWorld, writerIds, "", "", scene.placeId)
-    : [];
   for (const project of projects) {
-    const record = projectWorld.projects.find((row) => row.id === project.projectId)!;
-    const targetId = record.lifecycle?.targetVenueId || record.venueId;
-    const names = [
-      record.title,
-      projectWorld.venues.find((row) => row.id === targetId)?.name,
-      projectWorld.worldPlaces.places[targetId]?.location.name,
-    ].flatMap((name) => (name && name.length > 3 ? [name.toLocaleLowerCase("en-US")] : []));
-    const named = (query: string) =>
-      query.includes(project.projectId.toLocaleLowerCase("en-US")) || names.some((name) => query.includes(name));
-    const localCue = (query: string) =>
-      localProjects.length === 1 &&
-      localProjects[0].projectId === project.projectId &&
-      /\b(?:project|renovation)\b/iu.test(query);
-    const request = input.toLocaleLowerCase("en-US");
-    const requested = named(request) || localCue(request);
-    if (!requested && !opening && !named(projectQuery) && !localCue(projectQuery)) continue;
     parts.push({
       ...emptyPart(),
       block: {
         text: projectSpeechPrompt(projectWorld, [project]),
         evidenceId: "project-context:" + project.projectId,
-        ...(!requested ? { optional: "memory" as const } : {}),
+        optional: "memory" as const,
       },
     });
   }
@@ -750,20 +751,14 @@ export function narrationContinuityContext(
       ),
     ),
   );
-  const asksForQuote = asksForRecallQuote(recallQuery);
-  const editingMemory = separateRecallFromEvidence
-    ? memoryChange
-    : /\b(?:forget|correct|change|update|replace)\b/iu.test(input);
   const facts = optional.filter(
     (part) =>
       actorFact(part) &&
       (opening ||
-        editingMemory ||
         !part.plainRecall ||
         !Object.values(part.sources).every((source) => words.has(JSON.stringify([source.actorId, source.excerpt])))),
   );
   const tryOlder = () => {
-    if (!recallCandidates.length || transcriptIds.has(recallCandidates[0].id)) return false;
     for (const view of recallCandidates) {
       if (transcriptIds.has(view.id)) continue;
       const part = historyPart(view, false);
@@ -773,13 +768,15 @@ export function narrationContinuityContext(
     }
     return false;
   };
-  const recalledQuote = (opening || asksForQuote) && tryOlder();
+  const earlyRecall = (opening || bookedRecall.length > 0) && tryOlder();
   for (const part of optional.filter((part) => !actorFact(part))) takeRecall(part);
-  if (opening || !recalledQuote || editingMemory) {
-    let count = 0;
-    for (const part of facts) if (takeRecall(part) && ++count === (recalledQuote ? 1 : 2) && !opening) break;
-    if (!opening && !asksForQuote && (!count || asksForPastExchange(recallQuery))) tryOlder();
+  let factsAdded = 0;
+  for (const part of facts) {
+    if (!takeRecall(part) || opening) continue;
+    if (++factsAdded === 1 && !earlyRecall) tryOlder();
+    if (factsAdded === 2) break;
   }
+  if (!opening && !factsAdded && !earlyRecall) tryOlder();
   const evidenceIds = new Set([...retained].map((part) => part.block.evidenceId));
   const bounded = parts
     .filter((part) => retained.has(part) && hasWritingEvidence(part.block, evidenceIds))
@@ -797,8 +794,6 @@ export function narrationContinuityContext(
   ]);
   const codeRequestedMemory =
     requestedMemory?.recipientId &&
-    fact &&
-    !/[*_[\]()`:]|^['‘]|\b(?:privately|to myself|in my head)\b/iu.test(fact) &&
     !protections.length &&
     !continuityConstraints(state.continuity, roomReferences).length;
   return {
@@ -812,14 +807,13 @@ export function narrationContinuityContext(
       "circumstance-" + memoryHash([state.seed, scene.id, operationId]).slice(0, 32),
       new Date(at),
     ),
-    calendar: capturedSceneCalendar({ startedAt: at }, state.timeZone),
+    calendar,
     holders,
     room,
     repairs,
     at,
     memoryChange,
     requestedMemory,
-    clarifyMemoryRecipient,
     codeRequestedMemory,
     parts: bounded,
     recentLore: bounded
@@ -839,6 +833,7 @@ export function narrationContinuityContext(
       episodeId,
       operationId,
       input,
+      ...(rememberFor ? { rememberFor } : {}),
       actors,
       visitorTrips: captured.visitors?.flatMap((person) =>
         person.trip && actors.some((actor) => actor.id === person.characterId)
