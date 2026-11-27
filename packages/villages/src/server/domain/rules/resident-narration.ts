@@ -46,6 +46,7 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { VenueLine } from "../models/scene-model.js";
 import { agendaBlocksFor } from "./agenda-week.js";
 import { assertFreshAppointmentDecision } from "./agenda-overview.js";
+import type { CapturedAgendaShape } from "./agenda-composition.js";
 import { readResidentNarrationCapture } from "../decoding/resident-narration-codec.js";
 import { narrationAccessScopes, applyNarrationAccess, assertNarrationDecision } from "./narration-access.js";
 import { narrationResidenceContext, applyNarrationResidence } from "./narration-residence.js";
@@ -88,7 +89,11 @@ const output = z
 const localDate = (state: VillageState, at: string) =>
   new ZonedDate(at, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
 
-function nativeFingerprint(state: VillageState, opportunity: ResidentPlanningOpportunity) {
+function nativeFingerprint(
+  state: VillageState,
+  opportunity: ResidentPlanningOpportunity,
+  capturedShape?: CapturedAgendaShape,
+) {
   if (opportunity.kind === "relationship" || opportunity.kind === "activity")
     return memoryHash([
       state.seed,
@@ -114,7 +119,7 @@ function nativeFingerprint(state: VillageState, opportunity: ResidentPlanningOpp
             week: actor.agenda.week,
             profile: actor.agenda.routineProfile,
             influence: actor.agenda.scheduleInfluenceSnapshot,
-            sourceDay: agendaBlocksFor(actor.agenda, localDate(state, opportunity.endsAt)),
+            sourceDay: agendaBlocksFor(actor.agenda, localDate(state, opportunity.endsAt), capturedShape),
           },
         }
       );
@@ -249,7 +254,9 @@ export function assertResidentNarrationCurrent(state: VillageState, capture: Res
     "resident narration context actor incarnation changed",
   );
   memoryRequire(
-    capture.nativeFingerprint === nativeFingerprint(state, capture.opportunity),
+    capture.nativeFingerprint === nativeFingerprint(state, capture.opportunity) ||
+      capture.nativeFingerprint === nativeFingerprint(state, capture.opportunity, "typed-fragments") ||
+      capture.nativeFingerprint === nativeFingerprint(state, capture.opportunity, "untyped-joined"),
     "resident narration native authority changed",
   );
   if (capture.opportunity.venueId) {

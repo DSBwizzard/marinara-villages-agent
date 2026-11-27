@@ -347,7 +347,11 @@ function VillagesContent({ element }: { element: HTMLElement }) {
     return true;
   };
   return (
-    <VillagesFrame controller={navigation} mapVisible={controller.screen === "home" && active === null}>
+    <VillagesFrame
+      controller={navigation}
+      mapVisible={controller.screen === "home" && active === null}
+      menu={active !== null}
+    >
       <DeskLeaveGuard value={guardRegistration}>
         <DeskWorkspace
           active={active}
@@ -466,7 +470,7 @@ function VillageScreen(props: VillageScreenProps) {
     );
   }
 
-  if (snapshot.isFounded && !room && sceneRestoration.status !== "ready") {
+  if (screen !== "preparing" && snapshot.isFounded && !room && sceneRestoration.status !== "ready") {
     if (sceneRestoration.status !== "error") return null;
     return (
       <div className={ELEMENT_TAG + "-root"}>

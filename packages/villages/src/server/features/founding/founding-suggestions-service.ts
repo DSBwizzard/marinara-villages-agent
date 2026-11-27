@@ -4,7 +4,7 @@ import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara
 import type { DocumentSlot, createDocumentMutator } from "../../adapters/storage/document-store.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, VillagesRequestError, safeFailureMessage } from "../../domain/rules/errors.js";
-import { FOUNDING_DRAFT_UNAVAILABLE } from "../../../shared/contracts/founding.js";
+import { FOUNDING_DRAFT_UNAVAILABLE, MODEL_CONNECTION_UNAVAILABLE } from "../../../shared/contracts/founding.js";
 import type { suggestStartingVenues, generateFoundingVenueImage } from "./founding-drafts.js";
 
 const DOCUMENT = "villages-founding-suggestions";
@@ -16,6 +16,7 @@ export type FoundingSuggestions = {
   startedAt: string;
   status: "running" | "complete" | "failed" | "interrupted";
   error: string;
+  errorCode?: typeof MODEL_CONNECTION_UNAVAILABLE;
   result: Awaited<ReturnType<typeof suggestStartingVenues>> | null;
   imageRequested?: boolean;
 };
@@ -147,6 +148,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
   async function generate(id: string, input: Record<string, unknown>, token: number): Promise<void> {
     let result: FoundingSuggestions["result"] = null;
     let error = "";
+    let errorCode: FoundingSuggestions["errorCode"];
     try {
       result = await suggestStartingVenues(input);
       if (input.draftEntranceImage === true) {
@@ -197,6 +199,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
       }
     } catch (cause) {
       error = safeFailureMessage(cause);
+      if (cause instanceof VillagesRequestError && cause.code === MODEL_CONNECTION_UNAVAILABLE) errorCode = cause.code;
     }
     if (token !== lifecycle) {
       owners!.delete(id);
@@ -207,6 +210,7 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
         if (token !== lifecycle || state.request?.id !== id || state.request.status !== "running") return false;
         state.request.result = result;
         state.request.error = error;
+        if (errorCode) state.request.errorCode = errorCode;
         state.request.status = result ? "complete" : "failed";
       });
     } catch (cause) {

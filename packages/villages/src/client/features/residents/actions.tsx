@@ -172,11 +172,12 @@ export function useLoadAgendas(ports: {
 export function useRewriteAgenda(ports: {
   currentSnapshotRef: React.RefObject<VillageSnapshot>;
   retryWork: (job: BackgroundWork) => Promise<void>;
+  loadSnapshot: () => Promise<unknown>;
   setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
-  const { currentSnapshotRef, retryWork, setAgendas, setBusy, setError } = ports;
+  const { currentSnapshotRef, retryWork, loadSnapshot, setAgendas, setBusy, setError } = ports;
   const agendaActions = useRef(new Map<string, string>());
   return useCallback(
     async (characterId: string) => {
@@ -206,13 +207,14 @@ export function useRewriteAgenda(ports: {
         if (!current()) return;
         setAgendas(response.villagers);
         setError("");
+        await loadSnapshot();
       } catch (cause) {
         if (current()) setError(messageFrom(cause, "That villager could not be asked again."));
       } finally {
         if (current()) setBusy(false);
       }
     },
-    [currentSnapshotRef, retryWork, setAgendas, setBusy, setError],
+    [currentSnapshotRef, retryWork, loadSnapshot, setAgendas, setBusy, setError],
   );
 }
 

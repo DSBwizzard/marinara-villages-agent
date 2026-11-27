@@ -2,7 +2,7 @@ import { request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingSetting, FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
-import { FOUNDING_DRAFT_UNAVAILABLE } from "../../../shared/contracts/founding.js";
+import { FOUNDING_DRAFT_UNAVAILABLE, MODEL_CONNECTION_UNAVAILABLE } from "../../../shared/contracts/founding.js";
 import type { FoundingState } from "./useFoundingState.js";
 
 export type FoundingSuggestionOptions = {
@@ -18,6 +18,12 @@ export type FoundingSuggestionOptions = {
   checkSetting?: boolean;
   settingReplacement?: FoundingSetting;
 };
+export function foundingConnectionUnavailable(message: string, code?: string) {
+  return (
+    code === MODEL_CONNECTION_UNAVAILABLE ||
+    (code === undefined && /^Language model connection not found(?::|\.?$)/iu.test(message))
+  );
+}
 type Result = FoundingSuggestionsResult;
 type Receipt = {
   id: string;
@@ -25,6 +31,7 @@ type Receipt = {
   status: "running" | "complete" | "failed" | "interrupted";
   result: Result | null;
   error: string;
+  errorCode?: typeof MODEL_CONNECTION_UNAVAILABLE;
 };
 type Ports = {
   signal?: AbortSignal;
@@ -84,10 +91,17 @@ export async function requestFoundingSuggestions(
     setSetupWorkspace((state) =>
       state.suggestionRequest?.id === pending.id ? { ...state, suggestionRequest: undefined } : state,
     );
-  const failed = (message: string) =>
+  const failed = (message: string, code?: string) =>
     setSetupWorkspace((state) =>
       state.suggestionRequest?.id === pending.id
-        ? { ...state, suggestionRequest: { ...pending, failure: message } }
+        ? {
+            ...state,
+            suggestionRequest: {
+              ...pending,
+              failure: message,
+              ...(code === MODEL_CONNECTION_UNAVAILABLE ? { failureCode: code } : {}),
+            },
+          }
         : state,
     );
   if (!existing) {
@@ -134,7 +148,7 @@ export async function requestFoundingSuggestions(
       if (receipt.status === "failed" || receipt.status === "interrupted") {
         terminal = true;
         const message = receipt.error || "Suggestions stopped without a saved result.";
-        failed(message);
+        failed(message, receipt.errorCode);
         throw new Error(message);
       }
       if (receipt.status === "complete" && receipt.result) {
@@ -167,7 +181,7 @@ export async function requestFoundingSuggestions(
       ((admitting && error.status >= 400 && error.status < 500) ||
         (!admitting && error.status === 404 && error.code === FOUNDING_DRAFT_UNAVAILABLE))
     ) {
-      failed(error.message);
+      failed(error.message, error.code);
       terminal = true;
     }
     if (terminal) throw error;

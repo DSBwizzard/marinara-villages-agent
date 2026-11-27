@@ -9,6 +9,7 @@ import {
 } from "./ArrangementNavigation.js";
 import { VenuePeoplePanel } from "./VenuePeoplePanel.js";
 import { useVillageLighting } from "../../shared/useVillageLighting.js";
+import { useAgendaWaiting } from "../../shared/agenda-access.js";
 import {
   useCallback,
   useEffect,
@@ -250,6 +251,7 @@ export function VenueScreen({
   storybookDaylight?: boolean;
 }) {
   const confirmVillages = useConfirmation();
+  const agendaWaiting = useAgendaWaiting();
   const { viewing = true, visible } = useVillageActivity();
   const [arrangementPage, setArrangementPage] = useState<ArrangementPage | null>(null);
   const [arrangementBusy, setArrangementBusy] = useState(false);
@@ -625,7 +627,10 @@ export function VenueScreen({
                       : undefined
                   }
                   disabled={
-                    roomBusy || (!!activeScene && room.placeId !== place.id) || place.constructionStatus === "worksite"
+                    roomBusy ||
+                    (agendaWaiting && !activeScene) ||
+                    (!!activeScene && room.placeId !== place.id) ||
+                    place.constructionStatus === "worksite"
                   }
                   onClick={visit}
                 >

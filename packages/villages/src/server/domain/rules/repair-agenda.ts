@@ -8,6 +8,7 @@ import { restingAgendaBlock, scheduledAgendaActivity } from "./agenda-plan.js";
 import {
   agendaBlocksFor,
   agendaDateKey,
+  agendaPersonalPlansPending,
   completeAgendaWeek,
   ordinaryAgendaBlocksFor,
   workingAgendaWeek,
@@ -256,6 +257,7 @@ export function agendaRepairRecords(state: VillageState, resident: VillageVillag
         venues,
         date,
         weekday: VILLAGE_WEEKDAYS[(day.getDay() + 6) % 7]!,
+        ...(agendaPersonalPlansPending(agenda, date) ? { personalPlansPending: true as const } : {}),
         blocks: blocks.filter((_, index) => scheduledAgendaActivity(scheduled[index]!)),
       },
       summary: offset === 0 ? "Today, Agenda" : "Agenda",

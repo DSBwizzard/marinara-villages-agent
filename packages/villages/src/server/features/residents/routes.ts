@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { buildVillageAgendas, clearVillagerAgenda } from "../residents/resident-agendas.js";
+import { buildVillageAgendas, clearVillagerAgenda, rebuildResidentAgendas } from "../residents/resident-agendas.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
 import { offerVisitorLodging } from "../../domain/rules/visitors.js";
@@ -325,13 +325,24 @@ export function registerAgendaRoutes(engine: FastifyInstance) {
       return fail(reply, error, "confirming an appointment");
     }
   });
-  app.post<{ Params: CharacterParams; Body: { actionId?: unknown } }>(
+  app.post<{ Params: CharacterParams; Body: { actionId?: unknown; rebuild?: unknown; characterIds?: unknown } }>(
     "/agendas/:characterId/regenerate",
     async (request, reply) => {
       try {
         if (typeof request.body?.actionId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(request.body.actionId))
           throw badRequest("Choose an agenda request identity.");
-        await clearVillagerAgenda(readCharacterId(request.params.characterId), request.body.actionId);
+        const id = readCharacterId(request.params.characterId);
+        if (request.body.rebuild === true) {
+          const scope = request.body.characterIds;
+          if (!Array.isArray(scope) || scope.length > 12)
+            throw badRequest("Choose distinct residents whose Agendas should be rebuilt.");
+          const ids = scope.map(readCharacterId);
+          if (!ids.includes(id) || new Set(ids).size !== ids.length)
+            throw badRequest("Choose distinct residents whose Agendas should be rebuilt.");
+          await rebuildResidentAgendas(ids, request.body.actionId);
+          return reply.code(202).send({ actionId: request.body.actionId });
+        }
+        await clearVillagerAgenda(id, request.body.actionId);
         return { villagers: await buildVillageAgendas() };
       } catch (error) {
         return fail(reply, error, "regenerating a villager's agenda");

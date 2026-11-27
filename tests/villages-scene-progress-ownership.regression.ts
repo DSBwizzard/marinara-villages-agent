@@ -1026,6 +1026,7 @@ await runCase("scene-narration/replace-committed", async () => {
   await assert.rejects(f.service.processSavedExchange("scene", "turn"));
   const scene = structuredClone(f.scenes.get("scene")!);
   const commands = createSceneCommands({
+    readVillageState: async () => f.world,
     readSession: f.ports.readSession,
     requireLiveVenueSession: f.ports.readSession,
     abandonSavedExchange: f.service.abandonSavedExchange,

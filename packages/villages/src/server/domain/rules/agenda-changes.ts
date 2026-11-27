@@ -12,6 +12,7 @@ type AgendaSource = Pick<
   | "day"
   | "activeDay"
   | "plannedDays"
+  | "repairedDays"
   | "reservations"
   | "routineProfile"
   | "routineSummary"
@@ -27,6 +28,7 @@ const source = (agenda: AgendaSource): AgendaSource => ({
   repairedWeek: agenda.repairedWeek,
   activeDay: agenda.activeDay,
   plannedDays: agenda.plannedDays,
+  repairedDays: agenda.repairedDays,
   reservations: agenda.reservations,
 });
 

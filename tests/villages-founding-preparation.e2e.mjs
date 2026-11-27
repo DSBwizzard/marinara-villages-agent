@@ -69,7 +69,6 @@ await withBrowser(browser, async () => {
     };
     let retries = 0;
     let retryBody;
-    const backgroundReads = [];
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
@@ -78,28 +77,13 @@ await withBrowser(browser, async () => {
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path.replace(/\/$/, "") === "/api/villages") backgroundReads.push(snapshot.foundingPreparation.status);
-      if (path.endsWith("/repair"))
-        return fulfill(route, {
-          json: {
-            seed: "fixture",
-            identity: "fixture",
-            records: [],
-            history: [],
-            historyOffset: 0,
-            historyTotal: 0,
-            checkpoints: [],
-            checkpointOffset: 0,
-            checkpointTotal: 0,
-            sceneOpen: false,
-            people: [],
-          },
-        });
-      if (path.endsWith("/repair/records")) return fulfill(route, { json: { records: [], total: 0, next: null } });
       if (path.endsWith("/setup/preparation/retry")) {
         retries++;
         retryBody = route.request().postDataJSON();
-        snapshot.foundingPreparation.status = "pending";
+        if (snapshot.foundingPreparation.status === "ready") {
+          snapshot.backgroundWork[0].status = "failed";
+          snapshot.backgroundWork[0].error = "Starting history output was truncated.";
+        } else snapshot.foundingPreparation.status = "pending";
       }
       const response = path.endsWith("/catalog")
         ? { characters: [] }
@@ -199,56 +183,24 @@ await withBrowser(browser, async () => {
     };
     snapshot.villagers.push({ characterId: "newcomer", name: "New arrival" });
     await expect(root.getByRole("button", { name: "Retry failed", exact: true })).toBeVisible();
-    snapshot.foundingPreparation.canPlay = true;
-    await expect(root.getByText(/Station Fields is ready for you/)).toBeVisible();
-    if (screenshotDir && width !== 320)
-      await page.screenshot({ path: resolve(screenshotDir, `founding-ready-${width}.png`) });
-    await root.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(root.getByText("Maybe I'll see you there!", { exact: true })).toBeVisible();
-    if (screenshotDir && width !== 320)
-      await page.screenshot({ path: resolve(screenshotDir, `founding-farewell-${width}.png`) });
-    await root.getByRole("button", { name: "Enter village", exact: true }).click();
-    await expect(root).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
-    assert.equal(retries, 1, "Entering a usable Village does not retry optional work");
-    snapshot.foundingPreparation.status = "ready";
-    snapshot.backgroundWork = [];
-    await expect.poll(() => backgroundReads.includes("ready"), { timeout: 10000 }).toBe(true);
-    assert.equal(retries, 1, "Background completion refreshes without another preparation request");
-    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `optional-founding-${width}.png`) });
-
-    snapshot.foundingPreparation.status = "failed";
-    snapshot.foundingPreparation.error = "Resident preparation incomplete.";
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
-    await expect(root).toHaveCount(0);
-    assert.equal(retries, 1, "Reloading an optional failure does not retry it");
-    await page.getByRole("button", { name: "More", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Founding extras", exact: true })).toHaveCount(0);
-    if (width <= 700) await page.getByRole("combobox", { name: "Section", exact: true }).selectOption("repair");
-    else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
-    const repair = page.locator(".villages-repair");
-    if (width <= 700) await repair.getByRole("combobox", { name: "REPAIR area", exact: true }).selectOption("progress");
-    else await repair.getByRole("button", { name: "Recover work", exact: true }).click();
-    const recovery = repair.getByRole("region", { name: "Initial preparation" });
-    await expect(recovery).toContainText("Resident preparation incomplete");
-    const retry = recovery.getByRole("button", { name: "Retry unfinished work", exact: true });
+    await expect(root.getByText("Invalid response", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
+    assert.equal(retries, 1, "Reloading a failed Founding does not retry it");
+    const retry = root.getByRole("button", { name: "Retry failed", exact: true });
     assert.ok((await retry.boundingBox()).height >= 44);
     if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `preparation-recovery-${width}.png`) });
     await retry.click();
     await expect.poll(() => retries).toBe(2);
     assert.match(retryBody.actionId, /^[a-zA-Z0-9-]+$/);
     assert.ok(
-      await repair.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       "no horizontal overflow",
     );
     assert.deepEqual(errors, []);
-    await page.goto("http://villages.test/");
-    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
-    await expect(root).toHaveCount(0);
-    assert.equal(retries, 2, "Reload preserves optional work without retrying it");
+    await expect(root).toBeVisible();
+    await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
     snapshot.foundingPreparation = {
       status: "ready",
       canPlay: false,
@@ -263,9 +215,9 @@ await withBrowser(browser, async () => {
         instanceId: "history-instance",
         kind: "starting-ties",
         label: "Starting history",
-        status: "failed",
+        status: "completed",
         attempt: 2,
-        error: "Starting history output was truncated.",
+        error: "",
         requests: 1,
         tokens: 50,
       },
@@ -314,9 +266,12 @@ await withBrowser(browser, async () => {
     await expect(history).toContainText("Needs review");
     assert.equal(inspected, 0, "Private history is read only after explicit Inspect");
     await expect(root.getByText("Inspect starting history", { exact: true })).toHaveCSS("list-style-type", "none");
-    await root.getByText("Inspect starting history", { exact: true }).click();
+    await root.getByRole("button", { name: "Retry starting history", exact: true }).click();
+    await expect.poll(() => retries).toBe(3);
+    await expect(root.getByText("Starting history output was truncated.")).toBeVisible();
     await root.getByRole("button", { name: "Retry starting history", exact: true }).click();
     await expect.poll(() => historyRetries).toBe(1);
+    await root.getByText("Inspect starting history", { exact: true }).click();
     inspection = { ...inspection, conflicts: [conflict] };
     snapshot.backgroundWork[0].status = "completed";
     await expect(root.getByText(conflict.question, { exact: true })).toBeVisible();
@@ -337,12 +292,13 @@ await withBrowser(browser, async () => {
     await root.getByRole("button", { name: "Next", exact: true }).click();
     await root.getByRole("button", { name: "Enter village", exact: true }).click();
     await expect(root).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
     assert.equal(clarified, 1, "One explicit clarification uses the existing source-bound route");
-    assert.equal(retries, 2, "Clarifying history never retries unrelated optional preparation");
+    assert.equal(retries, 3, "Clarifying history never retries completed preparation");
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
-    "Founding preparation browser: venue/private/resident progress, legacy fallback, retry and private-content boundaries passed at desktop, 390px and 320px.",
+    "Founding preparation browser: venue/private/resident progress, entry gate, retries and private-content boundaries passed at desktop, 390px and 320px.",
   );
 });

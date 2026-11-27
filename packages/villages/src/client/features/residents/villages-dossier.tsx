@@ -472,6 +472,9 @@ export function VillagerDossier({
                             </p>
                           ) : villager || knownInformation.length ? (
                             <div className={`${P}-dossier-sheet`}>
+                              {!visitor && inspectedSection("overview") && viewing !== false
+                                ? inspectors.overview
+                                : null}
                               {!visitor ? (
                                 <WeeklyAgenda
                                   key={inspect && viewing !== false ? "inspect" : "player"}
@@ -483,9 +486,6 @@ export function VillagerDossier({
                                   onDate={setAgendaDate}
                                 />
                               ) : null}
-                              {!visitor && inspectedSection("overview") && viewing !== false
-                                ? inspectors.overview
-                                : null}
                               {knownInformation.length ? <RelationshipEntries entries={knownInformation} /> : null}
                             </div>
                           ) : null}

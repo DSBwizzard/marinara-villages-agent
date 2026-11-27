@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { starterAgendaReply } from "./helpers/agenda.fixture.js";
 import {
   parseCompactFounding,
   parseCompactFoundingCompletion,
@@ -113,12 +114,102 @@ async function main() {
     currentPayload,
     "Recovery leaves the purchased response unchanged",
   );
+  const narrated = {
+    ...currentPayload,
+    palette: [{ ...palette[0], activity: "Right now, you’re patrolling the Hiking Trail" }, ...palette.slice(1)],
+  };
+  const narratedReply = { content: JSON.stringify(narrated) };
+  assert.equal(
+    parseCompactFoundingCompletion(narratedReply, context(null)).agenda.routineProfile!.activities[0]!.activity,
+    narrated.palette[0]!.activity,
+    "An older saved reply retains its original schedule text.",
+  );
+  assert.equal(
+    parseCompactFoundingCompletion(narratedReply, { ...context(null), activityLabelFormat: 1 }).agenda.routineProfile!
+      .activities[0]!.activity,
+    "Patrolling the Hiking Trail",
+  );
   assert.throws(
     () => parseCompactFoundingCompletion({ ...savedResponse, finishReason: "length" }, context(null)),
     /truncated/,
   );
 
   assert.throws(() => parseCompactFounding({ ...payload(), rhythm: undefined }, context(null) as any), /rest windows/);
+
+  const legacyStarterContext = { ...context(null), starterWeekStart: "2026-11-11" };
+  const starterContext = { ...legacyStarterContext, starterRestFormat: 1 as const };
+  const starterReply = { ...payload(), ...starterAgendaReply() };
+  const starter = parseCompactFounding(starterReply, starterContext).starterWeek!;
+  const dates = new Set(starter.slots.map(({ date }) => date));
+  assert.equal(dates.size, 7);
+  const timeLayouts = Array.from(dates, (date) =>
+    starter.slots.filter((slot) => slot.date === date).map(({ startMinute, endMinute }) => [startMinute, endMinute]),
+  );
+  assert.equal(new Set(timeLayouts.map((layout) => JSON.stringify(layout))).size, 7);
+  assert.equal(starter.through, "2026-11-17");
+  const unlabeled = parseCompactFounding(
+    {
+      ...starterReply,
+      rest: [
+        [0, 360],
+        [1290, 1440],
+      ],
+      starterDays: starterReply.starterDays.map((day, index) =>
+        index === 6 ? [["Sleeping at home", 0], ...day.slice(1)] : day,
+      ),
+    },
+    legacyStarterContext,
+  );
+  assert.deepEqual(
+    unlabeled.agenda
+      .week!.Wednesday!.filter(({ essential }) => essential)
+      .map(({ activity, startMinute, endMinute }) => [activity, startMinute, endMinute]),
+    [
+      ["Resting at home", 0, 360],
+      ["Resting at home", 1290, 1440],
+    ],
+  );
+  assert.equal(new Set(unlabeled.starterWeek!.slots.map(({ date }) => date)).size, 7);
+  const seventhDay = unlabeled.starterWeek!.slots.findIndex(({ date }) => date === "2026-11-17");
+  assert.equal(unlabeled.starterWeek!.choices[seventhDay]?.activity, starterReply.starterDays[6]![1]![0]);
+  assert.throws(
+    () =>
+      parseCompactFounding(
+        { ...starterReply, rest: [], starterDays: Array(7).fill(Array(8).fill(["Sleeping", 0])) },
+        starterContext,
+      ),
+    /Put recurring rest in the starter Agenda rest windows/,
+  );
+  assert.throws(
+    () => parseCompactFounding({ ...starterReply, rest: [[0, -1]] }, legacyStarterContext),
+    /rest window is invalid/,
+  );
+  const fixedActivities = (rest: unknown[]) =>
+    parseCompactFounding({ ...starterReply, rest }, starterContext)
+      .agenda.week!.Wednesday!.filter(({ essential }) => essential)
+      .map(({ activity }) => activity);
+  const earlySleep = { kind: "sleep", startMinute: 120, endMinute: 480 };
+  assert.deepEqual(
+    fixedActivities([
+      { ...earlySleep, label: "At home" },
+      { kind: "nap", startMinute: 800, endMinute: 830 },
+    ]),
+    ["Sleeping", "Napping"],
+  );
+  assert.deepEqual(
+    fixedActivities([earlySleep, { kind: "other", startMinute: 800, endMinute: 830, label: "Recharging in sunlight" }]),
+    ["Sleeping", "Recharging in sunlight"],
+  );
+  assert.throws(() => fixedActivities([{ kind: "other", startMinute: 800, endMinute: 830 }]), /short standalone label/);
+  assert.throws(() => fixedActivities([[120, 480]]), /valid kind/);
+  assert.throws(
+    () =>
+      parseCompactFounding(
+        { ...starterReply, starterDays: Array(7).fill(starterReply.starterDays[0]) },
+        starterContext,
+      ),
+    /repeats too many/,
+  );
 
   let calls = 0;
   let capturedPrompt = "";
@@ -177,7 +268,13 @@ async function main() {
       assert.equal(calls, before + 1, "one package-level request handles this villager's full founding plan");
     }
     for (const playerBackground of ["", "I arrived to help the harbor."]) {
-      const roleContext = { ...context(null), setting: "S".repeat(4000), playerBackground, playerPersonaName: "Robin" };
+      const roleContext = {
+        ...context(null),
+        setting: "S".repeat(4000),
+        playerBackground,
+        playerPersonaName: "Robin",
+        activityLabelFormat: 2 as const,
+      };
       const before = calls;
       answer = payload();
       await proposeCompactFounding(roleContext as any, async () => {});
@@ -188,11 +285,21 @@ async function main() {
       assert.equal(calls, before + 1, "role context adds no generation call");
     }
     assert.match(capturedPrompt, /Omit Wishes/);
+    assert.match(capturedPrompt, /short standalone activity labels/);
     assert.match(capturedPrompt, /purpose:"ordinary"\|"rest"\|"work"/);
+    assert.doesNotMatch(capturedPrompt, /Right now you are/);
+    assert.match(capturedPrompt, /30 to 240 inclusive/);
+    assert.match(capturedPrompt, /independently of palette duration/);
     assert.doesNotMatch(
       capturedPrompt,
       /chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song|"activity":"reading"/,
     );
+    const beforeStarter = calls;
+    answer = starterReply;
+    const prepared = await proposeCompactFounding(starterContext, async () => {});
+    assert.equal(calls, beforeStarter + 1, "The existing Founding request captures the entire starter week.");
+    assert.ok(prepared.starterWeek?.choices.every(Boolean));
+    assert.equal(prepared.agenda.week!.Wednesday!.find(({ startMinute }) => startMinute === 1320)?.essential, true);
     assert.equal(usageDocument.data.requests.length, calls, "every founding request is accounted for");
     assert.ok(usageDocument.data.requests.every((request: any) => request.status === "complete"));
     assert.equal(options.maxTokens, 2048);

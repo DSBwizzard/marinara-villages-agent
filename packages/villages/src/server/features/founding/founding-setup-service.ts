@@ -60,7 +60,6 @@ export interface FoundingSetupPorts {
   readLinkedPersona: typeof readLinkedPersona;
   listVillagerCards(): Promise<VillagerCard[]>;
   prepareFoundedVillage(): Promise<void>;
-  queueStartingTies?(): Promise<void>;
   queueMicrotask(work: () => void): void;
   readVillageLore: typeof readVillageLore;
   draftVillageVenueDescriptions: typeof draftVillageVenueDescriptions;
@@ -80,7 +79,6 @@ export function createFoundingSetup({
   readLinkedPersona,
   listVillagerCards,
   prepareFoundedVillage,
-  queueStartingTies,
   queueMicrotask,
   readVillageLore,
   draftVillageVenueDescriptions,
@@ -321,14 +319,10 @@ export function createFoundingSetup({
       });
     }
 
-    // Write each agenda after the village has its places. Otherwise a newly
-    // forged village asks everyone to plan a day with only the houses available.
-    // The complete provisional day written above remains usable if either model
-    // call fails, and the next tick can still retry the authored agenda.
+    // The paid preparation uses the saved roster and Places.
     queueMicrotask(() => {
       void prepareFoundedVillage();
     });
-    if (addedResidents.length) await queueStartingTies?.();
     return buildVillageSnapshot();
   }
 

@@ -55,6 +55,7 @@ const venue = venueDraft(
 capture.venues = [venue];
 capture.villagers = ["ada", "ben"].map((characterId) => {
   const agenda = unwrittenVillageAgenda(now);
+  agenda.personalizationPending = false;
   const block = { startMinute: 0, endMinute: 1440, venueId: venue.id, activity: "Visiting" };
   agenda.week.Monday = [block];
   agenda.activeDay!.blocks = [block];

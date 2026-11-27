@@ -711,7 +711,10 @@ await withBrowser(browser, async () => {
       const dropped = turns.at(-1).submissionId;
       await expect(composer).toBeEditable();
       if (edit) {
-        await composer.fill(original + " with edits");
+        await expect(composer).toHaveValue(original);
+        await composer.press("End");
+        await composer.pressSequentially(" with edits");
+        await expect(composer).toHaveValue(original + " with edits");
         await load();
       }
       const message = edit ? original + " with edits" : original;

@@ -1,3 +1,5 @@
+export const AGENDA_WEEK_DAYS = 7;
+
 export type AgendaTime = {
   date: string;
   startMinute: number;
@@ -22,10 +24,12 @@ export type AgendaWeek = {
   days: {
     date: string;
     weekday: string;
+    personalPlansPending?: true;
     blocks: {
       startMinute: number;
       endMinute: number;
       activity: string;
+      label?: string;
       resting?: true;
       place?: string;
       source?: "told" | "seen" | "agreed";
