@@ -8,6 +8,10 @@ Locations and Venues use approved notebook layout A. Opening one selects Details
 
 The selected target stays visible while short, named steps expose its controls. Collection and text pagination keep desktop and phone pages within the viewport without page or panel scrolling. Reference fields offer saved, valid choices and dependent Zones. Authored prose stays text. Read-only source material, receipts, derived reservations and storage revisions are not editable truth.
 
+Record switches keep the current form visible and disabled until its replacement is ready. Context changes and direct Home, Venue and Zone entry load the destination without briefly showing an intermediate record list. Late reads and artwork refreshes cannot reopen a target the player has left.
+
+Saving returns directly to the refreshed editor or its owning list with a small Saved status. It adds no Continue repairing screen. A failed refresh retries the page and native Village/Scene refresh without submitting the saved correction again. Whole-Village restoration keeps its separate result and any preserved Scene draft.
+
 ## People
 
 All eligible residents receive Relationships, Memories, Wishes, Home & work, Agenda and Character. Visitors and supporting people expose their native capabilities without creating new gameplay systems for unsupported roles.

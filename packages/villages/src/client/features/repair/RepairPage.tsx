@@ -305,16 +305,25 @@ export function RepairPage({
     c.setPlacePath(c.placePath.slice(0, c.placePath.indexOf(targetPlace!.id) + 1));
     setPlaceSection(part);
     setListPage(0);
-    void c.load("places");
+    void c.load("places", 0, "", part === "details" ? mainPlaceRecord?.id : undefined);
   };
   const openPlace = (node: RepairBrowseItem) => {
-    c.setPlacePath([node.icon === "venue" ? "venues" : "places", node.id]);
+    c.setPlacePath(
+      node.icon === "zone" ? [...c.placePath, node.id] : [node.icon === "venue" ? "venues" : "places", node.id],
+    );
     setPlaceSection("details");
     setListPage(0);
-    void c.load("places");
+    const record = node.children?.find((item) =>
+      item.id.startsWith(node.icon === "zone" ? '["zone-details",' : node.icon === "venue" ? '["venue",' : '["place",'),
+    );
+    void c.load("places", 0, "", record?.id);
   };
   const backPlace = () => {
-    c.setPlacePath(zone && location ? c.placePath.slice(0, c.placePath.indexOf(zone.id)) : []);
+    if (zone && location) {
+      openPlace(location);
+      return;
+    }
+    c.setPlacePath([]);
     setPlaceSection("details");
     setListPage(0);
     void c.load("places");
@@ -555,16 +564,6 @@ export function RepairPage({
     .flatMap((node) =>
       ["conditions", "residents", "workers"].includes(placeSection) ? (node.children ?? [node]) : [node],
     );
-  useEffect(() => {
-    if (c.busy || c.view !== "list") return;
-    if (placeNotebook && placeSection === "details" && !nestedFolder && mainPlaceRecord) {
-      void c.open(mainPlaceRecord.id);
-      return;
-    }
-    if (c.selected) return;
-    if (c.person && c.section === "home" && c.records.length)
-      void c.open((c.records.find((record) => record.id.startsWith('["home",')) ?? c.records[0]!).id);
-  }, [c, placeNotebook, placeSection, nestedFolder, mainPlaceRecord]);
   const editorTitle = selected?.agendaDay
     ? "Edit activity"
     : isMemory
@@ -846,14 +845,38 @@ export function RepairPage({
                 ) : null}
                 <Pages page={reviewStep} size={reviewPageSize} total={reviewPages.length} onPage={setStep} />
               </section>
-            ) : c.view === "done" ? (
+            ) : c.view === "loading" ? (
+              <section className="repair-card" aria-busy={c.busy}>
+                {c.busy ? (
+                  <span role="status">Loading…</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      c.retrySavedRefresh
+                        ? void c.retrySavedRefresh()
+                        : void c.load(
+                            c.topic,
+                            c.offset,
+                            recordQuery,
+                            placeNotebook && placeSection === "details" && !nestedFolder
+                              ? mainPlaceRecord?.id
+                              : undefined,
+                          )
+                    }
+                  >
+                    Try again
+                  </button>
+                )}
+              </section>
+            ) : c.view === "restored" ? (
               <section className="repair-card">
-                <h2>{c.review?.kind === "restore" ? "Village restored" : "Changes saved"}</h2>
+                <h2>Village restored</h2>
                 {c.preservedDraft ? (
                   <PagedText label={c.preservedDraft.title} value={c.preservedDraft.text} readOnly />
                 ) : null}
                 <button type="button" onClick={() => void c.load()}>
-                  Continue repairing
+                  Village snapshots
                 </button>
               </section>
             ) : directory ? (
@@ -1269,7 +1292,16 @@ export function RepairPage({
                         className="repair-close"
                         aria-label={`Back to ${c.person ? personSections.find(([id]) => id === c.section)?.[1] : targetPlace ? placeSection : "records"}`}
                         disabled={c.busy}
-                        onClick={() => void c.load(c.topic, c.offset, recordQuery)}
+                        onClick={() =>
+                          void c.load(
+                            c.topic,
+                            c.offset,
+                            recordQuery,
+                            placeNotebook && placeSection === "details" && !nestedFolder
+                              ? mainPlaceRecord?.id
+                              : undefined,
+                          )
+                        }
                       >
                         ×
                       </button>
@@ -1469,11 +1501,7 @@ export function RepairPage({
                         id={item.id}
                         name={item.title}
                         image={item.image}
-                        onOpen={() => {
-                          c.setPlacePath([...c.placePath, item.id]);
-                          setPlaceSection("details");
-                          setListPage(0);
-                        }}
+                        onOpen={() => openPlace(item)}
                       />
                     ) : (
                       <button
@@ -1705,7 +1733,7 @@ export function RepairPage({
           </>
         ) : editing ? (
           <>
-            <span role="status">{c.canReview ? "Unsaved changes" : "No changes"}</span>
+            <span role="status">{c.canReview ? "Unsaved changes" : c.notice || "No changes"}</span>
             {showPageButtons ? (
               <button
                 type="button"
@@ -1757,7 +1785,7 @@ export function RepairPage({
           </>
         ) : (
           <>
-            <span role="status">{c.busy ? "Working…" : ""}</span>
+            <span role="status">{c.busy ? "Working…" : c.notice}</span>
             {onScene ? (
               <button
                 type="button"
