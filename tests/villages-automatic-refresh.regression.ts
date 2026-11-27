@@ -151,6 +151,7 @@ async function main() {
   let minimumWeeklyReplyTokens = 0;
   let incompleteWeek = false;
   let repeatSameDay = false;
+  let recentSuggestion = "";
   const warnings: string[] = [];
   const release = configureVillagesRuntime({
     logger: {
@@ -187,13 +188,25 @@ async function main() {
               if (options.maxTokens < minimumWeeklyReplyTokens)
                 return { content: '{"plans":[', finishReason: "length" };
               const input = JSON.parse(String(messages.at(-1)?.content)) as {
-                residents: Array<{ name: string; slots: unknown[] }>;
+                residents: Array<{ name: string; days: [string, number][]; slots?: unknown[]; recent: string[] }>;
               };
-              const plans = input.residents.map(({ name, slots }) =>
-                slots.map((_, index) => [`${name} pursuit ${weeklyResponses}/${index + 1}`, 0]),
-              );
-              if (incompleteWeek) plans[0]?.splice(2);
-              if (repeatSameDay) plans[0]![1] = plans[0]![0]!;
+              const plans = input.residents.map(({ name, days, slots }) => {
+                assert.equal(slots, undefined, "The provider sees day counts without exact schedule slots.");
+                let index = 0;
+                return days.map(([, count]) =>
+                  Array.from(
+                    { length: count },
+                    (): string | [string, number] => `${name} pursuit ${weeklyResponses}/${++index}`,
+                  ),
+                );
+              });
+              if (incompleteWeek) plans[0]![2] = [];
+              if (repeatSameDay) {
+                recentSuggestion = input.residents[0]!.recent[0]!;
+                assert.ok(recentSuggestion);
+                plans[0]![0]![1] = plans[0]![0]![0]!;
+                plans[0]![1]!.unshift(plans[0]![0]![0]!, recentSuggestion, ["Try an unavailable venue", 999]);
+              }
               return { content: JSON.stringify({ plans }), finishReason: "stop" };
             }
             if (agendaMode) {
@@ -712,6 +725,13 @@ async function main() {
     const firstDay = agendaBlocksFor(recoveredWeek, date(43));
     assert.equal(firstDay.filter(({ activity }) => activity === "Ari pursuit 7/1").length, 1);
     assert.ok(firstDay.some(({ activity }) => activity === "Ari pursuit 7/3"));
+    const secondDay = agendaBlocksFor(recoveredWeek, date(44));
+    assert.ok(secondDay.some(({ activity }) => activity.startsWith("Ari pursuit 7/")));
+    assert.ok(
+      secondDay.every(
+        ({ activity }) => !["Ari pursuit 7/1", recentSuggestion, "Try an unavailable venue"].includes(activity),
+      ),
+    );
     assert.ok(agendaBlocksFor(recoveredWeek, date(49)).some(({ activity }) => activity.startsWith("Ari pursuit 7/")));
 
     setToday(43);
