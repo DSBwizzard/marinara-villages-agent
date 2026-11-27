@@ -1082,8 +1082,10 @@ export function FoundingScreen({ controller, storybookDaylight, appearanceContro
                 }));
               }
             }}
-            onDismiss={() => setSetupWorkspace((state) => ({ ...state, venueReview: undefined }))}
-            onProblem={setSetupProblem}
+            onDismiss={() => {
+              setSetupProblem("");
+              setSetupWorkspace((state) => ({ ...state, venueReview: undefined }));
+            }}
           />
         )}
         <QuickStartVenues

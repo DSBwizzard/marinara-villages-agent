@@ -2724,7 +2724,12 @@ export async function verifyFoundingLayout(group) {
         await closeVenue();
         await button("Retry draft").click();
         await expect.poll(() => suggestions).toBe(2);
-        await root.getByRole("button", { name: "Use changes", exact: true }).click();
+        const draftReview = root.getByRole("dialog", { name: "Review Venue draft", exact: true });
+        await expect(draftReview.getByRole("rowheader", { name: "Community Courtyard", exact: true })).toBeVisible();
+        const useDraft = draftReview.getByRole("button", { name: "Use changes", exact: true });
+        await expect(useDraft).toBeInViewport({ ratio: 1 });
+        await useDraft.click();
+        await expect(draftReview).toHaveCount(0);
         await expect
           .poll(() =>
             page.evaluate(

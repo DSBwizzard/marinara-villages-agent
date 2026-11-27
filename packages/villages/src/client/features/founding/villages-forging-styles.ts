@@ -1062,6 +1062,48 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-chapter-map [data-venue-drawer] .villages-quick-venue-list {
   flex:none; max-height:none; width:100%; overflow:visible;
 }
+.villages-forging-v2 .villages-founding-overlay:has(>.villages-venue-review-dialog) { padding:1rem; backdrop-filter:none; }
+.villages-forging-v2 .villages-founding-overlay>dialog.villages-venue-review-dialog {
+  width:min(62rem,100%); max-height:84%; border-radius:.9rem; padding:0; box-shadow:0 1rem 3rem #180f286a;
+}
+.villages-forging-v2 .villages-venue-review-dialog>header {
+  padding:1rem 1.25rem; margin:0; border-bottom:1px solid var(--founding-line);
+}
+.villages-forging-v2 .villages-venue-review-dialog>header h3 { font-size:1.52em; line-height:1.15; font-weight:650; }
+.villages-venue-review-scroll { min-height:0; overflow:auto; overscroll-behavior:contain; padding:0 1.25rem; }
+.villages-venue-review-scroll:focus-visible { outline:2px solid var(--founding-focus); outline-offset:-2px; }
+.villages-venue-review-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+.villages-venue-review-table :is(th,td) { padding:.72rem .8rem; vertical-align:top; text-align:left; overflow-wrap:anywhere; }
+.villages-venue-review-table thead th { font-size:.83em; }
+.villages-venue-review-table thead th:nth-child(1) { width:26%; }
+.villages-venue-review-table thead th:nth-child(2) { width:29%; }
+.villages-venue-review-table tbody tr { border-top:1px solid var(--founding-line); }
+.villages-venue-review-table tbody tr:nth-child(odd) { background:color-mix(in srgb,var(--founding-control),transparent 55%); }
+.villages-venue-review-table tbody td { font-size:.9em; line-height:1.45; }
+.villages-venue-review-table small { font-size:.87em; opacity:.88; }
+.villages-venue-review-zone-label { display:none; }
+.villages-venue-review-problem { flex:none; margin:0; padding:.55rem 1.25rem; }
+.villages-forging-v2 .villages-founding-dialog.villages-venue-review-dialog>footer {
+  justify-content:flex-end; padding:.8rem 1.25rem; margin:0;
+}
+.villages-forging-v2 .villages-venue-review-dialog>footer>button { flex:none; min-width:8.8rem; }
+@media(max-width:727px) {
+  .villages-forging-v2 .villages-founding-overlay:has(>.villages-venue-review-dialog) { padding:.6rem; }
+  .villages-forging-v2 .villages-venue-review-dialog>header { padding:.8rem .95rem; }
+  .villages-venue-review-scroll { padding:0 .72rem; }
+  .villages-venue-review-table,.villages-venue-review-table :is(tbody,tr,th,td) { display:block; width:100%; }
+  .villages-venue-review-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .villages-venue-review-table tbody tr { padding:.67rem .62rem; }
+  .villages-venue-review-table tbody tr:first-child { border-top:0; }
+  .villages-venue-review-table tbody :is(th,td) { padding:0; }
+  .villages-venue-review-table tbody td { margin-top:.24rem; }
+  .villages-venue-review-table tbody td:last-child { margin-top:.48rem; }
+  .villages-venue-review-zone-label { display:block; font-weight:700; font-size:.92em; margin-bottom:.18rem; }
+  .villages-forging-v2 .villages-founding-dialog.villages-venue-review-dialog>footer {
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:.55rem .72rem;
+  }
+  .villages-forging-v2 .villages-venue-review-dialog>footer>button { min-width:0; padding-inline:.35rem; font-size:.88em; }
+}
 
 .villages-forging-v2 .villages-setting-dialogue.villages-dialogue-reader { padding:0; }
 .villages-forging-v2 .villages-reader-speaker { color:var(--founding-foreground); }

@@ -57,7 +57,7 @@ function Harness(){
  window.redraftSelected=()=>suggest({venueId:venues[0].id,fullVenue:true});
  window.editDuringRequest=()=>patch(venues[0].id,row=>({...row,form:'A newer manual description'}));
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
- {workspace.venueReview && <FoundingVenueReview review={workspace.venueReview} current={venues} sourceKey={source} onUse={setVenues} onDismiss={()=>setWorkspace(state=>({...state,venueReview:undefined}))} onProblem={setProblem}/>}
+ {workspace.venueReview && <FoundingVenueReview review={workspace.venueReview} current={venues} sourceKey={source} onUse={setVenues} onDismiss={()=>{setProblem('');setWorkspace(state=>({...state,venueReview:undefined}))}/>}
  <QuickStartVenues venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
  actions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure} onGenerate={()=>suggest({plan:true})}/>}/>
  {problem?<p role='alert'>{problem}</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
@@ -174,8 +174,15 @@ await withBrowser(browser, async () => {
       assert.deepEqual(await page.evaluate(() => window.quickState.venues), []);
       await button("Draft Venues").click();
       await expect(button("Replace Venues")).toBeVisible();
+      const review = page.getByRole("dialog", { name: "Venue drafts", exact: true });
+      const details = review.getByRole("region", { name: "Venue draft details" });
+      if (viewport.width > 727)
+        await expect(details.getByRole("columnheader", { name: "Form", exact: true })).toBeVisible();
+      await expect(details.getByRole("rowheader")).toHaveCount(3);
+      await expect(review.locator("details")).toHaveCount(0);
+      await expect(review.getByRole("button", { name: "Replace Venues" })).toBeInViewport({ ratio: 1 });
       assert.deepEqual(await page.evaluate(() => window.quickState.venues), [], "Generation waits for review");
-      await button("Discard").click();
+      await button("Discard draft").click();
       assert.deepEqual(await page.evaluate(() => window.quickState.venues), []);
       await button("Draft Venues").click();
       await button("Replace Venues").click();
@@ -214,11 +221,13 @@ await withBrowser(browser, async () => {
       );
       await page.evaluate(() => window.legacyReview());
       await button("Use changes").click();
-      await expect.poll(() => page.evaluate(() => window.quickState.problem)).toContain("Discard this older draft");
+      await expect(page.getByRole("dialog", { name: "Review Venue draft" }).getByRole("alert")).toContainText(
+        "Discard this older draft",
+      );
       assert.equal(await page.evaluate(() => window.quickState.venues.length), 4);
-      await button("Discard").click();
+      await button("Discard draft").click();
       await button("Draft Venues").click();
-      await button("Discard").click();
+      await button("Discard draft").click();
       assert.equal(
         await page.evaluate(() => window.quickState.venues[0].occupancy.playerHome),
         true,
