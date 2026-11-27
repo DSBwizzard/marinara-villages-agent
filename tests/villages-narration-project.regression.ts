@@ -247,22 +247,26 @@ await runCase("narration-project/fitted-terms", () => {
   f.project.lifecycle!.change!.roomEdits = large.map((text) => ({ zoneId: "exterior", text }));
   const incidental = narrationContinuityContext(f.state, f.scene, f.venue, "greeting", "Good morning.", f.at);
   assert.equal(incidental.projects.length, 0, "a large incidental design cannot make ordinary chat require the plan");
+  assert.equal(
+    narrationContinuityContext(f.state, f.scene, f.venue, "review", "Let's review Covered entrance.", f.at).projects
+      .length,
+    0,
+  );
+  const compact = "Timber over the doorway.";
+  f.project.lifecycle!.change!.roomEdits = [{ zoneId: "exterior", text: compact }];
   const requested = narrationContinuityContext(
     f.state,
     f.scene,
     f.venue,
     "review",
-    "Let's review Covered entrance.",
+    "Could we keep visitors dry?",
     f.at,
   );
   const projectBlock = requested.parts.find(
     (part) => part.block.evidenceId === "project-context:" + f.project.id,
   )!.block;
-  assert.equal(projectBlock.optional, undefined);
-  assert(
-    large.every((text) => projectBlock.text.includes(text)),
-    "the requested terms remain complete",
-  );
+  assert.equal(projectBlock.optional, "memory");
+  assert(projectBlock.text.includes(compact), "the fitted terms remain complete");
   assert.equal(fittedNarrationReadset(f.state, requested, []).projects.length, 0);
   assert.equal(
     fittedNarrationReadset(f.state, requested, [projectBlock.evidenceId!]).projects[0].projectId,

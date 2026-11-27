@@ -726,12 +726,26 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   );
   assert.equal(ordinaryUseRestricted(fixture.state.narrative, at, fixture.venue.id, fixture.zone.id), true);
   assert.notEqual(
-    chooseAgendaZone(fixture.venue, "player", "Reading", fixture.zone.id, fixture.state, { at: new Date(at) }).id,
+    chooseAgendaZone(
+      fixture.venue,
+      "player",
+      { activity: "Clear my head", purpose: "ordinary" },
+      fixture.zone.id,
+      fixture.state,
+      { at: new Date(at) },
+    ).id,
     fixture.zone.id,
     "Ordinary routines select an available alternative.",
   );
   assert.equal(
-    chooseAgendaZone(fixture.venue, "player", "Repairing", fixture.zone.id, fixture.state, { at: new Date(at) }).id,
+    chooseAgendaZone(
+      fixture.venue,
+      "player",
+      { activity: "Bring supplies", purpose: "repair" },
+      fixture.zone.id,
+      fixture.state,
+      { at: new Date(at) },
+    ).id,
     fixture.zone.id,
     "A controller's corrective activity remains possible.",
   );

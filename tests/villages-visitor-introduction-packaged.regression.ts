@@ -64,8 +64,9 @@ try {
   assert.equal(premature.statusCode, 409, premature.body);
   assert.equal(server.records.get("villages-village").data.visitorIntroduction.completedAt, "");
   const complete = server.model.chatComplete;
-  server.model.chatComplete = async (messages: any[]) => {
-    await complete(messages);
+  server.model.chatComplete = async (messages: any[], options?: { responseFormat?: unknown }) => {
+    await complete(messages, options);
+    assert.equal(options?.responseFormat, undefined);
     const prompt = JSON.stringify(messages);
     assert.match(prompt, /Juniper Crossing/);
     assert(prompt.includes(publicVenue.name));
@@ -80,6 +81,9 @@ try {
         !prompt.includes("Do not explain the Visitor mechanics yourself"),
     );
     assert.match(prompt, /ONE final(?: ordinary main)? dialogue segment/);
+    assert.match(prompt, /\[__professor_mari__\]: spoken text/);
+    assert.match(prompt, /Narration: text/);
+    assert.doesNotMatch(prompt, /Return one JSON object|Put each lasting proposal/);
     assert.match(prompt, /24 hours after this introduction finishes/);
     assert(!prompt.includes("Agreement to accompany:"), "Introduction requests cannot solicit movement agreements");
     const timing = scenePromptPacket(messages.map((message: any) => message.content).join("\n"), "calendar");
@@ -89,22 +93,11 @@ try {
     assert(!prompt.includes("found the Village a day ago"));
     assert(!prompt.includes("They rented a room just outside"));
     return {
-      content: JSON.stringify({
-        segments: [
-          {
-            kind: "dialogue",
-            speakerId: "__professor_mari__",
-            text: "Juniper Crossing! A village with an entrance this inviting? The interface almost undersold you.",
-            expression: "playful",
-            look: { target: "player" },
-          },
-          {
-            kind: "dialogue",
-            speakerId: "__professor_mari__",
-            text: "I'll be exploring Juniper Crossing until tomorrow. Do try the unsupervised dialogue options.",
-          },
-        ],
-      }),
+      content: [
+        "[__professor_mari__]: Juniper Crossing! A village with an entrance this inviting? The interface almost undersold you.",
+        '[cue]: {"expression":"playful","look":{"target":"player"}}',
+        "[__professor_mari__]: I'll be exploring Juniper Crossing until tomorrow. Do try the unsupervised dialogue options.",
+      ].join("\n"),
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
@@ -245,18 +238,18 @@ try {
   server.model.chatComplete = async (messages: any[]) => {
     await replayComplete(messages);
     return {
-      content: JSON.stringify({
-        segments: [
-          { kind: "dialogue", speakerId: "__professor_mari__", text: "A fresh hello." },
-          { kind: "dialogue", speakerId: "__professor_mari__", text: "A fresh farewell. I'll be here another day." },
-        ],
-      }),
+      content: [
+        "Narration: Mari pauses by the gate.",
+        "[__professor_mari__]: A fresh hello.",
+        "[__professor_mari__]: A fresh farewell. I'll be here another day.",
+      ].join("\n"),
       finishReason: "stop",
       usage: { inputTokens: 10, outputTokens: 10 },
     };
   };
   const replay = (await request("/rooms/greet", { sessionId: replayId })).session;
-  assert.equal(replay.lines[0].content, "A fresh hello.");
+  assert.equal(replay.lines[0].content, "Mari pauses by the gate.");
+  assert.equal(replay.lines[1].content, "A fresh hello.");
   assert(new Set(replay.lines.flatMap((line: any) => line.staging?.map((cue: any) => cue.expression) ?? [])).size >= 6);
   assert.deepEqual(
     fixtureVillageState(server.records.get("villages-village").data, server.records).episodes.records.find(
@@ -356,14 +349,16 @@ for (const advanceDays of [0, 60]) {
     },
   });
   try {
+    server.model.model = advanceDays ? "deepseek-v4-flash" : "fixture";
     const initial = (await request("/rooms/active")).session;
     await request("/rooms/end", { sessionId: initial.id, expectedSceneRevision: initial.sceneRevision });
     const venue = server.records.get("villages-village").data.venues.find((row: any) => row.id !== "mill");
     const entered = (await request("/rooms", { venueId: venue.id, zoneId: "exterior" })).session;
     assert.equal(entered.visitorIntroduction, true, "Mari remains eligible months after founding");
     const complete = server.model.chatComplete;
-    server.model.chatComplete = async (messages: any[]) => {
-      await complete(messages);
+    server.model.chatComplete = async (messages: any[], options?: { responseFormat?: unknown }) => {
+      await complete(messages, options);
+      assert.equal(options?.responseFormat, undefined);
       const prompt = messages.map((message) => message.content).join("\n");
       const timing = scenePromptPacket(prompt, "calendar");
       assert.equal(timing.founding.instant, foundingAt);
@@ -377,12 +372,10 @@ for (const advanceDays of [0, 60]) {
       assert(!prompt.includes("found the Village a day ago"));
       assert.match(prompt, /Elapsed time does not establish that the player was absent/);
       return {
-        content: JSON.stringify({
-          segments: [
-            { kind: "dialogue", speakerId: "__professor_mari__", text: "Juniper Crossing! Good to see the garden." },
-            { kind: "dialogue", speakerId: "__professor_mari__", text: "I'll be looking around for another day." },
-          ],
-        }),
+        content: [
+          "[__professor_mari__]: Juniper Crossing! Good to see the garden.",
+          "[__professor_mari__]: I'll be looking around for another day.",
+        ].join("\n"),
         finishReason: "stop",
         usage: { inputTokens: 10, outputTokens: 10 },
       };

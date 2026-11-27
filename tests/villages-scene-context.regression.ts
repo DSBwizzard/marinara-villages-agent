@@ -31,8 +31,8 @@ const containsProject = (actors: string[], earlier: string, input: string, place
   projectSpeechContexts(world, actors, earlier, input, place).some((row) => row.projectId === unrelated.id);
 assert.equal(containsProject(["a"], "", "Hello", venue.id), false);
 assert.equal(containsProject(["b"], "", "Hello", "elsewhere"), true);
-assert.equal(containsProject(["a"], "Observatory dome", "Hello", "elsewhere"), true);
-assert.equal(containsProject(["a"], "", unrelated.id, "elsewhere"), true);
+assert.equal(containsProject(["a"], "Observatory dome", "Hello", "elsewhere"), false);
+assert.equal(containsProject(["a"], "", unrelated.id, "elsewhere"), false);
 assert.equal(containsProject(["a"], "", "Hello", "hill"), true);
 
 const actor = { characterId: "a", name: "Aqua", doing: "Talking" };
@@ -58,9 +58,11 @@ const scene = zoneEventScene(
 );
 const context = (input: string) => narrationContinuityContext(world, scene, venue, "project-context", input, at);
 const quiet = context("Hello."),
-  relevant = context("Let's discuss the Observatory dome."),
   projectEvidence = "project-context:" + unrelated.id;
 assert(!quiet.parts.some(({ block }) => block.evidenceId === projectEvidence || block.text.includes(unrelated.title)));
+assert(!context("Let's discuss the Observatory dome.").projects.some(({ projectId }) => projectId === unrelated.id));
+unrelated.lifecycle!.affectedIds.push("a");
+const relevant = context("Could we keep the weather out?");
 const part = relevant.parts.find(({ block }) => block.evidenceId === projectEvidence)!;
 assert(part.block.text.includes("Build the silver observatory dome."));
 assert.doesNotMatch(part.block.text, /"agreements"|"revision"|exteriorImage|pictureRevision/u);

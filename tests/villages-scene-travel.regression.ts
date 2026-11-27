@@ -186,7 +186,10 @@ for (const scenario of [
       if (follow) {
         const prompt = messages.map(({ content }) => content).join("\n");
         const speakerIds = calls < 3 ? '["ella","mara"]' : '["ella"]';
-        assert(prompt.includes('"dialogueSpeakers":' + speakerIds), "The fitted cast matches the current exchange");
+        assert(
+          prompt.includes('"dialogueSpeakers":' + speakerIds),
+          "The fitted cast matches the current exchange " + prompt.match(/"dialogueSpeakers":\[[^\]]*\]/u)?.[0],
+        );
         assert.equal(messages.at(-2)?.content, [invitation, afterMoveInput, waitInKitchen][calls - 1]);
         const segments =
           calls === 1
@@ -501,15 +504,21 @@ for (const scenario of [
           "walk-out",
           scenario === "departure-rejected" ? departure : walk,
         );
-        assert.equal(local.statusCode, 502, local.body);
+        const crossingBlocked = scenario === "crossing-rejected";
+        assert.equal(local.statusCode, crossingBlocked ? 200 : 502, local.body);
         const recovered = await getActive();
         const source = recovered.json().session;
         assert.equal(source.id, before.id);
         assert.equal(source.zoneId, before.zoneId);
         assert.equal(source.status, "active");
         assert.equal(calls, 1);
-        assert.equal(source.latestTurn.published, false);
-        assert.equal(host.scene().submissions[0].acceptance.status, "abandoned");
+        assert.equal(source.latestTurn.published, crossingBlocked);
+        assert.equal(host.scene().submissions[0].acceptance.status, crossingBlocked ? "applied" : "abandoned");
+        if (crossingBlocked)
+          assert.deepEqual(
+            local.json().session.lines.map(({ content }: { content: string }) => content),
+            ["The crossing didn't go through."],
+          );
         assert(!host.scene().navigationReceipts?.length);
         assert(!recovered.body.includes("You step out of the Mill."));
         return;
@@ -850,8 +859,9 @@ await runCase("scene-travel/doorway-after-hours", async () => {
   const world = () => createVillageRepository(() => host.documents as never).readAuthority();
   const input = () => ({
     sessionId: "browser",
-    mode: "chat",
-    targetId: "",
+    mode: "contact",
+    targetId: "mara",
+    contact: { kind: "call", boundaryZoneId: "common" },
     message: 'I call, "Mara, may I come in?"',
     expectedSceneRevision: host.scene().sceneRevision,
   });
@@ -890,10 +900,13 @@ await runCase("scene-travel/doorway-after-hours", async () => {
     const spoken = await send("valid-doorway-invitation", invitation);
     assert.equal(spoken.statusCode, 200, spoken.body);
     assert.equal(spoken.json().session.zoneId, "exterior");
-    assert(
-      spoken.json().session.lines.some((line: { content: string }) => line.content === "Come into the Common room."),
+    const saved = (await world()).venues[0];
+    const room = saved.zones!.find(({ id }) => id === "common")!.name;
+    assert.deepEqual(
+      spoken.json().session.lines.map(({ content }: { content: string }) => content),
+      [`You can visit ${room} after hours.`],
     );
-    assert.equal((await world()).venues[0].access!.permissions[0]?.outsideHours, true);
+    assert.equal(saved.access!.permissions[0]?.outsideHours, true);
     assert.equal((await send("valid-doorway-invitation", invitation)).statusCode, 200);
     const moved = await host.app.inject({
       method: "POST",
@@ -914,7 +927,9 @@ await runCase("scene-travel/doorway-after-hours", async () => {
 });
 
 await runCase("scene-travel/mixed-speech-actions", async () => {
-  for (const movesAway of [true, false]) {
+  for (const crossing of ["none", "allowed", "rejected"]) {
+    const movesAway = crossing === "allowed";
+    const rejectedCrossing = crossing === "rejected";
     const host = await packagedSceneServer({
       configure(world) {
         world.spontaneousEvents = false;
@@ -934,31 +949,36 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
         venue.zones!.find((zone) => zone.id === "workshop")!.access!.mode = "permission-required";
       },
     });
-    const invite = "Come into the Workshop.";
-    const follow = "I’ll come along with you.";
-    const crossing = "Mara steps outside.";
+    const maraName = host.scene().participants.find(({ characterId }) => characterId === "mara")!.name;
     let calls = 0;
     host.model.chatComplete = async (messages) => {
       calls++;
-      const prompt = messages.map(({ content }) => content).join("\n");
-      const invites = JSON.parse(prompt.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]) as {
+      const reminder = messages.at(-1)!.content;
+      const invites = JSON.parse(reminder.match(/Visit invitations available in this Scene: ([^\n]+)/)![1]) as {
         actorId: string;
         zoneId: string;
         option: number;
       }[];
-      const following = JSON.parse(prompt.match(/Following decisions available.*: ([^\n]+)/)![1]) as Record<
+      const following = JSON.parse(reminder.match(/Following decisions available.*: ([^\n]+)/)![1]) as Record<
         string,
         [number, string][]
       >;
       const invited = invites.find(({ actorId, zoneId }) => actorId === "mara" && zoneId === "workshop");
-      const agreed = following.mara.find(([, decision]) => decision === "start following")?.[0];
+      const agreed = following.mara.find(
+        ([, decision]) => decision === "start following the player when they move",
+      )?.[0];
       assert(invited && agreed && invited.option !== agreed);
       return {
         content: [
           "Narration: The tools rattle softly.",
-          `[action ${invited.option}]: ${invite}`,
-          ...(movesAway ? ["Narration!: " + crossing, '[command]: {"type":"move","who":"mara","to":"exterior"}'] : []),
-          `[action ${agreed}]: ${follow}`,
+          `[action ${invited.option}]: You cannot come in.`,
+          ...(crossing === "none"
+            ? []
+            : [
+                "Narration!:",
+                `[command]: {"type":"move","who":"mara","to":"${movesAway ? "exterior" : "unavailable"}"}`,
+              ]),
+          `[action ${agreed}]:`,
         ].join("\n"),
         finishReason: "stop",
         usage: { inputTokens: 10, outputTokens: 10 },
@@ -981,7 +1001,15 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
       assert.equal(session.zoneId, "common");
       assert.deepEqual(
         session.lines.map((line: { content: string }) => line.content),
-        ["The tools rattle softly.", invite, movesAway ? crossing : follow],
+        [
+          "The tools rattle softly.",
+          "You can visit Workshop.",
+          ...(movesAway
+            ? [`${maraName} steps away.`, "No agreement was recorded."]
+            : rejectedCrossing
+              ? ["The crossing didn't go through."]
+              : ["I'll follow you."]),
+        ],
       );
       const repository = createVillageRepository(() => host.documents as never);
       const world = await repository.readAuthority({ memories: true });
@@ -989,7 +1017,7 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
       const episode = world.episodes.records.at(-1)!;
       assert.deepEqual(episode.commandReceipts.map(({ kind }) => kind).toSorted(), [
         "access",
-        movesAway ? "movement" : "movement-agreement",
+        ...(movesAway ? ["movement"] : rejectedCrossing ? [] : ["movement-agreement"]),
       ]);
       if (movesAway)
         assert(episode.rejectedEffects?.some(({ reason }) => /following needs this current local actor/u.test(reason)));
@@ -1009,7 +1037,7 @@ await runCase("scene-travel/mixed-speech-actions", async () => {
       assert.equal(move.statusCode, 200, move.body);
       assert.equal(move.json().session.zoneId, "workshop");
       assert.equal(move.json().session.trespassing, undefined);
-      assert.equal(move.json().session.activeIds.includes("mara"), !movesAway);
+      assert.equal(move.json().session.activeIds.includes("mara"), crossing === "none");
       assert.equal(calls, 1, "One reply settles both actions. Move and replay purchase nothing.");
     } finally {
       await host.stop();

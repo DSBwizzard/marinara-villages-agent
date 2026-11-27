@@ -50,6 +50,7 @@ export function sceneFixtureText(messages: { content: string }[], content: strin
             ? ` [whisper ${line.targetId}]`
             : (line.delivery === "shout" ? " [shout]" : "") + (line.targetId ? ` [to ${line.targetId}]` : "")) +
           (line.presentation === "aside" ? " [aside]" : "") +
+          (line.offerAppointment ? " [appointment]" : "") +
           (line.speakerLabel ? ` [name ${line.speakerLabel}]` : "") +
           (required.includes("remember-fact") ? " [remember]" : "")
         : "Narration" + bang + (line.actors?.length ? ` [actors ${line.actors.join(" ")}]` : "");
@@ -66,7 +67,7 @@ export function sceneFixtureText(messages: { content: string }[], content: strin
       ["sound", "staging", "expression", "look"].flatMap((key) => (line[key] === undefined ? [] : [[key, line[key]]])),
     );
     return [
-      `${marking}: ${line.text.replace(/\r?\n/gu, " ")}`,
+      `${marking}: ${line.offerAppointment ? "" : line.text.replace(/\r?\n/gu, " ")}`,
       ...(Object.keys(cue).length ? ["[cue]: " + JSON.stringify(cue)] : []),
       ...commands.map(({ at: _at, ...row }: any) => "[command]: " + JSON.stringify(source(row))),
       ...bound.map((row: any) => "[keep]: " + JSON.stringify(source(row))),

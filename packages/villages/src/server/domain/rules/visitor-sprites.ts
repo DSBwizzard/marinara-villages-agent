@@ -17,6 +17,7 @@ const compare = (a: string, b: string) => (a === b ? 0 : a < b ? -1 : 1);
 export function automaticVisitorSprites(
   files: SpriteLibraryItem[],
   folders: SpriteLibraryFolder[],
+  additionalMoods: readonly string[] = [],
 ): SpriteManagerState | null {
   const sets = new Map<string, { fullBody: boolean; name: string; sprites: SpriteLibraryItem[] }>();
   for (const file of files) {
@@ -32,7 +33,8 @@ export function automaticVisitorSprites(
         const name = engineSpriteName(file.label ?? "", file.filename);
         const label = spriteLabelKey(name);
         if (animationFrame.test(label)) return [];
-        const known = moods.has(spriteMood(label));
+        const mood = spriteMood(label);
+        const known = moods.has(mood) || additionalMoods.includes(mood);
         const rank =
           label === "neutral"
             ? 0

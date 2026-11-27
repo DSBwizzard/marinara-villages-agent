@@ -148,7 +148,8 @@ await withBrowser(browser, async () => {
         throw Error("Founding line did not finish");
       };
       for (let line = 0; line < 6; line++) await advanceLine();
-      const world = scene.getByLabel("World description");
+      const worldForm = width === 390 ? scene.getByRole("dialog", { name: "The wider world", exact: true }) : mari;
+      const world = worldForm.getByLabel("World description");
       await world.fill("A string of settlements along the coast");
       await page.clock.fastForward(3000);
       await expect(scene).toHaveAttribute("data-lighting", "night");
@@ -170,7 +171,7 @@ await withBrowser(browser, async () => {
       await fulfill(heldSnapshot, { status: 503, json: { error: "Village snapshot unavailable" } });
       await expect(page.getByRole("alert")).toContainText("Village snapshot unavailable");
       await page.getByRole("button", { name: "Try again", exact: true }).click();
-      if (width === 390) await next.click();
+      await expect(worldForm).toBeVisible();
       await expect(world).toHaveValue("A string of settlements along the coast");
       assert.equal(foundingSceneChecks, 0, "Founding remounts never ask for an active Scene");
     });

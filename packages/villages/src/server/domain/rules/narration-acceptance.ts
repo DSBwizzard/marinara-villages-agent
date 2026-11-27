@@ -1,3 +1,4 @@
+import type { ContinuityWrite } from "../models/continuity-model.js";
 import type { ContinuityCollection, ContinuityEvidence, ContinuityHolder } from "../models/continuity-model.js";
 import type { AcceptedEpisode } from "../models/episode-model.js";
 import type { NarrationReadset } from "../models/narration-model.js";
@@ -572,9 +573,15 @@ export function acceptNarrationContinuity(
           "requires",
         ].includes(key),
       );
+    const reactionPerspective =
+      readset.automaticTrespass &&
+      note.class === "perspective" &&
+      Object.hasOwn(note, "relationship") &&
+      note.for !== "room" &&
+      Object.keys(note).every((key) => actorNoteFields.has(key));
     const effect: SceneEffectResult = {
       ...header,
-      independent: openingOfferEcho || optionalNote || optionalAnswer || header.independent,
+      independent: openingOfferEcho || optionalNote || optionalAnswer || reactionPerspective || header.independent,
     };
     try {
       memoryRequire(
@@ -590,6 +597,7 @@ export function acceptNarrationContinuity(
         readset.ordinaryDialogue,
         readset.ordinaryReplyRecovery,
         readset.recognizeDirectOfferSpeech,
+        readset.explicitSceneEvidence,
       );
       const write = keep.write;
       if (
@@ -810,9 +818,38 @@ export function acceptNarrationContinuity(
         if (keep) {
           let write = keep.write;
           if (keep.agenda) {
-            const evidence = { ...keep.agenda, activity: keep.agenda.activity ?? "" };
+            const evidence: NonNullable<ContinuityWrite["agenda"]> = {
+              ...keep.agenda,
+              activity: keep.agenda.activity ?? "",
+            };
             write = { ...write, agenda: evidence };
-            sceneAgendaEvidence(scheduledWorld, write, readset, keep.sources);
+            const residentAssent = keep.sources.filter(
+              (proof) =>
+                proof.actorId === evidence.actorId &&
+                proof.kind === "speech" &&
+                (proof.act === "offer" || proof.act === "accept") &&
+                proof.episodeId === source.episodeId &&
+                proof.perceptions.some((reader) => reader.actorId === "player" && reader.channel === "words"),
+            );
+            if (
+              evidence.kind === "offer" &&
+              residentAssent.some((proof) =>
+                reply.segments.some(
+                  (beat, index) =>
+                    beat.kind === "dialogue" &&
+                    beat.offerAppointment === true &&
+                    (!(readset.taggedSceneReply && beat.compactAppointment) || id === "decision-" + beat.id) &&
+                    source.lines[index]?.id === proof.unitId,
+                ),
+              )
+            )
+              evidence.confirmable = true;
+            if (readset.explicitSceneEvidence && evidence.kind === "offer" && residentAssent.length)
+              memoryRequire(
+                evidence.confirmable,
+                "use the explicit appointment offer beat for the resident's decision",
+              );
+            sceneAgendaEvidence(scheduledWorld, write, readset, keep.sources, acceptedAt);
             memoryRequire(evidence.activity.trim(), "An Agenda item needs its actual activity");
           }
           const owner = write.owner;
@@ -839,7 +876,7 @@ export function acceptNarrationContinuity(
             write = { ...write, relationship: changes };
           }
           const next = applyContinuityWrite(continuity, write, keep.admission);
-          if (write.agenda?.kind === "offer" || write.accept || write.closeOffer) {
+          if (write.closeOffer && (!readset.explicitSceneEvidence || write.closeOffer.by !== "player")) {
             const candidate = cloneAppointmentState(scheduledWorld);
             if (applySceneAppointment(candidate, next, write, keep.admission.operationId + ":" + id, acceptedAt))
               scheduledWorld = candidate;
@@ -892,7 +929,8 @@ export function acceptNarrationContinuity(
     requestedMemory &&
     !acceptedKeeps.some(
       ({ write, sources }) =>
-        write.text?.replace(/[.!]+$/u, "") === memoryText &&
+        (source.rememberFor ? write.text : write.text?.replace(/[.!]+$/u, "")) === memoryText &&
+        (!source.rememberFor || write.holders.length === 1) &&
         write.class === "information" &&
         !write.target &&
         !write.parentId &&
@@ -1049,6 +1087,7 @@ export function acceptNarrationContinuity(
     seed: state.seed,
     sceneId: source.scene.id,
     placeName: source.scene.placeName,
+    ...(readset.explicitNpcIntroduction ? { explicitNpcIntroduction: true } : {}),
     submissionId,
     operationId: source.episodeId,
     capturedAt: readset.capturedAt,
