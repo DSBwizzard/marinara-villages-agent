@@ -351,6 +351,17 @@ export async function repairBrowserFixture(browser, width = 1440, height = 900, 
         fields: [
           { key: "warmth", label: "Warmth", type: "number", min: -100, max: 100, value: first ? 50 : -25 },
           { key: "romance", label: "Romantic interest", type: "number", min: -20, max: 20, value: first ? 3 : -4 },
+          ...(first
+            ? [
+                {
+                  key: "answer",
+                  label: "Perspective Note",
+                  type: "text",
+                  multiline: false,
+                  value: "I trust you with the key.",
+                },
+              ]
+            : []),
         ],
         actions: [{ id: "correct", label: "Modify" }],
         related: [],

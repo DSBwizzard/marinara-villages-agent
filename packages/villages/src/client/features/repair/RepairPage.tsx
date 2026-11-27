@@ -478,8 +478,8 @@ export function RepairPage({
     if (isRelationship) {
       const scores = fields.filter((field) => field.key === "warmth" || field.key === "romance");
       const other = fields.filter((field) => !scores.includes(field));
-      if (space.height / space.scale >= 365) return [fields];
-      if (space.height / space.scale >= 255) return [scores, ...other.map((field) => [field])];
+      if (space.height / space.scale >= 445) return [fields];
+      return [scores, ...other.map((field) => [field])];
     }
     if (mainWorldSetting && space.height / space.scale >= (small ? 345 : 355)) {
       return [

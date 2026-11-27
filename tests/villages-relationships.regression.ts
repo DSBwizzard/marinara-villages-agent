@@ -1,4 +1,7 @@
-import { applyRelationshipRepair } from "../packages/villages/src/server/domain/rules/repair-relationships.js";
+import {
+  applyRelationshipRepair,
+  relationshipRepairRecords,
+} from "../packages/villages/src/server/domain/rules/repair-relationships.js";
 // Test cases: relationships/repair-baseline, relationships/player-snapshot, relationships/scoring, relationships/daily-pacing, relationships/romantic-interest, relationships/answer-cadence, relationships/behavior-context, relationships/shared-terms, relationships/common-protection, relationships/identity-labels, relationships/native-access, relationships/access-calendar, relationships/pure-reads
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -827,6 +830,11 @@ await runCase("relationships/repair-baseline", () => {
   assert.equal(score.score, 100);
   assert.equal(score.romanticInterest, 3);
   assert.equal(score.answer, "I enjoy your company.");
+  const note = relationshipRepairRecords(f.state, "mara")
+    .find((record) => record.id === '["relationship","mara","player"]')!
+    .fields.find((field) => field.key === "answer")!;
+  assert.equal(note.label, "Perspective Note");
+  assert.equal(note.value, score.answer);
   assert.equal(f.profiles()[1].scores.find((row) => row.person.id === "mara")!.score, 0);
   assert.throws(
     () =>

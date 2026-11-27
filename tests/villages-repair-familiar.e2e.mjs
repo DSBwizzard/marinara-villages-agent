@@ -50,6 +50,10 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "Back to Relationships" })).toHaveCount(0);
       const slider = page.getByRole("slider", { name: "Adjust Warmth", exact: true });
       await expect(slider).toHaveValue("50");
+      await expect(slider).toBeInViewport({ ratio: 1 });
+      const romance = page.getByRole("slider", { name: "Adjust Romantic interest", exact: true });
+      await expect(romance).toHaveValue("3");
+      await expect(romance).toBeInViewport({ ratio: 1 });
       await expect(page.getByRole("meter", { name: "Warmth toward the selected person" })).toHaveAttribute(
         "aria-valuenow",
         "50",
@@ -60,9 +64,6 @@ await withBrowser(browser, async () => {
         const scoreBox = await score.boundingBox();
         expect(scoreBox.x).toBeGreaterThan(sliderBox.x + sliderBox.width);
         expect(Math.abs(scoreBox.y - sliderBox.y)).toBeLessThan(2);
-        await expect(page.getByRole("slider", { name: "Adjust Romantic interest", exact: true })).toBeInViewport({
-          ratio: 1,
-        });
         const tracks = await page
           .locator('.repair-field[data-score] :is(.villages-relationship-bar, input[type="range"])')
           .evaluateAll((nodes) =>
@@ -85,6 +86,14 @@ await withBrowser(browser, async () => {
         await expect(slider).toHaveValue("50");
       }
       await capture("relationships");
+      if (name === "compact") {
+        await page.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(page.getByRole("textbox", { name: "Perspective Note", exact: true })).toHaveValue(
+          "I trust you with the key.",
+        );
+        await page.getByRole("button", { name: "Previous", exact: true }).click();
+        await expect(romance).toBeInViewport({ ratio: 1 });
+      }
       if (name === "phone")
         await page
           .locator(".villages-repair")
@@ -94,12 +103,6 @@ await withBrowser(browser, async () => {
         "aria-valuenow",
         "-42",
       );
-      for (
-        let step = 0;
-        step < 3 && !(await page.getByRole("meter", { name: "Romantic interest toward the selected person" }).count());
-        step++
-      )
-        await page.getByRole("button", { name: "Next", exact: true }).click();
       await expect(page.locator('.villages-romantic-hearts [data-fill="full"]')).toHaveCount(1);
       await expect(page.locator('.villages-romantic-hearts [data-fill="half"]')).toHaveCount(1);
       await capture("hearts");
