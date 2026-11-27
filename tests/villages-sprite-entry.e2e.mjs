@@ -114,7 +114,8 @@ await withBrowser(browser, async () => {
     });
     await expect(engineLink).toHaveCount(0);
     await screen.getByRole("button", { name: "Sprites", exact: true }).click();
-    await screen.getByText("Manage expressions", { exact: true }).click();
+    await screen.getByText("Show expressions", { exact: true }).click();
+    await expect(screen.getByText("Hide expressions", { exact: true })).toBeVisible();
     await expect(screen.getByText("No sprites added.")).toBeVisible();
     const add = screen.getByRole("button", { name: "Add sprites", exact: true }).first();
     await add.click();
@@ -161,7 +162,7 @@ await withBrowser(browser, async () => {
       "Saving appearance preserves old paired artwork without a Side editor",
     );
     await screen.getByRole("button", { name: "Sprites", exact: true }).click();
-    await screen.getByText("Manage expressions", { exact: true }).click();
+    await screen.getByText("Show expressions", { exact: true }).click();
     await gallery.getByRole("button", { name: "Happy_1_side", exact: true }).click();
     await gallery.getByRole("button", { name: "Remove Happy_1_side from Sprites", exact: true }).click();
     await screen.getByRole("button", { name: "Save", exact: true }).click();

@@ -48,8 +48,11 @@ export const EXPLORATION_STYLES = `
 .${P}-map-tools { position:absolute; z-index:7; left:12px; right:12px; top:12px; display:flex; gap:6px; pointer-events:none; }
 .${P}-map-tools > * { pointer-events:auto; }
 .${P}-map-tools > button,.${P}-map-tools summary { display:flex; align-items:center; gap:8px; min-height:44px; max-width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; list-style:none; }
-.${P}-map-tools > button { min-width:0; }
-.${P}-map-tools > button > span:first-of-type { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.${P}-map-tools > button { min-width:0; padding-block:6px; }
+.${P}-map-tools > button > span { display:grid; min-width:0; gap:2px; text-align:left; line-height:1.15; }
+.${P}-map-tools > button > span > * { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.${P}-map-tools > button strong { font-weight:600; }
+.${P}-map-tools > button small { color:var(--explore-muted); }
 .${P}-map-tools svg { width:20px; height:20px; flex:none; }
 .${P}-map-tools summary::-webkit-details-marker { display:none; }
 .${P}-map-tools .${P}-map-options { position:absolute; left:0; top:calc(100% + 6px); display:grid; gap:4px; width:min(15rem,100%); padding:6px; box-sizing:border-box; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-panel); box-shadow:0 8px 24px #0006; }

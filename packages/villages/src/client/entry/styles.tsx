@@ -1,4 +1,5 @@
 import { EXPLORATION_STYLES } from "../features/exploration/villages-exploration-styles.js";
+import { DISCLOSURE_STYLES } from "../shared/DisclosureSummary.js";
 import { VILLAGES_FORGING_STYLES } from "../features/founding/villages-forging-styles.js";
 import { DOSSIER_STYLES } from "../features/residents/villages-dossier-styles.js";
 import { VILLAGES_SCENE_STYLES } from "../features/scenes/villages-scene-styles.js";
@@ -115,6 +116,10 @@ ${ELEMENT_TAG} ::selection { color: var(--primary-foreground); background: var(-
   color: var(--primary);
   box-shadow: inset 0 0 0 1px var(--primary);
 }
+
+${DISCLOSURE_STYLES}
+.${ELEMENT_TAG}-lore-report-title { margin: 7px 0 5px; line-height: 1.25; overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-lore-report-title small { display: block; margin-top: 3px; color: var(--muted-foreground); }
 .${ELEMENT_TAG}-menu-body { display: flex; flex-direction: column; gap: 1rem; }
 .${ELEMENT_TAG}-roster { display: flex; flex-direction: column; gap: .375rem; margin-top: .75rem; }
 .${ELEMENT_TAG}-roster-entry { min-width: 0; border: 1px solid var(--border); border-radius: .75rem; padding: .5rem .625rem; background: color-mix(in srgb, var(--popover) 92%, transparent); }
