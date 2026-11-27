@@ -1246,12 +1246,8 @@ export function RepairPage({
                 </section>
               )
             ) : isSnapshots && !editing ? (
-              <section className="repair-directory">
-                <button
-                  type="button"
-                  disabled={c.busy}
-                  onClick={() => void c.open('["snapshot-schedule"]')}
-                >
+              <section className="repair-directory repair-scheduled-snapshots">
+                <button type="button" disabled={c.busy} onClick={() => void c.open('["snapshot-schedule"]')}>
                   Snapshot schedule →
                 </button>
                 <form

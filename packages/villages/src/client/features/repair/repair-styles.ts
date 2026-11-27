@@ -225,6 +225,7 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-sections{display:none}
 .villages-repair .repair-mobile-section{display:block;margin-bottom:12px}
 .villages-repair .repair-directory{gap:12px}
+.villages-repair .repair-scheduled-snapshots{gap:8px}
 .villages-repair .repair-directory>.repair-sections{display:flex;gap:0;margin-bottom:0}
 .villages-repair .repair-directory>.repair-sections button{flex:1;padding:7px 5px;font-size:14px}
 .villages-repair .repair-directory>.repair-mobile-section{display:none}
