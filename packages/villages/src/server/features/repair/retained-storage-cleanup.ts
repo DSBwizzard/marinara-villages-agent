@@ -5,7 +5,8 @@ import {
   bindActivationService,
   createActivationBinding,
 } from "../../adapters/engine/activation-scope.js";
-import type { RepairGate, RepairDocument } from "../../adapters/storage/repair-gate.js";
+import { repairDigest, type RepairGate, type RepairDocument } from "../../adapters/storage/repair-gate.js";
+import { snapshotScheduleSchema } from "../../domain/rules/snapshot-schedule.js";
 import { createRepairTransactionCodec } from "../../adapters/storage/repair-transaction-codec.js";
 import {
   createRepairSnapshots,
@@ -424,6 +425,12 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         await traceContinuityPages(JSON.parse(value.payload), value.world, view.tracer);
       } else if (row.kind === OPERATION_EVIDENCE_KIND) {
         evidenceBody(row);
+      } else if (row.kind === "repair-schedule") {
+        const value = snapshotScheduleSchema.parse(row.data);
+        memoryRequire(
+          row.id === repairStorageId("repair-schedule", repairDigest([value.seed, value.setupAt])),
+          "snapshot schedule identity changed",
+        );
       } else memoryRequire(ordinaryKinds.has(row.kind), "unknown retained snapshot source kind");
     }
     async function header(row: RepairDocument, view: Scope) {

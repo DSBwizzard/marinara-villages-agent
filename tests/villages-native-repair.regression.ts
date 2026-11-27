@@ -15,7 +15,7 @@ import { planRoutineDays } from "../packages/villages/src/server/domain/rules/re
 import { routineRevision, routineRevisionMatches } from "../packages/villages/src/server/domain/rules/wish-policy.js";
 import { continuityRelationships } from "../packages/villages/src/server/domain/rules/continuity-library.js";
 import { sharedVenuesFixture } from "./helpers/venues.fixture.js";
-// Test cases: native-repair/persona-capture, native-repair/private-facets, native-repair/project-controls, native-repair/visitor-controls, native-repair/metadata-identity, native-repair/weekly-correction, native-repair/physical-environment, native-repair/expanded-editors, native-repair/scores, repair-familiar/work-booking, repair-familiar/place-ownership, native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/missing-page, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance, repair-familiar/memory-accounts, repair-familiar/targets
+// Test cases: native-repair/persona-capture, native-repair/private-facets, native-repair/project-controls, native-repair/visitor-controls, native-repair/metadata-identity, native-repair/weekly-correction, native-repair/physical-environment, native-repair/schedule-guard-cleanup, native-repair/expanded-editors, native-repair/scores, native-repair/snapshot-schedule, repair-familiar/work-booking, repair-familiar/place-ownership, native-repair/common-books, native-repair/undo, native-repair/repeated-undo, native-repair/offer-undo, native-repair/room, native-repair/circumstance, native-repair/founding-circumstance, native-repair/protected-circumstance, native-repair/stale, native-repair/checkpoint, native-repair/missing-page, native-repair/pending-target, native-repair/unread-targets, native-repair/recovery, native-repair/plan-allowance, repair-familiar/memory-accounts, repair-familiar/targets
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -1249,6 +1249,52 @@ await runCase("native-repair/scores", async () => {
   assert.equal(rows[1].scores.find((row) => row.person.id === "mara")!.score, 0);
 });
 
+await runCase("native-repair/snapshot-schedule", async () => {
+  const f = await fixture(),
+    id = repairId("snapshot-schedule");
+  const save = async (frequency: string, operationId: string) => {
+    const review = await f.api.prepare({
+      operationId,
+      recordId: id,
+      action: "correct",
+      values: {
+        frequency,
+        time: "00:00",
+        timeZone: "America/Los_Angeles",
+        weekday: "0",
+        retain: "7",
+      },
+      knowers: [],
+      expectedRecord: (await f.api.inspect(id)).token!,
+    });
+    await f.api.apply(review.id, review.token);
+  };
+  await f.api.createCheckpoint("Manual", "manual-kept");
+  await save("daily", "schedule-daily");
+  f.reopen();
+  const now = new Date();
+  now.setUTCDate(now.getUTCDate() + 2);
+  for (let day = 0; day < 10; day++) {
+    const at = new Date(now);
+    at.setUTCDate(at.getUTCDate() + day);
+    await f.api.runScheduledCheckpoint(at);
+    await f.api.runScheduledCheckpoint(at);
+  }
+  const index = await f.api.index();
+  assert.equal(index.checkpoints.filter((row) => row.mode === "scheduled").length, 7);
+  assert(index.checkpoints.some((row) => row.id === "manual-kept"));
+  assert(index.checkpoints.filter((row) => row.mode === "scheduled").every((row) => row.villageAt));
+  const scheduled = index.checkpoints.find((row) => row.mode === "scheduled")!;
+  const review = await f.api.restore(scheduled.id, "restore-scheduled");
+  await f.api.apply(review.id, review.token);
+  f.reopen();
+  await f.api.runScheduledCheckpoint(new Date(now.getTime() + 9 * 86400000));
+  assert.equal((await f.api.index()).checkpoints.filter((row) => row.mode === "scheduled").length, 7);
+  await save("off", "schedule-off");
+  await f.api.runScheduledCheckpoint(new Date(now.getTime() + 30 * 86400000));
+  assert.equal((await f.api.index()).checkpoints.filter((row) => row.mode === "scheduled").length, 7);
+});
+
 await runCase("native-repair/expanded-editors", async () => {
   const f = await fixture();
   const apply = async (
@@ -1463,6 +1509,32 @@ await runCase("native-repair/physical-environment", async () => {
   assert(!state.venues[0]!.zones!.some((z) => z.id === zone.id));
   assert(state.venues[0]!.archivedZones!.some((z) => z.zone.id === zone.id));
   await collectRetainedStorage(f.gate);
+});
+
+await runCase("native-repair/schedule-guard-cleanup", async () => {
+  const f = await fixture(),
+    id = repairId("snapshot-schedule"),
+    record = await f.api.inspect(id);
+  const request = {
+    operationId: "schedule-pending",
+    recordId: id,
+    action: "correct",
+    values: { frequency: "weekly", time: "20:00", timeZone: "America/Los_Angeles", weekday: "0", retain: "7" },
+    knowers: [],
+    expectedRecord: record.token!,
+  };
+  const review = await f.api.prepare(request);
+  await collectRetainedStorage(f.gate);
+  await f.api.apply(review.id, review.token);
+  await assert.rejects(
+    f.api.prepare({
+      ...request,
+      operationId: "schedule-system-field",
+      expectedRecord: (await f.api.inspect(id)).token!,
+      values: { ...request.values, lastOccurrence: "9999-12-31T20:00" },
+    }),
+    /unknown field/,
+  );
 });
 
 await runCase("native-repair/metadata-identity", async () => {

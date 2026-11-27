@@ -57,6 +57,12 @@ import {
 } from "../../domain/rules/repair-records.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
 import { requireAgendaDay } from "../../domain/rules/repair-agenda.js";
+import {
+  snapshotScheduleSchema,
+  snapshotScheduleRecord,
+  dueSnapshotOccurrence,
+  type SnapshotSchedule,
+} from "../../domain/rules/snapshot-schedule.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
 import {
   createRepairStorage,
@@ -273,6 +279,34 @@ export function createRepairService(ports: RepairPorts) {
     if (typeof id !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(id))
       throw badRequest("Choose a saved repair or checkpoint.");
   };
+  const scheduleId = (state: VillageState) => docId("repair-schedule", repairDigest([state.seed, state.setupAt]));
+  async function readSchedule(state: VillageState): Promise<SnapshotSchedule | undefined> {
+    const row = await documents.getById(PKG, scheduleId(state));
+    if (!row) return;
+    const value = snapshotScheduleSchema.parse(row.data);
+    if (value.seed !== state.seed || value.setupAt !== state.setupAt)
+      throw conflict("Snapshot schedule belongs to another Village.");
+    return value;
+  }
+  async function saveSchedule(state: VillageState, value: SnapshotSchedule) {
+    const id = scheduleId(state),
+      row = await documents.getById(PKG, id),
+      stamp = new Date().toISOString();
+    if (row) {
+      if (
+        !(await documents.update({
+          id,
+          packageId: PKG,
+          expectedRevision: row.revision,
+          name: row.name,
+          description: row.description,
+          data: value,
+          updatedAt: stamp,
+        }))
+      )
+        throw conflict("Snapshot schedule changed. Reopen it.");
+    } else await store(id, "repair-schedule", value);
+  }
   async function ownedReview(row: Doc, state: VillageState): Promise<boolean> {
     try {
       const saved = row.data as PlanData;
@@ -360,6 +394,7 @@ export function createRepairService(ports: RepairPorts) {
         personId,
         villageNow(state.clock?.advanceMs ?? 0).toISOString(),
       );
+    result.push(snapshotScheduleRecord(await readSchedule(state)));
     if (
       personId &&
       personId !== "player" &&
@@ -628,6 +663,7 @@ export function createRepairService(ports: RepairPorts) {
     title: string,
     id: string = randomUUID(),
     mode: CheckpointData["mode"] = "automatic",
+    capturedAt?: string,
   ): Promise<RepairCheckpoint> {
     const state = await repository.readAuthority();
     const rows: RepairDocument[] = [];
@@ -644,7 +680,7 @@ export function createRepairService(ports: RepairPorts) {
           repairDocumentDigest(rows.find((row) => row.id === scene.id) ?? null) !== repairDocumentDigest(copy(scene)))
       )
         throw conflict("The active Scene source ownership is missing from this checkpoint.");
-    return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
+    return storage.checkpoint(state, rows, id, title, randomUUID(), mode, capturedAt);
   }
   async function retireWorldJob(row: Doc, at: string) {
     const job = row.data as import("../../domain/models/background-model.js").Job;
@@ -670,6 +706,25 @@ export function createRepairService(ports: RepairPorts) {
       (await readActiveSceneOwner(documents)).scene
     )
       throw conflict("Conclude the active Scene before changing its Location layout.");
+    if (record.id === '["snapshot-schedule"]') {
+      const state = await repository.readAuthority(),
+        at = new Date().toISOString();
+      if (Object.keys(request.values).some((key) => !record.fields.some((field) => field.key === key)))
+        throw badRequest("This schedule contains an unknown field.");
+      const editable = Object.fromEntries(
+        record.fields.map((field) => [field.key, request.values[field.key] ?? field.value]),
+      );
+      const value = snapshotScheduleSchema.safeParse({
+        ...editable,
+        seed: state.seed,
+        setupAt: state.setupAt,
+        generation: request.operationId,
+        enabledAt: at,
+      });
+      if (!value.success) throw badRequest("Choose a valid snapshot schedule, time and time zone.");
+      await saveSchedule(state, value.data);
+      return;
+    }
     const [kind, id] = repairParts(record.id),
       now = villageNow((await repository.readAuthority()).clock?.advanceMs),
       at = now.toISOString();
@@ -1524,9 +1579,38 @@ export function createRepairService(ports: RepairPorts) {
     const saved = await storage.readCheckpoint(id),
       state = await repository.readAuthority();
     if (saved && (!storage.owns(saved.value, state) || saved.value.mode === "automatic"))
-      throw conflict("Choose a manual snapshot from this Village.");
+      throw conflict("Choose a manual or scheduled snapshot from this Village.");
     // One revision-checked ownership release needs no world transaction or new epoch.
     return storage.deleteCheckpoint(id, token);
+  }
+  async function runScheduledCheckpoint(now = new Date()) {
+    const state = await repository.readAuthority(),
+      schedule = await readSchedule(state);
+    const occurrence = schedule && dueSnapshotOccurrence(schedule, now);
+    if (!schedule || !occurrence) return;
+    const id = "scheduled-" + repairDigest([state.seed, state.setupAt, schedule.generation, occurrence]).slice(0, 48);
+    const result = await gate.simulate(async () => {
+      const current = await repository.readAuthority(),
+        latest = await readSchedule(current);
+      if (!latest || latest.generation !== schedule.generation || dueSnapshotOccurrence(latest, now) !== occurrence)
+        throw conflict("The snapshot schedule changed.");
+      const existing = await storage.readCheckpoint(id);
+      if (!existing) await checkpoint("Scheduled snapshot", id, "scheduled", now.toISOString());
+      const saved = await storage.readCheckpoint(id);
+      if (!saved || "deleted" in saved.value || !storage.owns(saved.value, current) || saved.value.mode !== "scheduled")
+        throw conflict("The scheduled snapshot is unavailable.");
+      await storage.restoreCheckpoint(saved.value);
+      await saveSchedule(current, { ...latest, lastOccurrence: occurrence });
+      const scheduled = (await documents.list(PKG, CHECKPOINT))
+        .map((row) => storage.checkpointRow(row).value)
+        .filter(
+          (row): row is CheckpointData => !("deleted" in row) && storage.owns(row, current) && row.mode === "scheduled",
+        )
+        .sort((a, b) => b.at.localeCompare(a.at) || b.id.localeCompare(a.id));
+      for (const expired of scheduled.slice(Number(latest.retain)))
+        await storage.deleteCheckpoint(expired.id, expired.token);
+    });
+    await gate.commit(id, result.transaction);
   }
   // Admission spans immutable artifact preparation and publication; cleanup cannot enter their gap.
   const owned =
@@ -1544,6 +1628,7 @@ export function createRepairService(ports: RepairPorts) {
     createCheckpoint: owned(createCheckpoint),
     restore: owned(restore),
     deleteCheckpoint: owned(deleteCheckpoint),
+    runScheduledCheckpoint: owned(runScheduledCheckpoint),
   };
 }
 export type RepairService = ReturnType<typeof createRepairService>;

@@ -59,7 +59,8 @@ export type CheckpointData = {
   id: string;
   title: string;
   at: string;
-  mode: "automatic" | "manual";
+  mode: "automatic" | "manual" | "scheduled";
+  villageAt?: string;
   token: string;
   records: number;
   snapshots: string;
@@ -278,7 +279,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
         typeof raw.id === "string" &&
         typeof raw.seed === "string" &&
         typeof raw.setupAt === "string" &&
-        ["manual", "automatic"].includes(raw.mode) &&
+        ["manual", "automatic", "scheduled"].includes(raw.mode) &&
         typeof raw.token === "string",
       "invalid checkpoint metadata",
     );
@@ -325,6 +326,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
       records: value.records,
       token: value.token,
       mode: value.mode,
+      ...(value.villageAt ? { villageAt: value.villageAt } : {}),
     };
   }
   async function checkpoint(
@@ -334,6 +336,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     title: string,
     token: string,
     mode: CheckpointData["mode"],
+    capturedAt = new Date().toISOString(),
   ): Promise<RepairCheckpoint> {
     rows = worldSources(rows, world, true);
     await validateResponseWrites(rows.map((row) => ({ before: row, after: null })));
@@ -345,7 +348,8 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
       title,
       token,
       mode,
-      at: new Date().toISOString(),
+      at: capturedAt,
+      villageAt: new Date(Date.parse(capturedAt) + (world.clock?.advanceMs ?? 0)).toISOString(),
       records: rows.length,
       snapshots: await snapshots.capture(rows),
     };

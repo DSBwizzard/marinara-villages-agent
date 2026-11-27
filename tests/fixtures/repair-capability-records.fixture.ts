@@ -1,6 +1,7 @@
 import { defaultVillageFixture, sharedVenuesFixture } from "../helpers/venues.fixture.js";
 import { worldRepairRecords } from "../../packages/villages/src/server/domain/rules/repair-records.js";
 import { addRepairMemory } from "../../packages/villages/src/server/domain/rules/repair-memory.js";
+import { snapshotScheduleRecord } from "../../packages/villages/src/server/domain/rules/snapshot-schedule.js";
 import { draftRenovationProject } from "../../packages/villages/src/server/features/projects/project-drafts.js";
 import { emptyContinuity } from "../../packages/villages/src/server/domain/rules/continuity.js";
 
@@ -95,6 +96,17 @@ export const records = [
     return record ? [record] : [];
   }),
   all.find((r) => r.id === JSON.stringify(["memory", memory]))!,
+  snapshotScheduleRecord({
+    seed: state.seed,
+    setupAt: at,
+    generation: "one",
+    enabledAt: at,
+    frequency: "weekly",
+    time: "20:00",
+    timeZone: state.timeZone,
+    weekday: "3",
+    retain: "14",
+  }),
 ]
   .filter(Boolean)
   .map((record) => ({ ...record, token: "capability:" + record.id }));

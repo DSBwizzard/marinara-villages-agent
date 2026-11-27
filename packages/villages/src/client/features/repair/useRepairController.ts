@@ -280,6 +280,8 @@ export function useRepairController(
       key = draftKey(id, pick, action),
       focus = record.people?.find((p) => p.id === person?.id),
       values = Object.fromEntries(editorFields(record, pick).map((f) => [f.key, f.value]));
+    if (record.id === '["snapshot-schedule"]' && !values.timeZone)
+      values.timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     setDraftActions((prior) => ({ ...prior, [recordKey(id, pick)]: action }));
     setDrafts((prior) =>
       prior[key] && !resetDraft
@@ -320,6 +322,8 @@ export function useRepairController(
   const fields = selected ? editorFields(selected, agendaPick) : [];
   const hasFieldChanges = fields.some(({ key, value, type }) => {
     const next = draft?.values[key] ?? value;
+    if (key === "timeZone" && value === "")
+      return next !== "" && next !== Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (type === "clock") {
       const before = repairClockMinutes(String(value));
       if (before !== undefined) return repairClockMinutes(String(next)) !== before;
@@ -380,7 +384,9 @@ export function useRepairController(
         values:
           selected.topic === "memories" && ["forget", "remember"].includes(draft.action)
             ? Object.fromEntries(selected.fields.map((field) => [field.key, field.value]))
-            : draft.values,
+            : selected.id === '["snapshot-schedule"]'
+              ? { ...draft.values, timeZone: draft.values.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone }
+              : draft.values,
         expectedRecord: draft.agendaToken ?? selected.token ?? "",
         ...(person ? { personId: person.id } : {}),
       };

@@ -318,6 +318,10 @@ export function RepairPage({
       (field.key === "venueId" || (zone && field.key === "zoneId"))
     )
       return [{ ...field, readOnly: true }];
+    if (selected?.id === '["snapshot-schedule"]') {
+      if (c.draft?.values.frequency === "off" && field.key !== "frequency") return [];
+      if (field.key === "weekday" && c.draft?.values.frequency !== "weekly") return [];
+    }
     if (field.dependsOn)
       return c.draft?.values[field.dependsOn]
         ? [
@@ -982,6 +986,16 @@ export function RepairPage({
             )
           ) : isSnapshots ? (
             <section className="repair-directory">
+              <button
+                type="button"
+                disabled={c.busy}
+                onClick={async () => {
+                  await c.chooseTopic("world");
+                  void c.open('["snapshot-schedule"]');
+                }}
+              >
+                Snapshot schedule →
+              </button>
               <form
                 autoComplete="off"
                 className="repair-snapshot-create"
@@ -1016,11 +1030,14 @@ export function RepairPage({
                       <strong>{snapshot.title}</strong>
                       <small>{new Date(snapshot.at).toLocaleString()}</small>
                       <small>
-                        {snapshot.mode === "manual"
-                          ? "Manual"
-                          : snapshot.title === "Before checkpoint restoration"
-                            ? "Before restore"
-                            : "Before repair"}
+                        {snapshot.mode === "scheduled"
+                          ? "Scheduled"
+                          : snapshot.mode === "manual"
+                            ? "Manual"
+                            : snapshot.title === "Before checkpoint restoration"
+                              ? "Before restore"
+                              : "Before repair"}
+                        {snapshot.villageAt ? `, Village time ${new Date(snapshot.villageAt).toLocaleString()}` : ""}
                       </small>
                       <span>Review restore →</span>
                     </button>

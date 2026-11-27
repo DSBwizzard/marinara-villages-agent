@@ -31,7 +31,7 @@ Recover work contains routine preparation, background failures and existing save
 
 Repair history uses approved layout B: compact When / Action / Target / Change rows, with details on demand. It has no Undo controls. A later REPAIR action performs a correction.
 
-Whole-Village snapshots have a separate World page, manual capture, deletion and deliberate reviewed restoration. Scheduled capture is a separate dependent change of the existing snapshot service.
+Whole-Village snapshots have a separate World page, manual capture, deletion and deliberate reviewed restoration. Scheduling is off by default, with daily/weekly time, timezone and retained-count choices. One missed occurrence coalesces after absence; DST folds do not duplicate it. Only successfully validated scheduled copies rotate scheduled retention. Manual and existing safety copies stay separate. The schedule belongs to the Village outside restored world data, so restoring an old world does not replay a past scheduled occurrence.
 
 Snapshots are optional wide-scale rollback. Individual corrections remain the normal workflow. Existing interrupted-save journals and safety-copy compatibility remain internal safeguards, not another player journey.
 
